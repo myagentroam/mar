@@ -1,10 +1,11 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { effectiveInstructions } from './support/model-context.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MarAgentError } from '../../src/index.js';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreSettingsBackend } from '../../src/agent-core/extensions/settings.js';
-import type { CoreJsonValue } from '../../src/agent-core/extensions/data.js';
+import { AgentError } from '../../src/index.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionSettingsBackend } from '../../src/extensions/settings.js';
+import type { ExtensionJsonValue } from '../../src/extensions/data.js';
 import {
   fixture as sdkFixture,
   answer,
@@ -19,7 +20,7 @@ afterEach(async () => {
 });
 function backend() {
   let revision = 0;
-  const values: Record<string, CoreJsonValue> = {
+  const values: Record<string, ExtensionJsonValue> = {
     enabled: false,
     locked: 'policy',
     secret: 'explicit-bound-secret',
@@ -43,7 +44,7 @@ function backend() {
     },
     { key: 'structure', schema: { type: 'object' }, source: 'application', writable: true }
   ];
-  const bound: CoreSettingsBackend = {
+  const bound: ExtensionSettingsBackend = {
     async describe(_input, call) {
       call.signal.throwIfAborted();
       return { revision, definitions };
@@ -61,13 +62,9 @@ function backend() {
         entry: call.entry
       });
       if (input.expectedRevision !== undefined && input.expectedRevision !== revision)
-        throw new MarAgentError(
-          'MAR_AGENT_SETTINGS_REVISION_CONFLICT',
-          'Settings revision changed.'
-        );
+        throw new AgentError('MAR_AGENT_SETTINGS_REVISION_CONFLICT', 'Settings revision changed.');
       const row = definitions.find((row) => row.key === input.key);
-      if (!row)
-        throw new MarAgentError('MAR_AGENT_SETTINGS_KEY_UNKNOWN', 'Setting key is unknown.');
+      if (!row) throw new AgentError('MAR_AGENT_SETTINGS_KEY_UNKNOWN', 'Setting key is unknown.');
       if (!row.writable || (row.schema.type !== 'object' && typeof input.value !== row.schema.type))
         return {
           revision,
@@ -87,10 +84,11 @@ function backend() {
   };
   return { bound, values, definitions, calls };
 }
-async function fixture(settings: CoreSettingsBackend = backend().bound) {
-  let context!: CoreSessionExtensionContext;
+async function fixture(settings: ExtensionSettingsBackend = backend().bound) {
+  let context!: SessionExtensionContext;
   const facts: unknown[] = [];
   const manager = new ExtensionManager({
+    toolRuntime: extensionToolRuntime,
     extensions: [
       {
         id: 'bound',
@@ -245,8 +243,9 @@ describe('Core explicitly bound settings', () => {
 
   it('projects actual per-extension binding availability and disables only missing/invalid bound dependencies', async () => {
     const { bound } = backend();
-    const contexts: Record<string, CoreSessionExtensionContext> = {};
+    const contexts: Record<string, SessionExtensionContext> = {};
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'provided',
@@ -305,11 +304,11 @@ describe('Core explicitly bound settings', () => {
   it.each([false, true])(
     'invokes the existing SDK settings writer under model/Code Mode lineage and affects only the next execution (%s)',
     async (codeMode) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const bound = backend();
       let updateInstruction!: (value: string) => void;
       const calls: unknown[] = [];
-      const settings: CoreSettingsBackend = {
+      const settings: ExtensionSettingsBackend = {
         ...bound.bound,
         async update(input, call) {
           calls.push({ executionId: call.executionId, entry: call.entry });
@@ -436,10 +435,11 @@ describe('Core explicitly bound settings', () => {
 
   it('uses the new revision binding while retiring the old facade without resetting real backend state', async () => {
     let revision = 'one';
-    const contexts: CoreSessionExtensionContext[] = [];
+    const contexts: SessionExtensionContext[] = [];
     const first = backend();
     const second = backend();
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: {
         async resolve() {
           return {
@@ -449,7 +449,7 @@ describe('Core explicitly bound settings', () => {
                 id: 'versioned-settings',
                 apiVersion: '1.0' as const,
                 bindings: { settings: revision === 'one' ? first.bound : second.bound },
-                attachSession(value: CoreSessionExtensionContext) {
+                attachSession(value: SessionExtensionContext) {
                   contexts.push(value);
                 }
               }

@@ -1,14 +1,15 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cleanupCoreFixtures, fixture, answer } from './support/core-extension-fixture.js';
-import type { CoreDomainFacts } from '../../src/agent-core/extensions/contracts.js';
+import type { ExtensionDomainFacts } from '../../src/extensions/contracts.js';
 
 afterEach(cleanupCoreFixtures);
 
 describe('Core explicit Session ending boundary', () => {
   it('emits clear once before retirement, preserves actual readable identity and admits a new generation', async () => {
-    const facts: CoreDomainFacts['session.ending'][] = [];
+    const facts: ExtensionDomainFacts['session.ending'][] = [];
     const order: string[] = [];
     const f = await fixture(
       [
@@ -103,22 +104,19 @@ describe('Core explicit Session ending boundary', () => {
         (error: unknown) => error
       );
       const transcript = join(
-        f.home,
-        '.mar',
-        'agent',
-        'sessions',
-        f.session.id,
+        await activeSessionDirectory(f.home, f.session.id),
         'events-000001.jsonl'
       );
       try {
         await entered.promise;
         const before = await readFile(transcript, 'utf8');
-        const reopened = await f.agent.openSession(f.session.id);
-        for (const session of [f.session, reopened])
-          for (const mode of ['run', 'plan', 'compact'] as const)
-            expect(() => session[mode]({ prompt: 'rejected during clear' })).toThrowError(
-              expect.objectContaining({ code: 'MAR_AGENT_SESSION_CLOSING' })
-            );
+        await expect(f.agent.openSession(f.session.id)).rejects.toMatchObject({
+          code: 'MAR_AGENT_SESSION_CLOSING'
+        });
+        for (const mode of ['run', 'plan', 'compact'] as const)
+          expect(() => f.session[mode]({ prompt: 'rejected during clear' })).toThrowError(
+            expect.objectContaining({ code: 'MAR_AGENT_SESSION_CLOSING' })
+          );
         expect(f.adapter.requests).toHaveLength(1);
         expect(await readFile(transcript, 'utf8')).toBe(before);
         expect(await other.run({ prompt: 'parallel Session' }).result()).toHaveProperty(
@@ -269,7 +267,7 @@ describe('Core explicit Session ending boundary', () => {
   );
 
   it('does not let observer failures skip native cleanup and marks deletion non-resumable', async () => {
-    const facts: CoreDomainFacts['session.ending'][] = [];
+    const facts: ExtensionDomainFacts['session.ending'][] = [];
     let retired = 0;
     const f = await fixture(
       [
@@ -302,6 +300,7 @@ describe('Core explicit Session ending boundary', () => {
     });
     let signal: AbortSignal | undefined;
     let count = 0;
+    const entered = Promise.withResolvers<void>();
     const f = await fixture(
       [
         {
@@ -311,6 +310,7 @@ describe('Core explicit Session ending boundary', () => {
             context.hooks.observe('session.ending', async (_fact, call) => {
               count++;
               signal = call.signal;
+              entered.resolve();
               await gate;
             });
           }
@@ -330,6 +330,7 @@ describe('Core explicit Session ending boundary', () => {
       () => undefined
     );
     try {
+      await entered.promise;
       await vi.advanceTimersByTimeAsync(1700);
       expect(count).toBe(1);
       expect(signal?.aborted).toBe(false);

@@ -6,17 +6,12 @@ import {
   assertMcpToolCatalog,
   assertMcpToolDefinition,
   LocalAgentHost,
-  SecretValue,
-  type MarAgentModelConfiguration,
   type McpToolCatalog
-} from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { DeferredMcpRegistry } from '../../src/agent-core/tools/mcp/tool-search.js';
+} from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { DeferredMcpRegistry } from '../../src/tools/mcp/tool-search.js';
 
 const definition = {
   name: 'mcp__fixture__lookup',
@@ -215,7 +210,7 @@ describe('MCP catalog validation boundary', () => {
         }
       ]
     } as unknown as McpToolCatalog;
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       id: 'fixture-model',
       name: 'Fixture model',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -248,13 +243,15 @@ describe('MCP catalog validation boundary', () => {
       mcpCatalog: () => invalid,
       callMcp: async () => ({ content: 'unused' })
     });
-    const agent = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host,
-      models: [model],
-      defaultModelId: model.id,
-      adapterFactory: () => adapter
-    });
+    const agent = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host,
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace: home, title: 'Catalog validation' });
       expect(await session.run({ prompt: 'Start.' }).result()).toMatchObject({

@@ -1,22 +1,26 @@
+import {
+  directLocalProcessExecutor,
+  signalProcessTree
+} from '../../src/host/local-process-executor.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CodeModeTool } from '../../src/agent-core/tools/code-mode/index.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
-import type {
-  ToolExecutionContext,
-  ToolExecutionResult
-} from '../../src/agent-core/tools/contracts.js';
-import {
-  boundObservations,
-  observationModelParts
-} from '../../src/agent-core/tools/code-mode/observations.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
+import { CodeModeTool } from '../../src/tools/code-mode/index.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import type { ToolExecutionContext, ToolExecutionResult } from '../../src/tools/contracts.js';
+import { boundObservations } from '../../src/tools/code-mode/observations.js';
+import { observationModelParts } from '../../src/session/code-observation-projection.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
 
 async function run(code: string, invoke: NonNullable<ToolExecutionContext['codeMode']>['invoke']) {
   const root = await mkdtemp(join(tmpdir(), 'mar-observe-'));
-  const runner = new CodeModeTool(new WorkspacePathResolver(root));
+  const runner = new CodeModeTool(
+    new WorkspacePathResolver(root),
+    undefined,
+    directLocalProcessExecutor,
+    signalProcessTree
+  );
   try {
     return await runner.execute(code, {
       mode: 'run',

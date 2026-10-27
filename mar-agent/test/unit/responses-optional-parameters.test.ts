@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
-import { SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 
 describe('Responses optional endpoint parameters', () => {
   it.each([true, false])(
@@ -25,7 +25,7 @@ describe('Responses optional endpoint parameters', () => {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('Missing server address');
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'test',
         name: 'Test',
         protocol: 'OPENAI_RESPONSES',

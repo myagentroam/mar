@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MarAgentEvent } from '../../src/index.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
+import type { AgentEvent } from '../../src/index.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -42,7 +42,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
         protocol
       );
       const execution = f.session.run({ prompt: 'wait briefly', permissionMode: 'full-access' });
-      const events: MarAgentEvent[] = [];
+      const events: AgentEvent[] = [];
       const collecting = (async () => {
         for await (const event of execution) {
           events.push(event);

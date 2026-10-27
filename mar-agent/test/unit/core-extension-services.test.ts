@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ExtensionServices,
-  type CoreServiceKey
-} from '../../src/agent-core/extensions/services.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
+import { ExtensionServices, type ExtensionServiceKey } from '../../src/extensions/services.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
 
-const key: CoreServiceKey<(value: number) => number> = { id: 'transform', scope: 'agent' };
+const key: ExtensionServiceKey<(value: number) => number> = { id: 'transform', scope: 'agent' };
 
 describe('Extension typed services', () => {
   it('provides, replaces and wraps without top-level self lookup', async () => {

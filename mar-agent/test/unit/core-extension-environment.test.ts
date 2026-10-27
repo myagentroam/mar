@@ -1,11 +1,12 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalSessionEnvironment } from '../../src/agent-core/host/local-session-environment.js';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
-import type { CoreEnvironmentBackend } from '../../src/agent-core/extensions/environment.js';
-import type { LocalProcessSpawnRequest } from '../../src/agent-core/host/local-process-executor.js';
-import { directLocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
+import { LocalSessionEnvironment } from '../../src/host/local-session-environment.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
+import type { ExtensionEnvironmentBackend } from '../../src/extensions/environment.js';
+import type { LocalProcessSpawnRequest } from '../../src/host/local-process-executor.js';
+import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 const managers: ExtensionManager[] = [];
@@ -13,7 +14,7 @@ afterEach(async () => {
   await cleanupCoreFixtures();
   await Promise.all(managers.splice(0).map((manager) => manager.dispose()));
 });
-function operation(sessionId = 'session', executionId?: string): CoreOperationContext {
+function operation(sessionId = 'session', executionId?: string): ExtensionOperationContext {
   return {
     operationId: 'operation',
     sessionId,
@@ -26,7 +27,7 @@ function operation(sessionId = 'session', executionId?: string): CoreOperationCo
 }
 const node = (script: string) => ({ executable: process.execPath, argv: ['-e', script] });
 async function sdkFixture(codeMode = false) {
-  let context!: CoreSessionExtensionContext;
+  let context!: SessionExtensionContext;
   const starts: LocalProcessSpawnRequest[] = [];
   const facts: unknown[] = [];
   const sdk = await fixture(
@@ -289,8 +290,9 @@ describe('Core scoped environment', () => {
   });
 
   it('does not expose a fake environment facade on an older Host', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'old-host',
@@ -310,10 +312,10 @@ describe('Core scoped environment', () => {
   });
 
   it('captures the original changed value once instead of re-reading a mutable backend result getter', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let reads = 0;
     const facts: unknown[] = [];
-    const environment: CoreEnvironmentBackend = {
+    const environment: ExtensionEnvironmentBackend = {
       get: async () => undefined,
       set: async () => ({
         get changed() {
@@ -323,6 +325,7 @@ describe('Core scoped environment', () => {
       })
     };
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'getter-env',

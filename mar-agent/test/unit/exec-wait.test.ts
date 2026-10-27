@@ -5,19 +5,19 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost } from '../../src/agent-core/host/local-agent-host.js';
-import type { LocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
-import type { ToolExecutionContext } from '../../src/agent-core/sdk/types.js';
+import { LocalAgentHost } from '../../src/host/local-agent-host.js';
+import type { LocalProcessExecutor } from '../../src/host/local-process-executor.js';
+import type { ToolExecutionContext } from '../../src/sdk/types.js';
 import {
   execToolInput,
   execToolDefinition,
   execWaitToolDefinition,
   formatExecResult,
   type ExecResult
-} from '../../src/agent-core/tools/local/exec.js';
-import { parseContextGcExecResult } from '../../src/agent-core/session/context-gc-replacements.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import { createToolWaitInterrupt } from '../../src/agent-core/tools/wait.js';
+} from '../../src/tools/local/exec.js';
+import { parseContextGcExecResult } from '../../src/session/context-gc-replacements.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
 
 const hosts: LocalAgentHost[] = [];
 const children: ChildProcessWithoutNullStreams[] = [];

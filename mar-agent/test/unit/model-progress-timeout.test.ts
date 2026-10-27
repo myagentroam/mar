@@ -1,13 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { SecretValue } from '../../src/index.js';
-import { createModelTurnSession } from '../../src/agent-core/sdk/model-runtime.js';
-import { recoverModelStream } from '../../src/agent-core/model/recovery.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
+import { createModelTurnSession } from '../../src/sdk/model-runtime.js';
+import { recoverModelStream } from '../../src/model/recovery.js';
+import { AgentError } from '../../src/error.js';
 
 const controllers: AbortController[] = [];
 afterEach(() => {
@@ -220,12 +216,12 @@ it('excludes consumer handling time and cleans up after completion or early retu
 
 it('preserves the parent timeout reason when cancellation interrupts recovery backoff', async () => {
   const parent = new AbortController();
-  const timeout = new MarAgentError('MAR_AGENT_MODEL_TIMEOUT', 'No generation progress.', {
+  const timeout = new AgentError('MAR_AGENT_MODEL_TIMEOUT', 'No generation progress.', {
     details: { reason: 'MODEL_PROGRESS_TIMEOUT' },
     retryable: true
   });
   const retry = recoverModelStream(timeout, { attempts: 1 }, parent.signal);
-  const deadline = new MarAgentError('MAR_AGENT_MODEL_TIMEOUT', 'Compaction deadline reached.', {
+  const deadline = new AgentError('MAR_AGENT_MODEL_TIMEOUT', 'Compaction deadline reached.', {
     details: { reason: 'COMPACTION_DEADLINE_EXCEEDED' }
   });
   parent.abort(deadline);

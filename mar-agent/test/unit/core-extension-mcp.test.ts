@@ -1,17 +1,18 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
-  CoreSessionExtensionContext,
-  CoreDomainFacts,
-  CoreMcpBackend,
-  CoreMcpToolCall,
-  ToolExecutionResult,
-  McpToolCatalog
-} from '../../src/index.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import { coreMcpCatalog } from '../../src/agent-core/extensions/mcp.js';
-import { ExtensionTools, type CoreToolBinding } from '../../src/agent-core/extensions/tools.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
+  SessionExtensionContext,
+  ExtensionDomainFacts,
+  ExtensionMcpBackend,
+  ExtensionMcpToolCall
+} from '../../src/extensions.js';
+import type { ToolExecutionResult } from '../../src/index.js';
+import type { McpToolCatalog } from '../../src/host.js';
+import { AgentError } from '../../src/error.js';
+import { coreMcpCatalog } from '../../src/extensions/mcp.js';
+import { ExtensionTools, type ExtensionToolBinding } from '../../src/extensions/tools.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
 import {
   fixture,
   answer,
@@ -47,19 +48,22 @@ function backendFixture() {
   };
   const close = vi.fn(async () => {});
   const call = vi.fn(
-    async (input: CoreMcpToolCall, _call: CoreOperationContext): Promise<ToolExecutionResult> => {
+    async (
+      input: ExtensionMcpToolCall,
+      _call: ExtensionOperationContext
+    ): Promise<ToolExecutionResult> => {
       const source = value.tools.find((tool) => tool.definition.name === input.name);
       if (
         !source ||
         input.expectedTool.sourceIdentity !== source.sourceIdentity ||
         input.expectedTool.definitionRevision !== source.definitionRevision
       )
-        throw new MarAgentError('MAR_AGENT_MCP_TOOL_CHANGED', 'Actual Client source changed.');
+        throw new AgentError('MAR_AGENT_MCP_TOOL_CHANGED', 'Actual Client source changed.');
       return { content: 'MCP_OK', data: { real: true } };
     }
   );
   const catalog = vi.fn(async () => value);
-  const connect = vi.fn(async (_definition: unknown, _call: CoreOperationContext) => ({
+  const connect = vi.fn(async (_definition: unknown, _call: ExtensionOperationContext) => ({
     catalog,
     call,
     close
@@ -77,8 +81,8 @@ function backendFixture() {
   };
 }
 
-async function nativeFixture(port?: CoreMcpBackend) {
-  let context!: CoreSessionExtensionContext;
+async function nativeFixture(port?: ExtensionMcpBackend) {
+  let context!: SessionExtensionContext;
   const f = await fixture(
     [
       {
@@ -321,7 +325,7 @@ describe('native MCP connections', () => {
     'uses captured MCP metadata at the model ingress (protocol: %s, Code Mode: %s)',
     async (protocol, codeMode) => {
       const backend = backendFixture();
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const f = await fixture(
         [
           {
@@ -462,7 +466,7 @@ describe('native MCP connections', () => {
   it('keeps wrapped MCP discovery identity sensitive to the captured lower revision', async () => {
     const backend = backendFixture();
     const tool = backend.getCatalog().tools[0]!;
-    const tools = new ExtensionTools();
+    const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const owner = new ExtensionResourceScope();
     owner.activate();
     try {
@@ -472,7 +476,7 @@ describe('native MCP connections', () => {
         execute: async (input, call, next) => next!({ name: 'query', arguments: input })
       });
       await registration.ready;
-      const lower: CoreToolBinding = {
+      const lower: ExtensionToolBinding = {
         definition: tool.definition,
         mcp: tool,
         source: { kind: 'mcp', id: tool.sourceIdentity, revision: tool.definitionRevision },
@@ -542,7 +546,7 @@ describe('native MCP connections', () => {
     const { context } = await nativeFixture(backend.port);
     const server = context.mcp!.register({ id: 'server', configuration: {} }).ref;
     const connection = await context.mcp!.connect({ server });
-    const facts: CoreDomainFacts['mcp.completed'][] = [];
+    const facts: ExtensionDomainFacts['mcp.completed'][] = [];
     context.hooks.observe('mcp.completed', (fact) => {
       facts.push(fact);
     });
@@ -644,7 +648,7 @@ describe('native MCP connections', () => {
       server: context.mcp!.register({ id: 'server', configuration: {} }).ref
     });
     const tool = (await context.mcp!.catalog({ connection })).tools[0]!;
-    const facts: CoreDomainFacts['mcp.completed'][] = [];
+    const facts: ExtensionDomainFacts['mcp.completed'][] = [];
     context.hooks.observe('mcp.completed', (fact) => {
       facts.push(fact);
     });
@@ -660,12 +664,12 @@ describe('native MCP connections', () => {
 
   it('owns a lease by its acquiring instance rather than a shared declaration author', async () => {
     const backend = backendFixture();
-    const contexts = new Map<string, CoreSessionExtensionContext>();
+    const contexts = new Map<string, SessionExtensionContext>();
     const f = await fixture(
       ['declarer', 'consumer'].map((id) => ({
         id,
         apiVersion: '1.0',
-        attachSession: (context: CoreSessionExtensionContext) => {
+        attachSession: (context: SessionExtensionContext) => {
           contexts.set(id, context);
         }
       })),
@@ -803,11 +807,11 @@ describe('native MCP connections', () => {
       server: context.mcp!.register({ id: 'server', configuration: {} }).ref
     });
     const tool = (await context.mcp!.catalog({ connection })).tools[0]!;
-    const facts: CoreDomainFacts['mcp.completed'][] = [];
+    const facts: ExtensionDomainFacts['mcp.completed'][] = [];
     context.hooks.observe('mcp.completed', (fact) => {
       facts.push(fact);
     });
-    const failure = new MarAgentError('MCP_TEST_FAILURE', 'Real Client failure.');
+    const failure = new AgentError('MCP_TEST_FAILURE', 'Real Client failure.');
     backend.call.mockRejectedValueOnce(failure);
     await expect(context.mcp!.call({ tool, arguments: {} })).rejects.toBe(failure);
     expect(facts.some((fact) => fact.operation === 'call')).toBe(false);

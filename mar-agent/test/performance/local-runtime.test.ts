@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { LocalWorkspaceTools } from '../../src/agent-core/tools/local/workspace-tools.js';
-import { AsyncQueue } from '../../src/agent-core/runtime/async-queue.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
+import { AsyncQueue } from '../../src/runtime/async-queue.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 const roots: string[] = [];
 
@@ -154,12 +154,17 @@ describe('local runtime performance guardrails', () => {
     const store = await JsonlSessionStore.open(home);
     try {
       const session = await store.createSession({ workspace: home });
-      await store.append(session.id, {
-        type: 'large.old.record',
-        payload: { text: 'x'.repeat(12 * 1024 * 1024) }
-      });
-      for (let index = 0; index < 2_000; index++)
-        await store.append(session.id, { type: 'tail.record', payload: { index } });
+      const release = await store.acquireSessionLease(session.id);
+      try {
+        await store.append(session.id, {
+          type: 'large.old.record',
+          payload: { text: 'x'.repeat(12 * 1024 * 1024) }
+        });
+        for (let index = 0; index < 2_000; index++)
+          await store.append(session.id, { type: 'tail.record', payload: { index } });
+      } finally {
+        await release();
+      }
       await store.readPage(session.id, { limit: 30 });
 
       const samples: number[] = [];

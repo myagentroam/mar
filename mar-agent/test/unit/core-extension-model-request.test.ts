@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ExtensionRequestBridge,
   ExtensionRequestSnapshots
-} from '../../src/agent-core/extensions/model-request.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
+} from '../../src/extensions/model-request.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
 
 describe('Core neutral model request views', () => {
   it('stabilizes declaration fields changed only by middleware ordering without touching history', () => {

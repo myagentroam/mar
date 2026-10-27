@@ -2,16 +2,16 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { createSubagentBackend } from '../../src/agent-core/sdk/subagent-backend.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { createSubagentBackend } from '../../src/sdk/subagent-backend.js';
 import {
   SubagentSessionController,
   type SubagentParentOperation,
   type SubagentMessageDelivery,
   type SubagentTurnHandle
-} from '../../src/agent-core/subagent/session-controller.js';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+} from '../../src/subagent/session-controller.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 const roots: string[] = [];
 const controllers: SubagentSessionController[] = [];
@@ -63,7 +63,7 @@ function operation(overrides: Partial<SubagentParentOperation> = {}): SubagentPa
 function finished(
   turnId: string,
   text = 'done',
-  events: readonly MarAgentEvent[] = []
+  events: readonly AgentEvent[] = []
 ): SubagentTurnHandle {
   return {
     executionId: 'actual-child-execution',
@@ -88,6 +88,128 @@ const task = {
 };
 
 describe('native subagent controller operations', () => {
+  it.each(['ends', 'rejects'] as const)(
+    'joins the child event stream after result failure when the stream %s',
+    async (streamOutcome) => {
+      const { controller } = await fixture();
+      const release = Promise.withResolvers<void>();
+      const resultFailed = Promise.withResolvers<void>();
+      const terminals: unknown[] = [];
+      let streamEnded = false;
+      const native = operation({
+        emitTerminal: async (event) => {
+          terminals.push(event);
+        },
+        startTurn: async (input) => ({
+          ...finished(input.turnId),
+          async *[Symbol.asyncIterator]() {
+            try {
+              await release.promise;
+              yield {
+                type: 'message.completed' as const,
+                eventId: 'late-message',
+                sessionId: input.sessionId,
+                executionId: 'actual-child-execution',
+                turnId: input.turnId,
+                sequence: 1,
+                timestamp: new Date().toISOString(),
+                itemId: 'late',
+                phase: 'final_answer' as const,
+                text: 'last child message'
+              };
+              if (streamOutcome === 'rejects') throw new Error('stream failure');
+            } finally {
+              streamEnded = true;
+            }
+          },
+          result: async () => {
+            resultFailed.resolve();
+            throw new Error('result failure');
+          },
+          cancel: () => release.resolve()
+        })
+      });
+      const child = await controller.withOperation(native, () =>
+        controller.run({ ...task, background: true }, { waitFor: 'start' })
+      );
+      try {
+        await resultFailed.promise;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect((await controller.inspect(child.agentId)).status).toBe('running');
+        expect(streamEnded).toBe(false);
+        expect(terminals).toHaveLength(0);
+        release.resolve();
+        await vi.waitFor(async () =>
+          expect((await controller.inspect(child.agentId)).status).toBe('failed')
+        );
+        const snapshot = await controller.inspect(child.agentId);
+        expect(streamEnded).toBe(true);
+        expect(snapshot.latestMessage?.text).toBe('last child message');
+        expect(snapshot.errorMessage).toContain('result failure');
+      } finally {
+        release.resolve();
+      }
+    }
+  );
+  it.each(['signal', 'owner'] as const)(
+    'cancels only the sender when a running Turn rejects append (%s)',
+    async (kind) => {
+      const { controller } = await fixture();
+      const release = Promise.withResolvers<void>();
+      const attempted = Promise.withResolvers<void>();
+      const childCancel = vi.fn();
+      const childOwner = operation({
+        ownerInstanceId: 'child-owner',
+        startTurn: async (input) => ({
+          ...finished(input.turnId),
+          result: async () => {
+            await release.promise;
+            return {
+              executionId: 'actual-child-execution',
+              status: 'completed',
+              finalAnswer: 'done'
+            };
+          },
+          cancel: childCancel,
+          enqueueMessage: () => {
+            attempted.resolve();
+            return false;
+          }
+        })
+      });
+      const sender = operation({ ownerInstanceId: 'sender-owner' });
+      const cancel = new AbortController();
+      const child = await controller.withOperation(childOwner, () =>
+        controller.run({ ...task, background: true }, { waitFor: 'start' })
+      );
+      let outcome: unknown = 'pending';
+      const sent = controller
+        .withOperation(sender, () =>
+          controller.message(child.agentId, 'follow-up', { signal: cancel.signal })
+        )
+        .then(
+          () => {
+            outcome = 'fulfilled';
+          },
+          (error: unknown) => {
+            outcome = error;
+          }
+        );
+      try {
+        await attempted.promise;
+        if (kind === 'signal') cancel.abort(new Error('sender cancelled'));
+        else await controller.cancelOwned('sender-owner');
+        for (let index = 0; index < 12 && outcome === 'pending'; index++) await Promise.resolve();
+        expect(outcome).not.toBe('pending');
+        expect(outcome).not.toBe('fulfilled');
+        expect(childCancel).not.toHaveBeenCalled();
+        expect((await controller.inspect(child.agentId)).status).toBe('running');
+      } finally {
+        release.resolve();
+        await sent;
+      }
+    }
+  );
   it('separates a start receipt from foreground completion and cancels only an unbounded waiter', async () => {
     const { controller } = await fixture();
     let finish!: () => void;
@@ -604,7 +726,7 @@ describe('native subagent controller operations', () => {
               phase: 'final_answer',
               text,
               timestamp: new Date().toISOString()
-            } as MarAgentEvent;
+            } as AgentEvent;
             if (text === 'first') await second;
           }
           await done;

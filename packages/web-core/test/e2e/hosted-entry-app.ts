@@ -78,7 +78,9 @@ if (existing) {
     '/api/hosted-template-fixture/current'
   );
   workspace.selectConversation(snapshot.conversation.nodeId, snapshot.conversation.id, snapshot);
-  await workspace.beginSelectedConversationWatch();
+  const watch = workspace.beginSelectedConversationWatch();
+  if (new URL(location.href).searchParams.has('watch-pending')) void watch.catch(() => undefined);
+  else await watch;
 }
 
 createTooltipApp({

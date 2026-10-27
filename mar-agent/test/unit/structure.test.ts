@@ -1,10 +1,11 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const packageSourceRoot = fileURLToPath(new URL('../../src/', import.meta.url));
-const sourceRoot = join(packageSourceRoot, 'agent-core');
+const sourceRoot = packageSourceRoot;
 const contracts = new Set([
   'host/contracts.ts',
   'runtime/contracts.ts',
@@ -17,6 +18,8 @@ const contracts = new Set([
 // Public DTOs may reference domain-owned support types, never their implementations.
 const contractSupportDependencies: Readonly<Record<string, readonly string[]>> = {
   'host/contracts.ts': [
+    'extensions/host-ports.ts',
+    'host/skill-contract.ts',
     'extensions/environment.ts',
     'extensions/files.ts',
     'extensions/mcp.ts',
@@ -24,46 +27,94 @@ const contractSupportDependencies: Readonly<Record<string, readonly string[]>> =
     'extensions/operation.ts',
     'extensions/processes.ts',
     'extensions/tools.ts',
-    'model/usage-observer.ts',
-    'tools/permissions.ts'
+    'host/description.ts',
+    'model/usage.ts',
+    'session/resource-contract.ts',
+    'tools/permission-contract.ts'
   ],
-  'runtime/contracts.ts': ['tools/permissions.ts'],
+  'runtime/contracts.ts': ['model/image-contract.ts', 'tools/permission-contract.ts'],
   'runtime/events.ts': [
-    'session/catalog.ts',
+    'tools/result-extension-contract.ts',
+    'session/user-history.ts',
     'tools/agent/sleep.ts',
-    'tools/permissions.ts',
-    'tools/public-metadata.ts',
+    'tools/permission-contract.ts',
+    'runtime/public-tool-metadata.ts',
     'tools/result-extensions.ts'
   ],
   'tools/contracts.ts': [
-    'tools/code-mode/observations.ts',
-    'tools/permissions.ts',
+    'model/contracts.ts',
+    'model/image-contract.ts',
+    'tools/result-extension-contract.ts',
+    'session/code-observation-contract.ts',
+    'session/code-state.ts',
+    'session/todo.ts',
+    'tools/permission-contract.ts',
     'tools/result-extensions.ts',
     'tools/wait.ts'
   ],
-  'subagent/contracts.ts': ['tools/permissions.ts', 'tools/wait.ts']
+  'subagent/contracts.ts': ['tools/permission-contract.ts', 'runtime/wait.ts']
 };
 
 function source(path: string): string {
   return readFileSync(join(sourceRoot, path), 'utf8');
 }
 
-function dependencies(path: string, text = source(path)): string[] {
-  return [...text.matchAll(/(?:\bfrom\s+|\bimport\(\s*)['"]([^'"]+)['"]/g)]
-    .map((match) => match[1]!)
-    .filter((specifier) => specifier.startsWith('.'))
-    .map((specifier) =>
-      posix.normalize(posix.join(posix.dirname(path), specifier.replace(/\.js$/, '.ts')))
-    );
+function collectDependencies(path: string, text: string): { path: string; typeOnly: boolean }[] {
+  const result: { path: string; typeOnly: boolean }[] = [];
+  const add = (specifier: string, typeOnly: boolean) => {
+    if (specifier.startsWith('.'))
+      result.push({
+        path: posix.normalize(posix.join(posix.dirname(path), specifier.replace(/\.js$/, '.ts'))),
+        typeOnly
+      });
+  };
+  const walk = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      const typeOnly =
+        !!clause &&
+        (clause.isTypeOnly ||
+          (!clause.name &&
+            !!bindings &&
+            ts.isNamedImports(bindings) &&
+            bindings.elements.every((element) => element.isTypeOnly)));
+      add(node.moduleSpecifier.text, typeOnly);
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      const named = node.exportClause;
+      add(
+        node.moduleSpecifier.text,
+        node.isTypeOnly ||
+          (!!named &&
+            ts.isNamedExports(named) &&
+            named.elements.every((element) => element.isTypeOnly))
+      );
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      add(node.argument.literal.text, true);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      add(node.arguments[0].text, false);
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true));
+  return result;
 }
 
-function typeDependencies(path: string): string[] {
-  const text = source(path);
-  const imports = [
-    ...text.matchAll(/\bimport\s+type\s+[\s\S]*?\bfrom\s+['"][^'"]+['"]/g),
-    ...text.matchAll(/\bimport\(\s*['"][^'"]+['"]\s*\)\.[A-Z]\w*/g)
-  ];
-  return dependencies(path, imports.map((match) => match[0]).join('\n'));
+function dependencies(path: string, text = source(path)): string[] {
+  return collectDependencies(path, text).map((dependency) => dependency.path);
 }
 
 function files(directory = ''): string[] {
@@ -74,6 +125,162 @@ function files(directory = ''): string[] {
 }
 
 describe('Agent structure boundaries', () => {
+  it('keeps the migrated capability edges directed toward their owning contracts', () => {
+    const forbidden: Record<string, string[]> = {
+      'host/contracts.ts': ['session/store/jsonl/resources.ts'],
+      'host/network.ts': ['model/http.ts', 'model/runtime-credential.ts'],
+      'host/local-shell.ts': ['host/local-process-executor.ts'],
+      'model/contracts.ts': ['model/usage-observer.ts'],
+      'runtime/execution.ts': ['tools/execution.ts', 'tools/runtime-context.ts'],
+      'session/catalog.ts': ['session/store/jsonl/jsonl-store.ts'],
+      'session/store/contracts.ts': ['session/context-gc-checkpoint.ts'],
+      'sdk/session-execution-factory.ts': ['sdk/session.ts'],
+      'subagent/session-controller.ts': ['extensions/operation.ts'],
+      'tools/runtime-context.ts': ['host/contracts.ts', 'subagent/session-controller.ts']
+    };
+    for (const [consumer, targets] of Object.entries(forbidden))
+      for (const target of targets) expect(dependencies(consumer), consumer).not.toContain(target);
+    for (const consumer of ['session/store/contracts.ts', 'session/store/types.ts'])
+      expect(
+        dependencies(consumer).filter((target) => target.startsWith('session/store/jsonl/')),
+        consumer
+      ).toEqual([]);
+    const neutralFacts = [
+      'session/context-gc-contract.ts',
+      'session/inline-media-contract.ts',
+      'session/resource-contract.ts'
+    ];
+    for (const path of neutralFacts)
+      for (const dependency of collectDependencies(path, source(path))) {
+        expect(dependency.typeOnly, `${path} -> ${dependency.path}`).toBe(true);
+        expect(neutralFacts, path).toContain(dependency.path);
+      }
+  });
+
+  it('keeps network independent of model implementations and transport errors neutral', () => {
+    for (const path of files('network'))
+      expect(
+        dependencies(path).filter((dependency) => dependency.startsWith('model/')),
+        path
+      ).toEqual([]);
+    for (const path of ['network/http.ts', 'network/transport-error.ts'])
+      expect(source(path), path).not.toMatch(
+        /MAR_AGENT_MODEL_|MODEL_(?:CONNECTION|TRANSPORT|STREAM|PROGRESS)_/
+      );
+  });
+
+  it('keeps Tools and Subagent independent of foreign implementations', () => {
+    for (const path of files()) {
+      const deps = dependencies(path);
+      if (path.startsWith('tools/')) {
+        expect(
+          deps.filter((dependency) => /^(host|extensions|sdk|session\/store)\//.test(dependency)),
+          path
+        ).toEqual([]);
+        expect(deps, path).not.toContain('runtime/execution.ts');
+      }
+      if (path.startsWith('subagent/')) {
+        expect(
+          deps.filter(
+            (dependency) =>
+              /^(extensions|sdk|host|session\/store)\//.test(dependency) ||
+              (dependency.startsWith('tools/') && dependency !== 'tools/permission-contract.ts')
+          ),
+          path
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it('enforces model, runtime, extension, host and tool composition directions', () => {
+    const runtimeFacts = new Set([
+      'tools/contracts.ts',
+      'tools/permission-contract.ts',
+      'tools/result-extension-contract.ts',
+      'subagent/contracts.ts',
+      'host/skill-contract.ts'
+    ]);
+    const extensionFacts = new Set(['tools/contracts.ts', 'subagent/contracts.ts']);
+    for (const path of files()) {
+      for (const dependency of collectDependencies(path, source(path))) {
+        const target = dependency.path;
+        if (path.startsWith('model/')) {
+          expect(target, `${path} -> ${target}`).not.toMatch(
+            /^(host|tools|extensions|sdk|session|runtime|subagent)\//
+          );
+        }
+        if (path.startsWith('runtime/') && /^(tools|subagent|extensions|sdk|host)\//.test(target)) {
+          expect(dependency.typeOnly && runtimeFacts.has(target), `${path} -> ${target}`).toBe(
+            true
+          );
+        }
+        if (path.startsWith('runtime/') && target.startsWith('session/store/')) {
+          expect(
+            dependency.typeOnly && target === 'session/store/contracts.ts',
+            `${path} -> ${target}`
+          ).toBe(true);
+        }
+        if (
+          path.startsWith('extensions/') &&
+          /^(tools|subagent|sdk|host|session\/store)\//.test(target)
+        ) {
+          const pureWaitSelection = target === 'subagent/wait-targets.ts';
+          expect(
+            pureWaitSelection || (dependency.typeOnly && extensionFacts.has(target)),
+            `${path} -> ${target}`
+          ).toBe(true);
+        }
+        if (path.startsWith('host/')) {
+          expect(target, `${path} -> ${target}`).not.toMatch(/^(sdk|session\/store)\//);
+        }
+        if (path.startsWith('tools/') && target.startsWith('subagent/')) {
+          expect(
+            target === 'subagent/limits.ts' ||
+              target === 'subagent/wait-targets.ts' ||
+              (dependency.typeOnly && target === 'subagent/contracts.ts'),
+            `${path} -> ${target}`
+          ).toBe(true);
+        }
+        if (path.startsWith('session/store/')) {
+          expect(target, `${path} -> ${target}`).not.toMatch(
+            /^(host|sdk)\/|^session\/catalog\.ts$/
+          );
+          if (/^(tools|extensions|subagent|runtime)\//.test(target)) {
+            const facts = new Set([
+              'tools/contracts.ts',
+              'tools/result-extension-contract.ts',
+              'runtime/context/contracts.ts'
+            ]);
+            expect(dependency.typeOnly && facts.has(target), `${path} -> ${target}`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+  it('classifies static, inline, re-export and import type dependencies', () => {
+    expect(
+      collectDependencies(
+        'a/main.ts',
+        `
+      import type { A } from './one.js';
+      import { type B, C } from './two.js';
+      import { type D } from './three.js';
+      export type { E } from './four.js';
+      export { type F } from './five.js';
+      type G = import('./six.js').G;
+      void import('./seven.js');
+    `
+      )
+    ).toEqual([
+      { path: 'a/one.ts', typeOnly: true },
+      { path: 'a/two.ts', typeOnly: false },
+      { path: 'a/three.ts', typeOnly: true },
+      { path: 'a/four.ts', typeOnly: true },
+      { path: 'a/five.ts', typeOnly: true },
+      { path: 'a/six.ts', typeOnly: true },
+      { path: 'a/seven.ts', typeOnly: false }
+    ]);
+  });
   it('groups Agent state tools separately from local side effects while keeping shared dispatch at the root', () => {
     const paths = new Set(files());
     for (const name of [
@@ -90,22 +297,23 @@ describe('Agent structure boundaries', () => {
       expect(paths.has(`tools/agent/${name}.ts`), name).toBe(true);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
     }
-    for (const name of ['apply-patch', 'exec', 'read', 'read-context', 'view-image']) {
+    for (const name of ['apply-patch', 'exec', 'read', 'view-image']) {
       expect(paths.has(`tools/local/${name}.ts`), name).toBe(true);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
     }
+    expect(paths.has('prompts/read-context.ts')).toBe(true);
     for (const name of ['web-fetch', 'web-search']) {
       expect(paths.has(`tools/local/${name}.ts`), name).toBe(false);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
     }
-    expect(paths.has('tools/local/registry.ts')).toBe(true);
-    expect(paths.has('tools/local/workspace-tools.ts')).toBe(true);
+    expect(paths.has('host/local-tool-registry.ts')).toBe(true);
+    expect(paths.has('host/local-workspace-tools.ts')).toBe(false);
     expect(paths.has('tools/registry.ts')).toBe(true);
     expect(paths.has('tools/runtime.ts')).toBe(true);
-    expect(source('tools/local/registry.ts')).not.toContain('function formatBatchRead');
-    expect(source('tools/local/registry.ts')).not.toContain('function fetchWebUrl');
-    expect(source('tools/local/registry.ts')).not.toContain('Search query is required.');
-    expect(source('tools/local/registry.ts')).not.toContain('Patch is required.');
+    expect(source('host/local-tool-registry.ts')).not.toContain('function formatBatchRead');
+    expect(source('host/local-tool-registry.ts')).not.toContain('function fetchWebUrl');
+    expect(source('host/local-tool-registry.ts')).not.toContain('Search query is required.');
+    expect(source('host/local-tool-registry.ts')).not.toContain('Patch is required.');
   });
 
   it('keeps MCP discovery and Code Mode entry points in their complete tool families', () => {
@@ -129,23 +337,45 @@ describe('Agent structure boundaries', () => {
 
   it('keeps CLI, shared application capabilities and Sandbox outside the core without reverse dependencies', () => {
     expect(readdirSync(packageSourceRoot).sort()).toEqual([
-      'agent-core',
       'cli',
+      'error.ts',
+      'extensions',
+      'extensions.ts',
+      'host',
+      'host.ts',
       'index.ts',
+      'model',
+      'network',
+      'process',
+      'prompts',
+      'runtime',
       'sandbox',
-      'shared'
+      'sdk',
+      'session',
+      'session-store.ts',
+      'shared',
+      'storage',
+      'subagent',
+      'tools'
     ]);
-    for (const path of files()) {
+    for (const path of files().filter(
+      (path) =>
+        /^(sdk|runtime|model|session|extensions|subagent|host|network|storage|process|tools|prompts)\//.test(
+          path
+        ) || path === 'error.ts'
+    )) {
       expect(
-        dependencies(path).filter((dependency) => dependency.startsWith('../')),
+        dependencies(path).filter(
+          (dependency) => dependency.startsWith('../') || /^(cli|shared|sandbox)\//.test(dependency)
+        ),
         path
       ).toEqual([]);
     }
     const neutral = new Set([
-      'agent-core/error.ts',
-      'agent-core/host/contracts.ts',
-      'agent-core/host/local-process-executor.ts',
-      'agent-core/host/local-shell.ts'
+      'error.ts',
+      'host/contracts.ts',
+      'host/local-process-executor.ts',
+      'host/local-shell.ts'
     ]);
     const sandbox = join(packageSourceRoot, 'sandbox/linux');
     for (const entry of readdirSync(sandbox).filter((name) => name.endsWith('.ts'))) {
@@ -159,6 +389,25 @@ describe('Agent structure boundaries', () => {
         expect(
           dependency.startsWith('sandbox/') || neutral.has(dependency),
           `${path} -> ${dependency}`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('keeps CLI composition on public roles and neutral transport or error helpers', () => {
+    // Internal reuse is restricted to package-wide diagnostics and transport identity.
+    const entries = new Set(['index.ts', 'host.ts', 'error.ts', 'network/product-user-agent.ts']);
+    for (const entry of readdirSync(join(packageSourceRoot, 'cli')).filter((name) =>
+      name.endsWith('.ts')
+    )) {
+      const path = `cli/${entry}`;
+      const contents = readFileSync(join(packageSourceRoot, path), 'utf8');
+      for (const dependency of collectDependencies(path, contents)) {
+        expect(
+          entries.has(dependency.path) ||
+            dependency.path.startsWith('cli/') ||
+            dependency.path.startsWith('shared/'),
+          `${path} -> ${dependency.path}`
         ).toBe(true);
       }
     }
@@ -187,11 +436,13 @@ describe('Agent structure boundaries', () => {
         dependencies(path).filter((dependency) => !allowedDependencies.has(dependency)),
         path
       ).toEqual([]);
-      for (const dependency of dependencies(path).filter((dependency) => !allowed.has(dependency)))
+      for (const dependency of collectDependencies(path, source(path)).filter(
+        (dependency) => !allowed.has(dependency.path)
+      ))
         expect(
-          typeDependencies(path),
-          `${path} must only reference ${dependency} as a type`
-        ).toContain(dependency);
+          dependency.typeOnly,
+          `${path} must only reference ${dependency.path} as a type`
+        ).toBe(true);
     }
     const visit = (path: string, ancestors: string[]) => {
       expect(ancestors, `Contract cycle through ${path}`).not.toContain(path);
@@ -205,17 +456,13 @@ describe('Agent structure boundaries', () => {
   });
 
   it('keeps SDK lifecycle ownership separate from the model/tool loop and tool result formats', () => {
-    const agent = source('sdk/agent.ts');
-    const session = source('sdk/session.ts');
-    const loop = source('runtime/execution.ts');
-    expect(agent).toContain('createSessionOpener');
-    expect(agent).not.toContain('for await (const event');
-    expect(session).toContain('new ExecutionLoop');
-    expect(session).not.toContain('structuredToolEventData');
-    expect(loop).toContain('executeRoundTools');
-    expect(loop).not.toMatch(/type:\s*['"]execution\.(completed|failed|cancelled)['"]/);
-    expect(source('tools/execution.ts')).toContain('structuredToolEventData');
-    expect(source('tools/code-mode/dispatch.ts')).toContain('structuredToolEventData');
+    expect(dependencies('sdk/agent.ts')).not.toContain('runtime/execution.ts');
+    expect(dependencies('sdk/session.ts')).not.toContain('runtime/execution.ts');
+    expect(dependencies('sdk/session-execution.ts')).toContain('runtime/execution.ts');
+    expect(dependencies('sdk/session.ts')).not.toContain('tools/output-projection.ts');
+    expect(dependencies('runtime/execution.ts')).not.toContain('tools/execution.ts');
+    expect(dependencies('tools/execution.ts')).toContain('tools/output-projection.ts');
+    expect(dependencies('tools/code-mode/dispatch.ts')).toContain('tools/output-projection.ts');
   });
 
   it('does not expose loop, storage, adapter or session coordinator implementations from the package root', () => {
@@ -227,10 +474,12 @@ describe('Agent structure boundaries', () => {
       'ExecutionLoop',
       'ExecutionLoopInput',
       'SessionRuntime',
-      'AgentSessionRegistry',
+      'SessionExecution',
+      'SessionRegistry',
+      'AgentSessionComposition',
       'JsonlSessionStore',
       'ModelAdapter',
-      'createMarAgentWithAdapter'
+      'createAgentWithAdapter'
     ]) {
       expect(exports).not.toContain(name);
     }

@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { access, constants } from 'node:fs/promises';
+import { LocalAgentHost } from '@myagentroam/agent/host';
 import {
-  LocalAgentHost,
-  createMarAgent,
+  createAgent,
   type ToolApprovalRequest,
   type ToolApprovalDecision
 } from '@myagentroam/agent';
@@ -37,8 +37,8 @@ import type { ResolvedMcpServer } from '../../mcp/model.js';
 export interface MarAgentSessionRuntime {
   readonly runtimeId: string;
   readonly fingerprint: MarAgentHostFingerprint;
-  readonly agent: Awaited<ReturnType<typeof createMarAgent>>;
-  readonly session: Awaited<ReturnType<Awaited<ReturnType<typeof createMarAgent>>['openSession']>>;
+  readonly agent: Awaited<ReturnType<typeof createAgent>>;
+  readonly session: Awaited<ReturnType<Awaited<ReturnType<typeof createAgent>>['openSession']>>;
   readonly host: LocalAgentHost;
   readonly normalizer: MarAgentConversationNormalizer;
   readonly mcpLease: MarAgentMcpClientLease;
@@ -91,7 +91,7 @@ export type NodeModelResourcePublisher = (
 ) => ReturnType<NonNullable<HostOptions['publishModelResource']>>;
 export interface MarAgentRuntimeResources {
   readonly mcpClients: MarAgentMcpClientCache;
-  readonly createAgent: typeof createMarAgent;
+  readonly createAgent: typeof createAgent;
   readonly modelFactory: Pick<MarAgentRuntimeModelFactory, 'create'>;
   readonly resourceIdleTtlMs: number;
   readonly retainEnvironment?: (environment: Readonly<Record<string, string>>) => () => void;
@@ -127,7 +127,7 @@ export async function createSessionRuntime(
     // change a confirmed actor's discovery identity when its warm runtime is recreated.
     authorizationScope: input.secretEnvironment?.['MAR_USERNAME'] ? input.cwd : sessionKey
   });
-  let agent: Awaited<ReturnType<typeof createMarAgent>> | undefined;
+  let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
   let models: MarAgentRuntimeModel[] = [];
   let releaseEnvironment: (() => void) | undefined;
   try {
@@ -188,7 +188,7 @@ export async function createSessionRuntime(
         models.filter((model) => input.models.some((candidate) => candidate.id === model.id))
       ),
       defaultModelId: input.model.id,
-      runtimeExtensions: marAgentCompactExtensionSource(compactState),
+      extensions: marAgentCompactExtensionSource(compactState),
       ...(input.personalInstructions ? { systemInstruction: input.personalInstructions } : {})
     });
     const customTitle = dependencies.customTitle(input.sessionId) ?? undefined;

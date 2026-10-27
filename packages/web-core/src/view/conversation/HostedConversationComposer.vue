@@ -154,6 +154,18 @@ const composerReadonly = computed(
     submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
+const syncingOnly = computed(
+  () =>
+    !props.draft &&
+    props.connected !== false &&
+    snapshot.value !== undefined &&
+    !props.workspace.watchReady.value &&
+    props.workspace.watchFailureCode.value === undefined &&
+    !props.readonly &&
+    !props.workspace.templateChanging.value &&
+    !submitting.value &&
+    (activeRun.value === undefined || canReplaceCurrent.value)
+);
 const working = clockWorking;
 const workingLabel = computed(() =>
   conversationActivityLabel(activeRun.value, props.readonly ? [] : props.workspace.turns.value)
@@ -626,7 +638,7 @@ onBeforeUnmount(() => {
 <template>
   <ConversationComposer
     ref="composer"
-    :class="{ 'hosted-draft-composer': draft }"
+    :class="{ 'hosted-draft-composer': draft, 'hosted-syncing': syncingOnly }"
     v-model:input="input"
     :placeholder="readonly ? readonlyReason : translate('hostedConversations.messagePlaceholder')"
     :working="working"
@@ -952,6 +964,16 @@ onBeforeUnmount(() => {
   .hosted-icon-button :deep(.mar-icon[data-mar-icon='attachment']) {
     font-size: 16px;
   }
+}
+
+.hosted-syncing :deep(.composer-shell.readonly) {
+  border-color: var(--mar-border-medium);
+  background: var(--mar-bg-panel);
+}
+
+.hosted-syncing :deep(.composer-shell.readonly .composer-input) {
+  background: transparent;
+  cursor: text;
 }
 
 .hosted-send-button {

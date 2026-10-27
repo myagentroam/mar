@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import { MarAgentError } from '@myagentroam/agent';
+import { AgentError } from '@myagentroam/agent';
 
 export function validateImageGenerationConfiguration(configuration: {
   readonly imageGeneration?: {
@@ -47,7 +47,7 @@ export function normalizeGeneratedImageDisplayDirectory(
     normalized.length > 4096 ||
     normalized.includes('\0')
   )
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_HOST_INCOMPATIBLE',
       'Generated image display directory is invalid.'
     );
@@ -69,7 +69,7 @@ function isAllowedImageGenerationEndpoint(endpoint: URL): boolean {
 }
 
 function invalidImageGenerationConfiguration(): never {
-  throw new MarAgentError(
+  throw new AgentError(
     'MAR_AGENT_MODEL_CONFIG_INVALID',
     'Model image generation configuration is invalid.'
   );

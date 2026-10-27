@@ -1,22 +1,22 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
-  CoreDomainFacts,
-  CoreRuntimeExtension,
-  CoreSessionExtensionContext
-} from '../../src/agent-core/extensions/contracts.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
+  ExtensionDomainFacts,
+  AgentExtension,
+  SessionExtensionContext
+} from '../../src/extensions/contracts.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
+import { AgentError } from '../../src/error.js';
 import { answer, call, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
 type Recorded = {
-  key: keyof CoreDomainFacts;
+  key: keyof ExtensionDomainFacts;
   fact: Record<string, unknown>;
-  call: CoreOperationContext;
+  call: ExtensionOperationContext;
 };
 
-function record(context: CoreSessionExtensionContext, records: Recorded[]) {
+function record(context: SessionExtensionContext, records: Recorded[]) {
   for (const key of [
     'tool.completed',
     'tool.failed',
@@ -31,11 +31,11 @@ function record(context: CoreSessionExtensionContext, records: Recorded[]) {
 
 describe('Core tool invocation facts', () => {
   it('keeps each full leaf outcome separate from a wrapper and the final result', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let effects = 0;
     const records: Recorded[] = [];
     const large = 'x'.repeat(3 * 1024 * 1024);
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'facts',
       apiVersion: '1.0',
       attachSession(value) {
@@ -49,7 +49,7 @@ describe('Core tool invocation facts', () => {
         });
       }
     };
-    const wrapper: CoreRuntimeExtension = {
+    const wrapper: AgentExtension = {
       id: 'wrapper',
       apiVersion: '1.0',
       attachSession(value) {
@@ -92,10 +92,10 @@ describe('Core tool invocation facts', () => {
   });
 
   it('retains successful leaf facts when a wrapper subsequently fails and never retries', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let effects = 0;
     const records: Recorded[] = [];
-    const error = new MarAgentError('TEST_WRAPPER_FAILED', 'Wrapper failed.');
+    const error = new AgentError('TEST_WRAPPER_FAILED', 'Wrapper failed.');
     const { session } = await fixture(
       [
         {
@@ -146,7 +146,7 @@ describe('Core tool invocation facts', () => {
   });
 
   it('records a short circuit as a result without fabricating a leaf', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const records: Recorded[] = [];
     const { session } = await fixture(
       [
@@ -175,7 +175,7 @@ describe('Core tool invocation facts', () => {
   });
 
   it('observes cancellation without reopening the cancelled operation or changing its error', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let observedCancelled = false;
     let deniedWrite = false;
     let began!: () => void;
@@ -230,7 +230,7 @@ describe('Core tool invocation facts', () => {
   });
 
   it('joins unawaited wrapper continuations before recording the wrapper result', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let begin!: () => void;
     let finish!: () => void;
     const started = new Promise<void>((resolve) => {

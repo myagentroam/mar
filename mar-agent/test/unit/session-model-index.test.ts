@@ -1,8 +1,9 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
@@ -136,7 +137,7 @@ describe('Session execution model index', () => {
 
   it('finds the latest valid header across segments and ignores an interrupted final line', async () => {
     const { home, ids, indexPath } = await legacySessions(1);
-    const directory = join(home, '.mar', 'agent', 'sessions', ids[0]!);
+    const directory = await activeSessionDirectory(home, ids[0]!);
     const record = JSON.parse(
       (await fs.readFile(join(directory, 'events-000001.jsonl'), 'utf8')).split('\n')[0]!
     );
@@ -188,7 +189,7 @@ describe('Session execution model index', () => {
 
   it('propagates tail corruption, releases failed reads, and retries after repair', async () => {
     const { home, ids } = await legacySessions(1);
-    const path = join(home, '.mar', 'agent', 'sessions', ids[0]!, 'events-000001.jsonl');
+    const path = join(await activeSessionDirectory(home, ids[0]!), 'events-000001.jsonl');
     const original = await fs.readFile(path, 'utf8');
     await fs.appendFile(path, 'invalid record\n');
     const store = await openStore(home);
@@ -206,6 +207,9 @@ describe('Session execution model index', () => {
     async (operation) => {
       const { home, ids } = await legacySessions(1);
       const store = await openStore(home);
+      // An already-admitted writer can append while the model-index reader is pinned.
+      const releaseWriter =
+        operation === 'append' ? await store.acquireSessionLease(ids[0]!) : undefined;
       const started = signal();
       const release = signal();
       let paused = false;
@@ -219,29 +223,49 @@ describe('Session execution model index', () => {
         return handle;
       });
       const pending = store.executionConfiguration(ids[0]!);
-      await started.promise;
+      void pending.catch(() => undefined);
+      let maintenance: Promise<unknown> | undefined;
       try {
+        await Promise.race([
+          started.promise,
+          pending.then(() => {
+            throw new Error('Model index read completed before the test gate was reached.');
+          })
+        ]);
         if (operation === 'append')
           await store.append(ids[0]!, {
             type: 'execution.header',
             payload: { modelId: 'new-model', reasoningEffort: 'low' }
           });
-        else if (operation === 'clear') await store.clearSession(ids[0]!);
-        else await store.delete(ids[0]!);
+        else {
+          let settled = false;
+          maintenance = (
+            operation === 'clear' ? store.clearSession(ids[0]!) : store.delete(ids[0]!)
+          ).finally(() => {
+            settled = true;
+          });
+          void maintenance.catch(() => undefined);
+          const gate = join(home, '.mar', 'agent', 'sessions', '.read-pins', `${ids[0]}.lock`);
+          await vi.waitFor(async () => expect((await fs.stat(gate)).isFile()).toBe(true));
+          expect(settled).toBe(false);
+        }
+        release.resolve();
+        if (operation === 'append') {
+          await expect(pending).resolves.toMatchObject({
+            modelId: 'new-model',
+            reasoningEffort: 'low'
+          });
+        } else {
+          await expect(pending).resolves.toMatchObject({ modelId: 'model-0' });
+          await maintenance;
+          if (operation === 'delete') expect((await store.list()).sessions).toEqual([]);
+          else expect((await store.list()).sessions[0]).not.toHaveProperty('modelId');
+        }
       } finally {
         release.resolve();
-      }
-      if (operation === 'delete') {
-        await expect(pending).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_NOT_FOUND' });
-        expect((await store.list()).sessions).toEqual([]);
-      } else if (operation === 'clear') {
-        await expect(pending).resolves.toBeUndefined();
-        expect((await store.list()).sessions[0]).not.toHaveProperty('modelId');
-      } else {
-        await expect(pending).resolves.toMatchObject({
-          modelId: 'new-model',
-          reasoningEffort: 'low'
-        });
+        await pending.catch(() => undefined);
+        await maintenance?.catch(() => undefined);
+        await releaseWriter?.();
       }
     }
   );

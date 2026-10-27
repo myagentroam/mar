@@ -2,16 +2,12 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelAdapter, type ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { describeMarAgentError, MarAgentError } from '../../src/agent-core/error.js';
-import { CodeCellExecutionError } from '../../src/agent-core/tools/code-mode/cells.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentEvent, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelAdapter, type ModelEvent } from '../../src/model/contracts.js';
+import { describeAgentError, AgentError } from '../../src/error.js';
+import { CodeCellExecutionError } from '../../src/tools/code-mode/cells.js';
 
 const roots: string[] = [];
 
@@ -19,7 +15,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'error-projection',
   name: 'Error projection',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -86,7 +82,7 @@ async function fixture() {
 
 describe('MAR Agent error projection', () => {
   it('provides the original readable model summary for public error boundaries', () => {
-    const error = new MarAgentError('service_unavailable_error', 'The model service is too busy.');
+    const error = new AgentError('service_unavailable_error', 'The model service is too busy.');
     expect(error).toMatchObject({
       code: 'service_unavailable_error',
       publicMessage: 'The model service is too busy.',
@@ -99,57 +95,59 @@ describe('MAR Agent error projection', () => {
       code: 'EACCES'
     });
 
-    expect(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
+    expect(describeAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
       code: 'EACCES',
       message: 'Failed to open AGENTS.md: access denied.'
     });
   });
 
   it('retains distinct cause codes without duplicating the outer code or summary', () => {
-    const cause = new MarAgentError('EACCES', 'Underlying access denied.');
-    const error = new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.', { cause });
-    expect(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
+    const cause = new AgentError('EACCES', 'Underlying access denied.');
+    const error = new AgentError('TEST_TOOL_FAILED', 'Expected tool failure.', { cause });
+    expect(describeAgentError(error, 'MAR_AGENT_EXECUTION_FAILED')).toEqual({
       code: 'TEST_TOOL_FAILED',
       message: 'Expected tool failure. Caused by: EACCES: Underlying access denied.'
     });
     expect(
-      describeMarAgentError(
-        new MarAgentError(error.code, error.publicMessage, { cause: error }),
+      describeAgentError(
+        new AgentError(error.code, error.publicMessage, { cause: error }),
         'MAR_AGENT_EXECUTION_FAILED'
       )
-    ).toEqual(describeMarAgentError(error, 'MAR_AGENT_EXECUTION_FAILED'));
+    ).toEqual(describeAgentError(error, 'MAR_AGENT_EXECUTION_FAILED'));
   });
 
   it('projects a cell wrapper and its cause chain exactly once', () => {
     const cause = Object.assign(new Error('Access denied.'), { code: 'EACCES' });
-    const error = new MarAgentError('TEST_TOOL_FAILED', 'Tool failed.', { cause, retryable: true });
+    const error = new AgentError('TEST_TOOL_FAILED', 'Tool failed.', { cause, retryable: true });
     const wrapped = new CodeCellExecutionError(error, { content: '' });
     expect(wrapped.cause).toBe(error);
     expect(wrapped.retryable).toBe(true);
-    expect(describeMarAgentError(wrapped, 'MAR_AGENT_CODE_FAILED')).toEqual({
+    expect(describeAgentError(wrapped, 'MAR_AGENT_CODE_FAILED')).toEqual({
       code: 'TEST_TOOL_FAILED',
       message: 'Tool failed. Caused by: EACCES: Access denied.'
     });
     expect(
-      describeMarAgentError(
+      describeAgentError(
         new CodeCellExecutionError(wrapped, { content: '' }),
         'MAR_AGENT_CODE_FAILED'
       )
-    ).toEqual(describeMarAgentError(wrapped, 'MAR_AGENT_CODE_FAILED'));
+    ).toEqual(describeAgentError(wrapped, 'MAR_AGENT_CODE_FAILED'));
   });
 
   it('emits and returns the underlying model failure detail', async () => {
     const { home, workspace } = await fixture();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => new ThrowingAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => new ThrowingAdapter()
+    );
     const handle = (await agent.createSession({ workspace, title: 'Error projection' })).run({
       prompt: 'run'
     });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
 
     await expect(handle.result()).resolves.toMatchObject({
@@ -175,16 +173,18 @@ describe('MAR Agent error projection', () => {
     vi.spyOn(host, 'executeTool').mockRejectedValue(
       Object.assign(new Error('Workspace read failed: access denied.'), { code: 'EACCES' })
     );
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => new ToolFailureAdapter()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => new ToolFailureAdapter()
+    );
     const handle = (await agent.createSession({ workspace, title: 'Tool error projection' })).run({
       prompt: 'run'
     });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
 
     await expect(handle.result()).resolves.toMatchObject({ status: 'completed' });

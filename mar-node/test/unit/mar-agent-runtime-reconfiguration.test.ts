@@ -2,8 +2,9 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { createMarAgentWithAdapter } from '../../../mar-agent/dist/agent-core/sdk/agent.js';
-import type { LocalAgentHost, MarAgentEvent } from '@myagentroam/agent';
+import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
+import type { LocalAgentHost } from '@myagentroam/agent/host';
+import type { AgentEvent } from '@myagentroam/agent';
 import type {
   MarAgentRuntimeModelConfiguration,
   RunnerCommandDescriptor
@@ -112,7 +113,7 @@ it.each([
       return response.status;
     };
     const hosts: LocalAgentHost[] = [];
-    const failures: Array<Extract<MarAgentEvent, { type: 'tool.failed' }>> = [];
+    const failures: Array<Extract<AgentEvent, { type: 'tool.failed' }>> = [];
     const hostInstructions: string[] = [];
     const instructionUpdates: Array<string | undefined> = [];
     const usedModels: string[] = [];
@@ -179,10 +180,11 @@ it.each([
           return result;
         };
       }
-      const agent = await createMarAgentWithAdapter({
-        ...options,
-        rolloutBudget: false,
-        adapterFactory: (model) => ({
+      const agent = await createAgentWithAdapter(
+        {
+          ...options
+        },
+        (model) => ({
           configuration: model,
           async *start(request, signal) {
             // Contextual changes are append-only; only the latest block is current.
@@ -249,7 +251,7 @@ observe.text("retained fixture result");`
             }
           }
         })
-      });
+      );
       const createSession = agent.createSession.bind(agent);
       const setSystemInstruction = agent.setSystemInstruction.bind(agent);
       vi.spyOn(agent, 'setSystemInstruction').mockImplementation((instruction) => {
@@ -562,9 +564,10 @@ observe.text("retained fixture result");`
       expect(createAgent).toHaveBeenCalledTimes(
         change === 'compact MCP removal' ? 3 : retained ? 1 : 2
       );
-      expect(emitRun.mock.calls.filter((args) => args[1] === 'run.failed')).toHaveLength(
-        change === 'model update failure' ? 1 : 0
-      );
+      expect(
+        emitRun.mock.calls.filter((args) => args[1] === 'run.failed'),
+        JSON.stringify(emitRun.mock.calls.filter((args) => args[1] === 'run.failed'))
+      ).toHaveLength(change === 'model update failure' ? 1 : 0);
       const current = await hosts.at(-1)!.listSessionResources(nativeId);
       expect(current.processes.some((process) => process.processId === processId)).toBe(retained);
       expect(current.codeCells?.some((cell) => cell.cellId === cellId) ?? false).toBe(retained);

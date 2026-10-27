@@ -18,8 +18,20 @@
       "default": "./dist/sandbox/linux/index.js"
     },
     "./host/network": {
-      "types": "./dist/agent-core/host/network.d.ts",
-      "default": "./dist/agent-core/host/network.js"
+      "types": "./dist/host/network.d.ts",
+      "default": "./dist/host/network.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    },
+    "./extensions": {
+      "types": "./dist/extensions.d.ts",
+      "default": "./dist/extensions.js"
+    },
+    "./session-store": {
+      "types": "./dist/session-store.d.ts",
+      "default": "./dist/session-store.js"
     }
   },
   "bin": {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFileDiff } from '../../src/agent-core/tools/file-change-diff.js';
+import { createFileDiff } from '../../src/tools/file-change-diff.js';
 
 describe('immutable file change diff', () => {
   it('shows additions, deletions and empty path effects', () => {

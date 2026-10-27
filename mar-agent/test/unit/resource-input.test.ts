@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelMessage, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
+import type { ModelMessage, ModelRequest } from '../../src/model/contracts.js';
+import { ResourceInputProjection } from '../../src/sdk/resource-input.js';
+import { AgentError } from '../../src/error.js';
 
 function message(overrides: Partial<ModelMessage> = {}): ModelMessage {
   return { role: 'tool', content: 'fixture', ...overrides };
@@ -264,7 +264,7 @@ describe('ResourceInputProjection', () => {
         const read = store.readResource.getMockImplementation()!;
         store.readResource.mockImplementation(async (sessionId, resourceId) => {
           if (resourceId === 'missing-image')
-            throw new MarAgentError(
+            throw new AgentError(
               'MAR_AGENT_IMAGE_UNAVAILABLE',
               'Session input image is unavailable.'
             );
@@ -301,7 +301,7 @@ describe('ResourceInputProjection', () => {
     async (structured) => {
       const store = createStore();
       const failure = structured
-        ? new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Session history is corrupt.')
+        ? new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session history is corrupt.')
         : new Error('storage unavailable');
       store.readResource.mockRejectedValue(failure);
       const projection = new ResourceInputProjection(false, store, 'session-1', []);

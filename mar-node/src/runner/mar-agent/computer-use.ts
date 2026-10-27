@@ -5,12 +5,8 @@ import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
-import type {
-  ClientToolDefinition,
-  LocalAgentMcpBinding,
-  ToolCall,
-  ToolExecutionResult
-} from '@myagentroam/agent';
+import type { ClientToolDefinition, LocalAgentMcpBinding } from '@myagentroam/agent/host';
+import type { ToolCall, ToolExecutionResult } from '@myagentroam/agent';
 import { terminateProcessTree } from '../../process-tree.js';
 import { ComputerUseControlIndicator } from './computer-use-indicator.js';
 import { PYTHON_PROBE_SOURCE } from './computer-use-probe.js';

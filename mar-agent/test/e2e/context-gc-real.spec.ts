@@ -2,28 +2,28 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
   type ExecutionHandle,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelRequest,
   type ModelTurnSession,
   type ModelUsage
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 import {
   contextGcMessageTokens,
   contextGcPrefixTokens
-} from '../../src/agent-core/runtime/context/gc-tokens.js';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
-import { parseContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/runtime/context/gc-tokens.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { parseContextGcCheckpoint } from '../../src/session/context-gc-checkpoint.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
 const retainFixture = process.env.MAR_AGENT_REAL_E2E_RETAIN_FIXTURE === '1';
@@ -64,7 +64,7 @@ interface Capture {
 }
 
 async function finish(handle: ExecutionHandle, timeoutMs = 240_000) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   const timeout = setTimeout(() => handle.cancel(), timeoutMs);
   try {
     for await (const event of handle) events.push(event);
@@ -74,13 +74,13 @@ async function finish(handle: ExecutionHandle, timeoutMs = 240_000) {
   }
 }
 
-function estimatedRequestTokens(request: ModelRequest, model: MarAgentModelConfiguration): number {
+function estimatedRequestTokens(request: ModelRequest, model: AgentModelConfiguration): number {
   const input = { ...request, modelId: model.id, modelProtocol: model.protocol };
   return contextGcPrefixTokens(input) + contextGcMessageTokens(input, request.messages);
 }
 
 function captureAdapter(
-  model: MarAgentModelConfiguration,
+  model: AgentModelConfiguration,
   phase: RequestCapture['phase'],
   capture: Capture
 ): ModelAdapter {
@@ -211,7 +211,7 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
     const catalog = parseModelCatalog(JSON.parse(await readFile('.e2e/models.local.json', 'utf8')));
     const configured = catalog.models.find((candidate) => candidate.id === 'gpt-5.6-luna');
     if (!configured) throw new Error('MAR_AGENT_E2E_RESPONSES_MODEL_MISSING');
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       ...configured,
       contextWindowTokens,
       maxOutputTokens: Math.min(configured.maxOutputTokens, 4_096),
@@ -219,14 +219,16 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
     };
     const capture: Capture = { requests: [], toolCalls: [] };
     let sessionId = '';
-    let initialEvents: MarAgentEvent[] = [];
-    const initialAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id,
-      adapterFactory: () => captureAdapter(model, 'initial', capture)
-    });
+    let initialEvents: AgentEvent[] = [];
+    const initialAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => captureAdapter(model, 'initial', capture)
+    );
     try {
       const session = await initialAgent.createSession({
         workspace,
@@ -358,14 +360,16 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
         : checkpoint!.payload.trigger.contextInputTokens - providerContextInputTokens;
     expect(interRequestContextInputDelta).toBeGreaterThan(0);
 
-    let resumedEvents: MarAgentEvent[] = [];
-    const resumedAgent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id,
-      adapterFactory: () => captureAdapter(model, 'resumed', capture)
-    });
+    let resumedEvents: AgentEvent[] = [];
+    const resumedAgent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => captureAdapter(model, 'resumed', capture)
+    );
     try {
       const session = await resumedAgent.openSession(sessionId);
       const completed = await finish(

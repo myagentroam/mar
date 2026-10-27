@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ToolExecutionContext } from '../../src/agent-core/tools/contracts.js';
-import { CodeCells } from '../../src/agent-core/tools/code-mode/cells.js';
-import { ExecTool } from '../../src/agent-core/tools/local/exec.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
-import { RuntimeResourceHandles } from '../../src/agent-core/tools/runtime-resource-handles.js';
+import type { ToolExecutionContext } from '../../src/tools/contracts.js';
+import { CodeCells } from '../../src/tools/code-mode/cells.js';
+import { ExecTool } from '../../src/host/local-exec-tool.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import { RuntimeResourceHandles } from '../../src/tools/runtime-resource-handles.js';
 
 vi.mock('node:crypto', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:crypto')>()),

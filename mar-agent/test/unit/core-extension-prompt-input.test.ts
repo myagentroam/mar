@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -55,7 +55,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('keeps full admitted context while native, queued and restored requests use modelContext', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -103,7 +103,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('cancels a waiting admission without a late input write and allows the next run', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let entered!: () => void;
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => {
@@ -146,7 +146,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('defers compaction queued by admission until the real compact callback is ready', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let queued = false;
     const f = await fixture(
       [
@@ -180,7 +180,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('rejects malformed rewritten content before any native input write', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -205,7 +205,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('loads real tools, rewrites native input before storage, and preserves context on restore', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let calls = 0;
     const f = await fixture(
       [
@@ -267,7 +267,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('does not write or request a model when native input is handled without next', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -292,7 +292,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('records a handled extension operation without admitting a queue item or model Turn', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const f = await fixture(
       [
         {
@@ -331,7 +331,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('admits extension rewrites once and does not dispatch again when the queued Turn starts', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const seen: string[] = [];
     const f = await fixture(
       [
@@ -362,7 +362,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('serializes native multiple next calls into one immediate and one queued Turn without redispatch', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let calls = 0;
     const f = await fixture(
       [
@@ -432,7 +432,7 @@ describe('Core prompt admission before the actual writer', () => {
   });
 
   it('keeps an actual native write if its hook fails after next and recovers on the next run', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let fail = true;
     const f = await fixture(
       [

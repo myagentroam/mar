@@ -5,26 +5,28 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   LocalAgentHost,
-  MarAgentError,
   type ClientToolDefinition,
-  type ToolExecutionContext,
-  type ToolExecutionResult
-} from '../../src/index.js';
+  type ToolExecutionContext
+} from '../../src/host.js';
+import { AgentError, type ToolExecutionResult } from '../../src/index.js';
 import {
   CodeModeTool,
   codeModeToolDefinition,
   codeExecWaitToolDefinition,
   projectCodeModeTools,
   projectCodeModeSearchResult
-} from '../../src/agent-core/tools/code-mode/index.js';
-import { applyPatchToolDefinition } from '../../src/agent-core/tools/local/apply-patch.js';
-import { allowsToolCaller, toolCallers } from '../../src/agent-core/tools/callers.js';
-import { BUILTIN_TOOL_DEFINITIONS } from '../../src/agent-core/tools/registry.js';
-import { execToolDefinition } from '../../src/agent-core/tools/local/exec.js';
-import { readToolDefinition } from '../../src/agent-core/tools/local/read.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
-import { directLocalProcessExecutor } from '../../src/agent-core/host/local-process-executor.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+} from '../../src/tools/code-mode/index.js';
+import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
+import { allowsToolCaller, toolCallers } from '../../src/tools/callers.js';
+import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
+import { execToolDefinition } from '../../src/tools/local/exec.js';
+import { readToolDefinition } from '../../src/tools/local/read.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import {
+  directLocalProcessExecutor,
+  signalProcessTree
+} from '../../src/host/local-process-executor.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -81,7 +83,12 @@ function expectCellEnvelope(result: ToolExecutionResult, status: 'completed') {
 describe('QuickJS Code Mode', () => {
   it('omits undefined object properties from tool inputs while keeping state and non-text bridges strict', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     const invoke = vi.fn(async () => ({ content: 'original' }));
     input.codeMode!.invoke = invoke;
@@ -117,7 +124,12 @@ describe('QuickJS Code Mode', () => {
 
   it('observes optional derived fields after a tool call without replaying it or changing its original result', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     const original = { content: 'running', data: { status: 'running', stdout: 'progress' } };
     const invoke = vi.fn(async () => original);
@@ -153,7 +165,12 @@ describe('QuickJS Code Mode', () => {
 
   it('does not terminate an awaited Host tool after the former cell wall deadline', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     let entered!: () => void;
     const ready = new Promise<void>((resolve) => {
@@ -213,7 +230,12 @@ describe('QuickJS Code Mode', () => {
     'observes the complete original programmatic result without duplicating its envelope: $result.content',
     async ({ result }) => {
       const { workspace } = await fixture();
-      const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+      const runner = new CodeModeTool(
+        new WorkspacePathResolver(workspace),
+        undefined,
+        directLocalProcessExecutor,
+        signalProcessTree
+      );
       const input = context();
       input.codeMode!.invoke = async () => result;
       try {
@@ -350,7 +372,12 @@ describe('QuickJS Code Mode', () => {
 
   it('does not expose console, Node, network, binary or shared-memory globals', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const globals = [
       'console',
       'global',
@@ -379,7 +406,12 @@ describe('QuickJS Code Mode', () => {
 
   it('uses text as the only text output and accepts only supported scalar and JSON values', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     try {
       const output = await runner.execute(
         `observe.text({ ok: true, count: 2 }); observe.text(null); observe.text(17); observe.text(true); observe.text("raw");`,
@@ -402,7 +434,12 @@ describe('QuickJS Code Mode', () => {
 
   it('commits state only after a successful cell and surfaces commit failures', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const commits: unknown[] = [];
     const input = context();
     input.codeMode = {
@@ -427,7 +464,7 @@ describe('QuickJS Code Mode', () => {
       expect(commits).toHaveLength(1);
 
       input.codeMode!.commitState = async () => {
-        throw new MarAgentError('MAR_AGENT_SESSION_CORRUPT', 'Commit failed.');
+        throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Commit failed.');
       };
       await expect(runner.execute('state.set("count", 4);', input)).rejects.toMatchObject({
         code: 'MAR_AGENT_SESSION_CORRUPT'
@@ -788,7 +825,12 @@ describe('QuickJS Code Mode', () => {
 
   it('validates image capability, base64 and byte signatures before returning pixels', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const png = { mimeType: 'image/png', dataBase64: 'iVBORw0KGgo=' };
     expect(TOOL_EXECUTION_LIMITS.codeMaxFrameBytes).toBeGreaterThan(
       Math.ceil(TOOL_EXECUTION_LIMITS.viewImageMaxBytes / 3) * 4 + 1024
@@ -859,6 +901,7 @@ describe('QuickJS Code Mode', () => {
         new WorkspacePathResolver(workspace),
         {},
         directLocalProcessExecutor,
+        signalProcessTree,
         method === 'engine'
           ? {
               moduleUrl: pathToFileURL(engineModule).href,
@@ -900,7 +943,12 @@ describe('QuickJS Code Mode', () => {
 
   it('omits structured image payloads from text without changing explicit image output', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const png = { mimeType: 'image/png', dataBase64: 'iVBORw0KGgo=' };
     const input = context();
     input.codeMode!.supportsImages = true;
@@ -940,7 +988,12 @@ describe('QuickJS Code Mode', () => {
 
   it('summarizes large image payloads before text budgeting without guessing at ordinary data', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     try {
       const result = await runner.execute(
         `
@@ -969,7 +1022,12 @@ describe('QuickJS Code Mode', () => {
 
   it('summarizes native MCP image objects but leaves strings and ordinary data unchanged', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     try {
       const result = await runner.execute(
         `
@@ -1104,12 +1162,17 @@ describe('QuickJS Code Mode', () => {
 
   it('runs safe calls concurrently and allows JavaScript to catch one tool failure', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const pending: Array<() => void> = [];
     const input = context();
     input.codeMode!.invoke = async (call) => {
       const value = (call.arguments as { value: number }).value;
-      if (value === 0) throw new MarAgentError('TEST_TOOL_FAILED', 'Expected failure');
+      if (value === 0) throw new AgentError('TEST_TOOL_FAILED', 'Expected failure');
       await new Promise<void>((resolve) => {
         pending.push(resolve);
         if (pending.length === 2) pending.forEach((done) => done());
@@ -1129,7 +1192,12 @@ describe('QuickJS Code Mode', () => {
 
   it('rejects unknown tools, recursion and invalid input without falling back', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     await expect(
       runner.execute({ code: 'observe.text(1)', extra: true }, context())
     ).rejects.toMatchObject({
@@ -1149,7 +1217,12 @@ describe('QuickJS Code Mode', () => {
 
   it('rejects direct-only and reserved control tools from programmatic cells', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const invoked: string[] = [];
     const input = context();
     input.codeMode = {
@@ -1199,7 +1272,12 @@ describe('QuickJS Code Mode', () => {
     { syntax: 'import * as fs from "node:fs";', code: 'MAR_AGENT_CODE_SYNTAX_ERROR' }
   ])('rejects dynamic and static module import: $syntax', async ({ syntax, code }) => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     try {
       await expect(runner.execute(syntax, context())).rejects.toMatchObject({ code });
     } finally {
@@ -1209,7 +1287,12 @@ describe('QuickJS Code Mode', () => {
 
   it('retains source-relative syntax diagnostics without executing or exposing the worker stack', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     let invoked = 0;
     input.codeMode!.invoke = async () => {
@@ -1248,7 +1331,7 @@ describe('QuickJS Code Mode', () => {
 
   it.each([
     {
-      error: new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.'),
+      error: new AgentError('TEST_TOOL_FAILED', 'Expected tool failure.'),
       message: 'Expected tool failure.'
     },
     {
@@ -1256,14 +1339,19 @@ describe('QuickJS Code Mode', () => {
       message: 'Expected tool failure.'
     },
     {
-      error: new MarAgentError('TEST_TOOL_FAILED', 'Expected tool failure.', {
+      error: new AgentError('TEST_TOOL_FAILED', 'Expected tool failure.', {
         cause: Object.assign(new Error('Underlying access denied.'), { code: 'EACCES' })
       }),
       message: 'Expected tool failure. Caused by: EACCES: Underlying access denied.'
     }
   ])('does not duplicate the nested tool error prefix: $message', async ({ error, message }) => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace));
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     input.codeMode!.invoke = async () => {
       throw error;
@@ -1300,7 +1388,12 @@ describe('QuickJS Code Mode', () => {
 
   it('preserves guest exception codes and starts a clean engine for the next cell', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     try {
       await expect(
         runner.execute(
@@ -1324,12 +1417,12 @@ describe('QuickJS Code Mode', () => {
       homeDirectory: home,
       workspace,
       beforeToolExecute: async () => {
-        if (blocked) throw new MarAgentError('TEST_POLICY_DENIED', 'Host policy denied this cell');
+        if (blocked) throw new AgentError('TEST_POLICY_DENIED', 'Host policy denied this cell');
       },
       processExecutor: {
         spawn: async () => {
           spawned++;
-          throw new MarAgentError('TEST_EXECUTOR_DENIED', 'Host executor denied this cell');
+          throw new AgentError('TEST_EXECUTOR_DENIED', 'Host executor denied this cell');
         }
       }
     });
@@ -1356,7 +1449,12 @@ describe('QuickJS Code Mode', () => {
 
   it('aborts pending tools and the cell but truncates excessive ordinary output', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const abort = new AbortController();
     const input = context(abort.signal);
     let observedAbort = false;
@@ -1388,7 +1486,12 @@ describe('QuickJS Code Mode', () => {
 
   it('terminates a busy JavaScript loop without blocking the Agent event loop', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const abort = new AbortController();
     const input = context(abort.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1408,7 +1511,12 @@ describe('QuickJS Code Mode', () => {
 
   it('does not report completion when tool promises were left unawaited', async () => {
     const { workspace } = await fixture();
-    const runner = new CodeModeTool(new WorkspacePathResolver(workspace), {});
+    const runner = new CodeModeTool(
+      new WorkspacePathResolver(workspace),
+      {},
+      directLocalProcessExecutor,
+      signalProcessTree
+    );
     const input = context();
     input.codeMode!.invoke = async (_call, signal) =>
       new Promise((_resolve, reject) => {

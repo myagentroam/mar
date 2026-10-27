@@ -1,11 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+import type { AgentModelConfiguration } from '@myagentroam/agent';
+import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import { NODE_PROTOCOL_VERSION } from '../../../packages/protocol/src/index.js';
 import type {
   NodeEnvelope,
   RuntimeCredentialTicket
 } from '../../../packages/protocol/src/index.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
+import {
+  MarAgentRuntimeModelFactory,
+  sdkModelConfigurations
+} from '../../src/runner/mar-agent/runtime-model-factory.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../../src/runner/execution-context.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
@@ -14,6 +23,99 @@ import { SessionLifecycleService } from '../../src/service/session-lifecycle-ser
 import { SessionMessageService } from '../../src/service/session-message-service.js';
 
 describe('Node MAR Agent runtime credentials', () => {
+  it('relays unknown nested model options safely through the SDK', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-node-model-options-'));
+    const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
+    let provider: AgentModelConfiguration['credentialProvider'];
+    try {
+      const [model] = new MarAgentRuntimeModelFactory(control, () => 1_000).create(
+        [
+          {
+            ...runtimeModel(ticket('options', 1_000)),
+            responsesTransport: { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' },
+            responsesOptionalParameters: {
+              reasoningEffort: true,
+              reasoningSummary: false,
+              textVerbosity: true,
+              promptCacheKey: false,
+              future: 'parameter-secret'
+            }
+          } as never
+        ],
+        { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
+      );
+      provider = model!.credentialProvider;
+      expect(provider).toBeDefined();
+      let received: AgentModelConfiguration | undefined;
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'node',
+          host: new LocalAgentHost({ mode: 'node', homeDirectory: home, workspace: home }),
+          models: sdkModelConfigurations([model!])
+        },
+        (configuration) => {
+          received = configuration;
+          return {
+            configuration,
+            async *start() {
+              yield { type: 'text.completed' as const, itemId: 'answer', text: 'done' };
+              yield { type: 'completed' as const, reason: 'completed' as const };
+            }
+          };
+        }
+      );
+      try {
+        const session = await agent.createSession({ workspace: home });
+        expect(await session.run({ prompt: 'Answer.' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        expect(received?.credentialProvider).toBe(provider);
+        expect(received?.responsesTransport).toEqual({ transport: 'HTTP', httpVersion: '2' });
+        expect(received?.responsesOptionalParameters).toEqual({
+          reasoningEffort: true,
+          reasoningSummary: false,
+          textVerbosity: true,
+          promptCacheKey: false
+        });
+        expect(
+          JSON.stringify({
+            responsesTransport: received?.responsesTransport,
+            responsesOptionalParameters: received?.responsesOptionalParameters
+          })
+        ).not.toMatch(/transport-secret|parameter-secret/);
+      } finally {
+        await agent.dispose();
+        provider = undefined;
+      }
+    } finally {
+      await provider?.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects invalid known nested model options at the Node relay', () => {
+    const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
+    const factory = new MarAgentRuntimeModelFactory(control, () => 1_000);
+    for (const overrides of [
+      { responsesTransport: { transport: 'INVALID' } },
+      { responsesTransport: { transport: 'HTTP', httpVersion: '3' } },
+      {
+        responsesOptionalParameters: {
+          reasoningEffort: 'yes',
+          reasoningSummary: false,
+          textVerbosity: true,
+          promptCacheKey: false
+        }
+      }
+    ]) {
+      expect(() =>
+        factory.create([{ ...runtimeModel(ticket('invalid', 1_000)), ...overrides } as never], {
+          runtimeScopeId: 'scope-1',
+          executionId: 'execution-1'
+        })
+      ).toThrow();
+    }
+  });
   it.each(['1.1', '2'] as const)(
     'relays HTTP/%s continuation to SDK without adding storage configuration',
     async (httpVersion) => {
@@ -68,19 +170,35 @@ describe('Node MAR Agent runtime credentials', () => {
   it('passes the explicit configuration-update capability to the SDK model', async () => {
     const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
     const sharedTicket = ticket('shared', 1_000, ['model-1', 'model-2']);
-    const [supported, unsupported] = new MarAgentRuntimeModelFactory(control, () => 1_000).create(
-      [
-        { ...runtimeModel(sharedTicket), responsesConfigurationUpdates: true },
-        {
-          ...runtimeModel(sharedTicket),
-          id: 'model-2',
-          responsesConfigurationUpdates: false
-        }
-      ],
-      { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
-    );
+    const { credential: _credential, ...staticModel } = runtimeModel(sharedTicket);
+    const [supported, unsupported, staticSupported, staticUnsupported] =
+      new MarAgentRuntimeModelFactory(control, () => 1_000).create(
+        [
+          { ...runtimeModel(sharedTicket), responsesConfigurationUpdates: true },
+          {
+            ...runtimeModel(sharedTicket),
+            id: 'model-2',
+            responsesConfigurationUpdates: false
+          },
+          {
+            ...staticModel,
+            id: 'static-key',
+            apiKey: 'fixture-only',
+            responsesConfigurationUpdates: true
+          },
+          {
+            ...staticModel,
+            id: 'inline-key',
+            credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
+            responsesConfigurationUpdates: false
+          }
+        ],
+        { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
+      );
     expect(supported?.responsesConfigurationUpdates).toBe(true);
     expect(unsupported?.responsesConfigurationUpdates).toBe(false);
+    expect(staticSupported?.responsesConfigurationUpdates).toBe(true);
+    expect(staticUnsupported?.responsesConfigurationUpdates).toBe(false);
     await Promise.all([
       supported?.credentialProvider?.close(),
       unsupported?.credentialProvider?.close()

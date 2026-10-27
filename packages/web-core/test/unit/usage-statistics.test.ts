@@ -620,10 +620,14 @@ describe('usage statistics settings contract', () => {
     vi.stubGlobal('HTMLElement', class {});
     const pendingOverview = deferred<PersonalUsageOverview>();
     const pendingRecords = deferred<PersonalUsageRecords>();
-    const request = vi.fn<Requester>(
-      async <T>(path: string) =>
-        (path.includes('/overview') ? overview() : { records: [], total: '0', page: 1 }) as T
+    const requestMock = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(
+      async (path: string) =>
+        path.includes('/overview')
+          ? overview()
+          : { records: [], total: '0', page: 1, nextCursor: null }
     );
+    const request: Requester = async <T>(path: string, init?: RequestInit) =>
+      (await requestMock(path, init)) as T;
     const service = new UsageStatisticsService(request, vi.fn());
     vi.spyOn(service, 'startAutoRefresh').mockImplementation(() => undefined);
     vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
@@ -638,11 +642,8 @@ describe('usage statistics settings contract', () => {
     try {
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(false);
-      request.mockImplementation(
-        <T>(path: string) =>
-          (path.includes('/overview')
-            ? pendingOverview.promise
-            : pendingRecords.promise) as Promise<T>
+      requestMock.mockImplementation((path: string) =>
+        path.includes('/overview') ? pendingOverview.promise : pendingRecords.promise
       );
       const changeFilter = () => {
         if (field === 'purpose') {
@@ -671,12 +672,12 @@ describe('usage statistics settings contract', () => {
       pendingOverview.resolve(overview());
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(true);
-      pendingRecords.resolve({ records: [], total: '0', page: 1 });
+      pendingRecords.resolve({ records: [], total: '0', page: 1, nextCursor: null });
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(false);
 
       const failedRead = deferred<PersonalUsageOverview>();
-      request.mockImplementation(<T>() => failedRead.promise as Promise<T>);
+      requestMock.mockImplementation(() => failedRead.promise);
       (refreshButton().props['onClick'] as () => void)();
       await flushComponent();
       expect(service.state.overview).toBeDefined();
@@ -688,7 +689,7 @@ describe('usage statistics settings contract', () => {
       expect(refreshButton().props['loading']).toBe(false);
 
       const failedFilter = deferred<PersonalUsageOverview>();
-      request.mockImplementation(<T>() => failedFilter.promise as Promise<T>);
+      requestMock.mockImplementation(() => failedFilter.promise);
       changeFilter();
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(true);

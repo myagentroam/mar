@@ -3,13 +3,14 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '@myagentroam/agent';
-import { createMarAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/agent-core/sdk/agent.js';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+import { SecretValue, type AgentModelConfiguration } from '@myagentroam/agent';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/sdk/agent.js';
 import type {
   ModelAdapter,
   ModelEvent,
   ModelRequest
-} from '../../../mar-agent/dist/agent-core/model/contracts.js';
+} from '../../../mar-agent/dist/model/contracts.js';
 import {
   codexImageGenToolDefinition,
   executeCodexImageGen,
@@ -17,6 +18,8 @@ import {
 } from '../../src/runner/mar-agent/image-generation.js';
 import { createImageGenerationExtensions } from '../../src/runner/mar-agent/image-generation-extensions.js';
 import { startSocks5Proxy, type CloseableServer } from '../support/image-generation-servers.js';
+import { skillCatalog } from '../support/skill-catalog.js';
+import { activeSessionDirectory } from '../../../mar-agent/test/support/jsonl-session-path.js';
 
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -40,7 +43,7 @@ function credentialProvider(socks5Url?: string) {
   };
 }
 
-type ImageModelConfiguration = MarAgentModelConfiguration & {
+type ImageModelConfiguration = AgentModelConfiguration & {
   readonly imageGeneration: ImageGenerationConfiguration;
 };
 
@@ -537,15 +540,18 @@ describe('codex_image_gen', () => {
     class ImageGenerationAdapter implements ModelAdapter {
       readonly configuration = modelConfiguration;
       readonly requests: ModelRequest[] = [];
+      private skillRequests = 0;
       async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
         if (
           !request.messages.some(
             (message) =>
               message.role === 'tool' &&
-              message.content.includes('<skill_content name="codex-imagegen">')
+              message.content.includes('<mar_skill name="codex-imagegen" source="Host-provided">')
           )
         ) {
-          expect(request.system).toContain('codex-imagegen');
+          expect(this.skillRequests++).toBe(0);
+          expect(request.system).not.toContain('codex-imagegen');
+          expect(skillCatalog(request)).toContain('codex-imagegen');
           yield {
             type: 'client_tool.call',
             callId: 'load-imagegen',
@@ -612,17 +618,19 @@ describe('codex_image_gen', () => {
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     bindImageGeneration(host, imageGeneration, home);
     const adapter = new ImageGenerationAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [modelConfiguration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [modelConfiguration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Image generation' });
 
-    await expect(
-      session.run({ prompt: 'Generate and inspect a background.' }).result()
-    ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'ready' });
+    const result = await session.run({ prompt: 'Generate and inspect a background.' }).result();
+    expect(result.errorMessage).toBeUndefined();
+    expect(result).toMatchObject({ status: 'completed', finalAnswer: 'ready' });
 
     expect(acquire.mock.calls.map(([reason]) => reason)).toEqual(['REQUEST', 'UNAUTHORIZED']);
     expect(invalidate).toHaveBeenCalledWith(1);
@@ -662,7 +670,7 @@ describe('codex_image_gen', () => {
       ]
     });
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted).toContain('"toolName":"codex_image_gen"');
@@ -774,12 +782,14 @@ describe('codex_image_gen', () => {
       }
     }
     const adapter = new ReferencedEditAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [modelConfiguration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [modelConfiguration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Referenced image edit' });
 
     await expect(
@@ -802,7 +812,7 @@ describe('codex_image_gen', () => {
     ]);
     expect(provider.acquire).toHaveBeenCalledWith('REQUEST');
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted).toContain('"toolName":"codex_image_gen"');
@@ -862,12 +872,14 @@ describe('codex_image_gen', () => {
       }
     }
     const adapter = new RecentEditAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [modelConfiguration],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [modelConfiguration]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace, title: 'Recent image edit' });
 
     await expect(
@@ -894,7 +906,7 @@ describe('codex_image_gen', () => {
       }
     ]);
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted).toContain('"name":"input.png"');
@@ -1027,7 +1039,7 @@ describe('codex_image_gen', () => {
       enabled: true
     };
 
-    const model: MarAgentModelConfiguration = {
+    const model: AgentModelConfiguration = {
       ...base,
       apiKey: new SecretValue('static-key'),
       inputCapabilities: ['TEXT']

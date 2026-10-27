@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { PassThrough, type Stream } from 'node:stream';
-import type { LocalProcessExecutor } from '@myagentroam/agent';
+import type { LocalProcessExecutor } from '@myagentroam/agent/host';
 import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';

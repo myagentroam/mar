@@ -2,12 +2,13 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { publicHostedToolEvents } from '../../src/agent-core/runtime/event-projection.js';
-import { AGENT_EXECUTION_POLICY } from '../../src/agent-core/runtime/execution-policy.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
+import { AGENT_EXECUTION_POLICY } from '../../src/runtime/execution-policy.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const limit = AGENT_EXECUTION_POLICY.toolEventSummaryCharacters;
 const marker = '... [tool event summary truncated]';
@@ -78,7 +79,7 @@ describe('tool event summary projection', () => {
       const workspace = join(home, 'workspace');
       await mkdir(workspace);
       const requests: ModelRequest[] = [];
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'fake',
         name: 'Fake',
         protocol: 'OPENAI_RESPONSES',
@@ -97,11 +98,13 @@ describe('tool event summary projection', () => {
         enabled: true
       };
       const command = `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(2500))"`;
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => ({
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => ({
           configuration,
           async *start(request): AsyncIterable<ModelEvent> {
             requests.push(request);
@@ -122,7 +125,7 @@ describe('tool event summary projection', () => {
             yield { type: 'completed', reason: 'completed' };
           }
         })
-      });
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Summary truncation' });
         const run = session.run({ prompt: 'Read the full tool result.' });
@@ -147,12 +150,28 @@ describe('tool event summary projection', () => {
         const body = JSON.parse(result!.content);
         if (codeMode) {
           expect(body).toMatchObject({ truncated: false, outputDroppedBytes: 0 });
-          expect(result?.observations).toMatchObject([{ result: { truncated: false } }]);
+          expect(result?.contentParts).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                type: 'text',
+                text: expect.stringContaining('x'.repeat(2500))
+              })
+            ])
+          );
         } else expect(body).toMatchObject({ stdout: 'x'.repeat(2500), exitCode: 0 });
 
         const store = await JsonlSessionStore.open(home);
         try {
           const records = await store.read(session.id);
+          if (codeMode) {
+            const context = records.find(
+              (record) =>
+                record.type === 'model.context' &&
+                record.payload.callId === 'summary-call' &&
+                record.payload.role === 'tool'
+            );
+            expect(context?.payload.observations).toMatchObject([{ result: { truncated: false } }]);
+          }
           const durable = records.filter((record) => record.type === 'tool.completed');
           expect(durable).toHaveLength(completions.length);
           expect(durable.map((record) => (record.payload as { summary: string }).summary)).toEqual(

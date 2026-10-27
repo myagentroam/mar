@@ -7,15 +7,15 @@ import {
   compactedHistoryMessages,
   continuationMessage,
   retainCompactionUserMessages
-} from '../../src/agent-core/runtime/compaction/history.js';
+} from '../../src/runtime/compaction/history.js';
 import {
   replacementHistoryFromCheckpoint,
   type SessionRecord
-} from '../../src/agent-core/session/store/index.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
-import { contextualInstructionInsertIndex } from '../../src/agent-core/runtime/context/world-state.js';
-import { estimatedRequestTokens } from '../../src/agent-core/runtime/context/request-budget.js';
-import { compactExtensionDiagnostic } from '../../src/agent-core/extensions/compaction.js';
+} from '../../src/session/store/index.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
+import { contextualInstructionInsertIndex } from '../../src/runtime/context/world-state.js';
+import { estimatedRequestTokens } from '../../src/runtime/context/request-budget.js';
+import { compactExtensionDiagnostic } from '../../src/extensions/compaction.js';
 
 describe('compaction task retention', () => {
   it('validates bounded diagnostic facts and strips unknown payloads', () => {

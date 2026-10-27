@@ -3,22 +3,18 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  createMarAgent,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { type ModelEvent, type ModelMessage } from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { buildCompactionInput } from '../../src/agent-core/runtime/compaction/history.js';
-import { projectCodeModeSearchResult } from '../../src/agent-core/tools/code-mode/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, createAgent, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { type ModelEvent, type ModelMessage } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
+import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import {
   anthropicThinkingBlock,
   ANTHROPIC_THINKING_LIMITS
-} from '../../src/agent-core/model/anthropic-thinking.js';
+} from '../../src/model/anthropic-thinking.js';
 
 const roots: string[] = [];
 const servers: ReturnType<typeof createServer>[] = [];
@@ -28,7 +24,7 @@ afterEach(async () => {
   );
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-const configuration = (baseUrl: string): MarAgentModelConfiguration => ({
+const configuration = (baseUrl: string): AgentModelConfiguration => ({
   id: 'thinking',
   name: 'Thinking',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -289,7 +285,7 @@ describe('Anthropic native thinking context', () => {
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
     const create = () =>
-      createMarAgent({
+      createAgent({
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
         models: [model, { ...model, id: 'other', name: 'Other' }]

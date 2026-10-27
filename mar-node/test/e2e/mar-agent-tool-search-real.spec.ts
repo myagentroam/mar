@@ -8,20 +8,20 @@ import { dirname, join } from 'node:path';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../../mar-agent/src/index.js';
-import { AnthropicMessagesAdapter } from '../../../mar-agent/src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../../mar-agent/src/agent-core/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../../mar-agent/src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../../mar-agent/src/model/openai-responses.js';
 import type {
   ModelAdapter,
   ModelRequest,
   ModelTurnSession
-} from '../../../mar-agent/src/agent-core/model/contracts.js';
-import { createMarAgentWithAdapter } from '../../../mar-agent/src/agent-core/sdk/agent.js';
+} from '../../../mar-agent/src/model/contracts.js';
+import { createAgentWithAdapter } from '../../../mar-agent/src/sdk/agent.js';
 import type { ResolvedMcpServer } from '../../src/mcp/model.js';
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
 
@@ -30,7 +30,7 @@ afterAll(async () => {
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-function capture(model: MarAgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
+function capture(model: AgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
   if (model.protocol === 'ANTHROPIC_MESSAGES') {
     const delegate = new AnthropicMessagesAdapter(model);
     return {
@@ -132,7 +132,7 @@ describe.runIf(process.env['MAR_AGENT_REAL_E2E'] === '1')(
           }
         ];
         let pool: MarAgentMcpClientPool | undefined;
-        let agent: Awaited<ReturnType<typeof createMarAgentWithAdapter>> | undefined;
+        let agent: Awaited<ReturnType<typeof createAgentWithAdapter>> | undefined;
         try {
           pool = await MarAgentMcpClientPool.connect(servers, workspace);
           const catalog = pool.catalog();
@@ -158,19 +158,21 @@ describe.runIf(process.env['MAR_AGENT_REAL_E2E'] === '1')(
               return pool!.call(call.name, call.arguments, signal, context?.expectedTool);
             }
           });
-          agent = await createMarAgentWithAdapter({
-            mode: 'normal',
-            host,
-            models: [model],
-            defaultModelId: model.id,
-            adapterFactory: () => capture(model, requests)
-          });
-          const events: MarAgentEvent[] = [];
+          agent = await createAgentWithAdapter(
+            {
+              mode: 'normal',
+              host,
+              models: [model],
+              defaultModelId: model.id
+            },
+            () => capture(model, requests)
+          );
+          const events: AgentEvent[] = [];
           const session = await agent.createSession({
             workspace,
             title: 'MAR built-in and Playwright MCP'
           });
-          const run = async (prompt: string, target: MarAgentEvent[]) => {
+          const run = async (prompt: string, target: AgentEvent[]) => {
             const execution = session.run({ prompt });
             for await (const event of execution) target.push(event);
             const result = await execution.result();
@@ -221,7 +223,7 @@ describe.runIf(process.env['MAR_AGENT_REAL_E2E'] === '1')(
           expect(builtin.calls).toEqual(expect.arrayContaining(['get_goal', 'get_scheduled_task']));
 
           const cacheRequestIndex = requests.length;
-          const cacheEvents: MarAgentEvent[] = [];
+          const cacheEvents: AgentEvent[] = [];
           await run('Do not call any tools. Answer CACHE_OK.', cacheEvents);
           const firstToolNames = requests[0]!.tools.map((tool) => tool.name);
           const cacheToolNames = requests[cacheRequestIndex]!.tools.map((tool) => tool.name);
@@ -255,7 +257,7 @@ describe.runIf(process.env['MAR_AGENT_REAL_E2E'] === '1')(
           for await (const event of compact) events.push(event);
           expect((await compact.result()).status).toBe('completed');
           const postGcRequestIndex = requests.length;
-          const postGcEvents: MarAgentEvent[] = [];
+          const postGcEvents: AgentEvent[] = [];
           await run('Do not call any tools. Answer GC_OK.', postGcEvents);
           const postGcRequest = requests[postGcRequestIndex]!;
           expect(requestCarriesTool(postGcRequest, 'mcp__playwright__browser_navigate')).toBe(

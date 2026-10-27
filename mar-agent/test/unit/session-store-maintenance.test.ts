@@ -2,11 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/jsonl-store.js';
-import type { ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/jsonl/jsonl-store.js';
+import type { ModelEvent } from '../../src/model/contracts.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
+import { SubagentSessionController } from '../../src/subagent/session-controller.js';
 
 const releaseFault = vi.hoisted(() => ({ path: '', error: new Error('lock release failed') }));
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -29,7 +31,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.restoreAllMocks();
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -46,6 +48,69 @@ const model: MarAgentModelConfiguration = {
   codeMode: false,
   enabled: true
 };
+
+it('keeps a deleting main execution visible to model reconfiguration until its Turn is joined', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'mar-delete-reconfigure-'));
+  const started = Promise.withResolvers<void>();
+  const retired = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const turnClose = vi.fn(async () => {});
+  const providerClose = vi.fn(async () => {});
+  const provider = { acquire: vi.fn(), invalidate: vi.fn(), close: providerClose };
+  const { apiKey: _apiKey, ...dynamicModel } = model;
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+      models: [{ ...dynamicModel, credentialProvider: provider }],
+      extensions: [
+        {
+          id: 'deletion-barrier',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.resources.effect(() => () => retired.resolve());
+          }
+        }
+      ]
+    },
+    (configuration) => {
+      async function* start(): AsyncIterable<ModelEvent> {
+        started.resolve();
+        await release.promise;
+        yield { type: 'completed', reason: 'completed' };
+      }
+      return { configuration, start, createTurnSession: () => ({ start, close: turnClose }) };
+    }
+  );
+  let deletion: Promise<void> | undefined;
+  try {
+    const session = await agent.createSession({ workspace: home });
+    const execution = session.run({ prompt: 'hold' });
+    let settled = false;
+    void execution.result().finally(() => {
+      settled = true;
+    });
+    await started.promise;
+    deletion = agent.deleteSession(session.id);
+    await retired.promise;
+    await expect(agent.reconfigureModels({ models: [model] })).rejects.toMatchObject({
+      code: 'MAR_AGENT_EXECUTION_ACTIVE'
+    });
+    expect(settled).toBe(false);
+    expect(turnClose).not.toHaveBeenCalled();
+    expect(providerClose).not.toHaveBeenCalled();
+    release.resolve();
+    await deletion;
+    expect(turnClose).toHaveBeenCalledOnce();
+    await agent.reconfigureModels({ models: [model] });
+    expect(providerClose).toHaveBeenCalledOnce();
+  } finally {
+    release.resolve();
+    await deletion?.catch(() => {});
+    await agent.dispose();
+    await rm(home, { recursive: true, force: true });
+  }
+});
 async function fixture() {
   const home = await mkdtemp(join(tmpdir(), 'mar-store-maintenance-'));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
@@ -62,25 +127,27 @@ async function fixture() {
     const resume = Promise.withResolvers<void>();
     const signals: AbortSignal[] = [];
     let hold = false;
-    const instance = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host,
-      models: [model],
-      sessionStore: store,
-      runtimeExtensions: [
-        {
-          id: 'maintenance-test',
-          apiVersion: '1.0',
-          attachSession(context) {
-            attached(context.sessionId);
-            context.hooks.observe('session.ending', ending);
-            context.resources.effect(() => () => {
-              retired(context.sessionId);
-            });
+    const instance = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host,
+        models: [model],
+        sessionStore: store,
+        extensions: [
+          {
+            id: 'maintenance-test',
+            apiVersion: '1.0',
+            attachSession(context) {
+              attached(context.sessionId);
+              context.hooks.observe('session.ending', ending);
+              context.resources.effect(() => () => {
+                retired(context.sessionId);
+              });
+            }
           }
-        }
-      ],
-      adapterFactory: (configuration) => {
+        ]
+      },
+      (configuration) => {
         async function* start(_request: unknown, signal: AbortSignal): AsyncIterable<ModelEvent> {
           signals.push(signal);
           if (hold) {
@@ -97,7 +164,7 @@ async function fixture() {
           createTurnSession: () => ({ start, close: turnClose })
         };
       }
-    });
+    );
     const hostCleanup = vi.spyOn(host, 'disposeSessionResources');
     cleanups.push(async () => {
       resume.resolve();
@@ -134,6 +201,179 @@ function childInput(workspace: string, parentSessionId: string, rootSessionId = 
     }
   } as const;
 }
+
+it('blocks opening descendants throughout admitted tree deletion', async () => {
+  const f = await fixture();
+  const root = await f.store.createSession({ workspace: f.home });
+  const child = await f.store.createSession(childInput(f.home, root.id));
+  const { instance, hostCleanup } = await f.agent();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  hostCleanup.mockImplementation(async (id) => {
+    if (id === root.id) {
+      entered.resolve();
+      await release.promise;
+    }
+  });
+  const deleting = instance.deleteSession(root.id);
+  try {
+    await entered.promise;
+    await expect(instance.openSession(child.id)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CLOSING'
+    });
+    await expect(instance.clearSession(child.id)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CLOSING'
+    });
+  } finally {
+    release.resolve();
+    await deleting;
+  }
+});
+
+it('joins a pending create before disposing global resources', async () => {
+  const f = await fixture();
+  const { instance } = await f.agent();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const create = f.store.createSession.bind(f.store);
+  vi.spyOn(f.store, 'createSession').mockImplementation(async (input) => {
+    entered.resolve();
+    await release.promise;
+    return create(input);
+  });
+  const opening = instance.createSession({ workspace: f.home });
+  const outcome = opening.then(
+    () => undefined,
+    (error: unknown) => error
+  );
+  await entered.promise;
+  let disposed = false;
+  const disposing = instance.dispose().then(() => {
+    disposed = true;
+  });
+  await Promise.resolve();
+  expect(disposed).toBe(false);
+  release.resolve();
+  expect(await outcome).toMatchObject({ code: 'MAR_AGENT_DISPOSED' });
+  await disposing;
+  expect(disposed).toBe(true);
+});
+
+it.each(['clear', 'delete', 'dispose'] as const)(
+  'waits for an in-flight open before %s completes and rejects the stale candidate',
+  async (operation) => {
+    const f = await fixture();
+    const stored = await f.store.createSession({ workspace: f.home });
+    const { instance } = await f.agent();
+    const entered = Promise.withResolvers<void>();
+    const admitted = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const original = f.store.getSession.bind(f.store);
+    let blocked = false;
+    vi.spyOn(f.store, 'getSession').mockImplementation(async (id) => {
+      if (id === stored.id && !blocked) {
+        blocked = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return original(id);
+    });
+    const acquire = f.store.acquireSessionMaintenance.bind(f.store);
+    vi.spyOn(f.store, 'acquireSessionMaintenance').mockImplementation(async (...args) => {
+      const lease = await acquire(...args);
+      admitted.resolve();
+      return lease;
+    });
+    const opening = instance.openSession(stored.id);
+    void opening.catch(() => undefined);
+    await entered.promise;
+    let completed = false;
+    const maintenance = (
+      operation === 'dispose'
+        ? instance.dispose()
+        : operation === 'clear'
+          ? instance.clearSession(stored.id)
+          : instance.deleteSession(stored.id)
+    ).then(() => {
+      completed = true;
+    });
+    try {
+      if (operation !== 'dispose') await admitted.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).toBe(false);
+    } finally {
+      release.resolve();
+    }
+    await expect(opening).rejects.toBeDefined();
+    await maintenance;
+    expect(completed).toBe(true);
+  }
+);
+
+it('reports candidate cleanup failure during dispose after waiting for the stale open', async () => {
+  const f = await fixture();
+  const stored = await f.store.createSession({ workspace: f.home });
+  const { instance } = await f.agent();
+  const cleanupAgent = cleanups.pop()!;
+  cleanups.push(() => cleanupAgent().catch(() => undefined));
+  const ready = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const failure = new Error('candidate cleanup failed');
+  const open = SubagentSessionController.open.bind(SubagentSessionController);
+  vi.spyOn(SubagentSessionController, 'open').mockImplementation(async (input) => {
+    const controller = await open(input);
+    const dispose = controller.dispose.bind(controller);
+    vi.spyOn(controller, 'dispose').mockImplementation(async () => {
+      await dispose();
+      throw failure;
+    });
+    ready.resolve();
+    await release.promise;
+    return controller;
+  });
+  const opening = instance.openSession(stored.id);
+  void opening.catch(() => undefined);
+  await ready.promise;
+  const disposing = instance.dispose();
+  void disposing.catch(() => undefined);
+  release.resolve();
+  await expect(opening).rejects.toBeDefined();
+  await expect(disposing).rejects.toBe(failure);
+});
+
+it.each(['clear', 'delete'] as const)(
+  'does not invalidate an in-flight candidate when %s admission fails',
+  async (operation) => {
+    const f = await fixture();
+    const stored = await f.store.createSession({ workspace: f.home });
+    const { instance, hostCleanup } = await f.agent();
+    const foreignRelease = await f.store.acquireSessionLease(stored.id, {});
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const original = f.store.getSession.bind(f.store);
+    let blocked = false;
+    vi.spyOn(f.store, 'getSession').mockImplementation(async (id) => {
+      if (id === stored.id && !blocked) {
+        blocked = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return original(id);
+    });
+    const opening = instance.openSession(stored.id);
+    await entered.promise;
+    try {
+      await expect(
+        operation === 'clear' ? instance.clearSession(stored.id) : instance.deleteSession(stored.id)
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_LOCKED' });
+      expect(hostCleanup).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      await foreignRelease();
+    }
+    expect((await opening).id).toBe(stored.id);
+  }
+);
 
 it.each(['clear', 'delete'] as const)(
   'rejects descendant creation after %s admission without blocking unrelated Sessions',

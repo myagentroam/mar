@@ -8,15 +8,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { nodeLog } from '../../operational.js';
 import {
-  createMarAgent,
+  createAgent,
   generateSessionTitle,
   type ExecutionResult,
   type ToolApprovalRequest,
   type ToolApprovalDecision,
-  type LocalAgentExecutionMcpBinding,
-  type MarAgentEvent,
+  type AgentEvent,
   type RunInput
 } from '@myagentroam/agent';
+import type { LocalAgentExecutionMcpBinding } from '@myagentroam/agent/host';
 import {
   marAgentReasoningEffortSchema,
   resolveMarAgentDefaultReasoningEffort,
@@ -134,7 +134,7 @@ interface PendingInteraction<T> {
 interface MarAgentManagedRunControllerOptions {
   readonly resourceIdleTtlMs?: number;
   readonly retainEnvironment?: (environment: Readonly<Record<string, string>>) => () => void;
-  readonly createAgent?: typeof createMarAgent;
+  readonly createAgent?: typeof createAgent;
   readonly modelFactory?: Pick<MarAgentRuntimeModelFactory, 'create'>;
   readonly computerUse?: ComputerUseExecutionProvider;
   readonly generateTitle?: typeof generateSessionTitle;
@@ -180,7 +180,7 @@ export class MarAgentManagedRunController {
         ...(options.retainEnvironment === undefined
           ? {}
           : { retainEnvironment: options.retainEnvironment }),
-        createAgent: options.createAgent ?? createMarAgent,
+        createAgent: options.createAgent ?? createAgent,
         modelFactory:
           options.modelFactory ??
           new MarAgentRuntimeModelFactory({
@@ -908,7 +908,7 @@ export class MarAgentManagedRunController {
     }
   }
 
-  private project(runId: string, event: MarAgentEvent) {
+  private project(runId: string, event: AgentEvent) {
     if (contextUsageChanged(event)) this.host.refreshContext?.(runId);
     if (event.type === 'model.performance')
       this.host.emit(runId, 'run.performance', {
@@ -947,7 +947,7 @@ export class MarAgentManagedRunController {
   }
 }
 
-function contextUsageChanged(event: MarAgentEvent): boolean {
+function contextUsageChanged(event: AgentEvent): boolean {
   return (
     event.type === 'context.compacted' ||
     (event.type === 'usage.updated' &&

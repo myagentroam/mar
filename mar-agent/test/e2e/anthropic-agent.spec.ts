@@ -2,16 +2,16 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   parseModelCatalog,
   type ExecutionHandle,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelAdapter, type ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelAdapter, type ModelRequest } from '../../src/model/contracts.js';
 import { createE2eWebExtensions } from '../support/web-fetch.js';
 
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
@@ -20,17 +20,14 @@ const directories: string[] = [];
 const loadCatalog = async () =>
   parseModelCatalog(JSON.parse(await readFile('.e2e/models.local.json', 'utf8')));
 async function finish(handle: ExecutionHandle) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   return { events, result: await handle.result() };
 }
-function latestTodoItems(events: readonly MarAgentEvent[]) {
+function latestTodoItems(events: readonly AgentEvent[]) {
   return events.findLast((event) => event.type === 'todo.updated')?.items;
 }
-function captureRequests(
-  model: MarAgentModelConfiguration,
-  requests: ModelRequest[]
-): ModelAdapter {
+function captureRequests(model: AgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
   const delegate = new AnthropicMessagesAdapter(model);
   return {
     configuration: model,
@@ -102,13 +99,15 @@ describe.runIf(enabled)('Anthropic-compatible Agent E2E', () => {
       const model = catalog.models.find((candidate) => candidate.id === modelId)!;
       const requests: ModelRequest[] = [];
       const adapter = captureRequests(model, requests);
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        defaultModelId: modelId,
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model],
+          defaultModelId: modelId
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({
           workspace,

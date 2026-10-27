@@ -4,30 +4,26 @@ import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
-import {
-  LocalAgentHost,
-  MarAgentError,
-  SecretValue,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import {
   type ModelEvent,
   type ModelAdapter,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import type { ModelAttemptDiagnostic } from '../../src/agent-core/model/contracts.js';
-import { waitForModelRetry } from '../../src/agent-core/model/http.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/model/contracts.js';
+import type { ModelAttemptDiagnostic } from '../../src/model/contracts.js';
+import { waitForModelRetry } from '../../src/model/http.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import {
   startResponsesWebSocketServer,
   startSocks5Proxy,
   type CloseableServer
 } from './support/responses-transport-servers.js';
 
-vi.mock('../../src/agent-core/model/http.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/agent-core/model/http.js')>();
+vi.mock('../../src/model/http.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/model/http.js')>();
   return {
     ...actual,
     waitForModelRetry: vi.fn(async (_value: unknown, _attempt: number, signal: AbortSignal) => {
@@ -59,7 +55,7 @@ afterEach(async () => {
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
 
-function configuration(baseUrl: string): MarAgentModelConfiguration {
+function configuration(baseUrl: string): AgentModelConfiguration {
   return {
     id: 'responses',
     name: 'Responses',
@@ -299,19 +295,21 @@ describe('Responses retry boundaries', () => {
         async *start() {
           requests++;
           yield { type: 'text.delta', itemId: 'partial', phase: 'commentary', delta: 'Partial' };
-          throw new MarAgentError(
+          throw new AgentError(
             kind === 'cancel' ? 'server_is_overloaded' : 'invalid_request_error',
             'Local test failure.',
             { retryable: kind === 'cancel' }
           );
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({
           workspace: directory,
@@ -354,7 +352,7 @@ describe('Responses retry boundaries', () => {
               delta: 'Partial'
             };
             if (persistent || childRequests === 1)
-              throw new MarAgentError('server_is_overloaded', 'Transient overload.', {
+              throw new AgentError('server_is_overloaded', 'Transient overload.', {
                 retryable: true
               });
             yield { type: 'text.completed', itemId: 'child-final', text: 'Recovered child' };
@@ -383,12 +381,14 @@ describe('Responses retry boundaries', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({
           workspace: directory,
@@ -567,12 +567,14 @@ describe('Responses retry boundaries', () => {
       servers.push(server.server);
       const { home, directory } = await workspace();
       const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [configuration(server.baseUrl)],
-        ...(mode === 'compact' ? { adapterFactory: isolatedCompactSeedFactory() } : {})
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [configuration(server.baseUrl)]
+        },
+        mode === 'compact' ? isolatedCompactSeedFactory() : undefined
+      );
       try {
         const session = await agent.createSession({ workspace: directory, title: 'Retry' });
         expect((await session.run({ prompt: 'Seed state.' }).result()).status).toBe('completed');
@@ -631,12 +633,14 @@ describe('Responses retry boundaries', () => {
     servers.push(server.server);
     const { home, directory } = await workspace();
     const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [configuration(server.baseUrl)],
-      adapterFactory: isolatedCompactSeedFactory()
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [configuration(server.baseUrl)]
+      },
+      isolatedCompactSeedFactory()
+    );
     try {
       const session = await agent.createSession({ workspace: directory, title: 'Bounded retry' });
       expect((await session.run({ prompt: 'Seed.' }).result()).status).toBe('completed');
@@ -789,7 +793,7 @@ describe('Responses retry boundaries', () => {
       );
       const { apiKey, ...baseModel } = configuredModel;
       void apiKey;
-      const model: MarAgentModelConfiguration = { ...baseModel, credentialProvider: provider };
+      const model: AgentModelConfiguration = { ...baseModel, credentialProvider: provider };
       const adapter = new OpenAiResponsesAdapter(model);
       const turn = adapter.createTurnSession();
       const bodies: Record<string, unknown>[] = [];

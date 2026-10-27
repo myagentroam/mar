@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import { unicodeLongFilePath } from '../support/unicode-layout-fixtures.js';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
@@ -173,13 +174,7 @@ if (readFilesFixture) {
             toolName: 'read',
             toolPresentation: {
               kind: 'READ',
-              paths: [
-                'src/a.ts',
-                'src/a.ts',
-                'test/a.ts',
-                'C:\\src\\b.ts',
-                `目录/${'long-file-name-'.repeat(12)}.md`
-              ]
+              paths: ['src/a.ts', 'src/a.ts', 'test/a.ts', 'C:\\src\\b.ts', unicodeLongFilePath]
             },
             inputSummary: 'Original batch ranges: offset 2, limit 8',
             outputSummary: 'Original batch output'

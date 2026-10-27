@@ -14,11 +14,11 @@ import type { NodeAgentSession } from '../database.js';
 import { nodeLog } from '../operational.js';
 import { runnerErrorProjection } from '../util/runner-error.js';
 import {
-  MarAgentError,
-  openMarAgentSessionCatalog,
-  type MarAgentHistoryEntry,
-  type MarAgentSessionCatalog,
-  type MarAgentSessionSummary
+  AgentError,
+  openAgentSessionCatalog,
+  type AgentSessionHistoryEntry,
+  type AgentSessionCatalog,
+  type AgentSessionSummary
 } from '@myagentroam/agent';
 import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
@@ -111,7 +111,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   }
   registerInputImages(
     session: NodeAgentSession,
-    entry: Extract<MarAgentHistoryEntry, { readonly kind: 'user' }>
+    entry: Extract<AgentSessionHistoryEntry, { readonly kind: 'user' }>
   ): readonly (Record<string, unknown> | undefined)[] {
     if (
       session.runner !== this.name ||
@@ -158,7 +158,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     input: import('@myagentroam/protocol').ToolResultResourceInput
   ) {
     if (!session.externalSessionId) throw new Error('SESSION_NOT_FOUND');
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       return await catalog.readToolResultResource(session.externalSessionId, {
         resourceRef: input.resourceRef,
@@ -346,9 +346,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     context: RunnerDiscoveryContext,
     workspace?: import('../database.js').NodeWorkspace
   ): Promise<readonly NodeAgentSession[]> {
-    let catalog: MarAgentSessionCatalog | undefined;
+    let catalog: AgentSessionCatalog | undefined;
     try {
-      catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+      catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const activeCatalog = catalog;
       const listed = await activeCatalog.list({ limit: 200 });
       if (context.cleanup) {
@@ -424,12 +424,12 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     title: string
   ): Promise<string> {
     if (session.externalSessionId === null) throw new Error('SESSION_REWIND_UNAVAILABLE');
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       return (await catalog.fork(session.externalSessionId, { boundaryTurnId: boundary, title }))
         .id;
     } catch (error) {
-      if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });
+      if (error instanceof AgentError) throw new Error(error.code, { cause: error });
       throw error;
     } finally {
       await catalog.close().catch(() => undefined);
@@ -443,7 +443,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   ): Promise<number> {
     if (session.externalSessionId === null) throw new Error('SESSION_ROLLBACK_UNAVAILABLE');
     await this.#releaseSessionResources?.(session.externalSessionId);
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       if (targetClientMessageId !== undefined && targetTurnBoundary === undefined)
         throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
@@ -457,7 +457,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       );
       return Date.parse(rolledBack.lastActivityAt);
     } catch (error) {
-      if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });
+      if (error instanceof AgentError) throw new Error(error.code, { cause: error });
       throw error;
     } finally {
       await catalog.close().catch(() => undefined);
@@ -469,11 +469,11 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   override async clearNative(session: NodeAgentSession): Promise<number> {
     if (session.externalSessionId === null) throw new Error('SESSION_CLEAR_UNAVAILABLE');
     await this.#releaseSessionResources?.(session.externalSessionId);
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       return Date.parse((await catalog.clear(session.externalSessionId)).lastActivityAt);
     } catch (error) {
-      if (error instanceof MarAgentError) throw new Error(error.code, { cause: error });
+      if (error instanceof AgentError) throw new Error(error.code, { cause: error });
       throw error;
     } finally {
       await catalog.close().catch(() => undefined);
@@ -485,7 +485,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   ): Promise<NativeSessionRemovalResult> {
     if (session.runner !== this.name || session.externalSessionId !== nativeSessionId) return false;
     await this.#releaseSessionResources?.(nativeSessionId);
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       return (await catalog.delete(nativeSessionId)).deleted ? true : 'MISSING';
     } finally {
@@ -498,7 +498,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   ): Promise<string | undefined> {
     if (session.runner !== this.name || session.externalSessionId !== nativeSessionId)
       return undefined;
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       let cursor: string | undefined;
       do {
@@ -516,7 +516,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     sessionId: string,
     clientMessageId: string
   ): Promise<'missing' | 'completed' | 'interrupted' | 'paused'> {
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       let cursor: string | undefined;
       const states = new Map<string, 'completed' | 'interrupted' | 'paused'>();
@@ -550,12 +550,12 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     input: { readonly cursor?: string; readonly limit?: number }
   ) {
     if (session.externalSessionId === null) return undefined;
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       const limit = input.limit ?? 10;
       let cursor = input.cursor;
       let nextCursor: string | undefined;
-      const entryPages: MarAgentHistoryEntry[][] = [];
+      const entryPages: AgentSessionHistoryEntry[][] = [];
       const turnIds = new Set<string>();
       do {
         const page = await catalog.history(session.externalSessionId, {
@@ -614,9 +614,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     if (session.externalSessionId === null || session.model === null) return undefined;
     const model = this.#models.find((candidate) => candidate.id === session.model);
     if (model === undefined) return undefined;
-    let catalog: MarAgentSessionCatalog | undefined;
+    let catalog: AgentSessionCatalog | undefined;
     try {
-      catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+      catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const usage = await catalog.contextUsage(session.externalSessionId);
       return usage === undefined
         ? undefined
@@ -639,9 +639,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     imageIndex: number,
     expected: { readonly name: string; readonly mimeType: string; readonly byteSize: number }
   ) {
-    let catalog: MarAgentSessionCatalog | undefined;
+    let catalog: AgentSessionCatalog | undefined;
     try {
-      catalog = await openMarAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+      catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const image = await catalog.readImage(sessionId, { sequence, imageIndex });
       if (
         image === undefined ||
@@ -664,8 +664,8 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
 }
 
 async function marAgentSessionTitle(
-  session: MarAgentSessionSummary,
-  catalog: MarAgentSessionCatalog
+  session: AgentSessionSummary,
+  catalog: AgentSessionCatalog
 ): Promise<{ title: string; titleOrigin: 'NATIVE' | 'PREVIEW' }> {
   const nativeTitle = session.title.trim();
   if (nativeTitle.length === 0 || /^(?:new|untitled) session$/iu.test(nativeTitle)) {
@@ -685,7 +685,7 @@ async function marAgentSessionTitle(
 }
 
 function firstSequenceForTurn(
-  entries: readonly MarAgentHistoryEntry[],
+  entries: readonly AgentSessionHistoryEntry[],
   turnId: string
 ): number | undefined {
   return entries.find((entry) =>

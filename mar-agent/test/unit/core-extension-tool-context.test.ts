@@ -1,13 +1,11 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type {
-  CoreRuntimeExtension,
-  CoreSessionExtensionContext
-} from '../../src/agent-core/extensions/contracts.js';
-import type { CoreToolRef } from '../../src/agent-core/extensions/tools.js';
-import type { CoreServiceKey } from '../../src/agent-core/extensions/services.js';
+import type { AgentExtension, SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionToolRef } from '../../src/extensions/tools.js';
+import type { ExtensionServiceKey } from '../../src/extensions/services.js';
 import { answer, call, fixture, cleanupCoreFixtures } from './support/core-extension-fixture.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 afterEach(cleanupCoreFixtures);
 
@@ -15,10 +13,10 @@ describe('Execution tool sources outside model tool handlers', () => {
   it.each(['prompt.compose', 'model.request'] as const)(
     'uses real Todo and read sources in %s',
     async (key) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let visited = 0;
       const facts: Array<{ name: string; executionId?: string }> = [];
-      const extension: CoreRuntimeExtension = {
+      const extension: AgentExtension = {
         id: 'hooks',
         apiVersion: '1.0',
         attachSession(value) {
@@ -73,7 +71,7 @@ describe('Execution tool sources outside model tool handlers', () => {
   it('uses the same bound Host tool and Skill catalog without reopening the Host directory', async () => {
     let calls = 0;
     let invoked = 0;
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'hooks',
       apiVersion: '1.0',
       attachSession(value) {
@@ -119,14 +117,14 @@ describe('Execution tool sources outside model tool handlers', () => {
   it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
     'refreshes Host Web bindings and Skill dependencies without rebinding old refs in %s',
     async (protocol) => {
-      let context!: CoreSessionExtensionContext;
-      let old!: CoreToolRef;
+      let context!: SessionExtensionContext;
+      let old!: ExtensionToolRef;
       let visits = 0;
       let attaches = 0;
       let catalogs = 0;
       let guards = 0;
       const effects: string[] = [];
-      const extension: CoreRuntimeExtension = {
+      const extension: AgentExtension = {
         id: 'web-wrapper',
         apiVersion: '1.0',
         attachSession(value) {
@@ -256,7 +254,7 @@ describe('Execution tool sources outside model tool handlers', () => {
     let calls = 0;
     let visited = 0;
     const name = 'mcp__reference__probe';
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'hooks',
       apiVersion: '1.0',
       attachSession(value) {
@@ -311,8 +309,8 @@ describe('Execution tool sources outside model tool handlers', () => {
   });
 
   it('does not revive an old Execution ref in idle or a subsequent Execution', async () => {
-    let context!: CoreSessionExtensionContext;
-    let old!: CoreToolRef;
+    let context!: SessionExtensionContext;
+    let old!: ExtensionToolRef;
     let runs = 0;
     let rejected = false;
     const { session } = await fixture(
@@ -448,7 +446,7 @@ describe('Execution tool sources outside model tool handlers', () => {
   it.each([false, true])(
     'does not expose ROOT_ONLY tools to native child Session Hooks (wrapped=%s)',
     async (wrapped) => {
-      let parent!: CoreSessionExtensionContext;
+      let parent!: SessionExtensionContext;
       let childChecked = false;
       let effects = 0;
       const { session } = await fixture(
@@ -590,7 +588,7 @@ describe('Execution tool sources outside model tool handlers', () => {
     async (action) => {
       const entered = Promise.withResolvers<void>();
       const stopped = Promise.withResolvers<void>();
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let cellId!: string;
       let launched = false;
       let cancelled = false;
@@ -668,7 +666,7 @@ describe('Execution tool sources outside model tool handlers', () => {
       await expect(stale.tools.invoke({ name: 'after_gate', arguments: {} })).rejects.toThrow(
         /RETIRED/
       );
-      const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+      const directory = await activeSessionDirectory(home, session.id);
       const before = await readFile(
         join(
           directory,
@@ -700,7 +698,7 @@ describe('Execution tool sources outside model tool handlers', () => {
   it('keeps native Agent delegation bound to a real retained cell parent', async () => {
     const gate = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let launch = true;
     let cellId!: string;
     let childId!: string;
@@ -778,7 +776,7 @@ describe('Execution tool sources outside model tool handlers', () => {
       expect(result?.data, JSON.stringify(result)).toMatchObject({ status: 'completed' });
       expect(result?.content).toContain('RETAINED_AGENT_completed');
       expect(childId).toBeTruthy();
-      const { JsonlSessionStore } = await import('../../src/agent-core/session/store/index.js');
+      const { JsonlSessionStore } = await import('../../src/session/store/index.js');
       const store = await JsonlSessionStore.open(f.home);
       expect((await store.getSession(childId)).source).toMatchObject({
         parentSessionId: f.session.id,
@@ -792,10 +790,13 @@ describe('Execution tool sources outside model tool handlers', () => {
   });
 
   it('defers Agent-wide replacement while a real cell retains the old generation', async () => {
-    const key: CoreServiceKey<{ revision: string }> = { id: 'retained-service', scope: 'agent' };
+    const key: ExtensionServiceKey<{ revision: string }> = {
+      id: 'retained-service',
+      scope: 'agent'
+    };
     const gate = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
-    const contexts = new Map<string, CoreSessionExtensionContext>();
+    const contexts = new Map<string, SessionExtensionContext>();
     const attachments: string[] = [];
     const cleanups: string[] = [];
     const facts: Array<{ revision: string; executionId?: string }> = [];
@@ -803,7 +804,7 @@ describe('Execution tool sources outside model tool handlers', () => {
     let launch = true;
     let wait = false;
     let cellId!: string;
-    const extension = (selected: string): CoreRuntimeExtension => ({
+    const extension = (selected: string): AgentExtension => ({
       id: 'retained',
       apiVersion: '1.0',
       setup(value) {
@@ -1003,7 +1004,7 @@ describe('Execution tool sources outside model tool handlers', () => {
 
   it('does not revive a completed Execution through an unretained captured dispatcher', async () => {
     let stale!: NonNullable<
-      import('../../src/agent-core/tools/contracts.js').ToolExecutionContext['codeMode']
+      import('../../src/tools/contracts.js').ToolExecutionContext['codeMode']
     >['invoke'];
     const { session, host } = await fixture(
       [],
@@ -1033,7 +1034,7 @@ describe('Execution tool sources outside model tool handlers', () => {
 
   it('binds retained authority to its own dispatcher and revokes it on release', async () => {
     type Dispatch = NonNullable<
-      import('../../src/agent-core/tools/contracts.js').ToolExecutionContext['codeMode']
+      import('../../src/tools/contracts.js').ToolExecutionContext['codeMode']
     >['invoke'];
     const dispatchers: Dispatch[] = [];
     let release!: () => Promise<void>;
@@ -1082,7 +1083,7 @@ describe('Execution tool sources outside model tool handlers', () => {
 
   it('rejects queued dispatcher events and leaves cleared history unchanged', async () => {
     let stale!: NonNullable<
-      import('../../src/agent-core/tools/contracts.js').ToolExecutionContext['codeMode']
+      import('../../src/tools/contracts.js').ToolExecutionContext['codeMode']
     >['invoke'];
     let reads = 0;
     let releaseDispatch!: () => Promise<void>;
@@ -1175,7 +1176,7 @@ describe('Execution tool sources outside model tool handlers', () => {
     'rejects a captured Code Mode dispatcher before effects or history writes after %s',
     async (retirement) => {
       let stale!: NonNullable<
-        import('../../src/agent-core/tools/contracts.js').ToolExecutionContext['codeMode']
+        import('../../src/tools/contracts.js').ToolExecutionContext['codeMode']
       >['invoke'];
       let reads = 0;
       const { agent, session, home, host } = await fixture(

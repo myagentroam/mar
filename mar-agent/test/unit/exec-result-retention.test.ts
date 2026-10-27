@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ExecTool } from '../../src/agent-core/tools/local/exec.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
+import { ExecTool } from '../../src/host/local-exec-tool.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 
 const fixtures: Array<{ tool: ExecTool; root: string; close: () => void }> = [];
 afterEach(async () => {

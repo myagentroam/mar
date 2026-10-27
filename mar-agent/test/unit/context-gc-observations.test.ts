@@ -1,32 +1,31 @@
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { describe, expect, it } from 'vitest';
 import {
   renderObservations,
   type CodeObservation
-} from '../../src/agent-core/tools/code-mode/observations.js';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
-import { retainedCodeInputs } from '../../src/agent-core/session/context-gc-observations.js';
-import { formatExecResult, type ExecResult } from '../../src/agent-core/tools/local/exec.js';
-import { planContextGc } from '../../src/agent-core/runtime/context/gc.js';
+} from '../../src/session/code-observation-projection.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
+import type { SessionRecord } from '../../src/session/store/index.js';
+import { retainedCodeInputs } from '../../src/session/context-gc-observations.js';
+import { formatExecResult, type ExecResult } from '../../src/tools/local/exec.js';
+import { planContextGc } from '../../src/runtime/context/gc.js';
 import {
   contextGcMessageTokens,
   contextGcReclaimedTokens
-} from '../../src/agent-core/runtime/context/gc-tokens.js';
+} from '../../src/runtime/context/gc-tokens.js';
 import {
   buildContextProjection,
   applyContextGcReplacementsToMessages
-} from '../../src/agent-core/runtime/context/projection.js';
+} from '../../src/runtime/context/projection.js';
 import {
   validateContextGcCheckpoint,
   parseContextGcCheckpoint
-} from '../../src/agent-core/session/context-gc-checkpoint.js';
+} from '../../src/session/context-gc-checkpoint.js';
 function records() {
   const values: SessionRecord[] = [];
   let sequence = 0;
   const add = (type: string, payload: unknown) => {
     const record: SessionRecord = {
-      schemaVersion: 1,
       recordId: `record-${++sequence}`,
       sequence,
       timestamp: new Date().toISOString(),

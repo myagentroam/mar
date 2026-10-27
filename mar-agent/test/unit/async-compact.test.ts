@@ -2,24 +2,21 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ExecutionHandle, MarAgent } from '../../src/agent-core/sdk/types.js';
-import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import { CompactRequests } from '../../src/agent-core/runtime/compaction/requests.js';
-import { compactSnapshotAnchor } from '../../src/agent-core/runtime/compaction/retained-context.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ExecutionHandle, Agent } from '../../src/sdk/types.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import { CompactRequests } from '../../src/runtime/compaction/requests.js';
+import { compactSnapshotAnchor } from '../../src/runtime/compaction/retained-context.js';
 import { effectiveInstructions } from './support/model-context.js';
 import { captureExecutionContext } from './support/checkpoint-context.js';
-import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
+import * as worldState from '../../src/runtime/context/world-state.js';
 
-const configuration: MarAgentModelConfiguration = {
+const configuration: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   modelId: 'test',
@@ -38,7 +35,7 @@ const configuration: MarAgentModelConfiguration = {
   codeMode: false
 };
 const homes: string[] = [];
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
   vi.restoreAllMocks();
@@ -78,7 +75,7 @@ async function fixture(
     index: number
   ) => AsyncIterable<ModelEvent> | readonly ModelEvent[],
   generate: (signal: AbortSignal) => Promise<{ summary: string } | undefined>,
-  attach?: (context: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0]) => void
+  attach?: (context: Parameters<NonNullable<AgentExtension['attachSession']>>[0]) => void
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-async-compact-'));
   homes.push(home);
@@ -87,8 +84,8 @@ async function fixture(
   await writeFile(join(workspace, 'evidence.txt'), 'TAIL_TOOL_EVIDENCE');
   const requests: ModelRequest[] = [];
   let generations = 0;
-  let context!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
-  const extension: CoreRuntimeExtension = {
+  let context!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
+  const extension: AgentExtension = {
     id: 'compact-test',
     apiVersion: '1.0',
     attachSession(value) {
@@ -108,13 +105,15 @@ async function fixture(
       yield* script(request, index);
     }
   };
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [configuration],
-    runtimeExtensions: [extension],
-    adapterFactory: () => adapter
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [configuration],
+      extensions: [extension]
+    },
+    () => adapter
+  );
   agents.push(agent);
   const session = await agent.createSession({ workspace, title: 'Async compact' });
   return {
@@ -474,6 +473,78 @@ describe('asynchronous Compact', () => {
     }
   );
 
+  it('stops after a committed background checkpoint cannot be projected and restores it next execution', async () => {
+    const generated = barrier();
+    const release = barrier();
+    const third = barrier();
+    const f = await fixture(
+      (_request, index) => {
+        if (index === 1) return response('seed', 100);
+        if (index === 2) return readCall('first-read', 8500);
+        if (index === 3) {
+          third.release();
+          return readCall('second-read', 9000);
+        }
+        return response('recovered', 100);
+      },
+      async () => {
+        generated.release();
+        await release.promise;
+        return { summary: 'DURABLE_BACKGROUND_CHECKPOINT' };
+      }
+    );
+    await f.session.run({ prompt: 'seed' }).result();
+    let failReset = true;
+    f.adapter.createTurnSession = () => ({
+      start: (request) => f.adapter.start(request),
+      close: async () => {},
+      resetContinuation: () => {
+        if (failReset) throw new Error('injected post-commit reset failure');
+      }
+    });
+    const result = f.session.run({ prompt: 'read and continue' }).result();
+    try {
+      await generated.promise;
+      await third.promise;
+      await vi.waitFor(() =>
+        expect(
+          f.host.events.some(
+            (event) => event.type === 'context.compacting' && event.stage === 'WAITING'
+          )
+        ).toBe(true)
+      );
+      release.release();
+      expect(await result).toMatchObject({ status: 'failed' });
+      expect(f.requests).toHaveLength(3);
+      const store = await JsonlSessionStore.open(f.home);
+      try {
+        const checkpoints = (await store.read(f.session.id)).filter(
+          (record) => record.type === 'compact.completed'
+        );
+        expect(checkpoints).toHaveLength(1);
+        expect(checkpoints[0]).toMatchObject({
+          payload: { summary: 'DURABLE_BACKGROUND_CHECKPOINT' }
+        });
+      } finally {
+        await store.close();
+      }
+      failReset = false;
+      expect(await f.session.run({ prompt: 'recover' }).result()).toMatchObject({
+        status: 'completed',
+        finalAnswer: 'recovered'
+      });
+      expect(f.requests).toHaveLength(4);
+      expect(
+        f.requests[3]!.messages.some((message) =>
+          message.content.includes('DURABLE_BACKGROUND_CHECKPOINT')
+        )
+      ).toBe(true);
+    } finally {
+      release.release();
+      await result;
+    }
+  });
+
   it('continues at 85, awaits the same generation at 90, and restores the complete tool suffix once', async () => {
     const generated = barrier();
     const release = barrier();
@@ -722,18 +793,20 @@ describe('asynchronous Compact', () => {
     }
     await f.agent.dispose();
     const requests: ModelRequest[] = [];
-    const restarted = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: f.home, workspace: join(f.home, 'workspace') }),
-      models: [configuration],
-      adapterFactory: () => ({
+    const restarted = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: f.home, workspace: join(f.home, 'workspace') }),
+        models: [configuration]
+      },
+      () => ({
         configuration,
         async *start(request) {
           requests.push(request);
           yield* response('resumed', 100);
         }
       })
-    });
+    );
     agents.push(restarted);
     const resumed = await restarted.openSession(f.session.id);
     expect((await resumed.run({ prompt: 'Continue' }).result()).status).toBe('completed');
@@ -821,27 +894,29 @@ describe('asynchronous Compact', () => {
     let closingParent = false;
     let generations = 0;
     let childRounds = 0;
-    let parentContext!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
+    let parentContext!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
-    const agent = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host,
-      models: [configuration],
-      runtimeExtensions: [
-        {
-          id: 'reconfiguration-compact',
-          apiVersion: '1.0',
-          attachSession(context) {
-            if (context.agents) parentContext = context;
-            context.hooks.intercept('compact.generate', async () => {
-              generations++;
-              await releaseCompact.promise;
-              return { summary: 'CHILD_HANDOFF' };
-            });
+    const agent = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host,
+        models: [configuration],
+        extensions: [
+          {
+            id: 'reconfiguration-compact',
+            apiVersion: '1.0',
+            attachSession(context) {
+              if (context.agents) parentContext = context;
+              context.hooks.intercept('compact.generate', async () => {
+                generations++;
+                await releaseCompact.promise;
+                return { summary: 'CHILD_HANDOFF' };
+              });
+            }
           }
-        }
-      ],
-      adapterFactory: (selected) => {
+        ]
+      },
+      (selected) => {
         const adapter: ModelAdapter = {
           configuration: selected,
           async *start(request) {
@@ -864,7 +939,7 @@ describe('asynchronous Compact', () => {
         };
         return adapter;
       }
-    });
+    );
     agents.push(agent);
     const parent = await agent.createSession({ workspace: home });
     const compacts: ExecutionHandle[] = [];

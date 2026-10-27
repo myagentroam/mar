@@ -15,11 +15,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { recoverJsonlTail } from '../../src/session/store/jsonl/open-recovery.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import {
   beginSessionStorageTransaction,
   type SessionStorageTransaction
-} from '../../src/agent-core/session/transaction-recovery.js';
+} from '../../src/session/store/jsonl/transaction-recovery.js';
 
 const indexLockFailure = vi.hoisted(() => ({ path: '', indexPath: '', injected: false }));
 const indexInstallFailure = vi.hoisted(() => ({ path: '', injected: false }));
@@ -52,6 +54,33 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const homes: string[] = [];
 
+it.each([false, true])(
+  'loads recovery history only when pending resources need it (pending: %s)',
+  async (pending) => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-recovery-history-'));
+    homes.push(home);
+    const segment = join(home, 'events-000001.jsonl');
+    await writeFile(segment, '');
+    const resources = join(home, 'resources');
+    const tools = join(home, 'tool_results');
+    await mkdir(resources);
+    await mkdir(tools);
+    const image = 'a'.repeat(64);
+    const ref = randomUUID();
+    if (pending) {
+      await writeFile(join(resources, `.${image}.pending`), '');
+      await writeFile(join(resources, `${image}.bin`), 'image');
+      await writeFile(join(tools, `.${ref}.pending`), '');
+      await writeFile(join(tools, `${ref}.diff`), 'diff');
+    }
+    const readHistory = vi.fn(async () => []);
+    await recoverJsonlTail(home, segment, readHistory, 2);
+    expect(readHistory).toHaveBeenCalledTimes(pending ? 1 : 0);
+    expect(await readdir(resources)).toEqual([]);
+    expect(await readdir(tools)).toEqual([]);
+  }
+);
+
 afterEach(async () => {
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
@@ -67,7 +96,7 @@ async function fixture() {
     store,
     session,
     indexPath: join(directory, 'index.json'),
-    eventsPath: join(directory, session.id, 'events-000001.jsonl')
+    eventsPath: join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl')
   };
 }
 
@@ -101,7 +130,7 @@ describe('session storage recovery', () => {
     const { home, store, session } = await fixture();
     await store.close();
     const marker = join(home, 'unpublished-id');
-    const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url).href;
+    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
     const child = spawnSync(
       process.execPath,
       [
@@ -129,10 +158,14 @@ describe('session storage recovery', () => {
     const abandonedId = await readFile(marker, 'utf8');
     expect(child.signal !== null || child.status !== 0).toBe(true);
     const abandonedDir = join(home, '.mar', 'agent', 'sessions', abandonedId);
-    expect(await readdir(abandonedDir)).toContain('events-000001.jsonl');
+    const [generation] = await readdir(join(abandonedDir, 'v2'));
+    expect(await readdir(join(abandonedDir, 'v2', generation!))).toContain('events-000001.jsonl');
 
     const reopened = await JsonlSessionStore.open(home);
     expect((await reopened.list()).sessions.map((entry) => entry.id)).toEqual([session.id]);
+    expect(await readdir(abandonedDir)).toContain('publication-pending');
+    const release = await reopened.acquireSessionLease(session.id);
+    await release();
     await expect(readdir(abandonedDir)).rejects.toMatchObject({ code: 'ENOENT' });
     await reopened.close();
   });
@@ -141,7 +174,7 @@ describe('session storage recovery', () => {
     const { home, store, session } = await fixture();
     await store.close();
     const marker = join(home, 'unpublished-fork-id');
-    const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url).href;
+    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
     const child = spawnSync(
       process.execPath,
       [
@@ -158,7 +191,7 @@ describe('session storage recovery', () => {
          const original = prototype.writeFile;
          prototype.writeFile = async function(data, ...args) {
            await original.call(this, data, ...args);
-           if (typeof data === 'string' && data.startsWith('{"schemaVersion":')) {
+           if (typeof data === 'string' && data.startsWith('{"recordId":')) {
              const record = JSON.parse(data.split('\\n')[0]);
              await writeFile(process.argv[3], record.sessionId);
              process.kill(process.pid, 'SIGKILL');
@@ -179,6 +212,8 @@ describe('session storage recovery', () => {
     expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
       'session.created'
     ]);
+    const release = await reopened.acquireSessionLease(session.id);
+    await release();
     await expect(
       readdir(join(home, '.mar', 'agent', 'sessions', abandonedId))
     ).rejects.toMatchObject({
@@ -196,6 +231,9 @@ describe('session storage recovery', () => {
     expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
       'session.created'
     ]);
+    expect(await readdir(directory)).toContain('publication-pending');
+    const release = await reopened.acquireSessionLease(session.id);
+    await release();
     expect(await readdir(directory)).not.toContain('publication-pending');
     await reopened.close();
   });
@@ -214,6 +252,8 @@ describe('session storage recovery', () => {
     await observer.close();
     await rm(lock);
     const recovered = await JsonlSessionStore.open(home);
+    const release = await recovered.acquireSessionLease(session.id);
+    await release();
     await expect(readdir(directory)).rejects.toMatchObject({ code: 'ENOENT' });
     await recovered.close();
   });
@@ -289,7 +329,7 @@ describe('session storage recovery', () => {
   it('removes interrupted staging files that have no committed transaction journal', async () => {
     const { home, store, session, eventsPath } = await fixture();
     await store.close();
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+    const directory = await activeSessionDirectory(home, session.id);
     const staged = `events-000001.jsonl.${randomUUID()}.rollback-tmp`;
     const journalTemp = `storage-transaction.json.${randomUUID()}.tmp`;
     const original = await readFile(eventsPath, 'utf8');
@@ -359,6 +399,7 @@ describe('session storage recovery', () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-concurrent-create-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
+    const initial = await store.createSession({ workspace: home });
     const directory = join(home, '.mar', 'agent', 'sessions');
     const lockPath = join(directory, 'index.lock');
     const lock = await open(lockPath, 'wx', 0o600);
@@ -375,8 +416,17 @@ describe('session storage recovery', () => {
         for (const entry of await readdir(directory, { withFileTypes: true })) {
           if (!entry.isDirectory()) continue;
           try {
-            if ((await readFile(join(directory, entry.name, 'events-000001.jsonl'))).length > 0)
-              durable++;
+            const generations = await readdir(join(directory, entry.name, 'v2'));
+            for (const generation of generations)
+              if (
+                (
+                  await readFile(
+                    join(directory, entry.name, 'v2', generation, 'events-000001.jsonl')
+                  )
+                ).length > 0 &&
+                entry.name !== initial.id
+              )
+                durable++;
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
           }
@@ -394,7 +444,7 @@ describe('session storage recovery', () => {
       const index = JSON.parse(await readFile(join(directory, 'index.json'), 'utf8')) as {
         sessions: Array<{ id: string }>;
       };
-      expect(index.sessions).toHaveLength(2);
+      expect(index.sessions).toHaveLength(3);
       expect(index.sessions.map((entry) => entry.id)).toEqual(
         expect.arrayContaining([first.id, second.id])
       );
@@ -411,6 +461,7 @@ describe('session storage recovery', () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-post-commit-create-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
+    await store.createSession({ workspace: home });
     const directory = join(home, '.mar', 'agent', 'sessions');
     const indexPath = join(directory, 'index.json');
     indexLockFailure.path = join(directory, 'index.lock');
@@ -475,10 +526,10 @@ describe('session storage recovery', () => {
         await expect(
           reopened.readInputImage(session.id, { sequence: 2, imageIndex: 0 })
         ).resolves.toMatchObject({ dataBase64: 'AAAB' });
-        const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+        const directory = await activeSessionDirectory(home, session.id);
         expect(
           (await readdir(join(directory, 'resources'))).filter((name) => name.endsWith('.bin'))
-        ).toEqual([image!.fileName]);
+        ).toEqual([`${image!.resourceId}.bin`]);
         expect(await readdir(directory)).not.toContain('storage-transaction.json');
         expect(
           (await reopened.append(session.id, { type: 'model.context', payload: { text: 'next' } }))
@@ -505,6 +556,8 @@ describe('session storage recovery', () => {
       await store.writeContextualWorldState(session.id, { snapshot: 'removed' });
       await store.close();
       const writer = await JsonlSessionStore.open(home);
+      const prepare = await writer.acquireSessionLease(session.id);
+      await prepare();
       indexLockFailure.path = join(home, '.mar', 'agent', 'sessions', 'index.lock');
       indexLockFailure.indexPath = indexPath;
       indexLockFailure.injected = false;
@@ -525,7 +578,7 @@ describe('session storage recovery', () => {
           'session.created'
         ]);
         await expect(reopened.readContextualWorldState(session.id)).resolves.toBeUndefined();
-        const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+        const directory = await activeSessionDirectory(home, session.id);
         expect(await readdir(join(directory, 'resources'))).toEqual([]);
         expect(await readdir(directory)).not.toContain('storage-transaction.json');
         expect(
@@ -565,7 +618,7 @@ describe('session storage recovery', () => {
     await writeFile(join(directory, 'lock'), JSON.stringify({ pid: 2147483647 }));
     const barrier = join(home, 'start-writers');
     const finish = join(home, 'release-writer');
-    const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url).href;
+    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
     const script = `import { readFile, writeFile } from 'node:fs/promises';
       import { setTimeout as delay } from 'node:timers/promises';
       import { JsonlSessionStore } from ${JSON.stringify(moduleUrl)};
@@ -670,8 +723,8 @@ describe('session storage recovery', () => {
     const [image] = await store.persistInputImages(session.id, [
       { name: 'orphan.png', mimeType: 'image/png', dataBase64: 'AAAB' }
     ]);
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
-    await writeFile(join(directory, `.${image!.fileName}.${randomUUID()}.tmp`), 'partial');
+    const directory = join(await activeSessionDirectory(home, session.id), 'resources');
+    await writeFile(join(directory, `.${image!.resourceId}.bin.${randomUUID()}.tmp`), 'partial');
     await store.close();
     const reopened = await JsonlSessionStore.open(home);
     const release = await reopened.acquireSessionLease(session.id);
@@ -711,14 +764,14 @@ describe('session storage recovery', () => {
       executionId: 'execution',
       turnId: 'turn'
     });
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const directory = join(await activeSessionDirectory(home, session.id), 'resources');
     await writeFile(join(directory, `.${image!.resourceId}.pending`), '');
     await store.close();
     const reopened = await JsonlSessionStore.open(home);
     const release = await reopened.acquireSessionLease(session.id);
     await release();
     expect((await readdir(directory)).filter((name) => name.endsWith('.bin'))).toEqual([
-      image!.fileName
+      `${image!.resourceId}.bin`
     ]);
     expect(await reopened.readInputImage(session.id, { sequence: 2, imageIndex: 0 })).toMatchObject(
       {
@@ -731,7 +784,7 @@ describe('session storage recovery', () => {
   it('recovers a writer killed after persisting an input image but before publishing its turn', async () => {
     const { home, store, session } = await fixture();
     await store.close();
-    const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url).href;
+    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
     const marker = join(home, 'writer-ready');
     const child = spawnSync(
       process.execPath,
@@ -762,9 +815,9 @@ describe('session storage recovery', () => {
     const reopened = await JsonlSessionStore.open(home);
     const release = await reopened.acquireSessionLease(session.id);
     await release();
-    expect(await readdir(join(home, '.mar', 'agent', 'sessions', session.id, 'resources'))).toEqual(
-      []
-    );
+    expect(
+      await readdir(join(await activeSessionDirectory(home, session.id), 'resources'))
+    ).toEqual([]);
     expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
       'session.created'
     ]);
@@ -783,9 +836,9 @@ describe('session storage recovery', () => {
       turnId: 'turn'
     });
     await store.close();
-    const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url).href;
+    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
     const transactionUrl = new URL(
-      '../../src/agent-core/session/transaction-recovery.ts',
+      '../../src/session/store/jsonl/transaction-recovery.ts',
       import.meta.url
     ).href;
     const marker = join(home, 'clear-ready');
@@ -804,7 +857,10 @@ describe('session storage recovery', () => {
          const store = await JsonlSessionStore.open(process.argv[1]);
          const id = process.argv[2];
          await store.acquireSessionLease(id);
-         const directory = join(process.argv[1], '.mar', 'agent', 'sessions', id);
+         const root = join(process.argv[1], '.mar', 'agent', 'sessions');
+         const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8'));
+         const generation = index.sessions.find(entry => entry.id === id).storage.generation;
+         const directory = join(root, id, 'v2', generation);
          const original = join(directory, 'events-000001.jsonl');
          const transactionId = randomUUID();
          await beginSessionStorageTransaction(directory, {
@@ -823,7 +879,7 @@ describe('session storage recovery', () => {
          process.kill(process.pid, 'SIGKILL');`,
         home,
         session.id,
-        image!.fileName,
+        `${image!.resourceId}.bin`,
         marker
       ],
       { encoding: 'utf8', timeout: 10_000 }
@@ -833,6 +889,11 @@ describe('session storage recovery', () => {
     expect(child.signal !== null || child.status !== 0).toBe(true);
 
     const reopened = await JsonlSessionStore.open(home);
+    await expect(reopened.read(session.id)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CORRUPT'
+    });
+    const recoveryLease = await reopened.acquireSessionLease(session.id);
+    await recoveryLease();
     expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
       'session.created',
       'turn.user'
@@ -864,8 +925,8 @@ describe('session storage recovery', () => {
       });
       await store.close();
       const original = await readFile(eventsPath, 'utf8');
-      const directory = join(home, '.mar', 'agent', 'sessions', session.id);
-      const imagePath = join(directory, 'resources', image!.fileName);
+      const directory = await activeSessionDirectory(home, session.id);
+      const imagePath = join(directory, 'resources', `${image!.resourceId}.bin`);
       const transactionId = randomUUID();
       const stagedId = randomUUID();
       const temporary = `events-000001.jsonl.${stagedId}.rollback-tmp`;
@@ -881,7 +942,7 @@ describe('session storage recovery', () => {
       const trash = join(
         directory,
         'resources',
-        `.${image!.fileName}.${transactionId}.rollback-trash`
+        `.${image!.resourceId}.bin.${transactionId}.rollback-trash`
       );
       await rename(imagePath, trash);
       const backup = `${eventsPath}.${transactionId}.${kind}-backup`;
@@ -889,6 +950,11 @@ describe('session storage recovery', () => {
       await writeFile(eventsPath, original.split('\n')[0] + '\n');
       await writeFile(join(directory, temporary), original);
       const reopened = await JsonlSessionStore.open(home);
+      await expect(reopened.read(session.id)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_CORRUPT'
+      });
+      const recoveryLease = await reopened.acquireSessionLease(session.id);
+      await recoveryLease();
       expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
         'session.created',
         'turn.user'
@@ -902,7 +968,7 @@ describe('session storage recovery', () => {
       expect(await readdir(directory)).not.toContain(temporary);
       expect(
         (await readdir(join(directory, 'resources'))).filter((name) => name.endsWith('.bin'))
-      ).toEqual([image!.fileName]);
+      ).toEqual([`${image!.resourceId}.bin`]);
       expect(await readFile(indexPath, 'utf8')).toContain(session.id);
       await reopened.close();
     }
@@ -919,7 +985,7 @@ describe('session storage recovery', () => {
         turnId: 'turn'
       });
       await store.close();
-      const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+      const directory = await activeSessionDirectory(home, session.id);
       const transactionId = randomUUID();
       const temporary = `events-000001.jsonl.${randomUUID()}.rollback-tmp`;
       await beginSessionStorageTransaction(directory, {
@@ -942,6 +1008,11 @@ describe('session storage recovery', () => {
       index.sessions[0]!.storageTransactionId = transactionId;
       await writeFile(indexPath, JSON.stringify(index));
       const reopened = await JsonlSessionStore.open(home);
+      await expect(reopened.read(session.id)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_CORRUPT'
+      });
+      const recoveryLease = await reopened.acquireSessionLease(session.id);
+      await recoveryLease();
       expect((await reopened.read(session.id)).map((entry) => entry.type)).toEqual([
         'session.created'
       ]);

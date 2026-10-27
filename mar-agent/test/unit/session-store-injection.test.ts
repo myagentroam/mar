@@ -4,17 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
-  createMarAgent,
-  LocalAgentHost,
-  openMarAgentSessionCatalog,
+  createAgent,
+  openAgentSessionCatalog,
   SecretValue,
-  type MarAgentModelConfiguration,
-  type SessionStore,
-  type SessionStoreMaintenance,
-  type MarAgent
+  type AgentModelConfiguration,
+  type Agent
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/jsonl-store.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { type SessionStore, type SessionStoreMaintenance } from '../../src/session-store.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/jsonl/jsonl-store.js';
 import { textSessionStore } from '../support/text-session-store.js';
 
 const homes: string[] = [];
@@ -46,7 +45,7 @@ async function fixture() {
     }
   };
 }
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'OPENAI_RESPONSES',
@@ -100,10 +99,10 @@ it('runs and restores through an injected Store without a Host storage capabilit
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const models = [{ ...model, baseUrl: `http://127.0.0.1:${port}` }];
-  const agents: MarAgent[] = [];
-  const catalog = await openMarAgentSessionCatalog({ sessionStore: backend.store });
+  const agents: Agent[] = [];
+  const catalog = await openAgentSessionCatalog({ sessionStore: backend.store });
   try {
-    const first = await createMarAgent({
+    const first = await createAgent({
       mode: 'normal',
       host: host(),
       models,
@@ -139,7 +138,7 @@ it('runs and restores through an injected Store without a Host storage capabilit
         expect.objectContaining({ kind: 'user', text: 'unique-first-input' })
       ])
     );
-    const second = await createMarAgent({
+    const second = await createAgent({
       mode: 'normal',
       host: host(),
       models,
@@ -176,15 +175,17 @@ it('isolates Agent writer owners on a borrowed Store and releases leases without
   const close = vi.spyOn(store, 'close');
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const agents: MarAgent[] = [];
+  const agents: Agent[] = [];
   for (let index = 0; index < 2; index++)
     agents.push(
-      await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: host(),
-        models: [model],
-        sessionStore: store,
-        adapterFactory: (configuration) => ({
+      await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: host(),
+          models: [model],
+          sessionStore: store
+        },
+        (configuration) => ({
           configuration,
           async *start() {
             if (index === 0) {
@@ -195,9 +196,9 @@ it('isolates Agent writer owners on a borrowed Store and releases leases without
             yield { type: 'completed', reason: 'completed' };
           }
         })
-      })
+      )
     );
-  const [first, second] = agents as [MarAgent, MarAgent];
+  const [first, second] = agents as [Agent, Agent];
   try {
     const session = await first.createSession({ workspace, title: 'Writer ownership' });
     const other = await second.openSession(session.id);
@@ -214,7 +215,7 @@ it('isolates Agent writer owners on a borrowed Store and releases leases without
     await first.dispose();
     expect(close).not.toHaveBeenCalled();
     expect((await other.run({ prompt: 'new writer' }).result()).status).toBe('completed');
-    const catalog = await openMarAgentSessionCatalog({ sessionStore: store });
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
     try {
       const png =
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -286,7 +287,7 @@ it.each(['clearSession', 'deleteSession'] as const)(
         .mockImplementation((id) => remove(id, original));
       const hostCleanup = vi.spyOn(agentHost, 'disposeSessionResources');
       if (cleanupFails) hostCleanup.mockRejectedValueOnce(primary);
-      const agent = await createMarAgentWithAdapter({
+      const agent = await createAgentWithAdapter({
         mode: 'normal',
         host: agentHost,
         models: [model],
@@ -324,12 +325,12 @@ it('rejects ambiguous Catalog sources and never takes ownership on failed Host n
   const backend = textSessionStore();
   const { host } = await fixture();
   for (const input of [{}, { homeDirectory: '/unused', sessionStore: backend.store }]) {
-    await expect(openMarAgentSessionCatalog(input as never)).rejects.toMatchObject({
+    await expect(openAgentSessionCatalog(input as never)).rejects.toMatchObject({
       code: 'MAR_AGENT_SESSION_STORE_INVALID'
     });
   }
   await expect(
-    createMarAgent({ mode: 'node', host: host(), models: [model], sessionStore: backend.store })
+    createAgent({ mode: 'node', host: host(), models: [model], sessionStore: backend.store })
   ).rejects.toMatchObject({ code: 'MAR_AGENT_HOST_INCOMPATIBLE' });
   expect(backend.closeCount()).toBe(0);
 });
@@ -346,8 +347,8 @@ it.each(['agent', 'catalog'] as const)(
     try {
       const result =
         entry === 'agent'
-          ? createMarAgent({ mode: 'normal', host: host(), models: [model], sessionStore })
-          : openMarAgentSessionCatalog({ sessionStore });
+          ? createAgent({ mode: 'normal', host: host(), models: [model], sessionStore })
+          : openAgentSessionCatalog({ sessionStore });
       await expect(result).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_STORE_INVALID' });
       expect(open).not.toHaveBeenCalled();
     } finally {
@@ -359,8 +360,8 @@ it.each(['agent', 'catalog'] as const)(
 it('closes each default JSONL handle once and rejects every closed Catalog operation', async () => {
   const { home, workspace, host } = await fixture();
   const close = vi.spyOn(JsonlSessionStore.prototype, 'close');
-  const agent = await createMarAgent({ mode: 'normal', host: host(), models: [model] });
-  const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+  const agent = await createAgent({ mode: 'normal', host: host(), models: [model] });
+  const catalog = await openAgentSessionCatalog({ homeDirectory: home });
   try {
     const session = await agent.createSession({ workspace, title: 'Default ownership' });
     await agent.dispose();

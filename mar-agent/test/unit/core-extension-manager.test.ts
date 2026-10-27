@@ -1,11 +1,12 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { describe, expect, it, vi } from 'vitest';
-import { ExtensionManager } from '../../src/agent-core/extensions/manager.js';
+import { ExtensionManager } from '../../src/extensions/manager.js';
 import type {
-  CoreExtensionSnapshot,
-  CoreRuntimeExtension,
-  CoreSessionExtensionContext
-} from '../../src/agent-core/extensions/contracts.js';
-import type { CoreServiceKey } from '../../src/agent-core/extensions/services.js';
+  ExtensionSnapshot,
+  AgentExtension,
+  SessionExtensionContext
+} from '../../src/extensions/contracts.js';
+import type { ExtensionServiceKey } from '../../src/extensions/services.js';
 const signal = () => new AbortController().signal;
 
 describe('Extension composition admission', () => {
@@ -21,6 +22,7 @@ describe('Extension composition admission', () => {
         release = resolve;
       });
       const manager = new ExtensionManager({
+        toolRuntime: extensionToolRuntime,
         extensions: [
           {
             id: 'owned-child',
@@ -69,7 +71,7 @@ describe('Extension composition admission', () => {
   it.each(['command', 'tool', 'intercept', 'observe'] as const)(
     '%s callback retirement cancels nested calls through another active facade',
     async (kind) => {
-      let consumer!: CoreSessionExtensionContext;
+      let consumer!: SessionExtensionContext;
       let entered!: () => void;
       let release!: () => void;
       const started = new Promise<void>((resolve) => {
@@ -81,7 +83,7 @@ describe('Extension composition admission', () => {
       let callbackSignal!: AbortSignal;
       let nestedError: unknown;
       const callback = async (
-        call: import('../../src/agent-core/extensions/operation.js').CoreOperationContext
+        call: import('../../src/extensions/operation.js').ExtensionOperationContext
       ) => {
         callbackSignal = call.signal;
         entered();
@@ -93,6 +95,7 @@ describe('Extension composition admission', () => {
         }
       };
       const manager = new ExtensionManager({
+        toolRuntime: extensionToolRuntime,
         extensions: [
           {
             id: 'consumer',
@@ -176,15 +179,16 @@ describe('Extension composition admission', () => {
   );
 
   it('dispatches a managed timer as native ingress while its Code Mode creator is still active', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let timerCall:
-      import('../../src/agent-core/extensions/operation.js').CoreOperationContext | undefined;
+      import('../../src/extensions/operation.js').ExtensionOperationContext | undefined;
     let timerError: unknown;
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => {
       finish = resolve;
     });
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'timer',
@@ -247,12 +251,13 @@ describe('Extension composition admission', () => {
   });
 
   it('isolates a failed state observer and cancels its accepted borrowed work before joining', async () => {
-    let consumer!: CoreSessionExtensionContext;
-    let provider!: CoreSessionExtensionContext;
+    let consumer!: SessionExtensionContext;
+    let provider!: SessionExtensionContext;
     const primary = new Error('state observer failed');
     const safety = new AbortController();
     let nested: Promise<unknown> | undefined;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'consumer',
@@ -310,6 +315,7 @@ describe('Extension composition admission', () => {
     async (action) => {
       let revision = '1';
       const manager = new ExtensionManager({
+        toolRuntime: extensionToolRuntime,
         extensions: { resolve: async () => ({ revision, extensions: [] }) },
         capabilities: [],
         busyExcept: () => false
@@ -334,11 +340,12 @@ describe('Extension composition admission', () => {
     'keeps admission faulted when %s initialization cleanup fails',
     async (phase) => {
       const manager = new ExtensionManager({
+        toolRuntime: extensionToolRuntime,
         extensions: [
           {
             id: 'broken-init',
             apiVersion: '1.0',
-            [phase]: (context: CoreSessionExtensionContext) => {
+            [phase]: (context: SessionExtensionContext) => {
               context.resources.effect(() => () => {
                 throw new Error('cleanup');
               });
@@ -372,8 +379,9 @@ describe('Extension composition admission', () => {
     const waiting = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const key: CoreServiceKey<number> = { id: 'counter', scope: 'agent' };
+    const key: ExtensionServiceKey<number> = { id: 'counter', scope: 'agent' };
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: {
         resolve: async () => ({
           revision,
@@ -426,6 +434,7 @@ describe('Extension composition admission', () => {
   it('does not resume a partly retired composition after cleanup fails', async () => {
     let revision = '1';
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: {
         resolve: async () => ({
           revision,
@@ -453,6 +462,7 @@ describe('Extension composition admission', () => {
   it('holds a generation while retained callers reference it and reloads after final release', async () => {
     let revision = '1';
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: { resolve: async () => ({ revision, extensions: [] }) },
       capabilities: [],
       busyExcept: () => false
@@ -470,10 +480,11 @@ describe('Extension composition admission', () => {
   });
 
   it('disables dependency cycles and their required consumers without disabling unrelated extensions', async () => {
-    const a: CoreServiceKey<number> = { id: 'a', scope: 'agent' };
-    const b: CoreServiceKey<number> = { id: 'b', scope: 'agent' };
+    const a: ExtensionServiceKey<number> = { id: 'a', scope: 'agent' };
+    const b: ExtensionServiceKey<number> = { id: 'b', scope: 'agent' };
     const seen: string[] = [];
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'a',
@@ -526,6 +537,7 @@ describe('Extension composition admission', () => {
   it('attributes asynchronous acquisition failures and allows explicit initialization APIs before activation', async () => {
     const initialized: string[] = [];
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'bad-resource',
@@ -568,7 +580,7 @@ describe('Extension composition admission', () => {
     const setup = vi.fn();
     const attach = vi.fn();
     const release = vi.fn();
-    let snapshot: CoreExtensionSnapshot = {
+    let snapshot: ExtensionSnapshot = {
       revision: '1',
       extensions: [
         {
@@ -583,6 +595,7 @@ describe('Extension composition admission', () => {
       ]
     };
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: { resolve: async () => snapshot },
       capabilities: [],
       busyExcept: () => false
@@ -604,14 +617,19 @@ describe('Extension composition admission', () => {
     const setupFailure = vi.fn(() => {
       throw new Error('secret');
     });
-    const attachFailure = vi.fn((context: CoreSessionExtensionContext) => {
+    const attachFailure = vi.fn((context: SessionExtensionContext) => {
       if (context.sessionId === 'bad') throw new Error('session error');
     });
-    const extensions: CoreRuntimeExtension[] = [
+    const extensions: AgentExtension[] = [
       { id: 'failed', apiVersion: '1.0', setup: setupFailure },
       { id: 'session', apiVersion: '1.0', attachSession: attachFailure }
     ];
-    const manager = new ExtensionManager({ extensions, capabilities: [], busyExcept: () => false });
+    const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
+      extensions,
+      capabilities: [],
+      busyExcept: () => false
+    });
     await manager.prepare('bad', signal());
     await manager.prepare('bad', signal());
     await manager.prepare('good', signal());
@@ -625,8 +643,9 @@ describe('Extension composition admission', () => {
     let failing = false;
     let duplicate = false;
     const setup = vi.fn();
-    const extension: CoreRuntimeExtension = { id: 'a', apiVersion: '1.0', setup };
+    const extension: AgentExtension = { id: 'a', apiVersion: '1.0', setup };
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: {
         resolve: async () => {
           if (failing) throw new Error('source unavailable');
@@ -654,6 +673,7 @@ describe('Extension composition admission', () => {
     let revision = '1';
     let busy = false;
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: { resolve: async () => ({ revision, extensions: [] }) },
       capabilities: [],
       busyExcept: () => busy
@@ -671,9 +691,10 @@ describe('Extension composition admission', () => {
   });
 
   it('orders providers before consumers and gives bindings only to their own contexts', async () => {
-    const key: CoreServiceKey<number> = { id: 'number', scope: 'agent' };
+    const key: ExtensionServiceKey<number> = { id: 'number', scope: 'agent' };
     const seen: number[] = [];
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'consumer',
@@ -703,8 +724,9 @@ describe('Extension composition admission', () => {
   });
 
   it('isolates instance tools, commands and prompt sections with real scoped calls', async () => {
-    const contexts = new Map<string, CoreSessionExtensionContext>();
+    const contexts = new Map<string, SessionExtensionContext>();
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         {
           id: 'counter',
@@ -746,11 +768,69 @@ describe('Extension composition admission', () => {
     await manager.dispose();
   });
 
+  it('restores the underlying command when its scoped replacement is disposed', async () => {
+    let context!: SessionExtensionContext;
+    let replacement!: { dispose(): Promise<void> };
+    const seen: string[] = [];
+    const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
+      extensions: [
+        {
+          id: 'base',
+          apiVersion: '1.0',
+          attachSession(value) {
+            context = value;
+            value.commands.register({
+              name: 'run',
+              description: 'base',
+              handler: (_input, call) => {
+                seen.push(call.ownerInstanceId!);
+                return 'base';
+              }
+            });
+          }
+        },
+        {
+          id: 'replacement',
+          apiVersion: '1.0',
+          attachSession(value) {
+            replacement = value.commands.register({
+              name: 'run',
+              description: 'replacement',
+              override: 'replace',
+              handler: (_input, call) => {
+                seen.push(call.ownerInstanceId!);
+                return 'replacement';
+              }
+            });
+          }
+        }
+      ],
+      capabilities: [],
+      busyExcept: () => false
+    });
+    try {
+      await manager.prepare('s', signal());
+      expect(context.commands.list()).toEqual([{ name: 'run', description: 'replacement' }]);
+      expect(await context.commands.run({ name: 'run' })).toBe('replacement');
+      await replacement.dispose();
+      expect(context.commands.list()).toEqual([{ name: 'run', description: 'base' }]);
+      expect(await context.commands.run({ name: 'run' })).toBe('base');
+      expect(seen).toHaveLength(2);
+      expect(seen[0]).toBeTruthy();
+      expect(seen[1]).toBeTruthy();
+      expect(seen[0]).not.toBe(seen[1]);
+    } finally {
+      await manager.dispose();
+    }
+  });
+
   it('caches strict failures but retries cancelled initialization on a later admission', async () => {
     const failed = vi.fn(() => {
       throw new Error('failure');
     });
     const manager = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [
         { id: 'strict', apiVersion: '1.0', failurePolicy: 'fail-composition', setup: failed }
       ],
@@ -766,6 +846,7 @@ describe('Extension composition admission', () => {
       if (setup.mock.calls.length === 1) controller.abort();
     });
     const cancelled = new ExtensionManager({
+      toolRuntime: extensionToolRuntime,
       extensions: [{ id: 'a', apiVersion: '1.0', setup }],
       capabilities: [],
       busyExcept: () => false

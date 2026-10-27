@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   SubagentSessionController,
   type PersistedSubagentSession
-} from '../../src/agent-core/subagent/session-controller.js';
+} from '../../src/subagent/session-controller.js';
 
 function children() {
   return Array.from({ length: 20 }, (_, i): PersistedSubagentSession => ({
@@ -19,7 +19,6 @@ function children() {
     },
     records: [
       {
-        schemaVersion: 1,
         recordId: `record-${i}`,
         sequence: 1,
         sessionId: `child-${i}`,

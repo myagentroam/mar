@@ -1162,7 +1162,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       kind: 'reasoning',
       status: 'COMPLETED',
       payload,
-      processGroup: { id: 'process', isStart: true }
+      processGroup: { id: 'process', isStart: true as const }
     };
     const items = [
       hidden,

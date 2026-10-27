@@ -1,18 +1,18 @@
-import { MarAgentError } from '@myagentroam/agent';
+import { AgentError } from '@myagentroam/agent';
 import { httpErrorResponseSchema } from '@myagentroam/protocol';
 
-export async function readWebSearchError(response: Response): Promise<MarAgentError> {
+export async function readWebSearchError(response: Response): Promise<AgentError> {
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    return new MarAgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
+    return new AgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
       details: { status: response.status }
     });
   }
   const parsed = httpErrorResponseSchema.safeParse(payload);
   if (!parsed.success)
-    return new MarAgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
+    return new AgentError('MAR_AGENT_WEB_SEARCH_FAILED', 'Web search failed.', {
       details: { status: response.status }
     });
   const failure = parsed.data.error;
@@ -26,7 +26,7 @@ export async function readWebSearchError(response: Response): Promise<MarAgentEr
     ...(failure.details === undefined ? [] : [`details: ${failure.details}`]),
     ...identifiers
   ].join('; ');
-  return new MarAgentError(
+  return new AgentError(
     failure.code,
     detail.length === 0 ? failure.message : `${failure.message} (${detail})`,
     {

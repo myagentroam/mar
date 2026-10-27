@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { LocalAgentHost } from '../../dist/index.js';
-import { directLocalProcessExecutor } from '../../dist/agent-core/host/local-process-executor.js';
-import { readToolDefinition } from '../../dist/agent-core/tools/local/read.js';
+import { directLocalProcessExecutor } from '../../dist/host/local-process-executor.js';
+import { readToolDefinition } from '../../dist/tools/local/read.js';
 
 // Isolated, synthetic orchestration observations, not a cross-platform performance guarantee.
 const iterations = Number(process.argv[2] ?? 20);

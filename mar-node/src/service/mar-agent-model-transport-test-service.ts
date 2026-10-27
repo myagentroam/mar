@@ -1,4 +1,4 @@
-import { testMarAgentModelTransport } from '@myagentroam/agent';
+import { testAgentModelTransport } from '@myagentroam/agent';
 import {
   marAgentModelTransportTestInputSchema,
   marAgentModelTransportTestResultSchema,
@@ -9,7 +9,7 @@ import { runnerErrorProjection } from '../util/runner-error.js';
 
 interface MarAgentModelTransportTestServiceOptions {
   readonly modelFactory: Pick<MarAgentRuntimeModelFactory, 'create'>;
-  readonly testTransport?: typeof testMarAgentModelTransport;
+  readonly testTransport?: typeof testAgentModelTransport;
   readonly timeoutMs?: number;
 }
 
@@ -35,7 +35,7 @@ export class MarAgentModelTransportTestService {
     });
     if (configuration === undefined) throw new Error('MAR_AGENT_MODEL_TEST_INPUT_INVALID');
     try {
-      const completed = await (this.options.testTransport ?? testMarAgentModelTransport)(
+      const { completed } = await (this.options.testTransport ?? testAgentModelTransport)(
         configuration,
         AbortSignal.timeout(this.#timeoutMs)
       );

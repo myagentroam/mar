@@ -1,16 +1,20 @@
+import {
+  directLocalProcessExecutor,
+  signalProcessTree
+} from '../../src/host/local-process-executor.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAgentHost } from '../../src/agent-core/host/local-agent-host.js';
-import { CodeModeTool } from '../../src/agent-core/tools/code-mode/index.js';
+import { LocalAgentHost } from '../../src/host/local-agent-host.js';
+import { CodeModeTool } from '../../src/tools/code-mode/index.js';
 import {
   codeModeToolDefinition,
   codeExecWaitToolDefinition
-} from '../../src/agent-core/tools/code-mode/index.js';
-import type { ToolExecutionContext } from '../../src/agent-core/tools/contracts.js';
-import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import { normalizeToolInput } from '../../src/agent-core/tools/input.js';
+} from '../../src/tools/code-mode/index.js';
+import type { ToolExecutionContext } from '../../src/tools/contracts.js';
+import type { AgentExtension, SessionExtensionContext } from '../../src/extensions/contracts.js';
+import { normalizeToolInput } from '../../src/tools/input.js';
 import {
   answer,
   call,
@@ -133,9 +137,12 @@ describe('Tool input compatibility', () => {
     const { workspace } = await fixture();
     const invoke = vi.fn(async () => ({ content: 'original' }));
     const tool = new CodeModeTool(
-      new (
-        await import('../../src/agent-core/tools/shared/path-resolver.js')
-      ).WorkspacePathResolver(workspace)
+      new (await import('../../src/tools/shared/path-resolver.js')).WorkspacePathResolver(
+        workspace
+      ),
+      undefined,
+      directLocalProcessExecutor,
+      signalProcessTree
     );
     try {
       const result = await tool.execute(
@@ -222,10 +229,12 @@ describe('Tool input compatibility', () => {
     'normalizes actual SDK %s tools in codeMode=%s without contaminating raw evidence',
     async (protocol, codeMode) => {
       let actual: unknown;
-      const extension: CoreRuntimeExtension = {
+      let sessionContext!: SessionExtensionContext;
+      const extension: AgentExtension = {
         id: 'compatibility',
         apiVersion: '1.0',
         attachSession(context) {
+          sessionContext = context;
           context.tools.register({
             name: 'probe',
             description: 'Fixture',
@@ -266,7 +275,15 @@ describe('Tool input compatibility', () => {
       expect(actual).toEqual({ amount: 2 });
       const result = adapter.requests[1]!.messages.find((message) => message.role === 'tool')!;
       if (codeMode) {
-        expect(result.observations?.[0]).toMatchObject({
+        expect(result.contentParts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'text', text: expect.stringContaining('{"result":2}') })
+          ])
+        );
+        const stored = (await sessionContext.session!.messages()).messages.find(
+          (message) => message.role === 'tool' && message.observations?.length
+        );
+        expect(stored?.observations?.[0]).toMatchObject({
           type: 'tool_result',
           result: { content: '{"result":2}' }
         });

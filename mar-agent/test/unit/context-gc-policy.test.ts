@@ -1,9 +1,9 @@
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelMessage, ModelUsage } from '../../src/agent-core/model/contracts.js';
+import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
   contextGcAppliedCompactCreditCostUnits,
   contextGcImminentCompactAvoidanceCredit,
@@ -13,29 +13,28 @@ import {
   inspectContextGc,
   planContextGc,
   type ContextGcPlannerInput
-} from '../../src/agent-core/runtime/context/gc.js';
+} from '../../src/runtime/context/gc.js';
 import {
   contextGcExecInputReplacement,
   contextGcExecOutputReplacement
-} from '../../src/agent-core/session/context-gc-replacements.js';
+} from '../../src/session/context-gc-replacements.js';
 import {
   buildContextProjection,
   applyContextGcReplacementsToMessages
-} from '../../src/agent-core/runtime/context/projection.js';
-import { contextGcMessageTokens } from '../../src/agent-core/runtime/context/gc-tokens.js';
-import * as gcTokens from '../../src/agent-core/runtime/context/gc-tokens.js';
-import { validateContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { ContextGcRuntime } from '../../src/agent-core/runtime/context/gc-runtime.js';
-import { ResourceInputProjection } from '../../src/agent-core/sdk/resource-input.js';
+} from '../../src/runtime/context/projection.js';
+import { contextGcMessageTokens } from '../../src/runtime/context/gc-tokens.js';
+import * as gcTokens from '../../src/runtime/context/gc-tokens.js';
+import { validateContextGcCheckpoint } from '../../src/session/context-gc-checkpoint.js';
+import type { SessionRecord } from '../../src/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
+import { ResourceInputProjection } from '../../src/sdk/resource-input.js';
 
 function records() {
   let sequence = 0;
   const values: SessionRecord[] = [];
   const add = (type: string, payload: unknown) => {
     const record: SessionRecord = {
-      schemaVersion: 1,
       recordId: `record-${++sequence}`,
       sequence,
       timestamp: new Date(1_800_000_000_000 + sequence).toISOString(),

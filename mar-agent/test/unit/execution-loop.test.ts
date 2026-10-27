@@ -2,18 +2,19 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost } from '../../src/agent-core/host/local-agent-host.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
-import { MAX_MODEL_ATTEMPTS } from '../../src/agent-core/model/http.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
-import type { ClientToolDefinition } from '../../src/agent-core/tools/contracts.js';
-import type { EventPayload } from '../../src/agent-core/runtime/events.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
-import { ExecutionLoop, type ExecutionLoopInput } from '../../src/agent-core/runtime/execution.js';
-import { TodoStore } from '../../src/agent-core/tools/agent/todo.js';
-import { todoWriteToolDefinition } from '../../src/agent-core/tools/agent/todo-write.js';
-import { createSessionToolScheduler } from '../../src/agent-core/tools/scheduler.js';
+import { LocalAgentHost } from '../../src/host/local-agent-host.js';
+import { AgentError } from '../../src/error.js';
+import { MAX_MODEL_ATTEMPTS } from '../../src/model/http.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
+import type { ClientToolDefinition } from '../../src/tools/contracts.js';
+import type { EventPayload } from '../../src/runtime/events.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
+import { ExecutionLoop, type ExecutionLoopInput } from '../../src/runtime/execution.js';
+import { TodoStore } from '../../src/tools/agent/todo.js';
+import { todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { executeRoundTools, type RoundToolScope } from '../../src/tools/execution.js';
+import { createSessionToolScheduler } from '../../src/tools/scheduler.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -46,7 +47,7 @@ async function fixture(
     emit: publish,
     skills: new Map()
   };
-  const input: ExecutionLoopInput = {
+  const input: ExecutionLoopInput<RoundToolScope> = {
     mode: 'run',
     sourceType: 'user',
     signal: controller.signal,
@@ -62,6 +63,7 @@ async function fixture(
     recoverySignal: () => controller.signal,
     checkpoint: async () => {},
     startModel: events,
+    runTools: executeRoundTools,
     prepareRound: async () => ({
       request: { system: 'Fixture.', messages: input.messages, tools },
       toolScope: {
@@ -214,7 +216,7 @@ describe('Execution loop boundaries', () => {
   });
 
   it('observes authoritative context usage before a stream failure can lose the round', async () => {
-    const failure = new MarAgentError('FIXTURE_STREAM_FAILURE', 'Fixture stream failed.');
+    const failure = new AgentError('FIXTURE_STREAM_FAILURE', 'Fixture stream failed.');
     const state = await fixture(async function* () {
       yield { type: 'usage', usage: { contextInputTokens: 1200, outputTokens: 10 } };
       throw failure;

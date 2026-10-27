@@ -30,6 +30,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   expect(skill.description).toContain('MAR-managed Workspace');
   expect(skill.description).toContain('scheduled tasks');
   expect(skill.description).toContain('status/history/results');
+  expect(skill.description).toContain('independent Sessions');
   expect(skill.description).toContain('for the current or other Sessions');
   expect(skill.description).toContain('other authorized MAR Nodes');
   expect(skill.description).toContain('Ordinary local shell work');

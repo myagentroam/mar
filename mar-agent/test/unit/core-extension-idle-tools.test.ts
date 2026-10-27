@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
 import { answer, call, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
-function extension(save: (value: CoreSessionExtensionContext) => void) {
+function extension(save: (value: SessionExtensionContext) => void) {
   return { id: 'idle', apiVersion: '1.0' as const, attachSession: save };
 }
 
@@ -13,7 +13,7 @@ describe('Idle Core tool sources', () => {
   it.each([false, true])(
     'selects idle Local sources for a timer while its model creator is still active (codeMode=%s)',
     async (codeMode) => {
-      let timerCall: CoreOperationContext | undefined;
+      let timerCall: ExtensionOperationContext | undefined;
       let timerError: unknown;
       let text: string | undefined;
       const readFacts: Array<{ parentAttemptId?: string }> = [];
@@ -80,7 +80,7 @@ describe('Idle Core tool sources', () => {
   );
 
   it('shares the existing serial scheduler for sibling idle tool calls', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let begin!: () => void;
     let finish!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -135,7 +135,7 @@ describe('Idle Core tool sources', () => {
   it.each([false, true])(
     'projects neutral Host sources through the same model registry (codeMode=%s)',
     async (codeMode) => {
-      const calls: CoreOperationContext[] = [];
+      const calls: ExtensionOperationContext[] = [];
       const { session, adapter } = await fixture(
         [],
         (_request, index) =>
@@ -174,8 +174,8 @@ describe('Idle Core tool sources', () => {
     }
   );
   it('uses real Local Host bindings at idle without borrowing an execution or writing model history', async () => {
-    let context!: CoreSessionExtensionContext;
-    const calls: CoreOperationContext[] = [];
+    let context!: SessionExtensionContext;
+    const calls: ExtensionOperationContext[] = [];
     const { session, adapter } = await fixture(
       [
         extension((value) => {
@@ -219,7 +219,7 @@ describe('Idle Core tool sources', () => {
   });
 
   it('starts a real idle exec with the Session/operation owner and shared environment', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const { session } = await fixture(
       [
         extension((value) => {
@@ -240,7 +240,7 @@ describe('Idle Core tool sources', () => {
   });
 
   it('captures ordinary Host handlers rather than dispatching a later implementation by name', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let current = 'a';
     const refSource = (value: string) => ({
       definition: {
@@ -250,7 +250,7 @@ describe('Idle Core tool sources', () => {
       },
       source: { kind: 'host' as const, id: 'host-probe', revision: value },
       available: () => current === value,
-      execute: async (_input: unknown, call: CoreOperationContext) => ({
+      execute: async (_input: unknown, call: ExtensionOperationContext) => ({
         content: value,
         data: { executionId: call.executionId }
       })
@@ -283,7 +283,7 @@ describe('Idle Core tool sources', () => {
   });
 
   it('does not reread a captured Host handler after an asynchronous policy callback', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let began!: () => void;
     let finish!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -326,8 +326,8 @@ describe('Idle Core tool sources', () => {
   });
 
   it('calls shared static MCP with actual operation identity and a captured source guard', async () => {
-    let context!: CoreSessionExtensionContext;
-    const calls: Array<{ operation: CoreOperationContext; expected: unknown }> = [];
+    let context!: SessionExtensionContext;
+    const calls: Array<{ operation: ExtensionOperationContext; expected: unknown }> = [];
     const { session } = await fixture(
       [
         extension((value) => {
@@ -364,7 +364,7 @@ describe('Idle Core tool sources', () => {
   });
 
   it('does not bypass a legacy Execution-only Host policy at idle', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let checks = 0;
     const { session } = await fixture(
       [

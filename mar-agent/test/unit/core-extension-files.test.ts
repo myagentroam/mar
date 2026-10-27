@@ -1,22 +1,23 @@
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalFileAccess } from '../../src/agent-core/host/local-file-access.js';
-import { WorkspacePathResolver } from '../../src/agent-core/tools/shared/path-resolver.js';
-import { ExtensionSession } from '../../src/agent-core/extensions/session.js';
+import { LocalFileAccess } from '../../src/host/local-file-access.js';
+import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import { ExtensionSession } from '../../src/extensions/session.js';
 import {
   ExtensionOperations,
-  type CoreOperationContext
-} from '../../src/agent-core/extensions/operation.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
-import { ExtensionServices } from '../../src/agent-core/extensions/services.js';
+  type ExtensionOperationContext
+} from '../../src/extensions/operation.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
+import { ExtensionServices } from '../../src/extensions/services.js';
 
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-const call = (signal = new AbortController().signal): CoreOperationContext => ({
+const call = (signal = new AbortController().signal): ExtensionOperationContext => ({
   operationId: 'files-op',
   sessionId: 'session',
   sessionEpoch: 1,
@@ -104,6 +105,7 @@ describe('Native file ports', () => {
     const { root, files } = await fixture();
     await writeFile(join(root, 'replacement.bin'), new Uint8Array([3, 4]));
     const session = new ExtensionSession(
+      extensionToolRuntime,
       'session',
       1,
       new ExtensionServices('agent'),
@@ -152,6 +154,7 @@ describe('Native file ports', () => {
     await scope.dispose();
     await expect(context.files!.read({ path: 'replacement.bin' })).rejects.toThrow(/RETIRED/);
     const noPorts = new ExtensionSession(
+      extensionToolRuntime,
       'legacy',
       1,
       new ExtensionServices('agent'),
@@ -163,6 +166,7 @@ describe('Native file ports', () => {
     legacy.activate();
     expect(noPorts.context({ id: 'legacy', apiVersion: '1.0' }, legacy).files).toBeUndefined();
     const partial = new ExtensionSession(
+      extensionToolRuntime,
       'partial',
       1,
       new ExtensionServices('agent'),

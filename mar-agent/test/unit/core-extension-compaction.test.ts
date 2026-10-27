@@ -3,39 +3,35 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
-  MarAgentError,
+  AgentError,
   SecretValue,
   generateModelText,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { MarAgent } from '../../src/agent-core/sdk/types.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { Agent } from '../../src/sdk/types.js';
 import type {
-  CoreExtensionSource,
-  CoreRuntimeExtension,
-  CoreSessionExtensionContext
-} from '../../src/agent-core/extensions/contracts.js';
-import type { CoreOperationContext } from '../../src/agent-core/extensions/operation.js';
+  ExtensionSource,
+  AgentExtension,
+  SessionExtensionContext
+} from '../../src/extensions/contracts.js';
+import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
 import {
   compactExtensionResult,
-  type CoreCompactContext,
-  type CoreCompactResult
-} from '../../src/agent-core/extensions/compaction.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { DEFAULT_COMPACTION_FOCUS } from '../../src/agent-core/runtime/compaction/history.js';
-import { compactionPrompt } from '../../src/agent-core/prompts/compact.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
+  type ExtensionCompactContext,
+  type ExtensionCompactResult
+} from '../../src/extensions/compaction.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { DEFAULT_COMPACTION_FOCUS } from '../../src/runtime/compaction/history.js';
+import { compactionPrompt } from '../../src/prompts/compact.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
 
-const baseModel: MarAgentModelConfiguration = {
+const baseModel: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -61,7 +57,7 @@ class ScriptedAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   resetContinuationCalls = 0;
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     readonly script: Script
   ) {}
   createTurnSession() {
@@ -98,18 +94,18 @@ const modelSummary = (text: string): ModelEvent[] => [
 ];
 
 type CompactHandler = (
-  context: CoreCompactContext,
-  call: CoreOperationContext,
-  next: (context: CoreCompactContext) => Promise<CoreCompactResult | undefined>
-) => CoreCompactResult | undefined | Promise<CoreCompactResult | undefined>;
+  context: ExtensionCompactContext,
+  call: ExtensionOperationContext,
+  next: (context: ExtensionCompactContext) => Promise<ExtensionCompactResult | undefined>
+) => ExtensionCompactResult | undefined | Promise<ExtensionCompactResult | undefined>;
 
 function compactExtension(handler: CompactHandler) {
-  const contexts: CoreCompactContext[] = [];
+  const contexts: ExtensionCompactContext[] = [];
   const signals: AbortSignal[] = [];
-  const extension: CoreRuntimeExtension = {
+  const extension: AgentExtension = {
     id: 'compact-generator',
     apiVersion: '1.0',
-    attachSession(context: CoreSessionExtensionContext) {
+    attachSession(context: SessionExtensionContext) {
       context.hooks.intercept('compact.generate', async (input, call, next) => {
         contexts.push(input);
         signals.push(call.signal);
@@ -120,7 +116,7 @@ function compactExtension(handler: CompactHandler) {
   return { extension, contexts, signals };
 }
 
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 const homes: string[] = [];
 afterEach(async () => {
   vi.useRealTimers();
@@ -129,10 +125,9 @@ afterEach(async () => {
 });
 
 async function compactFixture(input: {
-  extensions: readonly CoreRuntimeExtension[] | CoreExtensionSource;
+  extensions: readonly AgentExtension[] | ExtensionSource;
   script: Script;
-  model?: Partial<MarAgentModelConfiguration>;
-  rolloutBudget?: NonNullable<Parameters<typeof createMarAgentWithAdapter>[0]['rolloutBudget']>;
+  model?: Partial<AgentModelConfiguration>;
 }) {
   const home = await mkdtemp(join(tmpdir(), 'mar-core-compact-ext-'));
   homes.push(home);
@@ -140,27 +135,28 @@ async function compactFixture(input: {
   await mkdir(workspace);
   await writeFile(join(workspace, 'AGENTS.md'), 'ENV_RULE_MARKER: private environment rule.\n');
   await writeFile(join(workspace, 'evidence.txt'), 'TOOL_EVIDENCE_MARKER verified reading.\n');
-  const configuration: MarAgentModelConfiguration = { ...baseModel, ...input.model };
+  const configuration: AgentModelConfiguration = { ...baseModel, ...input.model };
   const adapter = new ScriptedAdapter(configuration, input.script);
   const host = new LocalAgentHost({ homeDirectory: home, workspace });
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [configuration],
-    runtimeExtensions: input.extensions,
-    adapterFactory: () => adapter,
-    ...(input.rolloutBudget === undefined ? {} : { rolloutBudget: input.rolloutBudget })
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [configuration],
+      extensions: input.extensions
+    },
+    () => adapter
+  );
   agents.push(agent);
   const session = await agent.createSession({ workspace, title: 'Compact extension test' });
   return { agent, session, adapter, host, home };
 }
 
 async function collect(handle: {
-  [Symbol.asyncIterator](): AsyncIterator<MarAgentEvent>;
+  [Symbol.asyncIterator](): AsyncIterator<AgentEvent>;
   result(): Promise<{ status: string; finalAnswer?: string; errorCode?: string }>;
 }) {
-  const events: MarAgentEvent[] = [];
+  const events: AgentEvent[] = [];
   for await (const event of handle) events.push(event);
   return { events, result: await handle.result() };
 }
@@ -334,7 +330,7 @@ describe('Core compact generation extension', () => {
       let launch = retained;
       let joinCell = false;
       let cellId!: string;
-      const cellExtension: CoreRuntimeExtension = {
+      const cellExtension: AgentExtension = {
         id: 'compact-retained-cell',
         apiVersion: '1.0',
         attachSession(context) {
@@ -385,13 +381,13 @@ describe('Core compact generation extension', () => {
         third = provider();
       let current = first;
       const { apiKey: _apiKey, ...withoutKey } = baseModel;
-      const dedicated = (credentialProvider: typeof first): MarAgentModelConfiguration => ({
+      const dedicated = (credentialProvider: typeof first): AgentModelConfiguration => ({
         ...withoutKey,
         id: 'dedicated',
         credentialProvider,
         conversationModel: false
       });
-      const source: CoreExtensionSource = {
+      const source: ExtensionSource = {
         async resolve() {
           const captured = revision;
           const capturedProvider = current;
@@ -779,8 +775,11 @@ describe('Core compact generation extension', () => {
   it.each([
     [
       'declines by passing through next',
-      (context: CoreCompactContext, _call: CoreOperationContext, next: () => Promise<undefined>) =>
-        next()
+      (
+        context: ExtensionCompactContext,
+        _call: ExtensionOperationContext,
+        next: () => Promise<undefined>
+      ) => next()
     ],
     [
       'throws an external-model error',
@@ -791,7 +790,9 @@ describe('Core compact generation extension', () => {
     ['returns a blank summary', () => ({ summary: '   ' })],
     [
       'returns an over-budget summary',
-      (context: CoreCompactContext) => ({ summary: 'word '.repeat(context.summaryTokenBudget * 3) })
+      (context: ExtensionCompactContext) => ({
+        summary: 'word '.repeat(context.summaryTokenBudget * 3)
+      })
     ],
     [
       'returns an invalid usage payload',
@@ -863,7 +864,7 @@ describe('Core compact generation extension', () => {
           if (
             request.messages.filter((message) => message.contextualBlock === undefined).length > 2
           )
-            throw new MarAgentError(
+            throw new AgentError(
               'context_length_exceeded',
               'Native compact exceeded the provider context window.'
             );
@@ -905,7 +906,7 @@ describe('Core compact generation extension', () => {
     });
     const compact = compactExtension((_context, call) => {
       notifyStarted();
-      return new Promise<CoreCompactResult | undefined>((_resolve, reject) => {
+      return new Promise<ExtensionCompactResult | undefined>((_resolve, reject) => {
         call.signal.addEventListener('abort', () => reject(call.signal.reason), { once: true });
       });
     });
@@ -937,13 +938,13 @@ describe('Core compact generation extension', () => {
     const started = new Promise<void>((resolve) => {
       notifyStarted = resolve;
     });
-    let release!: (value: CoreCompactResult) => void;
-    const gate = new Promise<CoreCompactResult>((resolve) => {
+    let release!: (value: ExtensionCompactResult) => void;
+    const gate = new Promise<ExtensionCompactResult>((resolve) => {
       release = resolve;
     });
     const compact = compactExtension(
       (_context, call) =>
-        new Promise<CoreCompactResult | undefined>((resolve) => {
+        new Promise<ExtensionCompactResult | undefined>((resolve) => {
           notifyStarted();
           call.signal.addEventListener(
             'abort',
@@ -980,7 +981,6 @@ describe('Core compact generation extension', () => {
     }));
     const f = await compactFixture({
       extensions: [compact.extension],
-      rolloutBudget: { limitTokens: 10_000 },
       script: (request) =>
         request.toolChoice === 'none' ? modelSummary('NEVER_USED_SUMMARY') : answer('seeded')
     });
@@ -1078,6 +1078,59 @@ describe('Core compact generation extension', () => {
   });
 
   describe('continuation reset regression', () => {
+    it('retains a committed checkpoint receipt when continuation reset fails after persistence', async () => {
+      let context!: SessionExtensionContext;
+      const compact = compactExtension(() => ({ summary: 'COMMITTED_BEFORE_RESET_FAILURE' }));
+      const f = await compactFixture({
+        extensions: [
+          compact.extension,
+          {
+            id: 'compact-receipt-observer',
+            apiVersion: '1.0',
+            attachSession(value) {
+              context = value;
+            }
+          }
+        ],
+        script: () => answer('seeded')
+      });
+      await f.session.run({ prompt: 'seed' }).result();
+      const createTurn = f.adapter.createTurnSession.bind(f.adapter);
+      const reset = vi.spyOn(f.adapter, 'createTurnSession').mockImplementation(() => ({
+        ...createTurn(),
+        resetContinuation() {
+          throw new Error('injected reset failure');
+        }
+      }));
+
+      expect((await f.session.compact().result()).status).toBe('failed');
+      const checkpoint = (await readRecords(f.home, f.session.id)).filter(
+        (record) => record.type === 'compact.completed'
+      );
+      expect(checkpoint).toHaveLength(1);
+      expect(checkpoint[0]).toMatchObject({
+        payload: { summary: 'COMMITTED_BEFORE_RESET_FAILURE' }
+      });
+      const receipt = (await context.session!.inspect()).operations.find(
+        (item) => item.kind === 'compact'
+      );
+      expect(receipt).toMatchObject({
+        status: 'failed',
+        changed: true,
+        recordId: checkpoint[0]!.recordId
+      });
+
+      reset.mockRestore();
+      expect((await f.session.run({ prompt: 'continue after compact' }).result()).status).toBe(
+        'completed'
+      );
+      expect(
+        f.adapter.requests
+          .at(-1)!
+          .messages.some((message) => message.content.includes('COMMITTED_BEFORE_RESET_FAILURE'))
+      ).toBe(true);
+    });
+
     it('resets the adapter continuation exactly once after a manual extension checkpoint commits', async () => {
       const compact = compactExtension(() => ({ summary: 'RESET_MANUAL_EXTENSION_SUMMARY' }));
       const f = await compactFixture({
@@ -1106,7 +1159,6 @@ describe('Core compact generation extension', () => {
       }));
       const f = await compactFixture({
         extensions: [compact.extension],
-        rolloutBudget: { limitTokens: 10_000 },
         script: (request) =>
           request.toolChoice === 'none' ? modelSummary('UNUSED_DEFAULT_SUMMARY') : answer('seeded')
       });

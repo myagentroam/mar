@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { residencyFixture } from '../support/subagent-residency.js';
-import { executeAgentWait } from '../../src/agent-core/tools/agent/agent-wait.js';
-import { executeAgentCancel } from '../../src/agent-core/tools/agent/agent-cancel.js';
-import { boundedModelToolOutput } from '../../src/agent-core/tools/output-projection.js';
-import { renderSubagentUpdate } from '../../src/agent-core/subagent/model-update.js';
-import { SubagentScheduler } from '../../src/agent-core/subagent/scheduler.js';
-import type { SubagentTaskSnapshot } from '../../src/agent-core/subagent/contracts.js';
-import type { ToolRuntimeContext } from '../../src/agent-core/tools/runtime-context.js';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+import { executeAgentWait } from '../../src/tools/agent/agent-wait.js';
+import { executeAgentCancel } from '../../src/tools/agent/agent-cancel.js';
+import { boundedModelToolOutput } from '../../src/tools/output-projection.js';
+import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
+import { createTestSubagents } from './support/subagent-controller.js';
+import type { SubagentTaskSnapshot } from '../../src/subagent/contracts.js';
+import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 const fixtures: Awaited<ReturnType<typeof residencyFixture>>[] = [];
 afterEach(async () => {
@@ -44,7 +44,7 @@ async function fixture(noisy = false, answer?: { text?: string; summary: string 
                 callId: `verbose-command-${i}`,
                 summary: 'command-output '.repeat(140),
                 timestamp: new Date().toISOString()
-              } as MarAgentEvent;
+              } as AgentEvent;
           for await (const event of handle)
             if (answer && event.type === 'message.completed' && event.phase === 'final_answer') {
               if (answer.text !== undefined) yield { ...event, text: answer.text };
@@ -196,15 +196,23 @@ describe('subagent model result projection', () => {
     }
   );
 
-  it('does not expose automatic records through the standalone scheduler', async () => {
-    const scheduler = new SubagentScheduler(async () => ({
+  it('does not expose automatic records through the controller wait result', async () => {
+    const scheduler = await createTestSubagents(async () => ({
       summary: 'Tests passed; see source.ts:2-9.',
       changedFiles: ['source.ts'],
       verification: ['verbose command output'],
       evidence: [{ path: 'source.ts', startLine: 2, endLine: 9 }]
     }));
     try {
-      const receipt = await scheduler.run(task);
+      const receipt = await scheduler.run({ ...task, background: true });
+      await vi.waitFor(async () => {
+        expect(await scheduler.inspect(receipt.agentId)).toMatchObject({
+          status: 'completed',
+          changedFiles: ['source.ts'],
+          verification: ['verbose command output'],
+          evidence: [{ path: 'source.ts', startLine: 2, endLine: 9 }]
+        });
+      });
       const result = await executeAgentWait(
         { agentIds: [receipt.agentId], mode: 'all', waitMs: 10_000 },
         { subagents: scheduler, signal: new AbortController().signal } as ToolRuntimeContext

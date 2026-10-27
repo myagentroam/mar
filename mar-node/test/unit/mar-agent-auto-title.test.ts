@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  createMarAgent,
+  createAgent,
   generateSessionTitle,
-  LocalAgentHost,
-  openMarAgentSessionCatalog,
-  type MarAgent,
-  type MarAgentEvent,
-  type MarAgentSession
+  openAgentSessionCatalog,
+  type Agent,
+  type AgentEvent,
+  type AgentSession
 } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
 import type { NodeAgentSession } from '../../src/database.js';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
@@ -66,13 +66,13 @@ async function fixture() {
           executionId,
           type: 'execution.started',
           mode: 'run'
-        } as MarAgentEvent;
+        } as AgentEvent;
       },
       result: async () => ({ executionId, status: 'completed' as const, finalAnswer: 'Done' }),
       cancel: vi.fn()
     };
   };
-  const session: MarAgentSession = {
+  const session: AgentSession = {
     id: 'native-session',
     run: vi.fn(handle),
     steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
@@ -80,7 +80,7 @@ async function fixture() {
     compact: vi.fn(handle),
     cancel: vi.fn()
   };
-  const agent: MarAgent = {
+  const agent: Agent = {
     createSession: vi.fn(async () => session),
     openSession: vi.fn(async () => session),
     listSessions: vi.fn(),
@@ -155,7 +155,7 @@ describe('Node host auto title', () => {
         {
           generateTitle: f.generateTitle,
           createAgent: (options) =>
-            createMarAgent({
+            createAgent({
               ...options,
               host: new LocalAgentHost({ mode: 'node', homeDirectory: f.home, workspace: f.home })
             })
@@ -183,7 +183,7 @@ describe('Node host auto title', () => {
         );
         const sessionId = f.host.promote.mock.calls[0]![1] as string;
         await controller.dispose();
-        const catalog = await openMarAgentSessionCatalog({ homeDirectory: f.home });
+        const catalog = await openAgentSessionCatalog({ homeDirectory: f.home });
         try {
           expect((await catalog.list()).sessions).toEqual([
             expect.objectContaining({ id: sessionId, title })
@@ -231,7 +231,7 @@ describe('Node host auto title', () => {
       const controller = new MarAgentManagedRunController(runner, f.host, {
         generateTitle: f.generateTitle,
         createAgent: (options) =>
-          createMarAgent({
+          createAgent({
             ...options,
             host: new LocalAgentHost({ mode: 'node', homeDirectory: f.home, workspace: f.home })
           })
@@ -444,7 +444,7 @@ describe('Node host auto title', () => {
       const ordinary = new MarAgentManagedRunController(runner, f.host, {
         generateTitle,
         createAgent: (options) =>
-          createMarAgent({
+          createAgent({
             ...options,
             host: new LocalAgentHost({ mode: 'node', homeDirectory: f.home, workspace: f.home })
           })
@@ -545,7 +545,7 @@ describe('Node host auto title', () => {
             title: 'Project inspection'
           });
         }
-        const catalog = await openMarAgentSessionCatalog({ homeDirectory: f.home });
+        const catalog = await openAgentSessionCatalog({ homeDirectory: f.home });
         try {
           expect((await catalog.list()).sessions).toEqual([
             expect.objectContaining({ id: sessionId, title: 'Project inspection' })

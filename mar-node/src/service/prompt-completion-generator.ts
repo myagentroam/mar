@@ -1,14 +1,14 @@
 import {
   countModelTokens,
   generateModelText,
-  marAgentReasoningEffortSchema,
-  type CoreCompactMessage,
+  agentReasoningEffortSchema,
   type GenerateModelTextInput,
   type GenerateModelTextResult,
-  type ClientToolDefinition,
-  type MarAgentModelConfiguration,
-  type MarAgentReasoningEffort
+  type AgentModelConfiguration,
+  type AgentReasoningEffort
 } from '@myagentroam/agent';
+import type { ExtensionCompactMessage } from '@myagentroam/agent/extensions';
+import type { ClientToolDefinition } from '@myagentroam/agent/host';
 
 const MAX_INPUT_TOKENS = 12_288;
 const MAX_OUTPUT_TOKENS = 2_048;
@@ -81,9 +81,9 @@ function predictionSystemPrompt(trigger: GeneratePromptCompletionInput['trigger'
 }
 
 export interface GeneratePromptCompletionInput {
-  readonly model: MarAgentModelConfiguration;
+  readonly model: AgentModelConfiguration;
   readonly trigger: 'MANUAL' | 'AUTO';
-  readonly reasoningEffort?: MarAgentReasoningEffort;
+  readonly reasoningEffort?: AgentReasoningEffort;
   readonly history: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[];
   readonly referenceMessages: readonly string[];
   readonly executionSnapshot: string;
@@ -228,7 +228,7 @@ export async function generatePromptCompletion(
   }
 
   const stableMessages = [...references.messages, ...history.messages];
-  let messages: CoreCompactMessage[] = [...stableMessages, currentMessage];
+  let messages: ExtensionCompactMessage[] = [...stableMessages, currentMessage];
   while (countRequestInputTokens(system, messages) > inputTokenBudget) {
     if (references.messages.length > 0) references.messages.shift();
     else if (history.messages.length > 0) history.messages.shift();
@@ -399,7 +399,7 @@ function validateInput(input: GeneratePromptCompletionInput): void {
     throw invalidInput();
   if (
     input.reasoningEffort !== undefined &&
-    !marAgentReasoningEffortSchema.safeParse(input.reasoningEffort).success
+    !agentReasoningEffortSchema.safeParse(input.reasoningEffort).success
   )
     throw invalidInput();
   if (

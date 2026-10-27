@@ -1,5 +1,5 @@
 import { NODE_COMPUTER_TOOL_NAME } from '../../mcp/naming.js';
-import type { HostSkill } from '@myagentroam/agent';
+import type { HostSkill } from '@myagentroam/agent/host';
 
 export const computerUseHostSkill: HostSkill = {
   name: 'computer-use',

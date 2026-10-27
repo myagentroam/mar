@@ -3,7 +3,7 @@ import {
   type BubblewrapSandboxProfile,
   type LinuxSandboxMount
 } from '@myagentroam/agent/sandbox/linux';
-import { MarAgentError } from '@myagentroam/agent';
+import { AgentError } from '@myagentroam/agent';
 import { posix } from 'node:path';
 import type { HostedConversationProcessExecutorInput } from './hosted-conversation-node-service.js';
 
@@ -15,7 +15,7 @@ export function hostedConversationSandboxProfile(
     (input.generatedImagesDirectory === undefined) !==
     (input.generatedImagesLogicalPath === undefined)
   )
-    throw new MarAgentError('SANDBOX_POLICY_INVALID', 'Sandbox policy is invalid.');
+    throw new AgentError('SANDBOX_POLICY_INVALID', 'Sandbox policy is invalid.');
 
   const mounts: LinuxSandboxMount[] = [
     {

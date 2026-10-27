@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CoreAgentsApi } from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import type { ExtensionAgentsApi } from '../../src/extensions.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { fixture, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(async () => {
@@ -10,8 +10,8 @@ afterEach(async () => {
 
 describe('SDK subagent detail residency', () => {
   it('uses child writer durability and preserves independent native observations after eviction', async () => {
-    let first!: CoreAgentsApi;
-    let second!: CoreAgentsApi;
+    let first!: ExtensionAgentsApi;
+    let second!: ExtensionAgentsApi;
     const f = await fixture(
       [
         {

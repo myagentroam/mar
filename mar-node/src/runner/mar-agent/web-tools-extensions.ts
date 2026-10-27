@@ -1,9 +1,5 @@
-import {
-  MarAgentError,
-  type ClientToolDefinition,
-  type LocalAgentExecutionExtensions,
-  type ToolExecutionResult
-} from '@myagentroam/agent';
+import { AgentError, type ToolExecutionResult } from '@myagentroam/agent';
+import type { ClientToolDefinition, LocalAgentExecutionExtensions } from '@myagentroam/agent/host';
 import {
   WEB_FETCH_MAX_URL_LENGTH,
   webFetchRequestSchema,
@@ -77,14 +73,14 @@ export function createWebToolsExtensions(input: {
     isToolAvailable,
     executeTool: async (call, context) => {
       if (!isToolAvailable(call.name, context))
-        throw new MarAgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Node web tool is unavailable.');
+        throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Node web tool is unavailable.');
       context.signal.throwIfAborted();
       const parsed =
         call.name === 'web_search'
           ? webSearchRequestSchema.safeParse(call.arguments)
           : webFetchRequestSchema.safeParse(call.arguments);
       if (!parsed.success)
-        throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Node web tool input is invalid.');
+        throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Node web tool input is invalid.');
       try {
         if (call.name === 'web_search')
           return await input.webSearch!(webSearchRequestSchema.parse(parsed.data), context.signal);
@@ -94,8 +90,8 @@ export function createWebToolsExtensions(input: {
           context.signal
         );
       } catch (error) {
-        if (context.signal.aborted || error instanceof MarAgentError) throw error;
-        throw new MarAgentError(
+        if (context.signal.aborted || error instanceof AgentError) throw error;
+        throw new AgentError(
           call.name === 'web_search' ? 'MAR_AGENT_WEB_SEARCH_FAILED' : 'MAR_AGENT_WEB_FETCH_FAILED',
           call.name === 'web_search' ? 'Web search failed.' : 'Web fetch failed.',
           { cause: error }

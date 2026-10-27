@@ -16,8 +16,20 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import { openMarAgentSessionCatalog } from '../../src/agent-core/session/catalog.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { openAgentSessionCatalog } from '../../src/sdk/session-catalog.js';
+
+async function activeDirectory(home: string, id: string): Promise<string> {
+  const root = join(home, '.mar', 'agent', 'sessions');
+  const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8')) as {
+    sessions: Array<{ id: string; storage?: { encoding: number; generation?: string } }>;
+  };
+  const entry = index.sessions.find((item) => item.id === id);
+  if (!entry) throw new Error('Session missing from fixture index');
+  return entry.storage?.encoding === 2
+    ? join(root, id, 'v2', entry.storage.generation!)
+    : join(root, id);
+}
 
 const homes: string[] = [];
 afterEach(async () =>
@@ -427,7 +439,7 @@ describe('JSONL session store', () => {
     const session = await store.createSession({ workspace: home });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.delete(session.id)).resolves.toEqual({ deleted: true });
     expect((await catalog.list()).sessions).toEqual([]);
     await catalog.close();
@@ -444,7 +456,7 @@ describe('JSONL session store', () => {
       force: true
     });
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.delete(session.id)).resolves.toEqual({ deleted: false });
     await expect(catalog.list()).resolves.toEqual({ sessions: [] });
     await catalog.close();
@@ -483,7 +495,7 @@ describe('JSONL session store', () => {
     });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.history(session.id)).resolves.toMatchObject({
       entries: [
         {
@@ -534,9 +546,9 @@ describe('JSONL session store', () => {
         }
       });
       await store.close();
-      const eventsPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+      const eventsPath = join(await activeDirectory(home, session.id), 'events-000001.jsonl');
       const original = await readFile(eventsPath, 'utf8');
-      const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+      const catalog = await openAgentSessionCatalog({ homeDirectory: home });
       try {
         const page = await catalog.history(session.id, { limit: 1 });
         const events = page.entries.flatMap((entry) =>
@@ -635,7 +647,7 @@ describe('JSONL session store', () => {
     }
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     const forked = await catalog.fork(source.id, {
       boundaryTurnId: 'turn-1',
       title: 'Renamed (Copy 1)'
@@ -770,12 +782,36 @@ describe('JSONL session store', () => {
       { name: 'input.png', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', url, urlExpiresAt }
     ]);
     expect(images[0]).toMatchObject({ url, urlExpiresAt });
+    expect(images[0]).toMatchObject({
+      resourceInputVersion: 1,
+      resourceId: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    });
+    expect(images[0]).not.toHaveProperty('fileName');
     const restored = await store.readInputImages(session.id, images);
     expect(restored).toMatchObject([
       { mimeType: 'image/png', url, urlExpiresAt, resourceId: images[0]!.resourceId }
     ]);
     expect(restored[0]).not.toHaveProperty('dataBase64');
-    await store.append(session.id, { type: 'turn.user', payload: { prompt: 'inspect', images } });
+    const input = await store.append(session.id, {
+      type: 'turn.user',
+      payload: { prompt: 'inspect', images }
+    });
+    const image = await store.readInputImage(session.id, {
+      sequence: input.sequence,
+      imageIndex: 0
+    });
+    expect(image).toMatchObject({
+      resourceInputVersion: 1,
+      resourceId: images[0]!.resourceId,
+      name: 'input.png',
+      mimeType: 'image/png',
+      byteSize: 5,
+      sha256: images[0]!.sha256,
+      dataBase64: 'aW1hZ2U=',
+      url,
+      urlExpiresAt
+    });
+    expect(image).not.toHaveProperty('fileName');
     await expect(store.readResource(session.id, images[0]!.resourceId!)).resolves.toEqual({
       mimeType: 'image/png',
       dataBase64: 'aW1hZ2U='
@@ -820,7 +856,7 @@ describe('JSONL session store', () => {
       title: 'Original (Copy 1)'
     });
 
-    const copied = join(home, '.mar', 'agent', 'sessions', forked.id, 'resources');
+    const copied = join(await activeDirectory(home, forked.id), 'resources');
     await expect(readdir(copied)).resolves.toEqual([
       `${resources[0]!.resourceId}.bin`,
       `${resources[0]!.resourceId}.json`
@@ -884,7 +920,7 @@ describe('JSONL session store', () => {
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ title: 'Original', workspace: home });
-    const sidecar = join(home, '.mar', 'agent', 'sessions', session.id, 'context-world-state.json');
+    const sidecar = join(await activeDirectory(home, session.id), 'context-world-state.json');
 
     await writeFile(sidecar, '{');
     await expect(store.readContextualWorldState(session.id)).resolves.toBeUndefined();
@@ -927,6 +963,12 @@ describe('JSONL session store', () => {
           ? store.rollbackSession(session.id, { boundaryTurnId: 'turn-1' })
           : store.clearSession(session.id);
       await expect(action).rejects.toMatchObject({ code: 'ENOTDIR' });
+      await expect(store.readContextualWorldState(session.id)).rejects.toMatchObject({
+        code: 'MAR_AGENT_SESSION_CORRUPT'
+      });
+      await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'generated_images'));
+      const recover = await store.acquireSessionLease(session.id);
+      await recover();
       await expect(store.readContextualWorldState(session.id)).resolves.toEqual(state);
       await expect(store.read(session.id)).resolves.toEqual(
         expect.arrayContaining([expect.objectContaining({ type: 'turn.user', turnId: 'turn-1' })])
@@ -954,16 +996,19 @@ describe('JSONL session store', () => {
       entries: [{ index: 0, kind: 'instructions', content: 'private instructions' }]
     };
     await store.writeContextualWorldState(session.id, state);
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+    const directory = await activeDirectory(home, session.id);
     const canonical = join(directory, 'context-world-state.json');
     const interrupted = `${canonical}.2.00000000-0000-4000-8000-000000000001.clear-backup`;
     await rename(canonical, interrupted);
     await store.close();
 
     store = await JsonlSessionStore.open(home);
+    const recover = await store.acquireSessionLease(session.id);
+    await recover();
     await expect(store.readContextualWorldState(session.id)).resolves.toEqual(state);
     await store.clearSession(session.id);
-    const committed = `${canonical}.2.00000000-0000-4000-8000-000000000002.clear-backup`;
+    const currentDirectory = await activeDirectory(home, session.id);
+    const committed = `${join(currentDirectory, 'context-world-state.json')}.2.00000000-0000-4000-8000-000000000002.clear-backup`;
     await writeFile(committed, 'private instructions');
     await store.close();
     const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
@@ -974,7 +1019,11 @@ describe('JSONL session store', () => {
     await writeFile(indexPath, JSON.stringify(index));
 
     store = await JsonlSessionStore.open(home);
-    expect((await readdir(directory)).filter((name) => name.endsWith('.clear-backup'))).toEqual([]);
+    const recoverCommitted = await store.acquireSessionLease(session.id);
+    await recoverCommitted();
+    expect(
+      (await readdir(currentDirectory)).filter((name) => name.endsWith('.clear-backup'))
+    ).toEqual([]);
     await expect(store.readContextualWorldState(session.id)).resolves.toBeUndefined();
     await store.close();
   });
@@ -1073,7 +1122,7 @@ describe('JSONL session store', () => {
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ title: 'Original', workspace: home });
-    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const inputImages = join(await activeDirectory(home, session.id), 'resources');
     const generatedImages = join(home, '.mar', 'agent', 'sessions', session.id, 'generated_images');
     await mkdir(generatedImages);
     const inputContents = ['retained-input', 'removed-input'];
@@ -1149,7 +1198,7 @@ describe('JSONL session store', () => {
     }
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     const beforeRollback = Date.now();
     const rolledBack = await catalog.rollback(session.id, { boundaryTurnId: 'turn-1' });
     expect(rolledBack).toMatchObject({
@@ -1167,7 +1216,10 @@ describe('JSONL session store', () => {
         })
       ]
     });
-    expect((await readdir(inputImages)).sort()).toEqual([
+    expect(inputImages).toBe(join(await activeDirectory(home, session.id), 'resources'));
+    expect(
+      (await readdir(join(await activeDirectory(home, session.id), 'resources'))).sort()
+    ).toEqual([
       `${inputResources[0]![0]!.resourceId}.bin`,
       `${inputResources[0]![0]!.resourceId}.json`
     ]);
@@ -1225,7 +1277,7 @@ describe('JSONL session store', () => {
     });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.rollback(session.id, { boundaryTurnId: null })).resolves.toMatchObject({
       id: session.id,
       title: 'New session'
@@ -1268,7 +1320,7 @@ describe('JSONL session store', () => {
         images: [resource]
       }
     });
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const directory = join(await activeDirectory(home, session.id), 'resources');
     const path = join(directory, `${resource.resourceId}.bin`);
     await expect(
       store.readInputImages(session.id, [
@@ -1386,7 +1438,7 @@ describe('JSONL session store', () => {
         imageIndex: 1
       })
     ).resolves.toBeUndefined();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.history(session.id)).resolves.toMatchObject({
       entries: [
         {
@@ -1423,7 +1475,7 @@ describe('JSONL session store', () => {
     });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     const history = await catalog.history(session.id);
     expect(history.entries).toEqual([
       expect.objectContaining({
@@ -1469,7 +1521,7 @@ describe('JSONL session store', () => {
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ workspace: home });
     await store.updateTitle(session.id, 'Kept title');
-    const inputImages = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const inputImages = join(await activeDirectory(home, session.id), 'resources');
     const generatedImages = join(home, '.mar', 'agent', 'sessions', session.id, 'generated_images');
     await mkdir(generatedImages);
     const images = await store.persistInputImages(session.id, [
@@ -1517,7 +1569,7 @@ describe('JSONL session store', () => {
     });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     const cleared = await catalog.clear(session.id);
     expect(cleared).toMatchObject({
       id: session.id,
@@ -1525,6 +1577,7 @@ describe('JSONL session store', () => {
       workspace: home
     });
     await expect(catalog.history(session.id)).resolves.toEqual({ entries: [] });
+    expect(inputImages).toBe(join(await activeDirectory(home, session.id), 'resources'));
     await expect(readdir(inputImages)).resolves.toEqual([]);
     await expect(readdir(generatedImages)).resolves.toEqual([]);
     await catalog.close();
@@ -1544,7 +1597,7 @@ describe('JSONL session store', () => {
       })
     ).toMatchObject({ sequence: 2 });
     const release = await reopened.acquireSessionLease(session.id);
-    const lockedCatalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const lockedCatalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(lockedCatalog.clear(session.id)).rejects.toMatchObject({
       code: 'MAR_AGENT_SESSION_LOCKED'
     });
@@ -1600,7 +1653,7 @@ describe('JSONL session store', () => {
         withFileTypes: true
       })
     )
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && entry.name !== '.read-pins')
       .map((entry) => entry.name);
     expect(sessionDirectories).toEqual([source.id]);
     await store.close();
@@ -1689,7 +1742,7 @@ describe('JSONL session store', () => {
       });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.contextUsage(session.id)).resolves.toEqual({ inputTokens: 340 });
     await catalog.close();
 
@@ -1710,7 +1763,7 @@ describe('JSONL session store', () => {
       turnId: 'turn'
     });
     await reopened.close();
-    const compactedCatalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const compactedCatalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(compactedCatalog.contextUsage(session.id)).resolves.toEqual({ inputTokens: 0 });
     await compactedCatalog.close();
 
@@ -1731,7 +1784,7 @@ describe('JSONL session store', () => {
       turnId: 'turn'
     });
     await retained.close();
-    const retainedCatalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const retainedCatalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(retainedCatalog.contextUsage(session.id)).resolves.toBeUndefined();
     await retainedCatalog.close();
   });
@@ -1764,7 +1817,7 @@ describe('JSONL session store', () => {
       });
     await store.close();
 
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.contextUsage(session.id)).resolves.toBeUndefined();
     await catalog.close();
   });
@@ -1795,7 +1848,7 @@ describe('JSONL session store', () => {
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
     const session = await store.createSession({ workspace: home });
-    const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const path = join(await activeDirectory(home, session.id), 'events-000001.jsonl');
     await appendFile(path, '{"partial":');
     await expect(store.read(session.id)).resolves.toHaveLength(1);
     const original = (await readFile(path, 'utf8')).split('\n')[0]!;
@@ -1845,7 +1898,7 @@ describe('JSONL session store', () => {
     await store.append(session.id, { type: 'turn.user', payload: { prompt: 'continue' } });
     await store.close();
 
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+    const directory = await activeDirectory(home, session.id);
     await writeFile(join(directory, 'events-000001.jsonl'), 'not-json\n');
 
     const reopened = await JsonlSessionStore.open(home);
@@ -2036,7 +2089,7 @@ describe('JSONL session store', () => {
     const payload = 'x'.repeat(1024 * 1024);
     for (let index = 0; index < 17; index++)
       await store.append(session.id, { type: 'large.record', payload: { index, payload } });
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+    const directory = await activeDirectory(home, session.id);
     expect((await readdir(directory)).filter((name) => name.endsWith('.jsonl'))).toEqual([
       'events-000001.jsonl',
       'events-000002.jsonl'
@@ -2063,7 +2116,7 @@ describe('JSONL session store', () => {
     for (let index = 0; index < 100; index++)
       await store.append(session.id, { type: 'tail.record', payload: { index } });
 
-    const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const path = join(await activeDirectory(home, session.id), 'events-000001.jsonl');
     const handle = await open(path, 'r+');
     try {
       await handle.write(Buffer.from('!'), 0, 1, 0);
@@ -2096,7 +2149,7 @@ describe('JSONL session store', () => {
           text: `${'界'.repeat((index % 17) * 257)}-${index}`
         }
       });
-    const path = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const path = join(await activeDirectory(home, session.id), 'events-000001.jsonl');
     await appendFile(path, '{"incomplete":"tail');
 
     const newestToOldest: number[] = [];
@@ -2132,14 +2185,15 @@ describe('JSONL session store', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       lastActivityAt: '2026-01-01T00:00:00.000Z',
       nextSequence: 1,
-      segments: []
+      segments: [],
+      storage: { encoding: 2, generation: '22222222-2222-4222-8222-222222222222' }
     });
     await writeFile(indexPath, JSON.stringify(disk));
     expect((await store.list({ limit: 10 })).sessions).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: externalId })])
     );
 
-    const eventPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const eventPath = join(await activeDirectory(home, session.id), 'events-000001.jsonl');
     const first = JSON.parse((await readFile(eventPath, 'utf8')).trim()) as Record<string, unknown>;
     await appendFile(
       eventPath,

@@ -1,11 +1,12 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAgentHost } from '../../src/agent-core/host/local-agent-host.js';
-import { modelImageUrl } from '../../src/agent-core/model/image.js';
-import { publishModelResources } from '../../src/agent-core/runtime/resource-publication.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/jsonl-store.js';
+import { LocalAgentHost } from '../../src/host/local-agent-host.js';
+import { modelImageUrl } from '../../src/model/image.js';
+import { publishModelResources } from '../../src/runtime/resource-publication.js';
+import { JsonlSessionStore } from '../../src/session/store/jsonl/jsonl-store.js';
 
 const homes: string[] = [];
 afterEach(async () => {
@@ -110,7 +111,7 @@ describe('model image publication', () => {
       expect(resource).toMatchObject(published);
       expect(resource).not.toHaveProperty('dataBase64');
       expect(results.every((value) => value![0]!.url === published.url)).toBe(true);
-      const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+      const directory = join(await activeSessionDirectory(home, session.id), 'resources');
       expect((await readdir(directory)).filter((name) => name.endsWith('.bin'))).toHaveLength(1);
       expect(await readFile(join(directory, `${resource.resourceId}.bin`))).toEqual(
         Buffer.from('image')
@@ -124,7 +125,7 @@ describe('model image publication', () => {
       });
       expect(
         await readFile(
-          join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+          join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
           'utf8'
         )
       ).not.toContain(image.dataBase64);
@@ -144,7 +145,7 @@ describe('model image publication', () => {
     });
     await store.close();
     const reopened = await JsonlSessionStore.open(home);
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+    const directory = join(await activeSessionDirectory(home, session.id), 'resources');
     try {
       const again = (await publishModelResources(
         host,

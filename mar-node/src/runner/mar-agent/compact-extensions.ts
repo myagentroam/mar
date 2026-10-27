@@ -2,14 +2,16 @@ import {
   buildCompactEvidence,
   countModelTokens,
   generateModelText,
-  MarAgentError,
-  type CoreCompactContext,
-  type CoreCompactDiagnostic,
-  type CoreCompactResult,
-  type CoreExtensionSource,
-  type MarAgentModelConfiguration,
-  type MarAgentReasoningEffort
+  AgentError,
+  type AgentModelConfiguration,
+  type AgentReasoningEffort
 } from '@myagentroam/agent';
+import type {
+  ExtensionCompactContext,
+  ExtensionCompactDiagnostic,
+  ExtensionCompactResult,
+  ExtensionSource
+} from '@myagentroam/agent/extensions';
 import { highDensityCompactionPrompt } from './compact-prompt.js';
 import { marAgentRuntimeCompactConfigurationSchema } from '@myagentroam/protocol';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
@@ -28,8 +30,8 @@ export function compactRuntimeConfigurations(
 export interface MarAgentCompactState {
   revision: number;
   current?: {
-    readonly model: MarAgentModelConfiguration;
-    readonly reasoningEffort: MarAgentReasoningEffort;
+    readonly model: AgentModelConfiguration;
+    readonly reasoningEffort: AgentReasoningEffort;
     readonly ownsCredentialProvider?: true;
   };
 }
@@ -40,7 +42,7 @@ const system =
 export function updateMarAgentCompactState(
   state: MarAgentCompactState,
   raw: unknown,
-  models: readonly MarAgentModelConfiguration[],
+  models: readonly AgentModelConfiguration[],
   visibleModelIds?: readonly string[]
 ): void {
   state.revision++;
@@ -68,7 +70,7 @@ export function updateMarAgentCompactState(
 }
 
 /** Capture one provider snapshot per extension generation; no Core model parameter is added. */
-export function marAgentCompactExtensionSource(state: MarAgentCompactState): CoreExtensionSource {
+export function marAgentCompactExtensionSource(state: MarAgentCompactState): ExtensionSource {
   return {
     async resolve({ signal }) {
       signal.throwIfAborted();
@@ -99,10 +101,10 @@ export function marAgentCompactExtensionSource(state: MarAgentCompactState): Cor
 }
 
 export async function generateMarAgentCompact(
-  context: CoreCompactContext,
+  context: ExtensionCompactContext,
   selected: NonNullable<MarAgentCompactState['current']>,
   signal: AbortSignal
-): Promise<CoreCompactResult | undefined> {
+): Promise<ExtensionCompactResult | undefined> {
   signal.throwIfAborted();
   const startedAt = Date.now();
   const instruction = highDensityCompactionPrompt();
@@ -116,12 +118,12 @@ export async function generateMarAgentCompact(
   let modelRequests = 0;
   let inputTokensEstimateAfter = overhead;
   let failure: Pick<
-    CoreCompactDiagnostic,
+    ExtensionCompactDiagnostic,
     'errorCode' | 'causeCode' | 'errorReason' | 'retryable' | 'transport' | 'httpStatus'
   > = {};
   const report = async (
-    state: CoreCompactDiagnostic['state'],
-    reason?: CoreCompactDiagnostic['reason'],
+    state: ExtensionCompactDiagnostic['state'],
+    reason?: ExtensionCompactDiagnostic['reason'],
     errorCode?: string
   ) => {
     try {
@@ -191,7 +193,7 @@ export async function generateMarAgentCompact(
       : undefined;
   } catch (error) {
     signal.throwIfAborted();
-    if (error instanceof MarAgentError) {
+    if (error instanceof AgentError) {
       const status = error.details?.status;
       failure = {
         ...failure,
@@ -203,7 +205,7 @@ export async function generateMarAgentCompact(
     await report(
       'FAILED',
       'MODEL_FAILED',
-      error instanceof MarAgentError
+      error instanceof AgentError
         ? error.code
         : (failure.errorCode ?? 'MAR_AGENT_COMPACT_MODEL_FAILED')
     );

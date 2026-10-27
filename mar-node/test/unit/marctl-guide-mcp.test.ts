@@ -49,22 +49,24 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
     const result = await client.callTool({ name: 'load_guide', arguments: {} });
     expect(result.isError).not.toBe(true);
     expect(result.content).toEqual([{ type: 'text', text: await skill.load() }]);
-    expect(result.content[0]).toMatchObject({
-      type: 'text',
-      text: expect.stringContaining('marctl sessions start --runner mar-agent')
-    });
-    expect(result.content[0]).toMatchObject({
-      type: 'text',
-      text: expect.stringContaining('user or applicable workflow specifies another Runner')
-    });
-    expect(result.content[0]).toMatchObject({
-      type: 'text',
-      text: expect.stringContaining('not a reason to silently switch')
-    });
-    expect(result.content[0]).toMatchObject({
-      type: 'text',
-      text: expect.stringContaining('An omitted model uses the target Runner configuration')
-    });
+    expect(result.content).toEqual([
+      { type: 'text', text: expect.stringContaining('marctl sessions start --runner mar-agent') }
+    ]);
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining('user or applicable workflow specifies another Runner')
+      }
+    ]);
+    expect(result.content).toEqual([
+      { type: 'text', text: expect.stringContaining('not a reason to silently switch') }
+    ]);
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining('An omitted model uses the target Runner configuration')
+      }
+    ]);
     expect((await client.callTool({ name: 'load_guide', arguments: {} })).content).toEqual(
       result.content
     );

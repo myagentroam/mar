@@ -39,13 +39,11 @@ export async function analyzeSessionDirectory(
       ? 'built-sdk'
       : 'not_requested';
   if (validateCheckpoints && !checkpointValidator) {
-    const module = await import('../../dist/agent-core/session/context-gc-checkpoint.js').catch(
-      () => {
-        throw new Error(
-          'SDK checkpoint validator is unavailable; build @myagentroam/agent before --validate-checkpoints.'
-        );
-      }
-    );
+    const module = await import('../../dist/session/context-gc-checkpoint.js').catch(() => {
+      throw new Error(
+        'SDK checkpoint validator is unavailable; build @myagentroam/agent before --validate-checkpoints.'
+      );
+    });
     checkpointValidator = module.validateContextGcCheckpoint;
     if (typeof checkpointValidator !== 'function')
       throw new Error(

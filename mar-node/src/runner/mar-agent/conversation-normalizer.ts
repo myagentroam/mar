@@ -1,4 +1,4 @@
-import type { ExecutionResult, MarAgentEvent } from '@myagentroam/agent';
+import type { ExecutionResult, AgentEvent } from '@myagentroam/agent';
 import { parseToolResultExtensions } from '@myagentroam/agent';
 import type { ModelUsageObservation } from '@myagentroam/agent';
 
@@ -142,7 +142,7 @@ type EventMetadata = {
 };
 
 export class MarAgentConversationNormalizer {
-  input(entry: Extract<import('@myagentroam/agent').MarAgentHistoryEntry, { kind: 'user' }>) {
+  input(entry: Extract<import('@myagentroam/agent').AgentSessionHistoryEntry, { kind: 'user' }>) {
     return {
       itemId: boundedConversationItemId(
         'mar-agent-input',
@@ -178,7 +178,7 @@ export class MarAgentConversationNormalizer {
   }
 
   normalize(
-    event: MarAgentEvent,
+    event: AgentEvent,
     options: { readonly publicItemIdPrefix?: string } = {}
   ): readonly MarAgentNormalizedItem[] {
     if (event.type === 'tool.output') return this.#toolOutput(event);
@@ -326,7 +326,7 @@ export class MarAgentConversationNormalizer {
     return [];
   }
 
-  #toolStarted(event: Extract<MarAgentEvent, { type: 'tool.started' }>) {
+  #toolStarted(event: Extract<AgentEvent, { type: 'tool.started' }>) {
     const ownItemId = itemId('tool', event.callId);
     this.#clearRetainedCodeModeCellsForOtherExecutions(event.executionId);
     this.#toolOutputSnapshots.delete(event.callId);
@@ -448,7 +448,7 @@ export class MarAgentConversationNormalizer {
   }
 
   #toolOutput(
-    event: Extract<MarAgentEvent, { type: 'tool.output' }>
+    event: Extract<AgentEvent, { type: 'tool.output' }>
   ): readonly MarAgentNormalizedItem[] {
     const { callId, toolName, executionId, turnId, parentCallId, output } = event;
     const inputOutput = [output.stdout, output.stderr].filter(Boolean).join('\n');
@@ -555,7 +555,7 @@ export class MarAgentConversationNormalizer {
     ];
   }
 
-  #trackCodeModeOutputCall(event: Extract<MarAgentEvent, { type: 'tool.started' }>): void {
+  #trackCodeModeOutputCall(event: Extract<AgentEvent, { type: 'tool.started' }>): void {
     const parentCallId = event.parentCallId;
     if (parentCallId === undefined || (event.toolName !== 'exec' && event.toolName !== 'exec_wait'))
       return;
@@ -591,7 +591,7 @@ export class MarAgentConversationNormalizer {
     }
   }
 
-  #trackCodeModeWait(event: Extract<MarAgentEvent, { type: 'tool.started' }>): void {
+  #trackCodeModeWait(event: Extract<AgentEvent, { type: 'tool.started' }>): void {
     const cellId = record(event.input)?.cellId;
     if (typeof cellId !== 'string' || cellId.length === 0) return;
     const cell = [...this.#runningCodeModeCells.values()].find(
@@ -622,7 +622,7 @@ export class MarAgentConversationNormalizer {
     return undefined;
   }
 
-  #finishToolCall(event: Extract<MarAgentEvent, { type: 'tool.completed' | 'tool.failed' }>): void {
+  #finishToolCall(event: Extract<AgentEvent, { type: 'tool.completed' | 'tool.failed' }>): void {
     const state = this.#tools.get(event.callId);
     if (state !== undefined) state.active = false;
     this.#toolOutputSnapshots.delete(event.callId);
@@ -724,7 +724,7 @@ export class MarAgentConversationNormalizer {
     return publicItemId.length <= 128 ? publicItemId : undefined;
   }
 
-  #toolCompleted(event: Extract<MarAgentEvent, { type: 'tool.completed' }>) {
+  #toolCompleted(event: Extract<AgentEvent, { type: 'tool.completed' }>) {
     const state = this.#tools.get(event.callId);
     if (
       (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
@@ -806,7 +806,7 @@ export class MarAgentConversationNormalizer {
     ];
   }
 
-  #toolFailed(event: Extract<MarAgentEvent, { type: 'tool.failed' }>) {
+  #toolFailed(event: Extract<AgentEvent, { type: 'tool.failed' }>) {
     const state = this.#tools.get(event.callId);
     if (
       (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
@@ -852,7 +852,7 @@ export class MarAgentConversationNormalizer {
     ];
   }
 
-  #codeModeToolResults(event: MarAgentEvent): readonly MarAgentNormalizedItem[] {
+  #codeModeToolResults(event: AgentEvent): readonly MarAgentNormalizedItem[] {
     const items: MarAgentNormalizedItem[] = [];
     for (const observation of codeModeToolResults(event)) {
       if (
@@ -893,7 +893,7 @@ export class MarAgentConversationNormalizer {
   }
 
   #normalizeObservedToolResult(
-    event: MarAgentEvent,
+    event: AgentEvent,
     observation: CodeModeToolResult,
     data: ApplyPatchObservationData | SubagentObservationData
   ): readonly MarAgentNormalizedItem[] {
@@ -923,7 +923,7 @@ export class MarAgentConversationNormalizer {
   }
 
   #subagentLifecycle(
-    event: Extract<MarAgentEvent, { type: 'subagent.started' | 'subagent.completed' }>
+    event: Extract<AgentEvent, { type: 'subagent.started' | 'subagent.completed' }>
   ): readonly MarAgentNormalizedItem[] {
     const eventDescription = record(event)?.description;
     const eventTitle = compactRunnerText(
@@ -941,7 +941,7 @@ export class MarAgentConversationNormalizer {
 }
 
 function permissionStopForToolEvent(
-  event: Extract<MarAgentEvent, { type: 'tool.completed' | 'tool.failed' }>
+  event: Extract<AgentEvent, { type: 'tool.completed' | 'tool.failed' }>
 ): NonNullable<ExecutionResult['permissionStop']> | undefined {
   const direct = record(event)?.permissionStop;
   const cell = record(record(event)?.data)?.permissionStop;
@@ -955,7 +955,7 @@ function withPermissionStop(
   return permissionStop === undefined ? items : items.map((item) => ({ ...item, permissionStop }));
 }
 
-function codeModeToolResults(event: MarAgentEvent): CodeModeToolResult[] {
+function codeModeToolResults(event: AgentEvent): CodeModeToolResult[] {
   if (
     (event.type !== 'tool.completed' && event.type !== 'tool.failed') ||
     (event.toolName !== 'code_exec' && event.toolName !== 'code_exec_wait')
@@ -1129,7 +1129,7 @@ function isSubagentObservationData(
   );
 }
 
-function eventMetadata(event: MarAgentEvent, eventId: string): EventMetadata {
+function eventMetadata(event: AgentEvent, eventId: string): EventMetadata {
   return {
     eventId,
     sequence: event.sequence,
@@ -1145,7 +1145,7 @@ function itemId(kind: string, value: string) {
 }
 
 type MarAgentCompactLifecycleEvent = Extract<
-  MarAgentEvent,
+  AgentEvent,
   { type: 'context.compacting' | 'context.compacted' | 'context.compact_failed' }
 >;
 
@@ -1757,7 +1757,7 @@ function isImageGenerationTool(toolName: string): boolean {
 }
 
 function imageArtifacts(
-  event: Extract<MarAgentEvent, { type: 'tool.completed' }>
+  event: Extract<AgentEvent, { type: 'tool.completed' }>
 ): MarAgentGeneratedImageArtifact[] {
   if (!isImageGenerationTool(event.toolName) || !Array.isArray(event.artifacts)) return [];
   return event.artifacts.flatMap((value) => {

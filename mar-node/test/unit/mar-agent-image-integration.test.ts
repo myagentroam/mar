@@ -2,9 +2,9 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createMarAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/agent-core/sdk/agent.js';
-import { directLocalProcessExecutor } from '../../../mar-agent/dist/agent-core/host/local-process-executor.js';
-import type { ModelEvent } from '../../../mar-agent/dist/agent-core/model/contracts.js';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/dist/sdk/agent.js';
+import { directLocalProcessExecutor } from '../../../mar-agent/dist/host/local-process-executor.js';
+import type { ModelEvent } from '../../../mar-agent/dist/model/contracts.js';
 import { marAgentRuntimeModelConfigurationSchema } from '@myagentroam/protocol';
 import { MarAgentHostedConversationRuntime } from '../../src/runner/mar-agent/hosted-conversation-runtime.js';
 import { executeCodexImageGen } from '../../src/runner/mar-agent/image-generation.js';
@@ -109,7 +109,7 @@ it.each(
             : { type: 'INLINE_API_KEY', value: 'image-key' }
       }
     });
-    const events: import('@myagentroam/agent').MarAgentEvent[] = [];
+    const events: import('@myagentroam/agent').AgentEvent[] = [];
     const resolveCredential = vi.fn(async () => ({
       nextTicket: ticket,
       credential: {
@@ -136,9 +136,11 @@ it.each(
       createAgent: (options) => {
         expect(options.models[0]).not.toHaveProperty('imageGeneration');
         expect(options).not.toHaveProperty('generatedImageDisplayDirectory');
-        return createMarAgent({
-          ...options,
-          adapterFactory: (configuration) => ({
+        return createMarAgent(
+          {
+            ...options
+          },
+          (configuration) => ({
             configuration,
             async *start(request): AsyncIterable<ModelEvent> {
               const name = provider === 'CODEX' ? 'codex_image_gen' : 'byted_ark_image_gen';
@@ -200,7 +202,7 @@ it.each(
               }
             }
           })
-        });
+        );
       }
     });
     const common = {

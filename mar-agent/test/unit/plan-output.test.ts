@@ -2,17 +2,18 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { type ModelEvent } from '../../src/agent-core/model/contracts.js';
-import { splitPlanOutput, PlanOutputPrefix } from '../../src/agent-core/runtime/plan-output.js';
-import { openMarAgentSessionCatalog } from '../../src/agent-core/session/catalog.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { type ModelEvent } from '../../src/model/contracts.js';
+import { splitPlanOutput, PlanOutputPrefix } from '../../src/runtime/plan-output.js';
+import { openAgentSessionCatalog } from '../../src/sdk/session-catalog.js';
 
 const homes: string[] = [];
 afterEach(async () => {
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'test',
   name: 'Test',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -90,11 +91,13 @@ describe('explicit Plan output boundary', () => {
         'No, this proposes a new protocol, and the current code has no such command.';
       const text =
         'Confirmed.\n<proposed_plan>\n# Implementation plan\nModify and verify.\n</proposed_plan>\nAdditional notes.';
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-        models: [model],
-        adapterFactory: () => ({
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [model]
+        },
+        () => ({
           configuration: model,
           async *start(): AsyncIterable<ModelEvent> {
             for (const [itemId, body] of [
@@ -120,7 +123,7 @@ describe('explicit Plan output boundary', () => {
             yield { type: 'completed', reason: 'completed' };
           }
         })
-      });
+      );
       try {
         const session = await agent.createSession({ workspace: home, title: 'Plan test' });
         const execution = session.plan({ prompt: 'Discuss the protocol' });
@@ -144,7 +147,7 @@ describe('explicit Plan output boundary', () => {
             .map((event) => event.delta)
             .join('')
         ).not.toContain('<proposed_plan>');
-        const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+        const catalog = await openAgentSessionCatalog({ homeDirectory: home });
         try {
           const history = await catalog.history(session.id, { limit: 100 });
           expect(

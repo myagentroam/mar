@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/jsonl-store.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/jsonl/jsonl-store.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelRequest } from '../../src/model/contracts.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const imageIo = vi.hoisted(() => ({
   appendPath: '',
@@ -73,7 +75,7 @@ async function fixture() {
   const store = await JsonlSessionStore.open(home);
   cleanups.push(() => store.close());
   const session = await store.createSession({ workspace: home });
-  const directory = join(home, '.mar', 'agent', 'sessions', session.id, 'resources');
+  const directory = join(await activeSessionDirectory(home, session.id), 'resources');
   return { home, store, session, directory };
 }
 
@@ -244,7 +246,7 @@ describe('unified Session image resources', () => {
       mimeType: 'image/png',
       dataBase64: pixel
     });
-    const segmentPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const segmentPath = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
     let resolveSyncGate!: () => void;
     const syncGate = new Promise<void>((resolve) => (resolveSyncGate = resolve));
     let syncStarted = false;
@@ -284,7 +286,7 @@ describe('unified Session image resources', () => {
       mimeType: 'image/png',
       dataBase64: pixel
     });
-    const segmentPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const segmentPath = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
     const pendingPath = join(directory, `.${image.resourceId}.pending`);
     const failure = Object.assign(new Error('Injected Session sync failure.'), { code: 'EIO' });
     Object.assign(imageIo, {
@@ -356,7 +358,7 @@ describe('unified Session image resources', () => {
       }
     });
     const fork = await store.forkSession(session.id, { boundaryTurnId: 'first', title: 'Fork' });
-    const forkDirectory = join(home, '.mar', 'agent', 'sessions', fork.id, 'resources');
+    const forkDirectory = join(await activeSessionDirectory(home, fork.id), 'resources');
     expect((await readdir(forkDirectory)).sort()).toEqual([
       `${first.resourceId}.bin`,
       `${first.resourceId}.json`
@@ -463,7 +465,7 @@ describe('unified Session image resources', () => {
           }
         });
       }
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         id: 'vision',
         name: 'Vision',
         protocol: 'OPENAI_RESPONSES',
@@ -476,16 +478,19 @@ describe('unified Session image resources', () => {
         outputCapabilities: ['TEXT'],
         reasoningEfforts: [],
         enabled: true,
+        hostedWebSearch: false,
         titleGeneration: false,
         useResourceUrl: false
       };
       const requests: ModelRequest[] = [];
       const create = () =>
-        createMarAgentWithAdapter({
-          mode: 'normal',
-          models: [model],
-          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-          adapterFactory: () => ({
+        createAgentWithAdapter(
+          {
+            mode: 'normal',
+            models: [model],
+            host: new LocalAgentHost({ homeDirectory: home, workspace: home })
+          },
+          () => ({
             configuration: model,
             async *start(request) {
               requests.push(request);
@@ -493,7 +498,7 @@ describe('unified Session image resources', () => {
               yield { type: 'completed' as const, reason: 'completed' as const };
             }
           })
-        });
+        );
       let agent = await create();
       cleanups.push(() => agent.dispose());
       let live = await agent.openSession(session.id);
@@ -536,7 +541,7 @@ describe('unified Session image resources', () => {
       const { home, store, session, directory } = await fixture();
       const path = join(home, 'pixel.png');
       await writeFile(path, Buffer.from(pixel, 'base64'));
-      const model: MarAgentModelConfiguration = {
+      const model: AgentModelConfiguration = {
         id: 'vision',
         name: 'Vision',
         protocol: 'OPENAI_RESPONSES',
@@ -550,24 +555,27 @@ describe('unified Session image resources', () => {
         reasoningEfforts: ['low'],
         defaultReasoningEffort: 'low',
         enabled: true,
+        hostedWebSearch: false,
         useResourceUrl: true,
         codeMode
       };
       const requests: ModelRequest[] = [];
       let publications = 0;
       const create = () =>
-        createMarAgentWithAdapter({
-          mode: 'normal',
-          models: [model],
-          host: new LocalAgentHost({
-            homeDirectory: home,
-            workspace: home,
-            publishModelResource: async () => {
-              publications++;
-              return { url, urlExpiresAt: 1 };
-            }
-          }),
-          adapterFactory: () => ({
+        createAgentWithAdapter(
+          {
+            mode: 'normal',
+            models: [model],
+            host: new LocalAgentHost({
+              homeDirectory: home,
+              workspace: home,
+              publishModelResource: async () => {
+                publications++;
+                return { url, urlExpiresAt: 1 };
+              }
+            })
+          },
+          () => ({
             configuration: model,
             async *start(request) {
               requests.push(JSON.parse(JSON.stringify(request)));
@@ -591,7 +599,7 @@ describe('unified Session image resources', () => {
               }
             }
           })
-        });
+        );
       let agent = await create();
       try {
         let live = await agent.openSession(session.id);
@@ -634,7 +642,7 @@ describe('unified Session image resources', () => {
         expect(JSON.stringify(restored)).not.toContain('dataBase64');
         expect(publications).toBe(1);
         const persisted = await readFile(
-          join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+          join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
           'utf8'
         );
         expect(persisted).not.toContain(pixel);

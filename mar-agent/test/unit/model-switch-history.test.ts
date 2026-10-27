@@ -3,14 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  createMarAgent,
-  type HostSessionResourceSnapshot,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
+import { SecretValue, createAgent, type AgentModelConfiguration } from '../../src/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const homes: string[] = [];
 const servers: Server[] = [];
@@ -119,7 +114,7 @@ async function startAnthropicServer(answer: string) {
   };
 }
 
-function responsesModel(id: string, name: string, baseUrl: string): MarAgentModelConfiguration {
+function responsesModel(id: string, name: string, baseUrl: string): AgentModelConfiguration {
   return {
     id,
     name,
@@ -138,7 +133,7 @@ function responsesModel(id: string, name: string, baseUrl: string): MarAgentMode
   };
 }
 
-function anthropicModel(id: string, name: string, baseUrl: string): MarAgentModelConfiguration {
+function anthropicModel(id: string, name: string, baseUrl: string): AgentModelConfiguration {
   return {
     id,
     name,
@@ -207,7 +202,7 @@ describe('model switch history recovery', () => {
       'Responses Continuation',
       server.baseUrl
     );
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new ContextualWorldStateHost({ homeDirectory: home, workspace }),
       models: [configuration]
@@ -248,7 +243,7 @@ describe('model switch history recovery', () => {
           : anthropicModel('anthropic-prefix', 'Anthropic Prefix', server.baseUrl);
       const host = new ContextualWorldStateHost({ homeDirectory: home, workspace });
       const create = () =>
-        createMarAgent({
+        createAgent({
           mode: 'normal',
           host,
           models: [configuration]
@@ -363,7 +358,7 @@ describe('model switch history recovery', () => {
     await store.close();
 
     const server = await startAnthropicServer('Anthropic resumed');
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [anthropicModel('anthropic-target', 'Anthropic Target', server.baseUrl)]
@@ -460,7 +455,7 @@ describe('model switch history recovery', () => {
 
     const terraServer = await startResponsesServer('Terra answer');
     const terra = responsesModel('gpt-5.6-terra', 'GPT-5.6-Terra', terraServer.baseUrl);
-    const terraAgent = await createMarAgent({
+    const terraAgent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [terra]
@@ -477,7 +472,7 @@ describe('model switch history recovery', () => {
 
     const lunaServer = await startResponsesServer('Luna resumed');
     const luna = responsesModel('gpt-5.6-luna', 'GPT-5.6-Luna', lunaServer.baseUrl);
-    const lunaAgent = await createMarAgent({
+    const lunaAgent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [luna]
@@ -524,7 +519,7 @@ describe('model switch history recovery', () => {
     await store.close();
 
     const terraServer = await startResponsesServer('Terra answer');
-    const terraAgent = await createMarAgent({
+    const terraAgent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [responsesModel('gpt-5.6-terra', 'GPT-5.6-Terra', terraServer.baseUrl)]
@@ -538,7 +533,7 @@ describe('model switch history recovery', () => {
     );
 
     const lunaServer = await startResponsesServer('Luna resumed');
-    const lunaAgent = await createMarAgent({
+    const lunaAgent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [responsesModel('gpt-5.6-luna', 'GPT-5.6-Luna', lunaServer.baseUrl)]

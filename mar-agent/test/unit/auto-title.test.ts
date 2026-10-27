@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateSessionTitle, SecretValue } from '../../src/index.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import type { MarAgentModelConfiguration } from '../../src/index.js';
-import type { ModelEvent, ModelRequest } from '../../src/agent-core/model/contracts.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import type { AgentModelConfiguration } from '../../src/index.js';
+import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'current',
   name: 'Current',
   protocol: 'OPENAI_RESPONSES',

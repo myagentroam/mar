@@ -9,12 +9,12 @@ import { lstat, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { MarAgentError } from '../../agent-core/error.js';
+import { AgentError } from '../../error.js';
 import type {
   LocalProcessExecutor,
   LocalProcessSpawnRequest
-} from '../../agent-core/host/local-process-executor.js';
-import { prepareLocalShellProcess } from '../../agent-core/host/local-shell.js';
+} from '../../host/local-process-executor.js';
+import { prepareLocalShellProcess } from '../../host/local-shell.js';
 import {
   LINUX_BUBBLEWRAP_SANDBOX_POLICY_VERSION,
   type BubblewrapSandboxExecutorOptions,
@@ -114,7 +114,7 @@ export class BubblewrapSandboxExecutor implements LocalProcessExecutor {
       ]);
     } catch (error) {
       await rm(launchDirectory, { recursive: true, force: true }).catch(() => undefined);
-      throw error instanceof MarAgentError ? error : policyInvalid(error);
+      throw error instanceof AgentError ? error : policyInvalid(error);
     }
     let argumentFd: number | undefined;
     let seccompFd: number | undefined;
@@ -345,7 +345,7 @@ async function validateBackend(path: string): Promise<void> {
     if (!metadata.isFile() || metadata.isSymbolicLink() || (metadata.mode & 0o111) === 0)
       throw unavailable();
   } catch (error) {
-    if (error instanceof MarAgentError) throw error;
+    if (error instanceof AgentError) throw error;
     throw unavailable(error);
   }
 }
@@ -359,7 +359,7 @@ async function secureDirectory(path: string): Promise<string> {
     if (canonical !== resolve(path)) throw policyInvalid();
     return canonical;
   } catch (error) {
-    if (error instanceof MarAgentError) throw error;
+    if (error instanceof AgentError) throw error;
     throw policyInvalid(error);
   }
 }
@@ -582,7 +582,7 @@ async function prepareNestedMountDestinations(mounts: readonly SandboxMount[]): 
       )
         throw policyInvalid();
     } catch (error) {
-      if (error instanceof MarAgentError) throw error;
+      if (error instanceof AgentError) throw error;
       throw policyInvalid(error);
     }
   }
@@ -738,10 +738,10 @@ function withinSandboxPath(parent: string, candidate: string): boolean {
   return relation.length > 0 && relation !== '..' && !relation.startsWith('../');
 }
 
-function unavailable(_cause?: unknown): MarAgentError {
-  return new MarAgentError('SANDBOX_UNAVAILABLE', 'Bubblewrap sandbox is unavailable.');
+function unavailable(_cause?: unknown): AgentError {
+  return new AgentError('SANDBOX_UNAVAILABLE', 'Bubblewrap sandbox is unavailable.');
 }
 
-function policyInvalid(_cause?: unknown): MarAgentError {
-  return new MarAgentError('SANDBOX_POLICY_INVALID', 'Sandbox policy is invalid.');
+function policyInvalid(_cause?: unknown): AgentError {
+  return new AgentError('SANDBOX_POLICY_INVALID', 'Sandbox policy is invalid.');
 }

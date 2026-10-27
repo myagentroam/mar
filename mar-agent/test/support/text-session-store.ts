@@ -1,16 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { AgentError, type AgentSessionSummary } from '../../src/index.js';
 import {
-  MarAgentError,
   type SessionStore,
   type SessionStoreMaintenance,
   type SessionRecord,
-  type SessionRecordInput,
-  type MarAgentSessionSummary
-} from '../../src/index.js';
+  type SessionRecordInput
+} from '../../src/session-store.js';
 
 /** A limited text-only test backend, not a production memory Store. */
 export function textSessionStore() {
-  const sessions = new Map<string, MarAgentSessionSummary>();
+  const sessions = new Map<string, AgentSessionSummary>();
   const records = new Map<string, SessionRecord[]>();
   const writers = new Map<string, object | undefined>();
   const executing = new Set<string>();
@@ -24,11 +23,10 @@ export function textSessionStore() {
   };
   const get = (id: string) => {
     const session = sessions.get(id);
-    if (!session) throw new MarAgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
+    if (!session) throw new AgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
     return structuredClone(session);
   };
-  const locked = () =>
-    new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
+  const locked = () => new AgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
   const releaseUnused = (id: string) => {
     if (!executing.has(id) && !retained.get(id) && !maintenance.has(id)) writers.delete(id);
   };
@@ -58,7 +56,6 @@ export function textSessionStore() {
     const list = records.get(id)!;
     const record: SessionRecord = {
       ...structuredClone(input),
-      schemaVersion: 1,
       recordId: randomUUID(),
       sequence: list.length + 1,
       sessionId: id,
@@ -72,7 +69,7 @@ export function textSessionStore() {
       if (input.source?.type === 'subagent') {
         const parentId = input.source.parentSessionId;
         if (maintenance.has(parentId))
-          throw new MarAgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
+          throw new AgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
         get(parentId);
       }
       const now = new Date().toISOString();

@@ -3,16 +3,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 import { effectiveInstructions } from './support/model-context.js';
+import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -40,7 +42,7 @@ function observedJSON(content: string) {
     ? JSON.parse(observation.type === 'tool_result' ? observation.content : observation.value)
     : envelope;
 }
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'coding',
   name: 'Coding',
   modelId: 'test',
@@ -88,7 +90,11 @@ describe('Code Mode SDK and protocol integration', () => {
     'keeps new code execution available after an expired cell wait under %s',
     async (protocol) => {
       const { home, workspace } = await fixture();
-      const configuration = { ...model, protocol };
+      const configuration = {
+        ...model,
+        protocol,
+        responsesPreviousResponseId: protocol === 'OPENAI_RESPONSES'
+      };
       const requests: ModelRequest[] = [];
       const adapter: ModelAdapter = {
         configuration,
@@ -133,12 +139,14 @@ describe('Code Mode SDK and protocol integration', () => {
           yield { type: 'completed', reason: 'tool_use' };
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Expired cell recovery' });
         expect((await session.run({ prompt: 'Continue with new work.' }).result()).status).toBe(
@@ -157,7 +165,11 @@ describe('Code Mode SDK and protocol integration', () => {
     'starts in a cell and controls the process through tools.exec_wait for $protocol',
     async (overrides) => {
       const { home, workspace } = await fixture();
-      const configuration = { ...model, ...overrides };
+      const configuration = {
+        ...model,
+        ...overrides,
+        responsesPreviousResponseId: overrides.protocol === 'OPENAI_RESPONSES'
+      };
       const requests: ModelRequest[] = [];
       const encode = (code: string) =>
         overrides.protocol === 'ANTHROPIC_MESSAGES' ? { code } : code;
@@ -206,12 +218,14 @@ describe('Code Mode SDK and protocol integration', () => {
           yield { type: 'completed', reason: 'tool_use' };
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({
           workspace,
@@ -265,6 +279,7 @@ describe('Code Mode SDK and protocol integration', () => {
       const configuration = {
         ...model,
         ...overrides,
+        responsesPreviousResponseId: overrides.protocol === 'OPENAI_RESPONSES',
         inputCapabilities: ['TEXT', 'IMAGE'] as const
       };
       const requests: ModelRequest[] = [];
@@ -274,11 +289,13 @@ describe('Code Mode SDK and protocol integration', () => {
         join(workspace, '.agents', 'skills', 'inspection', 'SKILL.md'),
         '---\nname: inspection\ndescription: Inspect images\n---\nInspect the image pixels before answering.\n'
       );
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [configuration],
-        adapterFactory: () => ({
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [configuration]
+        },
+        () => ({
           configuration,
           async *start(request): AsyncIterable<ModelEvent> {
             requests.push(request);
@@ -305,7 +322,7 @@ describe('Code Mode SDK and protocol integration', () => {
             }
           }
         })
-      });
+      );
       try {
         const session = await agent.createSession({
           workspace,
@@ -318,9 +335,13 @@ describe('Code Mode SDK and protocol integration', () => {
               .result()
           ).status
         ).toBe('completed');
-        expect(requests[0]!.tools.find((tool) => tool.name === 'skill')?.allowedCallers).toEqual([
-          'direct'
-        ]);
+        expect(
+          BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'skill')?.allowedCallers
+        ).toEqual(['direct']);
+        expect(requests[0]!.tools.find((tool) => tool.name === 'skill')).toBeDefined();
+        expect(requests[0]!.tools.find((tool) => tool.name === 'skill')).not.toHaveProperty(
+          'allowedCallers'
+        );
         expect(
           requests[0]!.tools.find((tool) => tool.name === 'code_exec')!.description
         ).not.toContain('"name":"skill"');
@@ -333,13 +354,29 @@ describe('Code Mode SDK and protocol integration', () => {
           (message) => message.callId === 'view-pixels' && message.role === 'tool'
         )!;
         expect(imageResult.content).not.toContain(png.dataBase64);
-        expect(JSON.parse(imageResult.content).observations).toEqual([
-          expect.objectContaining(
-            overrides.emitText
-              ? { type: 'tool_result', toolName: 'view_image' }
-              : { type: 'value', format: 'image' }
-          )
-        ]);
+        expect(imageResult).not.toHaveProperty('observations');
+        expect(imageResult.contentParts?.some((part) => part.type === 'image')).toBe(true);
+        const store = await JsonlSessionStore.open(home);
+        try {
+          const record = (await store.read(session.id)).find(
+            (item) =>
+              item.type === 'model.context' &&
+              (item.payload as { callId?: string }).callId === 'view-pixels' &&
+              (item.payload as { role?: string }).role === 'tool'
+          );
+          expect(record?.payload.observations).toEqual([
+            expect.objectContaining(
+              overrides.emitText
+                ? {
+                    type: 'tool_result',
+                    source: expect.objectContaining({ toolName: 'view_image' })
+                  }
+                : { type: 'value', format: 'image' }
+            )
+          ]);
+        } finally {
+          await store.close();
+        }
         expect(imageResult.images).toEqual([
           {
             ...png,
@@ -369,16 +406,19 @@ describe('Code Mode SDK and protocol integration', () => {
       const configuration = {
         ...model,
         protocol,
+        responsesPreviousResponseId: protocol === 'OPENAI_RESPONSES',
         codeMode: caller !== 'direct',
         inputCapabilities: ['TEXT', 'IMAGE'] as const
       };
       const requests: ModelRequest[] = [];
       const host = new LocalAgentHost({ homeDirectory: home, workspace });
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [configuration],
-        adapterFactory: () => ({
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [configuration]
+        },
+        () => ({
           configuration,
           async *start(request): AsyncIterable<ModelEvent> {
             requests.push(request);
@@ -409,7 +449,7 @@ describe('Code Mode SDK and protocol integration', () => {
             }
           }
         })
-      });
+      );
       try {
         const session = await agent.createSession({
           workspace,
@@ -458,12 +498,14 @@ describe('Code Mode SDK and protocol integration', () => {
         const host = new LocalAgentHost({ homeDirectory: home, workspace });
         if (!enumeratesResources)
           Object.defineProperty(host, 'listSessionResources', { value: undefined });
-        return createMarAgent({
-          mode: 'normal',
-          host,
-          models: [model],
-          adapterFactory: () => adapter
-        });
+        return createMarAgent(
+          {
+            mode: 'normal',
+            host,
+            models: [model]
+          },
+          () => adapter
+        );
       };
       let agent = await create();
       try {
@@ -519,12 +561,14 @@ describe('Code Mode SDK and protocol integration', () => {
         }
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Partial cell output' });
       const run = session.run({ prompt: 'Read then attempt an invalid exec input.' });
@@ -558,7 +602,11 @@ describe('Code Mode SDK and protocol integration', () => {
     'preserves compiler errors through Runtime, persistence, and restart: $protocol',
     async (overrides) => {
       const { home, workspace } = await fixture();
-      const configuration = { ...model, ...overrides };
+      const configuration = {
+        ...model,
+        ...overrides,
+        responsesPreviousResponseId: overrides.protocol === 'OPENAI_RESPONSES'
+      };
       const source =
         'observe.result(await tools.read({reads:[{path:"input.txt"}]})); await tools.exec({command": "echo harmless"});';
       const requests: ModelRequest[] = [];
@@ -581,12 +629,14 @@ describe('Code Mode SDK and protocol integration', () => {
         }
       };
       const create = () =>
-        createMarAgent({
-          mode: 'normal',
-          host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [configuration],
-          adapterFactory: () => adapter
-        });
+        createMarAgent(
+          {
+            mode: 'normal',
+            host: new LocalAgentHost({ homeDirectory: home, workspace }),
+            models: [configuration]
+          },
+          () => adapter
+        );
       let agent = await create();
       try {
         const session = await agent.createSession({ workspace, title: 'Compiler error replay' });
@@ -683,12 +733,14 @@ describe('Code Mode SDK and protocol integration', () => {
         }
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Todo restore' });
       expect((await session.run({ prompt: 'Write the task.' }).result()).status).toBe('completed');
@@ -727,11 +779,25 @@ describe('Code Mode SDK and protocol integration', () => {
     async (overrides) => {
       const { home, workspace } = await fixture();
       const host = new LocalAgentHost({ homeDirectory: home, workspace });
+      const nestedEntered = Promise.withResolvers<void>();
+      const releaseNested = Promise.withResolvers<void>();
+      const executeTool = host.executeTool.bind(host);
+      host.executeTool = async (call, context) => {
+        if (call.name === 'apply_patch') {
+          nestedEntered.resolve();
+          await releaseNested.promise;
+        }
+        return executeTool(call, context);
+      };
       const requests: ModelRequest[] = [];
       let cellId = '';
-      const configuration = { ...model, ...overrides };
+      const configuration = {
+        ...model,
+        ...overrides,
+        responsesPreviousResponseId: overrides.protocol === 'OPENAI_RESPONSES'
+      };
       const source =
-        'observe.text("phase-one"); await cell.yield_control(); await cell.sleep(60); ' +
+        'observe.text("phase-one"); await cell.yield_control(); ' +
         'await tools.apply_patch("*** Begin Patch\\n*** Add File: background.txt\\n+background\\n*** End Patch"); state.set("done", true); observe.text("phase-two");';
       const adapter: ModelAdapter = {
         configuration,
@@ -758,22 +824,26 @@ describe('Code Mode SDK and protocol integration', () => {
           }
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Retained cells' });
         const first = session.run({ prompt: 'Start background work.' });
         expect((await first.result()).status).toBe('completed');
+        await nestedEntered.promise;
         cellId = (await host.listSessionResources(session.id)).codeCells![0]!.cellId;
         expect(
           requests[1]!.messages.find(
             (message) => message.role === 'tool' && message.callId === 'cell-1'
           )!.content
         ).toContain('phase-one');
+        releaseNested.resolve();
         await expect
           .poll(async () => readFile(join(workspace, 'background.txt'), 'utf8'))
           .toBe('background\n');
@@ -824,6 +894,7 @@ describe('Code Mode SDK and protocol integration', () => {
           await store.close();
         }
       } finally {
+        releaseNested.resolve();
         await agent.dispose();
       }
     }
@@ -842,7 +913,11 @@ describe('Code Mode SDK and protocol integration', () => {
         ]
           .join('\n')
           .repeat(80) + '\n';
-      const configuration = { ...model, ...overrides };
+      const configuration = {
+        ...model,
+        ...overrides,
+        responsesPreviousResponseId: overrides.protocol === 'OPENAI_RESPONSES'
+      };
       const adapter: ModelAdapter = {
         configuration,
         async *start(request): AsyncIterable<ModelEvent> {
@@ -876,12 +951,14 @@ describe('Code Mode SDK and protocol integration', () => {
           }
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Code Mode Only' });
         const execution = session.run({ prompt: 'Read and patch using Code Mode.' });
@@ -953,12 +1030,14 @@ describe('Code Mode SDK and protocol integration', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Bounded Code Mode output' });
       expect(await session.run({ prompt: 'Emit a large value.' }).result()).toMatchObject({
@@ -1002,12 +1081,14 @@ describe('Code Mode SDK and protocol integration', () => {
       }
     };
     const create = () =>
-      createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [testModel],
-        adapterFactory: () => adapter
-      });
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [testModel]
+        },
+        () => adapter
+      );
     let agent = await create();
     let id: string;
     try {
@@ -1083,12 +1164,14 @@ describe('Code Mode SDK and protocol integration', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'No Code Mode' });
       expect((await session.run({ prompt: 'Hello.' }).result()).status).toBe('completed');
@@ -1111,12 +1194,14 @@ describe('Code Mode SDK and protocol integration', () => {
         yield { type: 'completed', reason: 'completed' };
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [disabledModel],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [disabledModel]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace, title: 'Disabled Code Mode' });
       expect((await session.run({ prompt: 'Hello.' }).result()).status).toBe('completed');
@@ -1444,9 +1529,13 @@ describe('Code Mode SDK and protocol integration', () => {
           } else if (!child && results.length < 5) {
             const controls = ['agent_start', 'agent_wait', 'agent_message', 'agent_cancel'];
             for (const name of controls) {
-              expect(request.tools.find((tool) => tool.name === name)?.allowedCallers).toEqual([
-                'direct'
-              ]);
+              expect(
+                BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === name)?.allowedCallers
+              ).toEqual(['direct']);
+              expect(request.tools.find((tool) => tool.name === name)).toBeDefined();
+              expect(request.tools.find((tool) => tool.name === name)).not.toHaveProperty(
+                'allowedCallers'
+              );
               expect(
                 request.tools.find((tool) => tool.name === 'code_exec')!.description
               ).not.toContain(`"${name}"`);
@@ -1488,12 +1577,14 @@ describe('Code Mode SDK and protocol integration', () => {
           }
         }
       };
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [testModel],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [testModel]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Subagent Code Mode' });
         expect(await session.run({ prompt: 'Delegate.' }).result()).toMatchObject({

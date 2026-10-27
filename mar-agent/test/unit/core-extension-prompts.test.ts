@@ -1,9 +1,9 @@
 import { effectiveInstructions } from './support/model-context.js';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/index.js';
-import * as prompts from '../../src/agent-core/prompts/index.js';
-import { normalizePromptComposition } from '../../src/agent-core/extensions/prompt-composition.js';
+import type { SessionExtensionContext } from '../../src/extensions.js';
+import * as prompts from '../../src/prompts/index.js';
+import { normalizePromptComposition } from '../../src/extensions/prompt-composition.js';
 import { answer, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -14,19 +14,19 @@ describe('Core structured Prompt composition', () => {
     [
       'run',
       ['read', 'exec', 'skill'],
-      '1c9e3b274a27a75a8731621ac2a8d8a97146120e06c6f5dbbf2cfe09bf3742d1'
+      'eb47b230fabcf7abe7a4fccc14157b8dd3ee44ee5d24cf390e4b11876c12d8b7'
     ],
     ['plan', [], 'f57b612172d1a893f301390f3d64de0224ef378c1a28fcfb8a4f99a901cb1017'],
     [
       'plan',
       ['read', 'exec', 'skill'],
-      '9ce19a731fd01663c51f980b6ed54c7e2ee7ea497b9f6a45eedd406bb50566c9'
+      '57b43610c5fb74219da6dc23098a73c6817c14eb963b03f0ada4cf917cf26e05'
     ],
     ['compact', [], '9029a41f8dbf0f68ae9ed6356169c5c0e9e45549d18d3c5d47f20fe93b2fe687'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      'a90cf88425b31a3bf5d578ce66779dbb7c0e11cb6f2661ff30ff7421ac702c68'
+      '3fae888a2bfa93fca9ca12ee31220b95d65fa05c64b260eec8d95c0b0bf56056'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {
@@ -63,7 +63,7 @@ describe('Core structured Prompt composition', () => {
   });
 
   it('preserves Hook ancestry for nested pure composition while retaining other registrations', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const own: string[] = [];
     const other: string[] = [];
     const f = await fixture(
@@ -192,7 +192,7 @@ describe('Core structured Prompt composition', () => {
   });
 
   it('copies and freezes explicit composition without sending a request or running the final string hook', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let strings = 0;
     const f = await fixture(
       [
@@ -231,7 +231,7 @@ describe('Core structured Prompt composition', () => {
   });
 
   it('captures registered sections once and uses new contributions only on the next composition', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let replaced = false;
     const f = await fixture(
       [
@@ -331,7 +331,7 @@ describe('Core structured Prompt composition', () => {
   ] as const)(
     'rejects malformed runtime Hook output (%s) with a stable Prompt diagnostic',
     async (fault) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const f = await fixture(
         [
           {
@@ -362,7 +362,7 @@ describe('Core structured Prompt composition', () => {
   );
 
   it('cancels in-flight composition on clear and refuses its retired facade', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const entered = Promise.withResolvers<void>();
     const f = await fixture(
       [

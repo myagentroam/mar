@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sourcePreview } from '../../src/agent-core/tools/input-diagnostics/source-preview.js';
+import { sourcePreview } from '../../src/tools/input-diagnostics/source-preview.js';
 
 describe('tool input source previews', () => {
   it('keeps submitted Unicode text and points at the reported character', () => {

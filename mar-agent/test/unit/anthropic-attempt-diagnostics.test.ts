@@ -1,16 +1,12 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  SecretValue,
-  generateModelText,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
+import { SecretValue, generateModelText, type AgentModelConfiguration } from '../../src/index.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
 import type {
   ModelAttemptDiagnostic,
   ModelEvent,
   ModelRequest
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -49,7 +45,7 @@ async function fixture(attempts: unknown[][] = [success]) {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Fixture address unavailable');
-  const model: MarAgentModelConfiguration = {
+  const model: AgentModelConfiguration = {
     id: 'compact',
     name: 'Compact',
     protocol: 'ANTHROPIC_MESSAGES',

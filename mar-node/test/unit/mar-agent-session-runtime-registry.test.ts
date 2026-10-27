@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { createMarAgent } from '@myagentroam/agent';
+import type { createAgent as createSdkAgent } from '@myagentroam/agent';
 import {
   MarAgentSessionRuntimeRegistry,
   type MarAgentRuntimeUse
@@ -46,8 +46,8 @@ async function fixture() {
     setSystemInstruction: vi.fn(),
     dispose: vi.fn(async () => undefined)
   };
-  const hosts: Parameters<typeof createMarAgent>[0]['host'][] = [];
-  const createAgent = vi.fn(async (input: Parameters<typeof createMarAgent>[0]) => {
+  const hosts: Parameters<typeof createSdkAgent>[0]['host'][] = [];
+  const createAgent = vi.fn(async (input: Parameters<typeof createSdkAgent>[0]) => {
     hosts.push(input.host);
     return agent;
   });
@@ -58,7 +58,7 @@ async function fixture() {
   const registry = new MarAgentSessionRuntimeRegistry(
     {
       mcpClients: cache,
-      createAgent: createAgent as unknown as typeof createMarAgent,
+      createAgent: createAgent as unknown as typeof createSdkAgent,
       modelFactory: new MarAgentRuntimeModelFactory({
         resolve: async () => {
           throw new Error('UNEXPECTED_CREDENTIAL_REQUEST');

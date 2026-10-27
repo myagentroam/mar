@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ExecutionToolPermissions,
-  projectPermissionTool
-} from '../../src/agent-core/tools/permissions.js';
-import type { ClientToolDefinition } from '../../src/agent-core/tools/contracts.js';
-import { structuredToolEventData } from '../../src/agent-core/tools/output-projection.js';
+import { ExecutionToolPermissions, projectPermissionTool } from '../../src/tools/permissions.js';
+import type { ClientToolDefinition } from '../../src/tools/contracts.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
 
 const tool: ClientToolDefinition = {
   name: 'exec',

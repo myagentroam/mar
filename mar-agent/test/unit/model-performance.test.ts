@@ -1,21 +1,23 @@
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelAdapter, ModelEvent } from '../../src/agent-core/model/contracts.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelEvent } from '../../src/model/contracts.js';
 import {
   observeModelStreamEvent,
   modelStreamEventObservedAt,
   parseSse
-} from '../../src/agent-core/model/sse.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
+} from '../../src/model/sse.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'performance',
   name: 'Performance',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -53,12 +55,14 @@ async function measure(
       }
     }
   };
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    models: [model],
-    host: new LocalAgentHost({ homeDirectory: home, workspace }),
-    adapterFactory: () => adapter
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      models: [model],
+      host: new LocalAgentHost({ homeDirectory: home, workspace })
+    },
+    () => adapter
+  );
   try {
     const session = await agent.createSession({ workspace, title: 'Performance' });
     const execution = session.run({ prompt: 'Measure without estimating tokens.' });
@@ -80,7 +84,7 @@ async function measure(
       if (cancellationTimer !== undefined) clearTimeout(cancellationTimer);
     }
     const persisted = await readFile(
-      join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl'),
+      join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     return {
@@ -452,7 +456,7 @@ describe('Model output TPS evidence', () => {
 });
 
 async function nativeEvents(
-  protocol: MarAgentModelConfiguration['protocol'],
+  protocol: AgentModelConfiguration['protocol'],
   source: readonly unknown[]
 ) {
   const server = createServer((request, response) => {

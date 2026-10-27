@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ModelMessage } from '../../src/agent-core/model/contracts.js';
+import type { ModelMessage } from '../../src/model/contracts.js';
 import {
   contextGcMessageTokens,
   contextGcReclaimedTokens,
   contextGcCacheImpact,
   contextGcPrefixTokens
-} from '../../src/agent-core/runtime/context/gc-tokens.js';
-import * as tokenBudget from '../../src/agent-core/runtime/token-budget.js';
+} from '../../src/runtime/context/gc-tokens.js';
+import * as tokenBudget from '../../src/runtime/token-budget.js';
 
 afterEach(() => vi.restoreAllMocks());
 

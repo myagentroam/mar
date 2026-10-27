@@ -5,8 +5,9 @@ import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createMarAgent, LocalAgentHost, parseModelCatalog } from '../../src/index.js';
-import type { MarAgentEvent } from '../../src/index.js';
+import { createAgent, parseModelCatalog } from '../../src/index.js';
+import { LocalAgentHost } from '../../src/host.js';
+import type { AgentEvent } from '../../src/index.js';
 
 const execFileAsync = promisify(execFile);
 const enabled = process.env.MAR_AGENT_REAL_E2E === '1';
@@ -117,14 +118,14 @@ describe.runIf(enabled)('gpt-5.6-luna high real development case', () => {
 
     const catalog = parseModelCatalog(JSON.parse(await readFile('.e2e/models.local.json', 'utf8')));
     const model = catalog.models.find((candidate) => candidate.id === 'gpt-5.6-luna')!;
-    const agent = await createMarAgent({
+    const agent = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [model],
       defaultModelId: model.id
     });
     let sessionId = '';
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     try {
       const session = await agent.createSession({ workspace, title: 'Invoice discount bug' });
       sessionId = session.id;
@@ -152,7 +153,7 @@ describe.runIf(enabled)('gpt-5.6-luna high real development case', () => {
 
     const completedTools = events
       .filter(
-        (event): event is Extract<MarAgentEvent, { type: 'tool.completed' }> =>
+        (event): event is Extract<AgentEvent, { type: 'tool.completed' }> =>
           event.type === 'tool.completed'
       )
       .map((event) => event.toolName);
@@ -170,7 +171,7 @@ describe.runIf(enabled)('gpt-5.6-luna high real development case', () => {
     expect(verification.stdout).toContain('fail 0');
     await expect(stat(join(workspace, '.git'))).rejects.toMatchObject({ code: 'ENOENT' });
 
-    const reopened = await createMarAgent({
+    const reopened = await createAgent({
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models: [model]

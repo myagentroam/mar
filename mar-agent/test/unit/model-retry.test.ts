@@ -7,18 +7,18 @@ import {
   fetchModelResponse,
   modelRetryDelay,
   modelRetryMaxAttempts
-} from '../../src/agent-core/model/http.js';
+} from '../../src/model/http.js';
 import {
-  createMarAgent,
+  createAgent,
   generateSessionTitle,
-  LocalAgentHost,
-  MarAgentError,
+  AgentError,
   SecretValue,
-  type MarAgentModelConfiguration
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { AnthropicMessagesAdapter } from '../../src/agent-core/model/anthropic-messages.js';
-import { OpenAiResponsesAdapter } from '../../src/agent-core/model/openai-responses.js';
-import type { ModelAttemptDiagnostic, ModelEvent } from '../../src/agent-core/model/contracts.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
+import type { ModelAttemptDiagnostic, ModelEvent } from '../../src/model/contracts.js';
 
 vi.mock('node:timers/promises', async (original) => ({
   ...(await original<typeof import('node:timers/promises')>()),
@@ -58,7 +58,7 @@ it.each([
         new AbortController().signal,
         attempts
       ).catch((error: unknown) => error);
-      expect(error).toBeInstanceOf(MarAgentError);
+      expect(error).toBeInstanceOf(AgentError);
       expect(error).toMatchObject({
         code: expectedCode,
         retryable: true,
@@ -175,7 +175,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
   '%s unified request retry budget',
   (protocol) => {
     function adapter() {
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'test',
         name: 'Test',
         protocol,
@@ -308,7 +308,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
               start(controller) {
                 controller.error(
                   kind === 'idle'
-                    ? new MarAgentError('MAR_AGENT_MODEL_TIMEOUT', 'Idle timeout.', {
+                    ? new AgentError('MAR_AGENT_MODEL_TIMEOUT', 'Idle timeout.', {
                         retryable: true,
                         details: { reason: 'MODEL_STREAM_IDLE_TIMEOUT' }
                       })
@@ -343,7 +343,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           return mainAttempts < 8 ? new Response('busy', { status: 503 }) : stream(protocol);
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-title-retry-'));
-        const agent = await createMarAgent({
+        const agent = await createAgent({
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
           models: [adapter().configuration]
@@ -423,7 +423,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           );
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-progress-retry-'));
-        const agent = await createMarAgent({
+        const agent = await createAgent({
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
           models: [adapter().configuration]
@@ -481,7 +481,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-unified-retry-'));
         const model = adapter().configuration;
-        const agent = await createMarAgent({
+        const agent = await createAgent({
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
           models: [model]
@@ -513,7 +513,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             : new Response('busy', { status: 503 });
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-empty-output-retry-'));
-        const agent = await createMarAgent({
+        const agent = await createAgent({
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
           models: [adapter().configuration]

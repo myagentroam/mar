@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkspacePathResolver } from '../../mar-agent/src/agent-core/tools/shared/path-resolver.js';
-import { ReadTool } from '../../mar-agent/src/agent-core/tools/local/read.js';
-import { ApplyPatchTool } from '../../mar-agent/src/agent-core/tools/local/apply-patch.js';
+import { WorkspacePathResolver } from '../../mar-agent/src/tools/shared/path-resolver.js';
+import { ReadTool } from '../../mar-agent/src/tools/local/read.js';
+import { ApplyPatchTool } from '../../mar-agent/src/tools/local/apply-patch.js';
 import type {
   HostedConversationSummary,
   MarAgentRuntimeModelConfiguration

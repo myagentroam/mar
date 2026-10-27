@@ -2,21 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type MarAgentHost,
-  type MarAgentModelConfiguration,
-  type McpToolCatalog
-} from '../../src/index.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
+import { LocalAgentHost, type AgentHost, type McpToolCatalog } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'fake',
   name: 'Fake',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -74,11 +65,11 @@ it.each([
     tools: scenario.empty ? [] : catalog.tools
   }));
   const listTools = vi.fn(async () => (scenario.empty && !scenario.hasCatalog ? [] : [definition]));
-  const callMcpTool = vi.fn<NonNullable<MarAgentHost['callMcpTool']>>(async () => ({
+  const callMcpTool = vi.fn<NonNullable<AgentHost['callMcpTool']>>(async () => ({
     content: 'fixture-record-57'
   }));
   // Omit optional methods structurally instead of inheriting Local Host's catalog method.
-  const host: MarAgentHost = {
+  const host: AgentHost = {
     describe: async () => ({
       ...(await local.describe()),
       capabilities: [
@@ -116,14 +107,16 @@ it.each([
       }
     }
   };
-  let agent: Awaited<ReturnType<typeof createMarAgentWithAdapter>> | undefined;
+  let agent: Awaited<ReturnType<typeof createAgentWithAdapter>> | undefined;
   try {
-    agent = await createMarAgentWithAdapter({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    agent = await createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace: home, title: 'Host MCP discovery' });
     expect(await session.run({ prompt: 'Look up record 57.' }).result()).toMatchObject({
       status: 'completed',

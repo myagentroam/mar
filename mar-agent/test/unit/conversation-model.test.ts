@@ -2,26 +2,21 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  type CoreAgentsApi,
-  type CoreRuntimeExtension,
-  type MarAgent,
-  type MarAgentEvent,
-  type MarAgentModelConfiguration
+  type Agent,
+  type AgentEvent,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { resolveAgentModels } from '../../src/agent-core/sdk/model-runtime.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { type ExtensionAgentsApi, type AgentExtension } from '../../src/extensions.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { resolveAgentModels } from '../../src/sdk/model-runtime.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const roots: string[] = [];
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
@@ -123,7 +118,7 @@ describe('conversation model eligibility', () => {
     });
 
     const handle = f.session.run({ prompt: 'Try the helper.' });
-    const events: MarAgentEvent[] = [];
+    const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     expect(await handle.result()).toMatchObject({ status: 'completed' });
 
@@ -150,8 +145,8 @@ describe('conversation model eligibility', () => {
   });
 
   it('rejects an auxiliary model requested by a native Extension Agent without creating a child Session', async () => {
-    let api!: CoreAgentsApi;
-    const extension: CoreRuntimeExtension = {
+    let api!: ExtensionAgentsApi;
+    const extension: AgentExtension = {
       id: 'conversation-model-native-agent',
       apiVersion: '1.0',
       attachSession: (context) => {
@@ -184,7 +179,7 @@ class FakeAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
 
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly respond: (
       request: ModelRequest,
       call: number
@@ -201,28 +196,30 @@ class FakeAdapter implements ModelAdapter {
 }
 
 async function fixture(
-  models: readonly MarAgentModelConfiguration[],
-  adapterFactory?: (configuration: MarAgentModelConfiguration) => ModelAdapter,
-  runtimeExtensions?: readonly CoreRuntimeExtension[]
+  models: readonly AgentModelConfiguration[],
+  adapterFactory?: (configuration: AgentModelConfiguration) => ModelAdapter,
+  extensions?: readonly AgentExtension[]
 ) {
   const root = await mkdtemp(join(tmpdir(), 'mar-agent-conversation-model-'));
   roots.push(root);
   const home = join(root, 'home');
   const workspace = join(root, 'workspace');
   await Promise.all([mkdir(home), mkdir(workspace)]);
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host: new LocalAgentHost({ homeDirectory: home, workspace }),
-    models,
-    ...(runtimeExtensions === undefined ? {} : { runtimeExtensions }),
-    adapterFactory: adapterFactory ?? ((configuration) => new FakeAdapter(configuration))
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace }),
+      models,
+      ...(extensions === undefined ? {} : { extensions })
+    },
+    adapterFactory ?? ((configuration) => new FakeAdapter(configuration))
+  );
   agents.push(agent);
   const session = await agent.createSession({ workspace, title: 'Conversation model tests' });
   return { agent, session, home, workspace };
 }
 
-function model(id: string, conversationModel?: boolean): MarAgentModelConfiguration {
+function model(id: string, conversationModel?: boolean): AgentModelConfiguration {
   return {
     id,
     name: id,

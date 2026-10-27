@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { MAR_AGENT_PROMPT_VERSION, buildSystemPrompt } from '../../src/agent-core/prompts/index.js';
-import { buildCompactionInput } from '../../src/agent-core/runtime/compaction/history.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
-import { applyPatchToolDefinition } from '../../src/agent-core/tools/local/apply-patch.js';
-import { questionToolDefinition } from '../../src/agent-core/tools/agent/question.js';
-import { skillToolDefinition } from '../../src/agent-core/tools/agent/skill.js';
-import { readToolDefinition } from '../../src/agent-core/tools/local/read.js';
-import { agentWaitToolDefinition } from '../../src/agent-core/tools/agent/agent-wait.js';
-import { todoWriteToolDefinition } from '../../src/agent-core/tools/agent/todo-write.js';
-import { buildEnvironmentContext } from '../../src/agent-core/prompts/core.js';
-import { retainedSessionResourcesSnapshot } from '../../src/agent-core/prompts/resources.js';
+import { MAR_AGENT_PROMPT_VERSION, buildSystemPrompt } from '../../src/prompts/index.js';
+import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
+import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
+import { questionToolDefinition } from '../../src/tools/agent/question.js';
+import { skillToolDefinition } from '../../src/tools/agent/skill.js';
+import { readToolDefinition } from '../../src/tools/local/read.js';
+import { agentWaitToolDefinition } from '../../src/tools/agent/agent-wait.js';
+import { todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { buildEnvironmentContext } from '../../src/prompts/core.js';
+import { retainedSessionResourcesSnapshot } from '../../src/prompts/resources.js';
 
 describe('system prompt', () => {
   it('limits resource wrap-up to pending work needed for the task', () => {

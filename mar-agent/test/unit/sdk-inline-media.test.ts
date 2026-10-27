@@ -4,21 +4,23 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { LocalAgentHost, SecretValue, type MarAgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import type {
   ModelAdapter,
   ModelEvent,
   ModelMessage,
   ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import type { SessionStore } from '../../src/agent-core/session/store/contracts.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/types.js';
+} from '../../src/model/contracts.js';
+import { assertInlineMediaBudget } from '../../src/model/inline-media-budget.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import type { SessionStore } from '../../src/session/store/contracts.js';
+import type { SessionRecord } from '../../src/session/store/types.js';
 
 const homes: string[] = [];
 const MiB = 1_048_576;
-const modelBase: MarAgentModelConfiguration = {
+const modelBase: AgentModelConfiguration = {
   id: 'vision',
   name: 'Vision',
   protocol: 'OPENAI_RESPONSES',
@@ -30,6 +32,7 @@ const modelBase: MarAgentModelConfiguration = {
   inputCapabilities: ['TEXT', 'IMAGE'],
   outputCapabilities: ['TEXT'],
   reasoningEfforts: ['low'],
+  hostedWebSearch: false,
   defaultReasoningEffort: 'low',
   enabled: true,
   codeMode: false
@@ -51,7 +54,7 @@ class ScriptedAdapter implements ModelAdapter {
   resetContinuationCalls = 0;
 
   constructor(
-    readonly configuration: MarAgentModelConfiguration,
+    readonly configuration: AgentModelConfiguration,
     private readonly replies: readonly ScriptedReply[]
   ) {}
 
@@ -66,6 +69,7 @@ class ScriptedAdapter implements ModelAdapter {
   }
 
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
+    assertInlineMediaBudget(request);
     const index = this.requests.length;
     this.requests.push({
       imageHashes: request.messages
@@ -119,14 +123,16 @@ async function fixture() {
   homes.push(home);
   await writeFile(join(home, 'notes.txt'), 'ORDINARY_TOOL_EVIDENCE');
   const create = (adapter: ScriptedAdapter, codeMode = false, sessionStore?: SessionStore) => {
-    const model: MarAgentModelConfiguration = { ...adapter.configuration, codeMode };
-    return createMarAgentWithAdapter({
-      mode: 'normal',
-      models: [model],
-      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-      adapterFactory: () => adapter,
-      ...(sessionStore === undefined ? {} : { sessionStore })
-    });
+    const model: AgentModelConfiguration = { ...adapter.configuration, codeMode };
+    return createAgentWithAdapter(
+      {
+        mode: 'normal',
+        models: [model],
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        ...(sessionStore === undefined ? {} : { sessionStore })
+      },
+      () => adapter
+    );
   };
   return { home, create };
 }
@@ -436,7 +442,7 @@ describe('SDK inline media lifecycle', () => {
       { events: [readCall('read-2')], reason: 'tool_use' },
       { events: [{ type: 'text.completed', itemId: 'answer', text: 'still complete' }] }
     ]);
-    let agent: Awaited<ReturnType<typeof createMarAgentWithAdapter>> | undefined;
+    let agent: Awaited<ReturnType<typeof createAgentWithAdapter>> | undefined;
     let sessionId = '';
     try {
       agent = await create(adapter, false, store);

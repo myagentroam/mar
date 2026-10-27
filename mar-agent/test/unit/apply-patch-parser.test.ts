@@ -2,14 +2,15 @@ import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalAgentHost, MarAgentError, SecretValue } from '../../src/index.js';
-import type { MarAgentModelConfiguration } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { ModelAdapter, ModelRequest } from '../../src/agent-core/model/contracts.js';
-import { LocalWorkspaceTools } from '../../src/agent-core/tools/local/workspace-tools.js';
-import { applyPatchToolInput } from '../../src/agent-core/tools/local/apply-patch.js';
-import { describeMarAgentError } from '../../src/agent-core/error.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/agent-core/tools/execution-limits.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { AgentError, SecretValue } from '../../src/index.js';
+import type { AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelRequest } from '../../src/model/contracts.js';
+import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
+import { applyPatchToolInput } from '../../src/tools/local/apply-patch.js';
+import { describeAgentError } from '../../src/error.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 const homes: string[] = [];
 afterEach(async () => {
@@ -28,8 +29,8 @@ async function failure(tools: LocalWorkspaceTools, patch: string) {
   try {
     await tools.applyPatch(patch);
   } catch (error) {
-    expect(error).toBeInstanceOf(MarAgentError);
-    return error as MarAgentError;
+    expect(error).toBeInstanceOf(AgentError);
+    return error as AgentError;
   }
   throw new Error('Expected an invalid patch to fail.');
 }
@@ -219,7 +220,7 @@ describe('freeform apply_patch parsing', () => {
     expect(error.message.length).toBeLessThan(800);
     expect(error.message).toContain('private');
     expect(error.message).toContain('…');
-    expect(describeMarAgentError(error, 'MAR_AGENT_TOOL_FAILED').message).toContain('^');
+    expect(describeAgentError(error, 'MAR_AGENT_TOOL_FAILED').message).toContain('^');
   });
 
   it('rejects empty and context-only patches with source locations before preflight', async () => {
@@ -268,7 +269,7 @@ describe('freeform apply_patch parsing', () => {
     'preserves diagnostics and allows correction with codeMode=$codeMode and protocol=$protocol',
     async ({ codeMode, protocol }) => {
       const { home, workspace } = await fixture();
-      const configuration: MarAgentModelConfiguration = {
+      const configuration: AgentModelConfiguration = {
         id: 'coding',
         name: 'Coding',
         modelId: 'test',
@@ -280,6 +281,7 @@ describe('freeform apply_patch parsing', () => {
         inputCapabilities: ['TEXT'],
         outputCapabilities: ['TEXT'],
         reasoningEfforts: ['high'],
+        hostedWebSearch: false,
         defaultReasoningEffort: 'high',
         codeMode,
         enabled: true
@@ -310,12 +312,14 @@ describe('freeform apply_patch parsing', () => {
           }
         }
       };
-      const agent = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [configuration],
-        adapterFactory: () => adapter
-      });
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [configuration]
+        },
+        () => adapter
+      );
       try {
         const session = await agent.createSession({ workspace, title: 'Patch diagnostics' });
         const run = session.run({ prompt: 'Apply and correct the patch.' });

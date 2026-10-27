@@ -2,12 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import {
-  MarAgentError,
-  type ClientToolDefinition,
+  AgentError,
   type ModelCredentialProvider,
   type ModelCredentialAcquireReason,
   type ToolExecutionResult
 } from '@myagentroam/agent';
+import type { ClientToolDefinition } from '@myagentroam/agent/host';
 import {
   requestHttp,
   acquireCredential,
@@ -104,7 +104,7 @@ export async function executeCodexImageGen(
   input.signal.throwIfAborted();
   const capability = input.configuration.imageGeneration;
   if (capability === undefined || capability.credentialProvider === undefined)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_MODEL_CONFIG_INVALID',
       'Image generation requires an independent credential provider.'
     );
@@ -112,7 +112,7 @@ export async function executeCodexImageGen(
   const images = await selectedEditImages(request, input);
   const ark = capability.provider === 'BYTED_ARK';
   if (!ark && capability.provider !== 'CODEX')
-    throw new MarAgentError('MAR_AGENT_MODEL_CONFIG_INVALID', 'Unsupported image provider.');
+    throw new AgentError('MAR_AGENT_MODEL_CONFIG_INVALID', 'Unsupported image provider.');
   const endpoint = images.length === 0 ? capability.generateEndpoint : capability.editEndpoint;
   const body = JSON.stringify(
     ark
@@ -236,7 +236,7 @@ export async function executeCodexImageGen(
       ]
     };
   }
-  throw new MarAgentError('MAR_AGENT_IMAGE_GENERATION_FAILED', 'Image generation failed.');
+  throw new AgentError('MAR_AGENT_IMAGE_GENERATION_FAILED', 'Image generation failed.');
 }
 
 interface CodexImageGenInput {
@@ -300,7 +300,7 @@ async function selectedEditImages(
   if (request.numLastImagesToInclude === undefined) return [];
   const images = input.recentImages.slice(-request.numLastImagesToInclude);
   if (images.length !== request.numLastImagesToInclude)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_TOOL_INPUT_INVALID',
       `Requested the last ${request.numLastImagesToInclude} conversation images, but only ${images.length} were available.`
     );
@@ -314,7 +314,7 @@ function validateEditImage(image: ToolRuntimeImage): ToolRuntimeImage {
     image.data.byteLength === 0 ||
     image.data.byteLength > IMAGE_MAX_BYTES
   )
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_TOOL_INPUT_INVALID',
       'Referenced image is invalid or unsupported.'
     );
@@ -325,10 +325,7 @@ async function readJsonResponse(response: Response, signal: AbortSignal): Promis
   const contentLength = Number(response.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > RESPONSE_MAX_BYTES) {
     await response.body?.cancel().catch(() => undefined);
-    throw new MarAgentError(
-      'MAR_AGENT_TOOL_OUTPUT_LIMIT',
-      'Image response exceeded the size limit.'
-    );
+    throw new AgentError('MAR_AGENT_TOOL_OUTPUT_LIMIT', 'Image response exceeded the size limit.');
   }
   if (response.body === null) return {};
   const reader = response.body.getReader();
@@ -340,7 +337,7 @@ async function readJsonResponse(response: Response, signal: AbortSignal): Promis
   readSignal.addEventListener('abort', abort, { once: true });
   const onIdle = () => {
     readController.abort(
-      new MarAgentError(
+      new AgentError(
         'MAR_AGENT_IMAGE_GENERATION_READ_TIMEOUT',
         'Image response body read timed out waiting for data.',
         {
@@ -366,7 +363,7 @@ async function readJsonResponse(response: Response, signal: AbortSignal): Promis
       readTimeout = setTimeout(onIdle, IMAGE_GENERATION_READ_IDLE_TIMEOUT_MS);
       bytes += chunk.value.byteLength;
       if (bytes > RESPONSE_MAX_BYTES)
-        throw new MarAgentError(
+        throw new AgentError(
           'MAR_AGENT_TOOL_OUTPUT_LIMIT',
           'Image response exceeded the size limit.'
         );
@@ -383,7 +380,7 @@ async function readJsonResponse(response: Response, signal: AbortSignal): Promis
   try {
     return JSON.parse(Buffer.concat(chunks, bytes).toString('utf8'));
   } catch (cause) {
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
       'Image response is invalid.',
       { cause }
@@ -418,7 +415,7 @@ function imageBase64(value: unknown): string {
       ? (data[0] as { b64_json?: unknown }).b64_json
       : undefined;
   if (typeof first !== 'string' || first.length === 0 || first.length > RESPONSE_MAX_BYTES)
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
       'Image response is invalid.'
     );
@@ -427,7 +424,7 @@ function imageBase64(value: unknown): string {
 
 function decodePng(encoded: string): Buffer {
   if (encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded))
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
       'Image response is invalid.'
     );
@@ -438,7 +435,7 @@ function decodePng(encoded: string): Buffer {
     data.toString('base64') !== encoded ||
     !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
   )
-    throw new MarAgentError(
+    throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
       'Image response is not a supported PNG.'
     );
@@ -457,7 +454,7 @@ function generatedFileName(callId: string): string {
   return basename(fileName);
 }
 
-function imageGenerationResponseError(status: number, value: unknown): MarAgentError {
+function imageGenerationResponseError(status: number, value: unknown): AgentError {
   const error =
     value !== null && typeof value === 'object' && !Array.isArray(value)
       ? (value as { error?: unknown }).error
@@ -480,9 +477,9 @@ function imageGenerationResponseError(status: number, value: unknown): MarAgentE
     )
       ? rawMessage
       : fallbackMessage;
-  return new MarAgentError(code, message, { details: { status } });
+  return new AgentError(code, message, { details: { status } });
 }
 
 function invalidInput(): never {
-  throw new MarAgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Image generation input is invalid.');
+  throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Image generation input is invalid.');
 }

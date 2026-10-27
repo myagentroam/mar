@@ -3,13 +3,15 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
-import { LocalAgentHost, SecretValue, openMarAgentSessionCatalog } from '../../src/index.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import type { MarAgent, MarAgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { LocalAgentHost } from '../../src/host.js';
+import { SecretValue, openAgentSessionCatalog } from '../../src/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+import type { Agent, AgentModelConfiguration } from '../../src/index.js';
 
 const homes: string[] = [];
-const agents: MarAgent[] = [];
+const agents: Agent[] = [];
 afterEach(async () => {
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
@@ -20,7 +22,7 @@ async function fixture() {
   homes.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
-  const model: MarAgentModelConfiguration = {
+  const model: AgentModelConfiguration = {
     id: 'model',
     name: 'Model',
     protocol: 'OPENAI_RESPONSES',
@@ -36,18 +38,20 @@ async function fixture() {
     hostedWebSearch: false,
     enabled: true
   };
-  const agent = await createMarAgent({
-    mode: 'normal',
-    host: new LocalAgentHost({ homeDirectory: home, workspace }),
-    models: [model],
-    adapterFactory: () => ({
+  const agent = await createMarAgent(
+    {
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace }),
+      models: [model]
+    },
+    () => ({
       configuration: model,
       async *start() {
         yield { type: 'text.completed' as const, itemId: 'answer', text: 'Done' };
         yield { type: 'completed' as const, reason: 'completed' as const };
       }
     })
-  });
+  );
   agents.push(agent);
   return { home, workspace, agent, session: await agent.createSession({ workspace }) };
 }
@@ -79,7 +83,7 @@ describe('SDK session title metadata', () => {
       await store.close();
       await agent.dispose();
     }
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       expect((await catalog.list()).sessions[0]?.firstUserMessagePreview).toBe(
         '去看升国旗吧 需要五星红旗元素'
@@ -103,15 +107,11 @@ describe('SDK session title metadata', () => {
     }
     await writeFile(indexPath, JSON.stringify(index));
     const transcriptPath = join(
-      home,
-      '.mar',
-      'agent',
-      'sessions',
-      session.id,
+      await activeSessionDirectory(home, session.id),
       'events-000001.jsonl'
     );
     const originalTranscript = await readFile(transcriptPath, 'utf8');
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       await expect(catalog.firstUserMessagePreview(session.id)).resolves.toBe(
         'First '.repeat(100).trim().slice(0, 160)
@@ -153,8 +153,8 @@ describe('SDK session title metadata', () => {
       delete meta.resume.firstUserMessagePreview;
     }
     await writeFile(indexPath, JSON.stringify(index));
-    const reader = await openMarAgentSessionCatalog({ homeDirectory: home });
-    const backfiller = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const reader = await openAgentSessionCatalog({ homeDirectory: home });
+    const backfiller = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const firstPage = await reader.list({ limit: 200 });
       expect(firstPage.nextCursor).toBeDefined();
@@ -189,12 +189,11 @@ describe('SDK session title metadata', () => {
     delete index.sessions[0].resume.firstUserMessageIndexed;
     delete index.sessions[0].resume.firstUserMessagePreview;
     await writeFile(indexPath, JSON.stringify(index));
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     let writtenIndex: unknown;
     try {
       await expect(catalog.firstUserMessagePreview(session.id)).resolves.toBeUndefined();
-      const moduleUrl = new URL('../../src/agent-core/session/store/index.ts', import.meta.url)
-        .href;
+      const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
       const child = spawnSync(
         process.execPath,
         [
@@ -229,7 +228,7 @@ describe('SDK session title metadata', () => {
     const { session, home } = await fixture();
     const execution = session.run({ prompt: 'First user input' });
     await execution.result();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const history = await catalog.history(session.id);
       const turn = history.entries.find((entry) => entry.kind === 'user');
@@ -323,7 +322,7 @@ describe('SDK session title metadata', () => {
     const { agent, session, home } = await fixture();
     const execution = session.run({ prompt: 'Inspect project' });
     await execution.result();
-    const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
       const branch = await catalog.fork(session.id, { boundaryTurnId: null, title: 'Branch' });
       await expect(agent.getSession(branch.id)).resolves.toMatchObject({

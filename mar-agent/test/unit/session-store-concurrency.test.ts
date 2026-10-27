@@ -2,11 +2,17 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
-  return { ...actual, open: vi.fn(actual.open), rm: vi.fn(actual.rm) };
+  return {
+    ...actual,
+    open: vi.fn(actual.open),
+    rename: vi.fn(actual.rename),
+    rm: vi.fn(actual.rm)
+  };
 });
 
 const actualFs = await vi.importActual<typeof fs>('node:fs/promises');
@@ -30,6 +36,7 @@ async function openStore(home: string) {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.mocked(fs.open).mockImplementation(actualFs.open);
+  vi.mocked(fs.rename).mockImplementation(actualFs.rename);
   vi.mocked(fs.rm).mockImplementation(actualFs.rm);
   await Promise.all(stores.splice(0).map((store) => store.close()));
   await Promise.all(
@@ -38,6 +45,159 @@ afterEach(async () => {
 });
 
 describe('Session append and directory index concurrency', () => {
+  it.each(['clear', 'rollback'] as const)(
+    'restores current metadata when %s index commit fails after another index save',
+    async (operation) => {
+      const home = await fs.mkdtemp(join(tmpdir(), 'mar-agent-replacement-index-failure-'));
+      homes.push(home);
+      const store = await openStore(home);
+      const session = await store.createSession({ workspace: home, title: 'Target' });
+      await store.append(session.id, {
+        type: 'turn.user',
+        payload: { prompt: 'first' },
+        executionId: 'e1',
+        turnId: 't1'
+      });
+      await store.append(session.id, {
+        type: 'turn.user',
+        payload: { prompt: 'second' },
+        executionId: 'e2',
+        turnId: 't2'
+      });
+      const other = await openStore(home);
+      const peer = await other.createSession({ workspace: home, title: 'Peer' });
+      const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+      const before = JSON.parse(await actualFs.readFile(indexPath, 'utf8'));
+      const beforeTarget = before.sessions.find((entry: { id: string }) => entry.id === session.id);
+      const started = signal();
+      const resume = signal();
+      const primary = new Error('Index commit failed');
+      vi.mocked(fs.open).mockImplementation(async (...args) => {
+        const handle = await actualFs.open(...args);
+        if (String(args[0]).endsWith('.rollback-tmp')) {
+          started.resolve();
+          await resume.promise;
+        }
+        return handle;
+      });
+      const pending =
+        operation === 'clear'
+          ? store.clearSession(session.id)
+          : store.rollbackSession(session.id, { boundaryTurnId: 't1' });
+      let addedId: string;
+      let concurrentRevision: number;
+      try {
+        await started.promise;
+        addedId = (await other.createSession({ workspace: home, title: 'Added' })).id;
+        concurrentRevision = JSON.parse(await actualFs.readFile(indexPath, 'utf8')).revision;
+        let injected = false;
+        vi.mocked(fs.rename).mockImplementation(async (...args) => {
+          if (!injected && args[1] === indexPath) {
+            injected = true;
+            throw primary;
+          }
+          return actualFs.rename(...args);
+        });
+      } finally {
+        resume.resolve();
+      }
+      await expect(pending).rejects.toBe(primary);
+      await store.close();
+      await other.close();
+      const after = JSON.parse(await actualFs.readFile(indexPath, 'utf8'));
+      const target = after.sessions.find((entry: { id: string }) => entry.id === session.id);
+      expect(target.storageTransactionId).toBe(beforeTarget.storageTransactionId);
+      expect(target.nextSequence).toBe(beforeTarget.nextSequence);
+      expect(after.revision).toBeGreaterThanOrEqual(concurrentRevision!);
+      expect(after.sessions.some((entry: { id: string }) => entry.id === peer.id)).toBe(true);
+      expect(after.sessions.some((entry: { id: string }) => entry.id === addedId!)).toBe(true);
+      const reopened = await openStore(home);
+      expect(
+        (await reopened.read(session.id))
+          .filter((record) => record.type === 'turn.user')
+          .map((record) => record.turnId)
+      ).toEqual(['t1', 't2']);
+      expect(await reopened.getSession(addedId!)).toMatchObject({ id: addedId, title: 'Added' });
+    }
+  );
+
+  it.each([
+    ['clear', 'refresh'],
+    ['clear', 'save'],
+    ['rollback', 'refresh'],
+    ['rollback', 'save']
+  ] as const)(
+    'publishes %s metadata after another Session index %s during staging',
+    async (operation, indexAction) => {
+      const home = await fs.mkdtemp(join(tmpdir(), 'mar-agent-replacement-index-'));
+      homes.push(home);
+      const store = await openStore(home);
+      const session = await store.createSession({ workspace: home, title: 'Target' });
+      await store.append(session.id, {
+        type: 'turn.user',
+        payload: { prompt: 'first' },
+        executionId: 'e1',
+        turnId: 't1'
+      });
+      await store.append(session.id, {
+        type: 'turn.user',
+        payload: { prompt: 'second' },
+        executionId: 'e2',
+        turnId: 't2'
+      });
+      const other = await openStore(home);
+      const peer = await other.createSession({ workspace: home, title: 'Peer' });
+      const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+      const beforeIndex = JSON.parse(await actualFs.readFile(indexPath, 'utf8'));
+      const beforeTarget = beforeIndex.sessions.find(
+        (entry: { id: string }) => entry.id === session.id
+      );
+      const started = signal();
+      const resume = signal();
+      vi.mocked(fs.open).mockImplementation(async (...args) => {
+        const handle = await actualFs.open(...args);
+        if (String(args[0]).endsWith('.rollback-tmp')) {
+          started.resolve();
+          await resume.promise;
+        }
+        return handle;
+      });
+      const pending =
+        operation === 'clear'
+          ? store.clearSession(session.id)
+          : store.rollbackSession(session.id, { boundaryTurnId: 't1' });
+      let addedId: string | undefined;
+      try {
+        await started.promise;
+        if (indexAction === 'refresh') await other.getSession(peer.id);
+        else addedId = (await other.createSession({ workspace: home, title: 'Added' })).id;
+      } finally {
+        resume.resolve();
+      }
+      await pending;
+      const index = JSON.parse(await actualFs.readFile(indexPath, 'utf8'));
+      const target = index.sessions.find((entry: { id: string }) => entry.id === session.id);
+      expect(target.storageTransactionId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(target.storageTransactionId).not.toBe(beforeTarget.storageTransactionId);
+      expect(target.nextSequence).toBe(operation === 'clear' ? 2 : 3);
+      expect(index.revision).toBeGreaterThan(beforeIndex.revision);
+      expect(index.sessions.some((entry: { id: string }) => entry.id === peer.id)).toBe(true);
+      if (addedId)
+        expect(index.sessions.some((entry: { id: string }) => entry.id === addedId)).toBe(true);
+      await store.close();
+      await other.close();
+      const reopened = await openStore(home);
+      expect(
+        (await reopened.read(session.id))
+          .filter((record) => record.type === 'turn.user')
+          .map((record) => record.turnId)
+      ).toEqual(operation === 'clear' ? [] : ['t1']);
+      expect(await reopened.getSession(peer.id)).toMatchObject({ id: peer.id, title: 'Peer' });
+      if (addedId)
+        expect(await reopened.getSession(addedId)).toMatchObject({ id: addedId, title: 'Added' });
+    }
+  );
+
   it('does not combine an indexed count with a concurrently replaced history', async () => {
     const home = await fs.mkdtemp(join(tmpdir(), 'mar-agent-count-replacement-'));
     homes.push(home);
@@ -48,7 +208,7 @@ describe('Session append and directory index concurrency', () => {
     const records = await store.read(session.id);
     await store.close();
     const reopened = await openStore(home);
-    const eventsPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+    const eventsPath = join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl');
     const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
     const started = signal();
     const resume = signal();
@@ -148,7 +308,10 @@ describe('Session append and directory index concurrency', () => {
       const session = await original.createSession({ workspace: home });
       const indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
       const staleIndex = await fs.readFile(indexPath, 'utf8');
-      const eventsPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+      const eventsPath = join(
+        await activeSessionDirectory(home, session.id),
+        'events-000001.jsonl'
+      );
       const timestamp = '2090-01-01T00:00:00.000Z';
       await original.append(session.id, {
         type: 'session.title.updated',
@@ -222,11 +385,7 @@ describe('Session append and directory index concurrency', () => {
           const started = signal();
           const resume = signal();
           const eventsPath = join(
-            home,
-            '.mar',
-            'agent',
-            'sessions',
-            session.id,
+            await activeSessionDirectory(home, session.id),
             'events-000001.jsonl'
           );
           let paused = false;
@@ -325,11 +484,7 @@ describe('Session append and directory index concurrency', () => {
       }
     ]);
     const marker = join(
-      home,
-      '.mar',
-      'agent',
-      'sessions',
-      session.id,
+      await activeSessionDirectory(home, session.id),
       'resources',
       `.${images[0]!.resourceId}.pending`
     );
@@ -354,7 +509,10 @@ describe('Session append and directory index concurrency', () => {
       const index = JSON.parse(
         await fs.readFile(join(home, '.mar', 'agent', 'sessions', 'index.json'), 'utf8')
       );
-      const eventsPath = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+      const eventsPath = join(
+        await activeSessionDirectory(home, session.id),
+        'events-000001.jsonl'
+      );
       expect(index.sessions.find((entry: { id: string }) => entry.id === session.id)).toMatchObject(
         {
           nextSequence: 3,

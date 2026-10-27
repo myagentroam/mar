@@ -7,11 +7,11 @@ import {
   contextGcStaleReadReplacement,
   contextGcWebOutputReplacement,
   type ContextGcExecResult
-} from '../../src/agent-core/session/context-gc-replacements.js';
+} from '../../src/session/context-gc-replacements.js';
 import {
   contextGcSubagentOutputReplacement,
   type ContextGcSubagentSnapshot
-} from '../../src/agent-core/session/context-gc-subagent.js';
+} from '../../src/session/context-gc-subagent.js';
 
 const text = 'preview <message> & "quoted"';
 const exec: ContextGcExecResult = {

@@ -2,21 +2,17 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  openMarAgentSessionCatalog,
-  type MarAgentModelConfiguration
+  openAgentSessionCatalog,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
-import type { MarAgentEvent } from '../../src/agent-core/runtime/events.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
+import type { AgentEvent } from '../../src/runtime/events.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -31,7 +27,7 @@ type ModelScript = (
 ) => AsyncIterable<ModelEvent>;
 
 interface FixtureOptions {
-  runtimeExtensions?: readonly CoreRuntimeExtension[];
+  extensions?: readonly AgentExtension[];
   hostFactory?: (input: { homeDirectory: string; workspace: string }) => LocalAgentHost;
   script?: ModelScript;
 }
@@ -73,7 +69,7 @@ async function fixture(options: FixtureOptions = {}) {
   const workspace = join(root, 'workspace');
   await mkdir(homeDirectory);
   await mkdir(workspace);
-  const configuration: MarAgentModelConfiguration = {
+  const configuration: AgentModelConfiguration = {
     id: 'test',
     name: 'Test',
     protocol: 'ANTHROPIC_MESSAGES',
@@ -97,12 +93,14 @@ async function fixture(options: FixtureOptions = {}) {
     new LocalAgentHost({ homeDirectory, workspace });
   const script = options.script ?? answerScript;
   const create = () =>
-    createMarAgentWithAdapter({
-      mode: 'normal',
-      host,
-      models: [configuration],
-      ...(options.runtimeExtensions ? { runtimeExtensions: options.runtimeExtensions } : {}),
-      adapterFactory: () =>
+    createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host,
+        models: [configuration],
+        ...(options.extensions ? { extensions: options.extensions } : {})
+      },
+      () =>
         ({
           configuration,
           async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
@@ -113,11 +111,11 @@ async function fixture(options: FixtureOptions = {}) {
           },
           async close() {}
         }) satisfies ModelAdapter
-    });
+    );
   const agent = await create();
   cleanups.push(() => agent.dispose());
   const session = await agent.createSession({ workspace });
-  const catalog = await openMarAgentSessionCatalog({ homeDirectory });
+  const catalog = await openAgentSessionCatalog({ homeDirectory });
   cleanups.push(() => catalog.close());
   return {
     agent,
@@ -149,10 +147,10 @@ async function waitForGate(
 }
 
 async function collectEvents(
-  handle: AsyncIterable<MarAgentEvent>,
-  onEvent?: (event: MarAgentEvent) => void
-): Promise<MarAgentEvent[]> {
-  const events: MarAgentEvent[] = [];
+  handle: AsyncIterable<AgentEvent>,
+  onEvent?: (event: AgentEvent) => void
+): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
   for await (const event of handle) {
     events.push(event);
     onEvent?.(event);
@@ -298,7 +296,7 @@ describe('native steer acceptance boundaries', () => {
   it('runs prompt.submit once at admission and does not rerun it when cancellation recovery applies the input', async () => {
     const text = 'accepted once';
     let hookCalls = 0;
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'native-steer-hook-count',
       apiVersion: '1.0',
       attachSession(context) {
@@ -308,7 +306,7 @@ describe('native steer acceptance boundaries', () => {
         });
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
     await waitForGate(handle, f.started, 'initial model request');
     const input = {
@@ -330,7 +328,7 @@ describe('native steer acceptance boundaries', () => {
   it('restores pending input before an idle barrier created by the new Session ready Hook', async () => {
     let restoring = false;
     const queueSignal = new AbortController();
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'native-steer-recovery-order',
       apiVersion: '1.0',
       attachSession(context) {
@@ -345,7 +343,7 @@ describe('native steer acceptance boundaries', () => {
         });
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial' });
     await waitForGate(handle, f.started, 'initial model request');
     await f.session.steer({
@@ -375,15 +373,15 @@ describe('native steer acceptance boundaries', () => {
   });
 
   it('applies cancelled pending input before the next authorized SDK idle input', async () => {
-    let context!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
-    const extension: CoreRuntimeExtension = {
+    let context!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
+    const extension: AgentExtension = {
       id: 'native-steer-idle-recovery',
       apiVersion: '1.0',
       attachSession(value) {
         context = value;
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial' });
     await waitForGate(handle, f.started, 'initial model request');
     await f.session.steer({
@@ -413,9 +411,9 @@ describe('native steer acceptance boundaries', () => {
   });
 
   it('does not turn accepted guidance into a new idle execution after a model failure', async () => {
-    let context!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
+    let context!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
     const f = await fixture({
-      runtimeExtensions: [
+      extensions: [
         {
           id: 'native-steer-failed-target',
           apiVersion: '1.0',
@@ -470,7 +468,7 @@ describe('native steer acceptance boundaries', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const f = await fixture({
-      runtimeExtensions: [
+      extensions: [
         {
           id: 'native-steer-closed-admission',
           apiVersion: '1.0',
@@ -516,7 +514,7 @@ describe('native steer acceptance boundaries', () => {
 
   it('returns handled without history, a live received event, or a follow-up model request', async () => {
     const text = 'extension handles this';
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'native-steer-handled',
       apiVersion: '1.0',
       attachSession(context) {
@@ -525,7 +523,7 @@ describe('native steer acceptance boundaries', () => {
         );
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
     const eventsPromise = collectEvents(handle);
     await waitForGate(handle, f.started, 'initial model request');
@@ -548,7 +546,7 @@ describe('native steer acceptance boundaries', () => {
 
   it('rejects a prompt.submit failure before the writer commits and leaves no deferred record', async () => {
     const text = 'fails before writer';
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'native-steer-pre-leaf-failure',
       apiVersion: '1.0',
       attachSession(context) {
@@ -558,7 +556,7 @@ describe('native steer acceptance boundaries', () => {
         });
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
     await waitForGate(handle, f.started, 'initial model request');
     await expect(
@@ -580,7 +578,7 @@ describe('native steer acceptance boundaries', () => {
   it('keeps concurrent next calls and a post-commit failure accepted with exactly one durable input', async () => {
     const text = 'committed before hook throws';
     let hookCalls = 0;
-    const extension: CoreRuntimeExtension = {
+    const extension: AgentExtension = {
       id: 'native-steer-post-commit-failure',
       apiVersion: '1.0',
       attachSession(context) {
@@ -592,7 +590,7 @@ describe('native steer acceptance boundaries', () => {
         });
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
     await waitForGate(handle, f.started, 'initial model request');
     const input = {
@@ -617,7 +615,7 @@ describe('native steer acceptance boundaries', () => {
   it('keeps the committed receipt when the live observer fails and shares the durable history identity', async () => {
     let observerFailures = 0;
     class FailingObserverHost extends LocalAgentHost {
-      override async emit(event: MarAgentEvent): Promise<void> {
+      override async emit(event: AgentEvent): Promise<void> {
         if (event.type === 'input.received') {
           observerFailures++;
           throw new Error('observer failed');
@@ -659,15 +657,15 @@ describe('native steer acceptance boundaries', () => {
   });
 
   it('rejects native steer while an SDK idle input forms the FIFO barrier', async () => {
-    let sessionContext!: Parameters<NonNullable<CoreRuntimeExtension['attachSession']>>[0];
-    const extension: CoreRuntimeExtension = {
+    let sessionContext!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
+    const extension: AgentExtension = {
       id: 'native-steer-idle-barrier',
       apiVersion: '1.0',
       attachSession(context) {
         sessionContext = context;
       }
     };
-    const f = await fixture({ runtimeExtensions: [extension] });
+    const f = await fixture({ extensions: [extension] });
     const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
     await waitForGate(handle, f.started, 'initial model request');
     const queueSignal = new AbortController();
@@ -698,7 +696,7 @@ describe('native steer acceptance boundaries', () => {
     const completionEntered = Promise.withResolvers<void>();
     const releaseCompletion = Promise.withResolvers<void>();
     class BlockingCompletionHost extends LocalAgentHost {
-      override async emit(event: MarAgentEvent): Promise<void> {
+      override async emit(event: AgentEvent): Promise<void> {
         if (event.type === 'execution.completed') {
           completionEntered.resolve();
           await releaseCompletion.promise;

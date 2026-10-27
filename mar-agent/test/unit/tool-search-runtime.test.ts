@@ -2,21 +2,17 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  LocalAgentHost,
-  SecretValue,
-  type McpToolCatalog,
-  type MarAgentModelConfiguration
-} from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
-import type { CoreRuntimeExtension } from '../../src/agent-core/extensions/contracts.js';
+import { LocalAgentHost, type McpToolCatalog } from '../../src/host.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
 import type {
   ModelAdapter,
   ModelEvent,
   ModelRequest,
   ToolCaller
-} from '../../src/agent-core/model/contracts.js';
+} from '../../src/model/contracts.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -24,7 +20,7 @@ afterEach(async () => {
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
   );
 });
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'fake',
   name: 'Fake',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -113,7 +109,7 @@ function catalog({
 }
 class Adapter implements ModelAdapter {
   constructor(
-    readonly configuration: MarAgentModelConfiguration = model,
+    readonly configuration: AgentModelConfiguration = model,
     private readonly callPrefix = 'call'
   ) {}
   readonly requests: ModelRequest[] = [];
@@ -135,8 +131,8 @@ class Adapter implements ModelAdapter {
 async function fixture(
   codeMode = false,
   catalogOptions?: Parameters<typeof catalog>[0],
-  overrides: Partial<MarAgentModelConfiguration> = {},
-  runtimeExtensions: readonly CoreRuntimeExtension[] = []
+  overrides: Partial<AgentModelConfiguration> = {},
+  extensions: readonly AgentExtension[] = []
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-discovery-'));
   directories.push(home);
@@ -157,14 +153,16 @@ async function fixture(
   });
   const configuration = { ...model, ...overrides, codeMode };
   const adapter = new Adapter(configuration);
-  const agent = await createMarAgentWithAdapter({
-    mode: 'normal',
-    host,
-    models: [configuration],
-    defaultModelId: model.id,
-    runtimeExtensions,
-    adapterFactory: () => adapter
-  });
+  const agent = await createAgentWithAdapter(
+    {
+      mode: 'normal',
+      host,
+      models: [configuration],
+      defaultModelId: model.id,
+      extensions
+    },
+    () => adapter
+  );
   const session = await agent.createSession({ workspace: home, title: 'Discovery test' });
   return {
     home,
@@ -197,7 +195,13 @@ describe('MCP discovery runtime', () => {
         undefined,
         {
           protocol,
-          responsesOptionalParameters: { nativeTools }
+          responsesOptionalParameters: {
+            nativeTools,
+            reasoningEffort: false,
+            reasoningSummary: false,
+            textVerbosity: false,
+            promptCacheKey: false
+          }
         },
         [
           {
@@ -488,7 +492,7 @@ describe('MCP discovery runtime', () => {
 
   it('keeps programmatic-only MCP definitions in local history and the next Code Mode directory only', async () => {
     const f = await fixture(true);
-    let resumed: Awaited<ReturnType<typeof createMarAgentWithAdapter>> | undefined;
+    let resumed: Awaited<ReturnType<typeof createAgentWithAdapter>> | undefined;
     try {
       const cell = `const result = await tools.${programmaticOnlyName}({ record: "cell" }); observe.text(result.content);`;
       f.adapter.batches.push(
@@ -556,21 +560,23 @@ describe('MCP discovery runtime', () => {
         { name: programmaticOnlyName, arguments: { record: 'forged-after-resume' } },
         { name: 'code_exec', arguments: { code: cell } }
       ]);
-      resumed = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({
-          homeDirectory: f.home,
-          workspace: f.home,
-          mcpCatalog: () => recoveredCatalog,
-          callMcp: async (call) => {
-            f.calls.push(call.name);
-            return { content: 'Recovered record found.' };
-          }
-        }),
-        models: [{ ...model, codeMode: true }],
-        defaultModelId: model.id,
-        adapterFactory: () => recoveredAdapter
-      });
+      resumed = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({
+            homeDirectory: f.home,
+            workspace: f.home,
+            mcpCatalog: () => recoveredCatalog,
+            callMcp: async (call) => {
+              f.calls.push(call.name);
+              return { content: 'Recovered record found.' };
+            }
+          }),
+          models: [{ ...model, codeMode: true }],
+          defaultModelId: model.id
+        },
+        () => recoveredAdapter
+      );
       const resumedSession = await resumed.openSession(f.session.id);
       const resumedEvents = [];
       const resumedExecution = resumedSession.run({ prompt: 'Continue using the resolver.' });
@@ -738,18 +744,20 @@ describe('MCP discovery runtime', () => {
       }
       await f.agent.dispose();
       const adapter = new Adapter();
-      const resumed = await createMarAgentWithAdapter({
-        mode: 'normal',
-        host: new LocalAgentHost({
-          homeDirectory: f.home,
-          workspace: f.home,
-          mcpCatalog: catalog,
-          callMcp: async () => ({ content: 'ok' })
-        }),
-        models: [model],
-        defaultModelId: model.id,
-        adapterFactory: () => adapter
-      });
+      const resumed = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({
+            homeDirectory: f.home,
+            workspace: f.home,
+            mcpCatalog: catalog,
+            callMcp: async () => ({ content: 'ok' })
+          }),
+          models: [model],
+          defaultModelId: model.id
+        },
+        () => adapter
+      );
       try {
         await (await resumed.openSession(f.session.id)).run({ prompt: 'Continue.' }).result();
         expect(adapter.requests[0]!.tools.some((tool) => tool.name === externalName)).toBe(false);

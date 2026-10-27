@@ -1,12 +1,12 @@
 import { performance } from 'node:perf_hooks';
 import { describe, expect, it } from 'vitest';
-import type { McpToolCatalog } from '../../src/agent-core/sdk/types.js';
-import { countModelTokens } from '../../src/agent-core/runtime/token-budget.js';
+import type { McpToolCatalog } from '../../src/sdk/types.js';
+import { countModelTokens } from '../../src/runtime/token-budget.js';
 import {
   DeferredMcpRegistry,
   TOOL_SEARCH_LIMITS,
   toolSearchToolDefinition
-} from '../../src/agent-core/tools/mcp/tool-search.js';
+} from '../../src/tools/mcp/tool-search.js';
 
 describe('bounded MCP catalog efficiency', () => {
   it.each([100, 1000, 10_000])('keeps initial schemas stable for %i remote tools', async (size) => {

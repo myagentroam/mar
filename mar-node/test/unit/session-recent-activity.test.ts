@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
-import type { MarAgentEvent } from '@myagentroam/agent';
+import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import {
   marctlSessionDetail,
@@ -366,7 +366,7 @@ describe('bounded marctl Session views', () => {
         callId: 'cell',
         toolName
       };
-      const events: MarAgentEvent[] = [
+      const events: AgentEvent[] = [
         {
           ...base,
           type: 'tool.started',

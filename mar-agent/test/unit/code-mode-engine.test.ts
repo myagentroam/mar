@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createCodeModeEngine } from '../../src/agent-core/tools/code-mode/quickjs-engine.js';
-import type { CodeModeEngine } from '../../src/agent-core/tools/code-mode/engine.js';
+import { createCodeModeEngine } from '../../src/tools/code-mode/quickjs-engine.js';
+import type { CodeModeEngine } from '../../src/tools/code-mode/engine.js';
 
 async function executeFull(
   code: string,

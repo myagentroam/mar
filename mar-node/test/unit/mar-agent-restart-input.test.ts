@@ -4,7 +4,7 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 const { history, close } = vi.hoisted(() => ({ history: vi.fn(), close: vi.fn() }));
 vi.mock('@myagentroam/agent', async (original) => ({
   ...(await original<typeof import('@myagentroam/agent')>()),
-  openMarAgentSessionCatalog: async () => ({ history, close })
+  openAgentSessionCatalog: async () => ({ history, close })
 }));
 
 describe('MAR Agent restart input reconciliation', () => {

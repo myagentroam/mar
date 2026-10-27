@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CoreSessionExtensionContext } from '../../src/index.js';
+import type { SessionExtensionContext } from '../../src/extensions.js';
 import { answer, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
 describe('Session execution ownership across handles', () => {
   it('uses the executing handle model and mode through the shared backend', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     const seen: Array<{ modelId: string; mode: string | undefined }> = [];
     const f = await fixture(
       [
@@ -54,7 +54,7 @@ describe('Session execution ownership across handles', () => {
   it.each(['cancelled', 'failed'] as const)(
     'revokes the shared context after a %s preparation',
     async (status) => {
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let ready!: () => void;
       let resume!: () => void;
       const entered = new Promise<void>((resolve) => {
@@ -134,7 +134,7 @@ describe('Session execution ownership across handles', () => {
   );
 
   it('does not replace an absent execution instruction with a later Host update', async () => {
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let inspect!: () => Promise<void>;
     const f = await fixture(
       [

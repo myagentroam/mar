@@ -3,7 +3,8 @@ import { appendFile, mkdtemp, open, readFile, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 afterEach(async () => {
@@ -17,7 +18,7 @@ it('forks thousands of records with segment-bounded synchronization', async () =
   let store = await JsonlSessionStore.open(home);
   const source = await store.createSession({ title: 'Source', workspace: home });
   await store.close();
-  const directory = join(home, '.mar', 'agent', 'sessions', source.id);
+  const directory = await activeSessionDirectory(home, source.id);
   const original = JSON.parse(await readFile(join(directory, 'events-000001.jsonl'), 'utf8'));
   const records = Array.from({ length: 2651 }, (_, index) => ({
     ...original,
@@ -150,7 +151,7 @@ it('forks bounded segments and restores resume indexes before continuing the bra
       boundaryTurnId: 'boundary',
       title: 'Branch'
     });
-    const directory = join(home, '.mar', 'agent', 'sessions', forked.id);
+    const directory = await activeSessionDirectory(home, forked.id);
     const files = (await readdir(directory)).filter((name) => name.endsWith('.jsonl')).sort();
     expect(files).toEqual(['events-000001.jsonl', 'events-000002.jsonl']);
     for (const file of files)

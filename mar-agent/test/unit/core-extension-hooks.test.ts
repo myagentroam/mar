@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ExtensionHooks } from '../../src/agent-core/extensions/hooks.js';
-import { ExtensionResourceScope } from '../../src/agent-core/extensions/resources.js';
-import { ExtensionOperations } from '../../src/agent-core/extensions/operation.js';
+import { ExtensionHooks } from '../../src/extensions/hooks.js';
+import { ExtensionResourceScope } from '../../src/extensions/resources.js';
+import { ExtensionOperations } from '../../src/extensions/operation.js';
 
 type Operations = { calculate: { input: number; output: number } };
 type Facts = { calculated: Readonly<{ value: number }> };

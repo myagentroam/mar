@@ -1,25 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelMessage, ModelUsage } from '../../src/agent-core/model/contracts.js';
-import { inspectContextGc, planContextGc } from '../../src/agent-core/runtime/context/gc.js';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
-import { validateContextGcCheckpoint } from '../../src/agent-core/session/context-gc-checkpoint.js';
-import type { SessionRecord } from '../../src/agent-core/session/store/index.js';
+import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
+import { inspectContextGc, planContextGc } from '../../src/runtime/context/gc.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { validateContextGcCheckpoint } from '../../src/session/context-gc-checkpoint.js';
+import type { SessionRecord } from '../../src/session/store/index.js';
 import type {
   ContextGcSubagentSnapshot,
   ContextGcSubagentToolName
-} from '../../src/agent-core/session/context-gc-subagent.js';
+} from '../../src/session/context-gc-subagent.js';
 import {
   contextGcCompletedSubagentTurnId,
   contextGcSubagentPriorFinalIsRetained,
   normalizeContextGcSubagentSnapshot
-} from '../../src/agent-core/session/context-gc-subagent.js';
+} from '../../src/session/context-gc-subagent.js';
 
 function records() {
   let sequence = 0;
   const values: SessionRecord[] = [];
   const add = (type: string, payload: unknown) => {
     const record: SessionRecord = {
-      schemaVersion: 1,
       recordId: `record-${++sequence}`,
       sequence,
       timestamp: new Date(1_800_000_000_000 + sequence).toISOString(),

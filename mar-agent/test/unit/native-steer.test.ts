@@ -2,20 +2,15 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost, type AgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  openMarAgentSessionCatalog,
-  type MarAgentModelConfiguration,
-  type MarAgentHost
+  openAgentSessionCatalog,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter } from '../../src/agent-core/sdk/agent.js';
-import type {
-  ModelAdapter,
-  ModelEvent,
-  ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -23,8 +18,8 @@ afterEach(async () => {
 });
 
 async function fixture(
-  protocol: MarAgentModelConfiguration['protocol'],
-  publishModelResource?: MarAgentHost['publishModelResource'],
+  protocol: AgentModelConfiguration['protocol'],
+  publishModelResource?: AgentHost['publishModelResource'],
   pauseAfterApply = false
 ) {
   const root = await mkdtemp(join(tmpdir(), 'mar-steer-'));
@@ -33,7 +28,7 @@ async function fixture(
     workspace = join(root, 'workspace');
   await mkdir(workspace);
   await mkdir(home);
-  const configuration: MarAgentModelConfiguration = {
+  const configuration: AgentModelConfiguration = {
     id: 'test',
     name: 'Test',
     protocol,
@@ -56,11 +51,13 @@ async function fixture(
   const requests: ModelRequest[] = [];
   let aborted = 0;
   const create = () =>
-    createMarAgentWithAdapter({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace, publishModelResource }),
-      models: [configuration],
-      adapterFactory: () =>
+    createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace, publishModelResource }),
+        models: [configuration]
+      },
+      () =>
         ({
           configuration,
           async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
@@ -103,11 +100,11 @@ async function fixture(
           },
           async close() {}
         }) satisfies ModelAdapter
-    });
+    );
   const agent = await create();
   cleanups.push(() => agent.dispose());
   const session = await agent.createSession({ workspace });
-  const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+  const catalog = await openAgentSessionCatalog({ homeDirectory: home });
   cleanups.push(() => catalog.close());
   return {
     agent,

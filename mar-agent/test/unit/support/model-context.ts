@@ -1,4 +1,4 @@
-import type { ModelRequest } from '../../../src/agent-core/model/contracts.js';
+import type { ModelRequest } from '../../../src/model/contracts.js';
 
 export function latestUserText(request: ModelRequest): string | undefined {
   const latest = request.messages.findLast(

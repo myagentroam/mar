@@ -4,7 +4,7 @@ import { TLSSocket } from 'node:tls';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MarAgentError } from '@myagentroam/agent';
+import { AgentError } from '@myagentroam/agent';
 import { chromium, errors, type Browser, type BrowserContext, type Response } from 'playwright';
 import {
   WEB_FETCH_MAX_BYTES,
@@ -17,7 +17,7 @@ const TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
 const MAX_BROWSER_REQUESTS = 2;
 
-export class WebFetchError extends MarAgentError {
+export class WebFetchError extends AgentError {
   constructor(
     readonly code: string,
     readonly status: number,

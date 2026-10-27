@@ -1,4 +1,4 @@
-import type { ModelEvent, ModelRequest } from '../../../src/agent-core/model/contracts.js';
+import type { ModelEvent, ModelRequest } from '../../../src/model/contracts.js';
 
 /** Scripted parents explicitly join a newly started child before consuming its result. */
 export function waitForNewChild(request: ModelRequest): ModelEvent | undefined {

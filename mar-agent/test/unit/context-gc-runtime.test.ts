@@ -1,31 +1,29 @@
-import { formatReadContextItem } from '../../src/agent-core/tools/local/read-context.js';
+import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocalAgentHost } from '../../src/host.js';
 import {
-  LocalAgentHost,
   SecretValue,
-  openMarAgentSessionCatalog,
-  type MarAgentModelConfiguration
+  openAgentSessionCatalog,
+  type AgentModelConfiguration
 } from '../../src/index.js';
-import { createMarAgentWithAdapter as createMarAgent } from '../../src/agent-core/sdk/agent.js';
+import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
-} from '../../src/agent-core/model/contracts.js';
-import {
-  ContextGcRuntime,
-  tryCommitContextGc
-} from '../../src/agent-core/runtime/context/gc-runtime.js';
-import { buildContextProjection } from '../../src/agent-core/runtime/context/projection.js';
-import { JsonlSessionStore } from '../../src/agent-core/session/store/index.js';
+} from '../../src/model/contracts.js';
+import { ContextGcRuntime, tryCommitContextGc } from '../../src/runtime/context/gc-runtime.js';
+import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { captureExecutionContext } from './support/checkpoint-context.js';
-import { restoreMessages } from '../../src/agent-core/runtime/context/restore.js';
-import type { CoreSessionExtensionContext } from '../../src/agent-core/extensions/contracts.js';
-import * as worldState from '../../src/agent-core/runtime/context/world-state.js';
-import { MarAgentError } from '../../src/agent-core/error.js';
+import { restoreMessages } from '../../src/runtime/context/restore.js';
+import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
+import * as worldState from '../../src/runtime/context/world-state.js';
+import { AgentError } from '../../src/error.js';
+import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 
@@ -34,7 +32,7 @@ afterEach(async () => {
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
 
-const model: MarAgentModelConfiguration = {
+const model: AgentModelConfiguration = {
   id: 'gc-model',
   name: 'GC model',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -50,7 +48,7 @@ const model: MarAgentModelConfiguration = {
   titleGeneration: false,
   codeMode: false,
   hostedWebSearch: false,
-  responsesPreviousResponseId: true,
+  responsesPreviousResponseId: false,
   enabled: true
 };
 
@@ -149,7 +147,7 @@ describe('context GC runtime integration', () => {
       homes.push(home);
       await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
       const adapter = new ContextGcAdapter();
-      let sessionContext!: CoreSessionExtensionContext;
+      let sessionContext!: SessionExtensionContext;
       let paused = false,
         committed = false;
       let notifyPaused!: () => void, release!: () => void;
@@ -186,21 +184,23 @@ describe('context GC runtime integration', () => {
         }
         return result;
       });
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-        models: [model],
-        adapterFactory: () => adapter,
-        runtimeExtensions: [
-          {
-            id: 'gc-append',
-            apiVersion: '1.0',
-            attachSession(context) {
-              sessionContext = context;
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [model],
+          extensions: [
+            {
+              id: 'gc-append',
+              apiVersion: '1.0',
+              attachSession(context) {
+                sessionContext = context;
+              }
             }
-          }
-        ]
-      });
+          ]
+        },
+        () => adapter
+      );
       const session = await agent.createSession({ workspace: home });
       const result = session.run({ prompt: 'Update the file.' }).result();
       try {
@@ -272,17 +272,19 @@ describe('context GC runtime integration', () => {
           (args[1] as { generation?: string }).generation === committedGeneration
         ) {
           worldBeforeFailure = captured.runtime(args[0]).contextualWorldState;
-          throw new MarAgentError('MAR_AGENT_HOST_IO_ERROR', 'Injected GC sidecar write failure.');
+          throw new AgentError('MAR_AGENT_HOST_IO_ERROR', 'Injected GC sidecar write failure.');
         }
         return write.apply(this, args);
       });
     const adapter = new ContextGcAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model]
+      },
+      () => adapter
+    );
     const session = await agent.createSession({ workspace: home });
     try {
       expect(await session.run({ prompt: 'Update the file.' }).result()).toMatchObject({
@@ -312,12 +314,14 @@ describe('context GC runtime integration', () => {
       await store.close();
     }
     const resumedAdapter = new ContextGcAdapter(model, 4);
-    const resumed = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-      models: [model],
-      adapterFactory: () => resumedAdapter
-    });
+    const resumed = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model]
+      },
+      () => resumedAdapter
+    );
     try {
       const restored = await resumed.openSession(session.id);
       expect(
@@ -441,12 +445,14 @@ describe('context GC runtime integration', () => {
     const adapter = new ContextGcAdapter(configured, 4);
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
     const resources = vi.spyOn(host, 'listSessionResources');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [configured],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [configured]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.createSession({ workspace: home, title: 'Below threshold' });
       const readState = vi.spyOn(JsonlSessionStore.prototype, 'readExecutionState');
@@ -488,12 +494,14 @@ describe('context GC runtime integration', () => {
     });
     await store.close();
     const adapter = new ContextGcAdapter();
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      () => adapter
+    );
     try {
       const session = await agent.openSession(child.id);
       expect(
@@ -519,7 +527,7 @@ describe('context GC runtime integration', () => {
     await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
     const initial = new ContextGcAdapter();
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     let normalCalls = 0;
     let gcCommitted = false;
     let compactRequested = false;
@@ -583,31 +591,33 @@ describe('context GC runtime integration', () => {
         });
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [model],
-      adapterFactory: () => adapter,
-      runtimeExtensions: [
-        {
-          id: 'gc-then-compact',
-          apiVersion: '1.0',
-          attachSession(value) {
-            context = value;
-            value.hooks.intercept('compact.generate', async () => ({
-              summary: 'Continue from the verified change.'
-            }));
-            value.hooks.intercept('model.request', async (request, _call, next) => {
-              if (gcCommitted && !compactRequested) {
-                compactRequested = true;
-                await value.session.compact({ async: false });
-              }
-              return next(request);
-            });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model],
+        extensions: [
+          {
+            id: 'gc-then-compact',
+            apiVersion: '1.0',
+            attachSession(value) {
+              context = value;
+              value.hooks.intercept('compact.generate', async () => ({
+                summary: 'Continue from the verified change.'
+              }));
+              value.hooks.intercept('model.request', async (request, _call, next) => {
+                if (gcCommitted && !compactRequested) {
+                  compactRequested = true;
+                  await value.session.compact({ async: false });
+                }
+                return next(request);
+              });
+            }
           }
-        }
-      ]
-    });
+        ]
+      },
+      () => adapter
+    );
     let sessionId: string;
     try {
       const session = await agent.createSession({ workspace: home });
@@ -687,12 +697,14 @@ describe('context GC runtime integration', () => {
             : event;
       }
     };
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
-      models: [model],
-      adapterFactory: () => adapter
-    });
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model]
+      },
+      () => adapter
+    );
     let sessionId: string;
     try {
       const session = await agent.createSession({ workspace: home, title: 'GC across Compact' });
@@ -742,12 +754,14 @@ describe('context GC runtime integration', () => {
           { cellId: 'completed-cell', status: 'completed' as const, executionId: 'old-execution' }
         ]
       }));
-      const agent = await createMarAgent({
-        mode: 'normal',
-        host,
-        models: [model],
-        adapterFactory: () => adapter
-      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [model]
+        },
+        () => adapter
+      );
       const session = await agent.createSession({ workspace, title: 'Context GC runtime' });
       if (afterCompact) {
         const seedStore = await JsonlSessionStore.open(home);
@@ -834,7 +848,7 @@ describe('context GC runtime integration', () => {
       await runtime.run(runtimeInput);
       expect(readState).toHaveBeenCalledTimes(3);
       await store.close();
-      const catalog = await openMarAgentSessionCatalog({ homeDirectory: home });
+      const catalog = await openAgentSessionCatalog({ homeDirectory: home });
       const history = await catalog.history(session.id, { limit: 1_000 });
       expect(
         history.entries.some(
@@ -844,7 +858,8 @@ describe('context GC runtime integration', () => {
       await catalog.close();
 
       // Recovery trusts the committed replacement instead of revalidating archived input.
-      const segment = join(home, '.mar', 'agent', 'sessions', session.id, 'events-000001.jsonl');
+      const activeDirectory = await activeSessionDirectory(home, session.id);
+      const segment = join(activeDirectory, 'events-000001.jsonl');
       const archived = await readFile(segment, 'utf8');
       const drifted =
         archived
@@ -865,7 +880,7 @@ describe('context GC runtime integration', () => {
       await writeFile(segment, drifted);
 
       // Losing the GC sidecar must not replay an older Compact's resource recovery.
-      await rm(join(home, '.mar', 'agent', 'sessions', session.id, 'context-world-state.json'), {
+      await rm(join(activeDirectory, 'context-world-state.json'), {
         force: true
       });
       const reopenedAdapter = new ContextGcAdapter(model, 4);
@@ -874,12 +889,14 @@ describe('context GC runtime integration', () => {
         processes: [],
         codeCells: [{ cellId: 'resumed-cell', status: 'running', executionId: 'current' }]
       });
-      const reopened = await createMarAgent({
-        mode: 'normal',
-        host: resumedHost,
-        models: [model],
-        adapterFactory: () => reopenedAdapter
-      });
+      const reopened = await createMarAgent(
+        {
+          mode: 'normal',
+          host: resumedHost,
+          models: [model]
+        },
+        () => reopenedAdapter
+      );
       const restored = await reopened.openSession(session.id);
       expect(
         (await restored.run({ prompt: 'Continue from the completed change.' }).result()).status

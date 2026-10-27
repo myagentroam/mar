@@ -103,6 +103,75 @@ async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   await expect(page.locator('.hosted-send-button')).toBeEnabled();
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Restored conversation keeps the normal composer surface while syncing in ${theme}`, async ({
+    page
+  }) => {
+    const snapshot = {
+      nodeAppVersion: '0.11.31',
+      conversation: {
+        id: 'conversation-1',
+        nodeId: 'node-1',
+        sessionId: 'session-1',
+        templateId: template.id,
+        templateName: template.name,
+        activeVersionId: 'version-1',
+        title: 'A retained conversation',
+        titleSource: 'CUSTOM',
+        pinnedAt: null,
+        status: 'ACTIVE',
+        modelId: 'model-1',
+        createdAt: 1,
+        updatedAt: 1,
+        lastActivityAt: 1,
+        activity: { status: 'IDLE', version: 0, updatedAt: 0 }
+      },
+      template,
+      run: null,
+      turns: [],
+      historyNextCursor: null,
+      files: [],
+      models,
+      error: null,
+      snapshotSequence: 1
+    };
+    let releaseWatch!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      releaseWatch = resolve;
+    });
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/hosted-template-fixture/current') return route.fulfill({ json: snapshot });
+      if (path.endsWith('/watch')) {
+        await pending;
+        const body = route.request().postDataJSON();
+        return route.fulfill({
+          json: {
+            accepted: true,
+            watchId: body.watchId,
+            nodeGeneration: 'fixture-generation',
+            expiresAt: Date.now() + 30_000
+          }
+        });
+      }
+      return route.fulfill({ status: 404, json: {} });
+    });
+    await page.goto(`${fixture.url}hosted-entry.html?existing=1&watch-pending=1&theme=${theme}`);
+    const shell = page.locator('.composer-shell');
+    const input = page.locator('.composer-input');
+    await expect(page.locator('.composer-working')).toContainText('Syncing');
+    await expect(page.locator('.hosted-syncing')).toHaveCount(1);
+    await expect(input).toHaveAttribute('readonly', '');
+    const background = await shell.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const border = await shell.evaluate((element) => getComputedStyle(element).borderColor);
+    releaseWatch();
+    await expect(page.locator('.hosted-syncing')).toHaveCount(0);
+    await expect(input).not.toHaveAttribute('readonly', '');
+    await expect(shell).toHaveCSS('background-color', background);
+    await expect(shell).toHaveCSS('border-color', border);
+  });
+}
+
 for (const [width, theme] of [
   [1280, 'daylight'],
   [390, 'vscode-dark-2026']
