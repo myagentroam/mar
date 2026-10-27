@@ -35,6 +35,7 @@ const io = vi.hoisted(() => ({
       }
     | undefined,
   journalCleanupFailure: undefined as Error | undefined,
+  indexReleaseFailure: undefined as Error | undefined,
   failure: Object.assign(new Error('Simulated session disk failure.'), { code: 'ENOSPC' })
 }));
 
@@ -43,6 +44,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...fs,
     rm: (async (...args: Parameters<typeof fs.rm>) => {
+      if (args[0] === join(dirname(io.indexPath), 'index.lock') && io.indexReleaseFailure) {
+        const failure = io.indexReleaseFailure;
+        io.indexReleaseFailure = undefined;
+        await fs.rm(...args);
+        throw failure;
+      }
       if (
         typeof args[0] === 'string' &&
         args[0].endsWith('/storage-transaction.json') &&
@@ -156,6 +163,7 @@ afterEach(async () => {
   io.indexGate = undefined;
   io.historyFault = undefined;
   io.journalCleanupFailure = undefined;
+  io.indexReleaseFailure = undefined;
   io.path = '';
   io.indexPath = '';
   await Promise.all(agents.splice(0).map((agent) => agent.dispose()));
@@ -336,6 +344,28 @@ it('keeps a committed clear after post-commit journal cleanup fails', async () =
     await expect(store.read(session.id)).rejects.toBe(failure);
   } finally {
     io.journalCleanupFailure = undefined;
+    await holding.release();
+  }
+  const release = await store.acquireSessionLease(session.id);
+  try {
+    expect((await store.read(session.id)).some((record) => record.turnId === 't1')).toBe(false);
+    await store.append(session.id, { type: 'test.after-recovery', payload: {} });
+  } finally {
+    await release();
+  }
+});
+
+it('retains a durably confirmed clear when index lock release fails', async () => {
+  const { home, store, session } = await fixture();
+  await store.append(session.id, { type: 'turn.user', payload: { prompt: 'clear' }, turnId: 't1' });
+  const holding = await store.acquireSessionMaintenance(session.id, 'clear');
+  const failure = new Error('Index lock release failed.');
+  io.indexPath = join(home, '.mar', 'agent', 'sessions', 'index.json');
+  io.indexReleaseFailure = failure;
+  try {
+    await expect(store.clearSession(session.id, holding)).rejects.toBe(failure);
+  } finally {
+    io.indexReleaseFailure = undefined;
     await holding.release();
   }
   const release = await store.acquireSessionLease(session.id);
