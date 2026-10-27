@@ -1022,6 +1022,12 @@ onBeforeUnmount(() => {
   color: var(--mar-text-tertiary);
 }
 
+.hosted-template-trigger > .mar-icon[data-mar-icon='document'],
+.hosted-template-name > .mar-icon[data-mar-icon='document'] {
+  width: 14px;
+  height: 14px;
+}
+
 .hosted-model-trigger:hover:not(:disabled) {
   background: var(--mar-fill-soft);
   color: var(--mar-text-primary);
