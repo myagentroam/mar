@@ -103,6 +103,33 @@ async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   await expect(page.locator('.hosted-send-button')).toBeEnabled();
 }
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'vscode-dark-2026']
+] as const) {
+  test(`Template and model controls share selector states at ${width} in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const { modelControl } = await openEntry(page, template.name, theme);
+    const templateControl = page.locator('.hosted-template-trigger');
+    await page.mouse.move(0, 0);
+    await expect(templateControl).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(modelControl).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await templateControl.hover();
+    const templateHover = await templateControl.evaluate((element) => ({
+      background: getComputedStyle(element).backgroundColor,
+      shadow: getComputedStyle(element).boxShadow
+    }));
+    await modelControl.hover();
+    await expect(modelControl).toHaveCSS('background-color', templateHover.background);
+    await expect(modelControl).toHaveCSS('box-shadow', templateHover.shadow);
+    await templateControl.click();
+    await expect(templateControl).toHaveAttribute('aria-expanded', 'true');
+    await expect(templateControl).not.toHaveCSS('box-shadow', templateHover.shadow);
+  });
+}
+
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
     test(`Existing template switch preserves drafts and uses the same Node at ${width} in ${theme}`, async ({

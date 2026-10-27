@@ -1010,7 +1010,10 @@ onBeforeUnmount(() => {
 }
 
 .hosted-model-trigger {
+  border-radius: 6px;
   padding-right: 0.35rem;
+  background: transparent;
+  color: var(--mar-text-primary);
   cursor: pointer;
 }
 
@@ -1036,12 +1039,18 @@ onBeforeUnmount(() => {
 
 .hosted-model-trigger:hover:not(:disabled) {
   background: var(--mar-fill-soft);
-  color: var(--mar-text-primary);
+  box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
+}
+
+.hosted-model-trigger[aria-expanded='true']:not(:disabled) {
+  background: var(--mar-fill-soft);
+  box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
 }
 
 .hosted-model-trigger:focus-visible {
-  outline: 2px solid var(--mar-color-brand-text);
-  outline-offset: 1px;
+  background: var(--mar-fill-soft);
+  outline: 1px solid var(--mar-color-brand);
+  outline-offset: -1px;
 }
 
 .hosted-model-trigger:disabled {
