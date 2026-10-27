@@ -276,7 +276,7 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(0);
       await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('.conversation')).toContainText('child');
-      await tabs.nth(0).click();
+      await tabs.nth(0).locator('.group-label').click();
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
@@ -294,7 +294,7 @@ for (const [width, theme, locale] of [
       await expect(recent.locator('.recent-sessions-list > li').first()).toContainText(
         locale === 'zh-CN' ? '未读' : 'Unread'
       );
-      await recent.getByRole('tab').nth(1).click();
+      await recent.getByRole('tab').nth(1).locator('.group-label').click();
       await page.mouse.move(0, 0);
       await expect(recent.getByRole('tab').nth(1)).toHaveCSS(
         'background-color',
