@@ -188,7 +188,6 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
         'switch the current execution',
         'waits for that execution and earlier queued work',
         'Use --steer instead',
-        'not guaranteed to be immediate',
         'Goal exits',
         'RUNNING/IDLE/SLEEPING'
       ]
@@ -199,7 +198,6 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
         '切换当前执行',
         '等待当前执行和前面的队列项',
         '应使用 --steer',
-        '不保证模型立即处理',
         'Goal 退出',
         'RUNNING/IDLE/SLEEPING'
       ]

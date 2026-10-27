@@ -53,7 +53,6 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'Use --queue to place input in a subsequent turn',
     'during normal active work it waits for the current execution and earlier queued work',
     'Do not use it when the recipient needs the information during current work',
-    'Steer is not a guarantee of immediate model processing',
     'Additional context: focus on the resume path.',
     'missing, conflicting, repeated, or obsolete options are rejected locally',
     'when fresh state is needed',
