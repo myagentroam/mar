@@ -228,6 +228,10 @@ for (const viewport of [
     expect(requests.some((url) => url.includes('maxWidth=2560&maxHeight=2560'))).toBe(true);
     const original = dialog.getByRole('button', { name: 'View original', exact: true });
     await expect(original).toBeVisible();
+    await expect(original).toHaveText('');
+    await expect(original.locator('svg')).toBeVisible();
+    const originalBounds = await original.boundingBox();
+    expect(originalBounds!.width).toBeLessThanOrEqual(40);
     const bounds = await image.boundingBox();
     expect(bounds!.width).toBeLessThan(viewport.width);
     expect(bounds!.height).toBeLessThan(viewport.height);
@@ -395,7 +399,7 @@ test('a valid Workspace attachment keeps its failed preview open for retry', asy
 });
 
 for (const width of [1440, 390]) {
-  test(`localized original-image button remains readable beside a long filename at ${width}px`, async ({
+  test(`localized original-image icon remains accessible beside a long filename at ${width}px`, async ({
     page
   }, info) => {
     await page.setViewportSize({ width, height: 900 });
@@ -412,8 +416,8 @@ for (const width of [1440, 390]) {
     await expect(dialog.locator('img')).toBeVisible();
     const original = dialog.getByRole('button', { name: '查看原图', exact: true });
     await expect(original.locator('[data-mar-icon="image"]')).toBeVisible();
-    await expect(original).not.toHaveClass(/\bis-text\b/u);
-    await expect(original).toHaveCSS('border-top-style', 'solid');
+    await expect(original).toHaveText('');
+    await expect(original).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     const originalBox = (await original.boundingBox())!;
     const closeBox = (await dialog.locator('.el-dialog__headerbtn').boundingBox())!;
     expect(originalBox.x + originalBox.width).toBeLessThanOrEqual(closeBox.x);

@@ -100,11 +100,14 @@ watch(
         }}</span>
         <el-button
           v-if="resized && !original"
+          v-tooltip="translate('generated.imagePreview.viewOriginal')"
+          class="utility-control"
           size="small"
+          text
           :icon="marIcon('image')"
+          :aria-label="translate('generated.imagePreview.viewOriginal')"
           @click="original = true"
-          >{{ translate('generated.imagePreview.viewOriginal') }}</el-button
-        >
+        />
       </div>
     </template>
     <DecodedPreviewImage

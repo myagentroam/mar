@@ -32,8 +32,9 @@ import { conversationUiEnUS, conversationUiZhCN } from '../../src/i18n/conversat
 vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
   default: {
     name: 'AgentMarkdownStub',
-    props: { content: { type: String, required: true } },
-    template: '<div class="agent-markdown-stub">{{ content }}</div>'
+    props: { content: { type: String, required: true }, cacheIdentity: Array },
+    template:
+      '<div class="agent-markdown-stub" :data-cache-identity="cacheIdentity?.join(\':\')">{{ content }}</div>'
   }
 }));
 
@@ -247,6 +248,32 @@ const timelineProps = {
   rewindEnabled: false,
   rollbackEnabled: false
 };
+
+it('only enables Markdown caching for completed items in terminal turns and runs', async () => {
+  const turns = [
+    conversationTurn([conversationItem('complete', 'assistant_message', { text: 'complete' })]),
+    conversationTurn(
+      [conversationItem('stream', 'assistant_message', { text: 'stream' }, 'IN_PROGRESS')],
+      { id: 'streaming-turn', runId: 'run-2', status: 'RUNNING' }
+    ),
+    conversationTurn([conversationItem('live-run', 'assistant_message', { text: 'live' })], {
+      id: 'live-turn',
+      runId: 'run-3'
+    })
+  ];
+  const html = await render(ConversationTimeline, {
+    ...timelineProps,
+    turns,
+    runs: [
+      { id: 'run-1', status: 'SUCCEEDED' },
+      { id: 'run-2', status: 'RUNNING' },
+      { id: 'run-3', status: 'RUNNING' }
+    ]
+  });
+  expect(html).toContain('data-cache-identity="session-1:turn-1:complete"');
+  expect(html).not.toContain('data-cache-identity="session-1:streaming-turn:stream"');
+  expect(html).not.toContain('data-cache-identity="session-1:live-turn:live-run"');
+});
 
 it('renders generated images as independent results using their projected preview URLs', async () => {
   const payload = {
@@ -1094,6 +1121,85 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(await render(SessionPerformanceInfo, { performance: undefined })).not.toContain(
       'session-performance-info'
     );
+  });
+
+  it('does not recompute hidden process metadata as cached history mounts in frames', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.set(++frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    class HostNode {
+      constructor(readonly type: string) {}
+      closest() {
+        return null;
+      }
+    }
+    const renderer = createRenderer<HostNode, HostNode>({
+      patchProp() {},
+      insert() {},
+      remove() {},
+      createElement: (type) => new HostNode(type),
+      createText: () => new HostNode('#text'),
+      createComment: () => new HostNode('#comment'),
+      setText() {},
+      setElementText() {},
+      parentNode: () => null,
+      nextSibling: () => null
+    });
+    let sectionReads = 0;
+    const payload = {
+      representation: 'summary',
+      get sections() {
+        sectionReads++;
+        return [{ text: 'Earlier process summary' }];
+      }
+    };
+    const hidden = {
+      id: 'hidden-reasoning',
+      kind: 'reasoning',
+      status: 'COMPLETED',
+      payload,
+      processGroup: { id: 'process', isStart: true }
+    };
+    const items = [
+      hidden,
+      ...Array.from({ length: 20 }, (_, index) =>
+        conversationItem(`message-${index}`, 'assistant_message', { text: 'x'.repeat(32 * 1024) })
+      )
+    ];
+    const props = shallowRef({
+      ...timelineProps,
+      initializing: true,
+      turns: [conversationTurn(items)]
+    });
+    const app = renderer.createApp({ render: () => h(ConversationTimeline, props.value) });
+    app.use(i18n);
+    app.provide(ssrContextKey, { modules: new Set<string>() });
+    app.component('ElIcon', { template: '<span><slot /></span>' });
+    app.config.warnHandler = () => {};
+    app.mount(new HostNode('container'));
+    try {
+      props.value = { ...props.value, initializing: false };
+      await nextTick();
+      expect(sectionReads).toBeGreaterThan(0);
+      const initialReads = sectionReads;
+      for (let batch = 0; batch < 3; batch++) {
+        const [id, callback] = [...frames.entries()][0]!;
+        frames.delete(id);
+        await callback(0);
+        await nextTick();
+        expect(sectionReads).toBe(initialReads);
+      }
+      expect(frames.size).toBeGreaterThan(0);
+      props.value = { ...props.value, turns: [conversationTurn([...items])] };
+      await nextTick();
+      expect(sectionReads).toBeGreaterThan(initialReads);
+    } finally {
+      app.unmount();
+    }
   });
 
   it('cancels the previous workspace render batch before restoring a cached conversation', async () => {

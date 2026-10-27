@@ -178,6 +178,64 @@ function isImageGenerationItem(item: ConversationItem): boolean {
   return value !== undefined && !isSubagentToolCall(value) && isImageGenerationPayload(value);
 }
 
+function reasoningData(item: ConversationItem): {
+  text: string;
+  preview: ReasoningPreview | undefined;
+} {
+  const payload = conversationPayload(item.payload) ?? {};
+  const text = reasoningSections(payload).join('\n\n');
+  return { text, preview: normalizeReasoningPreview(item.id, text, payload.representation) };
+}
+
+/** Facts needed by a process even when its display entry is not mounted. */
+export function conversationProcessItemFacts(
+  item: ConversationItem,
+  mounted: boolean
+): {
+  visible: boolean;
+  executing: boolean;
+  reasoning?: ConversationDisplayItem;
+  preview?: ReasoningPreview;
+} {
+  if (item.kind === 'reasoning' && item.permissionStop === undefined) {
+    const { text, preview } = reasoningData(item);
+    if (!text.trim()) return { visible: false, executing: false };
+    return {
+      visible: true,
+      executing: false,
+      ...(preview === undefined ? {} : { preview }),
+      ...(mounted
+        ? {
+            reasoning: {
+              type: 'reasoning_group' as const,
+              id: item.id,
+              items: [item],
+              text,
+              preview,
+              completed: true
+            }
+          }
+        : {})
+    };
+  }
+  if (
+    item.kind === 'assistant_message' &&
+    !stringField(conversationPayload(item.payload) ?? {}, 'text').trim()
+  )
+    return { visible: false, executing: false };
+  const type = item.status === 'IN_PROGRESS' ? groupType(item) : undefined;
+  return {
+    visible: true,
+    executing:
+      item.status === 'IN_PROGRESS' &&
+      (type === 'tool_group' ||
+        type === 'read_group' ||
+        type === 'command_group' ||
+        type === 'subagent_group' ||
+        (item.permissionStop === undefined && isImageGenerationItem(item)))
+  };
+}
+
 /** Aggregate public records at their latest category position within Node-assigned processes. */
 export function conversationDisplayItems(
   items: readonly ConversationItem[]
@@ -190,9 +248,7 @@ export function conversationDisplayItems(
       return [];
     const type = groupType(item);
     if (type === 'reasoning_group') {
-      const payload = conversationPayload(item.payload) ?? {};
-      const text = reasoningSections(payload).join('\n\n');
-      const preview = normalizeReasoningPreview(item.id, text, payload.representation);
+      const { text, preview } = reasoningData(item);
       return text.trim()
         ? [{ type, id: item.id, items: [item], text, preview, completed: true }]
         : [];

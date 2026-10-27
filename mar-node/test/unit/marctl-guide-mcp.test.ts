@@ -33,6 +33,8 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
     await client.connect(transport);
     const skill = marctlHostSkill(environment)!;
     expect(skill.description).toBe(marctlDescription);
+    expect(skill.description).toContain('prefer --runner mar-agent');
+    expect(skill.description).toContain('user or applicable workflow specifies another Runner');
     expect(client.getServerVersion()?.name).toBe('mar_cli');
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(1);
@@ -47,6 +49,22 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
     const result = await client.callTool({ name: 'load_guide', arguments: {} });
     expect(result.isError).not.toBe(true);
     expect(result.content).toEqual([{ type: 'text', text: await skill.load() }]);
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('marctl sessions start --runner mar-agent')
+    });
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('user or applicable workflow specifies another Runner')
+    });
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('not a reason to silently switch')
+    });
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('An omitted model uses the target Runner configuration')
+    });
     expect((await client.callTool({ name: 'load_guide', arguments: {} })).content).toEqual(
       result.content
     );

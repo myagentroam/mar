@@ -165,10 +165,19 @@ function runTime(run: RecentRun): string {
         >
           <MarIcon name="recent-sessions" aria-hidden="true" />
           <SessionStateBadge
+            v-if="!mobileMode"
             class="recent-sessions-badge"
             :running="activeSessionCount"
             :unread="hasUnreadSessions"
-          /></button
+          />
+          <span
+            v-else-if="activeSessionCount > 0 || hasUnreadSessions"
+            class="recent-sessions-badge recent-sessions-mobile-badge"
+            aria-hidden="true"
+          >
+            <SessionStateBadge :running="activeSessionCount" :unread="false" />
+            <span v-if="hasUnreadSessions" class="recent-sessions-mobile-unread" />
+          </span></button
       ></span>
     </span>
     <Teleport
@@ -203,6 +212,7 @@ function runTime(run: RecentRun): string {
   width: 100%;
 }
 .recent-sessions-trigger {
+  --recent-sessions-marker-surface: var(--mar-bg-chrome);
   position: relative;
   display: grid;
   place-items: center;
@@ -220,10 +230,12 @@ function runTime(run: RecentRun): string {
   font-size: 1.25rem;
 }
 .recent-sessions-trigger:hover {
+  --recent-sessions-marker-surface: var(--mar-fill-row-hover);
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 .recent-sessions-trigger.active {
+  --recent-sessions-marker-surface: var(--mar-fill-selection);
   background: var(--mar-fill-selection);
   color: var(--mar-color-brand-text);
 }
@@ -264,12 +276,19 @@ function runTime(run: RecentRun): string {
 .mobile-mode .recent-sessions-trigger .mar-icon {
   font-size: 22px;
 }
-.mobile-mode .recent-sessions-badge {
-  right: auto;
-  left: calc(100% - 12px);
+.recent-sessions-mobile-badge {
+  right: calc(50% - 14px);
   max-width: none;
-  /* Use the menu gap and empty icon inset without covering the next icon. */
-  transform: translateX(min(0px, calc(12px + 0.25rem + 5px - 100%)));
+}
+.recent-sessions-mobile-unread {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--mar-text-secondary);
+  box-shadow: 0 0 0 1px var(--recent-sessions-marker-surface);
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

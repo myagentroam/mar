@@ -15,18 +15,24 @@ import {
   onBeforeUnmount,
   onBeforeUpdate,
   onUpdated,
+  provide,
   reactive,
   ref,
   watch,
   type ComponentPublicInstance
 } from 'vue';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
+import {
+  CONVERSATION_MARKDOWN_CACHE_KEY,
+  createConversationMarkdownCache
+} from '../../util/conversation-markdown-cache.js';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import {
-  conversationWorkProcessBlocks,
+  conversationWorkProcessProjection,
+  conversationWorkProcessVisibleBlocks,
   nextConversationRenderItemCount
 } from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
@@ -123,6 +129,18 @@ const props = defineProps<{
   readonly rewindEnabled: boolean;
   readonly rollbackEnabled: boolean;
 }>();
+
+provide(CONVERSATION_MARKDOWN_CACHE_KEY, createConversationMarkdownCache());
+
+function markdownCacheIdentity(
+  turn: ConversationTurn,
+  item: ConversationItem
+): string[] | undefined {
+  if (!isTerminalRunStatus(turn.status) || item.status !== 'COMPLETED') return undefined;
+  const run = props.runs?.find((candidate) => candidate.id === turn.runId);
+  if (run && !isTerminalRunStatus(run.status)) return undefined;
+  return [turn.sessionId, turn.id, item.id];
+}
 
 const emit = defineEmits<{
   openFileChange: [entry: FileChangeEntry];
@@ -229,14 +247,14 @@ const runDurations = computed(() => {
   }
   return labels;
 });
-const renderBudgetBlocks = computed(() =>
-  conversationWorkProcessBlocks(props.turns, props.runs, new Set(runDurations.value.keys()))
-);
 const processMetadata = computed(
   () =>
-    new Map(
-      renderBudgetBlocks.value.filter((block) => block.groupId).map((block) => [block.id, block])
-    )
+    conversationWorkProcessProjection(
+      props.turns,
+      [],
+      props.runs,
+      new Set(runDurations.value.keys())
+    ).metadataBlocks
 );
 const processViews = new Map<string, InstanceType<typeof ConversationWorkProcess>>();
 function setProcessView(id: string, instance: Element | ComponentPublicInstance | null): void {
@@ -292,7 +310,7 @@ function scheduleProgressiveRender(): void {
     renderedItemCount.value = nextConversationRenderItemCount(
       props.turns,
       renderedItemCount.value,
-      renderBudgetBlocks.value,
+      processMetadata.value,
       (id) => processViews.get(id)?.isOpen(),
       CONVERSATION_RENDER_BATCH_ITEMS
     );
@@ -380,7 +398,7 @@ const groupedItemDisclosure = reactive<Record<string, boolean>>({});
 
 watch(
   () =>
-    props.turns.flatMap((turn) =>
+    renderedTurns.value.flatMap((turn) =>
       turn.items.flatMap((item) => [
         item.id,
         `group:${item.id}`,
@@ -530,19 +548,13 @@ function messageTimeTitle(timestamp: number): string {
   return absoluteMessageTime(timestamp);
 }
 
-const processBlocks = computed(() => {
-  if (renderedItemCount.value >= conversationItemCount(props.turns))
-    return renderBudgetBlocks.value;
-  return conversationWorkProcessBlocks(
+const processBlocks = computed(() =>
+  conversationWorkProcessVisibleBlocks(
     renderedTurns.value,
-    props.runs,
+    processMetadata.value,
     new Set(runDurations.value.keys())
-  ).map((block) => {
-    const complete = processMetadata.value.get(block.id);
-    // DOM backfill is not missing history: only entries are subject to the render budget.
-    return complete === undefined ? block : { ...complete, entries: block.entries };
-  });
-});
+  )
+);
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
 const processNow = createWorkbenchSecondClock(
   computed(
@@ -1089,6 +1101,7 @@ function stepDuration(item: ConversationItem): string | undefined {
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
           <AgentMarkdown
             :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+            :cache-identity="markdownCacheIdentity(turn, displayItem.item)"
             v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
             :image-resource-url="imageResourceUrl"
             @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"

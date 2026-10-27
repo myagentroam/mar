@@ -631,6 +631,9 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
   const activeSnapshot = {
     ...snapshot,
     historyNextCursor: null,

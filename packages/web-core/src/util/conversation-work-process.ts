@@ -10,6 +10,7 @@ import { selectReasoningPreview, type ReasoningPreview } from './conversation-re
 import {
   aggregateConversationDisplayItems,
   conversationDisplayItems,
+  conversationProcessItemFacts,
   type ConversationDisplayItem
 } from './conversation-presentation.js';
 
@@ -39,18 +40,53 @@ export function conversationWorkProcessBlocks(
   runs: readonly Pick<AgentRun, 'id' | 'status'>[] = [],
   footerTurnIds: ReadonlySet<string> = new Set()
 ): ConversationProcessBlock[] {
+  return conversationWorkProcessProjection(turns, turns, runs, footerTurnIds).blocks;
+}
+
+/** Materialize the mounted window while retaining facts from the received history. */
+export function conversationWorkProcessVisibleBlocks(
+  renderedTurns: readonly ConversationTurn[],
+  metadataBlocks: readonly ConversationProcessBlock[],
+  footerTurnIds: ReadonlySet<string> = new Set()
+): ConversationProcessBlock[] {
+  const metadata = new Map(metadataBlocks.map((block) => [block.id, block]));
+  return conversationWorkProcessBlocks(renderedTurns, [], footerTurnIds).map((block) => {
+    const complete = block.groupId === undefined ? undefined : metadata.get(block.id);
+    return complete === undefined ? block : { ...complete, entries: block.entries };
+  });
+}
+
+/** Keep process facts for the received window while materializing only mounted entries. */
+export function conversationWorkProcessProjection(
+  turns: readonly ConversationTurn[],
+  renderedTurns: readonly ConversationTurn[],
+  runs: readonly Pick<AgentRun, 'id' | 'status'>[] = [],
+  footerTurnIds: ReadonlySet<string> = new Set()
+): { blocks: ConversationProcessBlock[]; metadataBlocks: ConversationProcessBlock[] } {
   const blocks: ConversationProcessBlock[] = [];
   const groups = new Map<string, ConversationProcessBlock>();
+  const visibleGroups = new Map<string, ConversationProcessBlock>();
   const open = new Map<string, ConversationProcessBlock>();
   const activeRuns = new Set(
     runs.filter((run) => !isTerminalRunStatus(run.status)).map((run) => run.id)
   );
   const activeMembers = new Set<string>();
+  const visibleItems = new Set(renderedTurns.flatMap((turn) => turn.items));
+  const visibleTurns = new Set(
+    renderedTurns.map((turn) => JSON.stringify([turn.sessionId, turn.id]))
+  );
+  const facts = new Map<
+    string,
+    { first: ConversationItem; last: ConversationItem; turn: ConversationTurn; executing: boolean }
+  >();
   for (const turn of turns) {
     for (const item of turn.items) {
-      const displayItem = conversationDisplayItems([item])[0];
-      if (displayItem === undefined) continue;
-      const entry = { turn, displayItem };
+      const mounted = visibleItems.has(item);
+      const itemFacts = conversationProcessItemFacts(item, mounted);
+      if (!itemFacts.visible) continue;
+      const displayItem = mounted
+        ? (itemFacts.reasoning ?? conversationDisplayItems([item])[0])
+        : undefined;
       if (item.processGroup !== undefined) {
         const key = `${turn.sessionId}:${item.processGroup.id}`;
         let group = groups.get(key);
@@ -68,16 +104,40 @@ export function conversationWorkProcessBlocks(
             status: 'history'
           };
           groups.set(key, group);
-          blocks.push(group);
           open.set(turn.sessionId, group);
+          facts.set(key, { first: item, last: item, turn, executing: false });
         }
-        group.entries.push(entry);
+        const state = facts.get(key)!;
+        state.last = item;
+        state.turn = turn;
+        state.executing ||= itemFacts.executing;
         if (turn.runId != null) group.runId = turn.runId;
         if (item.processGroup.isStart) group.partial = false;
         if (['PENDING', 'IN_PROGRESS'].includes(item.status)) activeMembers.add(key);
-        if (displayItem.type === 'reasoning_group') {
-          const preview = selectReasoningPreview(group.preview, displayItem.preview);
+        if (itemFacts.preview !== undefined) {
+          const preview = selectReasoningPreview(group.preview, itemFacts.preview);
           if (preview) group.preview = preview;
+        }
+        if (
+          [
+            'reasoning',
+            'command_execution',
+            'tool_call',
+            'file_change',
+            'context_compaction',
+            'assistant_message',
+            'subagent'
+          ].includes(item.kind)
+        )
+          group.latestWork = item;
+        if (displayItem) {
+          let visible = visibleGroups.get(key);
+          if (!visible) {
+            visible = { ...group, entries: [] };
+            visibleGroups.set(key, visible);
+            blocks.push(visible);
+          }
+          visible.entries.push({ turn, displayItem });
         }
       } else {
         const payload = conversationPayload(item.payload);
@@ -99,16 +159,17 @@ export function conversationWorkProcessBlocks(
           if (previous !== undefined) previous.sealed = true;
           open.delete(turn.sessionId);
         }
-        blocks.push({
-          id: `${turn.sessionId}:${item.id}`,
-          entries: [entry],
-          partial: false,
-          sealed: true,
-          active: false
-        });
+        if (displayItem)
+          blocks.push({
+            id: `${turn.sessionId}:${item.id}`,
+            entries: [{ turn, displayItem }],
+            partial: false,
+            sealed: true,
+            active: false
+          });
       }
     }
-    if (footerTurnIds.has(turn.id))
+    if (visibleTurns.has(JSON.stringify([turn.sessionId, turn.id])) && footerTurnIds.has(turn.id))
       blocks.push({
         id: `duration:${turn.id}`,
         footerTurnId: turn.id,
@@ -119,30 +180,16 @@ export function conversationWorkProcessBlocks(
       });
   }
   const lastGroupByRun = new Map<string, ConversationProcessBlock>();
-  for (const group of groups.values()) {
+  for (const group of groups.values())
     if (group.runId != null) lastGroupByRun.set(group.runId, group);
-  }
   for (const group of groups.values()) {
+    const state = facts.get(group.id)!;
     group.active =
       group.runId != null &&
       activeRuns.has(group.runId) &&
       (!group.sealed || activeMembers.has(group.id));
     const run = runs.find((candidate) => candidate.id === group.runId);
-    const historicalStatus = group.entries.at(-1)?.turn.status;
-    const executing = group.entries.some(
-      ({ displayItem }) =>
-        [
-          'tool_group',
-          'read_group',
-          'command_group',
-          'subagent_group',
-          'image_generation'
-        ].includes(displayItem.type) &&
-        ('items' in displayItem ? displayItem.items : [displayItem.item]).some(
-          (item) => item.status === 'IN_PROGRESS'
-        )
-    );
-    // A final error can seal the last process too; sealing alone is not success.
+    const historicalStatus = state.turn.status;
     const endedEarlier =
       group.sealed &&
       !activeMembers.has(group.id) &&
@@ -151,7 +198,7 @@ export function conversationWorkProcessBlocks(
     group.status = group.active
       ? run?.status === 'CANCELLING'
         ? 'stopping'
-        : executing
+        : state.executing
           ? 'executing'
           : 'running'
       : run === undefined
@@ -169,55 +216,33 @@ export function conversationWorkProcessBlocks(
             : isTerminalRunStatus(run.status)
               ? 'incomplete'
               : 'history';
-    const turnsByItem = new Map(
-      group.entries.map(({ turn, displayItem }) => [displayItem.id, turn])
-    );
-    const items = group.entries.flatMap(({ displayItem }) =>
-      'items' in displayItem ? displayItem.items : [displayItem.item]
-    );
-    // Measure the visible process interval, not summed tool time or the entire Run.
-    const first = items[0];
-    const last = items.at(-1);
-    const latestWork = [...items]
-      .reverse()
-      .find((item) =>
-        [
-          'reasoning',
-          'command_execution',
-          'tool_call',
-          'file_change',
-          'context_compaction',
-          'assistant_message',
-          'subagent'
-        ].includes(item.kind)
-      );
-    if (latestWork) group.latestWork = latestWork;
-    const start = first?.startedAt ?? first?.completedAt;
-    const end = last?.completedAt ?? last?.startedAt;
+    const start = state.first.startedAt ?? state.first.completedAt;
+    const end = state.last.completedAt ?? state.last.startedAt;
     if (!group.partial && typeof start === 'number' && Number.isFinite(start) && start >= 0)
       group.startedAt = start;
     if (
-      !group.partial &&
-      typeof start === 'number' &&
-      Number.isFinite(start) &&
-      start >= 0 &&
+      group.startedAt !== undefined &&
       typeof end === 'number' &&
       Number.isFinite(end) &&
-      end >= start
+      end >= group.startedAt
     )
-      group.durationMs = end - start;
-    group.entries.splice(
-      0,
-      group.entries.length,
-      ...aggregateConversationDisplayItems(group.entries.map(({ displayItem }) => displayItem)).map(
-        (displayItem) => ({
+      group.durationMs = end - group.startedAt;
+    const visible = visibleGroups.get(group.id);
+    if (visible) {
+      const entries = visible.entries;
+      const turnsByItem = new Map(entries.map(({ turn, displayItem }) => [displayItem.id, turn]));
+      const aggregated = aggregateConversationDisplayItems(
+        entries.map(({ displayItem }) => displayItem)
+      );
+      Object.assign(visible, group, {
+        entries: aggregated.map((displayItem) => ({
           turn: turnsByItem.get(displayItem.id)!,
           displayItem
-        })
-      )
-    );
+        }))
+      });
+    }
   }
-  return blocks;
+  return { blocks, metadataBlocks: [...groups.values()] };
 }
 
 /** Advance history by visible work, including newly mounted process headings and summaries. */

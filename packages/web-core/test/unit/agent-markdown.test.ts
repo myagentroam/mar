@@ -1,11 +1,12 @@
 import { createRenderer, createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import DOMPurify from 'dompurify';
 
 // Node SSR cannot execute DOMPurify; keep sanitization out of these rendering checks.
 vi.mock('dompurify', () => ({
   default: {
-    sanitize: (html: string) => html
+    sanitize: vi.fn((html: string) => html)
   }
 }));
 
@@ -13,6 +14,10 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import AgentMarkdownInteractive from '../../src/view/common/AgentMarkdown.vue?unit-render';
 import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/tooltip-service.js';
+import {
+  CONVERSATION_MARKDOWN_CACHE_KEY,
+  createConversationMarkdownCache
+} from '../../src/util/conversation-markdown-cache.js';
 
 const originalLocale = localePreferenceService().locale.value;
 
@@ -25,6 +30,49 @@ async function render(content: string): Promise<string> {
 function stripTags(html: string): string {
   return html.replace(/<[^>]*>/gu, '');
 }
+
+it('reuses sanitized completed content only when its full context is stable', async () => {
+  vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+  const cache = createConversationMarkdownCache();
+  const sanitize = vi.mocked(DOMPurify.sanitize);
+  const previousLocale = localePreferenceService().locale.value;
+  sanitize.mockClear();
+  async function draw(content: string, identity?: string[], root = '/work') {
+    const app = createSSRApp({
+      render: () =>
+        h(AgentMarkdown, {
+          content,
+          workspaceRoot: root,
+          cacheIdentity: identity,
+          imageResourceUrl: (path: string) => `/image/${path}`
+        })
+    });
+    app.use(i18n);
+    app.provide(CONVERSATION_MARKDOWN_CACHE_KEY, cache);
+    return renderToString(app);
+  }
+  try {
+    const content = 'A **message**\n\n```js\nconst x = 1;\n```';
+    const first = await draw(content, ['session', 'turn', 'item']);
+    expect(await draw(content, ['session', 'turn', 'item'])).toBe(first);
+    expect(sanitize).toHaveBeenCalledTimes(1);
+    await draw(content, ['session', 'turn', 'item'], '/other');
+    await draw(content, ['other-session', 'turn', 'item']);
+    await draw(content);
+    await draw(content);
+    expect(sanitize).toHaveBeenCalledTimes(5);
+    await draw(`${content}\nchanged`, ['session', 'turn', 'item']);
+    localePreferenceService().setLocale(previousLocale === 'en-US' ? 'zh-CN' : 'en-US');
+    expect(await draw(content, ['session', 'turn', 'item'])).not.toBe(first);
+    expect(sanitize).toHaveBeenCalledTimes(7);
+    await draw('![image](file.png)', ['session', 'turn', 'image']);
+    await draw('![image](file.png)', ['session', 'turn', 'image']);
+    expect(sanitize).toHaveBeenCalledTimes(9);
+  } finally {
+    localePreferenceService().setLocale(previousLocale);
+    vi.unstubAllGlobals();
+  }
+});
 
 describe('AgentMarkdown workspace images', () => {
   afterEach(() => vi.unstubAllGlobals());

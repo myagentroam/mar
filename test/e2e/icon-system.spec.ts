@@ -425,22 +425,17 @@ for (const theme of ['dark', 'light']) {
         const tabs = page.locator('.workspace-tab');
         const badge = tabs.first().locator('.workspace-tab-unread');
         await expect(badge).toHaveText(locale === 'en-US' ? 'Unread' : '未读');
-        const colors = await badge.evaluate((element) => {
-          const probe = document.createElement('span');
-          element.append(probe);
-          probe.style.color = 'var(--mar-text-secondary)';
-          const text = getComputedStyle(probe).color;
-          probe.className = 'mar-unread-label';
-          const border = getComputedStyle(probe).borderTopColor;
-          probe.remove();
-          return { text, border };
-        });
         for (const tab of [tabs.first(), tabs.nth(1)]) {
           await tab.getByRole('tab').click();
-          await expect(badge).toHaveCSS('color', colors.text);
-          await expect(badge).toHaveCSS('border-top-color', colors.border);
-          await expect(badge).toHaveCSS('border-top-width', '1px');
-          await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          await expect(badge).toHaveCSS('border-top-width', '0px');
+          const visible = await badge.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const parent = element.closest('.workspace-tab')!;
+            const surface = getComputedStyle(parent).backgroundColor;
+            return { fill: style.backgroundColor, surface };
+          });
+          expect(visible.fill).not.toBe('rgba(0, 0, 0, 0)');
+          expect(visible.fill).not.toBe(visible.surface);
         }
         if (locale === 'en-US') {
           await tabs.first().screenshot({
@@ -514,8 +509,8 @@ for (const theme of ['dark', 'light']) {
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
-        await expect(attachment).toHaveCSS('width', '18px');
-        await expect(attachment).toHaveCSS('height', '18px');
+        await expect(attachment).toHaveCSS('width', '16px');
+        await expect(attachment).toHaveCSS('height', '16px');
         for (const graphic of [copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');
@@ -837,7 +832,7 @@ for (const mobile of [false, true]) {
     page
   }) => {
     await page.setViewportSize({ width: mobile ? 390 : 1280, height: 900 });
-    for (const count of [0, 6, 12]) {
+    for (const count of [0, 6, 12, 120]) {
       await page.goto(
         `${fixture.url}icon-system.html?navigation=1&count=${count}${mobile ? '&mobile=1' : ''}`
       );
@@ -864,7 +859,7 @@ for (const mobile of [false, true]) {
       ).toBeLessThanOrEqual(1);
       if (count) {
         const badge = trigger.locator('.recent-sessions-badge');
-        await expect(badge).toHaveText(String(count));
+        await expect(badge).toHaveText(count > 99 ? '99+' : String(count));
         const badgeBounds = await badge.boundingBox();
         expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(
           bounds!.x + bounds!.width + (mobile ? 9 : 0)
@@ -911,9 +906,23 @@ for (const { theme, locale } of [
       await page.goto(`${url}&count=99&unread=1`);
       const badge = trigger.locator('.recent-sessions-badge');
       await expect(badge.locator('.session-state-count')).toHaveText('99');
-      await expect(badge.locator('.session-state-unread')).toHaveText(
-        locale === 'zh-CN' ? '未读' : 'Unread'
+      const unread = badge.locator(
+        mobile ? '.recent-sessions-mobile-unread' : '.session-state-unread'
       );
+      await expect(unread).toBeVisible();
+      await expect(badge).toHaveCSS('border-top-width', '0px');
+      if (!mobile) {
+        await expect(unread).toHaveText(locale === 'zh-CN' ? '未读' : 'Unread');
+        await expect(unread).toHaveCSS('border-left-width', '0px');
+      }
+      const notificationBadge = page.locator('.workbench-notification-badge');
+      await expect(notificationBadge).toHaveCSS('border-top-width', '0px');
+      const countColors = await badge.locator('.session-state-count').evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        color: getComputedStyle(element).color
+      }));
+      await expect(notificationBadge).toHaveCSS('background-color', countColors.background);
+      await expect(notificationBadge).toHaveCSS('color', countColors.color);
       const positions = await buttons.evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().toJSON())
       );
@@ -937,10 +946,19 @@ for (const { theme, locale } of [
       }
       if (mobile) {
         await expect(trigger).toHaveCSS('width', '36px');
-        const unread = badge.locator('.session-state-unread');
-        expect(await unread.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-          true
+        const icon = (await trigger.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
+        const marker = (await unread.boundingBox())!;
+        expect(Math.abs(bounds.x + bounds.width - (icon.x + icon.width + 3))).toBeLessThan(1);
+        expect(bounds.y).toBeLessThan(icon.y + icon.height / 2);
+        expect(Math.abs(marker.x + marker.width / 2 - (bounds.x + bounds.width))).toBeLessThan(4);
+        await trigger.click();
+        const selectedBackground = await trigger.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
         );
+        expect(await unread.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
+          selectedBackground
+        );
+        await trigger.click();
         await page.screenshot({
           path: testInfo.outputPath(`recent-sessions-${width}.png`),
           clip: { x: 0, y: 0, width, height: 84 }
@@ -958,7 +976,13 @@ for (const { theme, locale } of [
     );
     const badge = page.locator('.recent-sessions-badge');
     await expect(badge.locator('.session-state-count')).toHaveCount(0);
-    await expect(badge.locator('.session-state-unread')).toBeVisible();
+    const marker = badge.locator('.recent-sessions-mobile-unread');
+    await expect(marker).toBeVisible();
+    const icon = (await page.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
+    const markerBounds = (await marker.boundingBox())!;
+    expect(markerBounds.x).toBeLessThan(icon.x + icon.width);
+    expect(markerBounds.x + markerBounds.width).toBeGreaterThan(icon.x + icon.width);
+    expect(markerBounds.y).toBeLessThan(icon.y + icon.height / 2);
     await page.locator('.workbench-notification-trigger').click();
     await page.locator('.workbench-notification-mark-all').click();
     await expect(badge).toHaveCount(0);

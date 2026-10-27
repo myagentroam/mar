@@ -4,6 +4,8 @@ import {
   conversationProcessLabel,
   conversationProcessDuration,
   conversationWorkProcessBlocks,
+  conversationWorkProcessProjection,
+  conversationWorkProcessVisibleBlocks,
   nextConversationRenderItemCount
 } from '../../src/util/conversation-work-process.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -294,6 +296,114 @@ function processBlock(blocks: ReturnType<typeof conversationWorkProcessBlocks>, 
 }
 
 describe('Conversation work process blocks', () => {
+  it('only renders the footer of the mounted session when turn ids coincide', () => {
+    const first = turn([item('first', 'command_execution')]);
+    const second = turn([item('second', 'command_execution')], { sessionId: 'session-2' });
+    const { blocks } = conversationWorkProcessProjection(
+      [first, second],
+      [second],
+      [],
+      new Set([first.id])
+    );
+    expect(blocks.map((block) => block.id)).toEqual(['session-2:second', `duration:${second.id}`]);
+  });
+
+  it('keeps full process facts and budget while materializing only the rendered suffix', () => {
+    const items: ConversationItem[] = [
+      {
+        ...item('start', 'command_execution', { processGroup: { id: 'p', isStart: true } }),
+        startedAt: 100
+      },
+      item('summary', 'reasoning', {
+        processGroup: { id: 'p' },
+        payload: { representation: 'summary', sections: [{ text: '**Earlier summary**' }] }
+      }),
+      { ...item('end', 'command_execution', { processGroup: { id: 'p' } }), completedAt: 500 },
+      item('reply', 'assistant_message', { payload: { text: 'Done' } })
+    ];
+    const turns = [turn(items, { status: 'SUCCEEDED' })];
+    const rendered = [turn(items.slice(2), { status: 'SUCCEEDED' })];
+    const full = conversationWorkProcessBlocks(turns);
+    const { blocks, metadataBlocks } = conversationWorkProcessProjection(turns, rendered);
+    const expected = processBlock(full, 'p');
+    const actual = processBlock(blocks, 'p');
+    expect({ ...actual, entries: [] }).toEqual({ ...expected, entries: [] });
+    expect(
+      actual.entries
+        .flatMap(({ displayItem }) =>
+          'items' in displayItem ? displayItem.items : [displayItem.item]
+        )
+        .map((entry) => entry.id)
+    ).toEqual(['end']);
+    expect(actual.partial).toBe(false);
+    expect(actual.durationMs).toBe(400);
+    expect(actual.preview?.text).toBe('Earlier summary');
+    expect(metadataBlocks.every((block) => block.entries.length === 0)).toBe(true);
+    expect(nextConversationRenderItemCount(turns, 2, metadataBlocks, () => false, 8)).toBe(
+      nextConversationRenderItemCount(turns, 2, full, () => false, 8)
+    );
+  });
+
+  it('does not materialize hidden ordinary grouped payloads', () => {
+    let payloadReads = 0;
+    const hidden = item('hidden', 'command_execution', {
+      processGroup: { id: 'p', isStart: true }
+    });
+    Object.defineProperty(hidden, 'payload', {
+      get() {
+        payloadReads++;
+        return { command: 'hidden command' };
+      }
+    });
+    const visible = item('visible', 'command_execution', { processGroup: { id: 'p' } });
+    const turns = [turn([hidden, visible])];
+    const projected = conversationWorkProcessProjection(turns, [turn([visible])]);
+    expect(processBlock(projected.blocks, 'p').partial).toBe(false);
+    expect(payloadReads).toBe(0);
+    expect(processBlock(projected.blocks, 'p').entries).toHaveLength(1);
+  });
+
+  it('preserves active process facts and render budgets across progressive windows', () => {
+    const items: ConversationItem[] = [
+      item('start', 'command_execution', { processGroup: { id: 'p', isStart: true } }),
+      item('thinking', 'reasoning', {
+        processGroup: { id: 'p' },
+        payload: { representation: 'summary', sections: [{ text: 'Earlier summary' }] }
+      }),
+      item('running', 'command_execution', {
+        processGroup: { id: 'p' },
+        status: 'IN_PROGRESS'
+      }),
+      item('reply', 'assistant_message', { payload: { text: 'Latest reply' } })
+    ];
+    const turns = [{ ...turn(items), runId: 'run' }];
+    const runs = [{ id: 'run', status: 'RUNNING' as const }];
+    const full = conversationWorkProcessBlocks(turns, runs);
+    for (const count of [1, 2, 3, 4]) {
+      const rendered = [{ ...turns[0]!, items: items.slice(-count) }];
+      const projected = conversationWorkProcessProjection(turns, rendered, runs);
+      const normalize = (
+        blocks: readonly ReturnType<typeof conversationWorkProcessBlocks>[number][]
+      ) =>
+        blocks.map((block) => ({
+          ...block,
+          entries: block.entries.map(({ turn, displayItem }) => ({ turnId: turn.id, displayItem }))
+        }));
+      expect(
+        normalize(conversationWorkProcessVisibleBlocks(rendered, projected.metadataBlocks))
+      ).toEqual(normalize(projected.blocks));
+      for (const visible of projected.blocks.filter((block) => block.groupId)) {
+        const expected = full.find((block) => block.id === visible.id)!;
+        expect({ ...visible, entries: [] }).toEqual({ ...expected, entries: [] });
+      }
+      for (const open of [undefined, false, true]) {
+        expect(
+          nextConversationRenderItemCount(turns, count, projected.metadataBlocks, () => open, 2)
+        ).toBe(nextConversationRenderItemCount(turns, count, full, () => open, 2));
+      }
+    }
+  });
+
   it('reuses reasoning projections across process grouping and keeps preview identity', () => {
     let sectionReads = 0;
     const reasoning = item('thinking', 'reasoning', {

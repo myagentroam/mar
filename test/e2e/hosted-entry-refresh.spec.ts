@@ -211,6 +211,8 @@ for (const width of [1280, 390]) {
       await expect(textarea).toBeEnabled();
       await textarea.fill('Keep this unsent draft');
       const selector = page.locator('.hosted-template-trigger');
+      await expect(selector.locator('[data-mar-icon="document"]')).toHaveCSS('width', '14px');
+      await expect(selector.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
       await selector.click();
       await expect(page.getByRole('menuitem', { name: 'Other host template' })).toHaveCount(0);
       await page.getByRole('menuitem', { name: target.name, exact: true }).click();
@@ -316,6 +318,8 @@ for (const width of [1280, 390]) {
       await openEntry(page, name, theme);
       const draftTemplate = page.locator('.hosted-template-trigger');
       await expect(draftTemplate.locator('[data-mar-icon="document"]')).toBeVisible();
+      await expect(draftTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('width', '14px');
+      await expect(draftTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
       await expect(draftTemplate.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
       await expect(draftTemplate).toHaveAccessibleName('Load template');
       const draftStyle = await draftTemplate.evaluate((element) => {
@@ -332,6 +336,11 @@ for (const width of [1280, 390]) {
         const templateControl = page.locator(templateSelector);
         const toolbar = page.locator('.hosted-composer-toolbar');
         const attachment = (await toolbar.locator('.hosted-icon-button').boundingBox())!;
+        if (width < 768) {
+          const icon = toolbar.locator('.hosted-icon-button [data-mar-icon="attachment"]');
+          await expect(icon).toHaveCSS('width', '16px');
+          await expect(icon).toHaveCSS('height', '16px');
+        }
         const templateBox = (await templateControl.boundingBox())!;
         const model = (await toolbar
           .locator('.hosted-model-trigger:not(.hosted-template-trigger)')
@@ -371,6 +380,8 @@ for (const width of [1280, 390]) {
       await expect(savedTemplate).toHaveCSS('font-size', draftStyle.fontSize);
       expect((await savedTemplate.boundingBox())!.height).toBe(draftStyle.height);
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toBeVisible();
+      await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('width', '14px');
+      await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
       await expect(savedTemplate.locator('[data-mar-icon="chevron-down"]')).toHaveCount(0);
       expect(await savedTemplate.evaluate((element) => element.tagName)).toBe('SPAN');
       await assertToolbar('.hosted-template-name');
