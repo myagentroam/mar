@@ -64,25 +64,23 @@ describe('Workbench recent session groups', () => {
       (node) => node.props.get('aria-label') === 'Recent Sessions'
     )[0]!;
     const unread = () =>
-      trigger.findAll(
-        (node) => node.props.get('class') === 'session-state-unread mar-unread-label'
-      );
+      trigger.findAll((node) => node.props.get('class') === 'recent-sessions-mobile-unread');
     const counts = () =>
       trigger.findAll((node) => node.props.get('class') === 'session-state-count');
-    expect(unread()[0]?.textContent).toBe('Unread');
+    expect(unread()).toHaveLength(1);
     expect(counts()[0]?.textContent).toBe('1');
     expect(trigger.props.get('aria-description')).toBe('1 active sessions, Unread');
     runs.value = [];
     await nextTick();
     expect(counts()).toHaveLength(0);
-    expect(unread()[0]?.textContent).toBe('Unread');
+    expect(unread()).toHaveLength(1);
     state.value.CHILD.unread = false;
     await nextTick();
     expect(unread()).toHaveLength(0);
     expect(trigger.props.get('aria-description')).toBe('0 active sessions');
     state.value.MAIN.unread = true;
     await nextTick();
-    expect(unread()[0]?.textContent).toBe('Unread');
+    expect(unread()).toHaveLength(1);
     runs.value = [run('active', 'MAIN', 2)];
     state.value.MAIN.unread = false;
     await nextTick();
