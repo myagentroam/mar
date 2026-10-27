@@ -2074,7 +2074,7 @@ onBeforeUnmount(() => {
     width: min(300px, calc(100vw - 48px));
     flex: none;
     border: 0;
-    border-right: 1px solid var(--mar-border-strong);
+    border-right: 1px solid var(--mar-border-subtle);
     box-shadow: 0 8px 24px var(--mar-shadow-medium);
     transform: translateX(-100%);
     visibility: hidden;
