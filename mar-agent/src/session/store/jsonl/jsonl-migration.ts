@@ -36,8 +36,7 @@ export async function prepareJsonlV2Generation(input: GenerationPreparation): Pr
     for (const line of source.split('\n')) {
       if (!line) continue;
       const record = decodeJsonlRecord(line, 1);
-      if (record.sessionId !== input.sessionId || record.sequence <= lastSequence)
-        throw corruptHistory();
+      if (record.sessionId !== input.sessionId) throw corruptHistory();
       firstSequence ??= record.sequence;
       lastSequence = record.sequence;
       originalHash.update(JSON.stringify(record)).update('\n');
