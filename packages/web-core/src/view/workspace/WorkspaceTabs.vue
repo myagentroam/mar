@@ -546,7 +546,7 @@ function activate(tab: WorkspaceTab): void {
   height: 100%;
   min-height: 0;
   align-items: center;
-  padding: 4px 6px 4px 2px;
+  padding: 3px 6px 3px 2px;
 }
 
 .workspace-tab-strip-header .workspace-tab {

@@ -1088,6 +1088,8 @@ onBeforeUnmount(() => {
 .hosted-template-name {
   overflow: hidden;
   white-space: nowrap;
+  background: transparent;
+  color: var(--mar-text-primary);
 }
 
 .hosted-model-unavailable {
