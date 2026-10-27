@@ -1564,6 +1564,26 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(history.locator('.history-more-button')).toHaveCount(1);
   await expect(historyRows.first().locator('.history-pin-indicator')).toBeVisible();
   const historyRefresh = history.locator('.history-refresh-button');
+  await expect(historyRefresh.locator('svg[data-mar-icon="refresh"]')).toHaveCount(1);
+  let releaseHistoryRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseHistoryRefresh = resolve;
+  });
+  const directoryUrl = /\/api\/hosted-conversations\?limit=20$/;
+  const delayRefresh = async (route: import('@playwright/test').Route) => {
+    await refreshGate;
+    await route.fallback();
+  };
+  await page.route(directoryUrl, delayRefresh);
+  await historyRefresh.click();
+  await expect(historyRefresh).toHaveAttribute('aria-busy', 'true');
+  await expect(historyRefresh).toBeDisabled();
+  await expect(historyRefresh.locator('svg[data-mar-icon="loading-action"]')).toHaveCount(1);
+  await expect(historyRefresh.locator('svg')).toHaveCount(1);
+  releaseHistoryRefresh();
+  await expect(historyRefresh).toBeEnabled();
+  await expect(historyRefresh.locator('svg[data-mar-icon="refresh"]')).toHaveCount(1);
+  await page.unroute(directoryUrl, delayRefresh);
   const diagnostics = page.locator('.web-performance-indicator');
   await diagnostics.hover();
   const utilityHoverColor = await diagnostics.evaluate(
@@ -1600,6 +1620,19 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await selectedHistoryMore.click();
   await expect(selectedHistoryMore).toHaveAttribute('aria-expanded', 'true');
   const historyMenu = page.locator('.session-action-menu:visible');
+  const deleteHistory = historyMenu.getByRole('menuitem', { name: '删除' });
+  await expect(deleteHistory.locator('xpath=preceding-sibling::*[1]')).toHaveAttribute(
+    'role',
+    'separator'
+  );
+  const menuItemColor = await historyMenu
+    .getByRole('menuitem')
+    .first()
+    .evaluate((element) => {
+      element.blur();
+      return getComputedStyle(element).color;
+    });
+  await expect(deleteHistory).toHaveCSS('color', menuItemColor);
   await historyMenu.getByRole('menuitem').first().focus();
   await page.mouse.move(600, 5);
   await expect(selectedHistoryMore).not.toBeFocused();
