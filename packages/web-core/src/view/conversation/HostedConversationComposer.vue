@@ -948,6 +948,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+@media (max-width: 767px) {
+  .hosted-icon-button :deep(.mar-icon[data-mar-icon='attachment']) {
+    font-size: 16px;
+  }
+}
+
 .hosted-send-button {
   margin-left: auto;
   background: var(--mar-color-brand);

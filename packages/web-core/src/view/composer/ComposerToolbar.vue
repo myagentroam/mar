@@ -461,6 +461,12 @@ function selectFiles(event: Event): void {
   cursor: pointer;
 }
 
+@media (max-width: 767px) {
+  .composer-attachment-button :deep(.mar-icon) {
+    font-size: 16px;
+  }
+}
+
 .composer-send-button,
 .composer-stop-button {
   display: inline-grid;

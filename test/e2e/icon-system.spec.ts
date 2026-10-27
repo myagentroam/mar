@@ -509,8 +509,8 @@ for (const theme of ['dark', 'light']) {
       expect(plane.min).toBeGreaterThan(0);
       expect(plane.max).toBeLessThan(24);
       if (mobile) {
-        await expect(attachment).toHaveCSS('width', '18px');
-        await expect(attachment).toHaveCSS('height', '18px');
+        await expect(attachment).toHaveCSS('width', '16px');
+        await expect(attachment).toHaveCSS('height', '16px');
         for (const graphic of [copy, edit.locator('.mar-icon')]) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');
