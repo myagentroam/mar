@@ -6,6 +6,7 @@ import { createHostedConversationSelectionService } from '../../src/service/host
 import { createHostedConversationWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { marIcon } from '../../src/util/mar-icons.js';
 import {
   flushComponent,
   renderComponent,
@@ -139,6 +140,45 @@ async function fixture(hasUnread = false) {
 }
 
 describe('Hosted history selection during initial opening', () => {
+  it('replaces the refresh icon with a loading icon while reloading history', async () => {
+    const f = await fixture();
+    try {
+      const refresh = () =>
+        f.view
+          .findAll('ElButton')
+          .find((node) => String(node.props.class).includes('history-refresh-button'))!;
+      expect(refresh().props.icon).toBe(marIcon('refresh'));
+      expect(refresh().props.loading).toBe(false);
+      expect(refresh().children).toHaveLength(0);
+      f.workspace.loadingConversations.value = true;
+      await flushComponent();
+      expect(refresh().props.loading).toBe(true);
+      expect(refresh().props['aria-busy']).toBe(true);
+      expect(refresh().props['loading-icon']).toBe(marIcon('loading-action'));
+      expect(refresh().children).toHaveLength(0);
+      f.workspace.loadingConversations.value = false;
+      await flushComponent();
+      expect(refresh().props.loading).toBe(false);
+    } finally {
+      f.view.unmount();
+    }
+  });
+
+  it('separates the delete action without a special danger style', async () => {
+    const f = await fixture();
+    try {
+      await trigger(f.view.findAll('article')[0]!, 'onMouseenter');
+      const items = f.view.findAll('ElDropdownItem');
+      const deleteItem = items.find((item) => /delete|删除/iu.test(textContent(item)));
+      expect(deleteItem).toBeDefined();
+      expect(deleteItem!.props.divided).toBe('');
+      expect(deleteItem!.props.class).toBeUndefined();
+      expect(deleteItem!.props.onClick).toBeTypeOf('function');
+    } finally {
+      f.view.unmount();
+    }
+  });
+
   it.each([
     ['en-US', 'Unread'],
     ['zh-CN', '未读']
