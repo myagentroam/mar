@@ -589,12 +589,14 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   overflow: hidden;
   min-width: 0;
   max-width: 60%;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .repository-title-row .repository-branch {
   flex: 0 1 auto;
+  line-height: 1.2;
 }
 
 .repository-title-row .changes-refresh-button {
@@ -614,6 +616,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   padding-inline: 0.28rem;
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
+}
+
+.repository-tags-row :deep(.el-tag) {
+  height: 1.65em;
 }
 
 .repository-kind,
