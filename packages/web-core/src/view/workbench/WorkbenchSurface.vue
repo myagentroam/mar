@@ -337,6 +337,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :session-group="page.workspaceSessionGroup"
             :group-state="page.workspaceSessionGroupState"
             @select-group="page.selectWorkspaceSessionGroup"
+            @activate-group-marker="page.activateWorkspaceSessionGroupMarker"
             @move-to-main="page.moveSessionToMain"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"

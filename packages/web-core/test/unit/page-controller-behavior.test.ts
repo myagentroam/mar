@@ -207,6 +207,7 @@ describe('Workbench controller composition behavior', () => {
       if (outcome === 'ready' || outcome === 'hidden')
         captured.live!.onReady?.('connection-a', true);
       resolveReady(outcome !== 'closed');
+      await flushComponent();
       page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
       await opening;
       expect(watchRequests).toHaveLength(outcome === 'ready' ? 1 : 0);
@@ -319,7 +320,7 @@ describe('Workbench controller composition behavior', () => {
     expect(page.sessionInput.value).toBe('Keep this draft');
   });
 
-  it.each(['quick', 'recent'] as const)(
+  it.each(['quick', 'recent', 'badge'] as const)(
     'keeps CHILD when opening a main session through %s',
     async (entry) => {
       const { page } = controller();
@@ -345,22 +346,38 @@ describe('Workbench controller composition behavior', () => {
       const manifest = page.nodeManifest.value;
       vi.stubGlobal(
         'fetch',
-        async () =>
-          new Response(
-            JSON.stringify({
-              session: main,
-              sessions: [main],
-              turns: [],
-              nextCursor: null,
-              profiles: [],
-              manifest,
-              workspaces: [{ id: 'workspace-a', path: '/project', kind: 'DIRECTORY' }]
-            })
-          )
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                session: main,
+                sessions: [main],
+                turns: [],
+                nextCursor: null,
+                profiles: [],
+                manifest,
+                workspaces: [{ id: 'workspace-a', path: '/project', kind: 'DIRECTORY' }]
+              })
+            )
+        )
       );
 
       if (entry === 'quick') await page.openSessionFromList(main.id);
-      else
+      else if (entry === 'badge') {
+        await flushComponent();
+        vi.mocked(fetch).mockClear();
+        const opening = page.openSessionGroupTarget({
+          nodeId: 'node-a',
+          workspaceId: 'workspace-a',
+          sessionId: main.id
+        });
+        await flushComponent();
+        page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
+        await opening;
+        expect(
+          vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith('/api/workspaces?'))
+        ).toBe(false);
+      } else
         await page.openRecentRun({
           nodeId: 'node-a',
           workspaceId: 'workspace-a',
@@ -412,6 +429,39 @@ describe('Workbench controller composition behavior', () => {
     await flushComponent();
     expect(captured.startWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-b');
     expect(captured.restartWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('scopes a workspace group badge lookup without changing the selected group', () => {
+    const { page } = controller();
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.selectedSessionId.value = 'current';
+    const group = page.workspaceSessionGroup.value;
+    const lookup = vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget');
+    page.activateWorkspaceSessionGroupMarker('CHILD');
+    expect(lookup).toHaveBeenCalledWith('CHILD', {
+      nodeId: 'node-a',
+      workspaceId: 'workspace-a',
+      lastSessionId: 'current'
+    });
+    expect(page.workspaceSessionGroup.value).toBe(group);
+    expect(page.selectedSessionId.value).toBe('current');
+  });
+
+  it('opens the workspace group badge target without switching the group', async () => {
+    const { page } = controller();
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.selectedSessionId.value = 'current';
+    const group = page.workspaceSessionGroup.value;
+    captured.waitForReady.mockResolvedValue(false);
+    vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget').mockReturnValue({
+      nodeId: 'node-a',
+      workspaceId: 'workspace-a',
+      sessionId: 'target'
+    });
+    page.activateWorkspaceSessionGroupMarker('CHILD');
+    expect(page.selectedSessionId.value).toBe('target');
+    expect(page.workspaceSessionGroup.value).toBe(group);
+    await flushComponent();
   });
 
   it('shows only sessions in the current group page while retaining the selected session body', async () => {

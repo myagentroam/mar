@@ -65,6 +65,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
+  activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
   moveToMain: [session: Session];
   create: [];
   open: [sessionId: string];
@@ -447,6 +448,7 @@ function submitSessionSearch(): void {
       :model-value="sessionGroup"
       :state="groupState"
       @update:model-value="emit('selectGroup', $event)"
+      @activate-marker="emit('activateGroupMarker', $event)"
     />
     <p v-if="watchStatus === 'loading'" class="watch-status">
       {{ translate('workspaceWatch.loadingSessions') }}

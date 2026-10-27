@@ -18,6 +18,7 @@ defineProps<{
 const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
+  activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
 }>();
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
@@ -58,6 +59,7 @@ function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warn
       class="recent-session-groups"
       :model-value="sessionGroup"
       :state="groupState"
+      @activate-marker="emit('activateGroupMarker', $event)"
       @update:model-value="emit('selectGroup', $event)"
     />
     <p v-if="runs.length === 0" class="recent-sessions-empty">

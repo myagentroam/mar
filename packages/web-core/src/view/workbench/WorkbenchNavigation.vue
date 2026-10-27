@@ -109,6 +109,7 @@ const emit = defineEmits<{
   renameWorkspace: [nodeId: string, workspace: Workspace];
   openNotification: [notification: WorkbenchNotification];
   openRecentRun: [run: RecentRun];
+  openSessionTarget: [target: { nodeId: string; workspaceId: string; sessionId: string }];
   retryUpload: [task: WorkspaceUploadTask];
   cancelUpload: [task: WorkspaceUploadTask];
   removeUpload: [task: WorkspaceUploadTask];
@@ -254,6 +255,7 @@ function openBlankMenu(event: MouseEvent): void {
           :mobile-panel-target="mobilePanelTarget"
           @update:mobile-open="setMobileUtilityPanel('recent-sessions', $event)"
           @open-recent-run="emit('openRecentRun', $event)"
+          @open-session-target="emit('openSessionTarget', $event)"
         />
       </template>
       <el-link

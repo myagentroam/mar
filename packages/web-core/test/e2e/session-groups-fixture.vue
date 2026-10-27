@@ -78,7 +78,17 @@ service.notifications.value = ['MAIN', 'CHILD'].map((sessionGroup) => ({
     sessionTitle: 'Project'
   }
 })) as typeof service.notifications.value;
+if (new URL(location.href).searchParams.has('unread-only')) {
+  service.recentRuns.value = service.recentRuns.value.map((run) => ({
+    ...run,
+    status: 'SUCCEEDED' as const
+  }));
+}
 const groupState = computed(() => service.sessionGroupState('node', 'workspace'));
+function activateMarker(group: SessionGroup): void {
+  const target = service.sessionGroupTarget(group, { nodeId: 'node', workspaceId: 'workspace' });
+  if (target) selected.value = target.sessionId;
+}
 const shown = computed(() =>
   sessions.value.filter((session) => session.sessionGroup === group.value)
 );
@@ -150,6 +160,7 @@ const props = {
         :session-group="group"
         :group-state="groupState"
         @select-group="group = $event"
+        @activate-group-marker="activateMarker"
         @open="selected = $event"
         @move-to-main="move"
       />
@@ -192,6 +203,7 @@ const props = {
         mobile-panel-target="#recent-mobile"
         :mobile-presented="mobile"
         @open-recent-run="selected = $event.sessionId"
+        @open-session-target="selected = $event.sessionId"
       />
     </div>
   </main>
