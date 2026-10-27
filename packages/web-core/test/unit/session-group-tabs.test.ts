@@ -34,7 +34,7 @@ describe('Session group tabs', () => {
       const html = await renderToString(app);
       expect(html.includes('class="session-state-badge"')).toBe(running > 0 || unread);
       expect(html.includes('class="session-state-count"')).toBe(count !== '');
-      expect(html.includes('class="session-state-unread"')).toBe(label);
+      expect(html.includes('class="session-state-unread mar-unread-label"')).toBe(label);
       if (count) expect(html).toContain(`>${count}</span>`);
       if (label) expect(html).toContain('>Unread</span>');
       if (running > 0 || unread) expect(html).toContain('aria-hidden="true"');

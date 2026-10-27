@@ -977,15 +977,15 @@ pre {
   display: inline-flex;
   flex: none;
   align-items: center;
-  border: 1px solid color-mix(in srgb, currentColor 60%, var(--mar-border-medium));
+  border: 0;
   border-radius: var(--mar-radius-marker);
-  background: transparent;
-  color: var(--mar-text-secondary);
+  background: color-mix(in srgb, var(--mar-text-secondary) 34%, var(--mar-bg-panel));
+  color: color-mix(in srgb, var(--mar-text-secondary) 60%, var(--mar-text-primary));
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.4;
   white-space: nowrap;
-  padding: 0 0.1875rem;
+  padding: 1px 0.1875rem;
 }
 
 .utility-control {

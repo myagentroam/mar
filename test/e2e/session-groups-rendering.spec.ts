@@ -109,12 +109,52 @@ for (const [width, theme, locale] of [
         expect(markerBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width);
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
         const badge = tab.locator('.session-state-count');
-        await expect(tab.locator('.session-state-badge')).toHaveCSS('border-top-width', '1px');
+        await expect(tab.locator('.session-state-badge')).toHaveCSS('border-top-width', '0px');
         await expect(badge).toHaveCSS('background-color', palette.brand);
         const unread = tab.locator('.session-state-unread');
-        await expect(unread).toHaveCSS('background-color', palette.panel);
-        await expect(unread).toHaveCSS('border-inline-start-width', '1px');
+        const standalone = chats.locator('.session-unread-label').first();
+        await expect(standalone).toBeVisible();
+        await expect(unread).toHaveCSS(
+          'background-color',
+          await standalone.evaluate((element) => getComputedStyle(element).backgroundColor)
+        );
+        await expect(unread).toHaveCSS(
+          'color',
+          await standalone.evaluate((element) => getComputedStyle(element).color)
+        );
+        await expect(unread).toHaveCSS('border-inline-start-width', '0px');
         await expect(unread).toHaveCSS('border-top-width', '0px');
+        if (theme !== 'custom' && (await tab.getAttribute('aria-selected')) === 'true') {
+          const contrast = await unread.evaluate((element) => {
+            const context = document.createElement('canvas').getContext('2d')!;
+            const luminance = (color: string) => {
+              context.clearRect(0, 0, 1, 1);
+              context.fillStyle = color;
+              context.fillRect(0, 0, 1, 1);
+              const channels = context.getImageData(0, 0, 1, 1).data;
+              return [0.2126, 0.7152, 0.0722].reduce((sum, weight, index) => {
+                const value = channels[index]! / 255;
+                return (
+                  sum +
+                  weight * (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+                );
+              }, 0);
+            };
+            const ratio = (first: number, second: number) =>
+              (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+            const style = getComputedStyle(element);
+            const fill = luminance(style.backgroundColor);
+            return {
+              text: ratio(fill, luminance(style.color)),
+              surface: ratio(
+                fill,
+                luminance(getComputedStyle(element.closest('button')!).backgroundColor)
+              )
+            };
+          });
+          expect(contrast.text).toBeGreaterThanOrEqual(4.5);
+          expect(contrast.surface).toBeGreaterThan(1.25);
+        }
         const countBounds = (await badge.boundingBox())!;
         const unreadBounds = (await unread.boundingBox())!;
         expect(countBounds.height).toBeCloseTo(unreadBounds.height, 1);
@@ -253,7 +293,7 @@ for (const [width, theme, locale] of [
               (element, name) => getComputedStyle(element).getPropertyValue(name),
               property
             );
-          for (const badge of await list.locator('.session-state-badge').all())
+          for (const badge of await list.locator('.session-state-unread').all())
             await expect(badge).toHaveCSS(property, expected);
           await expect(recent.locator('.recent-session-unread')).toHaveCSS(property, expected);
         }

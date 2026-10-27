@@ -64,7 +64,9 @@ describe('Workbench recent session groups', () => {
       (node) => node.props.get('aria-label') === 'Recent Sessions'
     )[0]!;
     const unread = () =>
-      trigger.findAll((node) => node.props.get('class') === 'session-state-unread');
+      trigger.findAll(
+        (node) => node.props.get('class') === 'session-state-unread mar-unread-label'
+      );
     const counts = () =>
       trigger.findAll((node) => node.props.get('class') === 'session-state-count');
     expect(unread()[0]?.textContent).toBe('Unread');

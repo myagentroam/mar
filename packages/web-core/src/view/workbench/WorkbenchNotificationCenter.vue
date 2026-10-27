@@ -380,12 +380,15 @@ const emit = defineEmits<{
   top: calc(50% - 15px);
   right: calc(50% - 14px);
   min-width: 14px;
-  border: 1px solid var(--mar-bg-panel);
+  box-sizing: border-box;
+  padding: 1px 0.1875rem;
+  border: 0;
   border-radius: var(--mar-radius-marker);
   background: var(--mar-color-brand);
   color: var(--mar-color-on-accent);
   font-size: var(--mar-font-size-nano);
-  line-height: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   text-align: center;
 }
 .workbench-notification-panel {

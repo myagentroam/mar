@@ -425,22 +425,17 @@ for (const theme of ['dark', 'light']) {
         const tabs = page.locator('.workspace-tab');
         const badge = tabs.first().locator('.workspace-tab-unread');
         await expect(badge).toHaveText(locale === 'en-US' ? 'Unread' : '未读');
-        const colors = await badge.evaluate((element) => {
-          const probe = document.createElement('span');
-          element.append(probe);
-          probe.style.color = 'var(--mar-text-secondary)';
-          const text = getComputedStyle(probe).color;
-          probe.className = 'mar-unread-label';
-          const border = getComputedStyle(probe).borderTopColor;
-          probe.remove();
-          return { text, border };
-        });
         for (const tab of [tabs.first(), tabs.nth(1)]) {
           await tab.getByRole('tab').click();
-          await expect(badge).toHaveCSS('color', colors.text);
-          await expect(badge).toHaveCSS('border-top-color', colors.border);
-          await expect(badge).toHaveCSS('border-top-width', '1px');
-          await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          await expect(badge).toHaveCSS('border-top-width', '0px');
+          const visible = await badge.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const parent = element.closest('.workspace-tab')!;
+            const surface = getComputedStyle(parent).backgroundColor;
+            return { fill: style.backgroundColor, surface };
+          });
+          expect(visible.fill).not.toBe('rgba(0, 0, 0, 0)');
+          expect(visible.fill).not.toBe(visible.surface);
         }
         if (locale === 'en-US') {
           await tabs.first().screenshot({
@@ -914,6 +909,16 @@ for (const { theme, locale } of [
       await expect(badge.locator('.session-state-unread')).toHaveText(
         locale === 'zh-CN' ? '未读' : 'Unread'
       );
+      await expect(badge).toHaveCSS('border-top-width', '0px');
+      await expect(badge.locator('.session-state-unread')).toHaveCSS('border-left-width', '0px');
+      const notificationBadge = page.locator('.workbench-notification-badge');
+      await expect(notificationBadge).toHaveCSS('border-top-width', '0px');
+      const countColors = await badge.locator('.session-state-count').evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        color: getComputedStyle(element).color
+      }));
+      await expect(notificationBadge).toHaveCSS('background-color', countColors.background);
+      await expect(notificationBadge).toHaveCSS('color', countColors.color);
       const positions = await buttons.evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().toJSON())
       );
