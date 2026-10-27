@@ -174,6 +174,7 @@ function runTime(run: RecentRun): string {
           <span
             v-else-if="activeSessionCount > 0 || hasUnreadSessions"
             class="recent-sessions-badge recent-sessions-mobile-badge"
+            :class="{ 'recent-sessions-unread-only': activeSessionCount === 0 }"
             aria-hidden="true"
           >
             <SessionStateBadge :running="activeSessionCount" :unread="false" />
@@ -294,6 +295,12 @@ function runTime(run: RecentRun): string {
   border-radius: 2px;
   background: var(--mar-text-secondary);
   box-shadow: 0 0 0 1px var(--recent-sessions-marker-surface);
+}
+.recent-sessions-unread-only .recent-sessions-mobile-unread {
+  top: 3px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
 }
 :global(.recent-sessions-popover.el-popover) {
   padding: 0;

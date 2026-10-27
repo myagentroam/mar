@@ -954,6 +954,7 @@ for (const { theme, locale } of [
         await expect(trigger).toHaveCSS('width', '36px');
         const icon = (await trigger.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
         const marker = (await unread.boundingBox())!;
+        expect(marker.width).toBe(6);
         expect(Math.abs(bounds.x + bounds.width - (icon.x + icon.width + 3))).toBeLessThan(1);
         expect(bounds.y).toBeLessThan(icon.y + icon.height / 2);
         expect(Math.abs(marker.x + marker.width / 2 - (bounds.x + bounds.width))).toBeLessThan(4);
@@ -978,17 +979,41 @@ for (const { theme, locale } of [
     }
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(
+      `${fixture.url}icon-system.html?navigation=1&mobile=1&count=1&unread=1&theme=${theme}&locale=${locale}`
+    );
+    await expect(page.locator('.recent-sessions-badge .session-state-count')).toHaveText('1');
+    await expect(page.locator('.recent-sessions-mobile-unread')).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('recent-sessions-one-unread.png'),
+      clip: { x: 0, y: 0, width: 390, height: 84 }
+    });
+    await page.goto(
       `${fixture.url}icon-system.html?navigation=1&mobile=1&count=0&unread=1&theme=${theme}&locale=${locale}`
     );
     const badge = page.locator('.recent-sessions-badge');
     await expect(badge.locator('.session-state-count')).toHaveCount(0);
+    await expect(badge).toHaveCSS('overflow', 'visible');
     const marker = badge.locator('.recent-sessions-mobile-unread');
     await expect(marker).toBeVisible();
     const icon = (await page.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
     const markerBounds = (await marker.boundingBox())!;
+    expect(markerBounds.width).toBe(8);
     expect(markerBounds.x).toBeLessThan(icon.x + icon.width);
     expect(markerBounds.x + markerBounds.width).toBeGreaterThan(icon.x + icon.width);
+    expect(markerBounds.y + markerBounds.height).toBeGreaterThan(icon.y + 4);
     expect(markerBounds.y).toBeLessThan(icon.y + icon.height / 2);
+    await page.screenshot({
+      path: testInfo.outputPath('recent-sessions-unread-only.png'),
+      clip: { x: 0, y: 0, width: 390, height: 84 }
+    });
+    const trigger = page.locator('.recent-sessions-trigger');
+    await trigger.click();
+    const selectedBackground = await trigger.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    expect(await marker.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
+      selectedBackground
+    );
     await page.locator('.workbench-notification-trigger').click();
     await page.locator('.workbench-notification-mark-all').click();
     await expect(badge).toHaveCount(0);
