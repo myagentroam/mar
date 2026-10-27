@@ -13,11 +13,13 @@ import { localePreferenceService, translate } from '../../service/locale-prefere
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
+import { CONVERSATION_MARKDOWN_CACHE_KEY } from '../../util/conversation-markdown-cache.js';
 
 const props = defineProps<{
   readonly content: string;
   readonly workspaceRoot?: string;
   readonly imageResourceUrl?: ((path: string) => string) | undefined;
+  readonly cacheIdentity?: readonly string[] | undefined;
 }>();
 const emit = defineEmits<{
   'open-image': [source: string, name: string];
@@ -174,6 +176,7 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
 const locale = localePreferenceService().locale;
 const markdownRoot = ref<HTMLElement>();
 const tooltipService = inject(TOOLTIP_SERVICE_KEY, undefined);
+const markdownCache = inject(CONVERSATION_MARKDOWN_CACHE_KEY, undefined);
 let codeCopyButtons = new Set<HTMLButtonElement>();
 const copyResetTimers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>();
 
@@ -204,23 +207,34 @@ onBeforeUnmount(() => {
 });
 
 const html = computed(() => {
-  // Re-render on locale switch so the copy button label follows the active language.
-  void locale.value;
-  return DOMPurify.sanitize(renderer.render(props.content), {
-    ADD_ATTR: [
-      'target',
-      'rel',
-      'checked',
-      'disabled',
-      'data-code-block',
-      'data-code-copy',
-      'data-image-preview',
-      'data-image-source',
-      'data-workspace-file',
-      'data-workspace-line',
-      'data-workspace-column'
-    ]
-  });
+  const language = locale.value;
+  const render = () =>
+    DOMPurify.sanitize(renderer.render(props.content), {
+      ADD_ATTR: [
+        'target',
+        'rel',
+        'checked',
+        'disabled',
+        'data-code-block',
+        'data-code-copy',
+        'data-image-preview',
+        'data-image-source',
+        'data-workspace-file',
+        'data-workspace-line',
+        'data-workspace-column'
+      ]
+    });
+  // Resource callbacks can depend on live context; never reuse HTML containing image syntax.
+  if (
+    !markdownCache ||
+    !props.cacheIdentity ||
+    (props.imageResourceUrl && props.content.includes('!'))
+  )
+    return render();
+  return markdownCache.render(
+    [...props.cacheIdentity, props.content, props.workspaceRoot ?? '', language],
+    render
+  );
 });
 
 async function onCopyClick(event: MouseEvent): Promise<void> {

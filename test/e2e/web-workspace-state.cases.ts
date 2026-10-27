@@ -3082,7 +3082,7 @@ test('Three Workspace Tabs use the same activation flow to restore their session
   );
   await expect(page.locator('.workspace-inspector')).not.toContainText('加载中');
   releaseNode1Manifest?.();
-  await expect(page.getByRole('treeitem', { name: 'main.ts', exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'src/main.ts', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: /project-3/ }).click();
   await expect(page.getByText('会话 3', { exact: true })).toBeVisible();
   expect(initialWatchRequests.get('workspace-1')).toBe(2);
