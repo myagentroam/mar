@@ -49,6 +49,7 @@ export interface ChangeRepository {
   readonly locked: boolean;
   readonly prunable: boolean;
   readonly error?: PublicError;
+  readonly changesTruncated?: boolean;
   readonly changes: readonly ChangeEntry[];
 }
 

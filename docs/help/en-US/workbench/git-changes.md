@@ -1,6 +1,6 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-27
 ---
 
 # Git Changes and Diff
@@ -10,6 +10,8 @@ When the Workspace is a repository subdirectory, Git uses the containing reposit
 The repository title, branch, and Refresh button share the first row; status tags appear on the second row. When commits are not synchronized, a tag shows `↓ incoming count ↑ outgoing count`, with the upstream and an explanation on hover. Counts are independent of uncommitted file changes and compare only the locally known upstream. The page never automatically runs fetch, pull, or push. The tag is hidden when there is no available upstream, HEAD is detached, or both counts are zero. To update remote information, run your normal Git fetch in the terminal, then refresh the page.
 
 Git Changes shows the current root repository, initialized submodules, and every linked worktree as peer groups in one list. Tags identify the root, submodules, worktrees, and the current worktree. Each linked worktree group shows its full physical absolute path on the Node, together with its branch or detached HEAD and any locked, prunable, or unavailable status. Every group lists its modified, added, deleted, renamed, and untracked files.
+
+Each read returns at most 1,000 changes across all groups. Affected repositories show a notice if that limit or the Git output limit is reached. Scroll to the bottom to progressively display the returned changes, or use Load more; this does not retrieve files beyond the limit.
 
 On mobile, drag anywhere on the minimap to move through the file. The bottom-right action group uses two rows: file and change navigation above, then find, download, and close below.
 

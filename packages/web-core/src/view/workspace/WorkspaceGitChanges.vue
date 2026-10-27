@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
@@ -45,6 +46,9 @@ const {
 } = props.service;
 const CHANGE_RENDER_BATCH = 200;
 const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
+const loadingMore = ref(false);
+const loadMoreElement = ref<HTMLElement>();
+let loadMoreTimer: ReturnType<typeof setTimeout> | undefined;
 const renderedChangeRepositories = computed(() =>
   limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
 );
@@ -62,11 +66,31 @@ const totalChangeCount = computed(() =>
 );
 const hasMoreChanges = computed(() => renderedChangeCount.value < totalChangeCount.value);
 watch(visibleChangeRepositories, () => {
+  clearTimeout(loadMoreTimer);
+  loadingMore.value = false;
   changeRenderLimit.value = CHANGE_RENDER_BATCH;
 });
 function showMoreChanges(): void {
-  changeRenderLimit.value += CHANGE_RENDER_BATCH;
+  if (loadingMore.value || !hasMoreChanges.value) return;
+  loadingMore.value = true;
+  loadMoreTimer = setTimeout(() => {
+    changeRenderLimit.value += CHANGE_RENDER_BATCH;
+    loadingMore.value = false;
+  }, 100);
 }
+watchEffect(
+  (onCleanup) => {
+    const element = loadMoreElement.value;
+    if (!element || loadingMore.value || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) showMoreChanges();
+    });
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: 'post' }
+);
+onBeforeUnmount(() => clearTimeout(loadMoreTimer));
 function worktreeReference(worktree: GitWorktreeSummary): string {
   return (
     worktree.branch ??
@@ -307,7 +331,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             </code>
           </div>
         </li>
-        <li v-if="repository.changes.length === 0" class="change-repository-empty">
+        <li
+          v-if="repository.changes.length === 0 && !repository.changesTruncated"
+          class="change-repository-empty"
+        >
           {{
             repository.error !== undefined
               ? gitGroupErrorMessage(repository.error)
@@ -315,6 +342,9 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 ? translate('gitWorktrees.unavailable')
                 : translate('generated.workspaceInspector.noUncommittedChanges')
           }}
+        </li>
+        <li v-if="repository.changesTruncated" class="change-repository-empty" role="status">
+          {{ translate('gitWorktrees.changesTruncated') }}
         </li>
         <li v-for="entry in repository.changes" :key="changeKey(entry)" class="change-entry">
           <button
@@ -375,9 +405,28 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         </li>
       </template>
     </ul>
-    <el-button v-if="hasMoreChanges" class="change-load-more" link @click="showMoreChanges">
-      {{ translate('generated.workspaceInspector.loadMore') }}
-    </el-button>
+    <div
+      v-if="hasMoreChanges"
+      ref="loadMoreElement"
+      class="change-append-state"
+      :aria-busy="loadingMore"
+    >
+      <el-button
+        class="change-load-more"
+        link
+        :aria-disabled="loadingMore"
+        @click="showMoreChanges"
+      >
+        <span
+          v-if="loadingMore"
+          role="status"
+          :aria-label="translate('generated.workspaceSessionList.loading')"
+        >
+          <BusyIndicator class="read-loading-indicator" />
+        </span>
+        <template v-else>{{ translate('generated.workspaceInspector.loadMore') }}</template>
+      </el-button>
+    </div>
   </section>
 </template>
 
@@ -476,6 +525,11 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 .change-load-more {
   width: 100%;
   margin: 4px 0;
+  font-size: var(--mar-font-size-meta);
+}
+
+.change-append-state {
+  text-align: center;
 }
 
 .change-list li {

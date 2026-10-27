@@ -1613,6 +1613,7 @@ export interface CurrentChangesRepository {
   readonly head?: string;
   readonly tracking?: WorkspaceGitTracking;
   readonly changes: readonly CurrentChange[];
+  readonly changesTruncated?: boolean;
 }
 
 export interface GitWorktreeListEntry {
@@ -1753,6 +1754,7 @@ export async function readCurrentChangesSummary(
   readonly head?: string;
   readonly tracking?: WorkspaceGitTracking;
   readonly changes: readonly CurrentChange[];
+  readonly changesTruncated?: boolean;
 }> {
   const args = [
     'status',
@@ -1770,6 +1772,7 @@ export async function readCurrentChangesSummary(
     return runReadOnlyGit(workspacePath, [...args, '--ignore-submodules=dirty'], options);
   });
   const records = result.text.split('\0');
+  if (result.truncated) records.pop();
   const header = records.shift() ?? '';
   const output: CurrentChange[] = [];
   for (let index = 0; index < records.length; index += 1) {
@@ -1804,6 +1807,7 @@ export async function readCurrentChangesSummary(
     branch,
     ...(head === undefined ? {} : { head }),
     ...(tracking === undefined ? {} : { tracking }),
+    ...(result.truncated ? { changesTruncated: true } : {}),
     changes: output
   };
 }

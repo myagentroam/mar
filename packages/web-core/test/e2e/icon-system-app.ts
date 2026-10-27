@@ -73,6 +73,7 @@ document.head.append(style);
 const app = createApp({
   setup() {
     if (new URL(location.href).searchParams.has('git-change-icons')) {
+      const manyChanges = new URL(location.href).searchParams.has('many-changes');
       const entry = {
         repositoryPath: '',
         repositoryName: 'MyAgentRoam',
@@ -93,12 +94,17 @@ const app = createApp({
             branch: 'develop',
             locked: false,
             prunable: false,
-            changes: [
-              entry,
-              { ...entry, path: 'src/other.ts' },
-              { ...entry, path: 'src/new.ts', change: 'ADDED', state: 'UNTRACKED' as const },
-              { ...entry, path: 'src/deleted.ts', change: 'DELETED', state: 'STAGED' as const }
-            ]
+            changes: manyChanges
+              ? Array.from({ length: 450 }, (_, index) => ({
+                  ...entry,
+                  path: `src/file-${index}.ts`
+                }))
+              : [
+                  entry,
+                  { ...entry, path: 'src/other.ts' },
+                  { ...entry, path: 'src/new.ts', change: 'ADDED', state: 'UNTRACKED' as const },
+                  { ...entry, path: 'src/deleted.ts', change: 'DELETED', state: 'STAGED' as const }
+                ]
           }
         ]),
         worktrees: ref([]),
@@ -110,7 +116,11 @@ const app = createApp({
       };
       return () =>
         h('main', {}, [
-          h(WorkspaceGitChanges, { service: service as never, target: undefined }),
+          manyChanges
+            ? h('div', { style: 'height:400px;overflow:auto' }, [
+                h(WorkspaceGitChanges, { service: service as never, target: undefined })
+              ])
+            : h(WorkspaceGitChanges, { service: service as never, target: undefined }),
           h(
             ElButton,
             { onClick: () => (restoringPath.value = changeKey(entry)) },

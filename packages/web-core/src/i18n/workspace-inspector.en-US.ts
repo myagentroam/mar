@@ -133,7 +133,8 @@ export const workspaceInspectorEnUS = {
     locked: 'Locked',
     prunable: 'Prunable',
     detachedHead: 'detached HEAD · {head}',
-    truncated: 'Only some Git worktrees are shown'
+    truncated: 'Only some Git worktrees are shown',
+    changesTruncated: 'Some changed files are not shown because the limit was reached'
   },
   workspaceWatch: {
     loadingSessions: 'Loading sessions…',

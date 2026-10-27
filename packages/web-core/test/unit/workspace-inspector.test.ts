@@ -268,6 +268,11 @@ const WorkspaceInspectorClient = clientComponent(
   new URL('../../src/view/workspace/WorkspaceInspector.vue', import.meta.url),
   'workspace-inspector-test'
 );
+const WorkspaceGitChangesClient = clientComponent(
+  WorkspaceGitChanges,
+  new URL('../../src/view/workspace/WorkspaceGitChanges.vue', import.meta.url),
+  'workspace-git-changes-test'
+);
 const WorkspaceGitHistoryClient = clientComponent(
   WorkspaceGitHistory,
   new URL('../../src/view/workspace/WorkspaceGitHistory.vue', import.meta.url),
@@ -382,6 +387,87 @@ afterEach(() => {
   localePreferenceService().setLocale(originalLocale);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+
+it('automatically appends Git changes after the loading delay and cleans up', async () => {
+  vi.useFakeTimers();
+  let intersect: IntersectionObserverCallback | undefined;
+  const disconnect = vi.fn();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersect = callback;
+      }
+      observe = vi.fn();
+      disconnect = disconnect;
+    }
+  );
+  const service = {
+    repositories: ref([
+      {
+        repositoryPath: '',
+        repositoryName: 'root',
+        source: 'ROOT',
+        current: true,
+        branch: 'main',
+        locked: false,
+        prunable: false,
+        changes: Array.from({ length: 450 }, (_, index) => ({
+          repositoryPath: '',
+          repositoryName: 'root',
+          source: 'ROOT',
+          path: `file-${index}.ts`,
+          state: 'UNSTAGED',
+          change: 'MODIFIED',
+          diffAvailable: true
+        }))
+      }
+    ]),
+    worktrees: ref([]),
+    worktreesTruncated: ref(false),
+    discoveryErrors: ref([]),
+    changesRefreshing: ref(false),
+    restoringPath: ref(undefined),
+    loadChanges: vi.fn()
+  };
+  const app = testRenderer.createApp({
+    render: () => h(WorkspaceGitChangesClient, { service: service as never })
+  });
+  app.use(i18n);
+  app.provide(ssrContextKey, { modules: new Set<string>() });
+  app.config.warnHandler = () => {};
+  app.mount(new TestHostNode('container'));
+  try {
+    await nextTick();
+    const rows = () =>
+      [...hostNodes].filter((node) => node.parent && node.props.class === 'change-entry').length;
+    expect(rows()).toBe(200);
+    const button = [...hostNodes].find(
+      (node) => node.parent && node.props.class === 'change-load-more'
+    );
+    expect(button).toBeDefined();
+    expect(intersect).toBeDefined();
+    intersect?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    );
+    await nextTick();
+    expect(rows()).toBe(200);
+    expect(
+      [...hostNodes].find((node) => node.parent && node.props.class === 'change-load-more')
+    ).toBe(button);
+    expect([...hostNodes].some((node) => node.parent && node.props.role === 'status')).toBe(true);
+    await vi.advanceTimersByTimeAsync(99);
+    expect(rows()).toBe(200);
+    await vi.advanceTimersByTimeAsync(1);
+    await nextTick();
+    expect(rows()).toBe(400);
+    expect(disconnect).toHaveBeenCalled();
+  } finally {
+    app.unmount();
+    vi.useRealTimers();
+  }
 });
 
 describe('Workspace file tree root naming', () => {
@@ -515,6 +601,17 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
             change: 'MODIFIED',
             diffAvailable: true
           }))
+        },
+        {
+          repositoryPath: 'limited',
+          repositoryName: 'limited',
+          source: 'SUBMODULE',
+          current: false,
+          branch: 'main',
+          locked: false,
+          prunable: false,
+          changesTruncated: true,
+          changes: []
         }
       ]),
       worktrees: ref([
@@ -550,6 +647,8 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(html).toContain(i18n.global.t('gitWorktrees.clean'));
     expect(html.match(/class="change-entry"/gu)).toHaveLength(200);
     expect(html).toContain(i18n.global.t('generated.workspaceInspector.loadMore'));
+    expect(html).toContain(i18n.global.t('gitWorktrees.changesTruncated'));
+    expect(html).not.toContain(i18n.global.t('generated.workspaceInspector.noUncommittedChanges'));
   });
 
   it.each([false, true])(

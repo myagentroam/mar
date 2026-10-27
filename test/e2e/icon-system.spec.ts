@@ -99,6 +99,21 @@ for (const dpr of [1, 2, 3]) {
   });
 }
 
+test('Git changes append on scroll within the inspector', async ({ page }) => {
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}icon-system.html?git-change-icons=1&many-changes=1`);
+    const entries = page.locator('.change-entry');
+    await expect(entries).toHaveCount(200);
+    const marker = page.locator('.change-append-state');
+    await marker.scrollIntoViewIfNeeded();
+    await expect(entries).toHaveCount(400);
+    await marker.scrollIntoViewIfNeeded();
+    await expect(entries).toHaveCount(450);
+    await expect(marker).toHaveCount(0);
+  }
+});
+
 for (const theme of ['dark', 'light']) {
   test(`Git change status columns and restore icons stay aligned in ${theme}`, async ({
     page

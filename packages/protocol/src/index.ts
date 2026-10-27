@@ -3535,6 +3535,7 @@ export const workspaceChangesRepositorySchema = z
     locked: z.boolean().optional(),
     prunable: z.boolean().optional(),
     error: z.lazy(() => publicErrorSchema).optional(),
+    changesTruncated: z.boolean().optional(),
     changes: z.array(workspaceChangeSchema)
   })
   .superRefine((repository, context) => {
