@@ -864,6 +864,11 @@ for (const mobile of [false, true]) {
         expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(
           bounds!.x + bounds!.width + (mobile ? 9 : 0)
         );
+        if (!mobile && count === 6) {
+          expect(badgeBounds!.x).toBeLessThan(graphic!.x + graphic!.width);
+          expect(badgeBounds!.x + badgeBounds!.width).toBeGreaterThan(graphic!.x + graphic!.width);
+          expect(badgeBounds!.y).toBeLessThan(graphic!.y + graphic!.height / 2);
+        }
       } else await expect(trigger.locator('.recent-sessions-badge')).toHaveCount(0);
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
@@ -914,6 +919,7 @@ for (const { theme, locale } of [
       if (!mobile) {
         await expect(unread).toHaveText(locale === 'zh-CN' ? '未读' : 'Unread');
         await expect(unread).toHaveCSS('border-left-width', '0px');
+        await expect(badge).toHaveCSS('right', '0px');
       }
       const notificationBadge = page.locator('.workbench-notification-badge');
       await expect(notificationBadge).toHaveCSS('border-top-width', '0px');
