@@ -195,6 +195,72 @@ describe('JSONL v2 generation preparation', () => {
     expect((await store.read(id)).map((record) => record.sequence)).toEqual([1, 2, 3, 4]);
     await store.close();
   });
+  it('preserves repeated legacy sequences within and across segments when migrating and resuming', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-v1-repeated-sequences-'));
+    temporary.push(home);
+    const sessions = join(home, '.mar/agent/sessions');
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const root = join(sessions, id);
+    await mkdir(root, { recursive: true });
+    const timestamp = '2026-10-27T00:00:00.000Z';
+    const records = [1, 2, 2, 2, 3].map((sequence, index) => ({
+      recordId: `legacy-record-${index}`,
+      sequence,
+      timestamp,
+      sessionId: id,
+      type: index === 0 ? 'session.created' : 'turn.user',
+      payload:
+        index === 0
+          ? { title: 'Legacy', workspace: '/workspace' }
+          : { prompt: `legacy input ${index}` }
+    }));
+    const originals = [records.slice(0, 3), records.slice(3)].map(
+      (segment) =>
+        segment.map((record) => JSON.stringify({ schemaVersion: 1, ...record })).join('\n') + '\n'
+    );
+    for (const [index, original] of originals.entries())
+      await writeFile(join(root, `events-${String(index + 1).padStart(6, '0')}.jsonl`), original);
+    await writeFile(
+      join(sessions, 'index.json'),
+      JSON.stringify({
+        version: 1,
+        revision: 1,
+        sessions: [
+          {
+            id,
+            title: 'Legacy',
+            workspace: '/workspace',
+            createdAt: timestamp,
+            lastActivityAt: timestamp,
+            nextSequence: 4
+          }
+        ]
+      })
+    );
+    let store = await JsonlSessionStore.open(home);
+    try {
+      expect(await store.read(id)).toEqual(records);
+      await store.append(id, { type: 'turn.user', payload: { prompt: 'after migration' } });
+      const index = JSON.parse(await readFile(join(sessions, 'index.json'), 'utf8'));
+      expect(index.sessions[0].storage.encoding).toBe(2);
+      const migrated = await store.read(id);
+      expect(migrated.slice(0, records.length)).toEqual(records);
+      expect(migrated.map((record) => record.sequence)).toEqual([1, 2, 2, 2, 3, 4]);
+      for (const [index, original] of originals.entries())
+        expect(
+          await readFile(join(root, `events-${String(index + 1).padStart(6, '0')}.jsonl`), 'utf8')
+        ).toBe(original);
+      await store.close();
+      store = await JsonlSessionStore.open(home);
+      expect(await store.read(id)).toEqual(migrated);
+      await store.append(id, { type: 'turn.user', payload: { prompt: 'after reopening' } });
+      expect((await store.read(id)).map((record) => record.sequence)).toEqual([
+        1, 2, 2, 2, 3, 4, 5
+      ]);
+    } finally {
+      await store.close();
+    }
+  });
   it('creates and appends logical records directly to a selected v2 generation', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-v2-store-'));
     temporary.push(home);

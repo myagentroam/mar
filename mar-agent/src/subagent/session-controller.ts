@@ -3,7 +3,6 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { AgentError, describeAgentError } from '../error.js';
 import type { AgentReasoningEffort } from '../model/configuration.js';
-import type { ExecutionResult } from '../runtime/contracts.js';
 import type { AgentEvent } from '../runtime/events.js';
 import type { SessionSource } from '../session/types.js';
 import { SUBAGENT_LIMITS } from './limits.js';
@@ -11,7 +10,6 @@ import { parseAgentWaitTargets, SubagentWaitCoordinator, waitForAgentGroup } fro
 import type { SubagentManyOutput, SubagentManyOutputOptions } from './contracts.js';
 import type {
   SubagentController,
-  SubagentLatestActivity,
   SubagentLatestMessage,
   SubagentMessageOptions,
   SubagentOutputOptions,
@@ -20,75 +18,33 @@ import type {
   SubagentTaskSnapshot
 } from './contracts.js';
 
+import type {
+  SubagentModelOption,
+  SubagentOrigin,
+  SubagentMessageDelivery,
+  SubagentMailboxMessage,
+  SubagentParentExecution,
+  SubagentParentOperation,
+  SubagentParentContext
+} from './turn-contracts.js';
+import {
+  SubagentTask,
+  observeAgentEvent,
+  type TurnView,
+  type SubagentTaskState,
+  type TaskView
+} from './task.js';
+
 const RECENT_TERMINAL_RESOURCE_LIMIT = 16;
-
-export interface SubagentModelOption {
-  readonly id: string;
-  readonly name: string;
-  readonly conversationModel?: boolean;
-  readonly reasoningEfforts: readonly AgentReasoningEffort[];
-  readonly defaultReasoningEffort: AgentReasoningEffort;
-}
-
-export interface SubagentTurnHandle extends AsyncIterable<AgentEvent> {
-  readonly executionId: string;
-  readonly turnId: string;
-  /** True only after the child terminal event was durably appended. */
-  readonly persistedEvents?: boolean;
-  result(): Promise<ExecutionResult>;
-  cancel(): void;
-  enqueueMessage(message: string, delivery?: SubagentMessageDelivery): boolean;
-}
-
-/** Caller-owned correlation is opaque to Subagent; the adapter restores it at delivery. */
-export interface SubagentOrigin {
-  readonly signal: AbortSignal;
-  readonly correlation: unknown;
-}
-
-export interface SubagentMessageDelivery {
-  readonly messageId: string;
-  readonly origin?: SubagentOrigin;
-  readonly signal?: AbortSignal;
-  applied(): void;
-  settled?(status: 'cancelled' | 'failed'): void;
-}
-
-export interface SubagentMailboxMessage {
-  readonly text: string;
-  readonly delivery?: SubagentMessageDelivery;
-}
-
-export interface SubagentParentExecution {
-  readonly executionId: string;
-  readonly modelId: string;
-  readonly reasoningEffort: AgentReasoningEffort;
-  readonly models: ReadonlyMap<string, SubagentModelOption>;
-  emitTerminal(snapshot: SubagentTaskSnapshot): Promise<void>;
-  startTurn(input: {
-    readonly sessionId: string;
-    readonly prompt: string;
-    readonly modelId: string;
-    readonly reasoningEffort: AgentReasoningEffort;
-    readonly role: SubagentTaskInput['role'];
-    readonly initialMailbox: readonly SubagentMailboxMessage[];
-    readonly turnId: string;
-    readonly delivery?: SubagentMessageDelivery;
-    readonly origin?: SubagentOrigin;
-  }): Promise<SubagentTurnHandle>;
-}
-
-/** A native operation has its own provenance even when no parent Execution is active. */
-export interface SubagentParentOperation extends Omit<SubagentParentExecution, 'executionId'> {
-  readonly operationId: string;
-  readonly executionId?: string;
-  readonly ownerInstanceId?: string;
-  readonly extensionId?: string;
-  readonly signal: AbortSignal;
-  readonly origin?: SubagentOrigin;
-}
-
-type SubagentParentContext = SubagentParentExecution | SubagentParentOperation;
+export type {
+  SubagentModelOption,
+  SubagentTurnHandle,
+  SubagentOrigin,
+  SubagentMessageDelivery,
+  SubagentMailboxMessage,
+  SubagentParentExecution,
+  SubagentParentOperation
+} from './turn-contracts.js';
 
 interface SubagentHistoryRecord {
   readonly type: string;
@@ -119,359 +75,6 @@ export interface SubagentSessionControllerBackend {
     sessionId: string
   ): Promise<PersistedSubagentSession | undefined>;
 }
-
-interface TurnState {
-  readonly turnId: string;
-  readonly ownerInstanceId?: string;
-  readonly origin?: SubagentOrigin;
-  readonly delivery?: SubagentMessageDelivery;
-  readonly prompt: string;
-  readonly start: SubagentParentExecution['startTurn'];
-  readonly pendingMessages: SubagentMailboxMessage[];
-  readonly handleReady: Promise<void>;
-  readonly completion: Promise<void>;
-  resolve(): void;
-  resolveHandleReady(): void;
-  handle?: SubagentTurnHandle;
-  cancelRequested?: boolean;
-}
-
-type TurnView = Readonly<
-  Omit<TurnState, 'pendingMessages' | 'resolve' | 'resolveHandleReady' | 'cancelRequested'>
->;
-type TurnInput = Omit<
-  TurnState,
-  'handleReady' | 'completion' | 'resolve' | 'resolveHandleReady' | 'handle' | 'cancelRequested'
->;
-
-interface SubagentTaskState {
-  detailsEvicted?: boolean | undefined;
-  restorable?: boolean | undefined;
-  permissionStop?: ExecutionResult['permissionStop'] | undefined;
-  readonly agentId: string;
-  readonly description: string;
-  readonly role: SubagentTaskInput['role'];
-  readonly ownerInstanceId?: string | undefined;
-  readonly extensionId?: string | undefined;
-  status: SubagentTaskSnapshot['status'];
-  modelId?: string | undefined;
-  modelName?: string | undefined;
-  reasoningEffort?: AgentReasoningEffort | undefined;
-  latestMessage?: SubagentLatestMessage | undefined;
-  latestActivity?: SubagentLatestActivity | undefined;
-  messageRevision: number;
-  observedMessageRevision: number;
-  latestMessageActivityRevision: number;
-  summary?: string | undefined;
-  changedFiles: string[];
-  verification: string[];
-  evidence: Array<{ path: string; startLine?: number; endLine?: number }>;
-  errorCode?: string | undefined;
-  errorMessage?: string | undefined;
-  terminalPending: boolean;
-  observedTerminalRevision: number;
-  // Restored history has no live terminal revision and is not automatically replayed.
-  terminalRevision?: number | undefined;
-  resourceRevision: number;
-  turn?: TurnState | undefined;
-  controlTail?: Promise<unknown> | undefined;
-  receipt?:
-    | {
-        messageId: string;
-        turnId: string;
-        deliveryStatus: 'accepted' | 'applied' | 'cancelled' | 'failed';
-      }
-    | undefined;
-}
-
-type TaskView = Omit<
-  SubagentTaskState,
-  'turn' | 'receipt' | 'changedFiles' | 'verification' | 'evidence'
-> & {
-  readonly turn?: TurnView | undefined;
-  readonly receipt?: Readonly<NonNullable<SubagentTaskState['receipt']>> | undefined;
-  readonly changedFiles: readonly string[];
-  readonly verification: readonly string[];
-  readonly evidence: readonly Readonly<SubagentTaskState['evidence'][number]>[];
-};
-
-/** Owns the mutable state and transitions of one child task. */
-class SubagentTask {
-  get detailsEvicted(): SubagentTaskState['detailsEvicted'] {
-    return this.state.detailsEvicted;
-  }
-  get restorable(): SubagentTaskState['restorable'] {
-    return this.state.restorable;
-  }
-  get permissionStop(): SubagentTaskState['permissionStop'] {
-    return this.state.permissionStop;
-  }
-  get agentId(): SubagentTaskState['agentId'] {
-    return this.state.agentId;
-  }
-  get description(): SubagentTaskState['description'] {
-    return this.state.description;
-  }
-  get role(): SubagentTaskState['role'] {
-    return this.state.role;
-  }
-  get ownerInstanceId(): SubagentTaskState['ownerInstanceId'] {
-    return this.state.ownerInstanceId;
-  }
-  get extensionId(): SubagentTaskState['extensionId'] {
-    return this.state.extensionId;
-  }
-  get status(): SubagentTaskState['status'] {
-    return this.state.status;
-  }
-  get modelId(): SubagentTaskState['modelId'] {
-    return this.state.modelId;
-  }
-  get modelName(): SubagentTaskState['modelName'] {
-    return this.state.modelName;
-  }
-  get reasoningEffort(): SubagentTaskState['reasoningEffort'] {
-    return this.state.reasoningEffort;
-  }
-  get latestMessage(): SubagentTaskState['latestMessage'] {
-    return this.state.latestMessage;
-  }
-  get latestActivity(): SubagentTaskState['latestActivity'] {
-    return this.state.latestActivity;
-  }
-  get messageRevision(): SubagentTaskState['messageRevision'] {
-    return this.state.messageRevision;
-  }
-  get observedMessageRevision(): SubagentTaskState['observedMessageRevision'] {
-    return this.state.observedMessageRevision;
-  }
-  get latestMessageActivityRevision(): SubagentTaskState['latestMessageActivityRevision'] {
-    return this.state.latestMessageActivityRevision;
-  }
-  get summary(): SubagentTaskState['summary'] {
-    return this.state.summary;
-  }
-  get changedFiles(): readonly string[] {
-    return this.state.changedFiles;
-  }
-  get verification(): readonly string[] {
-    return this.state.verification;
-  }
-  get evidence(): readonly Readonly<SubagentTaskState['evidence'][number]>[] {
-    return this.state.evidence;
-  }
-  get errorCode(): SubagentTaskState['errorCode'] {
-    return this.state.errorCode;
-  }
-  get errorMessage(): SubagentTaskState['errorMessage'] {
-    return this.state.errorMessage;
-  }
-  get terminalPending(): SubagentTaskState['terminalPending'] {
-    return this.state.terminalPending;
-  }
-  get observedTerminalRevision(): SubagentTaskState['observedTerminalRevision'] {
-    return this.state.observedTerminalRevision;
-  }
-  get terminalRevision(): SubagentTaskState['terminalRevision'] {
-    return this.state.terminalRevision;
-  }
-  get resourceRevision(): SubagentTaskState['resourceRevision'] {
-    return this.state.resourceRevision;
-  }
-  get turn(): TurnView | undefined {
-    return this.state.turn;
-  }
-  get controlTail(): SubagentTaskState['controlTail'] {
-    return this.state.controlTail;
-  }
-  get receipt(): Readonly<NonNullable<SubagentTaskState['receipt']>> | undefined {
-    return this.state.receipt;
-  }
-
-  constructor(private readonly state: SubagentTaskState) {}
-  acknowledgeMessage(revision: number): void {
-    this.state.observedMessageRevision = Math.max(this.state.observedMessageRevision, revision);
-  }
-  acknowledgeTerminal(revision: number): void {
-    this.state.observedTerminalRevision = Math.max(this.state.observedTerminalRevision, revision);
-  }
-  selectModel(model: { id: string; name: string; reasoningEffort?: AgentReasoningEffort }): void {
-    this.state.modelId = model.id;
-    this.state.modelName = model.name;
-    if (model.reasoningEffort !== undefined) this.state.reasoningEffort = model.reasoningEffort;
-  }
-  setReceipt(receipt: NonNullable<SubagentTaskState['receipt']>): void {
-    this.state.receipt = receipt;
-  }
-  updateDelivery(
-    receipt: NonNullable<SubagentTaskState['receipt']>,
-    status: 'applied' | 'cancelled' | 'failed'
-  ): boolean {
-    if (status !== 'applied' && receipt.deliveryStatus !== 'accepted') return false;
-    receipt.deliveryStatus = status;
-    return true;
-  }
-  requestCancel(expected: TurnView): void {
-    const turn = this.state.turn;
-    if (turn !== expected) return;
-    if (turn.handle) turn.handle.cancel();
-    else turn.cancelRequested = true;
-  }
-  attachHandle(expected: TurnView, handle: SubagentTurnHandle): void {
-    const turn = this.state.turn;
-    if (turn !== expected) return;
-    turn.handle = handle;
-  }
-  cancelPending(expected: TurnView): void {
-    const turn = this.state.turn;
-    if (turn === expected && turn.cancelRequested) turn.handle!.cancel();
-  }
-  takePendingMessages(expected: TurnView): SubagentMailboxMessage[] {
-    const turn = this.state.turn;
-    return turn === expected ? turn.pendingMessages.splice(0) : [];
-  }
-  settleHandleReady(expected: TurnView): void {
-    if (this.state.turn === expected) this.state.turn.resolveHandleReady();
-  }
-  settleCompletion(expected: TurnView): void {
-    if (this.state.turn === expected) this.state.turn.resolve();
-  }
-  appendMessage(message: SubagentMailboxMessage): void {
-    this.state.turn!.pendingMessages.push(message);
-  }
-  control<T>(operation: () => Promise<T>): Promise<T> {
-    const result = (this.state.controlTail ?? Promise.resolve()).then(operation);
-    const tail = result.then(
-      () => undefined,
-      () => undefined
-    );
-    this.state.controlTail = tail;
-    void tail.then(() => {
-      if (this.state.controlTail === tail) delete this.state.controlTail;
-    });
-    return result;
-  }
-  cancelQueued(publish: boolean): void {
-    this.state.status = 'cancelled';
-    if (publish) this.state.terminalPending = true;
-  }
-  queueTurn(input: TurnInput, onComplete: () => void): TurnView {
-    let resolve!: () => void;
-    let resolveHandleReady!: () => void;
-    const completion = new Promise<void>((done) => (resolve = done));
-    const handleReady = new Promise<void>((done) => (resolveHandleReady = done));
-    const turn: TurnState = {
-      ...input,
-      handleReady,
-      completion,
-      resolve: () => {
-        onComplete();
-        resolve();
-      },
-      resolveHandleReady
-    };
-    this.state.status = 'queued';
-    this.state.restorable = false;
-    delete this.state.summary;
-    delete this.state.permissionStop;
-    delete this.state.errorCode;
-    delete this.state.errorMessage;
-    this.state.changedFiles = [];
-    this.state.verification = [];
-    this.state.evidence = [];
-    this.state.terminalPending = false;
-    this.state.turn = turn;
-    return turn;
-  }
-  markRunning(): void {
-    this.state.status = 'running';
-  }
-  clearTurn(expected?: TurnView): void {
-    if (expected === undefined || this.state.turn === expected) delete this.state.turn;
-  }
-  observeEvent(event: AgentEvent, revision: number): boolean {
-    if (!observeAgentEvent(this.state, event)) return false;
-    this.state.messageRevision++;
-    this.state.latestMessageActivityRevision = revision;
-    return true;
-  }
-  complete(
-    result: ExecutionResult,
-    terminal: 'completed' | 'failed' | 'cancelled' | undefined,
-    persisted: boolean,
-    previousActivity: SubagentTaskState['latestActivity'],
-    previousRevision: number
-  ): void {
-    if (result.status === 'completed') {
-      this.state.status = 'completed';
-      this.state.summary = result.finalAnswer;
-      if (result.permissionStop) this.state.permissionStop = result.permissionStop;
-      else delete this.state.permissionStop;
-    } else if (result.status === 'cancelled') this.state.status = 'cancelled';
-    else {
-      this.state.status = 'failed';
-      this.state.errorCode = result.errorCode ?? 'MAR_AGENT_SUBAGENT_FAILED';
-      this.state.errorMessage = result.errorMessage ?? 'Subagent execution failed.';
-    }
-    this.state.restorable =
-      persisted &&
-      terminal === this.state.status &&
-      (previousActivity === undefined || this.state.latestActivity !== previousActivity) &&
-      (this.state.latestMessage === undefined || this.state.messageRevision > previousRevision) &&
-      (this.state.status !== 'completed' ||
-        (this.state.latestMessage?.phase === 'final_answer' &&
-          this.state.summary === this.state.latestMessage.text));
-    this.state.terminalPending = true;
-  }
-  fail(error: unknown): void {
-    const diagnostic = describeAgentError(error, 'MAR_AGENT_SUBAGENT_FAILED');
-    this.state.status = 'failed';
-    this.state.restorable = false;
-    this.state.errorCode = diagnostic.code;
-    this.state.errorMessage = diagnostic.message;
-    this.state.terminalPending = true;
-  }
-  touch(revision: number, terminal = false): void {
-    this.state.resourceRevision = revision;
-    if (terminal) this.state.terminalRevision = revision;
-  }
-  terminalPublished(revision: number | undefined): void {
-    if (this.state.terminalRevision === revision) this.state.terminalPending = false;
-  }
-  evictDetails(): void {
-    for (const key of DETAIL_FIELDS) delete this.state[key];
-    this.state.changedFiles = [];
-    this.state.verification = [];
-    this.state.evidence = [];
-    this.state.detailsEvicted = true;
-  }
-  restoreDetails(restored: SubagentTaskState): void {
-    for (const key of DETAIL_FIELDS) {
-      if (key in restored) Object.assign(this.state, { [key]: restored[key] });
-      else delete this.state[key];
-    }
-    delete this.state.detailsEvicted;
-  }
-  copyWaitState(): TaskView {
-    return {
-      ...this.state,
-      changedFiles: [...this.state.changedFiles],
-      verification: [...this.state.verification],
-      evidence: this.state.evidence.map((item) => ({ ...item }))
-    };
-  }
-}
-
-const DETAIL_FIELDS = [
-  'latestMessage',
-  'latestActivity',
-  'summary',
-  'changedFiles',
-  'verification',
-  'evidence',
-  'permissionStop',
-  'errorMessage'
-] as const;
 
 type AgentActivity = {
   readonly state: SubagentTask;
@@ -1186,20 +789,30 @@ export class SubagentSessionController implements SubagentController {
         options.signal?.throwIfAborted();
         // Resolve before cancelling so an unavailable model does not stop valid work.
         const selected = resolveExistingModel(execution, state);
-        if (options.delivery === 'replace') await this.#cancelState(state);
-        this.#requireExecution();
-        options.signal?.throwIfAborted();
         const turnId = state.turn?.turnId ?? randomUUID();
         const receipt = { messageId: randomUUID(), turnId, deliveryStatus: 'accepted' as const };
         const mutableReceipt: NonNullable<SubagentTaskState['receipt']> = receipt;
-        const delivery = this.#createDelivery(state, execution, mutableReceipt, options.signal);
+        const { delivery, waitSignal } = this.#createDelivery(
+          state,
+          execution,
+          mutableReceipt,
+          options.signal
+        );
         try {
+          const sendSignal =
+            options.signal === undefined
+              ? waitSignal
+              : AbortSignal.any([waitSignal, options.signal]);
+          sendSignal.throwIfAborted();
+          if (options.delivery === 'replace')
+            await waitForPromise(this.#cancelState(state), sendSignal);
+          this.#requireExecution();
+          sendSignal.throwIfAborted();
+          if (state.turn && state.status !== 'running' && state.status !== 'queued') {
+            await waitForPromise(state.turn.completion, sendSignal);
+          }
           if (state.status === 'running' && state.turn) {
             const turn = state.turn;
-            const sendSignal =
-              delivery.signal && options.signal
-                ? AbortSignal.any([delivery.signal, options.signal])
-                : (delivery.signal ?? options.signal);
             if (!turn.handle) await waitForPromise(turn.handleReady, sendSignal);
             this.#requireExecution();
             options.signal?.throwIfAborted();
@@ -1274,10 +887,9 @@ export class SubagentSessionController implements SubagentController {
       this.#touchResource(state, true);
       this.#closeReceipt(state);
       await this.#publishTerminal(state);
-      state.settleHandleReady(turn);
-      state.settleCompletion(turn);
+      state.settleQueuedTurn(turn);
       this.#notifyCompletion(state);
-      state.clearTurn(turn);
+      state.releaseTurn(turn);
       this.#drain();
     } else if (state.status === 'running' && state.turn) {
       const turn = state.turn;
@@ -1315,11 +927,10 @@ export class SubagentSessionController implements SubagentController {
       state.cancelQueued(false);
       this.#closeReceipt(state);
       if (turn) {
-        state.settleHandleReady(turn);
-        state.settleCompletion(turn);
+        state.settleQueuedTurn(turn);
       }
       this.#notifyCompletion(state);
-      if (turn) state.clearTurn(turn);
+      if (turn) state.releaseTurn(turn);
     }
     for (const state of this.#agents.values()) {
       if (state.status !== 'running' || !state.turn) continue;
@@ -1388,8 +999,7 @@ export class SubagentSessionController implements SubagentController {
     while (!this.#disposed && this.#running < this.limits.maxConcurrent && this.#queue.length > 0) {
       const state = this.#queue.shift()!;
       const turn = state.turn;
-      if (!turn || state.status !== 'queued') continue;
-      state.markRunning();
+      if (!turn || !state.markRunning(turn)) continue;
       this.#touchResource(state);
       this.#running++;
       void this.#startAndConsumeTurn(state, turn);
@@ -1397,85 +1007,38 @@ export class SubagentSessionController implements SubagentController {
   }
 
   async #startAndConsumeTurn(state: SubagentTask, turn: TurnView): Promise<void> {
-    try {
-      const handle = await turn.start({
-        turnId: turn.turnId,
-        ...(turn.delivery === undefined ? {} : { delivery: turn.delivery }),
-        ...(turn.origin === undefined ? {} : { origin: turn.origin }),
-        sessionId: state.agentId,
-        prompt: turn.prompt,
-        modelId: state.modelId!,
-        reasoningEffort: state.reasoningEffort!,
-        role: state.role,
-        initialMailbox: state.takePendingMessages(turn)
-      });
-      state.attachHandle(turn, handle);
-    } catch (error) {
-      state.settleHandleReady(turn);
-      await this.#failTurn(state, turn, error);
+    const outcome = await state.runTurn(
+      turn,
+      () => this.#activityRevision + 1,
+      () => {
+        this.#activityRevision++;
+        this.#touchResource(state);
+        this.#notifyActivity({ state, kind: 'message' });
+      },
+      () => {
+        this.#touchResource(state, true);
+        this.#closeReceipt(state);
+      }
+    );
+    if (outcome === 'opening-failed') {
+      this.#running--;
+      state.settleTurn(turn);
+      state.releaseTurn(turn);
+      this.#notifyCompletion(state);
+      await this.#publishTerminal(state);
+      this.#drain();
       return;
     }
-    state.cancelPending(turn);
-    state.settleHandleReady(turn);
-    await this.#consumeTurn(state, turn);
-  }
-
-  async #consumeTurn(state: SubagentTask, turn: TurnView): Promise<void> {
-    const previousActivity = state.latestActivity;
-    const previousMessageRevision = state.messageRevision;
-    let terminal: 'completed' | 'failed' | 'cancelled' | undefined;
     try {
-      const consume = (async () => {
-        for await (const event of turn.handle!) {
-          if (event.type === 'execution.completed') terminal = 'completed';
-          else if (event.type === 'execution.failed') terminal = 'failed';
-          else if (event.type === 'execution.cancelled') terminal = 'cancelled';
-          if (!state.observeEvent(event, this.#activityRevision + 1)) continue;
-          this.#activityRevision++;
-          this.#touchResource(state);
-          this.#notifyActivity({ state, kind: 'message' });
-        }
-      })();
-      const [resultOutcome, consumeOutcome] = await Promise.allSettled([
-        Promise.resolve().then(() => turn.handle!.result()),
-        consume
-      ]);
-      if (resultOutcome.status === 'rejected') throw resultOutcome.reason;
-      if (consumeOutcome.status === 'rejected') throw consumeOutcome.reason;
-      const result = resultOutcome.value;
-      state.complete(
-        result,
-        terminal,
-        turn.handle!.persistedEvents === true,
-        previousActivity,
-        previousMessageRevision
-      );
-      this.#touchResource(state, true);
-      this.#closeReceipt(state);
-      await this.#publishTerminal(state);
-    } catch (error) {
-      this.#setFailure(state, error);
-      this.#closeReceipt(state);
       await this.#publishTerminal(state);
     } finally {
       this.#closeReceipt(state);
       this.#running--;
-      state.settleCompletion(turn);
+      state.settleTurn(turn);
       this.#notifyCompletion(state);
-      state.clearTurn(turn);
+      state.releaseTurn(turn);
       this.#drain();
     }
-  }
-
-  async #failTurn(state: SubagentTask, turn: TurnView, error: unknown): Promise<void> {
-    this.#setFailure(state, error);
-    this.#closeReceipt(state);
-    this.#running--;
-    state.settleCompletion(turn);
-    state.clearTurn(turn);
-    this.#notifyCompletion(state);
-    await this.#publishTerminal(state);
-    this.#drain();
   }
 
   #setFailure(state: SubagentTask, error: unknown): void {
@@ -1601,7 +1164,7 @@ export class SubagentSessionController implements SubagentController {
     execution: SubagentParentContext,
     receipt: NonNullable<SubagentTaskState['receipt']>,
     signal?: AbortSignal
-  ): SubagentMessageDelivery & { accepted(): void } {
+  ): { delivery: SubagentMessageDelivery & { accepted(): void }; waitSignal: AbortSignal } {
     const native =
       this.#retainedExecution.getStore()?.native === true && 'operationId' in execution
         ? execution
@@ -1646,7 +1209,7 @@ export class SubagentSessionController implements SubagentController {
     this.#pendingDeliveries.add(pending);
     sourceSignal?.addEventListener('abort', abort, { once: true });
     if (sourceSignal?.aborted) abort();
-    return delivery;
+    return { delivery, waitSignal: controller.signal };
   }
 
   #closeReceipt(state: SubagentTask): void {
@@ -2058,86 +1621,10 @@ function restoreAgentState(session: PersistedSubagentSession): SubagentTaskState
   return state;
 }
 
-function observeAgentEvent(state: SubagentTaskState, event: AgentEvent): boolean {
-  if (event.type === 'message.completed') {
-    state.latestMessage = latestMessageFromEvent(event);
-    state.latestActivity = {
-      kind: 'message',
-      timestamp: event.timestamp,
-      phase: event.phase
-    };
-    return true;
-  }
-  if (event.type === 'tool.started') {
-    state.latestActivity = {
-      kind: 'tool',
-      timestamp: event.timestamp,
-      toolName: event.toolName,
-      status: 'started'
-    };
-    return false;
-  }
-  if (event.type === 'tool.failed') {
-    state.latestActivity = {
-      kind: 'tool',
-      timestamp: event.timestamp,
-      toolName: event.toolName,
-      status: 'failed'
-    };
-    return false;
-  }
-  if (event.type !== 'tool.completed') return false;
-  state.latestActivity = {
-    kind: 'tool',
-    timestamp: event.timestamp,
-    toolName: event.toolName,
-    status: 'completed'
-  };
-  if (event.toolName === 'apply_patch' && isRecord(event.data)) {
-    const data = event.data as Record<string, unknown>;
-    const files = Array.isArray(data.files) ? data.files : [];
-    for (const file of files) {
-      if (!isRecord(file)) continue;
-      for (const path of [file.path, file.targetPath])
-        if (typeof path === 'string' && path.length > 0 && !state.changedFiles.includes(path))
-          state.changedFiles.push(path);
-    }
-  } else if (event.toolName === 'read' && isRecord(event.data)) {
-    const data = event.data as Record<string, unknown>;
-    const results = Array.isArray(data.results) ? data.results : [];
-    for (const result of results) {
-      if (!isRecord(result) || typeof result.path !== 'string' || result.error !== undefined)
-        continue;
-      const evidence = {
-        path: result.path,
-        ...(isPositiveInteger(result.startLine) ? { startLine: result.startLine } : {}),
-        ...(isPositiveInteger(result.endLine) ? { endLine: result.endLine } : {})
-      };
-      if (!state.evidence.some((item) => JSON.stringify(item) === JSON.stringify(evidence)))
-        state.evidence.push(evidence);
-    }
-  } else if (event.toolName === 'exec') state.verification.push(event.summary);
-  return false;
-}
-
 function eventType(record: SubagentHistoryRecord | undefined): string | undefined {
   return record && isRecord(record.payload) && typeof record.payload.type === 'string'
     ? record.payload.type
     : undefined;
-}
-
-function latestMessageFromEvent(
-  event: Extract<AgentEvent, { type: 'message.completed' }>
-): SubagentLatestMessage {
-  const text = event.text;
-  return {
-    itemId: event.itemId,
-    turnId: event.turnId ?? '',
-    phase: event.phase,
-    text,
-    timestamp: event.timestamp,
-    truncated: text !== event.text
-  };
 }
 
 function isReasoningEffort(value: unknown): value is AgentReasoningEffort {
@@ -2153,10 +1640,6 @@ function isReasoningEffort(value: unknown): value is AgentReasoningEffort {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 1;
 }
 
 function truncateUtf8(value: string, maximumBytes: number): string {

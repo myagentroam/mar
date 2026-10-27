@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { rollbackBoundaryIndex, type AgentSessionRollbackInput } from '../../rollback.js';
-import { inlineMediaHistory } from '../../inline-media.js';
 import type {
   SessionStore,
   SessionStoreMaintenance,
@@ -37,7 +36,6 @@ import {
   type ContextGcCheckpointPayload
 } from '../../context-gc-checkpoint.js';
 import {
-  copyToolResultResources,
   recordToolResources,
   readToolResultResource,
   writeToolResultResource,
@@ -91,22 +89,14 @@ import {
   sameResumeIndex,
   userMessagePreviewFromRecord
 } from '../execution-state.js';
-import { forkedPayload, stageSessionSegments } from './history.js';
+import { forkSessionOperation } from './fork-session.js';
 import {
   MAX_INPUT_IMAGES,
-  copyGeneratedImages,
-  generatedImageFileNames,
   inputImageReference,
   inputImageReferences,
   readInputImageBytes
 } from './images.js';
-import {
-  persistResource,
-  setResourceUrl,
-  readResource,
-  copyResources,
-  resourceFiles
-} from './resources.js';
+import { persistResource, setResourceUrl, readResource, resourceFiles } from './resources.js';
 import {
   CONTEXTUAL_WORLD_STATE_FILE,
   openJsonlIndex,
@@ -833,6 +823,7 @@ export class JsonlSessionStore implements SessionStore {
         throw new AgentError('MAR_AGENT_SESSION_LOCKED', 'Session already has a writer.');
       const sourceRoot = join(this.#shared.root, 'sessions', sourceSessionId);
       const release = await acquireFileLock(join(sourceRoot, 'lock'));
+      let sourceFailed = false;
       try {
         await this.#refreshIndex();
         const source = this.#shared.index.sessions.find((item) => item.id === sourceSessionId);
@@ -840,185 +831,77 @@ export class JsonlSessionStore implements SessionStore {
         if (source.storage?.encoding !== 2) await preflightV1Session(sourceRoot);
         await this.#ensureRootV2();
         const records = await this.#readRecords(sourceSessionId);
-        const boundaryIndex =
-          input.boundaryTurnId === null
-            ? -1
-            : records.findLastIndex((record) => record.turnId === input.boundaryTurnId);
-        if (input.boundaryTurnId !== null && boundaryIndex < 0)
-          throw new AgentError(
-            'MAR_AGENT_REWIND_TARGET_INVALID',
-            'Session rewind target was not found.'
-          );
-        const createdAt = new Date().toISOString();
-        const target: SessionMeta = {
-          id: randomUUID(),
-          title: input.title,
-          workspace: source.workspace,
-          createdAt,
-          lastActivityAt: createdAt,
-          source: { type: 'user' },
-          storage: { encoding: 2, generation: randomUUID() },
-          nextSequence: 1,
-          automaticTitlePending: false,
-          resume: {
-            version: 1,
-            userTurns: 0,
-            todoRevision: 0,
-            executionModelIndexed: true,
-            firstUserMessageIndexed: true
-          },
-          segments: []
-        };
-        const publication = await this.#beginUnpublishedSession(target.id);
-        this.#shared.segments.set(target.id, 1);
-        this.#shared.pendingSessions.set(target.id, target);
-        let discard = false;
-        try {
-          await mkdir(join(publication.directory, 'v2'), { mode: 0o700 });
-          await mkdir(this.#sessionDirectory(target.id), { mode: 0o700 });
-          await syncJsonlDirectory(join(publication.directory, 'v2'));
-          await syncJsonlDirectory(publication.directory);
-          const copied: SessionRecord[] = [
-            {
-              recordId: randomUUID(),
-              sequence: 1,
-              timestamp: createdAt,
-              sessionId: target.id,
-              type: 'session.created',
-              payload: {
-                title: target.title,
-                workspace: target.workspace,
-                automaticTitle: false,
-                source: target.source
+        let publicationConfirmed = false;
+        return await forkSessionOperation(
+          source,
+          records,
+          input,
+          sourceRoot,
+          this.#sessionDirectory(sourceSessionId),
+          {
+            begin: async (target) => {
+              const publication = await this.#beginUnpublishedSession(target.id);
+              this.#shared.segments.set(target.id, 1);
+              this.#shared.pendingSessions.set(target.id, target);
+              return publication;
+            },
+            publish: async (target, copied) => {
+              this.#shared.segments.set(target.id, target.segments!.length);
+              for (const record of copied) this.#applyRecordToResumeIndex(target, record);
+              this.#shared.pendingSessions.delete(target.id);
+              this.#shared.index = {
+                version: 2,
+                revision: this.#shared.index.revision + 1,
+                sessions: [target, ...this.#shared.index.sessions]
+              };
+              this.#shared.pendingPublishIds.add(target.id);
+              this.#markIndexDirty(target.id);
+              try {
+                await this.#saveIndex(undefined, [target.id], () => {
+                  publicationConfirmed = true;
+                });
+              } catch (error) {
+                if (!publicationConfirmed) throw error;
               }
+            },
+            reject: async (target, error) => {
+              this.#shared.pendingSessions.delete(target.id);
+              if (publicationConfirmed) {
+                this.#shared.migrationFailures.set(target.id, { error, unreadable: true });
+                return false;
+              }
+              let disk;
+              try {
+                disk = await readSessionIndex(join(this.#shared.root, 'sessions', 'index.json'));
+              } catch {
+                this.#shared.migrationFailures.set(target.id, { error, unreadable: true });
+                return false;
+              }
+              if (!disk || disk.sessions.some((session) => session.id === target.id)) {
+                this.#shared.migrationFailures.set(target.id, { error, unreadable: true });
+                return false;
+              }
+              const publishedIndex = this.#shared.index.sessions.findIndex(
+                (item) => item.id === target.id
+              );
+              if (publishedIndex >= 0) {
+                this.#shared.index.sessions.splice(publishedIndex, 1);
+                this.#shared.index.revision++;
+                this.#shared.pendingPublishIds.delete(target.id);
+                this.#shared.dirtySessionVersions.delete(target.id);
+                this.#shared.indexDirty = this.#shared.dirtySessionVersions.size > 0;
+              }
+              this.#shared.segments.delete(target.id);
+              return true;
             }
-          ];
-          const retained = input.boundaryTurnId === null ? [] : records.slice(1, boundaryIndex + 1);
-          const inlineState = inlineMediaHistory(retained).state;
-          const stateAnchor =
-            inlineState &&
-            retained.findLast(
-              (record) => record.type === 'resource.window' || record.type === 'compact.completed'
-            );
-          const forkIdentities = new Map<string, { recordId: string; sequence: number }>();
-          for (const record of retained) {
-            if (record.type === 'context.gc.completed' || record.type === 'responses.continuation')
-              continue;
-            const identity = { recordId: randomUUID(), sequence: copied.length + 1 };
-            forkIdentities.set(record.recordId, identity);
-            copied.push({
-              ...identity,
-              sessionId: target.id,
-              type: record.type,
-              payload: forkedPayload(
-                record.type,
-                record === stateAnchor
-                  ? record.type === 'resource.window'
-                    ? inlineState
-                    : {
-                        ...(record.payload as Record<string, unknown>),
-                        inlineMediaState: inlineState
-                      }
-                  : record.payload,
-                sourceSessionId,
-                target.id,
-                input.title,
-                forkIdentities
-              ),
-              ...(record.executionId === undefined ? {} : { executionId: record.executionId }),
-              ...(record.turnId === undefined ? {} : { turnId: record.turnId }),
-              timestamp: record.timestamp
-            });
           }
-          // A fork is unpublished until every segment and referenced image is durable.
-          const staged = await stageSessionSegments(
-            this.#sessionDirectory(target.id),
-            copied,
-            'fork'
-          );
-          for (const file of staged.files) await rename(file.temporaryPath, file.path);
-          target.segments = staged.segments;
-          target.nextSequence = copied.length + 1;
-          this.#shared.segments.set(target.id, staged.segments.length);
-          for (const record of copied) this.#applyRecordToResumeIndex(target, record);
-          await copyToolResultResources(
-            this.#sessionDirectory(sourceSessionId),
-            this.#sessionDirectory(target.id),
-            copied
-          );
-          await copyGeneratedImages(
-            sourceRoot,
-            publication.directory,
-            generatedImageFileNames(retained)
-          );
-          await copyResources(
-            this.#sessionDirectory(sourceSessionId),
-            this.#sessionDirectory(target.id),
-            retained
-          );
-          for (const path of [
-            join(this.#sessionDirectory(target.id), 'resources'),
-            join(this.#sessionDirectory(target.id), 'tool_results'),
-            join(this.#sessionRoot(target.id), 'generated_images')
-          ])
-            if (await sessionDirectoryExists(path)) await syncJsonlDirectory(path);
-          await syncJsonlDirectory(this.#sessionDirectory(target.id));
-          await syncJsonlDirectory(this.#sessionRoot(target.id));
-          target.lastActivityAt = target.createdAt;
-          this.#shared.pendingSessions.delete(target.id);
-          this.#shared.index = {
-            version: 2,
-            revision: this.#shared.index.revision + 1,
-            sessions: [target, ...this.#shared.index.sessions]
-          };
-          this.#shared.pendingPublishIds.add(target.id);
-          this.#markIndexDirty(target.id);
-          let persisted = false;
-          try {
-            await this.#saveIndex(undefined, [target.id], () => {
-              persisted = true;
-            });
-          } catch (error) {
-            if (!persisted) throw error;
-          }
-          await rm(join(publication.directory, 'publication-pending'), { force: true });
-          return {
-            id: target.id,
-            title: target.title,
-            workspace: target.workspace,
-            createdAt: target.createdAt,
-            lastActivityAt: target.createdAt,
-            source: target.source
-          };
-        } catch (error) {
-          this.#shared.pendingSessions.delete(target.id);
-          const disk = await readSessionIndex(join(this.#shared.root, 'sessions', 'index.json'));
-          if (disk?.sessions.some((session) => session.id === target.id)) {
-            this.#shared.migrationFailures.set(target.id, { error, unreadable: true });
-            throw error;
-          }
-          const publishedIndex = this.#shared.index.sessions.findIndex(
-            (item) => item.id === target.id
-          );
-          if (publishedIndex >= 0) {
-            this.#shared.index.sessions.splice(publishedIndex, 1);
-            this.#shared.index.revision++;
-            this.#shared.pendingPublishIds.delete(target.id);
-            this.#shared.dirtySessionVersions.delete(target.id);
-            this.#shared.indexDirty = this.#shared.dirtySessionVersions.size > 0;
-          }
-          this.#shared.segments.delete(target.id);
-          discard = true;
-          throw error;
-        } finally {
-          try {
-            await publication.release();
-          } finally {
-            if (discard) await rm(publication.directory, { recursive: true, force: true });
-          }
-        }
+        );
+      } catch (error) {
+        sourceFailed = true;
+        throw error;
       } finally {
-        await release();
+        if (sourceFailed) await release().catch(() => undefined);
+        else await release();
       }
     });
   }

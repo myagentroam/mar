@@ -770,6 +770,101 @@ describe('native subagent controller operations', () => {
     expect(controller.collectModelUpdates()).toEqual([]);
   });
 
+  it('deduplicates normalized read evidence without serializing it', async () => {
+    const { controller } = await fixture();
+    const path = 'evidence-source.ts';
+    const otherPath = 'other-evidence.ts';
+    const op = operation({
+      startTurn: async ({ turnId }) =>
+        finished(turnId, 'done', [
+          {
+            type: 'tool.completed',
+            toolName: 'read',
+            callId: 'read-evidence',
+            timestamp: new Date().toISOString(),
+            summary: 'Read source ranges.',
+            data: {
+              results: [
+                { path, startLine: 1, endLine: 3 },
+                { endLine: 3, path, startLine: 1 },
+                { path, startLine: 1, endLine: 4 },
+                { path: otherPath, startLine: 1, endLine: 3 },
+                { path, startLine: 0, endLine: 'invalid' },
+                { path },
+                { path, startLine: 8, endLine: 9, error: 'unavailable' },
+                { path: 42, startLine: 1, endLine: 3 }
+              ]
+            }
+          } as AgentEvent
+        ])
+    });
+    const stringify = vi.spyOn(JSON, 'stringify');
+    try {
+      const child = await controller.withOperation(op, () => controller.run(task));
+      expect((await controller.inspect(child.agentId)).evidence).toEqual([
+        { path, startLine: 1, endLine: 3 },
+        { path, startLine: 1, endLine: 4 },
+        { path: otherPath, startLine: 1, endLine: 3 },
+        { path }
+      ]);
+      const serializedEvidence = stringify.mock.calls.filter(
+        ([value]) =>
+          value !== null &&
+          typeof value === 'object' &&
+          (value.path === path || value.path === otherPath)
+      );
+      expect(serializedEvidence).toHaveLength(0);
+    } finally {
+      stringify.mockRestore();
+    }
+  });
+
+  it('settles a Turn when result throws synchronously', async () => {
+    const { controller } = await fixture();
+    const op = operation({
+      startTurn: async ({ turnId }) => ({
+        ...finished(turnId),
+        result: () => {
+          throw new Error('synchronous result failure');
+        }
+      })
+    });
+    const child = await controller.withOperation(op, () =>
+      controller.run({ ...task, background: true })
+    );
+    const result = await controller.withOperation(op, () =>
+      controller.output(child.agentId, { waitMs: 1000 })
+    );
+    expect(result).toMatchObject({ status: 'failed', errorMessage: 'synchronous result failure' });
+  });
+
+  it('consumes all buffered stream events before publishing completion', async () => {
+    const { controller } = await fixture();
+    const consumed: string[] = [];
+    const op = operation({
+      startTurn: async ({ turnId }) => ({
+        ...finished(turnId),
+        async *[Symbol.asyncIterator]() {
+          for (const text of ['first', 'second', 'third']) {
+            consumed.push(text);
+            yield {
+              type: 'message.completed',
+              itemId: text,
+              turnId,
+              phase: 'final_answer',
+              text,
+              timestamp: new Date().toISOString()
+            } as AgentEvent;
+          }
+        }
+      })
+    });
+    const child = await controller.withOperation(op, () => controller.run(task));
+    expect(child.status).toBe('completed');
+    expect(consumed).toEqual(['first', 'second', 'third']);
+    expect((await controller.inspect(child.agentId)).latestMessage?.text).toBe('third');
+  });
+
   it('collects failed and cancelled Turns without public message bodies', async () => {
     const { controller } = await fixture();
     const failed = await controller.withOperation(

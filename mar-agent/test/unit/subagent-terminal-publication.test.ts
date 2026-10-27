@@ -6,6 +6,223 @@ import {
 import type { SubagentTaskSnapshot } from '../../src/subagent/contracts.js';
 
 describe('subagent terminal publication', () => {
+  it('lets a replace sender cancel while joining a running Turn', async () => {
+    const result = Promise.withResolvers<void>();
+    const cancelling = Promise.withResolvers<void>();
+    const controller = await SubagentSessionController.open({
+      parentSessionId: 'parent',
+      rootSessionId: 'parent',
+      backend: {
+        createSession: async () => ({ id: 'child' }),
+        deleteSession: async () => {},
+        listChildren: async () => [],
+        loadChild: async () => undefined
+      }
+    });
+    let starts = 0;
+    const execution: SubagentParentExecution = {
+      executionId: 'parent-execution',
+      modelId: 'model',
+      reasoningEffort: 'low',
+      models: new Map([
+        [
+          'model',
+          { id: 'model', name: 'Model', reasoningEfforts: ['low'], defaultReasoningEffort: 'low' }
+        ]
+      ]),
+      emitTerminal: async () => {},
+      startTurn: async ({ turnId }) => {
+        starts++;
+        return {
+          executionId: turnId,
+          turnId,
+          async *[Symbol.asyncIterator]() {},
+          result: async () => {
+            await result.promise;
+            return { executionId: turnId, status: 'cancelled', finalAnswer: '' };
+          },
+          cancel: () => cancelling.resolve(),
+          enqueueMessage: () => false
+        };
+      }
+    };
+    try {
+      await controller.beginParentExecution(execution);
+      const child = await controller.run(
+        { description: 'child', prompt: 'first', role: 'explore', background: true },
+        { waitFor: 'start' }
+      );
+      const abort = new AbortController();
+      const sending = controller.message(child.agentId, 'next', {
+        delivery: 'replace',
+        signal: abort.signal
+      });
+      await cancelling.promise;
+      abort.abort(new Error('sender stopped'));
+      await expect(sending).rejects.toThrow('sender stopped');
+      expect(starts).toBe(1);
+    } finally {
+      result.resolve();
+      await controller.dispose();
+    }
+  });
+
+  it('cancels a sender waiting on closing when the controller is disposed', async () => {
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const controller = await SubagentSessionController.open({
+      parentSessionId: 'parent',
+      rootSessionId: 'parent',
+      backend: {
+        createSession: async () => ({ id: 'child' }),
+        deleteSession: async () => {},
+        listChildren: async () => [],
+        loadChild: async () => undefined
+      }
+    });
+    let starts = 0;
+    const execution: SubagentParentExecution = {
+      executionId: 'parent-execution',
+      modelId: 'model',
+      reasoningEffort: 'low',
+      models: new Map([
+        [
+          'model',
+          { id: 'model', name: 'Model', reasoningEfforts: ['low'], defaultReasoningEffort: 'low' }
+        ]
+      ]),
+      emitTerminal: async () => {
+        entered.resolve();
+        await gate.promise;
+      },
+      startTurn: async ({ turnId }) => {
+        starts++;
+        return {
+          executionId: turnId,
+          turnId,
+          async *[Symbol.asyncIterator]() {},
+          result: async () => ({ executionId: turnId, status: 'completed', finalAnswer: 'done' }),
+          cancel: () => {},
+          enqueueMessage: () => false
+        };
+      }
+    };
+    await controller.beginParentExecution(execution);
+    const child = await controller.run({
+      description: 'child',
+      prompt: 'first',
+      role: 'explore',
+      background: true
+    });
+    await entered.promise;
+    let outcome: unknown = 'pending';
+    const sending = controller.message(child.agentId, 'next').then(
+      () => {
+        outcome = 'fulfilled';
+      },
+      (error: unknown) => {
+        outcome = error;
+      }
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const disposing = controller.dispose();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(outcome).not.toBe('pending');
+      expect(outcome).not.toBe('fulfilled');
+      expect(starts).toBe(1);
+    } finally {
+      gate.resolve();
+      await sending;
+      await disposing;
+    }
+  });
+
+  it.each(['append', 'replace'] as const)(
+    'waits for the original turn while terminal publication blocks %s',
+    async (delivery) => {
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const published = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const controller = await SubagentSessionController.open({
+        parentSessionId: 'parent',
+        rootSessionId: 'parent',
+        limits: { maxTasks: 8, maxConcurrent: 1 },
+        backend: {
+          createSession: async () => ({ id: 'child' }),
+          deleteSession: async () => {},
+          listChildren: async () => [],
+          loadChild: async () => undefined
+        }
+      });
+      let starts = 0;
+      const execution: SubagentParentExecution = {
+        executionId: 'parent-execution',
+        modelId: 'model',
+        reasoningEffort: 'low',
+        models: new Map([
+          [
+            'model',
+            { id: 'model', name: 'Model', reasoningEfforts: ['low'], defaultReasoningEffort: 'low' }
+          ]
+        ]),
+        emitTerminal: async () => {
+          if (starts === 1) {
+            entered();
+            await gate;
+          }
+        },
+        startTurn: async (input) => {
+          starts++;
+          return {
+            executionId: input.turnId,
+            turnId: input.turnId,
+            async *[Symbol.asyncIterator]() {},
+            result: async () => ({
+              executionId: input.turnId,
+              status: 'completed',
+              finalAnswer: 'done'
+            }),
+            cancel: () => {},
+            enqueueMessage: () => false
+          };
+        }
+      };
+      try {
+        await controller.beginParentExecution(execution);
+        const child = await controller.run({
+          description: 'child',
+          prompt: 'first',
+          role: 'explore',
+          background: true
+        });
+        await published;
+        const abort = new AbortController();
+        const cancelled = controller.message(child.agentId, 'cancelled', {
+          delivery,
+          signal: abort.signal
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        abort.abort(new Error('sender stopped'));
+        await expect(cancelled).rejects.toThrow('sender stopped');
+        expect(starts).toBe(1);
+        const sending = controller.message(child.agentId, 'next', { delivery });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(starts).toBe(1);
+        release();
+        await sending;
+        expect(starts).toBe(2);
+      } finally {
+        release();
+        await controller.dispose();
+      }
+    }
+  );
   it('joins a failed opening before replacement and leaves the successor barrier independent', async () => {
     let rejectOpen!: (error: Error) => void;
     let markOpening!: () => void;
