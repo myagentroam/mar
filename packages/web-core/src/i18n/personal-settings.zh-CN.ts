@@ -56,7 +56,7 @@ export const personalSettingsZhCN = {
     state: '状态',
     loading: '正在读取用量…',
     retry: '用量读取失败，请点击刷新重试。',
-    invalidRange: '请选择不晚于当前时间、长度不超过 90 天的有效时间范围。',
+    invalidRange: '请选择长度不超过 90 天的有效时间范围。',
     runnerNames: {
       'mar-agent': 'MAR Agent',
       codex: 'Codex',

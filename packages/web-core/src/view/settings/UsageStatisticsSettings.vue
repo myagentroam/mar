@@ -92,8 +92,8 @@ const rules = computed<FormRules>(() => ({
     {
       validator: (_rule: unknown, _value: unknown, done: (error?: Error) => void) => {
         try {
-          const value = query();
-          done(value.to > Date.now() ? new Error(t('usageStatistics.invalidRange')) : undefined);
+          query();
+          done();
         } catch {
           done(new Error(t('usageStatistics.invalidRange')));
         }

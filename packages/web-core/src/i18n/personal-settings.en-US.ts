@@ -56,7 +56,7 @@ export const personalSettingsEnUS = {
     state: 'Status',
     loading: 'Loading usage…',
     retry: 'Could not load usage. Select Refresh to try again.',
-    invalidRange: 'Choose a valid range of up to 90 days that does not end in the future.',
+    invalidRange: 'Choose a valid range of up to 90 days.',
     runnerNames: {
       'mar-agent': 'MAR Agent',
       codex: 'Codex',
