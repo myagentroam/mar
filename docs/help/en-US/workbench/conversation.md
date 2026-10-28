@@ -5,7 +5,7 @@ lastUpdated: 2026-10-28
 
 # Conversations, Tools, and Notifications
 
-**Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Each tab shows its active-session count and unread indicator; the entry badge remains the total across both groups. Opening a record only navigates to its conversation and does not switch the Chats group.
+**Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Each tab shows its active-session count and unread indicator; the entry badge remains the total across both groups. Opening a session also selects its actual group in Chats.
 
 Select a group badge to open an unread session first, or an active session if none is unread. Selecting the rest of the tab only switches the list.
 

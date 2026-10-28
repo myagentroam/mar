@@ -320,13 +320,23 @@ describe('Workbench controller composition behavior', () => {
     expect(page.sessionInput.value).toBe('Keep this draft');
   });
 
-  it.each(['quick', 'recent', 'badge'] as const)(
-    'keeps CHILD when opening a main session through %s',
-    async (entry) => {
+  it.each([
+    ['quick', 'MAIN'],
+    ['recent', 'MAIN'],
+    ['badge', 'MAIN'],
+    ['workspace-badge', 'MAIN'],
+    ['quick', 'CHILD'],
+    ['recent', 'CHILD'],
+    ['badge', 'CHILD'],
+    ['workspace-badge', 'CHILD']
+  ] as const)(
+    'aligns navigation through %s to %s while list selection stays unchanged',
+    async (entry, targetGroup) => {
       const { page } = controller();
       const main = {
         id: 'existing-main',
         workspaceId: 'workspace-a',
+        sessionGroup: targetGroup,
         runner: 'codex' as const,
         nativeControl: 'MAR_MANAGED' as const,
         externalSessionId: 'native-main',
@@ -342,7 +352,8 @@ describe('Workbench controller composition behavior', () => {
       };
       page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
       page.sessions.value = [main];
-      page.selectWorkspaceSessionGroup('CHILD');
+      const previousGroup = targetGroup === 'MAIN' ? 'CHILD' : 'MAIN';
+      page.selectWorkspaceSessionGroup(previousGroup);
       const manifest = page.nodeManifest.value;
       vi.stubGlobal(
         'fetch',
@@ -377,7 +388,16 @@ describe('Workbench controller composition behavior', () => {
         expect(
           vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith('/api/workspaces?'))
         ).toBe(false);
-      } else
+      } else if (entry === 'workspace-badge') {
+        vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget').mockReturnValue({
+          nodeId: 'node-a',
+          workspaceId: 'workspace-a',
+          sessionId: main.id
+        });
+        page.activateWorkspaceSessionGroupMarker(targetGroup);
+      } else {
+        await flushComponent();
+        vi.mocked(fetch).mockClear();
         await page.openRecentRun({
           nodeId: 'node-a',
           workspaceId: 'workspace-a',
@@ -393,9 +413,98 @@ describe('Workbench controller composition behavior', () => {
           updatedAt: 2,
           version: 1
         });
+        expect(
+          vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith('/api/workspaces?'))
+        ).toBe(false);
+      }
       await flushComponent();
       expect(page.selectedSessionId.value).toBe(main.id);
-      expect(page.workspaceSessionGroup.value).toBe('CHILD');
+      expect(page.workspaceSessionGroup.value).toBe(
+        entry === 'quick' ? previousGroup : targetGroup
+      );
+    }
+  );
+
+  it('applies the navigated session group when the Node manifest arrives later', async () => {
+    const { page } = controller();
+    const session: Session = {
+      id: 'child-session',
+      workspaceId: 'workspace-a',
+      sessionGroup: 'CHILD',
+      runner: 'codex'
+    };
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.sessions.value = [session];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ session, sessions: [session], turns: [] })))
+    );
+    const opening = page.openSessionGroupTarget({
+      nodeId: 'node-a',
+      workspaceId: 'workspace-a',
+      sessionId: session.id
+    });
+    await flushComponent();
+    page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
+    await opening;
+    expect(page.workspaceSessionGroup.value).toBeUndefined();
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionGroups: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    expect(page.workspaceSessionGroup.value).toBe('CHILD');
+  });
+
+  it.each(['session list', 'session detail'] as const)(
+    'preserves a later manual group choice while loading the %s',
+    async (stage) => {
+      const { page } = controller();
+      const session: Session = {
+        id: 'child-session',
+        workspaceId: 'workspace-a',
+        sessionGroup: 'CHILD',
+        runner: 'codex'
+      };
+      page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
+      page.nodeManifest.value = {
+        manifestVersion: 1,
+        observedAt: 1,
+        sessionGroups: { apiVersion: 1 },
+        conversation: { available: true, reasonCode: null }
+      };
+      page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+      page.sessions.value = stage === 'session list' ? [] : [session];
+      let resolveDetail: (() => void) | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          if (
+            resolveDetail === undefined &&
+            (stage === 'session list'
+              ? String(url).startsWith('/api/agent-sessions?')
+              : String(url).startsWith('/api/agent-sessions/child-session?'))
+          )
+            await new Promise<void>((resolve) => (resolveDetail = resolve));
+          return new Response(JSON.stringify({ session, sessions: [session], turns: [] }));
+        })
+      );
+      const opening = page.openSessionGroupTarget({
+        nodeId: 'node-a',
+        workspaceId: 'workspace-a',
+        sessionId: session.id
+      });
+      await vi.waitFor(() => expect(resolveDetail).toBeDefined());
+      page.selectWorkspaceSessionGroup('CHILD');
+      page.selectWorkspaceSessionGroup('MAIN');
+      resolveDetail!();
+      await flushComponent();
+      page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
+      await opening;
+      expect(page.workspaceSessionGroup.value).toBe('MAIN');
+      expect(page.selectedSessionId.value).toBe(session.id);
     }
   );
 
@@ -447,7 +556,7 @@ describe('Workbench controller composition behavior', () => {
     expect(page.selectedSessionId.value).toBe('current');
   });
 
-  it('opens the workspace group badge target without switching the group', async () => {
+  it('does not select the workspace badge group before the target resolves', async () => {
     const { page } = controller();
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
     page.selectedSessionId.value = 'current';

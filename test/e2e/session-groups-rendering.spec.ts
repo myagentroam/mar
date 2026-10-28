@@ -4,9 +4,7 @@ import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 for (const width of [390, 1280]) {
-  test(`Group badges open a session without selecting the group at ${width}px`, async ({
-    browser
-  }) => {
+  test(`Group badges open a session and select its group at ${width}px`, async ({ browser }) => {
     const fixture = await startCustomThemeFixture();
     const context = await browser.newContext({
       viewport: { width, height: 850 },
@@ -20,14 +18,16 @@ for (const width of [390, 1280]) {
       const chats = page.locator('.conversation-sidebar');
       const chatTabs = chats.getByRole('tab');
       await activate(chatTabs.nth(1).locator('.session-state-badge'));
-      await expect(chatTabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+      await expect(chatTabs.nth(1)).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('.conversation > p').first()).toHaveText('child-1');
       await activate(chatTabs.nth(0).locator('.session-state-badge'));
       await expect(page.locator('.conversation > p').first()).toHaveText('main');
+      await expect(chatTabs.nth(0)).toHaveAttribute('aria-selected', 'true');
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
       await activate(recent.getByRole('tab').nth(1).locator('.session-state-badge'));
       await expect(page.locator('.conversation > p').first()).toHaveText('child-1');
+      await expect(chatTabs.nth(1)).toHaveAttribute('aria-selected', 'true');
     } finally {
       await context.close();
       await fixture.close();

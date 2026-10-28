@@ -1,7 +1,5 @@
-export {
-  BubblewrapSandboxExecutor,
-  probeBubblewrapSandbox
-} from './bubblewrap-sandbox-executor.js';
+export { BubblewrapSandboxExecutor } from './bubblewrap-sandbox-executor.js';
+export { probeBubblewrapSandbox } from './bubblewrap-probe.js';
 export {
   LINUX_BUBBLEWRAP_SANDBOX_POLICY_VERSION,
   type BubblewrapSandboxExecutorOptions,

@@ -39,6 +39,36 @@ afterEach(async () => {
 });
 
 describe('Linux Bubblewrap sandbox executor', () => {
+  itRealSandbox('snapshots the profile and request before asynchronous preparation', async () => {
+    const first = await temporaryDirectory('snapshot-first');
+    const second = await temporaryDirectory('snapshot-second');
+    await writeFile(join(first, 'value'), 'first');
+    await writeFile(join(second, 'value'), 'second');
+    const mount = { source: first, destination: '/project', access: 'READ_ONLY' as const };
+    const profile = { policyVersion: LINUX_BUBBLEWRAP_SANDBOX_POLICY_VERSION, mounts: [mount] };
+    const environment = { SNAPSHOT_VALUE: 'initial' };
+    const args = ['-c', 'cat /project/value; printf ":%s" "$SNAPSHOT_VALUE"'];
+    const operation = new BubblewrapSandboxExecutor({ profile }).spawn({
+      command: '/bin/sh',
+      args,
+      cwd: '/',
+      shell: false,
+      environment,
+      environmentKeys: ['SNAPSHOT_VALUE'],
+      detached: true
+    });
+    mount.source = second;
+    environment.SNAPSHOT_VALUE = 'changed';
+    args[1] = 'printf changed';
+    const child = await operation;
+    child.stdin.end();
+    child.stderr.resume();
+    const exit = new Promise<number | null>((resolve) => child.once('close', resolve));
+    const chunks: Buffer[] = [];
+    for await (const chunk of child.stdout) chunks.push(chunk as Buffer);
+    expect(await exit).toBe(0);
+    expect(Buffer.concat(chunks).toString()).toBe('first:initial');
+  });
   itRealSandbox(
     'initializes a login Shell only inside the sandbox and filters overrides before restoration',
     async () => {

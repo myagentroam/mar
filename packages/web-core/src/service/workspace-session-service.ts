@@ -35,6 +35,7 @@ export function createWorkspaceSessionService(options: {
 }) {
   const refreshing = ref(false);
   const groups = ref(new Map<string, SessionGroup>());
+  let groupSelectionRevision = 0;
   const runningCounts = ref<SessionRunningCounts>({ MAIN: 0, CHILD: 0 });
   const listedSessionIds = ref<ReadonlySet<string>>(new Set());
   const currentGroup = computed<SessionGroup | undefined>(() => {
@@ -45,11 +46,13 @@ export function createWorkspaceSessionService(options: {
   const groupQuery = () =>
     currentGroup.value === undefined ? '' : `&sessionGroup=${currentGroup.value}`;
 
-  function selectGroup(group: SessionGroup): void {
+  function selectGroup(group: SessionGroup, deferUntilSupported = false): void {
     const target = options.workspaceTarget.value;
-    if (target === undefined || currentGroup.value === undefined || currentGroup.value === group)
-      return;
-    groups.value.set(options.tabId(target.nodeId, target.workspaceId), group);
+    if (target === undefined || (currentGroup.value === undefined && !deferUntilSupported)) return;
+    const id = options.tabId(target.nodeId, target.workspaceId);
+    if ((groups.value.get(id) ?? 'MAIN') === group) return;
+    groupSelectionRevision += 1;
+    groups.value.set(id, group);
   }
   const searchQuery = ref('');
   const searchResults = ref<Session[]>([]);
@@ -440,6 +443,7 @@ export function createWorkspaceSessionService(options: {
   return {
     currentGroup,
     selectGroup,
+    groupSelectionRevision: () => groupSelectionRevision,
     runningCounts,
     listedSessionIds,
     refreshing,

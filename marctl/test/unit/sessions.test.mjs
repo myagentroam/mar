@@ -1170,13 +1170,13 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       const delivery = output.slice(deliveryStart, scopeStart).replace(/\s+/gu, ' ').toLowerCase();
       const steerStart = delivery.indexOf(
         locale.startsWith('zh')
-          ? '--steer 优先补充影响当前工作'
-          : '--steer prioritizes time-sensitive'
+          ? '及时协作优先使用 --steer'
+          : 'prefer --steer for timely coordination'
       );
       const queueStart = delivery.indexOf(
         locale.startsWith('zh')
-          ? '--queue 不打断活动执行'
-          : '--queue does not interrupt active execution'
+          ? '仅明确要延后执行的后续工作使用 --queue'
+          : 'use --queue only for deliberately deferred follow-up work'
       );
       assert.ok(steerStart >= 0 && queueStart > steerStart);
       const steering = delivery.slice(steerStart, queueStart);

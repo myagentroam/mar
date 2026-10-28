@@ -121,9 +121,12 @@ Reading JSON:
 Delivery and waiting:
   Start/send return a clientMessageId.
   Send requires exactly one of --steer or --queue, even when idle.
-  --steer prioritizes time-sensitive updates affecting current work and may
-    switch the current execution. Node decides from actual state.
-  --queue does not interrupt active execution; during normal active work it
+  Prefer --steer for timely coordination: blockers, decisions, corrections,
+    and results the recipient is waiting for. It uses native delivery when
+    available, but may switch the current execution.
+    Node decides from actual state.
+  Use --queue only for deliberately deferred follow-up work.
+    It does not interrupt active execution; during normal active work it
     waits for that execution and earlier queued work. An active Goal can delay
     it until the Goal exits.
     Use --steer instead when the update is needed during current work.
