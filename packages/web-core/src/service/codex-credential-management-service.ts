@@ -255,12 +255,7 @@ export function modelSupportsNodeTransport(
   if (
     serviceTier !== undefined &&
     serviceTier !== 'default' &&
-    !capability.serviceTiers?.includes(serviceTier) &&
-    !(
-      capability.serviceTiers === undefined &&
-      capability.fastMode === true &&
-      serviceTier === 'priority'
-    )
+    !capability.serviceTiers?.includes(serviceTier)
   )
     return false;
   if (

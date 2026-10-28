@@ -48,11 +48,19 @@ function database(allowed: boolean | ((userId: number, nodeId: string) => boolea
   };
 }
 
+function createRecentRunService(
+  db: ReturnType<typeof database>,
+  push: (userId: number, message: object) => void,
+  now?: () => number
+) {
+  return new RecentRunService(db as never, db.userCanRequestNode, push, now);
+}
+
 describe('Server recent-run in-memory index', () => {
   it.each(['UPDATE', 'SNAPSHOT'] as const)(
     'preserves an explicit user stop reason through %s without changing the Run status',
     async (kind) => {
-      const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+      const service = createRecentRunService(database(), vi.fn(), () => 1_000);
       const stopped = {
         ...projection({ status: 'INTERRUPTED' }).run,
         interruptionReason: 'USER_STOP'
@@ -83,7 +91,7 @@ describe('Server recent-run in-memory index', () => {
 
   it('rejects malformed projections and projections with a mismatched connected Node identity', async () => {
     const db = database();
-    const service = new RecentRunService(db as never, vi.fn());
+    const service = createRecentRunService(db, vi.fn());
     await expect(service.consume('node-1', { kind: 'UPDATE', run: {} })).resolves.toBe(false);
     await expect(service.consume('node-other', projection({}))).resolves.toBe(true);
     expect(db.userCanRequestNode).not.toHaveBeenCalled();
@@ -91,7 +99,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('rejects unauthorized users without adding entries to the list', async () => {
-    const service = new RecentRunService(database(false) as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(false), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({}));
     await expect(service.list(7)).resolves.toEqual([]);
     service.dispose();
@@ -99,7 +107,7 @@ describe('Server recent-run in-memory index', () => {
 
   it('keeps only the latest Run for the same Node session and removes the old entry in real time', async () => {
     const push = vi.fn();
-    const service = new RecentRunService(database() as never, push, () => 1_000);
+    const service = createRecentRunService(database(), push, () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-old', sortAt: 100, version: 5 }));
     await service.consume('node-1', projection({ runId: 'run-new', sortAt: 200, version: 1 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -119,7 +127,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('keeps tasks separately for different users of the same Node session', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-user-7', userId: 7, sortAt: 100 }));
     await service.consume('node-1', projection({ runId: 'run-user-8', userId: 8, sortAt: 200 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -136,7 +144,7 @@ describe('Server recent-run in-memory index', () => {
     let deniedUser: number | undefined;
     const db = database((userId) => userId !== deniedUser);
     const push = vi.fn();
-    const service = new RecentRunService(db as never, push, () => now);
+    const service = createRecentRunService(db, push, () => now);
     const completedAt = now - 12 * 60 * 60_000 + 60_000;
     const terminalRun = (userId: number) =>
       projection({
@@ -239,7 +247,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('defaults legacy RecentRun projections without a group to MAIN', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({}));
 
     await expect(service.list(7)).resolves.toEqual([
@@ -249,7 +257,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('does not let an older same-session Run from a legacy Node snapshot overwrite the latest task', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-new', sortAt: 200 }));
     await service.consume('node-1', projection({ runId: 'run-old', sortAt: 100, version: 9 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -259,7 +267,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('ignores lower versions and accepts higher-version states for the same Run', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ version: 3 }));
     await service.consume('node-1', projection({ status: 'INTERRUPTED', version: 2 }));
     expect((await service.list(7))[0]?.status).toBe('RUNNING');
@@ -270,7 +278,7 @@ describe('Server recent-run in-memory index', () => {
 
   it('removes only nonterminal tasks when a Node disconnects', async () => {
     const push = vi.fn();
-    const service = new RecentRunService(database() as never, push, () => 1_000);
+    const service = createRecentRunService(database(), push, () => 1_000);
     await service.consume('node-1', projection({ runId: 'active', sessionId: 'active' }));
     await service.consume(
       'node-1',
@@ -287,7 +295,7 @@ describe('Server recent-run in-memory index', () => {
   });
 
   it('removes nonterminal sessions omitted from a complete snapshot', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'active', sessionId: 'missing' }));
     await service.consume('node-1', { kind: 'SNAPSHOT', runs: [] });
     await expect(service.list(7)).resolves.toEqual([]);

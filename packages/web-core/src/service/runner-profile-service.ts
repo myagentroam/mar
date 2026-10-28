@@ -12,7 +12,6 @@ interface RunnerProfileServiceOptions {
   readonly request: (path: string, init?: RequestInit) => Promise<unknown>;
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
-  readonly supportsAuto?: (nodeId: string) => boolean;
 }
 
 interface ValueRef<T> {
@@ -26,28 +25,23 @@ const runnerPreference: Readonly<Record<Session['runner'], number>> = {
   opencode: 3
 };
 
-function preferredProfiles(
-  profiles: readonly RunnerProfile[],
-  supportsAuto = false
-): readonly RunnerProfile[] {
+function preferredProfiles(profiles: readonly RunnerProfile[]): readonly RunnerProfile[] {
   return profiles
     .map((profile) => ({
       ...profile,
-      accessOptions: profile.accessOptions
-        .filter((option) => profile.runner !== 'mar-agent' || option.id !== 'auto' || supportsAuto)
-        .map((option) => {
-          const description = runnerProfileDescription(
-            profile.runner,
-            'access',
-            option.id,
-            option.description
-          );
-          return {
-            ...option,
-            label: runnerProfileLabel(profile.runner, 'access', option.id, option.label),
-            ...(description === undefined ? {} : { description })
-          };
-        }),
+      accessOptions: profile.accessOptions.map((option) => {
+        const description = runnerProfileDescription(
+          profile.runner,
+          'access',
+          option.id,
+          option.description
+        );
+        return {
+          ...option,
+          label: runnerProfileLabel(profile.runner, 'access', option.id, option.label),
+          ...(description === undefined ? {} : { description })
+        };
+      }),
       commands: profile.commands
         .filter(
           (command) =>
@@ -165,7 +159,7 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
   }
 
   function cached(nodeId: string): readonly RunnerProfile[] {
-    return preferredProfiles(profilesByNode.get(nodeId) ?? [], options.supportsAuto?.(nodeId));
+    return preferredProfiles(profilesByNode.get(nodeId) ?? []);
   }
 
   function restore(nodeId: string): void {
@@ -208,7 +202,7 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
         if (!current()) return undefined;
         if (!Array.isArray(result.profiles)) throw new Error('RUNNER_PROFILES_INVALID');
         profilesByNode.set(nodeId, result.profiles);
-        const profiles = preferredProfiles(result.profiles, options.supportsAuto?.(nodeId));
+        const profiles = preferredProfiles(result.profiles);
         options.profiles.value = profiles;
         const defaultsChanged = (defaultsVersionByNode.get(nodeId) ?? 0) === defaultsVersion;
         if (defaultsChanged)

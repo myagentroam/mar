@@ -45,6 +45,208 @@ function fixture() {
 }
 
 describe('public Node identity connection lifecycle', () => {
+  it('serializes an old v2 metadata write with replacement authentication and v3 capabilities', async () => {
+    const { control, store, attach } = fixture();
+    let release!: () => void;
+    let started!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let metadata = '{}';
+    store.updateNodeHeartbeat.mockImplementation(async (_id, capabilities) => {
+      if (capabilities?.metadata.includes('0.11.37')) {
+        started();
+        await blocked;
+      }
+      if (capabilities) metadata = capabilities.metadata;
+    });
+    const old = attach();
+    const replacement = attach();
+    try {
+      old.emit(
+        'message',
+        JSON.stringify({
+          version: 2,
+          id: 'old-auth',
+          type: 'authenticate',
+          payload: { nodeId: 'node-1', credential: 'fixture' }
+        })
+      );
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      old.emit(
+        'message',
+        JSON.stringify({
+          version: 2,
+          id: 'old-cap',
+          type: 'capabilities',
+          payload: {
+            platform: 'linux',
+            architecture: 'x64',
+            nodeVersion: 'v24',
+            nodeAppVersion: '0.11.37'
+          }
+        })
+      );
+      await entered;
+      replacement.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(replacement.send).not.toHaveBeenCalled();
+      release();
+      await vi.waitFor(() => expect(replacement.send).toHaveBeenCalled());
+      replacement.receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: 'v24',
+        nodeAppVersion: '0.11.38',
+        codex: { available: false },
+        claudeCode: { available: false }
+      });
+      await vi.waitFor(() => expect(JSON.parse(metadata).nodeAppVersion).toBe('0.11.38'));
+      expect(control.nodeCapabilities('node-1')?.nodeAppVersion).toBe('0.11.38');
+    } finally {
+      release();
+      control.close();
+    }
+  });
+  it('does not admit a reconnect from the previous connection’s persisted version', async () => {
+    const { control, store, attach } = fixture();
+    const capabilities = {
+      platform: 'linux',
+      architecture: 'x64',
+      nodeVersion: 'v24.15.0',
+      nodeAppVersion: '0.11.38',
+      codex: { available: false },
+      claudeCode: { available: false }
+    };
+    store.authenticateNode.mockResolvedValue({
+      ...(await store.authenticateNode()),
+      metadata: JSON.stringify(capabilities)
+    });
+    const socket = attach();
+    try {
+      socket.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      expect(control.isNodeUpgradeOnly('node-1')).toBe(true);
+      socket.receive('capabilities', { ...capabilities, nodeAppVersion: '0.11.36' });
+      await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(2));
+      expect(control.isNodeUpgradeOnly('node-1')).toBe(true);
+    } finally {
+      control.close();
+    }
+  });
+  it('terminates sockets that cannot close and retains failed terminations for retry', () => {
+    const { control, attach } = fixture();
+    const first = attach();
+    const second = attach();
+    const closeFailure = new Error('CLOSE_FAILED');
+    const terminateFailure = new Error('TERMINATE_FAILED');
+    first.close.mockImplementationOnce(() => {
+      throw closeFailure;
+    });
+    first.terminate.mockImplementationOnce(() => {
+      throw terminateFailure;
+    });
+
+    let failure: unknown;
+    try {
+      control.close();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([closeFailure, terminateFailure]);
+    expect((failure as AggregateError).cause).toBe(closeFailure);
+    expect(first.terminate).toHaveBeenCalledOnce();
+    expect(second.close).toHaveBeenCalledOnce();
+    control.close();
+    expect(first.close).toHaveBeenCalledTimes(2);
+    expect(first.readyState).toBe(3);
+  });
+
+  it('closes every socket even when a Node disconnect callback fails', async () => {
+    const { control, store, attach } = fixture();
+    const first = attach();
+    const second = attach();
+    first.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+    await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+    const node = await store.authenticateNode();
+    store.authenticateNode.mockResolvedValue({ ...node, id: 'node-2' });
+    second.receive('authenticate', { nodeId: 'node-2', credential: 'fixture' });
+    await vi.waitFor(() => expect(control.isNodeConnected('node-2')).toBe(true));
+    const failure = new Error('DISCONNECT_FAILED');
+    const disconnected = vi.spyOn(
+      control as unknown as { onNodeDisconnected(nodeId: string): void },
+      'onNodeDisconnected'
+    );
+    disconnected.mockImplementationOnce(() => {
+      throw failure;
+    });
+
+    expect(() => control.close()).toThrow(failure);
+    expect(disconnected).toHaveBeenCalledTimes(2);
+    expect(first.close).toHaveBeenCalledWith(1001, 'SERVER_SHUTDOWN');
+    expect(second.close).toHaveBeenCalledWith(1001, 'SERVER_SHUTDOWN');
+    expect(control.isNodeConnected('node-1')).toBe(false);
+    expect(control.isNodeConnected('node-2')).toBe(false);
+  });
+
+  it('keeps an authenticated v2 socket on the upgrade control plane', async () => {
+    const { control, store, attach } = fixture();
+    try {
+      const socket = attach();
+      const sendV2 = (id: string, type: string, payload: unknown) =>
+        socket.emit('message', JSON.stringify({ version: 2, id, type, payload }));
+      sendV2('auth', 'authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({
+        version: 2,
+        type: 'authenticated',
+        replyTo: 'auth'
+      });
+      sendV2('caps', 'capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: 'v24.15.0',
+        nodeAppVersion: '0.11.37',
+        metadata: { supervisedUpgrade: true },
+        marAgentRuntimeCredentials: {
+          apiVersion: 1,
+          websocket: true,
+          httpVersions: ['1.1'],
+          fastMode: true
+        },
+        codex: { available: false },
+        claudeCode: { available: false }
+      });
+      await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(2));
+      expect(JSON.parse(store.updateNodeHeartbeat.mock.calls[1]![1]!.metadata)).toMatchObject({
+        nodeAppVersion: '0.11.37',
+        supervisedUpgrade: true
+      });
+      expect(control.nodeCapabilities('node-1')).toBeUndefined();
+      expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(false);
+      sendV2('beat', 'heartbeat', {});
+      await vi.waitFor(() =>
+        expect(socket.send.mock.calls.map(([value]) => JSON.parse(value))).toContainEqual(
+          expect.objectContaining({ version: 2, type: 'ack', replyTo: 'beat' })
+        )
+      );
+      const writes = store.updateNodeHeartbeat.mock.calls.length;
+      sendV2('business', 'workbench.event', { arbitrary: true });
+      await vi.waitFor(() =>
+        expect(socket.send.mock.calls.map(([value]) => JSON.parse(value))).toContainEqual(
+          expect.objectContaining({ version: 2, type: 'error' })
+        )
+      );
+      expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(writes);
+    } finally {
+      control.close();
+    }
+  });
+
   it('preserves the prompt completion capability through storage and public projection', async () => {
     const { control, store, attach } = fixture();
     try {
@@ -55,7 +257,7 @@ describe('public Node identity connection lifecycle', () => {
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: 'v24.15.0',
-        nodeAppVersion: '0.10.21',
+        nodeAppVersion: '0.11.38',
         codex: { available: false },
         claudeCode: { available: false },
         promptCompletion: { apiVersion: 1 }
@@ -68,7 +270,11 @@ describe('public Node identity connection lifecycle', () => {
       });
       socket.close();
       store.authenticateNode.mockResolvedValue(node);
-      attach().receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      const next = attach();
+      next.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      expect(control.nodeCapabilities('node-1')).toBeUndefined();
+      next.receive('capabilities', JSON.parse(metadata));
       await vi.waitFor(() =>
         expect(control.nodeCapabilities('node-1')?.promptCompletion).toEqual({ apiVersion: 1 })
       );
@@ -88,6 +294,7 @@ describe('public Node identity connection lifecycle', () => {
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: 'v24.15.0',
+        nodeAppVersion: '0.11.38',
         codex: { available: false },
         claudeCode: { available: false },
         chatgptLogin
@@ -103,6 +310,9 @@ describe('public Node identity connection lifecycle', () => {
       store.authenticateNode.mockResolvedValue(node);
       const next = attach();
       next.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      expect(control.nodeCapabilities('node-1')).toBeUndefined();
+      next.receive('capabilities', JSON.parse(metadata));
       await vi.waitFor(() =>
         expect(control.nodeCapabilities('node-1')?.chatgptLogin).toEqual(chatgptLogin)
       );

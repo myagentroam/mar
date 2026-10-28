@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MysqlMigration } from './mysql-migrations.js';
+import type { MysqlMigration } from './mysql-migration-contracts.js';
 
 const CREATE_DEMO_TABLE = `CREATE TABLE IF NOT EXISTS \`mysql_migration_demo\` (
   \`id\` int NOT NULL PRIMARY KEY,

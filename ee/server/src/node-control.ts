@@ -5,35 +5,36 @@ import {
   runtimeCredentialConnectionError
 } from '@myagentroam/server-core/runtime-credential-channel';
 import { NodeIdentityControl } from '@myagentroam/server-core/node-identity-control';
-import { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
-import { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
+import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
+import type { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
 import type { WebSocket } from 'ws';
 import {
   directNodeEventSchema,
   terminalDirectNodeEventSchema,
   type NodeEnvelope
 } from '@myagentroam/protocol';
-import type { ServerDatabase, StoredNode } from './database.js';
-import type { MysqlServerDatabase } from './mysql/server-database.js';
+import type { NodeIdentityStore, StoredNode } from '@myagentroam/server-core/node-identity';
+import type { AuditObserver } from '@myagentroam/server-core/audit';
 import type { ShareWorkbenchAccess } from '@myagentroam/server-core/workbench-relay-service';
-import {
+import type {
   WorkbenchRelayService,
-  type RelayedWorkbenchEvent,
-  type UserNodeAuthorization
-} from './service/workbench-relay-service.js';
-import { NodeRequestBroker } from './service/node-request-broker.js';
-import { GitExecutionForwarding } from '@myagentroam/server-core/git-execution-forwarding';
-import type { PersonalGitService } from '@myagentroam/server-core/personal-git-service';
-import { TerminalRelayService } from './service/terminal-relay-service.js';
-import { NodeMessageProjector } from './service/node-message-projector.js';
+  RelayedWorkbenchEvent
+} from '@myagentroam/server-core/workbench-relay-service';
+import type { NodeRequestBroker } from './service/node-request-broker.js';
+import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
+import type { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-service';
+import type {
+  NodeMessageProjector,
+  NodeMessageConsumers
+} from '@myagentroam/server-core/node-message-projector';
 import { ServerTrafficMetrics } from './service/server-traffic-metrics.js';
-import type { RuntimeCredentialService } from './service/runtime-credential-service.js';
+import type { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
 import {
   resolveScheduledRunAuthorization,
   resolveRestartRunAuthorization,
   type ScheduledRunAuthorizer,
   type RestartRunAuthorizer
-} from '@myagentroam/server-core';
+} from '@myagentroam/server-core/scheduled-run-authorization-channel';
 import { resolveMailNotification } from '@myagentroam/server-core/mail-notification-channel';
 import type { MailNotificationService } from '@myagentroam/server-core/mail-notification-service';
 import {
@@ -41,221 +42,117 @@ import {
   type NotificationChannelService
 } from '@myagentroam/server-core/notification-channel-service';
 
+export interface NodeControlStore extends NodeIdentityStore, AuditObserver {
+  listNodes(): readonly StoredNode[] | Promise<readonly StoredNode[]>;
+  listNodesForUser(userId: number): readonly StoredNode[] | Promise<readonly StoredNode[]>;
+  revokeNode(nodeId: string, actorUserId: number): boolean | Promise<boolean>;
+  deleteNode(nodeId: string, actorUserId: number): boolean | Promise<boolean>;
+}
+
+/** Connection facts exposed to the single request-broker owner. */
+export interface NodeBrokerTransport {
+  socketFor(nodeId: string): WebSocket | undefined;
+  allows(socket: WebSocket, operation: string): boolean;
+  encode(socket: WebSocket, envelope: NodeEnvelope): unknown;
+}
+
+export interface NodeControlTransport extends NodeBrokerTransport {
+  capabilities: NodeIdentityControl['nodeCapabilities'];
+  request: NodeControl['requestNode'];
+  sendNode: NodeIdentityControl['sendAuthenticatedNode'];
+  send(socket: WebSocket, type: string, payload: unknown, replyTo?: string): void;
+  sendInvalid(socket: WebSocket, replyTo?: string): void;
+}
+
+export interface NodeControlComponents {
+  readonly requestBroker: NodeRequestBroker;
+  readonly workbenchRelay: WorkbenchRelayService;
+  readonly directTransfers: DirectTransferCoordinator;
+  readonly terminalRelay: TerminalRelayService;
+  readonly terminalDirect: TerminalDirectCoordinator;
+  readonly messageProjector: NodeMessageProjector;
+}
+
+export interface NodeControlConsumers extends NodeMessageConsumers {
+  readonly authorizeHostedConversation: (
+    userId: number,
+    nodeId: string,
+    templateId: string
+  ) => Promise<boolean>;
+  readonly recentRunDisconnected: (nodeId: string) => Promise<void>;
+  readonly modelUsage: Pick<ModelUsageStore, 'consume'>;
+  readonly mailNotifications: Pick<MailNotificationService, 'send'>;
+  readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
+  readonly scheduleAuthorizer: ScheduledRunAuthorizer;
+  readonly restartAuthorizer: RestartRunAuthorizer;
+  readonly runtimeCredentials: Pick<
+    RuntimeCredentialService,
+    'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
+  >;
+}
+
 export type StoredNodePresence = StoredNode & { readonly connected: boolean };
 
-export type {
-  RelayedWorkbenchEvent,
-  UserNodeAuthorization
-} from './service/workbench-relay-service.js';
-
 export class NodeControl extends NodeIdentityControl {
-  private modelUsage: ModelUsageStore | undefined;
-  setModelUsageService(service: ModelUsageStore): void {
-    this.modelUsage = service;
-    this.requestBroker.setModelUsageGrants(service.grants);
-  }
   protected override connectionFeatures(): Record<string, unknown> {
     return {
-      ...(this.modelUsage === undefined ? {} : { modelUsage: { apiVersion: 1 } }),
-      ...(this.notificationChannels === undefined
-        ? {}
-        : { notificationChannels: { apiVersion: 1 } })
+      modelUsage: { apiVersion: 1 },
+      notificationChannels: { apiVersion: 1 }
     };
   }
 
-  private notificationChannels?: Pick<NotificationChannelService, 'send'>;
-  setNotificationChannels(service: Pick<NotificationChannelService, 'send'>): void {
-    this.notificationChannels = service;
-  }
-
-  private mailNotifications?: Pick<MailNotificationService, 'send'>;
-  setMailNotifications(service: Pick<MailNotificationService, 'send'>): void {
-    this.mailNotifications = service;
-  }
-  private scheduleAuthorizer: ScheduledRunAuthorizer | undefined;
-  private restartAuthorizer: RestartRunAuthorizer | undefined;
-  setRestartAuthorizer(authorizer: RestartRunAuthorizer): void {
-    this.restartAuthorizer = authorizer;
-  }
-  setScheduleAuthorizer(authorizer: ScheduledRunAuthorizer): void {
-    this.scheduleAuthorizer = authorizer;
-  }
-  private runtimeCredentials:
-    | Pick<
-        RuntimeCredentialService,
-        'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
-      >
-    | undefined;
+  private readonly runtimeCredentials: NodeControlConsumers['runtimeCredentials'];
   private readonly requestBroker: NodeRequestBroker;
-  setPersonalGitService(service: PersonalGitService): void {
-    this.requestBroker.setGitForwarding(new GitExecutionForwarding(service));
-  }
   private readonly workbenchRelay: WorkbenchRelayService;
   private readonly directTransfers: DirectTransferCoordinator;
   private readonly terminalDirect: TerminalDirectCoordinator;
   private readonly terminalRelay: TerminalRelayService;
   private readonly messageProjector: NodeMessageProjector;
-  private notificationHandler?: (nodeId: string, payload: unknown) => Promise<boolean>;
-  private sessionGroupChangedHandler?: (
-    change: import('@myagentroam/protocol').SessionGroupChanged
-  ) => Promise<void>;
-  private hostedConversationActivityHandler?: (
-    nodeId: string,
-    payload: unknown
-  ) => Promise<boolean>;
-  private recentRunHandler?: (nodeId: string, payload: unknown) => Promise<boolean>;
-  private recentRunDisconnectHandler?: (nodeId: string) => Promise<void>;
 
   constructor(
-    private readonly database: ServerDatabase | MysqlServerDatabase,
-    log?: (event: string, fields: Record<string, unknown>) => void,
-    private readonly traffic?: ServerTrafficMetrics,
-    runtimeCredentials?: Pick<
-      RuntimeCredentialService,
-      'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
-    >
+    private readonly database: NodeControlStore,
+    createComponents: (transport: NodeControlTransport) => NodeControlComponents,
+    private readonly consumers: NodeControlConsumers,
+    private readonly traffic?: ServerTrafficMetrics
   ) {
     super(database, (direction, bytes) => traffic?.record('node', direction, bytes));
-    this.runtimeCredentials = runtimeCredentials;
-    this.requestBroker = new NodeRequestBroker(
-      database,
-      (nodeId) => this.sockets.get(nodeId),
-      log,
-      traffic
-    );
-    this.workbenchRelay = new WorkbenchRelayService({
-      database,
-      ...(traffic === undefined ? {} : { traffic })
-    });
-    this.directTransfers = new DirectTransferCoordinator({
-      audits: database,
-      authorize: async (userId, nodeId, workspaceId) => {
-        if (this.nodeCapabilities(nodeId)?.workspaceDirectTransfer === undefined) return false;
-        return 'userCanRequestNode' in database
-          ? database.userCanRequestNode(
-              userId,
-              nodeId,
-              'workspace.direct-transfer',
-              workspaceId === undefined ? {} : { workspaceId },
-              workspaceId
-            )
-          : database.userOwnsNode(userId, nodeId);
-      },
-      sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),
-      sendBrowser: (connectionId, message) =>
-        this.workbenchRelay.sendDirectConnection(connectionId, message)
-    });
-    this.workbenchRelay.setDirectTransferHandler({
-      message: (identity, message) => this.directTransfers.handleBrowserMessage(identity, message),
-      disconnected: (connectionId) => this.directTransfers.connectionDisconnected(connectionId),
-      resumed: (connectionId) => this.directTransfers.connectionResumed(connectionId),
-      revoked: (connectionId, code) => this.directTransfers.revokeConnection(connectionId, code)
-    });
-    this.terminalRelay = new TerminalRelayService({
-      database,
-      ...(traffic === undefined ? {} : { traffic }),
-      requestNode: (nodeId, operation, data, user) =>
-        this.requestNode(nodeId, operation, data, user)
-    });
-    this.terminalDirect = new TerminalDirectCoordinator({
-      transport: this.directTransfers,
-      authorize: async (userId, nodeId, workspaceId) => {
-        if (this.nodeCapabilities(nodeId)?.terminalDirect?.apiVersion !== 1) return false;
-        return 'userCanRequestNode' in database
-          ? database.userCanRequestNode(
-              userId,
-              nodeId,
-              'terminal.attach.authorize',
-              {},
-              workspaceId
-            )
-          : database.userOwnsNode(userId, nodeId);
-      },
-      preflight: async (nodeId, terminalId, workspaceId, identity) => {
-        await this.requestNode(
-          nodeId,
-          'terminal.direct.preflight',
-          { terminalId, ...(workspaceId === undefined ? {} : { workspaceId }) },
-          {
-            userId: identity.userId,
-            sessionHash: identity.sessionHash,
-            ...(workspaceId === undefined ? {} : { workspaceId })
-          }
-        );
-      },
-      sendNode: (nodeId, message) => this.sendAuthenticatedNode(nodeId, message.type, message),
-      sendBrowser: (connectionId, message) =>
-        this.workbenchRelay.sendDirectConnection(connectionId, message),
-      relayCount: (sessionHash) => this.terminalRelay.countSession(sessionHash)
-    });
-    this.terminalRelay.setDirectCoordination({
-      directCount: (sessionHash) => this.terminalDirect.sessionCount(sessionHash)
-    });
-    this.workbenchRelay.setTerminalDirectHandler({
-      message: (identity, message) => this.terminalDirect.handleBrowser(identity, message),
-      revoked: (connectionId, code) => this.terminalDirect.revokeConnection(connectionId, code)
-    });
-    this.messageProjector = new NodeMessageProjector({
-      sessionGroupChanged: (change) =>
-        this.sessionGroupChangedHandler?.(change) ?? Promise.resolve(),
-      relay: this.workbenchRelay,
-      notification: (nodeId, payload) =>
-        this.notificationHandler?.(nodeId, payload) ?? Promise.resolve(false),
-      hostedConversationActivity: (nodeId, payload) =>
-        this.hostedConversationActivityHandler?.(nodeId, payload) ?? Promise.resolve(false),
-      recentRuns: (nodeId, payload) =>
-        this.recentRunHandler?.(nodeId, payload) ?? Promise.resolve(false),
-      sendWatchEvent: (connectionId, message) =>
-        this.workbenchRelay.sendConnection(connectionId, { type: 'watch.event', event: message }),
-      send: (socket, type, payload, replyTo) => this.send(socket, type, payload, replyTo),
-      sendInvalid: (socket, replyTo) => this.sendError(socket, 'MESSAGE_INVALID', replyTo),
-      ...(log === undefined ? {} : { log })
-    });
-  }
-
-  setNotificationHandler(handler: (nodeId: string, payload: unknown) => Promise<boolean>): void {
-    this.notificationHandler = handler;
-  }
-
-  setSessionGroupChangedHandler(
-    handler: (change: import('@myagentroam/protocol').SessionGroupChanged) => Promise<void>
-  ): void {
-    this.sessionGroupChangedHandler = handler;
-  }
-
-  setHostedConversationActivityHandler(
-    handler: (nodeId: string, payload: unknown) => Promise<boolean>
-  ): void {
-    this.hostedConversationActivityHandler = handler;
-  }
-
-  setHostedConversationAuthorizationHandler(
-    handler: (userId: number, nodeId: string, templateId: string) => Promise<boolean>
-  ): void {
-    this.workbenchRelay.setHostedConversationAuthorization(handler);
-  }
-
-  setRecentRunHandler(
-    handler: (nodeId: string, payload: unknown) => Promise<boolean>,
-    disconnected: (nodeId: string) => Promise<void>
-  ): void {
-    this.recentRunHandler = handler;
-    this.recentRunDisconnectHandler = disconnected;
-  }
-
-  setRuntimeCredentialService(
-    service: Pick<
-      RuntimeCredentialService,
-      'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
-    >
-  ): void {
-    this.runtimeCredentials = service;
-    for (const nodeId of this.sockets.keys()) service.activateNodeConnection(nodeId);
+    this.runtimeCredentials = consumers.runtimeCredentials;
+    let components: NodeControlComponents;
+    try {
+      components = createComponents({
+        socketFor: (nodeId) => this.sockets.get(nodeId),
+        allows: (socket, operation) =>
+          this.allowsNodeBusiness(socket) ||
+          operation === 'node.upgrade.request' ||
+          operation === 'node.upgrade.cancel',
+        encode: (socket, envelope) =>
+          this.nodeWireVersion(socket) === 2 ? { ...envelope, version: 2 } : envelope,
+        capabilities: (nodeId) => this.nodeCapabilities(nodeId),
+        request: (nodeId, operation, data, user) => this.requestNode(nodeId, operation, data, user),
+        sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),
+        send: (socket, type, payload, replyTo) => this.send(socket, type, payload, replyTo),
+        sendInvalid: (socket, replyTo) => this.sendError(socket, 'MESSAGE_INVALID', replyTo)
+      });
+    } catch (error) {
+      try {
+        super.close();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'Failed to construct Node control', {
+          cause: error
+        });
+      }
+      throw error;
+    }
+    this.requestBroker = components.requestBroker;
+    this.workbenchRelay = components.workbenchRelay;
+    this.directTransfers = components.directTransfers;
+    this.terminalRelay = components.terminalRelay;
+    this.terminalDirect = components.terminalDirect;
+    this.messageProjector = components.messageProjector;
   }
 
   runtimeCredentialCapability(nodeId: string) {
-    if (!this.sockets.has(nodeId)) return undefined;
-    return this.capabilities.get(nodeId)?.marAgentRuntimeCredentials;
+    return this.nodeCapabilities(nodeId)?.marAgentRuntimeCredentials;
   }
 
   pushUserWorkbench(userId: number, message: object): void {
@@ -279,7 +176,7 @@ export class NodeControl extends NodeIdentityControl {
 
   protected override onNodeConnected(nodeId: string, replaced: boolean): void {
     if (replaced) this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
-    this.runtimeCredentials?.activateNodeConnection(nodeId);
+    this.runtimeCredentials.activateNodeConnection(nodeId);
     this.workbenchRelay.broadcast({
       type: 'node',
       nodeId,
@@ -290,13 +187,21 @@ export class NodeControl extends NodeIdentityControl {
   protected override onNodeDisconnected(nodeId: string): void {
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
-    this.runtimeCredentials?.deactivateNodeConnection(nodeId);
+    this.runtimeCredentials.deactivateNodeConnection(nodeId);
     this.requestBroker.rejectNode(nodeId, new Error('NODE_OFFLINE'));
     this.terminalRelay.disconnectNode(nodeId);
     this.workbenchRelay.broadcast({ type: 'node', nodeId, connected: false });
     void this.messageProjector
-      .enqueueSessionProjection(nodeId, async () => this.recentRunDisconnectHandler?.(nodeId))
+      .enqueueSessionProjection(nodeId, () => this.consumers.recentRunDisconnected(nodeId))
       .catch(() => undefined);
+  }
+
+  protected override onBusinessAdmissionRevoked(nodeId: string): void {
+    this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
+    this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
+    this.runtimeCredentials.deactivateNodeConnection(nodeId);
+    this.requestBroker.rejectNode(nodeId, new Error('NODE_UPGRADE_REQUIRED'));
+    this.terminalRelay.disconnectNode(nodeId);
   }
 
   /**
@@ -417,13 +322,31 @@ export class NodeControl extends NodeIdentityControl {
     return this.workbenchRelay.onEvent(listener);
   }
 
+  async drainProjections(): Promise<void> {
+    await Promise.all([this.drainControlMessages(), this.messageProjector.drain()]);
+  }
+
   override close(): void {
-    this.directTransfers.close();
-    this.terminalDirect.close();
-    super.close();
-    this.requestBroker.close();
-    this.terminalRelay.close();
-    this.closeAllWorkbench();
+    const errors: unknown[] = [];
+    for (const close of [
+      () => this.directTransfers.close(),
+      () => this.terminalDirect.close(),
+      () => super.close(),
+      () => this.requestBroker.close(),
+      () => this.terminalRelay.close(),
+      () => this.closeAllWorkbench()
+    ]) {
+      try {
+        close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
+      throw new AggregateError(errors, 'Failed to close Node control resources', {
+        cause: errors[0]
+      });
   }
 
   /**
@@ -508,31 +431,33 @@ export class NodeControl extends NodeIdentityControl {
     envelope: NodeEnvelope
   ): Promise<boolean> {
     if (envelope.type === 'usage.batch') {
-      if (this.modelUsage === undefined) {
-        this.sendError(socket, 'USAGE_UNSUPPORTED', envelope.id);
-        return true;
-      }
       const batch = modelUsageBatchSchema.safeParse(envelope.payload);
       if (!batch.success) {
         this.sendError(socket, 'USAGE_RECORD_INVALID', envelope.id);
         return true;
       }
-      try {
-        const ack = await this.modelUsage.consume(nodeId, batch.data);
-        if (this.sockets.get(nodeId) === socket) this.send(socket, 'usage.ack', ack, envelope.id);
-      } catch {
-        this.sendError(socket, 'USAGE_STORAGE_UNAVAILABLE', envelope.id);
-      }
+      await this.messageProjector.enqueueSessionProjection(nodeId, async () => {
+        try {
+          const ack = await this.consumers.modelUsage.consume(nodeId, batch.data);
+          if (this.sockets.get(nodeId) === socket) this.send(socket, 'usage.ack', ack, envelope.id);
+        } catch {
+          if (this.sockets.get(nodeId) === socket)
+            this.sendError(socket, 'USAGE_STORAGE_UNAVAILABLE', envelope.id);
+        }
+      });
       return true;
     }
     if (envelope.type === 'mail.notification.send') {
-      await resolveMailNotification({
-        nodeId,
-        envelope,
-        isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        service: this.mailNotifications,
-        respond: (payload) => this.send(socket, 'mail.notification.response', payload, envelope.id)
-      });
+      await this.messageProjector.enqueueSessionProjection(nodeId, () =>
+        resolveMailNotification({
+          nodeId,
+          envelope,
+          isCurrentConnection: () => this.sockets.get(nodeId) === socket,
+          service: this.consumers.mailNotifications,
+          respond: (payload) =>
+            this.send(socket, 'mail.notification.response', payload, envelope.id)
+        })
+      );
       return true;
     }
     if (envelope.type === 'notification.channels.send') {
@@ -541,7 +466,7 @@ export class NodeControl extends NodeIdentityControl {
           nodeId,
           envelope,
           isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-          service: this.notificationChannels,
+          service: this.consumers.notificationChannels,
           respond: (payload) =>
             this.send(socket, 'notification.channels.response', payload, envelope.id)
         })
@@ -553,7 +478,7 @@ export class NodeControl extends NodeIdentityControl {
         nodeId,
         envelope,
         isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        authorize: this.restartAuthorizer,
+        authorize: this.consumers.restartAuthorizer,
         respond: (payload) => this.send(socket, 'restart.authorize.response', payload, envelope.id)
       });
       return true;
@@ -563,7 +488,7 @@ export class NodeControl extends NodeIdentityControl {
         nodeId,
         envelope,
         isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        authorize: this.scheduleAuthorizer,
+        authorize: this.consumers.scheduleAuthorizer,
         respond: (payload) => this.send(socket, 'schedule.authorize.response', payload, envelope.id)
       });
       return true;

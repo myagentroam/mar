@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   runServerMysqlMigrations,
-  SERVER_MIGRATION_LEDGER_SQL,
-  type MysqlMigration,
-  type MysqlMigrationConnection,
-  type MysqlMigrationPlan
+  SERVER_MIGRATION_LEDGER_SQL
 } from '../../src/mysql-migrations.js';
+import type {
+  MysqlMigration,
+  MysqlMigrationConnection,
+  MysqlMigrationPlan
+} from '../../src/mysql-migration-contracts.js';
 
 type HistoryInput = {
   namespace: unknown;

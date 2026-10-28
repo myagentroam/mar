@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '@myagentroam/protocol';
 import { NodeRequestBroker } from '../../src/service/node-request-broker.js';
+import { testNodeBrokerServices } from '../../../../test/support/node-broker-services.js';
 
 const brokers: NodeRequestBroker[] = [];
 afterEach(() => {
@@ -15,9 +16,17 @@ function fixture() {
   );
   const audit = vi.fn(async (_event: unknown) => undefined);
   let socket = { OPEN: 1, readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)) };
+  let upgradeOnly = false;
+  const services = testNodeBrokerServices();
   const broker = new NodeRequestBroker(
-    { userCanRequestNode: authorize, audit } as never,
-    () => socket as never
+    { audit },
+    authorize,
+    () => socket as never,
+    {
+      allows: (_socket, operation) => !upgradeOnly || operation === 'node.upgrade.request',
+      encode: (_socket, envelope) => (upgradeOnly ? { ...envelope, version: 2 } : envelope)
+    },
+    services
   );
   brokers.push(broker);
   const user = { userId: 2, sessionHash: 'hash' };
@@ -44,7 +53,20 @@ function fixture() {
     broker.rejectNode('n', new Error('NODE_CONNECTION_REPLACED'));
     socket = { ...socket };
   }
-  return { broker, authorize, audit, sent, user, begin, call, replaceConnection };
+  return {
+    broker,
+    services,
+    authorize,
+    audit,
+    sent,
+    user,
+    begin,
+    call,
+    replaceConnection,
+    setUpgradeOnly: () => {
+      upgradeOnly = true;
+    }
+  };
 }
 
 function gate<T>() {
@@ -65,6 +87,21 @@ function activeObservations(broker: NodeRequestBroker): number {
 }
 
 describe('Node broker resource scope lifecycle', () => {
+  it('rejects business requests before authorization or forwarding on an upgrade-only connection', async () => {
+    const f = fixture();
+    f.setUpgradeOnly();
+    await expect(f.broker.request('n', 'workspace.list', {}, f.user)).rejects.toThrow(
+      'NODE_UPGRADE_REQUIRED'
+    );
+    expect(f.authorize).not.toHaveBeenCalled();
+    expect(f.sent).toHaveLength(0);
+    const pending = await f.begin('node.upgrade.request', { targetVersion: '0.11.38' }, 'w');
+    expect(f.authorize).toHaveBeenCalledOnce();
+    expect(f.sent[0]).toMatchObject({ version: 2, payload: { operation: 'node.upgrade.request' } });
+    pending.reply({ accepted: true });
+    await expect(pending.promise).resolves.toEqual({ accepted: true });
+  });
+
   it.each(['workspaceId', 'conversationId'])(
     'forwards signed image capabilities without user authorization (%s)',
     async (scope) => {
@@ -284,7 +321,7 @@ describe('Node broker resource scope lifecycle', () => {
     const f = fixture();
     const preparation = gate<unknown>();
     const prepare = vi.fn(() => preparation.promise);
-    f.broker.setGitForwarding({ prepare } as never);
+    f.services.gitForwarding.prepare = prepare;
     const pending = f.broker.request('n', 'session.list', { workspaceId: 'w' }, f.user);
     const rejected = expect(pending).rejects.toThrow('NODE_OFFLINE');
     await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
@@ -363,7 +400,7 @@ describe('Node broker resource scope lifecycle', () => {
     const prepare = vi.fn(async (_node: string, operation: string, data: unknown) =>
       operation === 'run.interrupt' ? preparation.promise : data
     );
-    f.broker.setGitForwarding({ prepare } as never);
+    f.services.gitForwarding.prepare = prepare;
     const pending = f.broker.request('n', 'run.interrupt', { runId: 'r' }, f.user);
     await vi.waitFor(() => expect(prepare).toHaveBeenCalled());
     await f.call(

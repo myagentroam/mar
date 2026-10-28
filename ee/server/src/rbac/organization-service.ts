@@ -277,6 +277,15 @@ export class OrganizationService {
         [organizationId]
       );
       await connection.execute(
+        `DELETE settings FROM system_settings settings
+         JOIN mar_agent_models model ON settings.setting_key IN (
+           CONCAT('mar_agent_model_config:',model.id),
+           CONCAT('mar_agent_resource_input:model:',model.id)
+         )
+         WHERE model.owner_type='ORGANIZATION' AND model.owner_organization_id=?`,
+        [organizationId]
+      );
+      await connection.execute(
         `DELETE FROM mar_agent_models
          WHERE owner_type='ORGANIZATION' AND owner_organization_id=?`,
         [organizationId]

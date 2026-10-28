@@ -23,16 +23,21 @@ export class MarAgentModelService extends CoreMarAgentModelService {
     super(database, now, id, enterpriseAccess, credentialScopes);
   }
 
-  protected override async summaryRows(): Promise<RowDataPacket[]> {
+  protected override async summaryRows(
+    modelIds?: readonly string[],
+    conversationOnly = false
+  ): Promise<RowDataPacket[]> {
+    if (modelIds?.length === 0) return [];
+    const conditions = [
+      modelIds === undefined ? '' : `model.id IN (${modelIds.map(() => '?').join(',')})`,
+      conversationOnly ? 'model.enabled=1 AND model.conversation_model=1' : ''
+    ].filter(Boolean);
     const [rows] = await this.database.raw.execute<RowDataPacket[]>(
       `SELECT model.id,model.name,model.protocol,model.base_url,model.model_id,
               model.context_window_tokens,model.max_output_tokens,model.input_capabilities,
               model.output_capabilities,model.reasoning_efforts,
               model.default_reasoning_effort,model.conversation_model,model.title_generation,model.code_mode,
-              model.fast_mode,model.service_tier,
-              model.hosted_web_search,
-              model.responses_transport,
-              model.responses_previous_response_id,model.credential,
+              model.credential,
               model.enabled,model.sort_order,
               model.last_tested_at,model.last_test_status,model.last_test_code,
               model.owner_type,model.owner_user_id,model.owner_organization_id,
@@ -40,8 +45,12 @@ export class MarAgentModelService extends CoreMarAgentModelService {
                 SELECT 1 FROM resource_grants grant_record
                 WHERE grant_record.resource_type='MODEL' AND grant_record.model_id=model.id
                   AND grant_record.target_type='ORGANIZATION' AND grant_record.target_organization_id=1
-              ) AS public_access
-       FROM mar_agent_models model ORDER BY model.sort_order,model.normalized_name,model.id`
+              ) AS public_access,model_settings.setting_value AS model_settings
+       FROM mar_agent_models model
+       LEFT JOIN system_settings model_settings ON model_settings.setting_key=CONCAT('mar_agent_model_config:',model.id)
+       ${conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`}
+       ORDER BY model.sort_order,model.normalized_name,model.id`,
+      modelIds === undefined ? [] : [...modelIds]
     );
     return rows;
   }

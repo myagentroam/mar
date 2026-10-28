@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { compareStableVersions, MIN_NODE_BUSINESS_VERSION } from './node-version.js';
 
 const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const execFileAsync = promisify(execFile);
@@ -27,16 +28,21 @@ export class NodeUpgradeService {
 
   async availability(
     nodeVersion: string,
-    supervisedUpgrade = false
+    supervisedUpgrade = false,
+    upgradeOnly = false
   ): Promise<NodeUpgradeAvailability> {
     if (!STABLE_VERSION.test(nodeVersion))
       return { state: 'VERSION_INVALID', targetVersion: nodeVersion };
     const targetVersion = await this.selectedPublishedVersion();
-    if (targetVersion === undefined)
+    if (
+      targetVersion === undefined ||
+      compareStableVersions(targetVersion, MIN_NODE_BUSINESS_VERSION)! < 0
+    )
       return { state: 'PACKAGE_UNAVAILABLE', targetVersion: nodeVersion };
     const targetComparison = compareStableVersions(nodeVersion, targetVersion);
     if (targetComparison === undefined) return { state: 'VERSION_INVALID', targetVersion };
-    if (targetComparison >= 0) return { state: 'CURRENT', targetVersion };
+    if (targetComparison >= 0)
+      return { state: upgradeOnly ? 'PACKAGE_UNAVAILABLE' : 'CURRENT', targetVersion };
     if (!supervisedUpgrade || !supportsSupervisedUpgrade(nodeVersion))
       return { state: 'NODE_UNSUPPORTED', targetVersion };
     return { state: 'AVAILABLE', targetVersion };
@@ -105,17 +111,6 @@ export function npmViewInvocation(
   return platform === 'win32'
     ? { command: comspec, args: ['/d', '/s', '/c', `npm.cmd ${args.join(' ')}`] }
     : { command: 'npm', args };
-}
-
-export function compareStableVersions(left: string, right: string): number | undefined {
-  const leftMatch = STABLE_VERSION.exec(left);
-  const rightMatch = STABLE_VERSION.exec(right);
-  if (leftMatch === null || rightMatch === null) return undefined;
-  for (let index = 1; index <= 3; index += 1) {
-    const difference = Number(leftMatch[index]) - Number(rightMatch[index]);
-    if (difference !== 0) return difference;
-  }
-  return 0;
 }
 
 export function supportsSupervisedUpgrade(version: string): boolean {

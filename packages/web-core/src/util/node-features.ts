@@ -9,15 +9,7 @@ export interface NodeFeatureVersionRange {
 export const FEATURE_DEMO = '__feature-demo__';
 
 export const NODE_FEATURES: Readonly<Record<string, NodeFeatureVersionRange>> = {
-  HOSTED_CONVERSATION_TEMPLATE_SWITCH: { introducedIn: '0.11.31' },
-  SESSION_GROUPS: { introducedIn: '0.11.19' },
-  LOCAL_FILE_MANAGER: { introducedIn: '0.11.25' },
-  SESSION_PROMPT: { introducedIn: '0.10.33' },
-  MAR_AGENT_AUTO: { introducedIn: '0.10.25' },
-  'prompt-completion': { introducedIn: '0.10.21' },
-  [FEATURE_DEMO]: { introducedIn: '0.9.119' },
-  TOOL_RESULT_DIFF: { introducedIn: '0.10.8' },
-  WORKSPACE_INDEX_PREPARATION: { introducedIn: '0.9.143' }
+  [FEATURE_DEMO]: { introducedIn: '0.9.119' }
 };
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;

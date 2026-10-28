@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 
 describe('Server smoke', () => {
   it('returns an ok health response', async () => {

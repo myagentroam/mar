@@ -8,11 +8,13 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
+import { emitAudit } from '@myagentroam/server-core/audit';
 import type { openServerDatabase } from '../database.js';
-import { MysqlServerDatabase } from '../mysql/server-database.js';
+import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { NodeControl } from '../node-control.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
-import type { NodeUpgradeService } from '../service/node-upgrade-service.js';
+import type { ResourceManagementDirectory } from '../rbac/resource-management-directory.js';
+import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import type { ServerTrafficMetrics } from '../service/server-traffic-metrics.js';
 import {
   databaseError,
@@ -48,15 +50,51 @@ export function registerManagementRoutes(input: {
   readonly app: FastifyInstance;
   readonly database: ReturnType<typeof openServerDatabase> | MysqlServerDatabase;
   readonly nodeControl: NodeControl;
-  readonly nodeUpgrades: NodeUpgradeService;
-  readonly resources?: Pick<
-    ResourceAccessService,
-    'nodeOwnership' | 'assertCanHostConversationTemplate' | 'listManagedResourcePage'
-  >;
+  readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
+  readonly resources: Pick<ResourceAccessService, 'assertCanHostConversationTemplate'>;
+  readonly directory: Pick<ResourceManagementDirectory, 'listManagedResourcePage'>;
+  readonly users: {
+    list(query: Record<string, unknown>): Promise<{
+      readonly users: readonly {
+        readonly id: number;
+        readonly username: string;
+        readonly email: string | null;
+        readonly nickname: string | null;
+        readonly isAdmin: boolean;
+        readonly createdAt: number;
+      }[];
+      readonly page?: number;
+      readonly pageSize?: number;
+      readonly total?: number;
+      readonly hasMore?: boolean;
+    }>;
+    deletionSummary(userId: number): Promise<
+      | {
+          readonly organizationId: number | null;
+          readonly role: string | null;
+          readonly sessions: number;
+          readonly externalIdentities: number;
+          readonly grants: number;
+          readonly personalNodes: number;
+          readonly personalWorkspaces: number;
+        }
+      | undefined
+    >;
+  };
   readonly traffic: ServerTrafficMetrics;
   readonly publicOrigin: string | undefined;
 }): void {
-  const { app, database, nodeControl, nodeUpgrades, resources, traffic, publicOrigin } = input;
+  const {
+    app,
+    database,
+    nodeControl,
+    nodeUpgrades,
+    resources,
+    directory,
+    users,
+    traffic,
+    publicOrigin
+  } = input;
   app.get('/api/management/server-traffic', async (request, reply) => {
     if (protectedManagementAdmin(database, request, reply) === undefined) return;
     return reply.send(traffic.snapshot());
@@ -66,12 +104,7 @@ export function registerManagementRoutes(input: {
     async (request, reply) => {
       if (protectedManagementAdmin(database, request, reply) === undefined) return;
       try {
-        if (database instanceof MysqlServerDatabase) {
-          const result = await database.listUsers(request.query);
-          return reply.send(Array.isArray(result) ? { users: result } : result);
-        }
-        if (Object.keys(request.query).length > 0) throw new ManagementQueryError();
-        return reply.send({ users: database.listUsers() });
+        return reply.send(await users.list(request.query));
       } catch (error) {
         if (error instanceof ManagementQueryError) return sendError(reply, 400, error.code);
         return databaseError(reply, error);
@@ -106,7 +139,7 @@ export function registerManagementRoutes(input: {
           nickname: nickname ?? null,
           password: temporaryPassword
         });
-        await database.audit({
+        emitAudit(database, {
           eventType: 'user_created_by_admin',
           actorUserId: admin.userId,
           targetType: 'USER',
@@ -171,9 +204,7 @@ export function registerManagementRoutes(input: {
       if (protectedManagementAdmin(database, request, reply) === undefined) return;
       const userId = positiveId(request.params.userId);
       if (userId === undefined) return sendError(reply, 400, 'USER_ID_INVALID');
-      if (!('userDeletionSummary' in database))
-        return sendError(reply, 400, 'ENTERPRISE_LICENSE_REQUIRED');
-      const summary = await database.userDeletionSummary(userId);
+      const summary = await users.deletionSummary(userId);
       return summary === undefined
         ? sendError(reply, 404, 'USER_NOT_FOUND')
         : reply.send({ summary });
@@ -186,8 +217,7 @@ export function registerManagementRoutes(input: {
       if (admin === undefined) return;
       try {
         if (managementPageQuery(request.query) !== undefined) {
-          if (resources === undefined) return sendError(reply, 400, 'MANAGEMENT_QUERY_INVALID');
-          const overview = await resources.listManagedResourcePage(
+          const overview = await directory.listManagedResourcePage(
             admin.userId,
             { ...request.query, resourceType: 'NODE', management: 'all' },
             nodeControl.connectedNodeIds()
@@ -200,7 +230,8 @@ export function registerManagementRoutes(input: {
                 ...node,
                 upgradeAvailability: await nodeUpgrades.availability(
                   node.nodeAppVersion,
-                  node.metadata['supervisedUpgrade'] === true
+                  node.metadata['supervisedUpgrade'] === true,
+                  nodeControl.isNodeUpgradeOnly(node.id)
                 )
               }))
             )
@@ -235,7 +266,8 @@ export function registerManagementRoutes(input: {
               ownerUsername: users.get(node.ownerUserId) ?? null,
               upgradeAvailability: await nodeUpgrades.availability(
                 projection.nodeAppVersion,
-                projection.metadata?.supervisedUpgrade === true
+                projection.metadata?.supervisedUpgrade === true,
+                nodeControl.isNodeUpgradeOnly(node.id)
               )
             };
           }
@@ -251,7 +283,6 @@ export function registerManagementRoutes(input: {
     publicOrigin,
     authorizeNode: async () => undefined,
     canEnableNode: async (_userId, nodeId) => {
-      if (resources === undefined) return false;
       try {
         await resources.assertCanHostConversationTemplate(nodeId);
         return true;
@@ -301,7 +332,8 @@ export function registerManagementRoutes(input: {
         };
         const availability = await nodeUpgrades.availability(
           projection.nodeAppVersion,
-          projection.metadata?.supervisedUpgrade === true
+          projection.metadata?.supervisedUpgrade === true,
+          nodeControl.isNodeUpgradeOnly(node.id)
         );
         if (availability.state !== 'AVAILABLE')
           return sendError(reply, 409, `NODE_UPGRADE_${availability.state}`);

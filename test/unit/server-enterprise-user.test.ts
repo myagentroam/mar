@@ -1,8 +1,7 @@
 import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
 import { describe, expect, it, vi } from 'vitest';
-import { hashOpaque } from '../../ee/server/src/database.js';
+import { hashOpaque } from '../../packages/server-core/src/session-token.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import type { NodeControl } from '../../ee/server/src/node-control.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { EnterpriseUserService } from '../../ee/server/src/rbac/enterprise-user-service.js';
 import { registerEnterpriseUserRoutes } from '../../ee/server/src/route/enterprise-user-routes.js';
@@ -105,7 +104,7 @@ describe('Server enterprise user membership', () => {
     'preserves fixed admin connections but revokes ordinary membership changes: fixedAdmin=$0',
     async (fixedAdmin) => {
       const fixture = enterpriseUserFixture(fixedAdmin);
-      Object.assign(fixture.database, {
+      const sessions = {
         findCurrentUserSession: () => ({
           userId: 1,
           username: 'admin',
@@ -114,14 +113,14 @@ describe('Server enterprise user membership', () => {
           mustChangePassword: false,
           csrfTokenHash: hashOpaque('csrf-token')
         })
-      });
+      };
       const closeUserSessions = vi.fn();
       const app = Fastify();
       registerEnterpriseUserRoutes({
         app,
-        database: fixture.database,
+        database: sessions,
         users: new EnterpriseUserService(fixture.database, fixture.authorization),
-        nodeControl: { closeUserSessions } as unknown as NodeControl,
+        nodeControl: { closeUserSessions },
         publicOrigin: undefined
       });
       try {

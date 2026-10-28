@@ -721,7 +721,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     conversationModel: model.conversationModel ?? true,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    serviceTier: model.serviceTier ?? (model.fastMode === true ? 'priority' : 'default'),
+    serviceTier: model.serviceTier ?? 'default',
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: model.metadata?.useResourceUrl ?? false,
     responsesTransport:
@@ -1324,7 +1324,7 @@ function transportFromChoice(value: TransportChoice): MarAgentResponsesTransport
 }
 
 function serviceTierLabel(model: ModelSummary): string {
-  const tier = model.serviceTier ?? (model.fastMode === true ? 'priority' : 'default');
+  const tier = model.serviceTier ?? 'default';
   if (tier === 'default') return translate('marAgentModels.serviceTierDefault');
   if (tier === 'priority' || tier === 'fast') return translate('marAgentModels.serviceTierFast');
   if (tier === 'ultrafast') return translate('marAgentModels.serviceTierUltrafast');

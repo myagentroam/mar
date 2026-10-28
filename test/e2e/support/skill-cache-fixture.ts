@@ -9,10 +9,8 @@ import { SkillFavoriteService } from '../../../ee/server/src/skill/skill-favorit
 import type { MysqlServerDatabase } from '../../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../../ee/server/src/rbac/authorization-service.js';
 import type { SkillSourceService } from '../../../ee/server/src/skill/skill-source-service.js';
-import type {
-  GithubSkillProvider,
-  ResolvedSkillBundle
-} from '../../../ee/server/src/skill/github-skill-provider.js';
+import type { GithubSkillProvider } from '../../../ee/server/src/skill/github-skill-provider.js';
+import type { ResolvedSkillBundle } from '../../../packages/server-core/src/skill-bundle.js';
 import { prepareMysqlDatabase } from '../../../ee/server/src/mysql/connection.js';
 import {
   createPlaywrightTestDatabase,
@@ -37,6 +35,10 @@ export function bundle(character = 'a'): ResolvedSkillBundle {
     commitSha: character.repeat(40),
     contentHash: character.repeat(64),
     archiveHash: 'f'.repeat(64),
+    archiveJson: JSON.stringify({
+      schemaVersion: 1,
+      files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+    }),
     contentBytes: 10,
     tlsVerified: true,
     files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]

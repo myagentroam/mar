@@ -14,13 +14,17 @@ import { databaseError } from './domain-errors.js';
 import { sendError } from './http-errors.js';
 import { isRateLimited, registerFailedLogin, type LoginRateRecord } from './login-rate.js';
 import { parseWorkbenchPage } from './run-http-support.js';
-import type { SessionRunStore, SessionRunNodeControl } from './session-run-contracts.js';
+import type {
+  SessionRunStore,
+  SessionRunNodeControl,
+  RunnerModelCatalog,
+  ProcessSecretResolver
+} from './session-run-contracts.js';
 import type { SessionShares } from './session-shares.js';
 import type { SessionChannelService } from './session-channel-service.js';
 import type { ShareWorkbenchAccess } from './workbench-relay-service.js';
-import type { UserNodeAuthorization } from './node-request-channel.js';
-import { prepareRunnerProfileContext, type RunnerModelCatalog } from './runner-profile-context.js';
-import type { ProcessSecretResolver } from './session-run-contracts.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
+import { prepareRunnerProfileContext } from './runner-profile-context.js';
 import { registerSessionShareResourceRoutes } from './session-share-resource-routes.js';
 
 export const SESSION_SHARE_COOKIE = 'mar_session_share';

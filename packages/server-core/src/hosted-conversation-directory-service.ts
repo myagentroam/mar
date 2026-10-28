@@ -10,9 +10,7 @@ import {
 import type { CurrentUserSession } from './session.js';
 import type { HostedNodeControl, HostedDirectoryNode } from './hosted-contracts.js';
 import { requestHostedConversationNode } from './hosted-http-support.js';
-import { compareStableVersions } from './node-upgrade-service.js';
 
-const MINIMUM_HOSTED_CONVERSATION_VERSION = '0.9.27';
 const DIRECTORY_SORT_VERSION = 1;
 const CURSOR_TTL_MS = 10 * 60 * 1000;
 const MAX_CURSOR_COUNT = 2_048;
@@ -202,16 +200,7 @@ function eligibleDirectoryNode(node: HostedDirectoryNode): boolean {
   }
   const capabilities = nodeCapabilitiesSchema.safeParse(metadata);
   if (!capabilities.success) return false;
-  const version = capabilities.data.nodeAppVersion;
-  const comparison =
-    version === undefined
-      ? undefined
-      : compareStableVersions(version, MINIMUM_HOSTED_CONVERSATION_VERSION);
-  return (
-    comparison !== undefined &&
-    comparison >= 0 &&
-    capabilities.data.conversationHosting?.supportsExistingConversations === true
-  );
+  return capabilities.data.conversationHosting?.supportsExistingConversations === true;
 }
 
 function compareConversations(

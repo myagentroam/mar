@@ -11,6 +11,7 @@ async function fixture() {
     image: { mimeType: 'image/png', dataBase64: Buffer.from('pixels').toString('base64') }
   }));
   registerRunControlRoutes({
+    authorizeNodeRequest: async () => true,
     app,
     database: {} as never,
     secrets: {} as never,

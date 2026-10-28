@@ -4,7 +4,12 @@ import { registerWorkspaceRoutes } from '../../src/workspace-routes.js';
 import { hashOpaque } from '../../src/session-token.js';
 import { SESSION_COOKIE_NAME } from '../../src/auth.js';
 import { sendError } from '../../src/http-errors.js';
+import { NodeRequestError } from '../../src/node-request-error.js';
+import { NodeRequestChannel } from '../../src/node-request-channel.js';
+import type { UserNodeAuthorization } from '../../src/node-access-contracts.js';
+import { createEnvelope } from '@myagentroam/protocol';
 import type { WorkspaceResourcePolicy } from '../../src/workspace-route-contracts.js';
+import { personalWorkspacePolicy } from '../support/workspace-resource-policy.js';
 const apps: ReturnType<typeof Fastify>[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
@@ -32,7 +37,7 @@ function fixture(resources?: WorkspaceResourcePolicy) {
       ownsWorkbenchConnection,
       revalidateTerminalAuthorizations
     },
-    ...(resources === undefined ? {} : { resources }),
+    resources: resources ?? personalWorkspacePolicy(),
     databaseError: (reply, error) =>
       sendError(reply, 409, error instanceof Error ? error.message : 'NODE_RESPONSE_INVALID')
   });
@@ -49,6 +54,21 @@ function fixture(resources?: WorkspaceResourcePolicy) {
   };
 }
 describe('Shared Workspace HTTP routes', () => {
+  it('does not relay workspace removal when the required policy rejects it', async () => {
+    const resources = personalWorkspacePolicy();
+    resources.assertCanUnregisterWorkspace = vi.fn(async () => {
+      throw new Error('WORKSPACE_ACCESS_DENIED');
+    });
+    const { app, requestNode, headers } = fixture(resources);
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/workspaces/workspace-1?nodeId=node-1',
+      headers
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'WORKSPACE_ACCESS_DENIED' } });
+    expect(requestNode).not.toHaveBeenCalled();
+  });
   it.each([undefined, '', 'modules/tool'])(
     'preserves the current-file repository target %s through reads and metadata',
     async (repositoryPath) => {
@@ -450,8 +470,6 @@ describe('Shared Workspace HTTP routes', () => {
       assertCanManageWorkspace: vi.fn(async () => undefined),
       assertCanUnregisterWorkspace: vi.fn(async () => undefined),
       unregisterWorkspace: vi.fn(async () => undefined),
-      changeWorkspaceOwnership: vi.fn(async () => undefined),
-      renameWorkspace: vi.fn(async () => undefined),
       updateWorkspaceGroupName: vi.fn(async () => undefined),
       updateWorkspace: vi.fn(async () => undefined)
     } satisfies WorkspaceResourcePolicy;
@@ -495,8 +513,6 @@ describe('Shared Workspace HTTP routes', () => {
       assertCanManageWorkspace: vi.fn(async () => undefined),
       assertCanUnregisterWorkspace: vi.fn(async () => undefined),
       unregisterWorkspace: vi.fn(async () => undefined),
-      changeWorkspaceOwnership: vi.fn(async () => undefined),
-      renameWorkspace: vi.fn(async () => undefined),
       updateWorkspaceGroupName,
       updateWorkspace
     } satisfies WorkspaceResourcePolicy;
@@ -552,8 +568,6 @@ describe('Shared Workspace HTTP routes', () => {
       assertCanManageWorkspace,
       assertCanUnregisterWorkspace,
       unregisterWorkspace,
-      changeWorkspaceOwnership: vi.fn(async () => undefined),
-      renameWorkspace: vi.fn(async () => undefined),
       updateWorkspaceGroupName: vi.fn(async () => undefined),
       updateWorkspace: vi.fn(async () => undefined)
     } satisfies WorkspaceResourcePolicy;
@@ -576,6 +590,137 @@ describe('Shared Workspace HTTP routes', () => {
       undefined
     );
     expect(unregisterWorkspace).toHaveBeenCalledWith(1, 'node-1', 'workspace-1');
+  });
+  it('lets a currently authorized retry finish Server cleanup after Node removal and a revoked first attempt', async () => {
+    const resources = personalWorkspacePolicy();
+    let authorized = true;
+    let serverWorkspaceExists = true;
+    let nodeWorkspaceExists = true;
+    resources.assertCanUnregisterWorkspace = vi.fn(async () => {
+      if (!authorized) throw new Error('WORKSPACE_FORBIDDEN');
+    });
+    const unregister = vi.fn(async () => {
+      if (!authorized) throw new Error('WORKSPACE_FORBIDDEN');
+      serverWorkspaceExists = false;
+    });
+    resources.unregisterWorkspace = unregister;
+    const { app, headers, requestNode } = fixture(resources);
+    requestNode.mockImplementation(async () => {
+      if (!nodeWorkspaceExists)
+        throw new NodeRequestError(
+          { error: 'WORKSPACE_NOT_FOUND', message: 'Workspace was not found.' },
+          'request-2',
+          'node'
+        );
+      nodeWorkspaceExists = false;
+      authorized = false;
+      return { workspace: { id: 'workspace-1' } };
+    });
+    const request = {
+      method: 'DELETE' as const,
+      url: '/api/workspaces/workspace-1?nodeId=node-1',
+      headers
+    };
+    const first = await app.inject(request);
+    expect(first.statusCode).toBe(409);
+    expect(first.json()).toMatchObject({ error: { code: 'WORKSPACE_FORBIDDEN' } });
+    expect(nodeWorkspaceExists).toBe(false);
+    expect(serverWorkspaceExists).toBe(true);
+    const deniedRetry = await app.inject(request);
+    expect(deniedRetry.statusCode).toBe(409);
+    expect(requestNode).toHaveBeenCalledTimes(1);
+    authorized = true;
+    const retry = await app.inject(request);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toEqual({});
+    expect(serverWorkspaceExists).toBe(false);
+    expect(unregister).toHaveBeenCalledTimes(2);
+    expect(unregister).toHaveBeenLastCalledWith(1, 'node-1', 'workspace-1');
+  });
+
+  it('finishes an authorized retry from a correlated Node response through the real request channel', async () => {
+    let sent: { id: string } | undefined;
+    const socket = {
+      OPEN: 1,
+      readyState: 1,
+      send: (raw: string) => {
+        sent = JSON.parse(raw) as { id: string };
+      }
+    };
+    const channel = new NodeRequestChannel(() => socket as never);
+    const resources = personalWorkspacePolicy();
+    const unregister = vi.spyOn(resources, 'unregisterWorkspace');
+    const { app, headers, requestNode } = fixture(resources);
+    requestNode.mockImplementationOnce(async (nodeId, operation, data, user) => {
+      if (typeof nodeId !== 'string' || typeof operation !== 'string')
+        throw new Error('INVALID_REQUEST');
+      const result = channel.request(nodeId, operation, data, user as UserNodeAuthorization);
+      if (sent === undefined) throw new Error('REQUEST_NOT_SENT');
+      channel.resolve(
+        nodeId,
+        createEnvelope(
+          'node.response',
+          {
+            error: 'WORKSPACE_NOT_FOUND',
+            message: 'Workspace was not found.'
+          },
+          { replyTo: sent.id }
+        )
+      );
+      return result;
+    });
+    try {
+      const reply = await app.inject({
+        method: 'DELETE',
+        url: '/api/workspaces/workspace-1?nodeId=node-1',
+        headers
+      });
+      expect(reply.statusCode).toBe(200);
+      expect(unregister).toHaveBeenCalledWith(1, 'node-1', 'workspace-1');
+    } finally {
+      channel.close();
+      await app.close();
+    }
+  });
+
+  it.each([
+    new NodeRequestError(
+      { error: 'WORKSPACE_NOT_FOUND', message: 'Workspace was not found.' },
+      'request',
+      'transport'
+    ),
+    new NodeRequestError(
+      { error: 'NODE_OFFLINE', message: 'Node is offline.' },
+      'request',
+      'transport'
+    ),
+    new NodeRequestError(
+      { error: 'WORKSPACE_BUSY', message: 'Workspace is busy.' },
+      'request',
+      'node'
+    ),
+    new NodeRequestError(
+      { error: 'NODE_ACCESS_DENIED', message: 'Node access denied.' },
+      'request',
+      'transport'
+    ),
+    new NodeRequestError(
+      { error: 'NODE_REQUEST_TIMEOUT', message: 'Node request timed out.' },
+      'request',
+      'transport'
+    )
+  ])('does not infer a missing Workspace from an unrelated failure %s', async (failure) => {
+    const resources = personalWorkspacePolicy();
+    const unregister = vi.spyOn(resources, 'unregisterWorkspace');
+    const { app, headers, requestNode } = fixture(resources);
+    requestNode.mockRejectedValueOnce(failure);
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/workspaces/workspace-1?nodeId=node-1',
+      headers
+    });
+    expect(response.statusCode).toBe(409);
+    expect(unregister).not.toHaveBeenCalled();
   });
   it('rejects a Watch connection that does not belong to the current session', async () => {
     const { app, requestNode, headers } = fixture();

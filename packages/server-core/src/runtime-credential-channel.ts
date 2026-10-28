@@ -20,14 +20,14 @@ export async function resolveNodeRuntimeCredential(input: {
   readonly envelope: NodeEnvelope;
   readonly isCurrentConnection: () => boolean;
   readonly capability: MarAgentRuntimeCredentialCapability | undefined;
-  readonly service: Pick<RuntimeCredentialService, 'resolve'> | undefined;
+  readonly service: Pick<RuntimeCredentialService, 'resolve'>;
   readonly respond: (payload: unknown) => void;
 }): Promise<void> {
   if (!input.isCurrentConnection()) {
     input.respond(runtimeCredentialConnectionError());
     return;
   }
-  if (input.capability?.apiVersion !== 1 || input.service === undefined) {
+  if (input.capability?.apiVersion !== 1) {
     input.respond({
       error: {
         code: 'MAR_AGENT_RUNTIME_CREDENTIALS_UNSUPPORTED',

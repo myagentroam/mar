@@ -18,7 +18,6 @@ import {
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
-import { supportsNodeFeature } from '../../util/node-features.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import FileTypeIcon from './FileTypeIcon.vue';
 
@@ -46,12 +45,6 @@ const query = ref('');
 const activeKey = ref<string>();
 const selectionCommitted = ref(false);
 const http = createScopedHttpService();
-const nonblockingFiles = computed(() =>
-  supportsNodeFeature(
-    props.nodes.find((node) => node.id === props.nodeId)?.nodeAppVersion ?? '',
-    'WORKSPACE_INDEX_PREPARATION'
-  )
-);
 const queryService = createQuickOpenQueryService({
   open: () => props.open,
   query: () => query.value,
@@ -60,7 +53,6 @@ const queryService = createQuickOpenQueryService({
   workspaceId: () => props.workspaceId,
   filesReady: () => props.filesReady,
   symbolsReady: () => props.symbolsReady,
-  nonblockingFiles: () => nonblockingFiles.value,
   nodes: () => props.nodes,
   workspaceTabs: () => props.workspaceTabs,
   origin: () => (typeof window === 'undefined' ? 'http://localhost' : window.location.origin),
@@ -190,13 +182,7 @@ watch(tab, () => {
   scheduleSearch();
 });
 watch(
-  [
-    () => props.nodeId,
-    () => props.workspaceId,
-    () => props.filesReady,
-    () => props.symbolsReady,
-    nonblockingFiles
-  ],
+  [() => props.nodeId, () => props.workspaceId, () => props.filesReady, () => props.symbolsReady],
   scheduleSearch
 );
 

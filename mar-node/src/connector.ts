@@ -1429,9 +1429,9 @@ export class NodeConnector {
       },
       connected: (payload) => {
         this.usageOutbox?.connected(payload);
+        this.connectionLifecycle.connected();
         for (const change of this.pendingSessionGroups.values())
           this.send('session.group.changed', change);
-        this.connectionLifecycle.connected();
         this.mailNotificationControl.setFeatures(payload);
       },
       close: (code, reason) => this.controlChannel.close(code, reason),

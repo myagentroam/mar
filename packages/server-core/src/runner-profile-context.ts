@@ -1,9 +1,5 @@
 import type { MarAgentModelSummary, MarAgentNodeModelSummary } from '@myagentroam/protocol';
-import type { ProcessSecretResolver } from './session-run-contracts.js';
-
-export interface RunnerModelCatalog {
-  listForUser(userId: number): Promise<readonly MarAgentModelSummary[]>;
-}
+import type { ProcessSecretResolver, RunnerModelCatalog } from './session-run-contracts.js';
 
 /** Profiles must use the requesting user's Runner credentials and model visibility. */
 export async function prepareRunnerProfileContext(input: {

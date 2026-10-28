@@ -7,7 +7,6 @@ import path from 'node:path';
 import { prepareMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { SkillSourceService } from '../../ee/server/src/skill/skill-source-service.js';
 import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-service.js';
-import type { GithubSkillProvider } from '../../packages/server-core/src/github-skill-provider.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
@@ -92,11 +91,15 @@ async function withFixture(kind: Kind, run: (fixture: Fixture) => Promise<void>)
           // Different candidates must not serialize on the independent cache-key coordinator.
           contentHash: createHash('sha256').update(request.skillPath!).digest('hex'),
           archiveHash: 'c'.repeat(64),
+          archiveJson: JSON.stringify({
+            schemaVersion: 1,
+            files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+          }),
           contentBytes: 1,
           tlsVerified: true,
           files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
         })
-      } as unknown as GithubSkillProvider;
+      };
       const favoriteService = new SkillFavoriteService(
         { raw },
         authorization,

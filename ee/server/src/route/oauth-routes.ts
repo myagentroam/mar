@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { oauthProviderInputSchema } from '@myagentroam/protocol';
+import { emitAudit } from '@myagentroam/server-core/audit';
 import {
   isAllowedOrigin,
   parseCookies,
@@ -71,7 +72,7 @@ export function registerOAuthRoutes(input: {
       if (actor === undefined) return;
       try {
         await oauth.removeBinding(actor.userId, request.params.providerKey);
-        await database.audit({
+        emitAudit(database, {
           eventType: 'oauth_identity_unbound',
           actorUserId: actor.userId,
           authenticationMethod: 'PASSWORD',
@@ -247,7 +248,7 @@ export function registerOAuthRoutes(input: {
         redirectUri: callbackUri(request, providerKey, publicOrigin)
       });
       if (result.flowType === 'BIND') {
-        await database.audit({
+        emitAudit(database, {
           eventType: 'oauth_identity_bound',
           actorUserId: result.userId,
           authenticationMethod: 'OAUTH2',
@@ -270,7 +271,7 @@ export function registerOAuthRoutes(input: {
         nodeControl.closeUserTerminals(sessionHash);
         nodeControl.closeUserWorkbench(sessionHash);
       }
-      await database.audit({
+      emitAudit(database, {
         eventType: 'login_succeeded',
         actorUserId: userId,
         authenticationMethod: 'OAUTH2',

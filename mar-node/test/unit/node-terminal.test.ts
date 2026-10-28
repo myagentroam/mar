@@ -906,9 +906,9 @@ describe('Node Admin Terminal', () => {
           authenticateNode: (id, credential) =>
             nodes.has(id) && credential === 'fixture-credential'
               ? { id, disabled: false }
-              : undefined,
-          userOwnsNode: (userId, id) => userId === user.userId && nodes.has(id)
+              : undefined
         },
+        authorizeNodeRequest: (userId, id) => userId === user.userId && nodes.has(id),
         requestNode: async (id, operation, data) => {
           expect(operation).toBe('terminal.attach.authorize');
           return {

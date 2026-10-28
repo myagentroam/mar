@@ -607,7 +607,9 @@ test('Mobile menus animate in Chat, preserve their leaving content and isolate s
     (window as Window & { menuTransitions?: string[] }).menuTransitions = [];
     document.addEventListener('transitionrun', (event) => {
       if ((event.target as Element).matches('.workspace-tree'))
-        (window as Window & { menuTransitions: string[] }).menuTransitions.push(event.propertyName);
+        (window as Window & { menuTransitions?: string[] }).menuTransitions!.push(
+          event.propertyName
+        );
     });
   });
   await notifications.click();
@@ -616,7 +618,7 @@ test('Mobile menus animate in Chat, preserve their leaving content and isolate s
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as Window & { menuTransitions: string[] }).menuTransitions.includes('transform')
+        (window as Window & { menuTransitions?: string[] }).menuTransitions!.includes('transform')
       )
     )
     .toBe(true);
@@ -690,7 +692,7 @@ test('Closing a mobile menu does not refocus a background editor', async ({ page
   await input.focus();
   await page.getByRole('button', { name: 'Recent Sessions', exact: true }).evaluate((element) => {
     // A touch activation or shortcut need not focus the menu trigger first.
-    element.click();
+    (element as HTMLButtonElement).click();
   });
   const drawer = page.locator('.workspace-tree.mobile-open');
   await expect(drawer).toBeFocused();

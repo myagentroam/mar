@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
 import { createEnvelope, type NodeEnvelope } from '../../packages/protocol/src/index.js';
 import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp } from '../support/create-test-server-app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 import { randomUUID } from 'node:crypto';
 import { NodeConnector } from '../../mar-node/src/connector.js';
@@ -31,7 +32,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
   const directory = await mkdtemp(join(tmpdir(), 'mar-terminal-server-restart-'));
   const statusPath = join(directory, 'status.json');
   const startsPath = join(directory, 'starts.txt');
-  let app: ReturnType<typeof createServerApp> | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   let connector: NodeConnector | undefined;
   const sockets: TestSocket[] = [];
   let processIds: number[] = [];
@@ -62,7 +63,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
       dataDirectory: join(directory, 'server'),
       secureCookies: false
     };
-    app = createServerApp(serverOptions);
+    app = (await createServerApp(serverOptions)).app;
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const admin = await adminHeaders(app);
     const registration = await app.inject({
@@ -163,7 +164,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
     expect((await status()).shellPid).toBe(before.shellPid);
     expect(manager.get(terminalId).state).toBe('RUNNING');
 
-    app = createServerApp(serverOptions);
+    app = (await createServerApp(serverOptions)).app;
     await app.listen({ host: '127.0.0.1', port: Number(new URL(baseUrl).port) });
     await expect
       .poll(nodes, { timeout: 15_000 })
@@ -262,7 +263,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
 
 test('Admin Terminal uses one-use tickets and a dual-WebSocket relay with replay and closure restrictions', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-terminal-relay-'));
-  const app = createServerApp({
+  const app = createTestServerApp({
     databasePath: join(directory, 'server.sqlite'),
     secureCookies: false
   });
@@ -551,7 +552,7 @@ test('Admin Terminal uses one-use tickets and a dual-WebSocket relay with replay
   }
 });
 
-async function adminHeaders(app: ReturnType<typeof createServerApp>): Promise<{
+async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['app']): Promise<{
   readonly cookie: string;
   readonly 'x-csrf-token': string;
 }> {

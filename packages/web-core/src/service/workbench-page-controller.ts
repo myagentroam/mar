@@ -125,7 +125,6 @@ import {
 } from './prompt-completion-service.js';
 import { promptCompletionPreferenceService } from './prompt-completion-preference-service.js';
 import { PromptCompletionClientService } from './prompt-completion-client-service.js';
-import { supportsNodeFeature } from '../util/node-features.js';
 import { ApiError, errorCode } from '../util/api-error.js';
 import {
   CONVERSATION_RECENT_SEGMENT_LIMIT,
@@ -491,11 +490,6 @@ export function createWorkbenchPageController<
 
   const runnerProfileService = createRunnerProfileService({
     workspaceTarget,
-    supportsAuto: (nodeId) =>
-      supportsNodeFeature(
-        nodes.value.find((node) => node.id === nodeId)?.nodeAppVersion ?? '',
-        'MAR_AGENT_AUTO'
-      ),
     profiles: runnerProfiles,
     loading: runnerProfilesLoading,
     failed: runnerProfilesFailed,
@@ -1497,11 +1491,7 @@ export function createWorkbenchPageController<
   const workspaceLocalFileManagerAvailable = computed(() => {
     void workspaceDirectProbeRevision.value;
     const nodeId = workspaceNodeId.value;
-    return (
-      nodeId !== undefined &&
-      directTransport.networkInfo(nodeId)?.scope === 'LOOPBACK' &&
-      supportsNodeFeature(workspaceHost.value?.nodeAppVersion ?? '', 'LOCAL_FILE_MANAGER')
-    );
+    return nodeId !== undefined && directTransport.networkInfo(nodeId)?.scope === 'LOOPBACK';
   });
 
   function workspaceDirectFile(path: string, worktreePath?: string, repositoryPath?: string) {
@@ -1752,9 +1742,7 @@ export function createWorkbenchPageController<
   } = workspaceRegistrationService;
 
   const workspaceSessionDiscovery = createWorkspaceSessionService({
-    groupingSupported: () =>
-      nodeManifest.value?.sessionGroups?.apiVersion === 1 &&
-      supportsNodeFeature(workspaceHost.value?.nodeAppVersion ?? '', 'SESSION_GROUPS'),
+    groupingSupported: () => nodeManifest.value?.sessionGroups?.apiVersion === 1,
     sessions,
     runs,
     workspaceTarget,
@@ -2950,8 +2938,8 @@ export function createWorkbenchPageController<
     beginSubmission: submissionService.begin
   });
 
-  function sendSessionMessage(): void {
-    void sendSessionMessageWithIntent();
+  function sendSessionMessage(intentOverride?: 'REPLACE_CURRENT'): void {
+    void sendSessionMessageWithIntent(intentOverride);
   }
 
   async function sendSessionMessageWithIntent(
@@ -3294,8 +3282,7 @@ export function createWorkbenchPageController<
       completionPreferences.enabled.value &&
       nodeReady.value &&
       workspaceHost.value?.capabilities.promptCompletion?.apiVersion === 1 &&
-      workspaceHost.value?.capabilities.promptCompletion?.contextVersion === 3 &&
-      supportsNodeFeature(workspaceHost.value?.nodeAppVersion ?? '', 'prompt-completion'),
+      workspaceHost.value?.capabilities.promptCompletion?.contextVersion === 3,
     target: () =>
       workspaceNodeId.value && activeWorkspaceId.value
         ? {

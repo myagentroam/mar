@@ -4,18 +4,11 @@ import {
   createEnvelope,
   nodeResponseErrorPayloadSchema,
   publicErrorMessage,
-  type NodeResponseErrorPayload,
   type NodeEnvelope
 } from '@myagentroam/protocol';
 import { safePublicError } from './http-errors.js';
-
-export interface UserNodeAuthorization {
-  readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant | undefined;
-  readonly userId: number;
-  readonly sessionHash: string;
-  /** Server-only context; never forwarded as a Node credential field. */
-  readonly workspaceId?: string;
-}
+import type { UserNodeAuthorization } from './node-access-contracts.js';
+import { NodeRequestError } from './node-request-error.js';
 
 type RequestObserver = (
   phase: 'requested' | 'completed' | 'failed',
@@ -32,24 +25,6 @@ interface PendingRequest {
   readonly observe?: RequestObserver;
 }
 
-export class NodeRequestError extends Error {
-  readonly code: string;
-  readonly publicMessage: string;
-  readonly publicDetails: string | undefined;
-  readonly publicParameters: Readonly<Record<string, string | number>> | undefined;
-  readonly upstreamRequestId: string;
-
-  constructor(failure: NodeResponseErrorPayload, upstreamRequestId: string) {
-    super(failure.error);
-    this.name = 'NodeRequestError';
-    this.code = failure.error;
-    this.publicMessage = failure.message ?? publicErrorMessage(failure.error);
-    this.publicDetails = failure.details;
-    this.publicParameters = failure.parameters;
-    this.upstreamRequestId = upstreamRequestId;
-  }
-}
-
 /** Transport only. Callers must authorize the fixed operation before dispatch. */
 export class NodeRequestChannel {
   private readonly pending = new Map<string, PendingRequest>();
@@ -58,7 +33,11 @@ export class NodeRequestChannel {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly log: (event: string, fields: Record<string, unknown>) => void = () =>
       undefined,
-    private readonly recordTraffic?: (bytes: number) => void
+    private readonly recordTraffic?: (bytes: number) => void,
+    private readonly encode: (socket: WebSocket, envelope: NodeEnvelope) => unknown = (
+      _socket,
+      envelope
+    ) => envelope
   ) {}
 
   request(
@@ -107,23 +86,26 @@ export class NodeRequestChannel {
       try {
         observe?.('requested', id);
         const serialized = JSON.stringify(
-          createEnvelope(
-            'node.request',
-            {
-              operation,
-              data,
-              userAuthorization: {
-                userId: user.userId,
-                sessionHash: user.sessionHash,
-                ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
-                nodeId,
+          this.encode(
+            socket,
+            createEnvelope(
+              'node.request',
+              {
                 operation,
-                requestId: id,
-                issuedAt,
-                expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
-              }
-            },
-            { id }
+                data,
+                userAuthorization: {
+                  userId: user.userId,
+                  sessionHash: user.sessionHash,
+                  ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
+                  nodeId,
+                  operation,
+                  requestId: id,
+                  issuedAt,
+                  expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
+                }
+              },
+              { id }
+            )
           )
         );
         this.recordTraffic?.(Buffer.byteLength(serialized));
@@ -160,7 +142,7 @@ export class NodeRequestChannel {
       const failure = parsed.success
         ? parsed.data
         : { error: 'MESSAGE_INVALID', message: publicErrorMessage('MESSAGE_INVALID') };
-      this.fail(id, new NodeRequestError(failure, id));
+      this.fail(id, new NodeRequestError(failure, id, 'node'));
       return;
     }
     this.pending.delete(id);

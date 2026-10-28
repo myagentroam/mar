@@ -748,7 +748,7 @@ describe('Node conversation hosting registration lifecycle', () => {
       registrationToken: 'registration-token'
     };
     const onRegistered = vi.fn(async () => undefined);
-    const control = { send: vi.fn() };
+    const control = { send: vi.fn(), ready: vi.fn(() => true), connection: vi.fn(() => ({})) };
     const terminal = { connect: vi.fn() };
     const service = new NodeConnectionLifecycleService({
       config: () => config,
@@ -777,9 +777,58 @@ describe('Node conversation hosting registration lifecycle', () => {
       inactiveRetentionDays: 60
     });
     expect(onRegistered).toHaveBeenCalledOnce();
-    expect(control.send.mock.invocationCallOrder[0]).toBeGreaterThan(
+    expect(control.ready.mock.invocationCallOrder[0]).toBeGreaterThan(
       onRegistered.mock.invocationCallOrder[0]!
     );
+    service.stop();
+  });
+
+  it('does not mark a replacement connection ready when old registration finishes late', async () => {
+    const directory = await temporaryDirectory();
+    let config: NodeConfig | undefined = {
+      serverUrl: 'http://server.test',
+      allowedRoots: [],
+      registrationToken: 'registration-token'
+    };
+    let connection = {};
+    const original = connection;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const onRegistered = vi.fn(() => gate);
+    const control = {
+      send: vi.fn(),
+      connection: () => connection,
+      ready: vi.fn((_capabilities: NodeCapabilities, expected: object) => expected === connection)
+    };
+    const terminal = { connect: vi.fn() };
+    const service = new NodeConnectionLifecycleService({
+      config: () => config,
+      setConfig: (next) => {
+        config = next;
+      },
+      configPath: join(directory, 'mar-node.json'),
+      capabilities: baseCapabilities,
+      detectCapabilities: baseCapabilities,
+      capabilitiesProvided: true,
+      stopped: () => false,
+      setCapabilities: () => undefined,
+      control: control as never,
+      terminal: terminal as never,
+      metrics: new NodeMetrics(),
+      heartbeatMs: 60_000,
+      refreshMs: 60_000,
+      onRegistered
+    });
+    const registering = service.register('node-registered', 'credential');
+    await vi.waitFor(() => expect(onRegistered).toHaveBeenCalledOnce());
+    connection = {};
+    release();
+    await registering;
+    expect(control.ready).toHaveBeenCalledWith(expect.anything(), original);
+    expect(terminal.connect).not.toHaveBeenCalled();
+    expect(control.send).not.toHaveBeenCalled();
     service.stop();
   });
 });

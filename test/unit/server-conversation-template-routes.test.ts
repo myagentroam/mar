@@ -4,16 +4,18 @@ import type { ConversationTemplateDraft } from '../../packages/protocol/src/inde
 import { hashOpaque } from '../../ee/server/src/database.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { NodeControl } from '../../ee/server/src/node-control.js';
-import type { NodeUpgradeService } from '../../ee/server/src/service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '../../packages/server-core/src/node-upgrade-service.js';
 import { registerConversationTemplateRoutes } from '../../ee/server/src/route/conversation-template-routes.js';
 import { registerResourceGrantRoutes } from '../../ee/server/src/route/resource-grant-routes.js';
 import type { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
 import type {
   ConversationTemplateService,
-  InspectConversationTemplateDraft,
+  InspectConversationTemplateDraft
+} from '../../ee/server/src/service/conversation-template-service.js';
+import type {
   PublishConversationTemplateDraft,
   RefreshConversationTemplatePublish
-} from '../../ee/server/src/service/conversation-template-service.js';
+} from '../../packages/server-core/src/conversation-template-publisher.js';
 
 const csrfToken = 'csrf-token';
 const headers = {
@@ -225,7 +227,15 @@ describe('Server conversation template routes', () => {
     registerResourceGrantRoutes({
       app,
       database: fixture.database,
-      resources: fixture.resources,
+      directory: {
+        listManagedResources: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        },
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
+      grants: fixture.resources as never,
       nodeControl: fixture.nodeControl,
       nodeUpgrades: {} as NodeUpgradeService,
       publicOrigin: undefined

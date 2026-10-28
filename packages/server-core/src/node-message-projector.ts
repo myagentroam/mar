@@ -3,14 +3,17 @@ import { sessionGroupChangedSchema, type SessionGroupChanged } from '@myagentroa
 import { watchEventSchema, workbenchEventSchema, type NodeEnvelope } from '@myagentroam/protocol';
 import type { RelayedWorkbenchEvent, WorkbenchRelayService } from './workbench-relay-service.js';
 
-interface NodeMessageProjectorOptions {
+export interface NodeMessageConsumers {
+  readonly notification: (nodeId: string, payload: unknown) => Promise<boolean>;
+  readonly hostedConversationActivity: (nodeId: string, payload: unknown) => Promise<boolean>;
+  readonly recentRuns: (nodeId: string, payload: unknown) => Promise<boolean>;
+  readonly sessionGroupChanged: (change: SessionGroupChanged) => Promise<void>;
+}
+
+interface NodeMessageProjectorOptions extends NodeMessageConsumers {
   readonly relay: WorkbenchRelayService;
   readonly send: (socket: WebSocket, type: string, payload: unknown, replyTo?: string) => void;
   readonly sendInvalid: (socket: WebSocket, replyTo?: string) => void;
-  readonly notification?: (nodeId: string, payload: unknown) => Promise<boolean>;
-  readonly hostedConversationActivity?: (nodeId: string, payload: unknown) => Promise<boolean>;
-  readonly recentRuns?: (nodeId: string, payload: unknown) => Promise<boolean>;
-  readonly sessionGroupChanged?: (change: SessionGroupChanged) => Promise<void>;
   readonly sendWatchEvent?: (
     connectionId: string,
     message: object
@@ -30,6 +33,7 @@ const PROJECTED_TYPES = new Set([
 
 export class NodeMessageProjector {
   private readonly sessionProjectionTails = new Map<string, Promise<void>>();
+  private readonly hostedActivity = new Set<Promise<void>>();
 
   constructor(private readonly options: NodeMessageProjectorOptions) {}
 
@@ -49,6 +53,11 @@ export class NodeMessageProjector {
     return current;
   }
 
+  /** Drain admitted database projections before their storage owner closes. */
+  async drain(): Promise<void> {
+    await Promise.all([...this.sessionProjectionTails.values(), ...this.hostedActivity]);
+  }
+
   handles(type: string): boolean {
     return PROJECTED_TYPES.has(type);
   }
@@ -61,9 +70,8 @@ export class NodeMessageProjector {
           this.options.sendInvalid(socket, envelope.id);
           return;
         }
-        if (this.options.sessionGroupChanged === undefined) return;
         void this.enqueueSessionProjection(nodeId, () =>
-          this.options.sessionGroupChanged!(parsed.data)
+          this.options.sessionGroupChanged(parsed.data)
         ).then(
           () => this.options.send(socket, 'session.group.ack', parsed.data, envelope.id),
           () => socket.close(1011, 'SESSION_GROUP_PROJECTION_FAILED')
@@ -87,7 +95,7 @@ export class NodeMessageProjector {
         return;
       case 'recent-runs':
         void this.enqueueSessionProjection(nodeId, async () =>
-          this.options.recentRuns?.(nodeId, envelope.payload)
+          this.options.recentRuns(nodeId, envelope.payload)
         ).catch(() => false);
     }
   }
@@ -140,7 +148,7 @@ export class NodeMessageProjector {
     ) {
       const payload = event.payload.event.payload;
       void this.enqueueSessionProjection(nodeId, async () =>
-        this.options.notification?.(nodeId, payload)
+        this.options.notification(nodeId, payload)
       ).catch(() => false);
       return;
     }
@@ -153,7 +161,7 @@ export class NodeMessageProjector {
     ) {
       const payload = event.payload.event.payload;
       void this.enqueueSessionProjection(nodeId, async () =>
-        this.options.notification?.(nodeId, payload)
+        this.options.notification(nodeId, payload)
       ).catch(() => false);
       return;
     }
@@ -164,7 +172,12 @@ export class NodeMessageProjector {
     ) {
       const projection = { ...event.payload };
       delete projection.kind;
-      void this.options.hostedConversationActivity?.(nodeId, projection).catch(() => false);
+      const task = this.options.hostedConversationActivity(nodeId, projection).then(
+        () => undefined,
+        () => undefined
+      );
+      this.hostedActivity.add(task);
+      void task.then(() => this.hostedActivity.delete(task));
       return;
     }
     this.options.relay.publish(event);

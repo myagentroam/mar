@@ -6,8 +6,8 @@ import {
   nodeResponseErrorPayloadSchema,
   publicErrorMessage
 } from '../../packages/protocol/src/index.js';
-import { MarAgentError } from '../../mar-agent/src/index.js';
-import { NodeRequestError } from '../../packages/server-core/src/node-request-channel.js';
+import { AgentError } from '../../mar-agent/src/index.js';
+import { NodeRequestError } from '../../packages/server-core/src/node-request-error.js';
 import { apiErrorFromResponse } from '../../packages/web-core/src/util/api-error.js';
 import { platformCliCommand, platformCliInvocation } from '../../mar-node/src/operational.js';
 import { RotatingNodeLog } from '../../mar-node/src/rotating-log.js';
@@ -24,7 +24,7 @@ import {
 describe('Cross-boundary error codes', () => {
   it('preserves a real SDK capacity error through Node wire, Server relay and browser parsing', () => {
     const failure = safeNodePublicError(
-      new MarAgentError(
+      new AgentError(
         'service_unavailable_error',
         'Service is too busy. Provider request ID: provider-request-1'
       ),

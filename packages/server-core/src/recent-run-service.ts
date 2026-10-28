@@ -3,8 +3,8 @@ import {
   type RecentRun,
   type RecentRunProjection
 } from '@myagentroam/protocol';
-import type { RowDataPacket } from 'mysql2/promise';
-import type { NotificationStore } from './notification-contracts.js';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 
 const TTL_MS = 12 * 60 * 60_000;
 const CLEANUP_INTERVAL_MS = 5 * 60_000;
@@ -22,7 +22,8 @@ export class RecentRunService {
   private readonly runsBySession = new Map<string, StoredRecentRun>();
 
   constructor(
-    private readonly database: NotificationStore,
+    private readonly database: { readonly raw: Pool },
+    private readonly authorize: NodeRequestAuthorization,
     private readonly push: (userId: number, message: object) => void,
     private readonly now: () => number = Date.now
   ) {
@@ -74,7 +75,7 @@ export class RecentRunService {
         )
           continue;
         if (
-          !(await this.database.userCanRequestNode(
+          !(await this.authorize(
             run.userId,
             change.nodeId,
             'workbench.event.receive',
@@ -95,15 +96,7 @@ export class RecentRunService {
     const runs: RecentRun[] = [];
     for (const run of [...this.runsBySession.values()].sort(compareRecentRuns)) {
       if (run.userId !== userId) continue;
-      if (
-        await this.database.userCanRequestNode(
-          userId,
-          run.nodeId,
-          'workbench.event.receive',
-          run,
-          run.workspaceId
-        )
-      )
+      if (await this.authorize(userId, run.nodeId, 'workbench.event.receive', run, run.workspaceId))
         runs.push(publicRun(run));
     }
     return runs;
@@ -112,13 +105,7 @@ export class RecentRunService {
   private async upsertAuthorized(nodeId: string, run: RecentRunProjection): Promise<boolean> {
     if (run.nodeId !== nodeId) return false;
     if (
-      !(await this.database.userCanRequestNode(
-        run.userId,
-        nodeId,
-        'workbench.event.receive',
-        run,
-        run.workspaceId
-      ))
+      !(await this.authorize(run.userId, nodeId, 'workbench.event.receive', run, run.workspaceId))
     )
       return false;
     const key = taskKey(run.userId, nodeId, run.sessionId);

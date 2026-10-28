@@ -4,14 +4,58 @@ import { createEnvelope } from '@myagentroam/protocol';
 import { NodeRequestChannel } from '../../src/node-request-channel.js';
 
 const user = { userId: 1, sessionHash: 'session-hash' };
-function fixture() {
+function fixture(version: 2 | 3 = 3) {
   const socket = { readyState: 1, OPEN: 1, send: vi.fn() };
-  const channel = new NodeRequestChannel(() => socket as unknown as WebSocket);
+  const channel = new NodeRequestChannel(
+    () => socket as unknown as WebSocket,
+    undefined,
+    undefined,
+    (_socket, envelope) => ({ ...envelope, version })
+  );
   const request = () => JSON.parse(socket.send.mock.calls[0]![0] as string);
   return { channel, socket, request };
 }
 
 describe('common authorized Node request channel', () => {
+  it('distinguishes a correlated Node response from a local transport failure', async () => {
+    const { channel, request } = fixture();
+    try {
+      const nodeFailure = channel.request(
+        'node-1',
+        'workspace.remove',
+        { workspaceId: 'ws' },
+        user
+      );
+      const frame = request();
+      const assertion = expect(nodeFailure).rejects.toMatchObject({
+        code: 'WORKSPACE_NOT_FOUND',
+        source: 'node',
+        upstreamRequestId: frame.id
+      });
+      channel.resolve(
+        'node-1',
+        createEnvelope(
+          'node.response',
+          { error: 'WORKSPACE_NOT_FOUND', message: 'Workspace was not found.' },
+          { replyTo: frame.id }
+        )
+      );
+      await assertion;
+      const transportFailure = channel.request(
+        'node-1',
+        'workspace.remove',
+        { workspaceId: 'ws' },
+        user
+      );
+      const transportAssertion = expect(transportFailure).rejects.toMatchObject({
+        source: 'transport'
+      });
+      channel.rejectNode('node-1', new Error('NODE_OFFLINE'));
+      await transportAssertion;
+    } finally {
+      channel.close();
+    }
+  });
   it('diagnoses waiter timeout and disconnect without treating either as Node cancellation', async () => {
     vi.useFakeTimers();
     const socket = { readyState: 1, OPEN: 1, send: vi.fn() };
@@ -66,34 +110,37 @@ describe('common authorized Node request channel', () => {
     }
   });
 
-  it('sends supervised upgrades over the v2 Node control envelope', async () => {
-    const { channel, request } = fixture();
-    try {
-      const result = channel.request(
-        'node-1',
-        'node.upgrade.request',
-        { targetVersion: '0.9.122' },
-        user
-      );
-      const frame = request();
-      expect(frame).toMatchObject({
-        version: 2,
-        type: 'node.request',
-        payload: {
-          operation: 'node.upgrade.request',
-          data: { targetVersion: '0.9.122' },
-          userAuthorization: { ...user, nodeId: 'node-1', operation: 'node.upgrade.request' }
-        }
-      });
-      channel.resolve(
-        'node-1',
-        createEnvelope('node.response', { result: { status: 'ACCEPTED' } }, { replyTo: frame.id })
-      );
-      await expect(result).resolves.toEqual({ status: 'ACCEPTED' });
-    } finally {
-      channel.close();
+  it.each([2, 3] as const)(
+    'sends supervised upgrades over the v%i Node control envelope',
+    async (version) => {
+      const { channel, request } = fixture(version);
+      try {
+        const result = channel.request(
+          'node-1',
+          'node.upgrade.request',
+          { targetVersion: '0.9.122' },
+          user
+        );
+        const frame = request();
+        expect(frame).toMatchObject({
+          version,
+          type: 'node.request',
+          payload: {
+            operation: 'node.upgrade.request',
+            data: { targetVersion: '0.9.122' },
+            userAuthorization: { ...user, nodeId: 'node-1', operation: 'node.upgrade.request' }
+          }
+        });
+        channel.resolve(
+          'node-1',
+          createEnvelope('node.response', { result: { status: 'ACCEPTED' } }, { replyTo: frame.id })
+        );
+        await expect(result).resolves.toEqual({ status: 'ACCEPTED' });
+      } finally {
+        channel.close();
+      }
     }
-  });
+  );
 
   it('binds a short-lived authorization and correlates only the expected Node response', async () => {
     const { channel, request } = fixture();

@@ -29,35 +29,19 @@ interface Actor {
   readonly isAdmin: boolean;
 }
 
+export interface EnvironmentSecretAccess {
+  canManageNode(userId: number, nodeId: string): Promise<boolean>;
+  canUseNode(userId: number, nodeId: string): Promise<boolean>;
+  managedOrganizationIds(userId: number): Promise<readonly number[]>;
+  canManageOrganization(userId: number, organizationId: number): Promise<boolean>;
+  canManageWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<boolean>;
+  canUseWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<boolean>;
+}
+
 export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
   constructor(
     protected override readonly database: MysqlServerDatabase,
-    private readonly canManageNode: (userId: number, nodeId: string) => Promise<boolean> = (
-      userId,
-      nodeId
-    ) => database.userOwnsNode(userId, nodeId),
-    private readonly canUseNode: (userId: number, nodeId: string) => Promise<boolean> = (
-      userId,
-      nodeId
-    ) => database.userOwnsNode(userId, nodeId),
-    private readonly managedOrganizationIds: (
-      userId: number
-    ) => Promise<readonly number[]> = async () => [],
-    private readonly canManageOrganization: (
-      userId: number,
-      organizationId: number
-    ) => Promise<boolean> = async (userId, organizationId) =>
-      (await managedOrganizationIds(userId)).includes(organizationId),
-    private readonly canManageWorkspace: (
-      userId: number,
-      nodeId: string,
-      workspaceId: string
-    ) => Promise<boolean> = async () => false,
-    private readonly canUseWorkspace: (
-      userId: number,
-      nodeId: string,
-      workspaceId: string
-    ) => Promise<boolean> = async () => false
+    private readonly access: EnvironmentSecretAccess
   ) {
     super(database);
   }
@@ -100,7 +84,7 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
   ): Promise<readonly EnvironmentSecretSummary[]> {
     if (workspaceId !== undefined) {
       if (!nodeId || !workspaceId) throw new Error('SECRET_SCOPE_INVALID');
-      if (!(await this.canManageWorkspace(user.userId, nodeId, workspaceId)))
+      if (!(await this.access.canManageWorkspace(user.userId, nodeId, workspaceId)))
         throw new Error('WORKSPACE_FORBIDDEN');
       const [rows] = await this.database.raw.execute<RowDataPacket[]>(
         "SELECT * FROM environment_secrets WHERE scope='WORKSPACE' AND node_id=? AND workspace_id=? ORDER BY name,id",
@@ -108,9 +92,9 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
       );
       return rows.map(secretSummary);
     }
-    if (nodeId !== undefined && !(await this.canManageNode(user.userId, nodeId)))
+    if (nodeId !== undefined && !(await this.access.canManageNode(user.userId, nodeId)))
       throw new Error('NODE_FORBIDDEN');
-    const organizationIds = await this.managedOrganizationIds(user.userId);
+    const organizationIds = await this.access.managedOrganizationIds(user.userId);
     const [rows] = await this.database.raw.query<RowDataPacket[]>(
       `SELECT id,scope,name,secret_value,node_id,workspace_id,organization_id,visibility,created_at,updated_at
        FROM environment_secrets
@@ -129,7 +113,7 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
     // Target configuration is a complete snapshot, not a paginated management list.
     if (query['nodeId'] !== undefined || query['workspaceId'] !== undefined)
       throw new ManagementQueryError();
-    const organizations = await this.managedOrganizationIds(user.userId);
+    const organizations = await this.access.managedOrganizationIds(user.userId);
     const predicates = [
       "((scope='PERSONAL' AND owner_user_id=?) OR (scope='ORGANIZATION' AND organization_id IN (?)))"
     ];
@@ -174,8 +158,8 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
     workspaceId?: string
   ): Promise<Readonly<Record<string, string>>> {
     if (workspaceId === undefined) {
-      if (!(await this.canUseNode(userId, nodeId))) throw new Error('NODE_FORBIDDEN');
-    } else if (!(await this.canUseWorkspace(userId, nodeId, workspaceId))) {
+      if (!(await this.access.canUseNode(userId, nodeId))) throw new Error('NODE_FORBIDDEN');
+    } else if (!(await this.access.canUseWorkspace(userId, nodeId, workspaceId))) {
       throw new Error('WORKSPACE_FORBIDDEN');
     }
     const nodes = await this.database.listNodes();
@@ -220,19 +204,22 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
     if (scope === 'WORKSPACE') {
       if (organizationId !== undefined || !nodeId || !workspaceId)
         throw new Error('SECRET_SCOPE_INVALID');
-      if (!(await this.canManageWorkspace(user.userId, nodeId, workspaceId)))
+      if (!(await this.access.canManageWorkspace(user.userId, nodeId, workspaceId)))
         throw new Error('WORKSPACE_FORBIDDEN');
     } else if (scope === 'ORGANIZATION') {
       if (
         nodeId !== undefined ||
         !Number.isSafeInteger(organizationId) ||
-        !(await this.canManageOrganization(user.userId, organizationId!))
+        !(await this.access.canManageOrganization(user.userId, organizationId!))
       )
         throw new Error('ORGANIZATION_FORBIDDEN');
     } else if (scope === 'PERSONAL') {
       if (nodeId !== undefined || organizationId !== undefined)
         throw new Error('SECRET_SCOPE_INVALID');
-    } else if (typeof nodeId !== 'string' || !(await this.canManageNode(user.userId, nodeId))) {
+    } else if (
+      typeof nodeId !== 'string' ||
+      !(await this.access.canManageNode(user.userId, nodeId))
+    ) {
       throw new Error('NODE_FORBIDDEN');
     } else if (organizationId !== undefined) {
       throw new Error('SECRET_SCOPE_INVALID');
@@ -254,14 +241,17 @@ export class MysqlEnvironmentSecretService extends EnvironmentSecretStore {
       throw new Error('SECRET_NOT_FOUND');
     if (
       row['scope'] === 'ORGANIZATION' &&
-      !(await this.canManageOrganization(user.userId, Number(row['organization_id'])))
+      !(await this.access.canManageOrganization(user.userId, Number(row['organization_id'])))
     )
       throw new Error('SECRET_NOT_FOUND');
-    if (row['scope'] === 'NODE' && !(await this.canManageNode(user.userId, String(row['node_id']))))
+    if (
+      row['scope'] === 'NODE' &&
+      !(await this.access.canManageNode(user.userId, String(row['node_id'])))
+    )
       throw new Error('SECRET_NOT_FOUND');
     if (
       row['scope'] === 'WORKSPACE' &&
-      !(await this.canManageWorkspace(
+      !(await this.access.canManageWorkspace(
         user.userId,
         String(row['node_id']),
         String(row['workspace_id'])

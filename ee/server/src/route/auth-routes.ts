@@ -1,19 +1,23 @@
 import type { FastifyInstance } from 'fastify';
 import { registerAuthenticationRoutes } from '@myagentroam/server-core/auth-routes';
-import type { UserLocalePreferences } from '@myagentroam/server-core/auth-contracts';
+import type {
+  AuthenticationAuditSink,
+  AuthenticationStore,
+  UserLocalePreferences
+} from '@myagentroam/server-core/auth-contracts';
 import type { LoginRateRecord } from '@myagentroam/server-core/login-rate';
 import type { ProductCapabilityProvider } from '@myagentroam/server-core/product-capabilities';
-import type { ServerDatabase } from '../database.js';
-import type { MysqlServerDatabase } from '../mysql/server-database.js';
-import type { NodeControl } from '../node-control.js';
 
 export function registerAuthRoutes(input: {
   readonly app: FastifyInstance;
-  readonly database: ServerDatabase | MysqlServerDatabase;
-  readonly nodeControl: Pick<
-    NodeControl,
-    'closeUserTerminals' | 'closeUserWorkbench' | 'closeAllTerminals' | 'closeAllWorkbench'
-  >;
+  readonly store: AuthenticationStore;
+  readonly audit: AuthenticationAuditSink;
+  readonly nodeControl: {
+    closeUserTerminals(sessionHash: string): void;
+    closeUserWorkbench(sessionHash: string): void;
+    closeAllTerminals(): void;
+    closeAllWorkbench(): void;
+  };
   readonly publicOrigin: string | undefined;
   readonly secureCookies: boolean;
   readonly now: () => number;
@@ -21,11 +25,11 @@ export function registerAuthRoutes(input: {
   readonly productCapabilities?: ProductCapabilityProvider;
   readonly notifications?: UserLocalePreferences;
 }): void {
-  const { database, nodeControl } = input;
+  const { nodeControl } = input;
   registerAuthenticationRoutes({
     app: input.app,
-    store: database,
-    audit: { record: (event) => database.audit(event) },
+    store: input.store,
+    audit: input.audit,
     lifecycle: {
       closeSessionConnections(sessionHash) {
         nodeControl.closeUserTerminals(sessionHash);

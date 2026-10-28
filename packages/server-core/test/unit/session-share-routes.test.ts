@@ -43,7 +43,6 @@ async function fixture() {
     nodeControl,
     database: {
       findCurrentUserSession: (id) => (id === 'account' ? actor : undefined),
-      userOwnsNode: async () => true,
       userDisplayName: async () => 'Owner'
     },
     publicOrigin: 'http://localhost',

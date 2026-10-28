@@ -34,7 +34,7 @@ function latestParticipants(socket: RelaySocket): ParticipantFrame | undefined {
 }
 
 function relayFixture() {
-  const relay = new WorkbenchRelayService({ database: { userOwnsNode: async () => true } });
+  const relay = new WorkbenchRelayService({ authorizeNodeRequest: async () => true });
   let serial = 0;
   const attachShare = (input: {
     readonly shareId: string;

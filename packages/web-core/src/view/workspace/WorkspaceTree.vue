@@ -661,7 +661,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         <el-dropdown-item
                           command="delete"
                           :icon="marIcon('delete')"
-                          :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
+                          :disabled="loading || workspace.manageable !== true"
                           divided
                           >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
                         >
@@ -833,7 +833,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                             <el-dropdown-item
                               command="delete"
                               :icon="marIcon('delete')"
-                              :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
+                              :disabled="loading || workspace.manageable !== true"
                               divided
                               >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
                             >

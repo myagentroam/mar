@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RecentRunService } from '../../ee/server/src/service/recent-run-service.js';
+import { RecentRunService } from '../../packages/server-core/src/recent-run-service.js';
 
 function projection(input: {
   runId?: string;
@@ -42,10 +42,18 @@ function database(allowed = true) {
   };
 }
 
+function createRecentRunService(
+  db: ReturnType<typeof database>,
+  push: (userId: number, message: object) => void,
+  now?: () => number
+) {
+  return new RecentRunService(db as never, db.userCanRequestNode, push, now);
+}
+
 describe('Server recent-run memory index', () => {
   it('Rejects malformed projections and identities inconsistent with the connected Node', async () => {
     const db = database();
-    const service = new RecentRunService(db as never, vi.fn());
+    const service = createRecentRunService(db, vi.fn());
     await expect(service.consume('node-1', { kind: 'UPDATE', run: {} })).resolves.toBe(false);
     await expect(service.consume('node-other', projection({}))).resolves.toBe(true);
     expect(db.userCanRequestNode).not.toHaveBeenCalled();
@@ -53,7 +61,7 @@ describe('Server recent-run memory index', () => {
   });
 
   it('Rejects unauthorized users without adding entries', async () => {
-    const service = new RecentRunService(database(false) as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(false), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({}));
     await expect(service.list(7)).resolves.toEqual([]);
     service.dispose();
@@ -61,7 +69,7 @@ describe('Server recent-run memory index', () => {
 
   it('Keeps only the latest Run per Node session and removes old entries immediately', async () => {
     const push = vi.fn();
-    const service = new RecentRunService(database() as never, push, () => 1_000);
+    const service = createRecentRunService(database(), push, () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-old', sortAt: 100, version: 5 }));
     await service.consume('node-1', projection({ runId: 'run-new', sortAt: 200, version: 1 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -81,7 +89,7 @@ describe('Server recent-run memory index', () => {
   });
 
   it('Retains separate tasks for different users of the same Node session', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-user-7', userId: 7, sortAt: 100 }));
     await service.consume('node-1', projection({ runId: 'run-user-8', userId: 8, sortAt: 200 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -94,7 +102,7 @@ describe('Server recent-run memory index', () => {
   });
 
   it('Older Runs in Node snapshots cannot overwrite the latest task for a session', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'run-new', sortAt: 200 }));
     await service.consume('node-1', projection({ runId: 'run-old', sortAt: 100, version: 9 }));
     await expect(service.list(7)).resolves.toEqual([
@@ -104,7 +112,7 @@ describe('Server recent-run memory index', () => {
   });
 
   it('Ignores lower versions of a Run while accepting higher-version state', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ version: 3 }));
     await service.consume('node-1', projection({ status: 'INTERRUPTED', version: 2 }));
     expect((await service.list(7))[0]?.status).toBe('RUNNING');
@@ -115,7 +123,7 @@ describe('Server recent-run memory index', () => {
 
   it('Node disconnection removes only nonterminal tasks', async () => {
     const push = vi.fn();
-    const service = new RecentRunService(database() as never, push, () => 1_000);
+    const service = createRecentRunService(database(), push, () => 1_000);
     await service.consume('node-1', projection({ runId: 'active', sessionId: 'active' }));
     await service.consume(
       'node-1',
@@ -132,7 +140,7 @@ describe('Server recent-run memory index', () => {
   });
 
   it('Full snapshots remove missing nonterminal sessions', async () => {
-    const service = new RecentRunService(database() as never, vi.fn(), () => 1_000);
+    const service = createRecentRunService(database(), vi.fn(), () => 1_000);
     await service.consume('node-1', projection({ runId: 'active', sessionId: 'missing' }));
     await service.consume('node-1', { kind: 'SNAPSHOT', runs: [] });
     await expect(service.list(7)).resolves.toEqual([]);

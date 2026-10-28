@@ -1,4 +1,4 @@
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import type {
   SessionRunNodeControl,
   ProcessSecretResolver,

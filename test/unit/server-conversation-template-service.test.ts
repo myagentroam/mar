@@ -140,6 +140,100 @@ describe('Server conversation template service', () => {
     expect(fixture.models.listTemplateOptionsForNode).not.toHaveBeenCalled();
   });
 
+  it.each(['create', 'update'] as const)(
+    'rejects %s when authorization is revoked during Node inspection',
+    async (operation) => {
+      const fixture = serviceFixture();
+      fixture.database.raw.execute.mockResolvedValueOnce([[templateRow()], []]);
+      let finishInspection!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        finishInspection = resolve;
+      });
+      const inspect = vi.fn(async () => {
+        await gate;
+        return inspection;
+      });
+      const service = new ConversationTemplateService(
+        fixture.database,
+        fixture.resources,
+        fixture.models,
+        () => 2_000,
+        () => 'template-1'
+      );
+      const pending =
+        operation === 'create'
+          ? service.create(1, draftInput, inspect)
+          : service.update(1, 'template-1', { ...draftInput, draftRevision: 1 }, inspect);
+      await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+      fixture.resources.assertCanManageConversationTemplate.mockRejectedValue(
+        new Error('ADMIN_REQUIRED')
+      );
+      const rejected = expect(pending).rejects.toThrow('ADMIN_REQUIRED');
+      finishInspection();
+      await rejected;
+      expect(fixture.resources.assertCanManageConversationTemplate).toHaveBeenCalledWith(
+        1,
+        'node-1',
+        'workspace-1',
+        fixture.connection
+      );
+      expect(
+        fixture.connection.execute.mock.calls.some(([sql]) =>
+          /^(INSERT|UPDATE) /u.test(String(sql))
+        )
+      ).toBe(false);
+      expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+      expect(fixture.connection.commit).not.toHaveBeenCalled();
+      expect(fixture.database.audit).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects a new publish job when authorization is revoked after preparation', async () => {
+    const fixture = serviceFixture();
+    let finishLookup!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishLookup = resolve;
+    });
+    const lookup = vi.fn(async (): Promise<[unknown, unknown]> => {
+      await gate;
+      return [[], []];
+    });
+    fixture.database.raw.execute
+      .mockResolvedValueOnce([[templateRow()], []])
+      .mockImplementationOnce(lookup);
+    const service = new ConversationTemplateService(
+      fixture.database,
+      fixture.resources,
+      fixture.models,
+      () => 2_000
+    );
+    const dispatch = vi.fn();
+    const pending = service.publish(
+      1,
+      'template-1',
+      { templateId: 'template-1', draftRevision: 1, requestId: 'request-1' },
+      dispatch
+    );
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce());
+    fixture.resources.assertCanManageConversationTemplate.mockRejectedValue(
+      new Error('ADMIN_REQUIRED')
+    );
+    const rejected = expect(pending).rejects.toThrow('ADMIN_REQUIRED');
+    finishLookup();
+    await rejected;
+    expect(fixture.resources.assertCanManageConversationTemplate).toHaveBeenCalledWith(
+      1,
+      'node-1',
+      'workspace-1',
+      fixture.connection
+    );
+    expect(
+      fixture.connection.execute.mock.calls.some(([sql]) => String(sql).startsWith('INSERT'))
+    ).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+  });
+
   it('validates and inspects a new draft before persisting revision 1 without auditing its configuration', async () => {
     const fixture = serviceFixture();
     const inspect = vi.fn(async () => inspection);
@@ -1160,10 +1254,12 @@ function serviceFixture() {
     auditWithConnection: ReturnType<typeof vi.fn>;
   };
   const resources = {
+    assertCanManageConversationTemplate: vi.fn(async () => undefined),
     assertCanUseWorkspace: vi.fn(async () => undefined),
     assertCanHostConversationTemplate: vi.fn(async () => undefined),
     canUseTemplate: vi.fn(async () => true)
   } as unknown as ResourceAccessService & {
+    assertCanManageConversationTemplate: ReturnType<typeof vi.fn>;
     assertCanUseWorkspace: ReturnType<typeof vi.fn>;
     assertCanHostConversationTemplate: ReturnType<typeof vi.fn>;
     canUseTemplate: ReturnType<typeof vi.fn>;

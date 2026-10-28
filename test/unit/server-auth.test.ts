@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { openServerDatabase } from '../../ee/server/src/database.js';
-import { NodeControl } from '../../ee/server/src/node-control.js';
+import { createTestNodeControl } from '../support/create-test-node-control.js';
 import { INITIAL_ADMIN_PASSWORD, verifyPassword } from '../../packages/server-core/src/password.js';
 
 const temporaryDirectories: string[] = [];
@@ -877,7 +877,9 @@ describe('Server admin authentication', () => {
     expect(database.userOwnsNode(1, registered!.nodeId)).toBe(false);
     expect(database.userOwnsNode(userId, registered!.nodeId)).toBe(true);
     await expect(
-      new NodeControl(database).requestNode(
+      createTestNodeControl(database, (userId, nodeId) =>
+        database.userOwnsNode(userId, nodeId)
+      ).requestNode(
         registered!.nodeId,
         'workspace.list',
         {},

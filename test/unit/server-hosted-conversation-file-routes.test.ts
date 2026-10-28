@@ -506,6 +506,89 @@ describe('Server hosted conversation routes', () => {
       undefined
     );
   });
+
+  it.each(['template', 'session'] as const)(
+    'rejects a changed %s identity in the deleted-template refresh',
+    async (changed) => {
+      const fixture = routeFixture();
+      fixture.templates.assertCanUse.mockResolvedValue({
+        ...template,
+        status: 'DELETED',
+        available: false
+      });
+      const base = hostedSnapshot();
+      const refreshed = {
+        ...base,
+        conversation: {
+          ...base.conversation,
+          ...(changed === 'template'
+            ? { templateId: 'other-template' }
+            : { sessionId: 'other-session' })
+        },
+        template: {
+          ...base.template,
+          status: 'DELETED',
+          available: false,
+          ...(changed === 'template' ? { id: 'other-template' } : {})
+        }
+      };
+      fixture.nodeControl.requestHostedConversationNode
+        .mockResolvedValueOnce(base)
+        .mockResolvedValueOnce(base)
+        .mockResolvedValueOnce(refreshed);
+      const app = Fastify();
+      registerHostedConversationRoutes({
+        app,
+        database: fixture.database,
+        templates: fixture.templates,
+        models: fixture.models,
+        nodeControl: fixture.nodeControl,
+        publicOrigin: undefined
+      });
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/nodes/node-1/hosted-conversations/conversation-1',
+        headers: { cookie: headers.cookie }
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        error: { code: 'HOSTED_CONVERSATION_NOT_AUTHORIZED' }
+      });
+      expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(3);
+      await app.close();
+    }
+  );
+
+  it('rejects a different Session between the probe and authorized snapshot', async () => {
+    const fixture = routeFixture();
+    const base = hostedSnapshot();
+    fixture.nodeControl.requestHostedConversationNode
+      .mockResolvedValueOnce(base)
+      .mockResolvedValueOnce({
+        ...base,
+        conversation: { ...base.conversation, sessionId: 'other-session' }
+      });
+    const app = Fastify();
+    registerHostedConversationRoutes({
+      app,
+      database: fixture.database,
+      templates: fixture.templates,
+      models: fixture.models,
+      nodeControl: fixture.nodeControl,
+      publicOrigin: undefined
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/nodes/node-1/hosted-conversations/conversation-1',
+      headers: { cookie: headers.cookie }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: { code: 'HOSTED_CONVERSATION_NOT_AUTHORIZED' }
+    });
+    expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
 });
 
 const template: ConversationTemplateSummary = {

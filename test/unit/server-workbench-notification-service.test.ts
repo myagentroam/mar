@@ -68,7 +68,12 @@ describe('Server Workbench notification service', () => {
       execute,
       vi.fn(async () => true)
     );
-    const service = new WorkbenchNotificationService(database as never, push, () => 1_000);
+    const service = new WorkbenchNotificationService(
+      database as never,
+      database.userCanRequestNode,
+      push,
+      () => 1_000
+    );
     const event = {
       userId: 7,
       notificationId: 'run:workspace-1:run-1',
@@ -133,7 +138,12 @@ describe('Server Workbench notification service', () => {
       execute,
       vi.fn(async () => true)
     );
-    const service = new WorkbenchNotificationService(database as never, vi.fn(), () => 1_000);
+    const service = new WorkbenchNotificationService(
+      database as never,
+      database.userCanRequestNode,
+      vi.fn(),
+      () => 1_000
+    );
 
     await service.consume('node-1', {
       userId: 7,
@@ -161,7 +171,12 @@ describe('Server Workbench notification service', () => {
       raw: { execute },
       userCanRequestNode: vi.fn(async () => false)
     };
-    const service = new WorkbenchNotificationService(database as never, vi.fn(), () => 1_000);
+    const service = new WorkbenchNotificationService(
+      database as never,
+      database.userCanRequestNode,
+      vi.fn(),
+      () => 1_000
+    );
     expect(await service.consume('node-1', { notificationId: 'missing-user' })).toBe(false);
     expect(
       await service.consume('node-1', {
@@ -197,7 +212,12 @@ describe('Server Workbench notification service', () => {
       execute,
       vi.fn(async () => true)
     );
-    const service = new WorkbenchNotificationService(database as never, vi.fn(), () => 1_000);
+    const service = new WorkbenchNotificationService(
+      database as never,
+      database.userCanRequestNode,
+      vi.fn(),
+      () => 1_000
+    );
 
     await service.consume('node-1', {
       userId: 7,
@@ -220,7 +240,12 @@ describe('Server Workbench notification service', () => {
       raw: { execute: vi.fn() },
       userCanRequestNode: vi.fn(async () => true)
     };
-    const service = new WorkbenchNotificationService(database as never, vi.fn(), () => 1_000);
+    const service = new WorkbenchNotificationService(
+      database as never,
+      database.userCanRequestNode,
+      vi.fn(),
+      () => 1_000
+    );
     const base = {
       userId: 7,
       notificationId: 'run:1',
@@ -251,6 +276,7 @@ describe('Server Workbench notification service', () => {
     };
     const service = new WorkbenchNotificationService(
       database as never,
+      database.userCanRequestNode,
       vi.fn(),
       () => 24 * 60 * 60_000 + 1
     );
@@ -310,6 +336,7 @@ describe('Server Workbench notification service', () => {
     const database = transactionalDatabase(execute, userCanRequestNode);
     const service = new WorkbenchNotificationService(
       database as never,
+      database.userCanRequestNode,
       push,
       () => 1_000,
       authorizeHostedTarget
@@ -377,10 +404,8 @@ describe('Server Workbench notification service', () => {
     const execute = vi.fn(async () => [{ affectedRows: 2 }, []]);
     const push = vi.fn();
     const service = new WorkbenchNotificationService(
-      {
-        raw: { execute },
-        userCanRequestNode: vi.fn(async () => true)
-      } as never,
+      { raw: { execute } } as never,
+      vi.fn(async () => true),
       push,
       () => 1_000,
       vi.fn(async () => false)
@@ -425,6 +450,7 @@ describe('Server Workbench notification service', () => {
     const push = vi.fn();
     const service = new WorkbenchNotificationService(
       { raw: { execute } } as never,
+      vi.fn(async () => false),
       push,
       () => 1_000
     );

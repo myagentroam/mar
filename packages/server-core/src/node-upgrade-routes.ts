@@ -10,11 +10,12 @@ export function registerNodeUpgradeRoutes(input: {
   app: FastifyInstance;
   database: SessionLookup;
   nodeControl: Pick<SessionRunNodeControl, 'requestNode'> & {
+    isNodeUpgradeOnly(nodeId: string): boolean;
     listNodes():
       | readonly Parameters<typeof publicNode>[0][]
       | Promise<readonly Parameters<typeof publicNode>[0][]>;
   };
-  nodeUpgrades: NodeUpgradeService;
+  nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
   publicOrigin: string | undefined;
   authorize(userId: number, nodeId: string): Promise<void>;
   databaseError(reply: FastifyReply, error: unknown): FastifyReply;
@@ -47,7 +48,8 @@ export function registerNodeUpgradeRoutes(input: {
           };
           const availability = await nodeUpgrades.availability(
             projection.nodeAppVersion,
-            projection.metadata?.supervisedUpgrade === true
+            projection.metadata?.supervisedUpgrade === true,
+            nodeControl.isNodeUpgradeOnly(node.id)
           );
           if (availability.state !== 'AVAILABLE')
             return sendError(reply, 409, `NODE_UPGRADE_${availability.state}`);

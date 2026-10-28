@@ -1,4 +1,8 @@
-import { createHash } from 'node:crypto';
+import {
+  finalizeSkillBundle,
+  type ResolvedSkillBundle,
+  type SkillBundleFile
+} from './skill-bundle.js';
 import { GitSkillRepository } from './git-skill-repository.js';
 
 const MAX_REPOSITORY_FILES = 5_000;
@@ -6,25 +10,6 @@ const MAX_REPOSITORY_BYTES = 100 * 1024 * 1024;
 const MAX_SKILL_FILES = 1_000;
 const MAX_SKILL_BYTES = 25 * 1024 * 1024;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
-
-export interface SkillBundleFile {
-  readonly path: string;
-  readonly contentBase64: string;
-}
-
-export interface ResolvedSkillBundle {
-  readonly repositoryIdentity: string;
-  readonly repositoryUrl: string;
-  readonly skillPath: string;
-  readonly name: string;
-  readonly description: string;
-  readonly commitSha: string;
-  readonly contentHash: string;
-  readonly archiveHash: string;
-  readonly contentBytes: number;
-  readonly tlsVerified: boolean;
-  readonly files: readonly SkillBundleFile[];
-}
 
 export class GithubSkillProvider {
   constructor(
@@ -79,9 +64,7 @@ export class GithubSkillProvider {
       throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
     const files: SkillBundleFile[] = [];
     let contentBytes = 0;
-    for (const file of selected.sort((left, right) =>
-      left.relativePath.localeCompare(right.relativePath)
-    )) {
+    for (const file of selected) {
       assertSafeRelativePath(file.relativePath);
       if (file.size > MAX_FILE_BYTES) throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
       const blob = await this.json(
@@ -95,30 +78,15 @@ export class GithubSkillProvider {
       contentBytes += content.length;
       files.push({ path: file.relativePath, contentBase64: content.toString('base64') });
     }
-    const skillFile = files.find((file) => file.path === 'SKILL.md');
-    if (skillFile === undefined) throw new Error('SKILL_CONTENT_INVALID');
-    if (files.some((file) => file.path === '.mar-skill-install.json'))
-      throw new Error('SKILL_CONTENT_INVALID');
-    const metadataFields = parseFrontmatter(
-      Buffer.from(skillFile.contentBase64, 'base64').toString('utf8')
-    );
-    const normalizedName = normalizeSkillName(metadataFields.name);
-    const canonicalFiles = files.map((file) => `${file.path}\0${file.contentBase64}`).join('\0');
-    const contentHash = createHash('sha256').update(canonicalFiles).digest('hex');
-    const bundleJson = JSON.stringify({ schemaVersion: 1, files });
-    return {
+    return finalizeSkillBundle({
       repositoryIdentity: `github.com/${repository.owner.toLowerCase()}/${repository.repo.toLowerCase()}`,
       repositoryUrl: `https://github.com/${repository.owner}/${repository.repo}`,
       skillPath,
-      name: normalizedName,
-      description: metadataFields.description,
       commitSha,
-      contentHash,
-      archiveHash: createHash('sha256').update(bundleJson).digest('hex'),
       contentBytes,
       tlsVerified: !(await this.tlsVerificationDisabled()),
       files
-    };
+    });
   }
 
   private async resolveGitlab(input: {
@@ -161,9 +129,7 @@ export class GithubSkillProvider {
       throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
     const files: SkillBundleFile[] = [];
     let contentBytes = 0;
-    for (const file of selected.sort((left, right) =>
-      left.relativePath.localeCompare(right.relativePath)
-    )) {
+    for (const file of selected) {
       assertSafeRelativePath(file.relativePath);
       const blob = await this.json(
         `${repository.origin}/api/v4/projects/${projectKey}/repository/blobs/${file.sha}`,
@@ -179,7 +145,7 @@ export class GithubSkillProvider {
       if (contentBytes > MAX_SKILL_BYTES) throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
       files.push({ path: file.relativePath, contentBase64: content.toString('base64') });
     }
-    return finalizeBundle({
+    return finalizeSkillBundle({
       repositoryIdentity: `${new URL(repository.origin).hostname.toLowerCase()}/${repository.projectPath.toLowerCase()}`,
       repositoryUrl: `${repository.origin}/${repository.projectPath}`,
       skillPath,
@@ -251,39 +217,6 @@ function gitlabTreeBlob(value: unknown): { path: string; sha: string; size: numb
   return { path: row['path'], sha: row['id'], size: 0 };
 }
 
-function finalizeBundle(input: {
-  repositoryIdentity: string;
-  repositoryUrl: string;
-  skillPath: string;
-  commitSha: string;
-  contentBytes: number;
-  tlsVerified: boolean;
-  files: readonly SkillBundleFile[];
-}): ResolvedSkillBundle {
-  const skillFile = input.files.find((file) => file.path === 'SKILL.md');
-  if (
-    skillFile === undefined ||
-    input.files.some((file) => file.path === '.mar-skill-install.json')
-  )
-    throw new Error('SKILL_CONTENT_INVALID');
-  const metadataFields = parseFrontmatter(
-    Buffer.from(skillFile.contentBase64, 'base64').toString('utf8')
-  );
-  const canonicalFiles = input.files
-    .map((file) => `${file.path}\0${file.contentBase64}`)
-    .join('\0');
-  const contentHash = createHash('sha256').update(canonicalFiles).digest('hex');
-  return {
-    ...input,
-    name: normalizeSkillName(metadataFields.name),
-    description: metadataFields.description,
-    contentHash,
-    archiveHash: createHash('sha256')
-      .update(JSON.stringify({ schemaVersion: 1, files: input.files }))
-      .digest('hex')
-  };
-}
-
 function parseGithubRepository(locator: string): { owner: string; repo: string } {
   const url = new URL(locator);
   const parts = url.pathname.replace(/^\/+|\/+$/gu, '').split('/');
@@ -342,32 +275,6 @@ function assertSafeRelativePath(value: string): void {
     value.split('/').some((part) => part === '' || part === '.' || part === '..')
   )
     throw new Error('SKILL_PATH_UNSAFE');
-}
-
-function parseFrontmatter(content: string): { name: string; description: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content);
-  if (match === null) throw new Error('SKILL_CONTENT_INVALID');
-  const values = new Map<string, string>();
-  for (const line of match[1]!.split(/\r?\n/u)) {
-    const field = /^(name|description):\s*(.*?)\s*$/u.exec(line);
-    if (field !== null) values.set(field[1]!, field[2]!.replace(/^['"]|['"]$/gu, ''));
-  }
-  const name = values.get('name');
-  const description = values.get('description');
-  if (name === undefined || description === undefined || description.length > 4096)
-    throw new Error('SKILL_CONTENT_INVALID');
-  return { name, description };
-}
-
-function normalizeSkillName(name: string): string {
-  const normalized = name.trim().toLowerCase();
-  if (
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(normalized) ||
-    /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/u.test(normalized) ||
-    normalized.length > 128
-  )
-    throw new Error('SKILL_CONTENT_INVALID');
-  return normalized;
 }
 
 function textField(value: Record<string, unknown>, field: string): string {

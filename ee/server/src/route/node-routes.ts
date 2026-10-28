@@ -1,7 +1,6 @@
 import { registerNodeUpgradeRoutes } from '@myagentroam/server-core/node-upgrade-routes';
 import { registerRunnerRoutes } from '@myagentroam/server-core/runner-routes';
 import { registerTerminalRoutes } from '@myagentroam/server-core/terminal-routes';
-import { registerNodeRegistrationRoute } from '@myagentroam/server-core/node-registration-route';
 import type { FastifyInstance } from 'fastify';
 import { resourceOwnershipSchema, type ServerWorkbenchCapabilities } from '@myagentroam/protocol';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
@@ -11,8 +10,9 @@ import type { NodeControl } from '../node-control.js';
 import type { EnvironmentSecretService } from '../service/environment-secret-service.js';
 import type { MysqlEnvironmentSecretService } from '../mysql/environment-secret-service.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
+import type { ResourceMutationService } from '../rbac/resource-mutation-service.js';
 import type { MarctlUserCredentials } from '@myagentroam/server-core/marctl-user-credentials';
-import type { NodeUpgradeService } from '../service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import type { MarAgentModelService } from '../service/mar-agent-model-service.js';
 import {
   databaseError,
@@ -27,12 +27,21 @@ export function registerNodeRoutes(input: {
   readonly app: FastifyInstance;
   readonly database: ReturnType<typeof openServerDatabase> | MysqlServerDatabase;
   readonly nodeControl: NodeControl;
-  readonly nodeUpgrades: NodeUpgradeService;
+  readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
   readonly publicOrigin: string | undefined;
   readonly capabilities: ServerWorkbenchCapabilities;
   readonly secrets: EnvironmentSecretService | MysqlEnvironmentSecretService;
   readonly userCredentials?: MarctlUserCredentials;
-  readonly resources?: ResourceAccessService;
+  readonly resources: Pick<
+    ResourceAccessService,
+    | 'canAccessNodeContainer'
+    | 'nodeOwnership'
+    | 'canManageNode'
+    | 'canRegisterWorkspace'
+    | 'canManageNodeSecrets'
+    | 'assertCanManageNode'
+  >;
+  readonly mutations: Pick<ResourceMutationService, 'changeNodeOwnership'>;
   readonly marAgentModels?: MarAgentModelService;
 }): void {
   const {
@@ -43,43 +52,20 @@ export function registerNodeRoutes(input: {
     secrets,
     publicOrigin,
     resources,
+    mutations,
     marAgentModels
   } = input;
-  registerNodeRegistrationRoute({
-    app,
-    sessions: database,
-    publicOrigin,
-    requireDisplayName: resources !== undefined,
-    authorize: (userId, ownership) => resources?.assertOwnershipSelection(userId, ownership),
-    createToken: (userId, ttlMs, ownership, displayName) =>
-      resources === undefined
-        ? database.createNodeRegistrationToken(userId, ttlMs)
-        : (database as MysqlServerDatabase).createNodeRegistrationToken(
-            userId,
-            ttlMs,
-            ownership,
-            displayName
-          ),
-    onError: databaseError
-  });
-
   app.get('/api/nodes', async (request, reply) => {
     const user = protectedAdmin(database, request, reply);
     if (user === undefined) return;
-    const nodes =
-      resources === undefined
-        ? await nodeControl.listNodesForUser(user.userId)
-        : (await nodeControl.listNodes()).filter((node) => !node.disabled);
-    const visibleNodes =
-      resources === undefined
-        ? nodes
-        : (
-            await Promise.all(
-              nodes.map(async (node) =>
-                (await resources.canAccessNodeContainer(user.userId, node.id)) ? node : undefined
-              )
-            )
-          ).filter((node): node is NonNullable<typeof node> => node !== undefined);
+    const nodes = (await nodeControl.listNodes()).filter((node) => !node.disabled);
+    const visibleNodes = (
+      await Promise.all(
+        nodes.map(async (node) =>
+          (await resources.canAccessNodeContainer(user.userId, node.id)) ? node : undefined
+        )
+      )
+    ).filter((node): node is NonNullable<typeof node> => node !== undefined);
     return reply.send({
       nodes: await Promise.all(
         visibleNodes.map(async (node) => {
@@ -89,18 +75,14 @@ export function registerNodeRoutes(input: {
           };
           return {
             ...projection,
-            ...(resources === undefined
-              ? {}
-              : {
-                  ownership: await resources.nodeOwnership(node.id),
-                  manageable: await resources.canManageNode(user.userId, node.id),
-                  workspaceCreatable: await resources.canRegisterWorkspace(user.userId, node.id),
-                  secretManageable: await resources.canManageNodeSecrets(user.userId, node.id)
-                }),
-            ...(resources === undefined ? { manageable: true } : {}),
+            ownership: await resources.nodeOwnership(node.id),
+            manageable: await resources.canManageNode(user.userId, node.id),
+            workspaceCreatable: await resources.canRegisterWorkspace(user.userId, node.id),
+            secretManageable: await resources.canManageNodeSecrets(user.userId, node.id),
             upgradeAvailability: await nodeUpgrades.availability(
               projection.nodeAppVersion,
-              projection.metadata?.supervisedUpgrade === true
+              projection.metadata?.supervisedUpgrade === true,
+              nodeControl.isNodeUpgradeOnly(node.id)
             )
           };
         })
@@ -116,7 +98,7 @@ export function registerNodeRoutes(input: {
     publicOrigin,
     databaseError,
     authorize: async (userId, nodeId) => {
-      await resources?.assertCanManageNode(userId, nodeId);
+      await resources.assertCanManageNode(userId, nodeId);
     }
   });
 
@@ -140,12 +122,10 @@ export function registerNodeRoutes(input: {
     )
       return sendError(reply, 400, 'NODE_DISPLAY_NAME_INVALID');
     try {
-      if (resources !== undefined)
-        await resources.assertCanManageNode(admin.userId, request.params.nodeId);
-      if (resources !== undefined && ownership !== undefined)
-        await resources.changeNodeOwnership(admin.userId, request.params.nodeId, ownership);
-      if (resources !== undefined && ownership !== undefined)
-        await nodeControl.revalidateTerminalAuthorizations();
+      await resources.assertCanManageNode(admin.userId, request.params.nodeId);
+      if (ownership !== undefined)
+        await mutations.changeNodeOwnership(admin.userId, request.params.nodeId, ownership);
+      if (ownership !== undefined) await nodeControl.revalidateTerminalAuthorizations();
       if (value === undefined) {
         const node = (await nodeControl.listNodes()).find(
           (candidate) => candidate.id === request.params.nodeId
@@ -208,12 +188,10 @@ export function registerNodeRoutes(input: {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
     if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
-    if (resources !== undefined) {
-      try {
-        await resources.assertCanManageNode(admin.userId, request.params.nodeId);
-      } catch (error) {
-        return databaseError(reply, error);
-      }
+    try {
+      await resources.assertCanManageNode(admin.userId, request.params.nodeId);
+    } catch (error) {
+      return databaseError(reply, error);
     }
     if (!(await nodeControl.revokeNode(request.params.nodeId, admin.userId))) {
       return sendError(reply, 404, 'NODE_NOT_FOUND');
@@ -228,12 +206,10 @@ export function registerNodeRoutes(input: {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
     if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
-    if (resources !== undefined) {
-      try {
-        await resources.assertCanManageNode(admin.userId, request.params.nodeId);
-      } catch (error) {
-        return databaseError(reply, error);
-      }
+    try {
+      await resources.assertCanManageNode(admin.userId, request.params.nodeId);
+    } catch (error) {
+      return databaseError(reply, error);
     }
     try {
       if (!(await nodeControl.deleteNode(request.params.nodeId, admin.userId))) {

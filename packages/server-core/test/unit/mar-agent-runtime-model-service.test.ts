@@ -313,7 +313,7 @@ describe('Server MAR Agent runtime model service', () => {
         responsesHttpContinuation: true,
         websocket: true,
         httpVersions: ['1.1', '2'],
-        ...(supported ? { fastMode: true } : {})
+        ...(supported ? { serviceTiers: ['priority'] as const } : { fastMode: true })
       })
     });
     const context = { userId: 7, nodeId: 'node-1', workspaceId: 'workspace-1' };
@@ -324,10 +324,10 @@ describe('Server MAR Agent runtime model service', () => {
       'MAR_AGENT_MODEL_SERVICE_TIER_UNAVAILABLE'
     );
     supported = true;
-    expect((await service.prepare(context)).models[0]?.fastMode).toBe(true);
-    expect((await service.prepareTest({ ...context, modelId: 'codex-fast' })).model.fastMode).toBe(
-      true
-    );
+    expect((await service.prepare(context)).models[0]?.serviceTier).toBe('priority');
+    expect(
+      (await service.prepareTest({ ...context, modelId: 'codex-fast' })).model.serviceTier
+    ).toBe('priority');
   });
 
   it.each(['default', 'priority', 'ultrafast', 'auto', 'flex', 'fast'] as const)(
@@ -365,8 +365,6 @@ describe('Server MAR Agent runtime model service', () => {
       modern = false;
       if (serviceTier === 'default') {
         expect((await service.prepare(context)).models[0]).not.toHaveProperty('serviceTier');
-      } else if (serviceTier === 'priority') {
-        expect((await service.prepare(context)).models[0]).toMatchObject({ fastMode: true });
       } else {
         await expect(service.prepare(context)).rejects.toThrow(
           'MAR_AGENT_MODEL_SERVICE_TIER_UNAVAILABLE'
@@ -457,6 +455,7 @@ describe('Server MAR Agent runtime model service', () => {
       capability: () => ({
         apiVersion: 1,
         responsesHttpContinuation: true,
+        resourceInput: true,
         websocket: true,
         httpVersions: ['1.1', '2']
       }),

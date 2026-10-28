@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Route } from '@playwright/test';
-import type { MarAgentEvent } from '../../mar-agent/src/index.js';
+import type { AgentEvent } from '../../mar-agent/src/index.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
 import {
   serializeComposerTag,
@@ -983,12 +983,12 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
                 ]
               : [{ path }]
         }
-      } as MarAgentEvent);
+      } as AgentEvent);
       const [result] = normalizer.normalize({
         ...base,
         type: 'tool.completed',
         summary: `Content for ${path}`
-      } as MarAgentEvent);
+      } as AgentEvent);
       return {
         id: result!.itemId,
         kind: result!.kind,
@@ -1679,7 +1679,7 @@ test.describe('Independent tool presentation', () => {
             executionId: 'execution',
             turnId: 'tool-turn',
             ...payload
-          } as MarAgentEvent;
+          } as AgentEvent;
           for (const item of normalizer.normalize(entry)) latest.set(item.itemId, item);
         };
         const calls = [
@@ -2139,7 +2139,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
       await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-      const events: MarAgentEvent[] = [
+      const events: AgentEvent[] = [
         {
           eventId: 'code-started',
           sequence: 1,

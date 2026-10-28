@@ -95,6 +95,10 @@ describe('Server Skill favorite', () => {
       commitSha: 'a'.repeat(40),
       contentHash: 'b'.repeat(64),
       archiveHash: 'c'.repeat(64),
+      archiveJson: JSON.stringify({
+        schemaVersion: 1,
+        files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+      }),
       contentBytes: 10,
       tlsVerified: false,
       files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
@@ -136,6 +140,9 @@ describe('Server Skill favorite', () => {
     });
     await expect(readFile(path.join(cache, `${'b'.repeat(64)}.json`), 'utf8')).resolves.toContain(
       'SKILL.md'
+    );
+    await expect(readFile(path.join(cache, `${'b'.repeat(64)}.json`), 'utf8')).resolves.toBe(
+      bundle.archiveJson
     );
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(warnCacheUsage).toHaveBeenCalledWith(10, 12);

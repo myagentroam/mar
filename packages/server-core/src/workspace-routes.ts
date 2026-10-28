@@ -21,6 +21,7 @@ import type {
   WorkspaceResourcePolicy as ResourceAccessService
 } from './workspace-route-contracts.js';
 import { normalizeWorkspaceGroupName } from './workspace-group.js';
+import { NodeRequestError } from './node-request-error.js';
 import {
   sendWorkspaceFileContent,
   fileContentChunks,
@@ -51,7 +52,7 @@ export function registerWorkspaceRoutes(input: {
   readonly databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
   readonly nodeControl: NodeControl;
   readonly publicOrigin: string | undefined;
-  readonly resources?: ResourceAccessService;
+  readonly resources: ResourceAccessService;
 }): void {
   const { app, database, nodeControl, publicOrigin, resources, databaseError } = input;
   app.addContentTypeParser(
@@ -73,7 +74,6 @@ export function registerWorkspaceRoutes(input: {
         'workspace.list',
         {}
       )) as { workspaces?: unknown };
-      if (resources === undefined) return reply.send(result);
       if (!Array.isArray(result.workspaces)) throw new Error('WORKSPACE_LIST_INVALID');
       const workspaces = result.workspaces.filter(
         (workspace): workspace is { id: string } & Record<string, unknown> =>
@@ -165,10 +165,11 @@ export function registerWorkspaceRoutes(input: {
     if (request.body?.ownership !== undefined && requestedOwnership === undefined)
       return sendError(reply, 400, 'RESOURCE_OWNERSHIP_INVALID');
     try {
-      const ownership =
-        resources === undefined
-          ? (requestedOwnership ?? { ownerType: 'PERSONAL' as const, ownerUserId: admin.userId })
-          : await resources.resolveWorkspaceOwnership(admin.userId, nodeId, requestedOwnership);
+      const ownership = await resources.resolveWorkspaceOwnership(
+        admin.userId,
+        nodeId,
+        requestedOwnership
+      );
       const result = (await requestUserNode(nodeControl, admin, nodeId, 'workspace.register', {
         path,
         ...(preserveGitConfig === undefined ? {} : { preserveGitConfig }),
@@ -183,14 +184,7 @@ export function registerWorkspaceRoutes(input: {
         typeof workspacePath === 'string'
           ? (workspacePath.split(/[\\/]/u).filter(Boolean).at(-1) ?? workspaceId)
           : workspaceId;
-      if (resources !== undefined)
-        await resources.registerWorkspace(
-          admin.userId,
-          nodeId,
-          workspaceId,
-          ownership,
-          displayName
-        );
+      await resources.registerWorkspace(admin.userId, nodeId, workspaceId, ownership, displayName);
       return reply.code(201).send(result);
     } catch (error) {
       const failure = safePublicError(error, 'WORKSPACE_INVALID');
@@ -214,25 +208,34 @@ export function registerWorkspaceRoutes(input: {
     if (typeof request.query.nodeId !== 'string' || request.query.nodeId.length === 0)
       return sendError(reply, 400, 'NODE_ID_REQUIRED');
     try {
-      if (resources !== undefined)
-        await resources.assertCanUnregisterWorkspace(
-          admin.userId,
-          request.query.nodeId,
-          request.params.workspaceId
-        );
-      const result = await requestUserNode(
-        nodeControl,
-        admin,
+      await resources.assertCanUnregisterWorkspace(
+        admin.userId,
         request.query.nodeId,
-        'workspace.remove',
-        { workspaceId: request.params.workspaceId }
+        request.params.workspaceId
       );
-      if (resources !== undefined)
-        await resources.unregisterWorkspace(
-          admin.userId,
+      let result: unknown;
+      try {
+        result = await requestUserNode(
+          nodeControl,
+          admin,
           request.query.nodeId,
-          request.params.workspaceId
+          'workspace.remove',
+          { workspaceId: request.params.workspaceId }
         );
+      } catch (error) {
+        if (
+          !(error instanceof NodeRequestError) ||
+          error.source !== 'node' ||
+          error.code !== 'WORKSPACE_NOT_FOUND'
+        )
+          throw error;
+        result = {};
+      }
+      await resources.unregisterWorkspace(
+        admin.userId,
+        request.query.nodeId,
+        request.params.workspaceId
+      );
       return reply.send(result);
     } catch (error) {
       return databaseError(reply, error);
@@ -264,7 +267,6 @@ export function registerWorkspaceRoutes(input: {
           displayName.trim().length > 255))
     )
       return sendError(reply, 400, 'RESOURCE_OWNERSHIP_INVALID');
-    if (resources === undefined) return sendError(reply, 400, 'RESOURCE_OWNERSHIP_UNAVAILABLE');
     let normalizedGroupName: string | null | undefined;
     try {
       if (groupName !== undefined && groupName !== null && typeof groupName !== 'string')
@@ -324,7 +326,7 @@ export function registerWorkspaceRoutes(input: {
           if (policy !== undefined && !policy.success)
             return sendError(reply, 400, 'GIT_CONFIGURATION_INVALID');
           try {
-            if (method === 'PUT' && resources !== undefined)
+            if (method === 'PUT')
               await resources.assertCanManageWorkspace(
                 actor.userId,
                 request.query.nodeId,

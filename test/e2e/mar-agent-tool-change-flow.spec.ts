@@ -25,11 +25,13 @@ test('real Server and Node resume captured Auto calls after online approval and 
   const previousHome = process.env['HOME'];
   const db = resolvePlaywrightTestDatabase(`${requiredEnvironment('MAR_TEST_RUN_ID')}-tool-diff`);
   await createPlaywrightTestDatabase(db);
-  const app = createServerApp({
-    databaseUrl: db.databaseUrl,
-    dataDirectory: join(root, 'server'),
-    secureCookies: false
-  });
+  const app = (
+    await createServerApp({
+      databaseUrl: db.databaseUrl,
+      dataDirectory: join(root, 'server'),
+      secureCookies: false
+    })
+  ).app;
   let phase = 0;
   let askFirst = true;
   let awaitingResult = false;
@@ -371,7 +373,7 @@ async function prepareAdminAuthentication(databaseUrl: string): Promise<void> {
   }
 }
 
-async function adminHeaders(app: ReturnType<typeof createServerApp>) {
+async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['app']) {
   const login = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -389,7 +391,7 @@ async function adminHeaders(app: ReturnType<typeof createServerApp>) {
 }
 
 async function createWorkspace(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   headers: Record<string, string>,
   nodeId: string,
   workspacePath: string
@@ -405,7 +407,7 @@ async function createWorkspace(
 }
 
 async function waitForConnectedNode(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   displayName: string
 ): Promise<string> {
@@ -434,7 +436,7 @@ async function waitForConnectedNode(
 }
 
 async function expectRunReleased(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   nodeId: string,
   runId: string

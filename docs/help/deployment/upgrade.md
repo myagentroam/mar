@@ -1,6 +1,6 @@
 ---
 title: 升级 MyAgentRoam
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-28
 ---
 
 # 升级 MyAgentRoam
@@ -10,6 +10,8 @@ lastUpdated: 2026-10-11
 ## 步骤
 
 统一产品沿用现有企业数据库结构、迁移账本、License 激活事实和私有数据目录。社区与企业使用同一安装，激活不触发数据库迁移；不提供已删除个人产品的数据迁移。
+
+Server、Web 和 Node 应使用同一交付版本。切换后刷新已打开的浏览器页面，以加载匹配的 Web。低于当前业务基线的已登记 Node 不能继续处理工作区、会话等业务；支持推送升级的旧 Node 仍可连接，并由有权用户发起或取消升级。升级完成前不要依赖旧 Node 执行业务。升级会沿用 Node SQLite 和 Server MySQL 的既有迁移链；迁移前仍需备份，数据库不会自动降级。
 
 ### 旧数据库格式
 
@@ -22,7 +24,7 @@ lastUpdated: 2026-10-11
 1. 备份 MySQL、每台 Node 的私有配置与 SQLite、必要工作区，以及各 Agent 官方要求备份的配置和历史目录。
 2. 选择维护窗口，确认没有关键运行中的 Agent 或终端。
 3. 更新 Server/Web 容器或发布产物，启动后确认数据库迁移与 `/health` 成功。
-4. Server 使用运行账号的 npm 配置查询 `@myagentroam/node` 的已发布版本，选择不超过当前 Server 版本的最高稳定版本作为 Node 升级目标。Server 同版本尚未发布时，使用符合上限的较低已发布版本；不直接推送浮动的 `latest`，也不升级到比 Server 更新的版本。Server 检测与 Supervisor 安装都会自动读取各自运行账号的 npm 配置，不另设 Registry 配置项。
+4. Server 使用运行账号的 npm 配置查询 `@myagentroam/node` 的已发布版本，选择不超过当前 Server 版本且达到当前业务基线的最高稳定版本作为 Node 升级目标。Server 同版本尚未发布时，只有符合这两个条件的较低版本才可使用；不直接推送浮动的 `latest`，也不升级到比 Server 更新的版本。Server 检测与 Supervisor 安装都会自动读取各自运行账号的 npm 配置，不另设 Registry 配置项。
 5. 已部署 Supervisor 的 Node 可在“管理 → 节点管理”打开节点详情并点击“推送升级”；系统不会自动升级，也不会降级。推送给 Supervisor 的始终是查询后确定的精确版本，而不是浮动的 `latest`。旧 Node 首次启用该能力时仍需手工更新 npm 包并按 [Linux](node-linux.md)、[Windows](node-windows.md)或[macOS](node-macos.md)文档把自启动入口改为 `mar-node supervise`。
 6. 确认弹窗会说明目标版本、Run 排空和 Terminal 断开影响。推送后 Node 等待活动 Run 完成，并在等待期间拒绝新 Run、队列派发和 Terminal；“等待 Run”阶段可在节点详情取消，进入“准备重启”后不可取消。
 7. Supervisor 使用固定包名安装精确版本，在目标平台重建 `node-pty`，验证入口后切换 Node 子进程。安装失败时保留旧入口并上报失败；修复 npm 网络、Registry、磁盘、权限或安全软件问题后再重新推送。
@@ -34,7 +36,7 @@ lastUpdated: 2026-10-11
 - “当前无需升级”：Node 已达到或高于当前可升级目标，无需操作且不会降级。
 - “版本未知或不受支持”：Node 上报的版本缺失、非法或不是稳定版本，先手工确认并修复 Node 安装。
 - “需手工启用 Supervisor”：按平台文档手工安装支持版本并把自启动入口改为 `supervise`。
-- “目标 npm 包暂不可用”：无法查询已发布版本、没有不超过 Server 版本的稳定包或 Server 版本非法；等待包发布/同步，或检查 Server 版本及其运行账号的 npm 配置和网络。
+- “目标 npm 包暂不可用”：无法查询已发布版本、没有同时满足 Server 版本上限与业务基线的稳定包或 Server 版本非法；等待包发布/同步，或检查 Server 版本及其运行账号的 npm 配置和网络。
 - “等待 Run（N）”：已有 Run 正在排空，可取消；此时不能创建新 Run 或 Terminal。
 - “准备重启”：升级意图已经开始落盘，不再允许取消，等待 Supervisor 安装和重连。
 - “升级失败”：查看 Node/Supervisor 服务日志和 `dataDirectory` 下的升级结果，修复原因后重新推送。

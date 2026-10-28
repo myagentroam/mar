@@ -1,27 +1,49 @@
 import { emitAudit, resourceAuditEvent, type AuditObserver, type AuditEvent } from './audit.js';
+import { CodexDeviceLoginService, type CodexDeviceCommit } from './codex-device-login-service.js';
+import {
+  CredentialRefreshCoordinator,
+  REFRESH_WINDOW_MS,
+  REFRESH_FALLBACK_MS,
+  AUTHORIZATION_CHECK_MS,
+  type ResolveReason,
+  type BackgroundResolveReason,
+  type CodexCredentialMaintenanceResult
+} from './credential-refresh-coordinator.js';
+export type { CodexCredentialMaintenanceResult } from './credential-refresh-coordinator.js';
+import { CredentialCatalogService } from './credential-catalog-service.js';
 import { XaiLoginService } from './xai-login-service.js';
+import { ChatgptLoginService, type ChatgptNodeRequest } from './chatgpt-login-service.js';
+import type {
+  CredentialLoginActor as LoginActor,
+  CredentialLoginDraft as LoginDraft
+} from './credential-login-contracts.js';
 import {
   XaiOAuthProvider,
   XaiOAuthError,
   xaiTokenFields,
   scopes as xaiScopes,
-  normalizeXaiCatalog,
   normalizeXaiUsage,
   assertXaiResponse
 } from './xai-oauth-provider.js';
 import {
-  CODEX_CREDENTIAL_SETTING_KEY as CREDENTIAL_SETTING_KEY,
-  CODEX_CREDENTIAL_DOCUMENT_VERSION as DOCUMENT_VERSION,
   CODEX_MAX_CREDENTIALS as MAX_CREDENTIALS,
-  CODEX_MAX_DOCUMENT_BYTES as MAX_DOCUMENT_BYTES,
   credentialRecordSchema,
-  parseCredentialDocument,
   normalizeCredentialName as normalizeName,
   isValidSocks5Url,
   type CredentialRecord,
-  type CredentialDocument
+  type CredentialDocument,
+  type CredentialDocumentAccess
 } from './credential-document.js';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { normalizeCatalog } from './codex-catalog-adapter.js';
+import {
+  asRecord,
+  asOptionalRecord,
+  requiredString,
+  optionalString,
+  safeJson,
+  sameOwnership
+} from './credential-provider-values.js';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import { Socks5ProxyAgent, type Dispatcher } from 'undici';
 import { z } from 'zod';
@@ -34,16 +56,12 @@ import {
   CHATGPT_REVOKE_ENDPOINT,
   CHATGPT_PLAN_SCOPE,
   CHATGPT_ISSUER,
-  chatgptNodeLoginStatusSchema,
   chatgptTokenResponseSchema,
   verifyChatgptIdentity,
   codexCredentialDetailsSchema,
   codexCredentialSummarySchema,
   codexCredentialUsageSchema,
-  codexLoginAttemptSchema,
-  codexModelCatalogSchema,
   codexUsageProfileSchema,
-  resolveMarAgentDefaultReasoningEffort,
   runnerUsageSchema,
   type CodexCredentialDetails,
   type CodexCredentialOwnership,
@@ -55,18 +73,9 @@ import {
   type RunnerUsage,
   type RunnerUsageWindow
 } from '@myagentroam/protocol';
-import type {
-  CredentialScopePolicy,
-  CredentialOwnershipReader
-} from './credential-scope-policy.js';
+import type { CredentialScopePolicy } from './credential-scope-policy.js';
 
-const LOGIN_TTL_MS = 15 * 60 * 1000;
-const REFRESH_WINDOW_MS = 5 * 60 * 1000;
-const REFRESH_FALLBACK_MS = 8 * 24 * 60 * 60 * 1000;
-const AUTHORIZATION_CHECK_MS = 24 * 60 * 60 * 1000;
 export const CODEX_CREDENTIAL_MAINTENANCE_INTERVAL_MS = 60_000;
-const BACKGROUND_CONCURRENCY = 4;
-const BACKGROUND_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000] as const;
 const ORIGINATOR = 'myagentroam';
 const DEFAULT_AUTH_ISSUER = 'https://auth.openai.com';
 const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
@@ -74,7 +83,6 @@ const DEFAULT_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_CATALOG_CLIENT_VERSION = '99.99.99';
 const USAGE_RESPONSE_MAX_BYTES = 256 * 1024;
 const RESPONSE_BODY_LIMIT_EXCEEDED = 'CODEX_RESPONSE_BODY_LIMIT_EXCEEDED';
-const SUPPORTED_REASONING = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const PERMANENT_REFRESH_CODES = new Set([
   'invalid_grant',
   'refresh_token_expired',
@@ -132,77 +140,15 @@ const credentialUpdateSchema = z
       });
   });
 
-type LoginDraft = Omit<z.infer<typeof loginDraftSchema>, 'ownership'> & {
-  readonly ownership: CodexCredentialOwnership;
-};
-type ResolveReason =
-  'STARTUP' | 'ADMIN' | 'CATALOG' | 'USAGE' | 'TEST' | 'RUNTIME' | 'EXPIRING' | 'UNAUTHORIZED';
-type BackgroundResolveReason = Extract<ResolveReason, 'STARTUP' | 'EXPIRING'>;
-
-export interface CodexCredentialMaintenanceResult {
-  readonly attempted: number;
-  readonly deferred: number;
-  readonly failed: number;
-}
-
-interface LoginActor {
-  readonly userId: number;
-  readonly sessionFingerprint: string;
-}
-
-interface LoginAttemptRecord {
-  readonly id: string;
-  readonly actor: LoginActor;
-  readonly draft: LoginDraft;
-  readonly deviceAuthId: string;
-  readonly userCode: string;
-  readonly verificationUri: string;
-  readonly expiresAt: number;
-  readonly timer: NodeJS.Timeout;
-  readonly pollIntervalMs: number;
-  nextPollAt: number;
-  flight?: Promise<CodexLoginAttempt> | undefined;
-}
-
-interface RefreshFlight {
-  readonly force: boolean;
-  readonly promise: Promise<CredentialRecord>;
-}
-
-interface ChatgptLoginAttemptRecord {
-  readonly id: string;
-  readonly actor: LoginActor;
-  readonly draft: LoginDraft;
-  readonly nodeId: string;
-  readonly nonce: string;
-  readonly targetRevision?: number | undefined;
-  readonly clientId?: string | undefined;
-  readonly subject?: string | undefined;
-  expiresAt: number;
-  readonly timer: NodeJS.Timeout;
-  pending?: CodexLoginAttempt;
-  terminal?: CodexLoginAttempt;
-  flight?: Promise<CodexLoginAttempt> | undefined;
-}
-type ChatgptNodeRequest = (
-  actor: LoginActor,
-  nodeId: string,
-  operation: string,
-  data: unknown
-) => Promise<unknown>;
-
-interface BackgroundFailure {
-  readonly failures: number;
-  readonly nextAttemptAt: number;
-}
-
 interface ConditionalCredentialMutation {
   readonly credential: CredentialRecord;
   readonly applied: boolean;
 }
 
 export interface CodexCredentialServiceOptions {
-  readonly createScopePolicy: (readOwnership: CredentialOwnershipReader) => CredentialScopePolicy;
+  readonly scopePolicy: CredentialScopePolicy;
+  readonly documentStore: CredentialDocumentAccess;
+  readonly chatgptNodeRequest?: ChatgptNodeRequest;
   readonly request?: typeof fetch;
   readonly now?: () => number;
   readonly id?: () => string;
@@ -215,8 +161,7 @@ export interface CodexCredentialServiceOptions {
 export class CodexCredentialService {
   readonly #xai: XaiOAuthProvider;
   readonly #xaiLogins: XaiLoginService;
-  #chatgptNode: ChatgptNodeRequest | undefined;
-  readonly #chatgptAttempts = new Map<string, ChatgptLoginAttemptRecord>();
+  readonly #chatgptLogins: ChatgptLoginService;
   readonly #request: typeof fetch;
   readonly #now: () => number;
   readonly #id: () => string;
@@ -226,28 +171,17 @@ export class CodexCredentialService {
   readonly #codexProfileUsageUrl: string;
   readonly #clientId: string;
   readonly #userAgent: string;
-  readonly #attempts = new Map<string, LoginAttemptRecord>();
-  readonly #refreshFlights = new Map<string, RefreshFlight>();
-  readonly #catalogFlights = new Map<string, Promise<CodexModelCatalog>>();
-  readonly #backgroundFailures = new Map<string, BackgroundFailure>();
+  readonly #deviceLogins: CodexDeviceLoginService;
+  readonly #refresh: CredentialRefreshCoordinator;
+  readonly #catalog: CredentialCatalogService;
   readonly #scopes: CredentialScopePolicy;
-  #maintenanceFlight: Promise<CodexCredentialMaintenanceResult> | undefined;
-  #mutationTail: Promise<void> = Promise.resolve();
-
-  configureChatgptLogin(request: ChatgptNodeRequest): void {
-    this.#chatgptNode = request;
-  }
+  #startingLogins = 0;
+  readonly #documentStore: CredentialDocumentAccess;
 
   closeChatgptLogins(): void {
     this.#xaiLogins.close();
-    for (const attempt of this.#attempts.values()) this.#deleteAttempt(attempt);
-    for (const attempt of this.#chatgptAttempts.values()) {
-      clearTimeout(attempt.timer);
-      void this.#chatgptNode?.(attempt.actor, attempt.nodeId, 'chatgpt.login.cancel', {
-        attemptId: attempt.id
-      }).catch(() => undefined);
-    }
-    this.#chatgptAttempts.clear();
+    this.#deviceLogins.close();
+    this.#chatgptLogins.close();
   }
 
   async credentialTarget(actorUserId: number, credentialId: string): Promise<string> {
@@ -268,280 +202,29 @@ export class CodexCredentialService {
   async assertCredentialTarget(
     actorUserId: number,
     credentialId: string,
-    baseUrl: string,
-    fastMode?: boolean
+    baseUrl: string
   ): Promise<void> {
     const credential = await this.#requireManagedCredential(actorUserId, credentialId);
     if (credential.type === 'CHATGPT_OAUTH')
       await this.assertUserInScope(actorUserId, credentialId);
-    await this.assertStoredCredentialTarget(credentialId, baseUrl, fastMode);
+    await this.assertStoredCredentialTarget(credentialId, baseUrl);
   }
 
   async type(credentialId: string): Promise<CredentialRecord['type']> {
     return (await this.#requireCredential(credentialId)).type;
   }
 
-  async assertStoredCredentialTarget(
-    credentialId: string,
-    baseUrl: string,
-    _fastMode?: boolean
-  ): Promise<void> {
+  async assertStoredCredentialTarget(credentialId: string, baseUrl: string): Promise<void> {
     const expected = this.#credentialBaseUrl(await this.type(credentialId));
     if (baseUrl !== expected) throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
-  }
-
-  async #startChatgptLogin(actor: LoginActor, raw: unknown): Promise<CodexLoginAttempt> {
-    if (!this.#chatgptNode) throw new Error('CHATGPT_LOGIN_UNAVAILABLE');
-    const data = asRecord(raw);
-    const nodeId = requiredString(data['nodeId'], 128);
-    const { type: _type, nodeId: _nodeId, ...input } = data;
-    const { draft, target } = await this.#prepareLoginDraft(actor, input, 'CHATGPT_OAUTH');
-    const id = this.#id();
-    const nonce = randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
-    const expiresAt = this.#now() + LOGIN_TTL_MS;
-    const timer = setTimeout(() => {
-      this.#chatgptAttempts.delete(id);
-      void this.#chatgptNode?.(actor, nodeId, 'chatgpt.login.cancel', { attemptId: id }).catch(
-        () => undefined
-      );
-    }, LOGIN_TTL_MS);
-    timer.unref();
-    const attempt: ChatgptLoginAttemptRecord = {
-      id,
-      actor: { ...actor },
-      draft,
-      nodeId,
-      nonce,
-      expiresAt,
-      timer,
-      targetRevision: target?.revision,
-      clientId: target?.chatgpt?.clientId,
-      subject: target?.chatgpt?.subject
-    };
-    this.#chatgptAttempts.set(id, attempt);
-    try {
-      const status = chatgptNodeLoginStatusSchema.parse(
-        await this.#chatgptNode(actor, nodeId, 'chatgpt.login.start', {
-          attemptId: id,
-          nonce,
-          ...(attempt.clientId ? { clientId: attempt.clientId, subject: attempt.subject } : {}),
-          ...(draft.socks5Url ? { socks5Url: draft.socks5Url } : {})
-        })
-      );
-      if (status.status !== 'PENDING') throw new Error('CHATGPT_LOGIN_RESPONSE_INVALID');
-      const uri = new URL(status.verificationUri);
-      if (
-        uri.protocol !== 'http:' ||
-        uri.hostname !== '127.0.0.1' ||
-        uri.pathname !== '/auth/start' ||
-        uri.username ||
-        uri.password ||
-        !uri.searchParams.get('ticket')
-      )
-        throw new Error('CHATGPT_LOGIN_RESPONSE_INVALID');
-      attempt.expiresAt = Math.min(expiresAt, status.expiresAt);
-      if (attempt.expiresAt <= this.#now()) throw new Error('CHATGPT_LOGIN_RESPONSE_INVALID');
-      attempt.pending = codexLoginAttemptSchema.parse({
-        id,
-        type: 'CHATGPT_OAUTH',
-        status: 'PENDING',
-        verificationUri: status.verificationUri,
-        expiresAt: attempt.expiresAt,
-        pollIntervalMs: 2000
-      });
-      return attempt.pending;
-    } catch {
-      this.#chatgptAttempts.delete(id);
-      clearTimeout(timer);
-      await this.#chatgptNode(actor, nodeId, 'chatgpt.login.cancel', { attemptId: id }).catch(
-        () => undefined
-      );
-      throw new Error('CHATGPT_LOGIN_START_FAILED');
-    }
-  }
-
-  #ownedChatgptAttempt(actor: LoginActor, id: string): ChatgptLoginAttemptRecord {
-    const attempt = this.#chatgptAttempts.get(id);
-    if (
-      !attempt ||
-      attempt.actor.userId !== actor.userId ||
-      attempt.actor.sessionFingerprint !== actor.sessionFingerprint
-    )
-      throw new Error('CODEX_LOGIN_ATTEMPT_NOT_FOUND');
-    return attempt;
-  }
-
-  async #chatgptLoginAttempt(
-    actor: LoginActor,
-    id: string,
-    validateCommit?: () => void
-  ): Promise<CodexLoginAttempt> {
-    const attempt = this.#ownedChatgptAttempt(actor, id);
-    if (attempt.draft.targetCredentialId)
-      await this.#requireManagedCredential(actor.userId, attempt.draft.targetCredentialId);
-    else await this.#scopes.assertActorCanSelectOwnership(actor.userId, attempt.draft.ownership);
-    if (attempt.terminal) return attempt.terminal;
-    if (this.#now() >= attempt.expiresAt)
-      return codexLoginAttemptSchema.parse({ id, type: 'CHATGPT_OAUTH', status: 'EXPIRED' });
-    if (attempt.flight) return attempt.flight;
-    attempt.flight = this.#completeChatgptLogin(attempt, validateCommit).finally(() => {
-      attempt.flight = undefined;
-    });
-    return attempt.flight;
-  }
-
-  async #completeChatgptLogin(
-    attempt: ChatgptLoginAttemptRecord,
-    validateCommit?: () => void
-  ): Promise<CodexLoginAttempt> {
-    try {
-      const status = chatgptNodeLoginStatusSchema.parse(
-        await this.#chatgptNode!(attempt.actor, attempt.nodeId, 'chatgpt.login.status', {
-          attemptId: attempt.id
-        })
-      );
-      if (status.status === 'PENDING') return attempt.pending!;
-      if (status.status === 'FAILED') throw new Error(status.code);
-      const result = status.result;
-      if (
-        result.attemptId !== attempt.id ||
-        result.clientId === 'dynamic_agent_client' ||
-        (attempt.clientId && result.clientId !== attempt.clientId) ||
-        !result.tokens.id_token
-      )
-        throw new Error('CHATGPT_LOGIN_RESPONSE_INVALID');
-      const jwks = await this.#requestWithProxy(
-        CHATGPT_JWKS_ENDPOINT,
-        'GET',
-        attempt.draft.socks5Url,
-        {}
-      );
-      if (!jwks.ok) throw new Error('CHATGPT_IDENTITY_INVALID');
-      const identity = await verifyChatgptIdentity(result.tokens.id_token, await safeJson(jwks), {
-        clientId: result.clientId,
-        nonce: attempt.nonce,
-        subject: attempt.subject,
-        now: this.#now()
-      });
-      const candidate: CredentialRecord = {
-        id: attempt.draft.targetCredentialId ?? attempt.id,
-        name: attempt.draft.name,
-        type: 'CHATGPT_OAUTH',
-        ownership: attempt.draft.ownership,
-        status: 'ACTIVE',
-        accessToken: result.tokens.access_token,
-        refreshToken: result.tokens.refresh_token ?? '',
-        accountId: identity.subject,
-        accessTokenExpiresAt: this.#now() + result.tokens.expires_in * 1000,
-        lastRefreshAt: this.#now(),
-        lastCheckedAt: this.#now(),
-        proxy: attempt.draft.socks5Url ?? null,
-        revision: 1,
-        createdAt: this.#now(),
-        updatedAt: this.#now(),
-        chatgpt: {
-          clientId: result.clientId,
-          issuer: CHATGPT_ISSUER,
-          subject: identity.subject,
-          idToken: result.tokens.id_token,
-          scopes: result.tokens.scope.split(/\s+/u).filter(Boolean),
-          earliestRefreshAt:
-            result.tokens.earliest_refresh_at === undefined
-              ? null
-              : result.tokens.earliest_refresh_at * 1000,
-          hostId: result.hostId
-        }
-      };
-      // Recheck Node access and the live attempt after asynchronous identity validation.
-      const currentStatus = chatgptNodeLoginStatusSchema.parse(
-        await this.#chatgptNode!(attempt.actor, attempt.nodeId, 'chatgpt.login.status', {
-          attemptId: attempt.id
-        })
-      );
-      if (currentStatus.status !== 'SUCCEEDED') throw new Error('CHATGPT_LOGIN_RESPONSE_INVALID');
-      const saved = await this.#mutateDocument(async (document) => {
-        if (this.#chatgptAttempts.get(attempt.id) !== attempt || this.#now() >= attempt.expiresAt)
-          throw new Error('CHATGPT_LOGIN_EXPIRED');
-        const index = document.credentials.findIndex((c) => c.id === candidate.id);
-        const existing = document.credentials[index];
-        if (
-          attempt.targetRevision !== undefined &&
-          (!existing ||
-            existing.revision !== attempt.targetRevision ||
-            existing.type !== 'CHATGPT_OAUTH')
-        )
-          throw new Error('CHATGPT_CREDENTIAL_CHANGED');
-        if (
-          existing &&
-          !(await this.#scopes.canActorManageOwnership(attempt.actor.userId, existing.ownership))
-        )
-          throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
-        await this.#scopes.assertActorCanSelectOwnership(attempt.actor.userId, candidate.ownership);
-        if (existing && !sameOwnership(existing.ownership, candidate.ownership))
-          await this.#scopes.assertCredentialScopeChangeAllowed(existing.id, candidate.ownership);
-        validateCommit?.();
-        if (this.#chatgptAttempts.get(attempt.id) !== attempt || this.#now() >= attempt.expiresAt)
-          throw new Error('CHATGPT_LOGIN_EXPIRED');
-        if (
-          document.credentials.some(
-            (credential) =>
-              credential.id !== candidate.id &&
-              sameOwnership(credential.ownership, candidate.ownership) &&
-              normalizeName(credential.name) === normalizeName(candidate.name)
-          )
-        )
-          throw new Error('CODEX_CREDENTIAL_NAME_CONFLICT');
-        const next = {
-          ...candidate,
-          revision: (existing?.revision ?? 0) + 1,
-          createdAt: existing?.createdAt ?? candidate.createdAt
-        };
-        if (index < 0) {
-          if (document.credentials.length >= MAX_CREDENTIALS)
-            throw new Error('CODEX_CREDENTIAL_LIMIT_REACHED');
-          document.credentials.push(next);
-        } else document.credentials[index] = next;
-        return next;
-      });
-      this.#recordAudit(attempt.actor.userId, saved, 'credential.saved');
-      attempt.terminal = codexLoginAttemptSchema.parse({
-        id: attempt.id,
-        type: 'CHATGPT_OAUTH',
-        status: 'SUCCEEDED',
-        credentialId: saved.id
-      });
-      await this.#chatgptNode!(attempt.actor, attempt.nodeId, 'chatgpt.login.ack', {
-        attemptId: attempt.id
-      }).catch(() => undefined);
-      return attempt.terminal;
-    } catch (error) {
-      const code =
-        error instanceof Error && /^(CHATGPT|CODEX)_[A-Z0-9_]+$/u.test(error.message)
-          ? error.message
-          : 'CHATGPT_LOGIN_FAILED';
-      attempt.terminal = codexLoginAttemptSchema.parse({
-        id: attempt.id,
-        type: 'CHATGPT_OAUTH',
-        status: 'FAILED',
-        code,
-        message: 'ChatGPT login could not be saved.'
-      });
-      await this.#chatgptNode!(attempt.actor, attempt.nodeId, 'chatgpt.login.cancel', {
-        attemptId: attempt.id
-      }).catch(() => undefined);
-      return attempt.terminal;
-    }
   }
 
   constructor(
     private readonly database: { readonly raw: Pool } & Partial<AuditObserver>,
     options: CodexCredentialServiceOptions
   ) {
-    this.#scopes = options.createScopePolicy(
-      async (credentialId) =>
-        (await this.#readDocument()).credentials.find((value) => value.id === credentialId)
-          ?.ownership
-    );
+    this.#scopes = options.scopePolicy;
+    this.#documentStore = options.documentStore;
     this.#request = options.request ?? fetch;
     this.#now = options.now ?? Date.now;
     this.#id = options.id ?? randomUUID;
@@ -552,6 +235,29 @@ export class CodexCredentialService {
     this.#clientId = boundedText(options.clientId ?? DEFAULT_CLIENT_ID, 512);
     const projectVersion = boundedText(options.projectVersion ?? 'unknown', 128);
     this.#userAgent = `MyAgentRoam/${projectVersion} (${process.platform}; ${process.arch})`;
+    this.#refresh = new CredentialRefreshCoordinator(
+      () => this.#readDocument(),
+      (id, reason, force) => this.#refreshAndCheck(id, reason, force),
+      this.#now
+    );
+    this.#catalog = new CredentialCatalogService({
+      resolve: (id, force) => this.#refresh.resolve(id, force ? 'UNAUTHORIZED' : 'CATALOG', force),
+      response: (credential) => this.#catalogResponse(credential),
+      markReauthentication: async (id, credential) =>
+        (await this.#markReauthenticationRequired(id, credential)).applied,
+      accept: (id, credential) => this.#acceptCatalog(id, credential),
+      now: this.#now
+    });
+    this.#deviceLogins = new CodexDeviceLoginService({
+      issuer: this.#authIssuer,
+      clientId: this.#clientId,
+      now: this.#now,
+      id: this.#id,
+      request: (url, method, proxy, headers, body) =>
+        this.#requestWithProxy(url, method, proxy, headers, body),
+      commit: (attempt, response, assertCurrent) =>
+        this.#commitDeviceLogin(attempt, response, assertCurrent)
+    });
     this.#xai = new XaiOAuthProvider(async (url, method, proxy, headers, body) => {
       try {
         return await this.#requestWithProxy(url, method, proxy, headers, body, {
@@ -564,6 +270,17 @@ export class CodexCredentialService {
       }
     }, projectVersion);
     this.#xaiLogins = new XaiLoginService(this.#xai, this.#now, this.#id);
+    this.#chatgptLogins = new ChatgptLoginService(
+      options.chatgptNodeRequest,
+      (actor, raw, type) => this.#prepareLoginDraft(actor, raw, type),
+      (userId, id) => this.#requireManagedCredential(userId, id),
+      this.#scopes,
+      (url, method, proxy, headers) => this.#requestWithProxy(url, method, proxy, headers),
+      (mutate) => this.#mutateDocument(mutate),
+      (userId, credential, event) => this.#recordAudit(userId, credential, event),
+      this.#now,
+      this.#id
+    );
   }
 
   async list(actorUserId: number): Promise<readonly CodexCredentialSummary[]> {
@@ -594,10 +311,10 @@ export class CodexCredentialService {
     if (managed.type === 'XAI_OAUTH') return this.#xaiUsage(credentialId);
     try {
       for (let freshnessAttempt = 0; freshnessAttempt < 2; freshnessAttempt++) {
-        let credential = await this.#resolveRecord(credentialId, 'USAGE', false);
+        let credential = await this.#refresh.resolve(credentialId, 'USAGE', false);
         let rateLimitResponse = await this.#usageResponse(credential);
         if (rateLimitResponse.status === 401) {
-          credential = await this.#resolveRecord(credentialId, 'UNAUTHORIZED', true);
+          credential = await this.#refresh.resolve(credentialId, 'UNAUTHORIZED', true);
           rateLimitResponse = await this.#usageResponse(credential);
         }
         if (rateLimitResponse.status === 401) {
@@ -609,7 +326,7 @@ export class CodexCredentialService {
         if (!rateLimitResponse.ok) throw new Error('CODEX_USAGE_LOAD_FAILED');
         let profileResponse = await this.#profileUsageResponse(credential);
         if (profileResponse.status === 401) {
-          credential = await this.#resolveRecord(credentialId, 'UNAUTHORIZED', true);
+          credential = await this.#refresh.resolve(credentialId, 'UNAUTHORIZED', true);
           rateLimitResponse = await this.#usageResponse(credential);
           if (rateLimitResponse.status === 401) {
             const marked = await this.#markReauthenticationRequired(credentialId, credential);
@@ -655,12 +372,7 @@ export class CodexCredentialService {
   }
 
   maintain(reason: BackgroundResolveReason): Promise<CodexCredentialMaintenanceResult> {
-    if (this.#maintenanceFlight !== undefined) return this.#maintenanceFlight;
-    const flight = this.#runMaintenance(reason).finally(() => {
-      if (this.#maintenanceFlight === flight) this.#maintenanceFlight = undefined;
-    });
-    this.#maintenanceFlight = flight;
-    return flight;
+    return this.#refresh.maintain(reason);
   }
 
   async #prepareLoginDraft(actor: LoginActor, raw: unknown, type: CredentialRecord['type']) {
@@ -701,52 +413,39 @@ export class CodexCredentialService {
       throw new Error('CODEX_CREDENTIAL_NAME_CONFLICT');
     if (target !== undefined && target.type !== type)
       throw new Error('CODEX_CREDENTIAL_INPUT_INVALID');
-    if (this.#attempts.size + this.#chatgptAttempts.size + this.#xaiLogins.size >= 128)
-      throw new Error('CODEX_LOGIN_ATTEMPT_LIMIT_REACHED');
     return { draft, target };
   }
 
   async startLogin(actor: LoginActor, raw: unknown): Promise<CodexLoginAttempt> {
-    if (asOptionalRecord(raw)?.['type'] === 'XAI_OAUTH') {
-      const { type: _type, ...input } = asRecord(raw);
-      const { draft, target } = await this.#prepareLoginDraft(actor, input, 'XAI_OAUTH');
-      return this.#xaiLogins.start(actor, draft, target?.revision);
-    }
-    if (asOptionalRecord(raw)?.['type'] === 'CHATGPT_OAUTH')
-      return this.#startChatgptLogin(actor, raw);
-    const { draft } = await this.#prepareLoginDraft(actor, raw, 'CODEX_OAUTH');
-
-    const response = await this.#requestWithProxy(
-      `${this.#authIssuer}/api/accounts/deviceauth/usercode`,
-      'POST',
-      draft.socks5Url,
-      {
-        'content-type': 'application/json'
-      },
-      JSON.stringify({ client_id: this.#clientId })
-    );
-    if (!response.ok) throw new Error('CODEX_DEVICE_AUTH_UNAVAILABLE');
-    const payload = asRecord(await safeJson(response));
-    const deviceAuthId = requiredString(payload['device_auth_id'], 4096);
-    const userCode = requiredString(payload['user_code'] ?? payload['usercode'], 128);
-    const intervalSeconds = parsePositiveInteger(payload['interval'], 60) ?? 5;
-    const id = this.#id();
-    const timer = setTimeout(() => this.#deleteAttempt(attempt), LOGIN_TTL_MS);
-    timer.unref();
-    const attempt: LoginAttemptRecord = {
-      id,
-      actor: { ...actor },
-      draft,
-      deviceAuthId,
-      userCode,
-      verificationUri: `${this.#authIssuer}/codex/device`,
-      expiresAt: this.#now() + LOGIN_TTL_MS,
-      timer,
-      pollIntervalMs: intervalSeconds * 1000,
-      nextPollAt: this.#now()
+    if (
+      this.#deviceLogins.size +
+        this.#chatgptLogins.size +
+        this.#xaiLogins.size +
+        this.#startingLogins >=
+      128
+    )
+      throw new Error('CODEX_LOGIN_ATTEMPT_LIMIT_REACHED');
+    this.#startingLogins++;
+    let reserved = true;
+    const releaseReservation = () => {
+      if (reserved) {
+        reserved = false;
+        this.#startingLogins--;
+      }
     };
-    this.#attempts.set(id, attempt);
-    return publicPendingAttempt(attempt);
+    try {
+      if (asOptionalRecord(raw)?.['type'] === 'XAI_OAUTH') {
+        const { type: _type, ...input } = asRecord(raw);
+        const { draft, target } = await this.#prepareLoginDraft(actor, input, 'XAI_OAUTH');
+        return await this.#xaiLogins.start(actor, draft, target?.revision, releaseReservation);
+      }
+      if (asOptionalRecord(raw)?.['type'] === 'CHATGPT_OAUTH')
+        return await this.#chatgptLogins.start(actor, raw, releaseReservation);
+      const { draft, target } = await this.#prepareLoginDraft(actor, raw, 'CODEX_OAUTH');
+      return await this.#deviceLogins.start(actor, draft, target?.revision, releaseReservation);
+    } finally {
+      releaseReservation();
+    }
   }
 
   async loginAttempt(
@@ -819,176 +518,89 @@ export class CodexCredentialService {
         },
         validateCommit
       );
-    if (this.#chatgptAttempts.has(attemptId))
-      return this.#chatgptLoginAttempt(actor, attemptId, validateCommit);
-    const attempt = this.#ownedAttempt(actor, attemptId);
-    if (this.#now() >= attempt.expiresAt) {
-      this.#deleteAttempt(attempt);
-      return codexLoginAttemptSchema.parse({ id: attempt.id, status: 'EXPIRED' });
-    }
-    if (attempt.flight) return attempt.flight;
-    if (this.#now() < attempt.nextPollAt) return publicPendingAttempt(attempt);
-    const flight = this.#completeLogin(attempt, validateCommit).finally(() => {
-      attempt.flight = undefined;
-    });
-    attempt.flight = flight;
-    return flight;
+    if (this.#chatgptLogins.has(attemptId))
+      return this.#chatgptLogins.poll(actor, attemptId, validateCommit);
+    return this.#deviceLogins.poll(actor, attemptId, validateCommit);
   }
 
-  async #completeLogin(
-    attempt: LoginAttemptRecord,
-    validateCommit?: () => void
-  ): Promise<CodexLoginAttempt> {
-    const assertCurrent = () => {
-      if (this.#attempts.get(attempt.id) !== attempt || this.#now() >= attempt.expiresAt)
-        throw new Error('CODEX_LOGIN_ATTEMPT_NOT_FOUND');
-      validateCommit?.();
-    };
-    const poll = await this.#requestWithProxy(
-      `${this.#authIssuer}/api/accounts/deviceauth/token`,
-      'POST',
-      attempt.draft.socks5Url,
-      { 'content-type': 'application/json' },
-      JSON.stringify({
-        device_auth_id: attempt.deviceAuthId,
-        user_code: attempt.userCode
-      })
-    );
-    try {
-      assertCurrent();
-      if (poll.status === 403 || poll.status === 404) {
-        attempt.nextPollAt = this.#now() + attempt.pollIntervalMs;
-        return publicPendingAttempt(attempt);
-      }
-      if (!poll.ok) {
-        this.#deleteAttempt(attempt);
-        return codexLoginAttemptSchema.parse({
-          id: attempt.id,
-          status: 'FAILED',
-          code: 'CODEX_DEVICE_AUTH_FAILED',
-          message: 'Codex device authorization failed.'
-        });
-      }
-      const code = asRecord(await safeJson(poll));
-      assertCurrent();
-      const authorizationCode = requiredString(code['authorization_code'], 8192);
-      const codeVerifier = requiredString(code['code_verifier'], 8192);
-      const tokenResponse = await this.#requestWithProxy(
-        `${this.#authIssuer}/oauth/token`,
-        'POST',
-        attempt.draft.socks5Url,
-        { 'content-type': 'application/x-www-form-urlencoded' },
-        new URLSearchParams({
-          grant_type: 'authorization_code',
-          code: authorizationCode,
-          redirect_uri: `${this.#authIssuer}/deviceauth/callback`,
-          client_id: this.#clientId,
-          code_verifier: codeVerifier
-        }).toString()
-      );
-      if (!tokenResponse.ok) throw new Error('CODEX_TOKEN_EXCHANGE_FAILED');
-      const tokens = parseTokenResponse(await safeJson(tokenResponse), undefined);
-      assertCurrent();
-      const credentialId = attempt.draft.targetCredentialId ?? attempt.id;
-      const candidate = credentialFromTokens({
-        id: credentialId,
-        name: attempt.draft.name,
-        ownership: attempt.draft.ownership,
-        tokens,
-        proxy: attempt.draft.socks5Url ?? null,
-        now: this.#now(),
-        revision: 1
-      });
-      await this.#requestCatalog(candidate);
-      assertCurrent();
-      const saved = await this.#mutateDocument(async (document) => {
-        const index = document.credentials.findIndex(
-          (credential) => credential.id === credentialId
+  async #commitDeviceLogin(
+    attempt: CodexDeviceCommit,
+    tokenResponse: Response,
+    assertCurrent: () => void
+  ): Promise<string> {
+    const tokens = parseTokenResponse(await safeJson(tokenResponse), undefined);
+    assertCurrent();
+    const credentialId = attempt.draft.targetCredentialId ?? attempt.id;
+    const candidate = credentialFromTokens({
+      id: credentialId,
+      name: attempt.draft.name,
+      ownership: attempt.draft.ownership,
+      tokens,
+      proxy: attempt.draft.socks5Url ?? null,
+      now: this.#now(),
+      revision: 1
+    });
+    await this.#requestCatalog(candidate);
+    assertCurrent();
+    const saved = await this.#mutateDocument(async (document) => {
+      const index = document.credentials.findIndex((credential) => credential.id === credentialId);
+      if (attempt.draft.targetCredentialId !== undefined && index < 0)
+        throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
+      const existing = index < 0 ? undefined : document.credentials[index];
+      if (
+        attempt.draft.targetCredentialId !== undefined &&
+        (existing?.type !== 'CODEX_OAUTH' || existing.revision !== attempt.targetRevision)
+      )
+        throw new Error('CODEX_LOGIN_CONFLICT');
+      if (
+        existing !== undefined &&
+        !(await this.#scopes.canActorManageOwnership(attempt.actor.userId, existing.ownership))
+      )
+        throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
+      if (existing === undefined || !sameOwnership(existing.ownership, attempt.draft.ownership)) {
+        await this.#scopes.assertActorCanSelectOwnership(
+          attempt.actor.userId,
+          attempt.draft.ownership
         );
-        if (attempt.draft.targetCredentialId !== undefined && index < 0)
-          throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
-        const existing = index < 0 ? undefined : document.credentials[index];
-        if (
-          existing !== undefined &&
-          !(await this.#scopes.canActorManageOwnership(attempt.actor.userId, existing.ownership))
-        )
-          throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
-        if (existing === undefined || !sameOwnership(existing.ownership, attempt.draft.ownership)) {
-          await this.#scopes.assertActorCanSelectOwnership(
-            attempt.actor.userId,
+        if (existing !== undefined)
+          await this.#scopes.assertCredentialScopeChangeAllowed(
+            existing.id,
             attempt.draft.ownership
           );
-          if (existing !== undefined)
-            await this.#scopes.assertCredentialScopeChangeAllowed(
-              existing.id,
-              attempt.draft.ownership
-            );
-        }
-        if (
-          document.credentials.some(
-            (credential) =>
-              credential.id !== credentialId &&
-              sameOwnership(credential.ownership, attempt.draft.ownership) &&
-              normalizeName(credential.name) === normalizeName(attempt.draft.name)
-          )
+      }
+      if (
+        document.credentials.some(
+          (credential) =>
+            credential.id !== credentialId &&
+            sameOwnership(credential.ownership, attempt.draft.ownership) &&
+            normalizeName(credential.name) === normalizeName(attempt.draft.name)
         )
-          throw new Error('CODEX_CREDENTIAL_NAME_CONFLICT');
-        const next = {
-          ...candidate,
-          revision: (existing?.revision ?? 0) + 1,
-          createdAt: existing?.createdAt ?? candidate.createdAt,
-          lastCheckedAt: this.#now(),
-          updatedAt: this.#now()
-        };
-        if (index < 0) {
-          if (document.credentials.length >= MAX_CREDENTIALS)
-            throw new Error('CODEX_CREDENTIAL_LIMIT_REACHED');
-          document.credentials.push(next);
-        } else {
-          document.credentials[index] = next;
-        }
-        return next;
-      }, assertCurrent);
-      this.#recordAudit(attempt.actor.userId, saved, 'credential.saved');
-      this.#deleteAttempt(attempt);
-      return codexLoginAttemptSchema.parse({
-        id: attempt.id,
-        status: 'SUCCEEDED',
-        credentialId: saved.id
-      });
-    } catch (error) {
-      this.#deleteAttempt(attempt);
-      if (this.#now() >= attempt.expiresAt)
-        return codexLoginAttemptSchema.parse({ id: attempt.id, status: 'EXPIRED' });
-      if (error instanceof Error && /^CODEX_[A-Z0-9_]+$/u.test(error.message))
-        return codexLoginAttemptSchema.parse({
-          id: attempt.id,
-          status: 'FAILED',
-          code: error.message,
-          message: `Codex login failed (${error.message}).`
-        });
-      return codexLoginAttemptSchema.parse({
-        id: attempt.id,
-        status: 'FAILED',
-        code: 'CODEX_LOGIN_FAILED',
-        message: 'Codex login failed.'
-      });
-    }
+      )
+        throw new Error('CODEX_CREDENTIAL_NAME_CONFLICT');
+      const next = {
+        ...candidate,
+        revision: (existing?.revision ?? 0) + 1,
+        createdAt: existing?.createdAt ?? candidate.createdAt,
+        lastCheckedAt: this.#now(),
+        updatedAt: this.#now()
+      };
+      if (index < 0) {
+        if (document.credentials.length >= MAX_CREDENTIALS)
+          throw new Error('CODEX_CREDENTIAL_LIMIT_REACHED');
+        document.credentials.push(next);
+      } else {
+        document.credentials[index] = next;
+      }
+      return next;
+    }, assertCurrent);
+    this.#recordAudit(attempt.actor.userId, saved, 'credential.saved');
+    return saved.id;
   }
 
   async cancelLogin(actor: LoginActor, attemptId: string): Promise<void> {
     if (this.#xaiLogins.has(attemptId)) return this.#xaiLogins.cancel(actor, attemptId);
-    if (this.#chatgptAttempts.has(attemptId)) {
-      const attempt = this.#ownedChatgptAttempt(actor, attemptId);
-      this.#chatgptAttempts.delete(attemptId);
-      clearTimeout(attempt.timer);
-      await this.#chatgptNode!(actor, attempt.nodeId, 'chatgpt.login.cancel', { attemptId }).catch(
-        () => undefined
-      );
-      return;
-    }
-    const attempt = this.#ownedAttempt(actor, attemptId);
-    this.#deleteAttempt(attempt);
+    if (this.#chatgptLogins.has(attemptId)) return this.#chatgptLogins.cancel(actor, attemptId);
+    this.#deviceLogins.cancel(actor, attemptId);
   }
 
   async update(
@@ -1100,7 +712,7 @@ export class CodexCredentialService {
 
   async refresh(actorUserId: number, credentialId: string): Promise<CodexCredentialSummary> {
     await this.#requireManagedCredential(actorUserId, credentialId);
-    await this.#resolveRecord(credentialId, 'ADMIN', true);
+    await this.#refresh.resolve(credentialId, 'ADMIN', true);
     const value = (await this.list(actorUserId)).find(
       (credential) => credential.id === credentialId
     );
@@ -1115,8 +727,8 @@ export class CodexCredentialService {
   ): Promise<{ readonly success: boolean; readonly code: string | null }> {
     const credential = await this.#requireManagedCredential(actorUserId, credentialId);
     try {
-      await this.#resolveRecord(credentialId, 'TEST', true);
-      await this.#loadCatalog(credentialId);
+      await this.#refresh.resolve(credentialId, 'TEST', true);
+      await this.#catalog.load(credentialId);
       this.#recordAudit(actorUserId, credential, 'credential.tested', {}, { result: 'SUCCESS' });
       return { success: true, code: null };
     } catch (error) {
@@ -1139,7 +751,7 @@ export class CodexCredentialService {
   }
 
   async resolve(credentialId: string, reason: ResolveReason): Promise<ResolvedRuntimeCredential> {
-    const credential = await this.#resolveRecord(
+    const credential = await this.#refresh.resolve(
       credentialId,
       reason,
       reason === 'UNAUTHORIZED' || reason === 'ADMIN'
@@ -1166,7 +778,7 @@ export class CodexCredentialService {
 
   async loadCatalog(actorUserId: number, credentialId: string): Promise<CodexModelCatalog> {
     await this.#requireManagedCredential(actorUserId, credentialId);
-    return this.#loadCatalog(credentialId);
+    return this.#catalog.load(credentialId);
   }
 
   async assertUserInScope(userId: number, credentialId: string): Promise<void> {
@@ -1188,133 +800,21 @@ export class CodexCredentialService {
     await this.#scopes.assertModelCredentialBinding(actorUserId, credentialId, modelId);
   }
 
-  async #loadCatalog(credentialId: string): Promise<CodexModelCatalog> {
-    const existing = this.#catalogFlights.get(credentialId);
-    if (existing !== undefined) return existing;
-    const flight = this.#loadCatalogUncached(credentialId).finally(() => {
-      if (this.#catalogFlights.get(credentialId) === flight)
-        this.#catalogFlights.delete(credentialId);
-    });
-    this.#catalogFlights.set(credentialId, flight);
-    return flight;
-  }
-
-  async #loadCatalogUncached(credentialId: string): Promise<CodexModelCatalog> {
-    for (let freshnessAttempt = 0; freshnessAttempt < 2; freshnessAttempt++) {
-      let credential = await this.#resolveRecord(credentialId, 'CATALOG', false);
-      let response = await this.#catalogResponse(credential);
-      if (response.status === 401) {
-        credential = await this.#resolveRecord(credentialId, 'UNAUTHORIZED', true);
-        response = await this.#catalogResponse(credential);
-      }
-      if (response.status === 401) {
-        const marked = await this.#markReauthenticationRequired(credentialId, credential);
-        if (!marked.applied) continue;
-        throw new Error('CODEX_CREDENTIAL_REAUTH_REQUIRED');
-      }
-      if (credential.type === 'XAI_OAUTH') assertXaiResponse(response, 'XAI_CATALOG_LOAD_FAILED');
-      if (!response.ok) throw new Error('CODEX_CATALOG_LOAD_FAILED');
-      const catalog =
-        credential.type === 'XAI_OAUTH'
-          ? normalizeXaiCatalog(await safeJson(response), this.#now())
-          : credential.type === 'CHATGPT_OAUTH'
-            ? normalizeChatgptCatalog(await safeJson(response), this.#now())
-            : normalizeCatalog(await safeJson(response), this.#now());
-      const accepted = await this.#mutateDocument((document) => {
-        const index = document.credentials.findIndex((value) => value.id === credentialId);
-        if (index < 0) throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
-        const current = document.credentials[index]!;
-        if (!sameCredentialRequest(current, credential)) return false;
-        document.credentials[index] = {
-          ...current,
-          status: retainCredentialFailureStatus(current.status, credential.status),
-          lastCheckedAt: this.#now(),
-          revision: current.revision + 1,
-          updatedAt: this.#now()
-        };
-        return true;
-      });
-      if (accepted) return catalog;
-    }
-    throw new Error('CODEX_CATALOG_LOAD_FAILED');
-  }
-
-  async #runMaintenance(
-    reason: BackgroundResolveReason
-  ): Promise<CodexCredentialMaintenanceResult> {
-    const document = await this.#readDocument();
-    const now = this.#now();
-    const currentIds = new Set(document.credentials.map((credential) => credential.id));
-    for (const credentialId of this.#backgroundFailures.keys())
-      if (!currentIds.has(credentialId)) this.#backgroundFailures.delete(credentialId);
-
-    let deferred = 0;
-    const candidates = document.credentials.filter((credential) => {
-      if (credential.status === 'REAUTH_REQUIRED' || !needsBackgroundMaintenance(credential, now))
-        return false;
-      const failure = this.#backgroundFailures.get(credential.id);
-      if (failure !== undefined && failure.nextAttemptAt > now) {
-        deferred++;
-        return false;
-      }
+  async #acceptCatalog(id: string, credential: CredentialRecord): Promise<boolean> {
+    return this.#mutateDocument((document) => {
+      const index = document.credentials.findIndex((value) => value.id === id);
+      if (index < 0) throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
+      const current = document.credentials[index]!;
+      if (!sameCredentialRequest(current, credential)) return false;
+      document.credentials[index] = {
+        ...current,
+        status: retainCredentialFailureStatus(current.status, credential.status),
+        lastCheckedAt: this.#now(),
+        revision: current.revision + 1,
+        updatedAt: this.#now()
+      };
       return true;
     });
-    let cursor = 0;
-    let failed = 0;
-    const worker = async () => {
-      while (cursor < candidates.length) {
-        const credential = candidates[cursor++]!;
-        try {
-          const resolved = await this.#resolveRecord(credential.id, reason, false);
-          if (resolved.status === 'DEGRADED') {
-            this.#recordBackgroundFailure(credential.id);
-            failed++;
-          } else {
-            this.#backgroundFailures.delete(credential.id);
-          }
-        } catch {
-          this.#recordBackgroundFailure(credential.id);
-          failed++;
-        }
-      }
-    };
-    await Promise.all(
-      Array.from({ length: Math.min(BACKGROUND_CONCURRENCY, candidates.length) }, worker)
-    );
-    return {
-      attempted: candidates.length,
-      deferred,
-      failed
-    };
-  }
-
-  #recordBackgroundFailure(credentialId: string): void {
-    const previous = this.#backgroundFailures.get(credentialId);
-    const failures = (previous?.failures ?? 0) + 1;
-    const delay = BACKGROUND_BACKOFF_MS[Math.min(failures - 1, BACKGROUND_BACKOFF_MS.length - 1)]!;
-    this.#backgroundFailures.set(credentialId, {
-      failures,
-      nextAttemptAt: this.#now() + delay
-    });
-  }
-
-  async #resolveRecord(
-    credentialId: string,
-    reason: ResolveReason,
-    force: boolean
-  ): Promise<CredentialRecord> {
-    const existing = this.#refreshFlights.get(credentialId);
-    if (existing !== undefined) {
-      if (!force || existing.force) return existing.promise;
-      await existing.promise.catch(() => undefined);
-      return this.#resolveRecord(credentialId, reason, true);
-    }
-    const promise = this.#refreshAndCheck(credentialId, reason, force).finally(() => {
-      if (this.#refreshFlights.get(credentialId)?.promise === promise)
-        this.#refreshFlights.delete(credentialId);
-    });
-    this.#refreshFlights.set(credentialId, { force, promise });
-    return promise;
   }
 
   async #refreshAndCheck(
@@ -1407,7 +907,7 @@ export class CodexCredentialService {
         const index = document.credentials.findIndex((value) => value.id === credential.id);
         if (index < 0) throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
         const current = document.credentials[index]!;
-        if (!sameCredentialRequest(current, credential)) return current;
+        if (!sameRefreshIdentity(current, credential)) return current;
         if (tokens.accountId !== current.accountId)
           throw new Error('CODEX_CREDENTIAL_ACCOUNT_MISMATCH');
         const next: CredentialRecord = {
@@ -1473,11 +973,11 @@ export class CodexCredentialService {
   async #xaiUsage(credentialId: string): Promise<CodexCredentialUsage> {
     let forcedRefresh = false;
     for (let attempt = 0; attempt < 2; attempt++) {
-      let credential = await this.#resolveRecord(credentialId, 'USAGE', false);
+      let credential = await this.#refresh.resolve(credentialId, 'USAGE', false);
       let response = await this.#xai.usageResponse(credential);
       if (response.status === 401 && !forcedRefresh) {
         forcedRefresh = true;
-        credential = await this.#resolveRecord(credentialId, 'UNAUTHORIZED', true);
+        credential = await this.#refresh.resolve(credentialId, 'UNAUTHORIZED', true);
         response = await this.#xai.usageResponse(credential);
       }
       if (response.status === 401) {
@@ -1622,7 +1122,7 @@ export class CodexCredentialService {
         const index = document.credentials.findIndex((c) => c.id === credential.id);
         if (index < 0) throw new Error('CODEX_CREDENTIAL_NOT_FOUND');
         const current = document.credentials[index]!;
-        if (!sameCredentialRequest(current, credential)) return current;
+        if (!sameRefreshIdentity(current, credential)) return current;
         const next: CredentialRecord = {
           ...current,
           status: 'ACTIVE',
@@ -1633,7 +1133,7 @@ export class CodexCredentialService {
           revision: current.revision + 1,
           updatedAt: this.#now(),
           chatgpt: {
-            ...metadata,
+            ...current.chatgpt!,
             idToken: tokens.id_token ?? metadata.idToken,
             scopes: tokens.scope.split(/\s+/u).filter(Boolean),
             earliestRefreshAt:
@@ -1765,22 +1265,6 @@ export class CodexCredentialService {
     }
   }
 
-  #deleteAttempt(attempt: LoginAttemptRecord): void {
-    clearTimeout(attempt.timer);
-    this.#attempts.delete(attempt.id);
-  }
-
-  #ownedAttempt(actor: LoginActor, attemptId: string): LoginAttemptRecord {
-    const attempt = this.#attempts.get(attemptId);
-    if (
-      attempt === undefined ||
-      attempt.actor.userId !== actor.userId ||
-      attempt.actor.sessionFingerprint !== actor.sessionFingerprint
-    )
-      throw new Error('CODEX_LOGIN_ATTEMPT_NOT_FOUND');
-    return attempt;
-  }
-
   #recordAudit(
     actorUserId: number,
     credential: {
@@ -1840,65 +1324,15 @@ export class CodexCredentialService {
   }
 
   async #readDocument(): Promise<CredentialDocument> {
-    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
-      `SELECT setting_value FROM system_settings WHERE setting_key='${CREDENTIAL_SETTING_KEY}'`
-    );
-    const raw = rows[0]?.['setting_value'];
-    if (raw === undefined || raw === null) return { version: DOCUMENT_VERSION, credentials: [] };
-    try {
-      const parsed =
-        typeof raw === 'string'
-          ? JSON.parse(raw)
-          : Buffer.isBuffer(raw)
-            ? JSON.parse(raw.toString('utf8'))
-            : raw;
-      return parseCredentialDocument(parsed);
-    } catch {
-      throw new Error('CODEX_CREDENTIAL_STORE_INVALID');
-    }
+    return this.#documentStore.read();
   }
 
   async #mutateDocument<T>(
     mutate: (document: CredentialDocument) => T | Promise<T>,
     validateCommit?: () => void
   ): Promise<T> {
-    const prior = this.#mutationTail;
-    let release!: () => void;
-    this.#mutationTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await prior;
-    try {
-      const document = await this.#readDocument();
-      const result = await mutate(document);
-      const validated = parseCredentialDocument(document);
-      const serialized = JSON.stringify(validated);
-      if (Buffer.byteLength(serialized) > MAX_DOCUMENT_BYTES)
-        throw new Error('CODEX_CREDENTIAL_STORE_LIMIT_REACHED');
-      // Recheck after asynchronous mutation checks, with no await before issuing the write.
-      validateCommit?.();
-      await this.database.raw.execute(
-        `INSERT INTO system_settings (setting_key,setting_value,updated_at)
-         VALUES ('${CREDENTIAL_SETTING_KEY}',CAST(? AS JSON),?)
-         ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)`,
-        [serialized, this.#now()]
-      );
-      return result;
-    } finally {
-      release();
-    }
+    return this.#documentStore.mutate(mutate, validateCommit);
   }
-}
-
-function needsBackgroundMaintenance(credential: CredentialRecord, now: number): boolean {
-  if (credential.status === 'DEGRADED') return true;
-  const refreshDue =
-    credential.accessTokenExpiresAt === null
-      ? credential.lastRefreshAt === null || now - credential.lastRefreshAt >= REFRESH_FALLBACK_MS
-      : credential.accessTokenExpiresAt - now <= REFRESH_WINDOW_MS;
-  const authorizationDue =
-    credential.lastCheckedAt === null || now - credential.lastCheckedAt >= AUTHORIZATION_CHECK_MS;
-  return refreshDue || authorizationDue;
 }
 
 function sameCredentialRequest(current: CredentialRecord, requested: CredentialRecord): boolean {
@@ -1907,6 +1341,17 @@ function sameCredentialRequest(current: CredentialRecord, requested: CredentialR
     current.refreshToken === requested.refreshToken &&
     current.accountId === requested.accountId &&
     current.proxy === requested.proxy
+  );
+}
+
+function sameRefreshIdentity(current: CredentialRecord, requested: CredentialRecord): boolean {
+  return (
+    current.type === requested.type &&
+    current.accessToken === requested.accessToken &&
+    current.refreshToken === requested.refreshToken &&
+    current.accountId === requested.accountId &&
+    current.chatgpt?.subject === requested.chatgpt?.subject &&
+    current.chatgpt?.clientId === requested.chatgpt?.clientId
   );
 }
 
@@ -2006,113 +1451,6 @@ function summary(credential: CredentialRecord): CodexCredentialSummary {
     proxy,
     revision: credential.revision
   };
-}
-
-function publicPendingAttempt(attempt: LoginAttemptRecord): CodexLoginAttempt {
-  return codexLoginAttemptSchema.parse({
-    id: attempt.id,
-    status: 'PENDING',
-    userCode: attempt.userCode,
-    verificationUri: attempt.verificationUri,
-    expiresAt: attempt.expiresAt,
-    pollIntervalMs: attempt.pollIntervalMs
-  });
-}
-
-function normalizeChatgptCatalog(raw: unknown, fetchedAt: number): CodexModelCatalog {
-  const payload = asOptionalRecord(raw);
-  if (!payload || !Array.isArray(payload['models']) || payload['models'].length > 1000)
-    throw new Error('CODEX_CATALOG_LOAD_FAILED');
-  const models = payload['models'].flatMap((item) => {
-    const model = asOptionalRecord(item);
-    if (!model) return [];
-    return [{ ...model, supported_in_api: model['supported_in_api'] ?? true }];
-  });
-  return normalizeCatalog({ models }, fetchedAt);
-}
-
-function normalizeCatalog(raw: unknown, fetchedAt: number): CodexModelCatalog {
-  const value = asOptionalRecord(raw);
-  if (value === undefined || !Array.isArray(value['models']))
-    throw new Error('CODEX_CATALOG_LOAD_FAILED');
-  const models = value['models'];
-  const candidates = models.flatMap((rawModel) => {
-    const model = asOptionalRecord(rawModel);
-    if (model === undefined || model['visibility'] !== 'list' || model['supported_in_api'] !== true)
-      return [];
-    const upstreamModelId = optionalString(model['slug'], 256);
-    const displayName = optionalString(model['display_name'], 256);
-    if (upstreamModelId === undefined || displayName === undefined) return [];
-    const reasoning = Array.isArray(model['supported_reasoning_levels'])
-      ? model['supported_reasoning_levels']
-          .map((entry) => optionalString(asOptionalRecord(entry)?.['effort'], 128))
-          .filter((entry): entry is string => entry !== undefined)
-      : [];
-    const reasoningEfforts = unique(reasoning.filter((effort) => SUPPORTED_REASONING.has(effort)));
-    const unsupportedReasoningEfforts = unique(
-      reasoning.filter((effort) => !SUPPORTED_REASONING.has(effort))
-    );
-    const upstreamDefaultReasoningEffort = optionalString(model['default_reasoning_level'], 128);
-    const defaultReasoningEffort = resolveMarAgentDefaultReasoningEffort(
-      upstreamDefaultReasoningEffort,
-      reasoningEfforts
-    );
-    const modalities = Array.isArray(model['input_modalities'])
-      ? model['input_modalities']
-      : ['text'];
-    const inputCapabilities = unique(
-      modalities.flatMap((modality) =>
-        modality === 'text' ? ['TEXT' as const] : modality === 'image' ? ['IMAGE' as const] : []
-      )
-    );
-    if (!inputCapabilities.includes('TEXT')) inputCapabilities.unshift('TEXT');
-    const contextWindowTokens =
-      parsePositiveInteger(model['context_window'], Number.MAX_SAFE_INTEGER) ??
-      parsePositiveInteger(model['max_context_window'], Number.MAX_SAFE_INTEGER);
-    const maxOutputTokens = parsePositiveInteger(
-      model['max_output_tokens'],
-      Number.MAX_SAFE_INTEGER
-    );
-    const requiredInputs =
-      contextWindowTokens === undefined ? (['contextWindowTokens'] as const) : [];
-    const warnings = unsupportedReasoningEfforts.map(
-      (effort) => `Unsupported reasoning effort: ${effort}`
-    );
-    if (
-      upstreamDefaultReasoningEffort !== undefined &&
-      upstreamDefaultReasoningEffort !== defaultReasoningEffort
-    )
-      warnings.push(`Unsupported default reasoning effort: ${upstreamDefaultReasoningEffort}`);
-    return [
-      {
-        upstreamModelId,
-        displayName,
-        ...(optionalString(model['description'], 4096) === undefined
-          ? {}
-          : { description: optionalString(model['description'], 4096) }),
-        ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
-        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-        reasoningEfforts,
-        defaultReasoningEffort,
-        unsupportedReasoningEfforts,
-        inputCapabilities,
-        hostedWebSearch:
-          model['supports_search_tool'] === true ||
-          (typeof model['web_search_tool_type'] === 'string' &&
-            model['web_search_tool_type'] !== 'disabled'),
-        warnings,
-        requiredInputs
-      }
-    ];
-  });
-  const canonical = JSON.stringify(candidates);
-  const parsed = codexModelCatalogSchema.safeParse({
-    catalogHash: createHash('sha256').update(canonical).digest('hex'),
-    fetchedAt,
-    models: candidates
-  });
-  if (!parsed.success) throw new Error('CODEX_CATALOG_LOAD_FAILED');
-  return parsed.data;
 }
 
 function normalizeCredentialUsage(
@@ -2443,14 +1781,6 @@ function refreshFailureCode(raw: unknown): string | undefined {
   return (nested ?? optionalString(value['code'], 128))?.toLowerCase();
 }
 
-async function safeJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return {};
-  }
-}
-
 function jwtClaims(token: string): Record<string, unknown> {
   const parts = token.split('.');
   if (parts.length !== 3 || !parts[1]) throw new Error('CODEX_TOKEN_RESPONSE_INVALID');
@@ -2464,49 +1794,6 @@ function jwtClaims(token: string): Record<string, unknown> {
 function jwtExpiration(token: string): number | null {
   const exp = jwtClaims(token)['exp'];
   return typeof exp === 'number' && Number.isSafeInteger(exp) && exp >= 0 ? exp * 1000 : null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('CODEX_UPSTREAM_RESPONSE_INVALID');
-  return value as Record<string, unknown>;
-}
-
-function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function requiredString(value: unknown, maxLength: number): string {
-  const parsed = optionalString(value, maxLength);
-  if (parsed === undefined) throw new Error('CODEX_UPSTREAM_RESPONSE_INVALID');
-  return parsed;
-}
-
-function optionalString(value: unknown, maxLength: number): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= maxLength ? normalized : undefined;
-}
-
-function parsePositiveInteger(value: unknown, maximum: number): number | undefined {
-  const parsed =
-    typeof value === 'string' && /^[0-9]+$/u.test(value) ? Number(value) : Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= maximum ? parsed : undefined;
-}
-
-function unique<T>(values: readonly T[]): T[] {
-  return [...new Set(values)];
-}
-
-function sameOwnership(left: CodexCredentialOwnership, right: CodexCredentialOwnership): boolean {
-  if (left.ownerType !== right.ownerType) return false;
-  if (left.ownerType === 'PERSONAL' && right.ownerType === 'PERSONAL')
-    return left.ownerUserId === right.ownerUserId;
-  if (left.ownerType === 'ORGANIZATION' && right.ownerType === 'ORGANIZATION')
-    return left.ownerOrganizationId === right.ownerOrganizationId;
-  return true;
 }
 
 function credentialOwnership(

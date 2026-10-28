@@ -56,9 +56,9 @@ Each request generates a fresh prediction, rather than reusing the previous sugg
 
 Nodes supporting this context extension can use files and diffs viewed on this page within the last three minutes, plus known Goal, pending/waiting work, and queue state. Node rechecks file access and versions; unverifiable content is omitted, and diffs contribute browsing metadata only. Viewing a resource does not authorize changes. Running tasks favor intervention suggestions; completed tasks favor next steps. Unknown state is never treated as completed.
 
-Automatic abstention or failure silently returns to the idle state without an empty-result notice, notification, or automatic retry. Manual generation retains explicit feedback; if an older Node unexpectedly returns an empty result, “No suitable prediction right now” appears briefly.
+Automatic abstention or failure silently returns to the idle state without an empty-result notice, notification, or automatic retry. Manual generation retains explicit feedback; if a Node unexpectedly returns an empty result, “No suitable prediction right now” appears briefly.
 
-If unavailable, check personal preferences, Node version (at least 0.10.21) and capability, model/credential access, and resource permissions. See [MAR Agent](../runners/mar-agent.md) for configuration and access details.
+If unavailable, check personal preferences, Node compatibility and capability, model/credential access, and resource permissions. See [MAR Agent](../runners/mar-agent.md) for configuration and access details.
 
 ## Goals
 

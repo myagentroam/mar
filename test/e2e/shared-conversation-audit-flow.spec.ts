@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +20,10 @@ import {
   type EnterpriseTestServer
 } from './support/enterprise-test-server.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { isolateRunnerEnvironment } from '../support/isolate-runner-environment.js';
+import { cleanupSharedAuditFixture } from '../support/shared-audit-fixture-cleanup.js';
+import { nativeTranscriptAdapter } from '../../mar-node/src/native-transcript-adapters.js';
+import { discoverAllNativeSessions } from '../../mar-node/src/native-session-history.js';
 
 const executeFile = promisify(execFile);
 const sessionTitle = 'Shared audit session';
@@ -29,11 +33,27 @@ test('Shared organization Node conversations expose content only through audit d
 }) => {
   test.skip(browserName !== 'chromium', 'The Connector flow is exercised once.');
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-t151-e2e-'));
+  const runnerHome = join(directory, 'runner-home');
+  await mkdir(runnerHome);
+  const restoreRunnerEnvironment = isolateRunnerEnvironment(runnerHome);
   const workspacePath = join(directory, 'workspace');
   let actor: { context: APIRequestContext; csrfToken: string } | undefined;
   let connector: NodeConnector | undefined;
   let server: EnterpriseTestServer | undefined;
+  let primaryFailure: { readonly error: unknown } | undefined;
   try {
+    expect(nativeTranscriptAdapter('codex')!.transcriptRoot()).toBe(
+      join(runnerHome, '.codex', 'sessions')
+    );
+    expect(nativeTranscriptAdapter('claude-code')!.transcriptRoot()).toBe(
+      join(runnerHome, '.claude', 'projects')
+    );
+    for (const runner of ['codex', 'claude-code'] as const) {
+      const root = nativeTranscriptAdapter(runner)!.transcriptRoot();
+      await mkdir(root, { recursive: true });
+      expect(await readdir(root)).toEqual([]);
+      expect(await discoverAllNativeSessions(runner)).toEqual([]);
+    }
     server = await createEnterpriseTestServer('shared-conversation-audit-flow');
     const baseURL = server.baseURL;
     await prepareGitWorkspace(workspacePath);
@@ -133,6 +153,7 @@ test('Shared organization Node conversations expose content only through audit d
           nodeId,
           workspaceId,
           runner: 'codex',
+          model: 'gpt-5.6-sol',
           cwd: workspacePath,
           title: sessionTitle,
           clientMessageId: 't151-start',
@@ -307,11 +328,23 @@ test('Shared organization Node conversations expose content only through audit d
     );
     expect(JSON.stringify(rejectedDetail)).not.toContain('This rejected input');
     expect(rejectedDetail).not.toHaveProperty('conversationPayload');
+  } catch (error) {
+    primaryFailure = { error };
   } finally {
-    await connector?.stop();
-    await actor?.context.dispose();
-    await server?.close();
-    await rm(directory, { recursive: true, force: true });
+    await cleanupSharedAuditFixture({
+      stopConnector: async () => {
+        await connector?.stop();
+      },
+      disposeActor: async () => {
+        await actor?.context.dispose();
+      },
+      closeServer: async () => {
+        await server?.close();
+      },
+      restoreEnvironment: restoreRunnerEnvironment,
+      removeDirectory: () => rm(directory, { recursive: true, force: true }),
+      ...(primaryFailure === undefined ? {} : { primaryFailure })
+    });
   }
 });
 

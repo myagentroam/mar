@@ -6,7 +6,7 @@ import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-datab
 import type { NodeControl } from '../../ee/server/src/node-control.js';
 import type { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
 import { registerManagementRoutes } from '../../ee/server/src/route/management-routes.js';
-import type { NodeUpgradeService } from '../../ee/server/src/service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '../../packages/server-core/src/node-upgrade-service.js';
 import { ServerTrafficMetrics } from '../../ee/server/src/service/server-traffic-metrics.js';
 
 const csrfToken = 'csrf-token';
@@ -30,6 +30,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -77,6 +90,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -146,7 +172,111 @@ describe('Server conversation hosting maintenance routes', () => {
     );
   });
 
-  it('forwards strict disablement only to supported Nodes and preserves active-Run conflicts', async () => {
+  it('preserves successful storage and preview results when audit persistence fails', async () => {
+    const fixture = routeFixture();
+    const audit = vi.spyOn(fixture.database, 'audit').mockRejectedValue(new Error('audit failed'));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const app = Fastify();
+    registerManagementRoutes({
+      app,
+      database: fixture.database,
+      nodeControl: fixture.nodeControl,
+      nodeUpgrades: fixture.nodeUpgrades,
+      resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
+      traffic: fixture.traffic,
+      publicOrigin: undefined
+    });
+    try {
+      const storage = await app.inject({
+        method: 'GET',
+        url: '/api/management/nodes/node-1/conversation-hosting/storage',
+        headers
+      });
+      const preview = await app.inject({
+        method: 'POST',
+        url: '/api/management/nodes/node-1/conversation-hosting/cleanup/preview',
+        headers,
+        payload: { inactiveDays: 60 }
+      });
+      expect(storage.statusCode).toBe(200);
+      expect(storage.json()).toMatchObject({ storage: { hostedStorageUsedBytes: 4096 } });
+      expect(preview.statusCode).toBe(200);
+      expect(preview.json()).toMatchObject({ preview: { candidateConversationCount: 2 } });
+      expect(audit).toHaveBeenCalledTimes(2);
+      expect(warning).toHaveBeenCalledWith('AUDIT_WRITE_FAILED');
+    } finally {
+      warning.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('returns the created user and temporary password even when audit persistence fails', async () => {
+    const fixture = routeFixture();
+    const audit = vi.spyOn(fixture.database, 'audit').mockRejectedValue(new Error('audit failed'));
+    const createUser = vi.fn(async () => 9);
+    Object.assign(fixture.database, {
+      createUser,
+      listUsers: vi.fn(async () => [{ id: 9, username: 'new-user' }])
+    });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const app = Fastify();
+    registerManagementRoutes({
+      app,
+      database: fixture.database,
+      nodeControl: fixture.nodeControl,
+      nodeUpgrades: fixture.nodeUpgrades,
+      resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
+      traffic: fixture.traffic,
+      publicOrigin: undefined
+    });
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/management/users',
+        headers,
+        payload: { username: 'new-user' }
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toMatchObject({
+        user: { id: 9, username: 'new-user' },
+        temporaryPassword: expect.any(String)
+      });
+      expect(createUser).toHaveBeenCalledOnce();
+      expect(audit).toHaveBeenCalledOnce();
+      expect(warning).toHaveBeenCalledWith('AUDIT_WRITE_FAILED');
+    } finally {
+      warning.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('forwards strict disablement after unified admission and preserves active-Run conflicts', async () => {
     const fixture = routeFixture();
     fixture.ownership.value = { ownerType: 'PERSONAL', ownerUserId: 1 };
     const app = Fastify();
@@ -156,6 +286,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -176,17 +319,15 @@ describe('Server conversation hosting maintenance routes', () => {
       undefined
     );
 
-    fixture.nodes[0]!.metadata = nodeMetadata({ nodeAppVersion: '0.9.36' });
-    const unsupported = await app.inject({
+    fixture.nodes[0]!.metadata = nodeMetadata({ nodeAppVersion: 'unknown' });
+    const withoutVersion = await app.inject({
       method: 'POST',
       url: '/api/management/nodes/node-1/conversation-hosting/disable',
       headers,
       payload: {}
     });
-    expect(unsupported.statusCode).toBe(409);
-    expect(unsupported.json()).toMatchObject({
-      error: { code: 'CONVERSATION_HOSTING_DISABLE_NODE_VERSION_UNSUPPORTED' }
-    });
+    expect(withoutVersion.statusCode).toBe(200);
+    expect(fixture.nodeControl.requestNode).toHaveBeenCalledTimes(2);
 
     fixture.nodes[0]!.metadata = nodeMetadata();
     fixture.nodeControl.requestNode.mockRejectedValueOnce(
@@ -204,7 +345,7 @@ describe('Server conversation hosting maintenance routes', () => {
     });
   });
 
-  it('rejects invalid, personal, unsupported, non-Linux, and offline enablement before Node dispatch', async () => {
+  it('rejects invalid, personal, non-Linux, and offline enablement before Node dispatch', async () => {
     const fixture = routeFixture();
     const app = Fastify();
     registerManagementRoutes({
@@ -213,6 +354,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -239,41 +393,16 @@ describe('Server conversation hosting maintenance routes', () => {
     expect(fixture.nodeControl.requestNode).not.toHaveBeenCalled();
     fixture.ownership.value = { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 };
 
-    fixture.nodes[0]!.metadata = nodeMetadata({ nodeAppVersion: '0.9.27' });
-    const unsupported = await app.inject({
-      method: 'POST',
-      url: '/api/management/nodes/node-1/conversation-hosting/enable',
-      headers,
-      payload: { enabled: true }
-    });
-    expect(unsupported.statusCode).toBe(409);
-    expect(unsupported.json()).toMatchObject({
-      error: { code: 'CONVERSATION_HOSTING_ENABLE_NODE_VERSION_UNSUPPORTED' }
-    });
-
     fixture.nodes[0]!.metadata = nodeMetadata({ nodeAppVersion: 'unknown' });
-    const unknown = await app.inject({
+    const withoutVersion = await app.inject({
       method: 'POST',
       url: '/api/management/nodes/node-1/conversation-hosting/enable',
       headers,
       payload: { enabled: true }
     });
-    expect(unknown.statusCode).toBe(409);
-    expect(unknown.json()).toMatchObject({
-      error: { code: 'CONVERSATION_HOSTING_ENABLE_NODE_VERSION_UNSUPPORTED' }
-    });
-
-    fixture.nodes[0]!.metadata = nodeMetadata({ nodeAppVersion: '0.9.28-beta.1' });
-    const prerelease = await app.inject({
-      method: 'POST',
-      url: '/api/management/nodes/node-1/conversation-hosting/enable',
-      headers,
-      payload: { enabled: true }
-    });
-    expect(prerelease.statusCode).toBe(409);
-    expect(prerelease.json()).toMatchObject({
-      error: { code: 'CONVERSATION_HOSTING_ENABLE_NODE_VERSION_UNSUPPORTED' }
-    });
+    expect(withoutVersion.statusCode).toBe(200);
+    expect(fixture.nodeControl.requestNode).toHaveBeenCalledOnce();
+    fixture.nodeControl.requestNode.mockClear();
 
     fixture.nodes[0]!.metadata = nodeMetadata({ platform: 'windows' });
     const windows = await app.inject({
@@ -320,6 +449,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -366,6 +508,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -394,6 +549,19 @@ describe('Server conversation hosting maintenance routes', () => {
       nodeControl: fixture.nodeControl,
       nodeUpgrades: fixture.nodeUpgrades,
       resources: fixture.resources,
+      users: {
+        list: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        },
+        deletionSummary: async () => {
+          throw new Error('UNEXPECTED_USER_QUERY');
+        }
+      },
+      directory: {
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
       traffic: fixture.traffic,
       publicOrigin: undefined
     });
@@ -528,7 +696,6 @@ function routeFixture() {
     value: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
   };
   const resources = {
-    listManagedResourcePage: vi.fn<ResourceAccessService['listManagedResourcePage']>(),
     nodeOwnership: vi.fn(async () => ownership.value),
     assertCanHostConversationTemplate: vi.fn(async () => {
       if (ownership.value.ownerType !== 'ORGANIZATION')
@@ -536,7 +703,7 @@ function routeFixture() {
     })
   } as unknown as Pick<
     ResourceAccessService,
-    'nodeOwnership' | 'assertCanHostConversationTemplate' | 'listManagedResourcePage'
+    'nodeOwnership' | 'assertCanHostConversationTemplate'
   >;
   const nodeUpgrades = {
     availability: vi.fn()

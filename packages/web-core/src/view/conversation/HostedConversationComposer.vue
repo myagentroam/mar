@@ -20,7 +20,6 @@ import type {
   createHostedConversationEntryService
 } from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
-import { supportsNodeFeature } from '../../util/node-features.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
@@ -210,11 +209,6 @@ const draftTemplateLabel = computed(
   () =>
     draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
     translate('hostedConversations.templatePlaceholder')
-);
-const templateSwitchSupported = computed(
-  () =>
-    !props.draft &&
-    supportsNodeFeature(snapshot.value?.nodeAppVersion ?? '', 'HOSTED_CONVERSATION_TEMPLATE_SWITCH')
 );
 const templateSelectionDisabled = computed(() =>
   props.draft
@@ -743,7 +737,7 @@ onBeforeUnmount(() => {
           <MarIcon name="attachment" />
         </button>
         <el-dropdown
-          v-if="(draft && !snapshot) || templateSwitchSupported"
+          v-if="!draft || !snapshot"
           class="hosted-template-menu hosted-model-menu"
           :disabled="templateSelectionDisabled"
           trigger="click"

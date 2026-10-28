@@ -15,7 +15,7 @@ import {
   assertMysqlNoForeignKeys,
   type MysqlSchema
 } from '@myagentroam/server-core/mysql-schema-support';
-import type { MysqlMigrationConnection } from '@myagentroam/server-core/mysql-migrations';
+import type { MysqlMigrationConnection } from '@myagentroam/server-core/mysql-migration-contracts';
 import schema from './enterprise-schema-v1.json' with { type: 'json' };
 import organizationReferences from './core-organization-references.json' with { type: 'json' };
 import { initializeRootIdentity } from './community-root.js';

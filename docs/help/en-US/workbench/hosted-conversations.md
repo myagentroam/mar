@@ -23,7 +23,7 @@ While the conversation is idle, select its template name in the Composer, choose
 
 The current model is retained when the target allows it; otherwise the target's allowed default is selected. Insufficient storage quota, no available model, or a definitive request failure leaves the original binding unchanged. Switching is unavailable during a run, sending, uploading, rollback, or another conflicting write. After saving, wait for realtime updates to become ready. If the response is interrupted, wait for the page to confirm the binding instead of submitting again.
 
-Only templates on the same Node can be selected; the conversation is not moved to another host. Switching does not change the recent-template preference for new conversations. Older Nodes show the template name without a switch menu and must be upgraded. Automatic version upgrades within the same template still happen at new-run boundaries; choosing the current template does not force an upgrade.
+Only templates on the same Node can be selected; the conversation is not moved to another host. Switching does not change the recent-template preference for new conversations. Automatic version upgrades within the same template still happen at new-run boundaries; choosing the current template does not force an upgrade.
 
 ## Use the three-pane workspace
 
@@ -59,7 +59,7 @@ A steer message added during a run has its own rollback boundary. Rolling it bac
 
 When the hosting Node supports hosted-conversation Rollback, a **Rollback conversation** action appears beside terminal user messages. Hosted conversations do not provide a Rewind branch action. After confirmation, the system permanently deletes that user message and all later history in the current conversation's original Session, then restores the message text to the composer so you can edit and send it again.
 
-Rollback does not modify or delete `inbox/`, `output/`, or any item in **Related files**, and it does not create a new conversation or Session. Rollback is unavailable while a Run is starting, active, or settling. Unsupported Node versions do not show the action; if the boundary changed or the request failed, the page keeps the existing history and draft and shows the actual error.
+Rollback does not modify or delete `inbox/`, `output/`, or any item in **Related files**, and it does not create a new conversation or Session. Rollback is unavailable while a Run is starting, active, or settling. If the boundary changed or the request failed, the page keeps the existing history and draft and shows the actual error.
 
 ## Manage related files
 

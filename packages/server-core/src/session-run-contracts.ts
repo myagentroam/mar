@@ -1,6 +1,9 @@
 import type { SessionLookup } from './session.js';
 import type { WorkspaceNodeControl } from './workspace-route-contracts.js';
-import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
+import type {
+  MarAgentModelSummary,
+  MarAgentRuntimeModelConfiguration
+} from '@myagentroam/protocol';
 
 export type SessionRunNodeControl = Pick<
   WorkspaceNodeControl,
@@ -8,14 +11,6 @@ export type SessionRunNodeControl = Pick<
 >;
 export interface SessionRunStore extends SessionLookup {
   userDisplayName(userId: number): Promise<string | undefined>;
-  userOwnsNode(userId: number, nodeId: string): boolean | Promise<boolean>;
-  userCanRequestNode?: (
-    userId: number,
-    nodeId: string,
-    operation: string,
-    data: unknown,
-    workspaceId?: string
-  ) => boolean | Promise<boolean>;
 }
 export interface ProcessSecretResolver {
   resolve(
@@ -27,8 +22,11 @@ export interface ProcessSecretResolver {
 export interface PersonalInstructionReader {
   get(userId: number): Promise<unknown>;
 }
+export interface RunnerModelCatalog {
+  listForUser(userId: number): Promise<readonly MarAgentModelSummary[]>;
+}
 export interface MarAgentModelService {
-  listForUser?: import('./runner-profile-context.js').RunnerModelCatalog['listForUser'];
+  listForUser?: RunnerModelCatalog['listForUser'];
   runtimeForUser(userId: number, modelId: string): Promise<unknown>;
   runtimeConfigurationsForUser(userId: number): Promise<unknown>;
 }

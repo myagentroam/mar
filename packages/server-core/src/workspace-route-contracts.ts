@@ -1,5 +1,5 @@
 import type { ResourceOwnership } from '@myagentroam/protocol';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 
 export interface WorkspaceUpdate {
   readonly ownership?: ResourceOwnership;
@@ -41,18 +41,6 @@ export interface WorkspaceResourcePolicy {
   assertCanManageWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<void>;
   assertCanUnregisterWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<void>;
   unregisterWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<void>;
-  changeWorkspaceOwnership(
-    userId: number,
-    nodeId: string,
-    workspaceId: string,
-    ownership: ResourceOwnership
-  ): Promise<void>;
-  renameWorkspace(
-    userId: number,
-    nodeId: string,
-    workspaceId: string,
-    displayName: string
-  ): Promise<void>;
   updateWorkspaceGroupName(
     userId: number,
     nodeId: string,

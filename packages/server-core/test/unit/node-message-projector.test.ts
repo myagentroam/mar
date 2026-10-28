@@ -1,8 +1,47 @@
 import { createEnvelope, sessionGroupChangedSchema } from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
-import { NodeMessageProjector } from '../../src/node-message-projector.js';
+import { createTestNodeMessageProjector } from './support/node-message-projector.js';
 
 describe('Node message projection boundaries', () => {
+  it('drains admitted hosted activity and ordered session projections', async () => {
+    let releaseActivity!: () => void;
+    let releaseSession!: () => void;
+    const activity = new Promise<void>((resolve) => {
+      releaseActivity = resolve;
+    });
+    const session = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
+    const projector = createTestNodeMessageProjector({
+      relay: { publish: vi.fn() } as never,
+      send: vi.fn(),
+      sendInvalid: vi.fn(),
+      hostedConversationActivity: async () => {
+        await activity;
+        return true;
+      }
+    });
+    projector.project(
+      'node-1',
+      { send() {} } as never,
+      createEnvelope('workbench.event', {
+        sequence: 1,
+        category: 'hosted-conversation',
+        payload: { kind: 'activity' }
+      })
+    );
+    const pending = projector.enqueueSessionProjection('node-1', async () => session);
+    let drained = false;
+    const done = projector.drain().then(() => {
+      drained = true;
+    });
+    releaseSession();
+    await pending;
+    expect(drained).toBe(false);
+    releaseActivity();
+    await done;
+    expect(drained).toBe(true);
+  });
   it('accepts only a strictly scoped Main-session classification change', () => {
     const change = {
       nodeId: 'node-1',
@@ -36,7 +75,7 @@ describe('Node message projection boundaries', () => {
     const sendInvalid = vi.fn();
     const publish = vi.fn();
     const sessionGroupChanged = vi.fn(() => projection);
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: { publish } as never,
       send,
       sendInvalid,
@@ -79,7 +118,7 @@ describe('Node message projection boundaries', () => {
         storedGroup = 'MAIN';
       });
       const send = vi.fn();
-      const projector = new NodeMessageProjector({
+      const projector = createTestNodeMessageProjector({
         relay: { publish: vi.fn() } as never,
         send,
         sendInvalid: vi.fn(),
@@ -128,7 +167,7 @@ describe('Node message projection boundaries', () => {
     });
     const send = vi.fn();
     const publish = vi.fn();
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: { publish } as never,
       send,
       sendInvalid: vi.fn(),
@@ -166,7 +205,7 @@ describe('Node message projection boundaries', () => {
 
   it('continues reclassification after an earlier projection fails', async () => {
     const send = vi.fn();
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: { publish: vi.fn() } as never,
       send,
       sendInvalid: vi.fn(),
@@ -198,7 +237,7 @@ describe('Node message projection boundaries', () => {
     const sessionGroupChanged = vi.fn(async () => {
       throw new Error('SESSION_GROUP_STORE_FAILED');
     });
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: { publish } as never,
       send,
       sendInvalid,
@@ -227,7 +266,7 @@ describe('Node message projection boundaries', () => {
     const sendInvalid = vi.fn();
     const publish = vi.fn();
     const sessionGroupChanged = vi.fn(async () => undefined);
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: { publish } as never,
       send,
       sendInvalid,
@@ -254,7 +293,11 @@ describe('Node message projection boundaries', () => {
     const send = vi.fn();
     const sendInvalid = vi.fn();
     const publish = vi.fn();
-    const projector = new NodeMessageProjector({ relay: { publish } as never, send, sendInvalid });
+    const projector = createTestNodeMessageProjector({
+      relay: { publish } as never,
+      send,
+      sendInvalid
+    });
     const socket = {} as never;
     const event = {
       sequence: 1,
@@ -282,7 +325,7 @@ describe('Node message projection boundaries', () => {
       const publish = vi.fn();
       const notification = vi.fn();
       const recentRuns = vi.fn();
-      const projector = new NodeMessageProjector({
+      const projector = createTestNodeMessageProjector({
         relay: { publish } as never,
         send,
         sendInvalid,

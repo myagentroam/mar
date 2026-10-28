@@ -1,17 +1,19 @@
+import { testNodeBrokerServices } from '../support/node-broker-services.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   NODE_PROTOCOL_VERSION,
   createEnvelope,
   workbenchNodeOperationSchema
 } from '../../packages/protocol/src/index.js';
-import { NodeConnector } from '../../mar-node/src/connector.js';
-import { NodeDatabase } from '../../mar-node/src/database.js';
-import { ServerDatabase, type AuditInput } from '../../ee/server/src/database.js';
-import { NodeControl } from '../../ee/server/src/node-control.js';
-import { NodeMessageProjector } from '../../ee/server/src/service/node-message-projector.js';
+import { ServerDatabase } from '../../ee/server/src/database.js';
+import type { AuditEvent as AuditInput } from '../../packages/server-core/src/audit.js';
+import { createTestNodeControl } from '../support/create-test-node-control.js';
+import { createTestNodeMessageProjector } from '../../packages/server-core/test/unit/support/node-message-projector.js';
 import { NodeRequestBroker } from '../../ee/server/src/service/node-request-broker.js';
-import { TerminalRelayService } from '../../ee/server/src/service/terminal-relay-service.js';
-import { WorkbenchRelayService } from '../../ee/server/src/service/workbench-relay-service.js';
+import { TerminalRelayService } from '../../packages/server-core/src/terminal-relay-service.js';
+import { WorkbenchRelayService } from '../../packages/server-core/src/workbench-relay-service.js';
+import { DirectTransferCoordinator } from '../../packages/server-core/src/direct-transfer-coordinator.js';
+import { TerminalDirectCoordinator } from '../../packages/server-core/src/terminal-direct-coordinator.js';
 import { publicNode } from '../../ee/server/src/util/http-request.js';
 import {
   LARGE_TRAFFIC_FRAME_BYTES,
@@ -21,9 +23,69 @@ import {
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('releases constructed relay and identity timers if composition fails', () => {
+    vi.useFakeTimers();
+    const failure = new Error('RELAY_ASSEMBLY_FAILED');
+    const setup = vi.spyOn(WorkbenchRelayService.prototype, 'setTerminalDirectHandler');
+    setup.mockImplementationOnce(() => {
+      throw failure;
+    });
+    try {
+      expect(() =>
+        createTestNodeControl({} as Parameters<typeof createTestNodeControl>[0], async () => true)
+      ).toThrow(failure);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      setup.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+  it('preserves assembly and cleanup failures while closing remaining owners', () => {
+    vi.useFakeTimers();
+    const failure = new Error('RELAY_ASSEMBLY_FAILED');
+    const cleanupFailure = new Error('DIRECT_CLOSE_FAILED');
+    const setup = vi.spyOn(WorkbenchRelayService.prototype, 'setTerminalDirectHandler');
+    setup.mockImplementationOnce(() => {
+      throw failure;
+    });
+    const originalClose = DirectTransferCoordinator.prototype.close;
+    const close = vi.spyOn(DirectTransferCoordinator.prototype, 'close');
+    close.mockImplementationOnce(function (this: DirectTransferCoordinator) {
+      // Release the timer before injecting the cleanup failure.
+      originalClose.call(this);
+      throw cleanupFailure;
+    });
+    try {
+      let error: unknown;
+      try {
+        createTestNodeControl({} as Parameters<typeof createTestNodeControl>[0], async () => true);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toEqual([failure, cleanupFailure]);
+      expect((error as AggregateError).cause).toBe(failure);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      setup.mockRestore();
+      close.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it('Server rejects retired reconcile messages through the existing authenticated unknown-message path', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const runtimeCredentials = {
+      activateNodeConnection: vi.fn(),
+      deactivateNodeConnection: vi.fn(),
+      resolve: vi.fn()
+    };
+    const control = createTestNodeControl(
+      database,
+      (userId, nodeId) => database.userOwnsNode(userId, nodeId),
+      undefined,
+      undefined,
+      runtimeCredentials
+    );
     const registered = database.registerNode(
       database.createNodeRegistrationToken(database.getAdmin().id).token,
       { metadata: '{}' }
@@ -62,6 +124,14 @@ describe('Node controlled relay contract', () => {
         credential: registered.credential
       });
       expect(control.isNodeConnected(registered.nodeId)).toBe(true);
+      await receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeAppVersion: '0.11.38',
+        nodeVersion: 'v24',
+        codex: { available: false },
+        claudeCode: { available: false }
+      });
       const before = await control.listNodes();
       for (const [type, payload] of [
         ['runs.reconcile', { runIds: ['active-run', 'unknown-run'] }],
@@ -81,6 +151,35 @@ describe('Node controlled relay contract', () => {
         { type: 'ack', payload: { type: 'heartbeat' } }
       ]);
       expect(control.isNodeConnected(registered.nodeId)).toBe(true);
+      const relay = vi.spyOn(TerminalRelayService.prototype, 'disconnectNode');
+      const direct = vi.spyOn(DirectTransferCoordinator.prototype, 'revokeNode');
+      const terminalDirect = vi.spyOn(TerminalDirectCoordinator.prototype, 'revokeNode');
+      const pending = control.requestNode(
+        registered.nodeId,
+        'workspace.list',
+        {},
+        { userId: database.getAdmin().id, sessionHash: 'fixture' }
+      );
+      const rejected = expect(pending).rejects.toThrow('NODE_UPGRADE_REQUIRED');
+      await vi.waitFor(() =>
+        expect(sent.some((message) => message.type === 'node.request')).toBe(true)
+      );
+      await receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeAppVersion: '0.11.36',
+        nodeVersion: 'v24',
+        codex: { available: false },
+        claudeCode: { available: false },
+        marAgentRuntimeCredentials: { apiVersion: 1, websocket: true, httpVersions: ['1.1'] }
+      });
+      expect(control.isNodeUpgradeOnly(registered.nodeId)).toBe(true);
+      expect(control.runtimeCredentialCapability(registered.nodeId)).toBeUndefined();
+      expect(relay).toHaveBeenCalledWith(registered.nodeId);
+      expect(direct).toHaveBeenCalledWith(registered.nodeId, 'DIRECT_NODE_OFFLINE');
+      expect(terminalDirect).toHaveBeenCalledWith(registered.nodeId, 'NODE_OFFLINE');
+      expect(runtimeCredentials.deactivateNodeConnection).toHaveBeenCalledWith(registered.nodeId);
+      await rejected;
     } finally {
       control.close();
       database.close();
@@ -104,7 +203,13 @@ describe('Node controlled relay contract', () => {
           sent.push(JSON.parse(raw));
         }
       };
-      const broker = new NodeRequestBroker(database as never, () => socket as never);
+      const broker = new NodeRequestBroker(
+        database as never,
+        database.userCanRequestNode,
+        () => socket as never,
+        { allows: () => true, encode: (_socket, envelope) => envelope },
+        testNodeBrokerServices()
+      );
       try {
         const pending = broker.request(
           'node-a',
@@ -137,7 +242,7 @@ describe('Node controlled relay contract', () => {
     const log = vi.fn();
     const sendWatchEvent = vi.fn(async () => 'delivered' as const);
     const sendInvalid = vi.fn();
-    const projector = new NodeMessageProjector({
+    const projector = createTestNodeMessageProjector({
       relay: {} as never,
       send: vi.fn(),
       sendInvalid,
@@ -248,7 +353,9 @@ describe('Node controlled relay contract', () => {
 
   it('A new control connection for the same Node closes the old connection and stays online', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const broadcast = vi.spyOn(
       (control as unknown as { workbenchRelay: { broadcast(message: object): void } })
         .workbenchRelay,
@@ -312,7 +419,9 @@ describe('Node controlled relay contract', () => {
 
   it('Only the current control connection determines Node online state without database persistence', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const registered = database.registerNode(
       database.createNodeRegistrationToken(database.getAdmin().id).token,
       { metadata: '{}' }
@@ -349,7 +458,9 @@ describe('Node controlled relay contract', () => {
   it('Missing heartbeats terminate half-open control connections after 45 seconds', async () => {
     vi.useFakeTimers();
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const registered = database.registerNode(
       database.createNodeRegistrationToken(database.getAdmin().id).token,
       { metadata: '{}' }
@@ -383,7 +494,9 @@ describe('Node controlled relay contract', () => {
 
   it('Server accepts only the current Node protocol version', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sent: unknown[] = [];
     const socket = {
       readyState: 1,
@@ -404,7 +517,7 @@ describe('Node controlled relay contract', () => {
     ).handleMessage(
       socket,
       JSON.stringify({
-        version: NODE_PROTOCOL_VERSION - 1,
+        version: NODE_PROTOCOL_VERSION + 1,
         id: 'legacy',
         type: 'register',
         payload: {}
@@ -428,51 +541,57 @@ describe('Node controlled relay contract', () => {
 
   it('Server persists and projects Node-reported MAR Agent, dynamic credential, and conversation-hosting capabilities', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const registration = database.createNodeRegistrationToken(database.getAdmin().id);
     const socket = { readyState: 1, OPEN: 1, send: vi.fn(), close: vi.fn() };
 
-    const nodeId = await (
+    let nodeId: string | undefined;
+    await (
       control as unknown as {
-        register(
-          socket: {
-            readyState: number;
-            OPEN: number;
-            send: (value: string) => void;
-            close: (code?: number, reason?: string) => void;
-          },
-          envelope: unknown
-        ): Promise<string | undefined>;
+        handleMessage(
+          socket: unknown,
+          raw: string,
+          setId: (id: string) => void,
+          getId: () => string | undefined
+        ): Promise<void>;
       }
-    ).register(
+    ).handleMessage(
       socket,
-      createEnvelope('register', {
-        registrationToken: registration.token,
-        capabilities: {
-          platform: 'linux',
-          architecture: 'x64',
-          nodeAppVersion: '0.9.16',
-          nodeVersion: 'v24.15.0',
-          codex: { available: true },
-          claudeCode: { available: true },
-          openCode: { available: true },
-          marAgent: { available: true, version: '0.9.16' },
-          marAgentRuntimeCredentials: {
-            apiVersion: 1,
-            websocket: true,
-            httpVersions: ['1.1', '2']
-          },
-          conversationHosting: {
-            state: 'AVAILABLE',
-            apiVersion: 1,
-            sandboxBackend: 'BUBBLEWRAP',
-            sandboxPolicyVersion: 1,
-            acceptsNewConversations: true,
-            supportsExistingConversations: true,
-            capacity: 'AVAILABLE'
+      JSON.stringify(
+        createEnvelope('register', {
+          registrationToken: registration.token,
+          capabilities: {
+            platform: 'linux',
+            architecture: 'x64',
+            nodeAppVersion: '0.11.38',
+            nodeVersion: 'v24.15.0',
+            codex: { available: true },
+            claudeCode: { available: true },
+            openCode: { available: true },
+            marAgent: { available: true, version: '0.9.16' },
+            marAgentRuntimeCredentials: {
+              apiVersion: 1,
+              websocket: true,
+              httpVersions: ['1.1', '2']
+            },
+            conversationHosting: {
+              state: 'AVAILABLE',
+              apiVersion: 1,
+              sandboxBackend: 'BUBBLEWRAP',
+              sandboxPolicyVersion: 1,
+              acceptsNewConversations: true,
+              supportsExistingConversations: true,
+              capacity: 'AVAILABLE'
+            }
           }
-        }
-      })
+        })
+      ),
+      (id) => {
+        nodeId = id;
+      },
+      () => nodeId
     );
 
     expect(nodeId).toBeDefined();
@@ -512,7 +631,9 @@ describe('Node controlled relay contract', () => {
 
   it('Server rejects operations outside the allowlist before sending', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     await expect(
       control.requestNode('node-a', 'shell.execute', {}, { userId: 1, sessionHash: 'a'.repeat(43) })
     ).rejects.toThrow('OPERATION_UNSUPPORTED');
@@ -532,7 +653,13 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string; payload: unknown });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
 
     const pending = broker.request(
       'node-a',
@@ -576,7 +703,13 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string; payload: unknown });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
     const user = { userId: 7, sessionHash: 'session-hash' };
 
     const hosted = broker.requestHostedConversation(
@@ -638,7 +771,7 @@ describe('Node controlled relay contract', () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
     const relay = new WorkbenchRelayService({
-      database: database as never,
+      authorizeNodeRequest: database.userCanRequestNode,
       authorizeHostedConversation
     } as never);
     const sent: Array<Record<string, unknown>> = [];
@@ -691,6 +824,23 @@ describe('Node controlled relay contract', () => {
     relay.close();
   });
 
+  it('uses the supplied Node request policy even when the user owns the Node', async () => {
+    const database = new ServerDatabase(':memory:');
+    const nodeId = registerOwnedNode(database);
+    const authorize = vi.fn(async () => false);
+    const control = createTestNodeControl(database, authorize);
+    try {
+      expect(database.userOwnsNode(1, nodeId)).toBe(true);
+      await expect(
+        control.requestNode(nodeId, 'workspace.list', {}, { userId: 1, sessionHash: 'session' })
+      ).rejects.toThrow('NODE_ACCESS_DENIED');
+      expect(authorize).toHaveBeenCalledWith(1, nodeId, 'workspace.list', {}, undefined);
+    } finally {
+      control.close();
+      database.close();
+    }
+  });
+
   it('Synchronous Node request send failures immediately remove correlation records', async () => {
     vi.useFakeTimers();
     const database = new ServerDatabase(':memory:');
@@ -702,7 +852,13 @@ describe('Node controlled relay contract', () => {
         throw new Error('SOCKET_SEND_FAILED');
       }
     };
-    const broker = new NodeRequestBroker(database, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database,
+      (userId, nodeId) => database.userOwnsNode(userId, nodeId),
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
     await expect(
       broker.request(nodeId, 'workspace.list', {}, { userId: 1, sessionHash: 'a'.repeat(43) })
     ).rejects.toThrow('SOCKET_SEND_FAILED');
@@ -726,7 +882,14 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never, log);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices(),
+      log
+    );
     const pending = broker.request(
       'node-a',
       'session.list',
@@ -778,7 +941,13 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
     const user = { userId: 2, sessionHash: 'session', workspaceId: 'workspace-a' };
     const list = broker.request('node-a', 'session.list', { workspaceId: 'workspace-a' }, user);
     await vi.waitFor(() => expect(sent).toHaveLength(1));
@@ -824,7 +993,13 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
     const pending = broker.request(
       'node-a',
       'session.message',
@@ -863,7 +1038,13 @@ describe('Node controlled relay contract', () => {
           sent.push(JSON.parse(raw) as { id: string });
         }
       };
-      const broker = new NodeRequestBroker(database as never, () => socket as never);
+      const broker = new NodeRequestBroker(
+        database as never,
+        database.userCanRequestNode,
+        () => socket as never,
+        { allows: () => true, encode: (_socket, envelope) => envelope },
+        testNodeBrokerServices()
+      );
       const pending = broker.request(
         'node-a',
         operation,
@@ -903,8 +1084,11 @@ describe('Node controlled relay contract', () => {
       send: (raw: string) => sent.push(JSON.parse(raw) as { id: string })
     };
     const broker = new NodeRequestBroker(
-      { audit, userCanRequestNode: vi.fn(async () => true) } as never,
-      () => socket as never
+      { audit } as never,
+      async () => true,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
     );
     const user = { userId: 2, sessionHash: 'session', workspaceId: 'workspace-a' };
     const read = broker.request('node-a', 'session.get', { sessionId: 'session-a' }, user);
@@ -1011,7 +1195,13 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw) as { id: string });
       }
     };
-    const broker = new NodeRequestBroker(database as never, () => socket as never);
+    const broker = new NodeRequestBroker(
+      database as never,
+      database.userCanRequestNode,
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
+    );
     const pending = broker.request(
       'node-a',
       'run.cancel',
@@ -1046,6 +1236,7 @@ describe('Node controlled relay contract', () => {
     let resolveAuthorization!: (value: unknown) => void;
     const relay = new TerminalRelayService({
       database,
+      authorizeNodeRequest: (userId, nodeId) => database.userOwnsNode(userId, nodeId),
       requestNode: () =>
         new Promise((resolve) => {
           resolveAuthorization = resolve;
@@ -1182,7 +1373,11 @@ describe('Node controlled relay contract', () => {
         ) => workspaceId === 'workspace-allowed'
       )
     };
-    const relay = new TerminalRelayService({ database: database as never, requestNode: vi.fn() });
+    const relay = new TerminalRelayService({
+      database: database as never,
+      authorizeNodeRequest: database.userCanRequestNode,
+      requestNode: vi.fn()
+    });
     const terminalSent: unknown[] = [];
     const terminal = {
       readyState: 1,
@@ -1239,8 +1434,20 @@ describe('Node controlled relay contract', () => {
   it('Only the target Node can answer correlated requests and unanswered requests time out', async () => {
     vi.useFakeTimers();
     const database = new ServerDatabase(':memory:');
-    const nodeId = registerOwnedNode(database);
-    const control = new NodeControl(database);
+    const registered = database.registerNode(database.createNodeRegistrationToken(1).token, {
+      metadata: JSON.stringify({
+        platform: 'linux',
+        architecture: 'x64',
+        nodeAppVersion: '0.11.38',
+        nodeVersion: 'v24',
+        codex: { available: false },
+        claudeCode: { available: false }
+      })
+    })!;
+    const nodeId = registered.nodeId;
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sent: unknown[] = [];
     const socket = {
       readyState: 1,
@@ -1249,7 +1456,51 @@ describe('Node controlled relay contract', () => {
         sent.push(JSON.parse(raw));
       }
     };
-    (control as unknown as { sockets: Map<string, typeof socket> }).sockets.set(nodeId, socket);
+    let authenticated: string | undefined;
+    await (
+      control as unknown as {
+        handleMessage(
+          socket: unknown,
+          raw: string,
+          setId: (id: string) => void,
+          getId: () => string | undefined
+        ): Promise<void>;
+      }
+    ).handleMessage(
+      socket,
+      JSON.stringify(createEnvelope('authenticate', { nodeId, credential: registered.credential })),
+      (id) => {
+        authenticated = id;
+      },
+      () => authenticated
+    );
+    await (
+      control as unknown as {
+        handleMessage(
+          socket: unknown,
+          raw: string,
+          setId: (id: string) => void,
+          getId: () => string | undefined
+        ): Promise<void>;
+      }
+    ).handleMessage(
+      socket,
+      JSON.stringify(
+        createEnvelope('capabilities', {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeAppVersion: '0.11.38',
+          nodeVersion: 'v24',
+          codex: { available: false },
+          claudeCode: { available: false }
+        })
+      ),
+      (id) => {
+        authenticated = id;
+      },
+      () => authenticated
+    );
+    sent.length = 0;
     const request = control.requestNode(
       nodeId,
       'workspace.list',
@@ -1259,6 +1510,8 @@ describe('Node controlled relay contract', () => {
         sessionHash: 'a'.repeat(43)
       }
     );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toHaveLength(1);
     const envelope = sent[0] as { id: string };
     (
       control as unknown as {
@@ -1273,112 +1526,5 @@ describe('Node controlled relay contract', () => {
     await rejected;
     vi.useRealTimers();
     database.close();
-  });
-
-  it('Node rejects requests without Admin authorization and operations outside the fixed allowlist', async () => {
-    const database = new NodeDatabase(':memory:', 'node-a');
-    const connector = new NodeConnector({
-      database,
-      reconnect: false,
-      config: {
-        serverUrl: 'http://server.test',
-        allowedRoots: [],
-        nodeId: 'node-a',
-        credential: 'test'
-      }
-    });
-    const sent: { type: string; payload: unknown }[] = [];
-    (connector as unknown as { socket: unknown }).socket = {
-      readyState: 1,
-      OPEN: 1,
-      send(raw: string) {
-        sent.push(JSON.parse(raw) as { type: string; payload: unknown });
-      },
-      close() {}
-    };
-    (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
-      JSON.stringify(createEnvelope('node.request', { operation: 'workspace.list', data: {} }))
-    );
-    await vi.waitFor(() =>
-      expect(sent).toContainEqual(
-        expect.objectContaining({
-          type: 'node.response',
-          payload: {
-            error: 'USER_AUTHORIZATION_REQUIRED',
-            message: 'User authorization is required.'
-          }
-        })
-      )
-    );
-    sent.length = 0;
-    const legacyRequestId = 'legacy-authorized-request';
-    const now = Date.now();
-    (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
-      JSON.stringify(
-        createEnvelope(
-          'node.request',
-          {
-            operation: 'workspace.list',
-            data: {},
-            ownerAuthorization: {
-              userId: 1,
-              sessionHash: 'a'.repeat(43),
-              nodeId: 'node-a',
-              operation: 'workspace.list',
-              requestId: legacyRequestId,
-              issuedAt: now,
-              expiresAt: now + 15_000
-            }
-          },
-          { id: legacyRequestId }
-        )
-      )
-    );
-    await vi.waitFor(() =>
-      expect(sent).toContainEqual(
-        expect.objectContaining({
-          type: 'node.response',
-          payload: {
-            error: 'USER_AUTHORIZATION_REQUIRED',
-            message: 'User authorization is required.'
-          }
-        })
-      )
-    );
-    sent.length = 0;
-    const requestId = 'authorized-request';
-    (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
-      JSON.stringify(
-        createEnvelope(
-          'node.request',
-          {
-            operation: 'shell.exec',
-            data: {},
-            userAuthorization: {
-              userId: 1,
-              sessionHash: 'a'.repeat(43),
-              nodeId: 'node-a',
-              operation: 'shell.exec',
-              requestId,
-              issuedAt: now + 1_000,
-              expiresAt: now + 16_000
-            }
-          },
-          { id: requestId }
-        )
-      )
-    );
-    await vi.waitFor(() =>
-      expect(sent).toContainEqual(
-        expect.objectContaining({
-          type: 'node.response',
-          payload: {
-            error: 'OPERATION_UNSUPPORTED',
-            message: 'Operation is unsupported.'
-          }
-        })
-      )
-    );
-    connector.stop();
   });
 });

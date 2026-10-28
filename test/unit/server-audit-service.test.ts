@@ -139,6 +139,27 @@ describe('Server structured audit', () => {
     expect(JSON.stringify(audit.mock.calls)).not.toContain('secret');
   });
 
+  it('does not propagate record observer failure to its caller', async () => {
+    const audit = vi.fn(async () => {
+      throw new Error('audit unavailable');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const service = new AuditService(
+        { audit } as unknown as MysqlServerDatabase,
+        {} as AuthorizationService
+      );
+      await expect(
+        service.record({ eventType: 'user.updated', actorUserId: 2 })
+      ).resolves.toBeUndefined();
+      await Promise.resolve();
+      expect(audit).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith('AUDIT_WRITE_FAILED');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('filters ORG_ADMIN reads to managed organizations and paginates stably', async () => {
     const query = vi.fn(async (sql: string, params: readonly unknown[]) => {
       void sql;

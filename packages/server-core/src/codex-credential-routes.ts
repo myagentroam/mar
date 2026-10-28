@@ -5,28 +5,15 @@ import type { CodexCredentialService } from './codex-credential-service.js';
 import type { MarAgentModelService } from './mar-agent-model-service.js';
 import { currentSession, protectedAdmin, validCsrf } from './session.js';
 import { errorResponseOptions, safePublicError, sendError } from './http-errors.js';
-import type { SessionRunNodeControl } from './session-run-contracts.js';
 
 export function registerCodexCredentialRoutes(input: {
   readonly app: FastifyInstance;
   readonly database: SessionLookup;
   readonly credentials: CodexCredentialService;
   readonly models: MarAgentModelService;
-  readonly nodeControl?: Pick<SessionRunNodeControl, 'requestNode'>;
   readonly publicOrigin?: string;
 }): void {
   const { app, database, credentials, models, publicOrigin } = input;
-  if (input.nodeControl) {
-    credentials.configureChatgptLogin((actor, nodeId, operation, data) =>
-      input.nodeControl!.requestNode(
-        nodeId,
-        operation,
-        data,
-        { userId: actor.userId, sessionHash: actor.sessionFingerprint },
-        45_000
-      )
-    );
-  }
   app.addHook('onClose', async () => {
     credentials.closeChatgptLogins();
   });

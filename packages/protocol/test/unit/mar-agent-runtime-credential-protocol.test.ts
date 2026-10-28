@@ -310,20 +310,20 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     ).toBe(false);
   });
 
-  it('accepts missing Fast capability and model flag from older Nodes', () => {
+  it('rejects the retired capability flag and does not expose the retired model speed flag', () => {
     const capability = { apiVersion: 1, websocket: true, httpVersions: ['1.1'] };
-    expect(marAgentRuntimeCredentialCapabilitySchema.parse(capability).fastMode).toBeUndefined();
+    expect(marAgentRuntimeCredentialCapabilitySchema.safeParse(capability).success).toBe(true);
     expect(
-      marAgentRuntimeCredentialCapabilitySchema.parse({ ...capability, fastMode: true }).fastMode
-    ).toBe(true);
+      marAgentRuntimeCredentialCapabilitySchema.safeParse({ ...capability, fastMode: true }).success
+    ).toBe(false);
     const legacy = { ...baseModel, sortOrder: 0, access: 'RESTRICTED' };
-    expect(marAgentModelSummarySchema.parse(legacy).fastMode).toBeUndefined();
+    expect(marAgentModelSummarySchema.parse(legacy)).not.toHaveProperty('fastMode');
+    expect(marAgentModelSummarySchema.safeParse({ ...legacy, fastMode: true }).success).toBe(false);
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({ ...baseModel, apiKey: 'key', fastMode: true })
-        .fastMode
-    ).toBe(true);
+    ).not.toHaveProperty('fastMode');
     expect(
-      marAgentRuntimeModelConfigurationSchema.safeParse({
+      marAgentRuntimeModelConfigurationSchema.parse({
         ...baseModel,
         protocol: 'ANTHROPIC_MESSAGES',
         hostedWebSearch: false,
@@ -331,8 +331,8 @@ describe('MAR Agent dynamic credential shared protocol', () => {
         responsesPreviousResponseId: false,
         apiKey: 'key',
         fastMode: true
-      }).success
-    ).toBe(false);
+      })
+    ).not.toHaveProperty('fastMode');
   });
 
   it('preserves standard Responses service tiers and rejects invalid or non-Responses tiers', () => {

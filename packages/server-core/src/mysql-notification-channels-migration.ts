@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MysqlMigrationConnection } from './mysql-migrations.js';
+import type { MysqlMigrationConnection } from './mysql-migration-contracts.js';
 
 export const AGENT_NOTIFICATION_KIND =
   "enum('run','approval','plan','user-input','schedule','agent')";

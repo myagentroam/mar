@@ -61,6 +61,26 @@ async function startCatalogServer(status = 200, body?: string) {
 }
 
 describe('Codex credential service', () => {
+  it('commits a rotated token without undoing a concurrent proxy edit', async () => {
+    const fixture = database([activeCredential()]);
+    const gate = deferred<Response>();
+    const started = deferred<void>();
+    const request = vi.fn(async () => {
+      started.resolve();
+      return gate.promise;
+    });
+    const credentials = service(fixture.database, request as typeof fetch);
+    const refresh = credentials.refresh(1, 'credential-1');
+    await started.promise;
+    await credentials.update(1, 'credential-1', { socks5Url: 'socks5://127.0.0.1:1080' });
+    const token = jwt({ 'https://api.openai.com/auth': { chatgpt_account_id: 'account-secret' } });
+    gate.resolve(
+      Response.json({ access_token: token, refresh_token: 'rotated-after-edit', id_token: token })
+    );
+    await refresh;
+    expect(JSON.stringify(fixture.document())).toContain('rotated-after-edit');
+    expect(JSON.stringify(fixture.document())).toContain('socks5://127.0.0.1:1080');
+  });
   it.each([200, 500])(
     'audits explicit organization credential tests without tokens, status=%s',
     async (status) => {
@@ -1351,6 +1371,79 @@ describe('Codex credential service', () => {
       vi.clearAllTimers();
       vi.restoreAllMocks();
       vi.useRealTimers();
+    });
+
+    it('reserves the final slot before an asynchronous device start and releases it on failure', async () => {
+      const gate = deferred<Response>();
+      const started = deferred<void>();
+      let calls = 0;
+      const request = vi.fn(async () => {
+        calls++;
+        if (calls === 128) {
+          started.resolve();
+          return gate.promise;
+        }
+        return deviceResponse();
+      });
+      let sequence = 0;
+      const credentials = service(
+        database().database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      for (let i = 0; i < 127; i++) await credentials.startLogin(actor, draft);
+      const pending = credentials.startLogin(actor, draft);
+      await started.promise;
+      await expect(credentials.startLogin(actor, draft)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_LIMIT_REACHED'
+      );
+      gate.resolve(new Response(null, { status: 503 }));
+      await expect(pending).rejects.toThrow('CODEX_DEVICE_AUTH_UNAVAILABLE');
+      await expect(credentials.startLogin(actor, draft)).resolves.toMatchObject({
+        status: 'PENDING'
+      });
+      expect(request).toHaveBeenCalledTimes(129);
+    });
+
+    it('rejects a stale device relogin after a newer attempt commits', async () => {
+      const fixture = database([activeCredential()]);
+      let sequence = 0;
+      let tokenSequence = 0;
+      const request = vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith('/usercode')) return deviceResponse();
+        if (String(url).endsWith('/deviceauth/token'))
+          return Response.json({ authorization_code: 'code', code_verifier: 'verifier' });
+        if (String(url).endsWith('/oauth/token')) {
+          const token = jwt({
+            'https://api.openai.com/auth': { chatgpt_account_id: 'account-secret' }
+          });
+          return Response.json({
+            access_token: token,
+            refresh_token: `rotated-${++tokenSequence}`,
+            id_token: token
+          });
+        }
+        return Response.json({ models: [] });
+      });
+      const credentials = service(
+        fixture.database,
+        request as typeof fetch,
+        Date.now,
+        () => `attempt-${++sequence}`
+      );
+      const target = { ...draft, targetCredentialId: 'credential-1' };
+      const older = await credentials.startLogin(actor, target);
+      const newer = await credentials.startLogin(actor, target);
+      expect(await credentials.loginAttempt(actor, newer.id)).toMatchObject({
+        status: 'SUCCEEDED'
+      });
+      expect(await credentials.loginAttempt(actor, older.id)).toMatchObject({
+        status: 'FAILED',
+        code: 'CODEX_LOGIN_CONFLICT'
+      });
+      expect(JSON.stringify(fixture.document())).toContain('rotated-1');
+      expect(JSON.stringify(fixture.document())).not.toContain('rotated-2');
     });
 
     it('releases all 128 slots at expiry without polling and keeps unexpired attempts limited', async () => {

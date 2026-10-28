@@ -45,6 +45,7 @@ function fixture(
       userOwnsNode: async () => true
     },
     publicOrigin: 'http://localhost',
+    authorizeNodeRequest: vi.fn(async () => true),
     nodeControl: { requestNode, ownsWorkbenchConnection: () => false },
     secrets: { resolve: vi.fn(async () => ({ FIXTURE_TOKEN: 'private-value' })) },
     ...(overrides.marAgentRuntimeModels === undefined
@@ -406,7 +407,7 @@ describe('shared ordinary Session and Run routes', () => {
   });
 
   it('preserves private conditional caching for immutable ordinary Run input images', async () => {
-    const { app, requestNode, headers } = fixture();
+    const { app, requestNode, headers, authorizeNodeRequest } = fixture();
     const url = '/api/agent-runs/run-one/images/0?nodeId=node-one';
     requestNode.mockResolvedValueOnce({ image: { mime: 'image/png', dataBase64: 'aW1hZ2U=' } });
     const first = await app.inject({ url, headers });
@@ -417,6 +418,14 @@ describe('shared ordinary Session and Run routes', () => {
       (await app.inject({ url, headers: { ...headers, 'if-none-match': first.headers.etag! } }))
         .statusCode
     ).toBe(304);
+    expect(requestNode).not.toHaveBeenCalled();
+    authorizeNodeRequest.mockResolvedValueOnce(false);
+    const denied = await app.inject({
+      url,
+      headers: { ...headers, 'if-none-match': first.headers.etag! }
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error.code).toBe('NODE_ACCESS_DENIED');
     expect(requestNode).not.toHaveBeenCalled();
   });
 

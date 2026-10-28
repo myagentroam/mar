@@ -1349,7 +1349,7 @@ function modelSummary(
     ),
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    ...(model.fastMode === true ? { fastMode: true } : {}),
+    ...(model.serviceTier === undefined ? {} : { serviceTier: model.serviceTier }),
     hostedWebSearch: model.hostedWebSearch,
     ...(model.responsesTransport === undefined
       ? {}

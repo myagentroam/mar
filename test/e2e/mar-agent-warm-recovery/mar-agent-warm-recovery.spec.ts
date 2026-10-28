@@ -38,11 +38,13 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
   const databaseUrl = testDatabase.databaseUrl;
   const nodeAppVersion = await projectVersion();
   const nodeDisplayName = `MAR Agent warm recovery ${randomUUID()}`;
-  const app = createServerApp({
-    databaseUrl,
-    dataDirectory: join(directory, 'server-data'),
-    secureCookies: false
-  });
+  const app = (
+    await createServerApp({
+      databaseUrl,
+      dataDirectory: join(directory, 'server-data'),
+      secureCookies: false
+    })
+  ).app;
   let connector: NodeConnector | undefined;
   try {
     await Promise.all([prepareGitWorkspace(workspacePath), mkdir(agentHome, { recursive: true })]);
@@ -189,11 +191,13 @@ test('MAR Agent Goal continues through the real Server and NodeConnector and com
   const databaseUrl = testDatabase.databaseUrl;
   const nodeAppVersion = await projectVersion();
   const nodeDisplayName = `MAR Agent goal ${randomUUID()}`;
-  const app = createServerApp({
-    databaseUrl,
-    dataDirectory: join(directory, 'server-data'),
-    secureCookies: false
-  });
+  const app = (
+    await createServerApp({
+      databaseUrl,
+      dataDirectory: join(directory, 'server-data'),
+      secureCookies: false
+    })
+  ).app;
   let connector: NodeConnector | undefined;
   try {
     await Promise.all([prepareGitWorkspace(workspacePath), mkdir(agentHome, { recursive: true })]);
@@ -722,7 +726,7 @@ async function prepareAdminAuthentication(databaseUrl: string): Promise<void> {
 }
 
 async function createWorkspace(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   headers: Record<string, string>,
   nodeId: string,
   workspacePath: string
@@ -747,7 +751,7 @@ async function prepareGitWorkspace(path: string): Promise<void> {
   await executeFile('git', ['-C', path, 'commit', '-m', 'test']);
 }
 
-async function adminHeaders(app: ReturnType<typeof createServerApp>) {
+async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['app']) {
   const login = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -765,7 +769,7 @@ async function adminHeaders(app: ReturnType<typeof createServerApp>) {
 }
 
 async function waitForConnectedNode(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   displayName: string
 ) {
@@ -794,7 +798,7 @@ async function waitForConnectedNode(
 }
 
 async function expectRunReleased(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   nodeId: string,
   runId: string

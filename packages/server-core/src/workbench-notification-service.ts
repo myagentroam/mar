@@ -4,6 +4,7 @@ import { readMysqlUserLocale, writeMysqlUserLocale } from './mysql-authenticatio
 import { createHash, randomUUID } from 'node:crypto';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { NotificationStore } from './notification-contracts.js';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import { workbenchNotificationMessages } from './i18n/workbench-notifications.js';
 import {
   serverNotificationSchema,
@@ -25,6 +26,7 @@ export class WorkbenchNotificationService {
 
   constructor(
     private readonly database: NotificationStore,
+    private readonly authorizeNodeRequest: NodeRequestAuthorization,
     private readonly push: (userId: number, message: object) => void,
     private readonly now: () => number = Date.now,
     private readonly authorizeHostedTarget?: (
@@ -50,7 +52,7 @@ export class WorkbenchNotificationService {
         payload.kind === 'SCHEDULE_TERMINAL';
       if (
         !scheduleNotification &&
-        !(await this.database.userCanRequestNode(
+        !(await this.authorizeNodeRequest(
           payload.userId,
           nodeId,
           'workbench.event.receive',
@@ -146,12 +148,14 @@ export class WorkbenchNotificationService {
           payload.targetType === 'HOSTED_CONVERSATION'
             ? (this.authorizeHostedTarget?.(payload.userId, nodeId, payload.templateId) ??
               Promise.resolve(false))
-            : this.database.userCanRequestNode(
-                payload.userId,
-                nodeId,
-                'workbench.event.receive',
-                payload,
-                payload.workspaceId
+            : Promise.resolve(
+                this.authorizeNodeRequest(
+                  payload.userId,
+                  nodeId,
+                  'workbench.event.receive',
+                  payload,
+                  payload.workspaceId
+                )
               )
         );
     }
@@ -177,7 +181,7 @@ export class WorkbenchNotificationService {
     for (const row of rows) {
       const userId = Number(row['user_id']);
       if (
-        !(await this.database.userCanRequestNode(
+        !(await this.authorizeNodeRequest(
           userId,
           change.nodeId,
           'workbench.event.receive',

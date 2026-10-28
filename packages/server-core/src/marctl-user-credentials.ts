@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 
 const TOKEN_PATTERN = /^marctl_user_[A-Za-z0-9_-]{43}$/u;
 const TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -47,9 +47,10 @@ export class MarctlUserCredentials {
     }
     if (this.credentials.size >= MAX_ACTIVE_TOKENS) throw new Error('MARCTL_USER_CREDENTIAL_LIMIT');
     const token = `marctl_user_${randomBytes(32).toString('base64url')}`;
-    this.credentials.set(digest(token), {
+    const tokenDigest = createHash('sha256').update(token).digest();
+    this.credentials.set(tokenDigest.toString('hex'), {
       userId: user.userId,
-      sessionHash: user.sessionHash ?? createHash('sha256').update(token).digest('base64url'),
+      sessionHash: user.sessionHash ?? tokenDigest.toString('base64url'),
       expiresAt: this.now() + TOKEN_LIFETIME_MS,
       scheduled: user.scheduled === true || user.sessionHash === undefined,
       channel: user.channel === true,

@@ -75,7 +75,8 @@ describe('authentication persistence composition', () => {
     try {
       registerAuthRoutes({
         app,
-        database,
+        store: database,
+        audit: { record: (event) => database.audit(event) },
         nodeControl,
         now: () => 1_000,
         loginRate: new Map(),

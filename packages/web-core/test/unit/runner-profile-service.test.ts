@@ -66,21 +66,20 @@ function ref<T>(value: T): { value: T } {
 }
 
 describe('Runner Profile Domain Service', () => {
-  it('retains Auto only when both Node feature and actual profile support it', async () => {
-    for (const supportsAuto of [true, false]) {
+  it('retains Auto exactly when the Node profile provides it', async () => {
+    for (const hasAuto of [true, false]) {
       const profiles = shallowRef<readonly RunnerProfile[]>([]);
       const service = createRunnerProfileService({
         workspaceTarget: shallowRef({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
         profiles,
         loading: shallowRef(false),
         failed: shallowRef(false),
-        supportsAuto: () => supportsAuto,
         request: async () => ({
           profiles: [
             {
               ...marAgentProfile,
               accessOptions: [
-                { id: 'auto', label: 'Auto', description: 'Auto' },
+                ...(hasAuto ? [{ id: 'auto', label: 'Auto', description: 'Auto' }] : []),
                 { id: 'full-access', label: 'Full access', description: 'Full access' }
               ]
             }
@@ -91,9 +90,7 @@ describe('Runner Profile Domain Service', () => {
         errorMessage: String
       });
       await service.load('node-1');
-      expect(profiles.value[0]?.accessOptions.some((option) => option.id === 'auto')).toBe(
-        supportsAuto
-      );
+      expect(profiles.value[0]?.accessOptions.some((option) => option.id === 'auto')).toBe(hasAuto);
     }
   });
   it('uses Workspace context for reads while preserving the shared Node cache', async () => {

@@ -4,7 +4,7 @@ import { RelaySocket } from './support/relay-socket.js';
 import { WorkbenchRelayService } from '../../src/workbench-relay-service.js';
 
 function fixture(expiresAt: number | null = null) {
-  const relay = new WorkbenchRelayService({ database: { userOwnsNode: async () => true } });
+  const relay = new WorkbenchRelayService({ authorizeNodeRequest: async () => true });
   const validate = vi.fn(async () => true);
   const attach = (visitorId = 'visitor-one', shareId = 'share-one') => {
     const socket = new RelaySocket();

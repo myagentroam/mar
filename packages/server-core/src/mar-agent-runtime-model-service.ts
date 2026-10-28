@@ -309,18 +309,9 @@ function runtimeModel(
   const grok =
     model.baseUrl === XAI_SUBSCRIPTION_BASE_URL && model.credential.type === 'CREDENTIAL_REF';
   const serviceTier = grok ? undefined : model.serviceTier;
-  const legacyFast =
-    serviceTier === undefined && model.fastMode === true && capability?.fastMode === true;
   const supportsTier =
     serviceTier !== undefined && capability?.serviceTiers?.includes(serviceTier) === true;
-  const legacyFastProjection =
-    capability?.serviceTiers === undefined && capability?.fastMode === true;
-  if (
-    serviceTier !== undefined &&
-    serviceTier !== 'default' &&
-    !supportsTier &&
-    !(serviceTier === 'priority' && legacyFastProjection)
-  )
+  if (serviceTier !== undefined && serviceTier !== 'default' && !supportsTier)
     throw new Error('MAR_AGENT_MODEL_SERVICE_TIER_UNAVAILABLE');
   return marAgentRuntimeModelConfigurationSchema.parse({
     id: model.id,
@@ -349,11 +340,7 @@ function runtimeModel(
     conversationModel: model.conversationModel ?? true,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    ...(supportsTier
-      ? { serviceTier }
-      : legacyFast || (serviceTier !== undefined && serviceTier !== 'default')
-        ? { fastMode: true }
-        : {}),
+    ...(supportsTier ? { serviceTier } : {}),
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: resourceUrlsEnabled && model.metadata?.useResourceUrl === true,
     ...(model.responsesTransport === undefined

@@ -20,7 +20,6 @@ import {
   ref,
   type ShallowUnwrapRef
 } from 'vue';
-import { supportsNodeFeature } from '../../util/node-features.js';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
 import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
 import {
@@ -368,9 +367,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :skill-supported="true"
             :mcp-supported="true"
             :cleanup-sessions-supported="page.cleanupSessionsEnabled"
-            :session-prompt-supported="
-              supportsNodeFeature(page.workspaceHost?.nodeAppVersion ?? '', 'SESSION_PROMPT')
-            "
             :search-supported="page.workspaceSessionSearchEnabled"
             :search-query="page.workspaceSessionSearchQuery"
             :searching="page.searchingWorkspaceSessions"
@@ -449,13 +445,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   :plan-continuation="page.activePlanContinuation"
                   :node-ready="page.nodeReady"
                   :synchronized="page.liveConnected && !page.conversationSyncPending"
-                  :tool-change-enabled="
-                    page.nodeReady &&
-                    supportsNodeFeature(
-                      page.workspaceHost?.nodeAppVersion ?? '',
-                      'TOOL_RESULT_DIFF'
-                    )
-                  "
+                  :tool-change-enabled="page.nodeReady"
                   :rewind-enabled="page.rewindConversationEnabled"
                   :rollback-enabled="page.rollbackConversationEnabled"
                   @initial-rendered="page.confirmConversationInitialRender"

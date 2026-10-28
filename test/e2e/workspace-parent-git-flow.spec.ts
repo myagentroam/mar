@@ -179,7 +179,7 @@ test('Parent Git repositories preserve child Workspace files and support disabli
     await connector?.stop();
     try {
       if (passwordChanged) {
-        const cleanup = await apiRequest.newContext({ baseURL });
+        const cleanup = await apiRequest.newContext({ baseURL: baseURL! });
         try {
           const login = await cleanup.post('/api/auth/login', {
             data: { username: 'admin', password }

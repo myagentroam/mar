@@ -342,15 +342,20 @@ test('Unified loading: hosted history pauses for a local filter and retains retr
   await page.route('**/api/nodes/node-1/hosted-conversations/*/watch', (route) =>
     route.request().method() === 'DELETE'
       ? json(route, { released: true })
-      : fulfillMockHostedConversationWatch(page, route, {
-          ...snapshot,
-          conversation: {
-            ...snapshot.conversation,
-            ...conversation(
-              Number(new URL(route.request().url()).pathname.split('/').at(-2)!.split('-').at(-1))
-            )
+      : fulfillMockHostedConversationWatch(
+          page,
+          route,
+          new URL(route.request().url()).pathname.split('/').at(-2)!,
+          {
+            ...snapshot,
+            conversation: {
+              ...snapshot.conversation,
+              ...conversation(
+                Number(new URL(route.request().url()).pathname.split('/').at(-2)!.split('-').at(-1))
+              )
+            }
           }
-        })
+        )
   );
   await page.goto('/console?view=conversations');
   await page.getByRole('button', { name: '进入控制台' }).click();

@@ -15,7 +15,6 @@ import { translate } from '../service/locale-preference-service.js';
 import type { ConsoleShortcutResult } from './console-keyboard-shortcut-service.js';
 import { toolChangeOpenIntent } from './tool-change-review-service.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
-import { supportsNodeFeature } from '../util/node-features.js';
 
 interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
@@ -52,14 +51,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
   function openAgentFileChange(entry: FileChangeEntry): void {
     const target = options.workspaceTarget.value;
     const sessionId = options.selectedSessionId?.value;
-    const node = options.nodes.value.find((node) => node.id === target?.nodeId);
-    if (
-      !target ||
-      !sessionId ||
-      !options.nodeReady.value ||
-      !supportsNodeFeature(node?.nodeAppVersion ?? '', 'TOOL_RESULT_DIFF')
-    )
-      return;
+    if (!target || !sessionId || !options.nodeReady.value) return;
     const intent = toolChangeOpenIntent(entry, { ...target, sessionId, scope: 'SESSION' });
     if (intent) options.workspaceInspector.value?.openWorkspaceFileTab(intent);
   }

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'mysql2/promise';
 import { openMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
+import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
@@ -168,7 +168,9 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
         expect(
           await database.authenticateNode(registered!.nodeId, registered!.credential)
         ).toMatchObject({ ownerUserId: userId, displayName: '开发节点', disabled: false });
-        expect(await database.userOwnsNode(userId, registered!.nodeId)).toBe(true);
+        expect(await database.listNodesForUser(userId)).toContainEqual(
+          expect.objectContaining({ id: registered!.nodeId, ownerUserId: userId, disabled: false })
+        );
       } finally {
         await setEnterpriseActivated(false);
       }
@@ -256,7 +258,7 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
           metadata: JSON.stringify({ nodeAppVersion: '0.1.5' })
         });
         nodeId = registered!.nodeId;
-        const service = new MysqlEnvironmentSecretService(
+        const service = createTestMysqlEnvironmentSecretService(
           database,
           async () => true,
           async () => true,
@@ -294,7 +296,6 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
           }
         );
         secretIds.push(rootPrivate.id, rootPublic.id, childPrivate.id);
-        database.setNodeAccessResolver(async () => true);
         const environment = await service.resolve(userId, nodeId);
         expect(environment[`PRIVATE_${suffix}`]).toBeUndefined();
         expect(environment[`PUBLIC_${suffix}`]).toBe('root-public');

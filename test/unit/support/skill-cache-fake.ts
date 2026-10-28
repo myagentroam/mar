@@ -1,5 +1,5 @@
 import type { Pool } from 'mysql2/promise';
-import type { ResolvedSkillBundle } from '../../../packages/server-core/src/github-skill-provider.js';
+import type { ResolvedSkillBundle } from '../../../packages/server-core/src/skill-bundle.js';
 
 export function skillBundle(character = 'a'): ResolvedSkillBundle {
   return {
@@ -11,6 +11,10 @@ export function skillBundle(character = 'a'): ResolvedSkillBundle {
     commitSha: character.repeat(40),
     contentHash: character.repeat(64),
     archiveHash: 'f'.repeat(64),
+    archiveJson: JSON.stringify({
+      schemaVersion: 1,
+      files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+    }),
     contentBytes: 10,
     tlsVerified: true,
     files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]

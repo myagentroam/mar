@@ -3,7 +3,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createHash } from 'node:crypto';
+import {
+  finalizeSkillBundle,
+  normalizeSkillName,
+  parseSkillFrontmatter,
+  type ResolvedSkillBundle,
+  type SkillBundleFile
+} from './skill-bundle.js';
 import { assertPublicSkillHost } from './skill-network-policy.js';
 
 const execFileAsync = promisify(execFile);
@@ -21,24 +27,6 @@ export interface GitSkillCandidate {
   readonly description: string;
   readonly source: string;
   readonly skillPath: string;
-}
-
-interface SkillBundleFile {
-  readonly path: string;
-  readonly contentBase64: string;
-}
-interface GitResolvedSkillBundle {
-  readonly repositoryIdentity: string;
-  readonly repositoryUrl: string;
-  readonly skillPath: string;
-  readonly name: string;
-  readonly description: string;
-  readonly commitSha: string;
-  readonly contentHash: string;
-  readonly archiveHash: string;
-  readonly contentBytes: number;
-  readonly tlsVerified: boolean;
-  readonly files: readonly SkillBundleFile[];
 }
 
 export class GitSkillRepository {
@@ -75,7 +63,7 @@ export class GitSkillRepository {
             ['show', `HEAD:${skillFile}`],
             MAX_FILE_BYTES
           );
-          const metadata = parseFrontmatter(content);
+          const metadata = parseSkillFrontmatter(content);
           return {
             ...candidate,
             name: normalizeSkillName(metadata.name),
@@ -90,7 +78,7 @@ export class GitSkillRepository {
     readonly repositoryUrl: string;
     readonly skillPath?: string;
     readonly skillName?: string;
-  }): Promise<GitResolvedSkillBundle> {
+  }): Promise<ResolvedSkillBundle> {
     return this.withRepository(input.repositoryUrl, async (repository) => {
       const skillPath = resolveSkillPath(repository.files, input.skillPath, input.skillName);
       const selected = repository.files
@@ -105,9 +93,7 @@ export class GitSkillRepository {
         throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
       const files: SkillBundleFile[] = [];
       let contentBytes = 0;
-      for (const file of selected.sort((left, right) =>
-        left.relativePath.localeCompare(right.relativePath)
-      )) {
+      for (const file of selected) {
         assertSafeRelativePath(file.relativePath);
         if (file.size > MAX_FILE_BYTES) throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
         const content = await gitBuffer(
@@ -119,7 +105,7 @@ export class GitSkillRepository {
         contentBytes += content.length;
         files.push({ path: file.relativePath, contentBase64: content.toString('base64') });
       }
-      return finalizeBundle({
+      return finalizeSkillBundle({
         repositoryIdentity: repository.identity,
         repositoryUrl: input.repositoryUrl,
         skillPath,
@@ -303,58 +289,4 @@ function isDiscoverableSkillPath(skillFile: string): boolean {
   return ['skills', '.agents/skills', '.claude/skills'].some((root) =>
     skillFile.startsWith(`${root}/`)
   );
-}
-
-function finalizeBundle(input: {
-  repositoryIdentity: string;
-  repositoryUrl: string;
-  skillPath: string;
-  commitSha: string;
-  contentBytes: number;
-  tlsVerified: boolean;
-  files: readonly SkillBundleFile[];
-}): GitResolvedSkillBundle {
-  const skillFile = input.files.find((file) => file.path === 'SKILL.md');
-  if (
-    skillFile === undefined ||
-    input.files.some((file) => file.path === '.mar-skill-install.json')
-  )
-    throw new Error('SKILL_CONTENT_INVALID');
-  const metadata = parseFrontmatter(
-    Buffer.from(skillFile.contentBase64, 'base64').toString('utf8')
-  );
-  const canonicalFiles = input.files
-    .map((file) => `${file.path}\0${file.contentBase64}`)
-    .join('\0');
-  const contentHash = createHash('sha256').update(canonicalFiles).digest('hex');
-  return {
-    ...input,
-    name: normalizeSkillName(metadata.name),
-    description: metadata.description,
-    contentHash,
-    archiveHash: createHash('sha256')
-      .update(JSON.stringify({ schemaVersion: 1, files: input.files }))
-      .digest('hex')
-  };
-}
-
-function parseFrontmatter(content: string): { name: string; description: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content);
-  if (match === null) throw new Error('SKILL_CONTENT_INVALID');
-  const values = new Map<string, string>();
-  for (const line of match[1]!.split(/\r?\n/u)) {
-    const field = /^(name|description):\s*(.*?)\s*$/u.exec(line);
-    if (field !== null) values.set(field[1]!, field[2]!.replace(/^['"]|['"]$/gu, ''));
-  }
-  const name = values.get('name');
-  const description = values.get('description');
-  if (name === undefined || description === undefined || description.length > 4096)
-    throw new Error('SKILL_CONTENT_INVALID');
-  return { name, description };
-}
-
-function normalizeSkillName(name: string): string {
-  const normalized = name.trim().toLowerCase();
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(normalized)) throw new Error('SKILL_CONTENT_INVALID');
-  return normalized;
 }

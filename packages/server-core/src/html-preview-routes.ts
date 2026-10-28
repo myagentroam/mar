@@ -14,7 +14,7 @@ import {
 import { isSafeResourceText } from './workspace-http-support.js';
 import type { HtmlPreviewOrigin } from './html-preview-origin.js';
 import type { SessionShares } from './session-shares.js';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import { SESSION_SHARE_COOKIE } from './session-share-routes.js';
 
 const GRANT_LIFETIME_MS = 30 * 60 * 1000;

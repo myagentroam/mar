@@ -6,6 +6,7 @@ import {
 } from '../../packages/protocol/src/index.js';
 import { ModelUsageGrants } from '../../packages/server-core/src/model-usage-grant.js';
 import { NodeRequestBroker } from '../../ee/server/src/service/node-request-broker.js';
+import { testNodeBrokerServices } from '../support/node-broker-services.js';
 import { PromptCompletionNodeService } from '../../mar-node/src/service/prompt-completion-node-service.js';
 
 interface SentNodeRequest {
@@ -25,9 +26,8 @@ describe('Prompt completion Node broker and identity', () => {
   it('issues verifiable work usage grants bound to the authenticated user, not payload fields', async () => {
     const sent: SentNodeRequest[] = [];
     const database = { userCanRequestNode: vi.fn(async () => true) };
-    const broker = brokerFixture(database, sent);
     const grants = new ModelUsageGrants(Buffer.from('fake-test-signing-key'), () => 1_000);
-    broker.setModelUsageGrants(grants as never);
+    const broker = brokerFixture(database, sent, grants);
     const user = {
       userId: 7,
       sessionHash: 'fake-cookie-session-hash',
@@ -67,9 +67,8 @@ describe('Prompt completion Node broker and identity', () => {
   it('rejects a conflicting Workspace hint without forwarding or issuing a usage grant', async () => {
     const sent: SentNodeRequest[] = [];
     const database = { userCanRequestNode: vi.fn(async () => true) };
-    const broker = brokerFixture(database, sent);
     const grants = { issue: vi.fn() };
-    broker.setModelUsageGrants(grants as never);
+    const broker = brokerFixture(database, sent, grants);
     await expect(
       broker.request(
         'node-1',
@@ -245,7 +244,11 @@ describe('Prompt completion Node broker and identity', () => {
   });
 });
 
-function brokerFixture(database: unknown, sent: SentNodeRequest[]): NodeRequestBroker {
+function brokerFixture(
+  database: { userCanRequestNode: () => Promise<boolean> },
+  sent: SentNodeRequest[],
+  usageGrants: Pick<ModelUsageGrants, 'issue'> = testNodeBrokerServices().usageGrants
+): NodeRequestBroker {
   const socket = {
     readyState: 1,
     OPEN: 1,
@@ -253,5 +256,11 @@ function brokerFixture(database: unknown, sent: SentNodeRequest[]): NodeRequestB
       sent.push(JSON.parse(raw) as SentNodeRequest);
     }
   };
-  return new NodeRequestBroker(database as never, () => socket as never);
+  return new NodeRequestBroker(
+    database as never,
+    database.userCanRequestNode,
+    () => socket as never,
+    { allows: () => true, encode: (_socket, envelope) => envelope },
+    { ...testNodeBrokerServices(), usageGrants }
+  );
 }

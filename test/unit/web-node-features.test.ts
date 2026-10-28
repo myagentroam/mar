@@ -7,14 +7,10 @@ import {
 import { FEATURE_DEMO } from '../../packages/web-core/src/util/node-features.js';
 
 describe('Web Node feature version gates', () => {
-  it('Preserves the reserved example and real Workspace index preparation gate', () => {
+  it('Preserves only the reserved example', () => {
     expect(NODE_FEATURES).toEqual({
-      [FEATURE_DEMO]: { introducedIn: '0.9.119' },
-      WORKSPACE_INDEX_PREPARATION: { introducedIn: '0.9.143' }
+      [FEATURE_DEMO]: { introducedIn: '0.9.119' }
     });
-    expect(supportsNodeFeature('0.9.142', 'WORKSPACE_INDEX_PREPARATION')).toBe(false);
-    expect(supportsNodeFeature('0.9.143', 'WORKSPACE_INDEX_PREPARATION')).toBe(true);
-    expect(supportsNodeFeature('0.10.1', 'WORKSPACE_INDEX_PREPARATION')).toBe(true);
     expect(supportsNodeFeature('0.9.118', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.119', FEATURE_DEMO)).toBe(true);
     expect(supportsNodeFeature('0.9.120', FEATURE_DEMO)).toBe(true);

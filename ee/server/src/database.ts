@@ -26,15 +26,7 @@ const SERVER_SCHEMA_VERSION = 18;
 
 type SqlRow = Record<string, string | number | bigint | Uint8Array | null>;
 
-export type AuditInput = import('@myagentroam/server-core/audit').AuditEvent;
-
-export interface SharedConversationAuditInput extends AuditInput {
-  readonly organizationId: number;
-  readonly idempotencyKey: string;
-  readonly conversationId?: string;
-  readonly conversationTitle?: string;
-  readonly userMessage?: string;
-}
+import type { AuditEvent } from '@myagentroam/server-core/audit';
 
 export interface ServerDatabaseOptions {
   readonly now?: () => number;
@@ -626,7 +618,7 @@ export class ServerDatabase {
     return this.listNodes().find((node) => node.id === nodeId);
   }
 
-  audit(input: AuditInput): void {
+  audit(input: AuditEvent): void {
     if (!auditsPersonalServerEvent(input.eventType)) return;
     const event = {
       ...input,
