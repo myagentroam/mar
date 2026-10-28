@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeWorkspace } from '../../src/database.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
 import { WorkspaceWatchController } from '../../src/service/workspace-watch-controller.js';
-import { WorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
-import { WorkspaceWatchSnapshotService } from '../../src/service/workspace-watch-snapshot-service.js';
+import { WorkspaceWatchService } from '../../src/workspace/workspace-watch-service.js';
+import { WorkspaceWatchSnapshotService } from '../../src/workspace/workspace-watch-snapshot-service.js';
 
 function fixture() {
   const workspace: NodeWorkspace = {
@@ -21,7 +20,7 @@ function fixture() {
   const requireWorkspace = (id: unknown) =>
     id === workspace.id ? workspace : { ...workspace, id: String(id), path: '/other' };
   const unused = vi.fn(() => snapshots.clear(workspace.id));
-  const watch = new WorkspaceWatchService(new WorkspaceDomainState(), vi.fn(), vi.fn(), unused);
+  const watch = new WorkspaceWatchService(vi.fn(), vi.fn(), unused);
   let changesRevision = 0;
   const snapshots = new WorkspaceWatchSnapshotService({
     requireWorkspace,

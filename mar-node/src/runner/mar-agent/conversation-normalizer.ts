@@ -11,8 +11,8 @@ import {
   boundedConversationItemId,
   compactRunnerText,
   compactRunnerValue
-} from '../../util/node-operation-parsers.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
+} from '../normalization.js';
+import { runnerErrorProjection } from '../runner-error.js';
 import { toolPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 
 export interface MarAgentNormalizedItem {

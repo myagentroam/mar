@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MarAgentEvent } from '../../mar-agent/src/index.js';
+import type { AgentEvent } from '../../mar-agent/src/index.js';
 import { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
 import { conversationTurnSchema, workbenchEventSchema } from '../../packages/protocol/src/index.js';
@@ -10,7 +10,12 @@ import {
   runDuration
 } from '../../packages/web-core/src/util/conversation-activity.js';
 import { translate } from '../../packages/web-core/src/service/locale-preference-service.js';
-import type { AgentRun } from '../../packages/web-core/src/model/workbench.js';
+import type { AgentRun, ConversationTurn } from '../../packages/web-core/src/model/workbench.js';
+
+type EventEnvelope = 'eventId' | 'sequence' | 'timestamp' | 'sessionId' | 'executionId' | 'turnId';
+type ToolCallback =
+  | Omit<Extract<AgentEvent, { type: 'tool.started' }>, EventEnvelope>
+  | Omit<Extract<AgentEvent, { type: 'tool.completed' }>, EventEnvelope>;
 
 describe('MAR public callbacks through Node and Web presentation', () => {
   it('keeps one Run clock across two executions without requiring public reasoning', () => {
@@ -47,7 +52,7 @@ describe('MAR public callbacks through Node and Web presentation', () => {
         sequence: ++sequence,
         eventType,
         payload,
-        status
+        ...(status === undefined ? {} : { status })
       });
     const publish = () => {
       const event = workbenchEventSchema.parse(
@@ -62,9 +67,12 @@ describe('MAR public callbacks through Node and Web presentation', () => {
       web.mergeSnapshots((event.payload as { runs: AgentRun[] }).runs);
       return runtime
         .listConversationTurns({ sessionId: session.id })
-        .turns.map((turn) => conversationTurnSchema.parse(turn));
+        .turns.map(
+          (turn) =>
+            JSON.parse(JSON.stringify(conversationTurnSchema.parse(turn))) as ConversationTurn
+        );
     };
-    const callback = (data: Record<string, unknown>) => {
+    const callback = (data: ToolCallback) => {
       const event = {
         eventId: `event-${sequence}`,
         sequence: sequence + 1,
@@ -73,7 +81,7 @@ describe('MAR public callbacks through Node and Web presentation', () => {
         executionId: execution.id,
         turnId: execution.turnId,
         ...data
-      } as MarAgentEvent;
+      } as AgentEvent;
       for (const item of normalizer.normalize(event)) emit('conversation.item', item);
     };
 

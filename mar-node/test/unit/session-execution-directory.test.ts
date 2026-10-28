@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { safePublicError } from '@myagentroam/protocol';
-import { resolveWorkspaceExecutionDirectory } from '../../src/workspace.js';
+import { resolveWorkspaceExecutionDirectory } from '../../src/workspace/path-access.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeConnector } from '../../src/connector.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
@@ -86,6 +86,7 @@ describe('Workspace execution directory admission', () => {
         const result = (await node.executeNodeOperation('session.create', {
           workspaceId: workspace.id,
           runner,
+          model: 'test-model',
           cwd: join(a, 'sub')
         })) as { session: { cwd: string; workspaceId: string } };
         expect(result.session).toMatchObject({ cwd: join(a, 'sub'), workspaceId: workspace.id });

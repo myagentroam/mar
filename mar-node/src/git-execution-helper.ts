@@ -1,7 +1,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { gitCredentialRequest, originalGitEnvironment } from './util/git-credential-client.js';
+import { gitCredentialRequest, originalGitEnvironment } from './workspace/git-credential-client.js';
 
 async function run(
   command: string,

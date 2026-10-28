@@ -3,7 +3,7 @@ import {
   normalizeSessionPrompt,
   personalInstructionsForRunner,
   withSessionPrompt
-} from '../../src/util/personal-instructions.js';
+} from '../../src/runner/personal-instructions.js';
 
 describe('Node personal instructions', () => {
   const value = {

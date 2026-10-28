@@ -1,7 +1,7 @@
 import { lstat, open, readdir, readlink, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { skillInstallMetadataSchema, type SkillInstallMetadata } from '@myagentroam/protocol';
-import { hasBrokenWorkspaceSkillGitExclude } from './workspace-git-exclude-service.js';
+import { hasBrokenWorkspaceSkillGitExclude } from '../workspace/workspace-git-exclude-service.js';
 
 const MAX_METADATA_BYTES = 64 * 1024;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;

@@ -9,7 +9,7 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
-import { SessionMessageService } from '../../src/service/session-message-service.js';
+import { SessionMessageService } from '../../src/session/session-message-service.js';
 import { RestartSessionRestorer } from '../../src/service/restart-session-restorer.js';
 import {
   PlannedRestartHandoff,
@@ -50,6 +50,8 @@ async function fixture() {
   const commands = new CommandStateStore();
   const control = vi.fn<(operation: string, input: Record<string, unknown>) => void>();
   const coordinator = new ContinuousRunCoordinator<RunnerImageAttachment>({
+    executionTerminating: () => undefined,
+    keepRunActive: () => false,
     runtime,
     emitQueue: vi.fn(),
     emitConversation: vi.fn(),

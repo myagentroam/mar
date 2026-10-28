@@ -3,16 +3,12 @@ import type { NodeAgentSession } from '../../src/database.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
-import { type CodexAppServerClient } from '../../src/codex-app-server.js';
-import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
-import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
-import { SessionDomainState } from '../../src/service/session-domain-state.js';
+import { type CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
+import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
+import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
 import { CommandStateStore } from '../../src/runner-command-engine.js';
-import type {
-  ExternalResumeContext,
-  ExternalResumeResult
-} from '../../src/runner/abstract-runner.js';
+import type { ExternalResumeContext, ExternalResumeResult } from '../../src/runner/contracts.js';
 import * as nativeHistory from '../../src/native-session-history.js';
 
 const { nodeLog } = vi.hoisted(() => ({ nodeLog: vi.fn() }));
@@ -61,14 +57,12 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
       forgetNativeAlias: (id: string) => aliases.delete(id)
     })
   } as never;
-  const state = new SessionDomainState<NodeAgentSession, unknown>();
   const commands = new CommandStateStore();
   const projection = new NativeSessionProjectionService({
     database: () => database,
     nodeId: () => 'node-1',
     runtime,
     runners,
-    state,
     commands,
     releaseResumeState: (directIds, projectionIds) =>
       resume.forgetSessions(directIds, projectionIds),
@@ -87,7 +81,19 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
       context: ExternalResumeContext
     ): Promise<ExternalResumeResult> => ({ session: context.promote(source.id)! })
   );
-  const resume = externalResumeFixture({ runtime, state, target }, resumeNative);
+  const resume = externalResumeFixture({ runtime, target }, resumeNative);
+  const state = {
+    directNative: (projection as unknown as { directNative: Map<string, NodeAgentSession> })
+      .directNative,
+    ...(resume as unknown as {
+      externalActivity: Map<string, unknown>;
+      resumedByDirectId: Map<string, string>;
+      resumeFailures: Map<string, string>;
+      messageResumeFailures: Map<string, string>;
+      resumeFailureDetails: Map<string, string>;
+      failureTimers: Map<string, NodeJS.Timeout>;
+    })
+  };
   projection.remember([target]);
   const refreshActivity = vi.fn(async (_session: NodeAgentSession) => {});
   const externalActivity = vi.fn((): unknown => 'IDLE');
@@ -135,7 +141,6 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
 function externalResumeFixture(
   f: {
     runtime: NodeRuntimeState;
-    state: SessionDomainState<NodeAgentSession, unknown>;
     target: NodeAgentSession;
   },
   resumeNative: (
@@ -145,7 +150,6 @@ function externalResumeFixture(
 ) {
   return new ExternalSessionResumeService({
     runtime: f.runtime,
-    state: f.state,
     runners: { product: () => ({ resumeExternal: resumeNative }) } as never,
     available: () => true,
     projectionFor: (source) => f.runtime.getAgentSession(source.id),

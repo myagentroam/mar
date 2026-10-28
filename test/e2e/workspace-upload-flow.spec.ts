@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
-import type { WorkspaceDomainState } from '../../mar-node/src/service/workspace-domain-state.js';
-import type { WorkspaceUploadService } from '../../mar-node/src/service/workspace-upload-service.js';
+import type { WorkspaceUploadService } from '../../mar-node/src/workspace/workspace-upload-service.js';
+import { workspaceUploadTemporaryName } from '../../mar-node/src/workspace/files.js';
 import type { harness } from '../../packages/web-core/test/e2e/workspace-upload-flow.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
@@ -72,11 +73,16 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
     });
     // Observe and schedule real production operations; do not replace the transport, grants or bytes.
     const internals = connector as unknown as {
-      workspaceState: WorkspaceDomainState;
       workspaceUploadService: WorkspaceUploadService;
       nodeGeneration: string;
     };
     const uploads = internals.workspaceUploadService;
+    const probe = await open(import.meta.filename, 'r');
+    const handlePrototype = Object.getPrototypeOf(probe) as FileHandle;
+    const createReadStream = handlePrototype.createReadStream;
+    await probe.close();
+    let stagedId = '';
+    let stagedHash = '';
     const firstWrite = gate();
     const firstWritten = gate();
     const hashing = gate();
@@ -99,30 +105,37 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
     const create = uploads.createDirect.bind(uploads);
     uploads.createDirect = async (...args) => {
       const result = await create(...args);
-      if (pauseHash) {
-        const upload = internals.workspaceState.uploads.get(result.uploadId)!;
-        const readStream = upload.handle.createReadStream.bind(upload.handle);
-        upload.handle.createReadStream = (...options) => {
-          const stream = readStream(...options);
-          const iterate = stream[Symbol.asyncIterator].bind(stream);
-          stream[Symbol.asyncIterator] = async function* () {
-            for await (const bytes of { [Symbol.asyncIterator]: iterate }) {
-              hashing.release();
-              await continueHash.promise;
-              yield bytes;
-            }
-            return undefined;
-          };
-          return stream;
-        };
-      }
+      stagedId = result.uploadId;
+      stagedHash = args[1].sha256;
       return result;
     };
     const complete = uploads.completeDirect.bind(uploads);
     uploads.completeDirect = async (id, size, signal) => {
       if (pauseHash) completionSignal = signal;
       try {
-        await complete(id, size, signal);
+        if (pauseHash) {
+          // Gate the real filesystem stream, without accessing the owner's private upload map.
+          handlePrototype.createReadStream = function (...options) {
+            const stream = createReadStream.apply(this, options);
+            const iterate = stream[Symbol.asyncIterator].bind(stream);
+            stream[Symbol.asyncIterator] = async function* () {
+              for await (const bytes of { [Symbol.asyncIterator]: iterate }) {
+                hashing.release();
+                await continueHash.promise;
+                yield bytes;
+              }
+              return undefined;
+            };
+            return stream;
+          };
+        }
+        let task: Promise<void>;
+        try {
+          task = complete(id, size, signal);
+        } finally {
+          handlePrototype.createReadStream = createReadStream;
+        }
+        await task;
       } catch (error) {
         completionError = (error as Error).message;
         throw error;
@@ -174,11 +187,12 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
         buffer: bytes
       });
       await expect.poll(firstWritten.ready).toBe(true);
-      const staged = [...internals.workspaceState.uploads.values()][0]!;
+      const staged = uploads.status(stagedId);
+      const temporaryPath = join(directory, workspaceUploadTemporaryName(staged.uploadId));
       const resumeOffset = staged.receivedBytes;
       expect(resumeOffset).toBe(256 * 1024);
-      expect(staged.directSha256).toBe(sha256);
-      expect(await readFile(staged.temporaryPath)).toEqual(bytes.subarray(0, staged.receivedBytes));
+      expect(stagedHash).toBe(sha256);
+      expect(await readFile(temporaryPath)).toEqual(bytes.subarray(0, staged.receivedBytes));
       await page.evaluate(() => window.uploadFlow.interrupt());
       await expect
         .poll(() => page.evaluate(() => window.uploadFlow.snapshot().tasks[0]?.status))
@@ -197,13 +211,13 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       const row = page.locator('.workbench-notification-upload');
       await expect(row).toContainText('resumed.bin');
       await expect(row.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
-      expect(internals.workspaceState.uploads.get(staged.id)).toBe(staged);
+      expect(uploads.status(staged.uploadId)).toEqual(staged);
       // No automatic reauthorization or relay while the user reads the error.
       await page.waitForTimeout(750);
       expect((await page.evaluate(() => window.uploadFlow.snapshot())).prepares).toHaveLength(
         failed.prepares.length
       );
-      expect(staged.receivedBytes).toBe(resumeOffset);
+      expect(uploads.status(staged.uploadId).receivedBytes).toBe(resumeOffset);
       await page.evaluate(() => window.uploadFlow.dispose());
       await initialize();
       await page.getByRole('button', { name: 'Open notification center' }).click();
@@ -227,7 +241,7 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       expect(resumed.httpUploadCalls).toBe(0);
       expect(resumed.tasks[0]?.cleanupUnconfirmed).toBe(false);
       expect(await readFile(join(directory, 'resumed.bin'))).toEqual(bytes);
-      expect(internals.workspaceState.uploads.size).toBe(0);
+      expect(() => uploads.status(staged.uploadId)).toThrow('UPLOAD_NOT_FOUND');
       await expect(row).toHaveCount(0);
 
       pauseHash = true;
@@ -239,8 +253,9 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       await expect.poll(hashing.ready).toBe(true);
       expect(completionSignal).toBeDefined();
       expect(completionSignal!.aborted).toBe(false);
-      const verifying = [...internals.workspaceState.uploads.values()][0]!;
-      expect(await readFile(verifying.temporaryPath)).toEqual(bytes);
+      const verifying = uploads.status(stagedId);
+      const verifyingPath = join(directory, workspaceUploadTemporaryName(verifying.uploadId));
+      expect(await readFile(verifyingPath)).toEqual(bytes);
       await row.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect.poll(() => completionSignal?.aborted).toBe(true);
       continueHash.release();
@@ -251,7 +266,13 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       });
       // Channel closure can arrive before control-plane cancel. Without a cleanup receipt,
       // either remote outcome must remain visible as uncertainty until explicit deletion.
-      const retainedAfterCancellation = internals.workspaceState.uploads.has(verifying.id);
+      let retainedAfterCancellation = true;
+      try {
+        uploads.status(verifying.uploadId);
+      } catch (error) {
+        expect(error).toMatchObject({ message: 'UPLOAD_NOT_FOUND' });
+        retainedAfterCancellation = false;
+      }
       const cancelled = await page.evaluate(() => window.uploadFlow.snapshot());
       expect(cancelled.completed).toEqual(resumed.completed);
       expect(cancelled.tasks[1]?.status).toBe('FAILED');
@@ -266,9 +287,9 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
         (await page.evaluate(() => window.uploadFlow.snapshot())).tasks.map((task) => task.name)
       ).not.toContain('cancelled.bin');
       // Fixture teardown uses the actual Node cleanup API; this is not a browser cleanup receipt.
-      if (internals.workspaceState.uploads.has(verifying.id)) await uploads.cancel(verifying.id);
-      expect(internals.workspaceState.uploads.size).toBe(0);
-      await expect(readFile(verifying.temporaryPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      if (retainedAfterCancellation) await uploads.cancel(verifying.uploadId);
+      expect(() => uploads.status(verifying.uploadId)).toThrow('UPLOAD_NOT_FOUND');
+      await expect(readFile(verifyingPath)).rejects.toMatchObject({ code: 'ENOENT' });
       await testInfo.attach('upload-functional-summary', {
         body: JSON.stringify({
           sha256,

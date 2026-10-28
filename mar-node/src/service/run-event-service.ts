@@ -1,16 +1,16 @@
-import { sessionGroup } from './session-presentation-service.js';
+import { sessionGroup } from '../session/session-presentation-service.js';
 import type { RunEvent, WorkbenchEventCategory } from '@myagentroam/protocol';
-import {
-  permissionStopSchema,
-  runPerformanceSchema,
-  type PermissionStop
-} from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
-import type { FakeRunnerStatus } from '../fake-runner.js';
+import { permissionStopSchema, runPerformanceSchema } from '@myagentroam/protocol';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import { NodeMetrics, nodeLog } from '../operational.js';
 import { NodeRuntimeState } from '../runtime-state.js';
-import { isPlainRecord, isTerminalRunStatus } from '../util/node-operation-parsers.js';
-import { RunDomainState } from './run-domain-state.js';
+import { isPlainRecord } from '../util/records.js';
+import { isTerminalRunStatus } from '../session/runtime/type-guards.js';
+import type {
+  ExecutionTerminalInput,
+  ExecutionTerminalResult
+} from './continuous-run-coordinator.js';
 
 const COALESCE_MS = 200;
 const MAX_BATCH_CHARS = 16_384;
@@ -18,7 +18,6 @@ const MAX_BATCH_CHARS = 16_384;
 export interface RunEventServiceOptions {
   readonly runtime: NodeRuntimeState;
   readonly metrics: NodeMetrics;
-  readonly state: RunDomainState;
   readonly isBootstrapSession: (sessionId: string) => boolean;
   readonly presentSession: (session: NodeAgentSession) => unknown;
   readonly rejectBootstrap: (sessionId: string, code: string) => void;
@@ -30,16 +29,13 @@ export interface RunEventServiceOptions {
   readonly refreshWorkspaceSessions: (workspaceId: string) => Promise<void>;
   readonly dispatchQueue: (sessionId: string, delayMs?: number) => Promise<void>;
   readonly executionStarted?: (executionId: string) => void;
-  readonly executionTerminating?: (
-    executionId: string,
-    status: FakeRunnerStatus,
-    permissionStop?: PermissionStop
-  ) => void;
-  readonly keepRunActive?: (sessionId: string) => boolean;
+  readonly acceptExecutionTerminal: (input: ExecutionTerminalInput) => ExecutionTerminalResult;
+  readonly publishGoalUpdate: (update: NonNullable<ExecutionTerminalResult['goalUpdate']>) => void;
+  readonly publishQueueChange: (sessionId: string) => void;
   readonly releaseExecution: (executionId: string) => void;
   readonly onTerminalRun?: (
     run: import('../runtime-model.js').NodeAgentRun,
-    status: FakeRunnerStatus
+    status: RunnerExecutionStatus
   ) => void;
 }
 
@@ -51,14 +47,14 @@ export class RunEventService {
 
   constructor(private readonly options: RunEventServiceOptions) {}
 
-  emit(runId: string, eventType: string, payload: unknown, status?: FakeRunnerStatus): void {
+  emit(runId: string, eventType: string, payload: unknown, status?: RunnerExecutionStatus): void {
     if (eventType === 'run.performance') {
       const run = this.options.runtime.getRun(runId);
       if (run === undefined || !isPlainRecord(payload)) return;
       const parsed = runPerformanceSchema.safeParse({ ...payload, runId: run.id });
       if (parsed.success && this.options.runtime.updateRunPerformance(runId, parsed.data)) {
         this.flushText(runId);
-        this.options.emitWorkbench('conversation', {
+        this.emitWorkbench('conversation', {
           sessionId: run.sessionId,
           performance: parsed.data
         });
@@ -80,6 +76,14 @@ export class RunEventService {
     }
     this.flushText(runId);
     this.emitNow(runId, eventType, payload, status);
+  }
+
+  private emitWorkbench(category: WorkbenchEventCategory, payload: unknown): void {
+    if (category === 'conversation' && isPlainRecord(payload) && 'turn' in payload) {
+      this.options.emitWorkbench(category, { turn: payload.turn });
+      return;
+    }
+    this.options.emitWorkbench(category, payload);
   }
 
   clear(): void {
@@ -119,7 +123,7 @@ export class RunEventService {
     executionId: string,
     eventType: string,
     payload: unknown,
-    status?: FakeRunnerStatus
+    status?: RunnerExecutionStatus
   ): void {
     const run = this.options.runtime.getRun(executionId);
     if (run === undefined) return;
@@ -156,49 +160,43 @@ export class RunEventService {
     }
     if (status === 'FAILED') this.options.metrics.runnerFailed();
     let recorded: ReturnType<NodeRuntimeState['appendRunEvent']> = undefined;
-    try {
-      recorded = this.options.runtime.appendRunEvent({
-        runId: executionId,
+    let finalStatus: RunnerExecutionStatus | undefined;
+    let manuallyInterrupted = false;
+    if (terminalExecution) {
+      const parsedStop = isPlainRecord(payload)
+        ? permissionStopSchema.safeParse(payload.permissionStop)
+        : undefined;
+      const result = this.options.acceptExecutionTerminal({
+        executionId,
         sequence: event.sequence,
         eventType,
         payload,
-        ...(status === undefined ? {} : { status })
+        status: status as RunnerExecutionStatus,
+        ...(parsedStop?.success ? { permissionStop: parsedStop.data } : {})
       });
-    } catch {
-      /* A stale Runner callback may race process-local Run cleanup. */
+      recorded = result.recorded;
+      if (recorded === undefined) return;
+      finalStatus = result.finalStatus;
+      manuallyInterrupted = result.manuallyInterrupted;
+      if (result.queueChangedSessionId !== undefined)
+        this.options.publishQueueChange(result.queueChangedSessionId);
+      if (result.goalUpdate !== undefined) this.options.publishGoalUpdate(result.goalUpdate);
+    } else {
+      try {
+        recorded = this.options.runtime.appendRunEvent({
+          runId: executionId,
+          sequence: event.sequence,
+          eventType,
+          payload,
+          ...(status === undefined ? {} : { status })
+        });
+      } catch {
+        /* A stale Runner callback may race process-local Run cleanup. */
+      }
     }
     if (eventType === 'run.started' || eventType === 'run.running')
       this.options.executionStarted?.(executionId);
     if (!terminalExecution) this.options.refreshAttachments?.(run.sessionId);
-    let finalStatus: FakeRunnerStatus | undefined;
-    let manuallyInterrupted = false;
-    if (terminalCurrentExecution) {
-      const parsedStop = isPlainRecord(payload)
-        ? permissionStopSchema.safeParse(payload.permissionStop)
-        : undefined;
-      const permissionStop = parsedStop?.success ? parsedStop.data : undefined;
-      if (permissionStop !== undefined) this.options.runtime.pauseSessionQueue(run.sessionId);
-      this.options.executionTerminating?.(executionId, status as FakeRunnerStatus, permissionStop);
-      this.options.state.active.delete(executionId);
-      const interrupted = this.options.state.interruptRequested.delete(executionId);
-      manuallyInterrupted = interrupted;
-      const queue = this.options.runtime.sessionQueue(run.sessionId);
-      const continues =
-        run.status !== 'CANCELLING' &&
-        permissionStop === undefined &&
-        ((!queue.paused && queue.itemIds.length > 0) ||
-          this.options.keepRunActive?.(run.sessionId) === true);
-      if (!continues) {
-        finalStatus =
-          status === 'CANCELLED' || interrupted ? 'INTERRUPTED' : (status as FakeRunnerStatus);
-        if (
-          finalStatus === 'SUCCEEDED' ||
-          finalStatus === 'FAILED' ||
-          finalStatus === 'INTERRUPTED'
-        )
-          this.options.runtime.finishRun(runId, finalStatus);
-      }
-    }
     const publicStatus = terminalExecution ? finalStatus : status;
     const notificationPayload = this.notificationPayload(
       runId,
@@ -209,13 +207,13 @@ export class RunEventService {
     );
     if (publicStatus !== undefined) {
       const currentRun = this.options.runtime.getRun(runId);
-      this.options.emitWorkbench('run', { run: currentRun });
+      this.emitWorkbench('run', { run: currentRun });
       const session =
         currentRun === undefined
           ? undefined
           : this.options.runtime.getAgentSession(currentRun.sessionId);
       if (session !== undefined)
-        this.options.emitWorkbench('session', { session: this.options.presentSession(session) });
+        this.emitWorkbench('session', { session: this.options.presentSession(session) });
     }
     const createdTurn =
       targetsCurrentTurn && targetTurn === undefined && currentTurn === undefined
@@ -234,7 +232,7 @@ export class RunEventService {
             previousGroups.get(item.id)?.isStart !== item.processGroup?.isStart)
       );
     if (targetsCurrentTurn)
-      this.options.emitWorkbench(
+      this.emitWorkbench(
         'conversation',
         createdTurn === undefined && !correctedGroups
           ? {
@@ -248,8 +246,7 @@ export class RunEventService {
       );
     else {
       const projectedTurn = this.options.runtime.conversationTurnForExecution(executionId);
-      if (projectedTurn !== undefined)
-        this.options.emitWorkbench('conversation', { turn: projectedTurn });
+      if (projectedTurn !== undefined) this.emitWorkbench('conversation', { turn: projectedTurn });
     }
     const occurredAt = recorded?.createdAt ?? Date.now();
     const terminalNotification =
@@ -269,7 +266,7 @@ export class RunEventService {
         ))
     ) {
       const turn = this.options.runtime.conversationTurnForRun(runId);
-      if (turn !== undefined) this.options.emitWorkbench('conversation', { turn });
+      if (turn !== undefined) this.emitWorkbench('conversation', { turn });
     }
     this.options.cleanupAttachments(executionId);
     this.options.expireImages(executionId);
@@ -301,7 +298,7 @@ export class RunEventService {
     occurredAt: number
   ): void {
     nodeLog('run.event', { runId, eventType: 'notification' });
-    this.options.emitWorkbench('conversation', {
+    this.emitWorkbench('conversation', {
       event: {
         runId,
         sequence: event.sequence,
@@ -316,7 +313,7 @@ export class RunEventService {
     runId: string,
     eventType: string,
     payload: unknown,
-    status?: FakeRunnerStatus,
+    status?: RunnerExecutionStatus,
     suppressTerminal = false
   ): Record<string, unknown> | undefined {
     if (eventType === 'notification') return undefined;

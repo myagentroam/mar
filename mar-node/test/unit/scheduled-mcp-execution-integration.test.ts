@@ -60,6 +60,8 @@ it.each(
     const server = new ScheduleMcpBridge(() => store, vi.fn(), vi.fn(), create);
     const starts: Record<string, unknown>[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),

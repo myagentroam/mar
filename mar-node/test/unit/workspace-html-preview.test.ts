@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -20,7 +20,7 @@ describe('Workspace HTML preview physical directory boundary', () => {
     await writeFile(join(root, 'pages/demo/js/app.js'), 'export default 1');
     await writeFile(join(root, 'private/secret.js'), 'secret');
     await symlink(join(root, 'private/secret.js'), join(root, 'pages/demo/secret.js'));
-    const service = new WorkspaceFileService({} as never, () => undefined);
+    const service = new WorkspaceFileService(() => undefined);
     const workspace = { path: root } as never;
     await expect(
       service.readContent(workspace, {

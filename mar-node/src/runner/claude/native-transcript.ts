@@ -11,10 +11,8 @@ import type {
   NativeTranscriptUnknown,
   NativeTranscriptReasoningSummary
 } from '../../native-transcript-model.js';
-import {
-  compactRunnerValue as compactValue,
-  isPlainRecord
-} from '../../util/node-operation-parsers.js';
+import { compactRunnerValue as compactValue } from '../normalization.js';
+import { isPlainRecord } from '../../util/records.js';
 import { stripGoalStartPrompt, publicGoalHistoryText } from '../../service/goal-runtime.js';
 import { readdir } from 'node:fs/promises';
 import { stripClaudePlanTag } from '../../runner-command-engine.js';

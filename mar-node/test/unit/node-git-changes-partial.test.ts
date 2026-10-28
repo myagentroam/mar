@@ -5,9 +5,8 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
-import { WorkspaceChangeService } from '../../src/service/workspace-change-service.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
-import * as workspaceGit from '../../src/workspace.js';
+import { WorkspaceChangeService } from '../../src/workspace/workspace-change-service.js';
+import * as workspaceGit from '../../src/workspace/git.js';
 import { workspaceChangesSummarySchema } from '../../../packages/protocol/src/index.js';
 
 const execFile = promisify(execFileCallback);
@@ -44,7 +43,7 @@ async function current(path: string, kind: 'GIT_WORKSPACE' | 'DIRECTORY' = 'GIT_
   try {
     const workspace = database.saveWorkspace({ path, kind, gitSummary: null });
     return workspaceChangesSummarySchema.parse(
-      await new WorkspaceChangeService(new WorkspaceDomainState()).current(workspace)
+      await new WorkspaceChangeService().current(workspace)
     );
   } finally {
     database.close();

@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -110,7 +111,7 @@ async function fixture() {
     .fn<typeof generateSessionTitle>()
     .mockResolvedValue('Project inspection');
   const host = {
-    active: new Set<string>(),
+    ...executionActivity(),
     adopt: vi.fn(),
     promote: vi.fn(),
     syncTitle: vi.fn(),

@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { CodexAppServerClient } from '../../src/codex-app-server.js';
+import { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import type { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 import { NodeConnector } from '../../src/connector.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { NodeDatabase } from '../../src/database.js';
 
 const pngImage = Buffer.from(

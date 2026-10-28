@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   NODE_PROTOCOL_VERSION,
@@ -7,14 +8,14 @@ import {
   type RunnerCommandState
 } from '../../../packages/protocol/src/index.js';
 import type { NodeAgentSession } from '../../src/database.js';
-import type { OpenCodeServerClient } from '../../src/opencode-server.js';
+import type { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { homedir } from 'node:os';
 import { openCodeConversationPage } from '../../src/runner/opencode/conversation-parser.js';
 import { OpenCodeManagedRunController } from '../../src/runner/opencode/managed-run-controller.js';
 import { normalizeOpenCodeTool } from '../../src/runner/opencode/tool-normalizer.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
+import { projectConversationWorkProcesses } from '../../src/session/runtime/work-process.js';
 import type { NodeConversationItem } from '../../src/runtime-model.js';
 
 describe('OpenCode Runner', () => {
@@ -44,7 +45,7 @@ describe('OpenCode Runner', () => {
     const controller = new OpenCodeManagedRunController(runner, {
       ...commandHost(),
       intercepted: () => false,
-      active: new Set<string>(),
+      ...executionActivity(),
       parseAttachments: () => [],
       persistAttachments: async () => [],
       emit: () => undefined,
@@ -1035,10 +1036,10 @@ describe('OpenCode Runner', () => {
     const controller = new OpenCodeManagedRunController(runner, {
       ...commandHost(),
       intercepted: () => false,
-      active,
+      ...executionActivity(active),
       parseAttachments: () => [],
       persistAttachments: async () => [],
-      emit: () => undefined,
+      emit: (runId, _type, _payload, status) => releaseTerminal(active, runId, status),
       emitItem: (_runId, item) => items.push(item as unknown as Record<string, unknown>),
       adopt: () => undefined,
       promote: () => undefined,
@@ -1176,11 +1177,13 @@ describe('OpenCode Runner', () => {
     const controller = new OpenCodeManagedRunController(runner, {
       ...commandHost(),
       intercepted: () => false,
-      active,
+      ...executionActivity(active),
       parseAttachments: () => [],
       persistAttachments: async () => [],
-      emit: (_runId, type, _payload, status) =>
-        events.push({ type, ...(status === undefined ? {} : { status }) }),
+      emit: (runId, type, _payload, status) => {
+        releaseTerminal(active, runId, status);
+        events.push({ type, ...(status === undefined ? {} : { status }) });
+      },
       emitItem: (_runId, item) => items.push(item),
       adopt: () => undefined,
       promote: () => undefined,
@@ -1545,10 +1548,13 @@ describe('OpenCode Runner', () => {
     const controller = new OpenCodeManagedRunController(runner, {
       ...commandHost(),
       intercepted: () => false,
-      active,
+      ...executionActivity(active),
       parseAttachments: () => [],
       persistAttachments: async () => [],
-      emit: (_runId, type) => events.push(type),
+      emit: (runId, type, _payload, status) => {
+        releaseTerminal(active, runId, status);
+        events.push(type);
+      },
       emitItem: (_runId, item) => items.push(item),
       adopt: () => undefined,
       promote: () => undefined,
@@ -1721,6 +1727,9 @@ describe('OpenCode Runner', () => {
       );
       const release = vi.spyOn(runner, 'releaseManagedClient');
       const active = new Set<string>();
+      emit.mockImplementation((runId, _type, _payload, status) =>
+        releaseTerminal(active, runId, status)
+      );
       const controller = new OpenCodeManagedRunController(runner, {
         ...host(active, []),
         parseAttachments: () => [attachment],
@@ -2434,14 +2443,33 @@ function recoveredAssistantMessage(created: number, text = 'Recovered output') {
   ];
 }
 
+function releaseTerminal(active: Set<string>, runId: string, status?: string): void {
+  if (
+    status === 'SUCCEEDED' ||
+    status === 'FAILED' ||
+    status === 'CANCELLED' ||
+    status === 'INTERRUPTED'
+  )
+    active.delete(runId);
+}
+
 function host(active: Set<string>, events: string[]) {
   return {
     ...commandHost(),
     intercepted: () => false,
-    active,
+    ...executionActivity(active),
     parseAttachments: () => [],
     persistAttachments: async () => [],
-    emit: (_runId: string, type: string) => events.push(type),
+    emit: (runId: string, type: string, _payload: unknown, status?: string) => {
+      events.push(type);
+      if (
+        status === 'SUCCEEDED' ||
+        status === 'FAILED' ||
+        status === 'CANCELLED' ||
+        status === 'INTERRUPTED'
+      )
+        active.delete(runId);
+    },
     emitItem: () => undefined,
     adopt: () => undefined,
     promote: () => undefined,

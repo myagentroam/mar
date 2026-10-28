@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { SessionQueryService } from '../../src/service/session-query-service.js';
+import { SessionQueryService } from '../../src/session/session-query-service.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
-import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { SessionLifecycleService } from '../../src/session/session-lifecycle-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 
 const directories: string[] = [];
 afterEach(async () => {

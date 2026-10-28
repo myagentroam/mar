@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
+import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 
 function deferred() {
   return Promise.withResolvers<void>();

@@ -8,10 +8,8 @@ import {
   withSessionMessageOrigin,
   validateComposerSkills
 } from '../../src/service/composer-message-input.js';
-import {
-  withNonImageAttachmentPrompt,
-  sessionTitleFromFirstMessage
-} from '../../src/util/node-operation-parsers.js';
+import { sessionTitleFromFirstMessage } from '../../src/session/input-validation.js';
+import { withNonImageAttachmentPrompt } from '../../src/session/attachments.js';
 import { GoalRuntime, publicGoalHistoryText } from '../../src/service/goal-runtime.js';
 
 const reference = serializeComposerTag('mar_references', {

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   fileManagerInvocation,
   revealWorkspaceFileInFileManager
-} from '../../src/service/workspace-file-manager-service.js';
+} from '../../src/workspace/workspace-file-manager-service.js';
 
 describe('Workspace local file manager', () => {
   it('builds platform-specific open and reveal commands without a shell', () => {

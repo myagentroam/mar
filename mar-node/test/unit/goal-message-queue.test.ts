@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 import {
   ContinuousRunCoordinator,
   type PreparedExecutionInput
@@ -27,6 +27,8 @@ function fixture() {
   const control = vi.fn();
   const emitQueue = vi.fn();
   const coordinator = new ContinuousRunCoordinator({
+    executionTerminating: () => undefined,
+    keepRunActive: () => false,
     runtime,
     emitQueue,
     emitConversation: vi.fn(),

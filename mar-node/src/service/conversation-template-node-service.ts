@@ -30,7 +30,7 @@ import {
   type ConversationTemplateVersion
 } from '@myagentroam/protocol';
 import type { NodeDatabase } from '../database.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { NodeMcpInstallation } from '../mcp/model.js';
 import { safeErrorCode } from '../util/safe-error.js';
 import {
@@ -45,7 +45,7 @@ import {
   type TemplateManifestSymlink,
   type TemplateManifestMcpServer
 } from './conversation-template-manifest.js';
-import type { HostedConversationStore } from './hosted-conversation-store.js';
+import type { HostedConversationStore } from '../hosting/hosted-conversation-store.js';
 
 interface ConversationTemplateNodeServiceOptions {
   readonly database: NodeDatabase;

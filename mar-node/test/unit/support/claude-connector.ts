@@ -1,5 +1,6 @@
+import { connectTestSocket } from './control-socket.js';
 import { createEnvelope } from '../../../../packages/protocol/src/index.js';
-import type { ClaudeSdkBindings } from '../../../src/claude-agent-sdk.js';
+import type { ClaudeSdkBindings } from '../../../src/runner/claude/claude-agent-sdk.js';
 import { NodeConnector } from '../../../src/connector.js';
 import { NodeDatabase } from '../../../src/database.js';
 
@@ -29,14 +30,14 @@ export function attachSocket(
     recordSent(sent, { type: 'workbench.event', payload: event });
     return true;
   };
-  (connector as unknown as { socket: unknown }).socket = {
+  connectTestSocket(connector, {
     readyState: 1,
     OPEN: 1,
     send(raw: string) {
       recordSent(sent, JSON.parse(raw) as { type: string; payload: Record<string, unknown> });
     },
     close() {}
-  };
+  });
   return sent;
 }
 

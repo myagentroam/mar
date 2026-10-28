@@ -1,8 +1,5 @@
-import {
-  boundedConversationItemId,
-  isPlainRecord,
-  compactRunnerText
-} from '../../util/node-operation-parsers.js';
+import { boundedConversationItemId, compactRunnerText } from '../normalization.js';
+import { isPlainRecord } from '../../util/records.js';
 import { claudeContentBlocks } from './message-parsers.js';
 
 export function extractClaudeThinkingText(record: Record<string, unknown>): readonly string[] {

@@ -168,16 +168,17 @@ describe('Node hosted conversation runtime', () => {
   it('rejects rollback while the authoritative activity remains non-idle', async () => {
     const fixture = await runtimeFixture();
     const conversation = await createConversation(fixture);
-    const service = fixture.service as unknown as {
-      readonly activities: Map<
-        string,
-        {
-          readonly status: 'STARTING' | 'RUNNING' | 'CANCELLING';
-          readonly version: number;
-          readonly updatedAt: number;
-        }
-      >;
-    };
+    const pending = deferredRun('run-activity');
+    let releaseStart!: () => void;
+    let notifyStart!: () => void;
+    const startBlocked = new Promise<void>((resolve) => (releaseStart = resolve));
+    const startEntered = new Promise<void>((resolve) => (notifyStart = resolve));
+    fixture.runtime.startRun.mockImplementationOnce(async () => {
+      notifyStart();
+      await startBlocked;
+      return pending.handle;
+    });
+    const operations = fixture.service.operations();
     const rollback = fixture.service.operations()['conversation.hosted.rollback']!;
     const input = {
       conversationId: conversation.id,
@@ -188,13 +189,36 @@ describe('Node hosted conversation runtime', () => {
     };
     const historyCallsBeforeRollback = fixture.runtime.history.mock.calls.length;
 
-    for (const status of ['STARTING', 'RUNNING', 'CANCELLING'] as const) {
-      service.activities.set(conversation.id, { status, version: 1, updatedAt: 2_000 });
-      await expect(rollback(input)).rejects.toThrow('HOSTED_CONVERSATION_RUN_ACTIVE');
-    }
+    const message = operations['conversation.hosted.message']!({
+      conversationId: conversation.id,
+      clientMessageId: 'message-activity',
+      prompt: 'Start.',
+      attachmentIds: [],
+      __requestUserId: 7,
+      __marAgentModel: modelOne,
+      __marAgentModels: [modelOne]
+    });
+    await startEntered;
+    await expect(rollback(input)).rejects.toThrow('HOSTED_CONVERSATION_RUN_ACTIVE');
+    releaseStart();
+    await message;
+    await expect(rollback(input)).rejects.toThrow('HOSTED_CONVERSATION_RUN_ACTIVE');
+    expect(
+      await operations['conversation.hosted.interrupt']!({
+        conversationId: conversation.id,
+        __requestUserId: 7
+      })
+    ).toEqual({ interrupted: true });
+    await expect(rollback(input)).rejects.toThrow('HOSTED_CONVERSATION_RUN_ACTIVE');
 
     expect(fixture.runtime.history).toHaveBeenCalledTimes(historyCallsBeforeRollback);
     expect(fixture.runtime.rollback).not.toHaveBeenCalled();
+    pending.complete({ status: 'INTERRUPTED', completedAt: 3_000 });
+    await vi.waitFor(() =>
+      expect(fixture.store.findMessage(7, conversation.id, 'message-activity')).toMatchObject({
+        status: 'INTERRUPTED'
+      })
+    );
   });
 
   it('rejects forged, non-user, and non-terminal rollback targets before touching SDK history', async () => {

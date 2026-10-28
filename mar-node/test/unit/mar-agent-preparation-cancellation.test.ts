@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -98,12 +99,21 @@ async function fixture(phase: Phase, mode: 'run' | 'plan' | 'compact' = 'run') {
       };
     });
   }
+  const activity = executionActivity();
   const host = {
-    active: new Set<string>(),
+    ...activity,
     adopt: vi.fn(),
     promote: vi.fn(),
     syncTitle: vi.fn(async () => undefined),
-    emit: vi.fn(),
+    emit: vi.fn((runId: string, _type: string, _payload: unknown, status?: string) => {
+      if (
+        status === 'SUCCEEDED' ||
+        status === 'FAILED' ||
+        status === 'CANCELLED' ||
+        status === 'INTERRUPTED'
+      )
+        activity.active.delete(runId);
+    }),
     emitItem: vi.fn(),
     run: vi.fn(),
     commandState: vi.fn(),
@@ -289,7 +299,7 @@ it.each(['acquiring', 'running', 'idle'] as const)(
     try {
       first = f.run('first');
       await closing;
-      expect(f.host.emit).toHaveBeenCalledWith(
+      expect(f.host.emit).not.toHaveBeenCalledWith(
         'first',
         'run.completed',
         { status: 'SUCCEEDED' },
@@ -321,6 +331,12 @@ it.each(['acquiring', 'running', 'idle'] as const)(
       }
       finishClose();
       await first;
+      expect(f.host.emit).toHaveBeenCalledWith(
+        'first',
+        'run.completed',
+        { status: 'SUCCEEDED' },
+        'SUCCEEDED'
+      );
       await vi.advanceTimersByTimeAsync(phase === 'idle' ? 300_000 : 600_000);
       expect(f.agent.dispose).toHaveBeenCalledTimes(phase === 'idle' ? 1 : 0);
       expect(f.createAgent).toHaveBeenCalledTimes(1);
@@ -364,8 +380,15 @@ it('restores idle expiry after a retained Runtime fails model reconfiguration', 
 it('disposes a Run reentrantly started before Runtime acquisition without admitting the SDK', async () => {
   const f = await fixture('admission');
   let disposal: Promise<void> | undefined;
-  f.host.emit.mockImplementation((_runId, _event, _payload, status) => {
+  f.host.emit.mockImplementation((runId, _event, _payload, status) => {
     if (status === 'STARTING') disposal = f.controller.dispose();
+    if (
+      status === 'SUCCEEDED' ||
+      status === 'FAILED' ||
+      status === 'CANCELLED' ||
+      status === 'INTERRUPTED'
+    )
+      f.host.active.delete(runId);
   });
   try {
     await f.run('first');
@@ -374,6 +397,44 @@ it('disposes a Run reentrantly started before Runtime acquisition without admitt
     expect(f.session.run).not.toHaveBeenCalled();
     expect(f.host.active.size).toBe(0);
   } finally {
+    await f.close();
+  }
+});
+
+it('joins a failed event stream with the accepted result and cleanup before publishing failure', async () => {
+  const f = await fixture('admission');
+  const result = Promise.withResolvers<Awaited<ReturnType<ExecutionHandle['result']>>>();
+  const streamFailed = Promise.withResolvers<void>();
+  f.session.run.mockReturnValueOnce({
+    executionId: 'sdk-execution',
+    async *[Symbol.asyncIterator]() {
+      streamFailed.resolve();
+      throw new Error('STREAM_FAILURE');
+    },
+    result: () => result.promise,
+    cancel: vi.fn()
+  });
+  try {
+    const running = f.run('stream-failure');
+    await streamFailed.promise;
+    expect(f.host.emit).not.toHaveBeenCalledWith(
+      'stream-failure',
+      'run.failed',
+      expect.anything(),
+      'FAILED'
+    );
+    expect(f.binding.close).not.toHaveBeenCalled();
+    result.resolve({ executionId: 'sdk-execution', status: 'completed', finalAnswer: 'done' });
+    await running;
+    expect(f.binding.close).toHaveBeenCalledOnce();
+    expect(f.host.emit).toHaveBeenCalledWith(
+      'stream-failure',
+      'run.failed',
+      expect.objectContaining({ code: 'MAR_AGENT_RUN_FAILED' }),
+      'FAILED'
+    );
+  } finally {
+    result.resolve({ executionId: 'sdk-execution', status: 'completed', finalAnswer: 'done' });
     await f.close();
   }
 });

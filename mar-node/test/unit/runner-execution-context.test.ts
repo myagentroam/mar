@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeEnvelope, MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../../src/database.js';
@@ -30,7 +31,7 @@ function fixture() {
   const runner = new MarAgentRunner();
   const emit = vi.fn();
   const controller = new MarAgentManagedRunController(runner, {
-    active: new Set(),
+    ...executionActivity(),
     adopt: vi.fn(),
     promote: vi.fn(),
     syncTitle: vi.fn(),

@@ -1,4 +1,4 @@
-import { compactRunnerText } from '../../util/node-operation-parsers.js';
+import { compactRunnerText } from '../normalization.js';
 
 export function normalizeCodexApproval(method: string) {
   return method === 'item/commandExecution/requestApproval'

@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -105,7 +106,7 @@ describe('MAR Agent managed run projection', () => {
       const emit = vi.fn();
       const emitItem = vi.fn();
       const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-        active: new Set(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -990,7 +991,7 @@ describe('MAR Agent managed run projection', () => {
     const emit = vi.fn();
     const emitItem = vi.fn();
     const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -1069,7 +1070,7 @@ describe('MAR Agent managed run projection', () => {
   it('normalizes SDK questions to the shared conversation contract', async () => {
     const emitItem = vi.fn();
     const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -1135,7 +1136,7 @@ describe('MAR Agent managed run projection', () => {
 
   it('releases a pending question immediately when execution is aborted', async () => {
     const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -1182,7 +1183,7 @@ describe('MAR Agent managed run projection', () => {
     const emitItem = vi.fn();
     const refreshContext = vi.fn();
     const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),

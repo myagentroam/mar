@@ -2,22 +2,16 @@ import type { NodeEnvelope } from '@myagentroam/protocol';
 import { realpath } from 'node:fs/promises';
 import { nodeLog } from '../operational.js';
 import type { NodeConfig } from '../config.js';
-import type {
-  NodeAgentSession,
-  NodeDatabase,
-  NodeTerminalSession,
-  NodeWorkspace
-} from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
+import type { NodeDatabase, NodeTerminalSession } from '../database.js';
 import type { TerminalSummary } from '../terminal.js';
-import {
-  inspectWorkspace,
-  normalizeWorkspacePath,
-  type WorkspaceInspection
-} from '../workspace.js';
-import type { WorkspaceChangeService } from './workspace-change-service.js';
-import { ensureWorkspaceGitExclude } from './workspace-git-exclude-service.js';
-import type { WorkspaceSessionService } from './workspace-session-service.js';
-import type { WorkspaceWatchService } from './workspace-watch-service.js';
+import { inspectWorkspace, type WorkspaceInspection } from '../workspace/git.js';
+import { normalizeWorkspacePath } from '../workspace/path-access.js';
+import type { WorkspaceChangeService } from '../workspace/workspace-change-service.js';
+import { ensureWorkspaceGitExclude } from '../workspace/workspace-git-exclude-service.js';
+import type { WorkspaceSessionService } from '../workspace/workspace-session-service.js';
+import type { WorkspaceWatchService } from '../workspace/workspace-watch-service.js';
 
 interface NodeWorkspaceCoordinatorOptions {
   readonly config: () => NodeConfig | undefined;

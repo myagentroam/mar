@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -276,7 +277,7 @@ observe.text("retained fixture result");`
     const controller = new MarAgentManagedRunController(
       runner,
       {
-        active: new Set(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),

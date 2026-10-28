@@ -1,11 +1,12 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { composerVisibleText, type RunnerCommandState } from '@myagentroam/protocol';
-import type { NodeAgentSession, NodeDatabase } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
 import { nodeLog } from '../operational.js';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
+import { isPlainRecord } from '../util/records.js';
 import { safeErrorCode } from '../util/safe-error.js';
 import { NODE_MCP } from '../mcp/naming.js';
 import { type GoalRuntime, type GoalExitSummary, type GoalState } from './goal-runtime.js';
@@ -13,7 +14,7 @@ import type {
   ContinuousRunCoordinator,
   PreparedExecutionInput
 } from './continuous-run-coordinator.js';
-import type { SessionMessageService } from './session-message-service.js';
+import type { SessionMessageService } from '../session/session-message-service.js';
 import type { NodeRunEventBridge } from './node-run-event-bridge.js';
 import { composerResourceInputTags } from './composer-message-input.js';
 
@@ -131,7 +132,16 @@ export class GoalContinuationCoordinator {
     if (!goal) throw new Error('GOAL_NOT_ACTIVE');
     return { id: goal.id, revision: goal.revision, epoch: this.continuationEpoch(sessionId) };
   }
-  executionTerminating(executionId: string, status: string, permissionStop?: unknown): void {
+  executionTerminating(
+    executionId: string,
+    status: string,
+    permissionStop?: unknown
+  ):
+    | {
+        readonly goalUpdate?: { readonly session: NodeAgentSession; readonly goal: GoalState };
+        readonly queueChangedSessionId?: string;
+      }
+    | undefined {
     if (this.frozen) return;
     const pending = this.options.queue().pending(executionId);
     if (pending?.goal === undefined) return;
@@ -140,8 +150,10 @@ export class GoalContinuationCoordinator {
     if (!this.goalGenerationCurrent(pending.sessionId, pending.goal)) return;
     if (permissionStop !== undefined) {
       this.retireGoalContinuation(pending.sessionId);
-      this.options.queue().removeGoalQueue(pending.sessionId);
-      return;
+      const changed = this.options
+        .queue()
+        .removeGoalQueue(pending.sessionId, undefined, undefined, false);
+      return changed ? { queueChangedSessionId: pending.sessionId } : undefined;
     }
     const disposition = this.options.goals.recordExecutionResult(pending.sessionId, {
       failed: status === 'FAILED',
@@ -150,12 +162,17 @@ export class GoalContinuationCoordinator {
     if (disposition === 'blocked' || disposition === 'completed') {
       this.nativeGoalBindings.delete(pending.goal.id);
       this.retireGoalContinuation(pending.sessionId);
-      this.options.queue().removeGoalQueue(pending.sessionId);
+      const changed = this.options
+        .queue()
+        .removeGoalQueue(pending.sessionId, undefined, undefined, false);
       const terminalGoal = this.options.goals.get(pending.sessionId);
       const session = this.options.runtime.getAgentSession(pending.sessionId);
-      if (terminalGoal !== undefined && session !== undefined)
-        this.publishGoalState(session, terminalGoal);
-      return;
+      return {
+        ...(terminalGoal !== undefined && session !== undefined
+          ? { goalUpdate: { session, goal: terminalGoal } }
+          : {}),
+        ...(changed ? { queueChangedSessionId: pending.sessionId } : {})
+      };
     }
     if (status !== 'FAILED' || started) return;
     this.clearGoalRetry(pending.sessionId);

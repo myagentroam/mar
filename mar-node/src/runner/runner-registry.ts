@@ -1,9 +1,9 @@
-import {
-  AbstractRunner,
-  type RegisteredRunnerName,
-  type RunnerApprovalDecision,
-  type RunnerCancellationIntent
-} from './abstract-runner.js';
+import type {
+  RegisteredRunnerName,
+  RunnerApprovalDecision,
+  RunnerCancellationIntent
+} from './contracts.js';
+import { AbstractRunner } from './abstract-runner.js';
 import type {
   NodeCapabilities,
   NodeEnvelope,
@@ -57,7 +57,7 @@ export class RunnerRegistry {
 
   async refreshProfiles(
     capabilities: NodeCapabilities,
-    workspace?: import('../database.js').NodeWorkspace,
+    workspace?: import('../workspace/contracts.js').NodeWorkspace,
     environment: Readonly<Record<string, string>> = {},
     waitForRefresh = false
   ): Promise<readonly RunnerProfile[]> {
@@ -122,6 +122,10 @@ export class RunnerRegistry {
   }
 
   async stop(): Promise<void> {
-    await Promise.allSettled([...this.runners.values()].map((runner) => runner.stop()));
+    const results = await Promise.allSettled(
+      [...this.runners.values()].map(async (runner) => runner.stop())
+    );
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure !== undefined) throw failure.reason;
   }
 }

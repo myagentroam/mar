@@ -14,6 +14,62 @@ import type { NativeTranscriptImageAttachment } from '../../src/native-transcrip
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
 
 describe('MAR Agent hosted conversation runtime', () => {
+  it('aborts an in-flight automatic title when its Run is cancelled', async () => {
+    const sessionExecution = execution();
+    const hostedAgent = agent({ openSession: async () => session('session-1', sessionExecution) });
+    hostedAgent.getSession.mockResolvedValueOnce({
+      id: 'session-1',
+      title: 'New session',
+      workspace: '/workspace',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastActivityAt: '2026-01-01T00:00:00.000Z',
+      source: { type: 'user' },
+      automaticTitlePending: true
+    });
+    let titleStarted!: () => void;
+    const started = new Promise<void>((resolve) => (titleStarted = resolve));
+    const generateTitle = vi.fn(({ signal }: { signal?: AbortSignal }) => {
+      titleStarted();
+      return new Promise<undefined>((resolve) =>
+        signal?.addEventListener('abort', () => resolve(undefined))
+      );
+    });
+    const runtime = new MarAgentHostedConversationRuntime({
+      createAgent: vi.fn(async () => hostedAgent) as never,
+      createHost: (input) => host(input),
+      generateTitle: generateTitle as never,
+      openCatalog: vi.fn(async () => ({
+        list: vi.fn(async () => ({ sessions: [] })),
+        close: vi.fn(async () => undefined)
+      })) as never,
+      onEvent: () => undefined
+    });
+    const handle = await runtime.startRun({
+      conversationId: 'conversation-1',
+      sessionId: 'session-1',
+      clientMessageId: 'message-1',
+      userPrompt: 'Create a report.',
+      prompt: 'Create a report.',
+      attachmentIds: [],
+      access: 'full-access',
+      modelId: 'model-1',
+      models: [model],
+      systemInstruction: '',
+      homeDirectory: '/private/home',
+      workspaceDirectory: '/private/work',
+      temporaryDirectory: '/private/tmp/run-1',
+      pathMounts: [],
+      processExecutor: { spawn: vi.fn() } as never,
+      mcpServers: [],
+      webAccess: false
+    });
+    await started;
+    expect(handle.cancel()).toBe(true);
+    await handle.completion;
+    expect(sessionExecution.cancel).toHaveBeenCalledOnce();
+    expect(hostedAgent.setSessionTitle).not.toHaveBeenCalled();
+  });
+
   it('reads resources only from the assigned hosted home and Session and closes failed reads', async () => {
     const readToolResultResource = vi
       .fn()

@@ -20,10 +20,10 @@ import { createEnvelope } from '@myagentroam/protocol';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRequestService } from '../../src/service/node-request-service.js';
-import { WorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
-import type { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import { WorkspaceContentSearchService } from '../../src/workspace/workspace-content-search-service.js';
+import type { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 import { safePublicError } from '../../src/util/safe-error.js';
-import { GitCommandError, readGitSummary } from '../../src/workspace.js';
+import { GitCommandError, readGitSummary } from '../../src/workspace/git.js';
 
 const directories: string[] = [];
 const execFile = promisify(execFileCallback);

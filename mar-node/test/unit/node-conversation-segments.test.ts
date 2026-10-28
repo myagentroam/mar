@@ -1,3 +1,9 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket, disconnectTestSocket } from './support/control-socket.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ConversationSegmentService,
@@ -509,7 +515,7 @@ describe('Node Conversation Segment', () => {
       database
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent);
+    connectTestSocket(connector, captureSocket(sent));
     const internals = connector as unknown as {
       runtime: {
         createAgentSession(input: Record<string, unknown>): { readonly id: string };
@@ -590,7 +596,7 @@ describe('Node Conversation Segment', () => {
         );
       })
     ).toBe(false);
-    (connector as unknown as { socket: unknown }).socket = undefined;
+    disconnectTestSocket(connector);
     connector.stop();
   });
 

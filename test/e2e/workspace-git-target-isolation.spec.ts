@@ -5,13 +5,12 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { expect, test } from '@playwright/test';
 import type { NodeWorkspace } from '../../mar-node/src/database.js';
-import { inspectWorkspace } from '../../mar-node/src/workspace.js';
-import { WorkspaceDomainState } from '../../mar-node/src/service/workspace-domain-state.js';
-import { WorkspaceChangeService } from '../../mar-node/src/service/workspace-change-service.js';
-import { WorkspaceFileService } from '../../mar-node/src/service/workspace-file-service.js';
-import { WorkspaceUploadService } from '../../mar-node/src/service/workspace-upload-service.js';
-import { WorkspaceWatchService } from '../../mar-node/src/service/workspace-watch-service.js';
-import { WorkspaceWorkbenchService } from '../../mar-node/src/service/workspace-workbench-service.js';
+import { inspectWorkspace } from '../../mar-node/src/workspace/git.js';
+import { WorkspaceChangeService } from '../../mar-node/src/workspace/workspace-change-service.js';
+import { WorkspaceFileService } from '../../mar-node/src/workspace/workspace-file-service.js';
+import { WorkspaceUploadService } from '../../mar-node/src/workspace/workspace-upload-service.js';
+import { WorkspaceWatchService } from '../../mar-node/src/workspace/workspace-watch-service.js';
+import { WorkspaceWorkbenchService } from '../../mar-node/src/workspace/workspace-workbench-service.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 const execute = promisify(execFile);
@@ -70,10 +69,9 @@ for (const crossNode of [false, true]) {
         });
       }
       for (const nodeId of new Set(targets.map((target) => target.nodeId))) {
-        const state = new WorkspaceDomainState();
-        const changes = new WorkspaceChangeService(state);
+        const changes = new WorkspaceChangeService();
         changeServices.set(nodeId, changes);
-        const fileService = new WorkspaceFileService(state, () => {});
+        const fileService = new WorkspaceFileService(() => {});
         files.push(fileService);
         services.set(
           nodeId,
@@ -88,12 +86,10 @@ for (const crossNode of [false, true]) {
             changes,
             files: fileService,
             uploads: new WorkspaceUploadService(
-              state,
               () => {},
               () => root
             ),
             watch: new WorkspaceWatchService(
-              state,
               () => {},
               () => {},
               () => {}

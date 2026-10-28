@@ -1,7 +1,10 @@
-import { withNonImageAttachmentPrompt } from '../../src/util/node-operation-parsers.js';
+import { withNonImageAttachmentPrompt } from '../../src/session/attachments.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
+import { NodeMetrics } from '../../src/operational.js';
+import { RunEventService } from '../../src/service/run-event-service.js';
+import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
 import {
   ContinuousRunCoordinator,
   type PreparedExecutionInput
@@ -9,7 +12,7 @@ import {
 import type { ResolvedMcpServer } from '../../src/mcp/model.js';
 import { resolveNotificationCapability } from '../../src/service/notification-mcp-bridge.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 import { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 import { ConversationSegmentService } from '../../src/service/conversation-segment-service.js';
 import type { RunnerName } from '@myagentroam/protocol';
@@ -46,6 +49,121 @@ function fixture(runner: RunnerName = 'codex') {
 }
 
 describe('Node Runtime history boundaries', () => {
+  it('publishes the old terminal Turn before dispatching the next input while a Watch snapshot is pending', async () => {
+    const { runtime, session } = fixture();
+    const pending = { sessionId: session.id, ready: false, pendingEvents: [] as unknown[] };
+    const watch = Object.assign(Object.create(NativeSessionWatchService.prototype), {
+      watches: new Map(),
+      leases: new Map([['pending', pending]]),
+      emitLeaseEvent: vi.fn()
+    }) as NativeSessionWatchService;
+    const order: string[] = [];
+    const starts: Record<string, unknown>[] = [];
+    const notifications: unknown[] = [];
+    const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
+      runtime,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      control: (operation, payload) => {
+        if (operation === 'run.start') {
+          order.push('start');
+          starts.push(payload);
+        }
+      },
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => []
+    });
+    let dispatch: Promise<void> | undefined;
+    let duringPublication = false;
+    const events = new RunEventService({
+      runtime,
+      metrics: new NodeMetrics(),
+      isBootstrapSession: () => false,
+      presentSession: (value) => value as never,
+      rejectBootstrap: vi.fn(),
+      emitWorkbench: (category, payload) => {
+        if (
+          category === 'conversation' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'event' in payload &&
+          typeof payload.event === 'object' &&
+          payload.event !== null &&
+          'eventType' in payload.event &&
+          payload.event.eventType === 'notification'
+        )
+          notifications.push(payload);
+        if (category !== 'conversation') return;
+        const event = { sequence: order.length + 1, category, payload };
+        watch.emitRealtime(session.id, event);
+        if (typeof payload === 'object' && payload !== null && 'turn' in payload) {
+          order.push('terminal-turn');
+          if (!duringPublication) {
+            duringPublication = true;
+            const accepted = coordinator.accept({
+              runId: 'third-input',
+              sessionId: session.id,
+              clientMessageId: 'third-message',
+              content: 'arrives during publication'
+            });
+            expect(accepted.queueItem?.id).toBe('third-input');
+          }
+        }
+      },
+      cleanupAttachments: vi.fn(),
+      refreshAttachments: vi.fn(),
+      expireImages: vi.fn(),
+      scheduleContextRefresh: vi.fn(),
+      refreshWorkspaceSessions: async () => undefined,
+      dispatchQueue: async (sessionId) => {
+        order.push('dispatch');
+        dispatch = coordinator.dispatch(sessionId);
+        await dispatch;
+      },
+      executionStarted: (id) => coordinator.executionStarted(id),
+      acceptExecutionTerminal: (input) => coordinator.acceptExecutionTerminal(input),
+      publishGoalUpdate: vi.fn(),
+      publishQueueChange: (id) => coordinator.publish(id),
+      releaseExecution: (id) => coordinator.remove(id)
+    });
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'first-message',
+      content: 'first'
+    }).run;
+    const execution = runtime.createExecution(run.id);
+    runtime.executionAccepted(execution.id);
+    const second = coordinator.accept({
+      runId: 'second-input',
+      sessionId: session.id,
+      clientMessageId: 'second-message',
+      content: 'second'
+    });
+    coordinator.prepare(second.queueItem!.id, prepared(second.queueItem!.id, session.id));
+
+    events.emit(execution.id, 'run.completed', {}, 'SUCCEEDED');
+    await dispatch;
+    expect(order).toEqual(['terminal-turn', 'dispatch', 'start']);
+    expect(pending.pendingEvents).toHaveLength(2);
+    expect(pending.pendingEvents).toContainEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({ turn: expect.objectContaining({ status: 'SUCCEEDED' }) })
+      })
+    );
+    expect(starts).toHaveLength(1);
+    expect(runtime.sessionQueue(session.id).itemIds).toEqual(['third-input']);
+    expect(runtime.activeSessionRun(session.id)?.id).toBe(run.id);
+    expect(notifications).toEqual([]);
+    coordinator.clear();
+  });
+
   it('guards queued history mutations without consuming accepted inputs', () => {
     const { runtime, session } = fixture();
     const message = { sessionId: session.id, clientMessageId: 'retained', content: 'keep me' };
@@ -97,6 +215,8 @@ describe('Node Runtime history boundaries', () => {
     const { runtime, session } = fixture();
     const released = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -425,6 +545,8 @@ describe('Node execution directory admission', () => {
       });
       const control = vi.fn();
       const coordinator = new ContinuousRunCoordinator({
+        executionTerminating: () => undefined,
+        keepRunActive: () => false,
         runtime,
         control,
         stopped: () => stopped,
@@ -543,6 +665,8 @@ describe('Node execution directory admission', () => {
     });
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       control,
       resolveExecutionDirectory,
@@ -616,6 +740,8 @@ describe('Node execution directory admission', () => {
       });
       const control = vi.fn();
       const coordinator = new ContinuousRunCoordinator({
+        executionTerminating: () => undefined,
+        keepRunActive: () => false,
         runtime,
         resolveExecutionDirectory,
         control,
@@ -676,6 +802,8 @@ describe('Node execution directory admission', () => {
     });
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       control,
       stopped: () => false,
@@ -728,6 +856,8 @@ describe('Node execution directory admission', () => {
     });
     const starts: Array<Record<string, unknown>> = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       resolveExecutionDirectory,
       emitQueue: vi.fn(),
@@ -825,6 +955,8 @@ describe('Node execution directory admission', () => {
     const emitRun = vi.fn();
     const starts: unknown[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       resolveExecutionDirectory: async () => {
         throw directoryError;
@@ -880,6 +1012,8 @@ describe('Node execution directory admission', () => {
     });
     const starts: Array<Record<string, unknown>> = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       resolveExecutionDirectory,
       emitQueue: vi.fn(),
@@ -965,6 +1099,8 @@ describe('Node execution directory admission', () => {
     });
     const starts: Array<Record<string, unknown>> = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       resolveExecutionDirectory,
       emitQueue: vi.fn(),
@@ -1087,6 +1223,8 @@ describe('Node execution directory admission', () => {
     });
     const starts: Array<Record<string, unknown>> = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       resolveExecutionDirectory,
       emitQueue: vi.fn(),
@@ -1158,6 +1296,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture('mar-agent');
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -1258,6 +1398,8 @@ describe('Node continuous Run lifecycle', () => {
         environment: { MAR_GOAL_MCP_TOKEN: 'execution-only' }
       }));
       const coordinator = new ContinuousRunCoordinator({
+        executionTerminating: () => undefined,
+        keepRunActive: () => false,
         runtime,
         emitQueue: vi.fn(),
         emitConversation: vi.fn(),
@@ -1311,6 +1453,8 @@ describe('Node continuous Run lifecycle', () => {
       release = resolve;
     });
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -1376,6 +1520,8 @@ describe('Node continuous Run lifecycle', () => {
       return executionMcp(name);
     };
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -1468,6 +1614,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     let installedExecutionId: string | undefined;
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -1514,6 +1662,8 @@ describe('Node continuous Run lifecycle', () => {
     const release = vi.fn();
     const retainEnvironment = vi.fn(() => release);
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),
@@ -1549,6 +1699,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const starts: string[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1606,6 +1758,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const starts: string[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1670,6 +1824,8 @@ describe('Node continuous Run lifecycle', () => {
     const afterExecutionStarted = vi.fn(async () => undefined);
     const starts: string[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1704,6 +1860,8 @@ describe('Node continuous Run lifecycle', () => {
   it('does not create an unhandled Promise rejection when Goal continuation callback fails', async () => {
     const { runtime, session } = fixture();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1746,6 +1904,8 @@ describe('Node continuous Run lifecycle', () => {
     const controls: Array<{ operation: string; payload: Record<string, unknown> }> = [];
     let capability = 0;
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1821,6 +1981,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const controls: unknown[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1860,6 +2022,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const controls: unknown[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1907,6 +2071,8 @@ describe('Node continuous Run lifecycle', () => {
       release = resolve;
     });
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -1956,6 +2122,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const controls: Array<{ operation: string; payload: Record<string, unknown> }> = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2044,6 +2212,8 @@ describe('Node continuous Run lifecycle', () => {
   it('does not duplicate the accepted original input when a message arrives after Runner startup', async () => {
     const { runtime, session } = fixture();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2094,6 +2264,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const emitQueue = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue,
       emitConversation: () => undefined,
@@ -2156,6 +2328,8 @@ describe('Node continuous Run lifecycle', () => {
       runtime.sessionQueue(sessionId)
     );
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue,
       emitConversation: () => undefined,
@@ -2228,6 +2402,8 @@ describe('Node continuous Run lifecycle', () => {
     const starts: string[] = [];
     const projectedTurns: unknown[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: (turn) => projectedTurns.push(turn),
@@ -2293,6 +2469,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const starts: string[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2348,6 +2526,8 @@ describe('Node continuous Run lifecycle', () => {
     const starts: string[] = [];
     const terminal: { runId: string; status?: string }[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2548,6 +2728,8 @@ describe('Node continuous Run lifecycle', () => {
     const interrupted: string[] = [];
     const controls: { operation: string; payload: Record<string, unknown> }[] = [];
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2632,6 +2814,8 @@ describe('Node continuous Run lifecycle', () => {
     const control = vi.fn();
     const markInterrupted = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2711,6 +2895,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2824,6 +3010,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const emitRun = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -2880,6 +3068,8 @@ describe('Node continuous Run lifecycle', () => {
     const { runtime, session } = fixture();
     const emitRun = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: () => undefined,
       emitConversation: () => undefined,
@@ -3034,6 +3224,8 @@ describe('external QUEUE recovery', () => {
     const { runtime, session } = fixture();
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       control,
       emitQueue: vi.fn(),
@@ -3192,6 +3384,8 @@ describe('explicit queue recovery during cancellation', () => {
     const { runtime, session } = fixture();
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       control,
       emitQueue: vi.fn(),

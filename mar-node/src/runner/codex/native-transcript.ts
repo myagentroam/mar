@@ -11,7 +11,7 @@ import type {
   NativeTranscriptUnknown,
   NativeTranscriptReasoningSummary
 } from '../../native-transcript-model.js';
-import { compactRunnerValue as compactValue } from '../../util/node-operation-parsers.js';
+import { compactRunnerValue as compactValue } from '../normalization.js';
 import { stripGoalStartPrompt, publicGoalHistoryText } from '../../service/goal-runtime.js';
 import { parseCodexComposerImageMarkers } from './composer-image-markers.js';
 import { codexTranscriptSourceItemId } from './conversation-parser.js';

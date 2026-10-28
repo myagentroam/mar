@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { LINUX_BUBBLEWRAP_SANDBOX_POLICY_VERSION } from '@myagentroam/agent/sandbox/linux';
 import { describe, expect, it } from 'vitest';
 import { probeBubblewrap } from '../../src/service/conversation-hosting-capability-service.js';
-import { hostedConversationSandboxProfile } from '../../src/service/hosted-conversation-sandbox-profile.js';
+import { hostedConversationSandboxProfile } from '../../src/hosting/hosted-conversation-sandbox-profile.js';
 
 describe('hosted conversation sandbox profile', () => {
   it('compiles Node-owned directories and compatibility aliases into generic mounts', () => {

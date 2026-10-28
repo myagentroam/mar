@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -33,7 +34,7 @@ const base = {
 describe('MAR Agent managed run projection', () => {
   it('forwards an immediate command owner into the managed Run', async () => {
     const host = {
-      active: new Set<string>(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -201,7 +202,7 @@ describe('MAR Agent managed run projection', () => {
       const controller = new MarAgentManagedRunController(
         new MarAgentRunner(),
         {
-          active: new Set<string>(),
+          ...executionActivity(),
           adopt: vi.fn(),
           promote: vi.fn(),
           syncTitle: vi.fn(),
@@ -352,7 +353,7 @@ describe('MAR Agent managed run projection', () => {
     }));
     let startContinuation: (() => void) | undefined;
     const host = {
-      active: new Set<string>(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -526,7 +527,7 @@ describe('MAR Agent managed run projection', () => {
     const controller = new MarAgentManagedRunController(
       new MarAgentRunner(),
       {
-        active: new Set<string>(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -737,7 +738,7 @@ describe('MAR Agent managed run projection', () => {
     const controller = new MarAgentManagedRunController(
       new MarAgentRunner(),
       {
-        active: new Set<string>(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -858,7 +859,7 @@ describe('MAR Agent managed run projection', () => {
     const controller = new MarAgentManagedRunController(
       new MarAgentRunner(),
       {
-        active: new Set<string>(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -1018,7 +1019,7 @@ describe('MAR Agent managed run projection', () => {
     const controller = new MarAgentManagedRunController(
       new MarAgentRunner(),
       {
-        active: new Set<string>(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -1073,7 +1074,7 @@ describe('MAR Agent managed run projection', () => {
 
   it('forwards Composer image names and pixels into the MAR Agent SDK input', () => {
     const controller = new MarAgentManagedRunController(new MarAgentRunner(), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),
@@ -1177,7 +1178,7 @@ describe('MAR Agent managed run projection', () => {
     const controller = new MarAgentManagedRunController(
       new MarAgentRunner(),
       {
-        active: new Set<string>(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),
@@ -1345,7 +1346,7 @@ describe('MAR Agent managed run projection', () => {
       const controller = new MarAgentManagedRunController(
         new MarAgentRunner(),
         {
-          active: new Set<string>(),
+          ...executionActivity(),
           adopt: vi.fn(),
           promote: vi.fn(),
           syncTitle: vi.fn(),
@@ -1723,7 +1724,7 @@ describe('MAR Agent managed run projection', () => {
     const registerGeneratedImages = vi.fn(() => attachments);
     const emitItem = vi.fn();
     const controller = new MarAgentManagedRunController(new MarAgentRunner('/node/home'), {
-      active: new Set(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),

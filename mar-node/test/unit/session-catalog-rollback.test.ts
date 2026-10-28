@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
-import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
+import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 
 function turn(items: readonly Record<string, unknown>[]): NodeConversationTurn {

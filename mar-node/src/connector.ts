@@ -1,8 +1,14 @@
+import { composeWorkspaceApplication } from './application/workspace-application.js';
+import { composeSessionProjection } from './application/session-projection-composition.js';
+import { composeWorkspaceResources } from './application/workspace-composition.js';
+import { composeRunners } from './application/runner-composition.js';
+import { ExecutionLifecycle } from './application/execution-lifecycle.js';
+import { NodeOperationAdmission } from './application/node-operation-admission.js';
 import { normalizeMarAgentUsage } from './runner/mar-agent/conversation-normalizer.js';
-import { isImageAttachment } from './util/node-operation-parsers.js';
+import { NodeLifecycle } from './application/node-lifecycle.js';
+import { isImageAttachment } from './session/attachments.js';
 import { ModelUsageOutbox } from './service/model-usage-outbox.js';
 import { NodeModelUsageService } from './service/model-usage-service.js';
-import type WebSocket from 'ws';
 import { dirname, resolve } from 'node:path';
 import {
   createEnvelope,
@@ -21,9 +27,10 @@ import {
 } from './config.js';
 import { NodeMetrics, nodeLog } from './operational.js';
 import { assertLocalSqlitePath } from './storage.js';
-import { resolveWorkspaceExecutionDirectory } from './workspace.js';
+import { resolveWorkspaceExecutionDirectory } from './workspace/path-access.js';
 import { detectCapabilitiesAsync, unavailableCapabilities } from './capabilities.js';
-import { NodeDatabase, type NodeAgentSession } from './database.js';
+import { NodeDatabase } from './database.js';
+import type { NodeAgentSession } from './session/contracts.js';
 import { TerminalManager } from './terminal.js';
 import { NodeRuntimeState } from './runtime-state.js';
 import { CommandStateStore } from './runner-command-engine.js';
@@ -36,7 +43,7 @@ import { ClaudeManagedRunController } from './runner/claude/managed-run-controll
 import { CodexRunner } from './runner/codex-runner.js';
 import { CodexManagedRunController } from './runner/codex/managed-run-controller.js';
 import { FakeTestRunner } from './runner/fake-test-runner.js';
-import type { FakeRunnerStatus } from './fake-runner.js';
+import type { RunnerExecutionStatus } from './runner/contracts.js';
 import { RunnerRegistry } from './runner/runner-registry.js';
 import { OpenCodeRunner } from './runner/opencode-runner.js';
 import { MarAgentRunner } from './runner/mar-agent-runner.js';
@@ -44,58 +51,48 @@ import { MarAgentManagedRunController } from './runner/mar-agent/managed-run-con
 import { PyAutoGuiComputerUseProvider } from './runner/mar-agent/computer-use.js';
 import { ManagedComputerUseRuntime } from './computer-use-runtime.js';
 import { OpenCodeManagedRunController } from './runner/opencode/managed-run-controller.js';
-import { NodeOperationRouter } from './connector/node-operation-router.js';
+import { NodeOperationRouter } from './connection/node-operation-router.js';
 import { SkillNodeOperationService } from './service/skill-node-operation-service.js';
 import { McpNodeOperationService } from './service/mcp-node-operation-service.js';
-import type { NodeConnectorOptions } from './connector/node-connector-options.js';
-export type { NodeConnectorOptions } from './connector/node-connector-options.js';
+import type { NodeConnectorOptions } from './application/node-connector-options.js';
+export type { NodeConnectorOptions } from './application/node-connector-options.js';
 import { RunnerService } from './service/runner-service.js';
 import { TerminalService } from './service/terminal-service.js';
 import { GitExecutionService } from './service/git-execution-service.js';
 import { GitOperationService } from './service/git-operation-service.js';
 import { WorkspaceService } from './service/workspace-service.js';
-import { WorkspaceWatchService } from './service/workspace-watch-service.js';
-import { WorkspaceFileService } from './service/workspace-file-service.js';
-import { WorkspaceUploadService } from './service/workspace-upload-service.js';
-import { DirectTransferService } from './service/direct-transfer-service.js';
-import { WorkspaceChangeService } from './service/workspace-change-service.js';
-import { WorkspaceSessionService } from './service/workspace-session-service.js';
+import { DirectTransferService } from './connection/direct-transfer-service.js';
+import { WorkspaceChangeService } from './workspace/workspace-change-service.js';
 import { WorkbenchEventService } from './service/workbench-event-service.js';
-import { RunDomainState } from './service/run-domain-state.js';
 import { RecentRunProjectionService } from './service/recent-run-projection-service.js';
 import { sessionGroupChangedSchema, type SessionGroupChanged } from '@myagentroam/protocol';
-import {
-  SessionDomainState,
-  type ExternalSessionActivationState
-} from './service/session-domain-state.js';
 import { RunEventService } from './service/run-event-service.js';
 import {
   RunAttachmentService,
   type RunnerImageAttachment
 } from './service/run-attachment-service.js';
 import { NodeTerminalChannel } from './service/node-terminal-channel.js';
-import { WorkspaceWorkbenchService } from './service/workspace-workbench-service.js';
+import { WorkspaceWorkbenchService } from './workspace/workspace-workbench-service.js';
 import { NativeSessionWatchService } from './service/native-session-watch-service.js';
 import { SessionWatchSlotCoordinator } from './service/session-watch-slot-coordinator.js';
-import { SessionContextService } from './service/session-context-service.js';
-import { WorkspaceDomainState } from './service/workspace-domain-state.js';
+import { SessionContextService } from './session/session-context-service.js';
 import { RunWorkbenchService } from './service/run-workbench-service.js';
-import { SessionQueryService } from './service/session-query-service.js';
+import { SessionQueryService } from './session/session-query-service.js';
 import { marctlSessionProgress } from './service/session-recent-activity.js';
-import { WorkspaceQueueWorkbenchService } from './service/workspace-queue-workbench-service.js';
+import { WorkspaceQueueWorkbenchService } from './workspace/workspace-queue-workbench-service.js';
 import { ContinuousRunCoordinator } from './service/continuous-run-coordinator.js';
-import { SessionIdentityService } from './service/session-identity-service.js';
-import { NativeSessionProjectionService } from './service/native-session-projection-service.js';
+import { SessionIdentityService } from './session/session-identity-service.js';
+import { NativeSessionProjectionService } from './session/native-session-projection-service.js';
 import {
   ConversationHistoryService,
   hasManagedActiveRun
 } from './service/conversation-history-service.js';
 import { ConversationSegmentService } from './service/conversation-segment-service.js';
 import { RunnerInteractionService } from './service/runner-interaction-service.js';
-import { SessionLifecycleService } from './service/session-lifecycle-service.js';
+import { SessionLifecycleService } from './session/session-lifecycle-service.js';
 import { ExternalSessionResumeService } from './service/external-session-resume-service.js';
-import { SessionMessageService } from './service/session-message-service.js';
-import { SessionScheduleService } from './service/session-schedule-service.js';
+import { SessionMessageService } from './session/session-message-service.js';
+import { SessionScheduleService } from './session/session-schedule-service.js';
 import { ScheduledSessionCoordinator } from './service/scheduled-session-coordinator.js';
 import { ScheduledSessionStore } from './service/scheduled-session-store.js';
 import { RunAuthorizationControl } from './service/run-authorization-control.js';
@@ -107,21 +104,18 @@ import {
   NotificationMcpBridge,
   resolveNotificationCapability
 } from './service/notification-mcp-bridge.js';
-import { SessionCatalogService } from './service/session-catalog-service.js';
-import { SessionCommandService } from './service/session-command-service.js';
+import { SessionCatalogService } from './session/session-catalog-service.js';
+import { SessionCommandService } from './session/session-command-service.js';
 import {
   SessionPresentationService,
   sessionGroup
-} from './service/session-presentation-service.js';
-import {
-  isPlainRecord,
-  isRunnerImageAttachment,
-  parseRunnerImageAttachments
-} from './util/node-operation-parsers.js';
+} from './session/session-presentation-service.js';
+import { isPlainRecord } from './util/records.js';
+import { isRunnerImageAttachment, parseRunnerImageAttachments } from './session/attachments.js';
 import { WebToolService } from './service/web-tool-service.js';
 import { ModelResourcePublicationService } from './service/model-resource-publication-service.js';
 
-export { nodeConnectEndpoint, validatedCapabilities } from './util/node-operation-parsers.js';
+export { nodeConnectEndpoint, validatedCapabilities } from './connection/endpoints.js';
 import { NodeControlChannel } from './service/node-control-channel.js';
 import { NodeControlMessageService } from './service/node-control-message-service.js';
 import { NodeRequestService } from './service/node-request-service.js';
@@ -226,7 +220,8 @@ export class NodeConnector {
   private readonly scheduledRunAuthorization: RunAuthorizationControl;
   private readonly restartAuthorization: RunAuthorizationControl;
   private readonly restartHandoff: PlannedRestartHandoff;
-  private readonly inFlightOperations = new Set<Promise<unknown>>();
+  private readonly operationAdmission: NodeOperationAdmission;
+  private readonly executionLifecycle: ExecutionLifecycle;
   private readonly pendingSessionGroups = new Map<string, SessionGroupChanged>();
   private readonly mailNotificationControl = new MailNotificationControl((envelope) =>
     this.sendEnvelope(envelope)
@@ -246,12 +241,29 @@ export class NodeConnector {
     if (!this.config) throw new Error('NODE_CONFIG_UNAVAILABLE');
     return nodeDataDirectory(this.config, this.configPath);
   });
-  /** @internal Existing contract tests inject their socket through this boundary. */
-  private set socket(value: WebSocket | undefined) {
-    this.controlChannel.replaceSocketForTesting(value);
+  private readonly lifecycle = new NodeLifecycle(
+    () => this.startResources(),
+    () => {
+      this.continuousRunCoordinator.suspend();
+      this.goalCoordinator.freeze();
+      this.scheduledSessions.stop();
+    },
+    {
+      waitForRecovery: () => this.restartHandoff.wait(),
+      drainInput: async () => {
+        this.sessionMessageService.setAccepting(false);
+        await this.operationAdmission.drain();
+        await this.sessionMessageService.drain();
+      },
+      closeResume: () => this.externalSessionResumeService.close(),
+      capture: () => (this.config?.nodeId ? this.restartHandoff.capture() : undefined),
+      dispose: () => this.disposeRuntime(),
+      publish: (snapshot) => this.restartHandoff.publish(snapshot)
+    }
+  );
+  private get stopped(): boolean {
+    return this.lifecycle.stopped;
   }
-  private stopped = false;
-  private stopping: Promise<void> | undefined;
   private config: NodeConfig | undefined;
   private readonly capabilitiesProvided: boolean;
   private capabilities: NodeCapabilities;
@@ -281,13 +293,8 @@ export class NodeConnector {
   });
   private readonly fakeRunner: FakeTestRunner | undefined;
   private readonly fakeScript: NodeConnectorOptions['fakeScript'];
-  private readonly runState = new RunDomainState();
   private readonly runEventBridge: NodeRunEventBridge;
   private readonly workspaceCoordinator: NodeWorkspaceCoordinator;
-  private readonly sessionState = new SessionDomainState<
-    NodeAgentSession,
-    ExternalSessionActivationState
-  >();
   private readonly sessionIdentityService: SessionIdentityService;
   private readonly nativeSessionProjectionService: NativeSessionProjectionService;
   private readonly conversationHistoryService: ConversationHistoryService;
@@ -384,49 +391,36 @@ export class NodeConnector {
   private readonly runnerUsageReader: RunnerUsageReader;
   private readonly terminalManager: TerminalManager;
   private readonly upgradeCoordinator: NodeUpgradeCoordinator;
-  private readonly workspaceState = new WorkspaceDomainState();
-  private readonly workspaceWatchService = new WorkspaceWatchService(
-    this.workspaceState,
-    (workspaceId) => this.workspaceSessionService.ensureWatch(workspaceId),
-    (workspaceId) => this.workspaceSessionService.stopWatch(workspaceId),
-    (workspaceId) => this.workspaceWorkbenchService?.releaseWorkspace(workspaceId),
-    (watch) => this.workspaceWorkbenchService?.cancelFilePrewarm(watch)
-  );
-  private readonly workspaceSessionService = new WorkspaceSessionService(this.workspaceState, {
+  private readonly workspaceResources = composeWorkspaceResources({
     discover: (workspaceId, onRunnerDiscovered) =>
       this.discoverWorkspaceSessions(workspaceId, onRunnerDiscovered),
     listPage: (workspaceId) =>
       this.executeNodeOperation('session.list', { workspaceId, limit: 30 }),
-    active: (workspaceId) => this.workspaceWatchService.topicActive(workspaceId, 'sessions'),
-    invalidate: (workspaceId) =>
-      void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions')
+    invalidateSessions: (workspaceId) =>
+      void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions'),
+    invalidateFiles: (workspaceId) => {
+      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
+      this.workspaceCoordinator.invalidate(workspaceId);
+    },
+    releaseWatch: (workspaceId) => this.workspaceWorkbenchService?.releaseWorkspace(workspaceId),
+    removeWatch: (watch) => this.workspaceWorkbenchService?.cancelFilePrewarm(watch),
+    temporaryRoot: () => this.attachmentTemporaryRoot(),
+    attachmentResource: (id, path) => this.runAttachmentService.fileResource(id, path)
   });
-  private readonly invalidateWorkspaceFiles = (workspaceId: string): void => {
-    this.workspaceFileService.dispose(workspaceId);
-    this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-    this.workspaceCoordinator.invalidate(workspaceId);
-  };
-  private readonly workspaceFileService = new WorkspaceFileService(
-    this.workspaceState,
-    this.invalidateWorkspaceFiles,
-    {},
-    (workspaceId, resourcePath) =>
-      this.workspaceUploadService.fileResource(workspaceId, resourcePath) ??
-      this.runAttachmentService.fileResource(workspaceId, resourcePath)
-  );
-  private readonly workspaceUploadService = new WorkspaceUploadService(
-    this.workspaceState,
-    this.invalidateWorkspaceFiles,
-    () => this.attachmentTemporaryRoot()
-  );
+  private readonly workspaceWatchService = this.workspaceResources.watch;
+  private readonly workspaceSessionService = this.workspaceResources.sessions;
+  private readonly workspaceFileService = this.workspaceResources.files;
+  private readonly workspaceUploadService = this.workspaceResources.uploads;
+  private readonly invalidateWorkspaceFiles = this.workspaceResources.invalidateFiles;
   private directTransferService: DirectTransferService | undefined;
 
   private attachmentTemporaryRoot(): string {
     if (this.config === undefined) throw new Error('NODE_CONFIG_UNAVAILABLE');
     return resolve(nodeDataDirectory(this.config, this.configPath), 'temp-files');
   }
-  private readonly workspaceChangeService = new WorkspaceChangeService(this.workspaceState);
+  private readonly workspaceChangeService = new WorkspaceChangeService();
   private readonly workspaceWorkbenchService: WorkspaceWorkbenchService;
+  private readonly publishWorkspaceSession: (payload: unknown) => void;
   private database: NodeDatabase | undefined;
   private readonly recentRunProjectionService = new RecentRunProjectionService((message) =>
     this.send('recent-runs', message)
@@ -455,51 +449,26 @@ export class NodeConnector {
   private readonly runEventService = new RunEventService({
     runtime: this.runtime,
     metrics: this.metrics,
-    state: this.runState,
     isBootstrapSession: (sessionId) => this.sessionIdentityService.bootstrapIds.has(sessionId),
     presentSession: (session) => this.sessionPresentationService.present(session),
     rejectBootstrap: (sessionId, code) => this.sessionIdentityService.reject(sessionId, code),
-    emitWorkbench: (category, payload) => {
-      if (category === 'conversation' && isPlainRecord(payload) && 'turn' in payload)
-        this.emitConversationTurn(payload.turn);
-      else this.publishWorkbenchEvent(category, payload);
-    },
+    emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
     cleanupAttachments: (runId) => this.runAttachmentService.cleanup(runId),
     refreshAttachments: (sessionId) => this.runAttachmentService.refreshSession(sessionId),
     expireImages: (runId) => this.runAttachmentService.expire(runId),
     scheduleContextRefresh: (sessionId) => this.sessionContextService.schedule(sessionId),
     refreshWorkspaceSessions: (workspaceId) =>
       this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
-    onTerminalRun: (run, status) => {
-      if (this.database !== undefined) this.scheduledSessions.executionTerminated(run, status);
-      this.continuousRunCoordinator.runTerminated(run.sessionId);
-    },
-    dispatchQueue: async (sessionId, delayMs = 0) => {
-      if (this.upgradeCoordinator.pending()) return;
-      if (delayMs > 0) {
-        this.continuousRunCoordinator.schedule(sessionId, delayMs);
-        return;
-      }
-      await this.continuousRunCoordinator.dispatch(sessionId);
-    },
+    onTerminalRun: (run, status) => this.executionLifecycle.terminal(run, status),
+    dispatchQueue: (sessionId, delayMs) =>
+      this.executionLifecycle.dispatchQueue(sessionId, delayMs),
     executionStarted: (executionId) => this.continuousRunCoordinator.executionStarted(executionId),
-    keepRunActive: (sessionId) => this.goalCoordinator.keepRunActive(sessionId),
-    executionTerminating: (executionId, status, permissionStop) => {
-      this.gitOperationService.executionFinished(executionId);
-      this.goalCoordinator.executionTerminating(executionId, status, permissionStop);
-    },
-    releaseExecution: (executionId) => {
-      this.modelUsage.release(executionId);
-      this.goalCoordinator.releaseExecution(executionId);
-      this.revokeExecutionMcps(executionId);
-      this.continuousRunCoordinator.remove(executionId);
-    }
+    acceptExecutionTerminal: (input) =>
+      this.continuousRunCoordinator.acceptExecutionTerminal(input),
+    publishGoalUpdate: ({ session, goal }) => this.goalCoordinator.publishGoalState(session, goal),
+    publishQueueChange: (sessionId) => this.continuousRunCoordinator.publish(sessionId),
+    releaseExecution: (executionId) => this.executionLifecycle.release(executionId)
   });
-  private revokeExecutionMcps(executionId: string): void {
-    this.goalMcpBridge.revoke(executionId);
-    this.scheduleMcpBridge.revoke(executionId);
-    this.notificationMcpBridge.revoke(executionId);
-  }
 
   private readonly sessionWatchSlots = new SessionWatchSlotCoordinator();
   private readonly nativeSessionWatchService = new NativeSessionWatchService({
@@ -593,7 +562,7 @@ export class NodeConnector {
         if (this.config === undefined) throw new Error('NODE_CONFIG_UNAVAILABLE');
         return nodeUpgradeRequestPath(nodeDatabasePath(this.config, this.configPath));
       },
-      () => this.runState.active.size,
+      () => this.runtime.activeExecutionCount(),
       (status) => {
         this.capabilities = {
           ...this.capabilities,
@@ -621,8 +590,8 @@ export class NodeConnector {
       );
     };
     this.reconnect = options.reconnect ?? true;
-    this.fakeRunner =
-      options.fakeRunner === undefined ? undefined : new FakeTestRunner(options.fakeRunner);
+    const composedRunners = composeRunners(options);
+    this.fakeRunner = composedRunners.fake;
     this.fakeScript = options.fakeScript;
     this.runAttachmentService = new RunAttachmentService(
       (session) => this.runners.require(session.runner).nativeImageRoots(session),
@@ -642,22 +611,18 @@ export class NodeConnector {
         return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : undefined;
       }
     });
-    this.codexClient = new CodexRunner(
-      options.codexClient,
-      options.codexProfileClientFactory,
-      options.codexRunClientFactory
-    );
+    this.codexClient = composedRunners.codex;
     this.codexRunController = new CodexManagedRunController(this.codexClient, {
       available: () => this.capabilities.codex.available,
       intercepted: () => this.fakeRunner !== undefined,
-      active: this.runState.active,
-      addActive: (runId) => this.runState.active.add(runId),
-      removeActive: (runId) => this.runState.active.delete(runId),
+      isExecutionActive: (runId) => this.runtime.isExecutionActive(runId),
+      executionAccepted: (runId) => this.runtime.executionAccepted(runId),
+
       adopt: (input) => this.runtime.adoptRun(input),
       session: (sessionId) => this.runtime.getAgentSession(sessionId),
       runStatus: (runId) => this.runtime.getRun(runId)?.status,
       run: (runId) => this.runtime.getRun(runId),
-      interrupted: (runId) => this.runState.interruptRequested.has(runId),
+      interrupted: (runId) => this.runtime.isExecutionInterruptRequested(runId),
       parseAttachments: parseRunnerImageAttachments,
       materialize: (runId, attachments) =>
         this.runAttachmentService.materializeCodex(runId, attachments),
@@ -692,9 +657,9 @@ export class NodeConnector {
     this.codexClient.onNotification((notification) =>
       this.codexRunController.handleNotification(notification)
     );
-    this.claudeClient = new ClaudeCodeRunner(options.claudeClient);
-    this.openCodeClient = new OpenCodeRunner(options.openCodeClient);
-    this.marAgentClient = new MarAgentRunner();
+    this.claudeClient = composedRunners.claude;
+    this.openCodeClient = composedRunners.openCode;
+    this.marAgentClient = composedRunners.marAgent;
     this.marAgentClient.setGeneratedImageRegistrar((session, images) =>
       this.runAttachmentService.registerNative(session, images)
     );
@@ -724,7 +689,9 @@ export class NodeConnector {
       {
         createApproval: (input) => this.runtime.createApproval(input),
         publishApproval: (input) => this.runnerInteractionService.publishApproval(input),
-        active: this.runState.active,
+        isExecutionActive: (runId) => this.runtime.isExecutionActive(runId),
+        executionAccepted: (runId) => this.runtime.executionAccepted(runId),
+
         adopt: (input) => this.runtime.adoptRun(input),
         promote: (sessionId, nativeSessionId) =>
           this.sessionIdentityService.promote(sessionId, nativeSessionId),
@@ -779,7 +746,9 @@ export class NodeConnector {
       this.openCodeClient,
       {
         intercepted: () => this.fakeRunner !== undefined,
-        active: this.runState.active,
+        isExecutionActive: (runId) => this.runtime.isExecutionActive(runId),
+        executionAccepted: (runId) => this.runtime.executionAccepted(runId),
+
         parseAttachments: parseRunnerImageAttachments,
         persistAttachments: async (_cwd, runId, attachments) => {
           const run = this.runtime.getRun(runId);
@@ -822,7 +791,9 @@ export class NodeConnector {
     );
     this.claudeRunController = new ClaudeManagedRunController(this.claudeClient, {
       intercepted: () => this.fakeRunner !== undefined,
-      active: this.runState.active,
+      isExecutionActive: (runId) => this.runtime.isExecutionActive(runId),
+      executionAccepted: (runId) => this.runtime.executionAccepted(runId),
+
       parseAttachments: parseRunnerImageAttachments,
       emit: (runId, eventType, payload, status) =>
         this.runEventBridge.emitRun(runId, eventType, payload, status),
@@ -849,13 +820,7 @@ export class NodeConnector {
       clearCommandState: (sessionId, commandId) => this.commandStates.clear(sessionId, commandId),
       commandStates: (sessionId) => this.commandStates.list(sessionId)
     });
-    this.runners = new RunnerRegistry([
-      this.openCodeClient,
-      this.marAgentClient,
-      this.codexClient,
-      this.claudeClient,
-      ...(this.fakeRunner === undefined ? [] : [this.fakeRunner])
-    ]);
+    this.runners = composedRunners.registry;
     this.managedRunnerSessions = new ManagedRunnerSessionService(
       this.runtime,
       this.runners,
@@ -866,7 +831,6 @@ export class NodeConnector {
     );
     this.runnerInteractionService = new RunnerInteractionService({
       runtime: this.runtime,
-      state: this.runState,
       codex: () => this.codexClient,
       settleCodexUsage: (runId, turnId) => this.codexRunController.settleUsage(runId, turnId),
       claude: () => this.claudeClient,
@@ -881,28 +845,18 @@ export class NodeConnector {
       interactions: this.runnerInteractionService,
       send: (type, payload, replyTo) => this.send(type, payload, replyTo)
     });
-    this.sessionPresentationService = new SessionPresentationService({
-      database: () => this.database,
-      runtime: this.runtime,
-      commands: this.commandStates,
-      runners: this.runners,
-      capabilities: () => this.capabilities,
-      hasManagedActiveRun: (session) => hasManagedActiveRun(this.runtime, session),
-      projectionForNative: (session) =>
-        this.nativeSessionProjectionService.projectionForNative(session)
-    });
-    this.nativeSessionProjectionService = new NativeSessionProjectionService({
+    const sessionProjection = composeSessionProjection({
       database: () => this.database,
       nodeId: () => this.config?.nodeId ?? 'recorded-session',
       runtime: this.runtime,
       runners: this.runners,
       capabilities: () => this.capabilities,
-      state: this.sessionState,
       commands: this.commandStates,
       releaseResumeState: (directIds, projectionIds) =>
-        this.externalSessionResumeService.forgetSessions(directIds, projectionIds),
-      present: (session) => this.sessionPresentationService.present(session)
+        this.externalSessionResumeService.forgetSessions(directIds, projectionIds)
     });
+    this.sessionPresentationService = sessionProjection.presentation;
+    this.nativeSessionProjectionService = sessionProjection.native;
     this.conversationHistoryService = new ConversationHistoryService({
       runtime: this.runtime,
       runners: this.runners,
@@ -940,7 +894,7 @@ export class NodeConnector {
         this.runEventBridge.emitRun(runId, eventType, payload, status),
       control: (operation, payload) =>
         this.controlMessages.handle(JSON.stringify(createEnvelope(operation, payload))),
-      markInterrupted: (runId) => this.runState.interruptRequested.add(runId)
+      markInterrupted: (runId) => this.runtime.requestExecutionInterrupt(runId)
     });
     this.sessionQueryService = new SessionQueryService({
       queuedCount: (sessionId) => this.workspaceQueueWorkbenchService.queuedCount(sessionId),
@@ -1024,7 +978,12 @@ export class NodeConnector {
       control: (operation, payload) =>
         this.controlMessages.handle(JSON.stringify(createEnvelope(operation, payload))),
       stopped: () => this.stopped,
-      markInterrupted: (runId) => this.runState.interruptRequested.add(runId),
+      markInterrupted: (runId) => this.runtime.requestExecutionInterrupt(runId),
+      keepRunActive: (sessionId) => this.goalCoordinator.keepRunActive(sessionId),
+      executionTerminating: (executionId, status, permissionStop) => {
+        this.gitOperationService.executionFinished(executionId);
+        return this.goalCoordinator.executionTerminating(executionId, status, permissionStop);
+      },
       mcps: (workspaceId) => this.database?.effectiveMcpInstallations(workspaceId) ?? [],
       retainEnvironment: (environment) => this.gitExecution().retain(environment),
       goalCurrent: (input) =>
@@ -1042,7 +1001,7 @@ export class NodeConnector {
           code: safeErrorCode(error, 'GOAL_EXECUTION_START_FAILED')
         });
       },
-      revokeExecutionMcps: (executionId) => this.revokeExecutionMcps(executionId),
+      revokeExecutionMcps: (executionId) => this.executionLifecycle.revokeMcps(executionId),
       goalMcp: async (input) => {
         if (input.goal === undefined) throw new Error('GOAL_NOT_ACTIVE');
         return this.goalMcpBridge.prepare({
@@ -1167,7 +1126,6 @@ export class NodeConnector {
       resolveExecutionDirectory,
       runtime: this.runtime,
       runners: this.runners,
-      state: this.sessionState,
       available: (runner) => this.runners.require(runner).available(this.capabilities),
       projectionFor: (session) => this.nativeSessionProjectionService.projectionForNative(session),
       managedAliasFor: (session) => this.nativeSessionProjectionService.managedForNative(session),
@@ -1277,7 +1235,7 @@ export class NodeConnector {
       runners: this.runners,
       runnerAvailable: (runner) => this.runners.require(runner).available(this.capabilities),
       projection: this.nativeSessionProjectionService,
-      cachedNative: () => [...this.sessionState.directNative.values()],
+      cachedNative: () => this.nativeSessionProjectionService.cachedNative(),
       cachedWorkspace: (workspaceId) => this.workspaceCoordinator.cachedSessions(workspaceId),
       discoveryPending: (workspaceId) => this.workspaceSessionService.discoveryPending(workspaceId),
       discoverWorkspace: (workspaceId, cleanup) =>
@@ -1291,7 +1249,7 @@ export class NodeConnector {
       },
       refreshActivity: (session) =>
         this.conversationHistoryService.refreshExternalActivity(session),
-      externalActivity: (sessionId) => this.sessionState.externalActivity.get(sessionId),
+      externalActivity: (sessionId) => this.externalSessionResumeService.activity(sessionId),
       isWatching: (sessionId) => this.nativeSessionWatchService.isWatching(sessionId),
       isRecovering: (sessionId) => this.restartHandoff.blocks(sessionId),
       history: (session, input) => this.conversationHistoryService.read(session, input),
@@ -1370,7 +1328,6 @@ export class NodeConnector {
             script: this.fakeScript,
             runners: this.runners,
             runtime: this.runtime,
-            state: this.runState,
             emitRun: (runId, type, payload, status) =>
               this.runEventBridge.emitRun(runId, type, payload, status),
             publishApproval: (input) => this.runnerInteractionService.publishApproval(input),
@@ -1504,16 +1461,30 @@ export class NodeConnector {
         ),
       send: (type, payload, replyTo) => this.send(type, payload, replyTo)
     });
-    this.workspaceCoordinator = new NodeWorkspaceCoordinator({
+    const workspaceApplication = composeWorkspaceApplication({
       config: () => this.config,
       database: () => this.database,
-      watches: this.workspaceWatchService,
-      sessions: this.workspaceSessionService,
+      runtime: this.runtime,
+      terminals: this.terminalManager,
+      resources: this.workspaceResources,
       changes: this.workspaceChangeService,
-      emit: (workspaceId, topic) =>
-        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, topic),
-      send: (type, payload, replyTo) => this.send(type, payload, replyTo)
+      listSessions: (workspaceId, sessionGroup) =>
+        this.executeNodeOperation('session.list', {
+          workspaceId,
+          limit: 30,
+          ...(sessionGroup === undefined ? {} : { sessionGroup })
+        }),
+      invalidatePrompt: (id) => this.promptCompletion?.invalidateWorkspace(id),
+      nodeId: () => this.config?.nodeId ?? 'runtime-node',
+      nodeGeneration: () => this.nodeGeneration,
+      send: (type, payload, replyTo) => this.send(type, payload, replyTo),
+      emitWatchEvent: (payload) => this.send('watch.event', payload),
+      publishSession: (payload) => this.emitWorkbenchEvent('session', payload)
     });
+    this.workspaceCoordinator = workspaceApplication.coordinator;
+    this.workspaceService = workspaceApplication.workspace;
+    this.workspaceWorkbenchService = workspaceApplication.workbench;
+    this.publishWorkspaceSession = workspaceApplication.publishSession;
     this.runEventBridge = new NodeRunEventBridge({
       bindModelUsage: (runId) => {
         const run = this.runtime.getRun(runId);
@@ -1652,44 +1623,6 @@ export class NodeConnector {
       this.terminalManager,
       (environment) => this.gitExecution().retain(environment)
     );
-    this.workspaceService = new WorkspaceService(
-      requireDatabase,
-      () => {
-        if (this.config === undefined) throw new Error('NODE_CONFIG_UNAVAILABLE');
-        return this.config;
-      },
-      this.runtime,
-      (workspaceId) => {
-        this.terminalManager.removeWorkspaceAssociation(workspaceId);
-        this.workspaceFileService.dispose(workspaceId);
-        this.workspaceCoordinator.invalidateChanges(workspaceId);
-        this.workspaceSessionService.invalidate(workspaceId);
-        this.workspaceCoordinator.clearWatches(workspaceId);
-        this.workspaceWorkbenchService.clearWorkspace(workspaceId);
-        this.promptCompletion?.invalidateWorkspace(workspaceId);
-      },
-      (workspaceId) => this.workspaceCoordinator.gitPolicyChanged(workspaceId)
-    );
-    this.workspaceWorkbenchService = new WorkspaceWorkbenchService({
-      requireWorkspace: (workspaceId) => this.workspaceCoordinator.require(workspaceId),
-      inspectWorkspace: (workspace) => this.workspaceCoordinator.inspectMetadata(workspace),
-      commitWorkspace: (workspace, inspection) =>
-        this.workspaceCoordinator.commitMetadata(workspace, inspection),
-      watch: this.workspaceWatchService,
-      files: this.workspaceFileService,
-      uploads: this.workspaceUploadService,
-      changes: this.workspaceChangeService,
-      listSessions: (workspaceId, sessionGroup) =>
-        this.executeNodeOperation('session.list', {
-          workspaceId,
-          limit: 30,
-          ...(sessionGroup === undefined ? {} : { sessionGroup })
-        }),
-      invalidate: this.invalidateWorkspaceFiles,
-      nodeId: () => this.config?.nodeId ?? 'runtime-node',
-      nodeGeneration: () => this.nodeGeneration,
-      emitWatchEvent: (payload) => this.send('watch.event', payload)
-    });
     const completionWorkspace = new PromptCompletionWorkspaceSource({
       requireWorkspace: (workspaceId) => this.workspaceCoordinator.require(workspaceId),
       observesWorkspace: (workspaceId, actor, connectionId) =>
@@ -1702,8 +1635,7 @@ export class NodeConnector {
           sessionId
         ),
       resolveSession: (sessionId) => this.nativeSessionProjectionService.resolve(sessionId),
-      cachedSessions: (workspaceId) =>
-        this.workspaceState.sessionCache.get(workspaceId)?.sessions ?? [],
+      cachedSessions: (workspaceId) => this.workspaceSessionService.cachedSnapshot(workspaceId),
       readHistory: (session, limit) => this.conversationHistoryService.read(session, { limit })
     });
     this.promptCompletion = new PromptCompletionNodeService({
@@ -1827,7 +1759,7 @@ export class NodeConnector {
     this.operationRouter.register('node.metrics', () => ({
       metrics: {
         ...this.metrics.snapshot(),
-        activeRuns: this.runState.active.size,
+        activeRuns: this.runtime.activeExecutionCount(),
         workspaceLeases: this.runtime.activeWorkspaceLeaseCount()
       }
     }));
@@ -1839,6 +1771,27 @@ export class NodeConnector {
       manifest: await this.workbenchManifestService.read(),
       binaryTerminal: true
     }));
+    this.executionLifecycle = new ExecutionLifecycle(
+      () => this.database !== undefined,
+      this.scheduledSessions,
+      this.continuousRunCoordinator,
+      this.goalCoordinator,
+      this.modelUsage,
+      this.goalMcpBridge,
+      this.scheduleMcpBridge,
+      this.notificationMcpBridge,
+      this.runEventBridge,
+      this.upgradeCoordinator
+    );
+    this.operationAdmission = new NodeOperationAdmission(
+      () => this.stopped,
+      () => this.database !== undefined,
+      () => this.config?.nodeId,
+      this.restartHandoff,
+      this.upgradeCoordinator,
+      this.gitOperationService,
+      this.operationRouter
+    );
   }
 
   private projectComputerUseCapability(capabilities: NodeCapabilities): NodeCapabilities {
@@ -1848,10 +1801,11 @@ export class NodeConnector {
     };
   }
 
-  async start(): Promise<void> {
-    if (this.stopping !== undefined) await this.stopping;
-    this.stopping = undefined;
-    this.stopped = false;
+  start(): Promise<void> {
+    return this.lifecycle.start();
+  }
+
+  private async startResources(): Promise<void> {
     this.continuousRunCoordinator.resumeScheduling();
     this.sessionMessageService.setAccepting(true);
     this.config ??= await loadNodeConfig(this.configPath);
@@ -1960,26 +1914,7 @@ export class NodeConnector {
   }
 
   stop(options: { readonly handoff?: boolean } = {}): Promise<void> {
-    if (this.stopping !== undefined) return this.stopping;
-    this.stopped = true;
-    this.continuousRunCoordinator.suspend();
-    this.goalCoordinator.freeze();
-    this.scheduledSessions.stop();
-    this.stopping = (async () => {
-      let snapshot: ReturnType<PlannedRestartHandoff['capture']> | undefined;
-      try {
-        // In-flight recovery must rebuild accepted inputs before preparation closes.
-        await this.restartHandoff.wait();
-        this.sessionMessageService.setAccepting(false);
-        await Promise.allSettled([...this.inFlightOperations]);
-        await this.sessionMessageService.drain();
-        if (options.handoff && this.config?.nodeId) snapshot = this.restartHandoff.capture();
-      } finally {
-        await this.disposeRuntime();
-      }
-      if (snapshot !== undefined) await this.restartHandoff.publish(snapshot);
-    })();
-    return this.stopping;
+    return this.lifecycle.stop(options.handoff === true);
   }
 
   private disposeRuntime(): Promise<void> {
@@ -2036,18 +1971,20 @@ export class NodeConnector {
       webToolDrain
     ]);
     return (async () => {
-      let failed: PromiseRejectedResult | undefined;
+      const hosting = await Promise.allSettled([conversationHostingDrain]);
+      const results = await drains;
+      this.database = undefined;
+      const git = await Promise.allSettled([this.gitExecutionService?.close()]);
+      this.usageOutbox?.disconnected();
+      this.usageOutbox = undefined;
+      this.modelUsage.clear();
+      const failed = [...hosting, ...results, ...git].find(
+        (result) => result.status === 'rejected'
+      );
       try {
-        await conversationHostingDrain;
-      } finally {
-        const results = await drains;
-        this.database = undefined;
-        await this.gitExecutionService?.close();
-        this.usageOutbox?.disconnected();
-        this.usageOutbox = undefined;
-        this.modelUsage.clear();
         database?.close();
-        failed = results.find((result) => result.status === 'rejected');
+      } catch (error) {
+        if (failed === undefined) throw error;
       }
       if (failed !== undefined) throw failed.reason;
     })();
@@ -2059,12 +1996,10 @@ export class NodeConnector {
     runId: string,
     eventType: string,
     payload: unknown,
-    status?: FakeRunnerStatus
+    status?: RunnerExecutionStatus
   ): void => this.runEventBridge.emitRun(runId, eventType, payload, status);
-  private readonly emitConversationItem = (runId: string, item: unknown): void => {
-    this.goalCoordinator.executionProgress(runId, item);
-    this.runEventBridge.emitConversationItem(runId, item);
-  };
+  private readonly emitConversationItem = (runId: string, item: unknown): void =>
+    this.executionLifecycle.emitItem(runId, item);
   private readonly emitConversationTurn = (turn: unknown): void => {
     this.emitWorkbenchEvent('conversation', { turn });
   };
@@ -2078,16 +2013,8 @@ export class NodeConnector {
     }
     this.emitWorkbenchEvent(category, payload);
   };
-  private readonly emitSessionWorkbenchEvent = (payload: unknown): void => {
-    if (isPlainRecord(payload) && isPlainRecord(payload.session)) {
-      const workspaceId = payload.session.workspaceId;
-      if (typeof workspaceId === 'string') {
-        this.workspaceSessionService.markCacheStale(workspaceId);
-        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions');
-      }
-    }
-    this.emitWorkbenchEvent('session', payload);
-  };
+  private readonly emitSessionWorkbenchEvent = (payload: unknown): void =>
+    this.publishWorkspaceSession(payload);
   private readonly emitWorkbenchEvent = (
     category: WorkbenchEventCategory,
     payload: unknown
@@ -2107,31 +2034,8 @@ export class NodeConnector {
   private readonly refreshCapabilities = (): Promise<void> =>
     this.connectionLifecycle.refreshCapabilities();
 
-  private async executeNodeOperation(operation: string, data: unknown): Promise<unknown> {
-    if (this.stopped) throw new Error('NODE_STOPPED');
-    const input = isPlainRecord(data) ? data : {};
-    const sessionId = typeof input.sessionId === 'string' ? input.sessionId : undefined;
-    if (this.restartHandoff.blocksOperation(operation, input))
-      throw new Error('SESSION_RESTART_PENDING');
-    if (this.database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
-    if (this.upgradeCoordinator.blocks(operation)) throw new Error('NODE_UPGRADE_PENDING');
-    nodeLog('node.operation', { nodeId: this.config?.nodeId, operation });
-    const task = this.gitOperationService.execute(operation, data, (input) =>
-      this.operationRouter.execute(operation, input)
-    );
-    this.inFlightOperations.add(task);
-    try {
-      const result = await task;
-      if (
-        (operation === 'session.command.execute' || operation === 'session.message') &&
-        sessionId !== undefined &&
-        Number.isSafeInteger(input.__requestUserId)
-      )
-        this.restartHandoff.rememberUser(sessionId, input.__requestUserId as number);
-      return result;
-    } finally {
-      this.inFlightOperations.delete(task);
-    }
+  private executeNodeOperation(operation: string, data: unknown): Promise<unknown> {
+    return this.operationAdmission.execute(operation, data);
   }
 
   private gitExecution(): GitExecutionService {

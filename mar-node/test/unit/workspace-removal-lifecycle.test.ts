@@ -7,9 +7,10 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import * as indexStorage from '../../src/service/code-navigation/ctags-index-storage.js';
-import type { WorkspaceCodeNavigationService } from '../../src/service/workspace-code-navigation-service.js';
-import type { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
-import type { WorkspaceWorkbenchService } from '../../src/service/workspace-workbench-service.js';
+import type { WorkspaceCodeNavigationService } from '../../src/workspace/workspace-code-navigation-service.js';
+import type { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
+import type { WorkspaceWatchService } from '../../src/workspace/workspace-watch-service.js';
+import type { WorkspaceWorkbenchService } from '../../src/workspace/workspace-workbench-service.js';
 import { executeNodeOperation } from './support/node-connector.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -27,13 +28,18 @@ afterEach(async () => {
   }
 });
 
+function fileIndexes(service: WorkspaceFileService): Map<string, unknown> {
+  return (service as unknown as { fileIndexes: Map<string, unknown> }).fileIndexes;
+}
+
 async function fixture(blockBuild = false) {
   const root = await mkdtemp(join(tmpdir(), 'mar-workspace-removal-'));
   const database = new NodeDatabase(':memory:', 'workspace-removal');
   const connector = new NodeConnector({ database, reconnect: false });
   const internals = connector as unknown as {
     runtime: NodeRuntimeState;
-    workspaceState: WorkspaceDomainState;
+    workspaceWatchService: WorkspaceWatchService;
+    workspaceFileService: WorkspaceFileService;
     workspaceWorkbenchService: WorkspaceWorkbenchService;
     discoverWorkspaceSessions(): Promise<readonly unknown[]>;
   };
@@ -128,7 +134,7 @@ describe('Workspace removal through the Node Connector', () => {
     const other = await test.createWorkspace('other-project');
     const retained = await test.buildIndex(other);
     await test.watchWorkspace();
-    expect(test.internals.workspaceState.fileIndexes.has(test.workspace.id)).toBe(true);
+    expect(fileIndexes(test.internals.workspaceFileService).has(test.workspace.id)).toBe(true);
     const clear = vi.spyOn(test.workbench, 'clearWorkspace');
     const forget = vi.spyOn(test.navigation, 'forget');
 
@@ -140,8 +146,10 @@ describe('Workspace removal through the Node Connector', () => {
     expect(forget).toHaveBeenCalledExactlyOnceWith(test.workspace.id);
     expect(test.database.getWorkspace(test.workspace.id)).toBeUndefined();
     expect(test.navigation.locations.has(test.workspace.id)).toBe(false);
-    expect(test.internals.workspaceState.fileIndexes.has(test.workspace.id)).toBe(false);
-    expect(test.internals.workspaceState.watches.has(test.workspace.id)).toBe(false);
+    expect(fileIndexes(test.internals.workspaceFileService).has(test.workspace.id)).toBe(false);
+    expect(test.internals.workspaceWatchService.activeWatches(test.workspace.id).length > 0).toBe(
+      false
+    );
     expect(test.snapshots.signatures.size).toBe(0);
     await vi.waitFor(async () => {
       await expect(stat(removed.directory)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -191,7 +199,9 @@ describe('Workspace removal through the Node Connector', () => {
     });
 
     expect(forget).not.toHaveBeenCalled();
-    expect(test.internals.workspaceState.watches.has(test.workspace.id)).toBe(false);
+    expect(test.internals.workspaceWatchService.activeWatches(test.workspace.id).length > 0).toBe(
+      false
+    );
     expect(test.snapshots.signatures.size).toBe(0);
     expect(test.navigation.locations.get(test.workspace.id)).toEqual(location);
     await expect(readFile(location.manifest, 'utf8')).resolves.toBe(manifest);
@@ -234,8 +244,10 @@ describe('Workspace removal through the Node Connector', () => {
       expect(forget).not.toHaveBeenCalled();
       expect(test.database.getWorkspace(test.workspace.id)).toBeDefined();
       expect(test.navigation.locations.get(test.workspace.id)).toEqual(location);
-      expect(test.internals.workspaceState.fileIndexes.has(test.workspace.id)).toBe(true);
-      expect(test.internals.workspaceState.watches.has(test.workspace.id)).toBe(true);
+      expect(fileIndexes(test.internals.workspaceFileService).has(test.workspace.id)).toBe(true);
+      expect(test.internals.workspaceWatchService.activeWatches(test.workspace.id).length > 0).toBe(
+        true
+      );
       expect(test.snapshots.signatures.size).toBe(1);
       await expect(readFile(location.manifest, 'utf8')).resolves.toBe(manifest);
       await expect(readFile(join(test.workspace.path, 'source.ts'), 'utf8')).resolves.toBe(

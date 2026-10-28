@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { createServer, type ServerResponse } from 'node:http';
-import { OpenCodeServerClient } from '../../src/opencode-server.js';
+import { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 import {
   openCodeContextLimits,
   openCodeProfileModels,

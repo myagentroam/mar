@@ -5,7 +5,7 @@ import { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/pr
 import { relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { logNodeCommandFailure } from '../../operational.js';
-import type { WorkspaceFileEntry } from '../../workspace.js';
+import type { WorkspaceFileEntry } from '../../workspace/contracts.js';
 import { compareTagNames } from './ctags-query.js';
 import { sourceFileFingerprint } from './navigation-target-validator.js';
 

@@ -6,8 +6,8 @@ import {
   type ConversationHostingEnableResult
 } from '@myagentroam/protocol';
 import { saveNodeConfig, type NodeConfig } from '../config.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import { nodeOperationData } from '../util/node-operation-data.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
+import { nodeOperationData } from '../connection/node-operation-data.js';
 
 interface ConversationHostingEnablementServiceOptions {
   readonly config: () => NodeConfig | undefined;

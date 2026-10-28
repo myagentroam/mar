@@ -3,13 +3,13 @@ import {
   serializeComposerTag,
   type RestartRunAuthorizeRequest
 } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
-import { parseMessageAttachments } from '../util/node-operation-parsers.js';
+import { parseMessageAttachments } from '../session/attachments.js';
 import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
 import type { GoalRuntime, GoalState } from './goal-runtime.js';
-import type { SessionMessageService } from './session-message-service.js';
+import type { SessionMessageService } from '../session/session-message-service.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
 import type { ScheduledRunContext } from './scheduled-session-coordinator.js';
 import {

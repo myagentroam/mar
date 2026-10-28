@@ -1,17 +1,16 @@
 import type { NodeRuntimeState } from '../runtime-state.js';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { ClaudeCodeRunner } from '../runner/claude-code-runner.js';
-import { denyPermission } from '../claude-agent-sdk.js';
+import { denyPermission } from '../runner/claude/claude-agent-sdk.js';
 import type { CodexRunner } from '../runner/codex-runner.js';
-import { boundedConversationItemId, isTerminalRunStatus } from '../util/node-operation-parsers.js';
+import { boundedConversationItemId } from '../runner/normalization.js';
+import { isTerminalRunStatus } from '../session/runtime/type-guards.js';
 import { claudeUserInputQuestions } from '../runner/claude/conversation-parser.js';
 import type { PublicConversationItem } from '../native-transcript-model.js';
-import type { RunDomainState } from './run-domain-state.js';
 
 interface RunnerInteractionServiceOptions {
   readonly runtime: NodeRuntimeState;
-  readonly state: RunDomainState;
   readonly codex: () => CodexRunner;
   readonly settleCodexUsage: (runId: string, turnId: string) => Promise<void>;
   readonly claude: () => ClaudeCodeRunner;
@@ -281,7 +280,6 @@ export class RunnerInteractionService {
     } finally {
       codex.execution.runs.delete(runId);
       codex.releaseEnvironment(runId);
-      this.options.state.active.delete(runId);
     }
   }
 
@@ -318,11 +316,13 @@ export class RunnerInteractionService {
     const run = this.options.runtime.getRun(runId);
     if (run === undefined) return false;
     if (run.status === 'CANCELLING') {
-      const status = this.options.state.interruptRequested.has(runId) ? 'INTERRUPTED' : 'CANCELLED';
+      const status = this.options.runtime.isExecutionInterruptRequested(runId)
+        ? 'INTERRUPTED'
+        : 'CANCELLED';
       this.options.emitRun(runId, 'run.completed', { status }, status);
     } else if (!isTerminalRunStatus(run.status)) return false;
     this.options.codex().execution.runs.delete(runId);
-    this.options.state.active.delete(runId);
+
     return true;
   }
 

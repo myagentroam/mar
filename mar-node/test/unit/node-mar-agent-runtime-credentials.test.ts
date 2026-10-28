@@ -19,8 +19,8 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../../src/runner/execution-context.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { RuntimeCredentialControlService } from '../../src/service/runtime-credential-control-service.js';
-import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
-import { SessionMessageService } from '../../src/service/session-message-service.js';
+import { SessionLifecycleService } from '../../src/session/session-lifecycle-service.js';
+import { SessionMessageService } from '../../src/session/session-message-service.js';
 
 describe('Node MAR Agent runtime credentials', () => {
   it('relays unknown nested model options safely through the SDK', async () => {
@@ -1117,6 +1117,8 @@ describe('Node MAR Agent runtime credentials', () => {
     });
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
       runtime,
       emitQueue: vi.fn(),
       emitConversation: vi.fn(),

@@ -15,9 +15,9 @@ import {
 import { readCodexNativeContextUsage } from '../../src/runner/codex/native-context-usage.js';
 import type { NativeTranscriptItem } from '../../src/native-transcript-model.js';
 import type { NodeAgentSession } from '../../src/database.js';
-import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
+import { nativeConversationPage } from '../../src/session/runner-native-session-parsers.js';
 import { claudeAssistantBlocks } from '../../src/runner/claude/conversation-parser.js';
-import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
+import { projectConversationWorkProcesses } from '../../src/session/runtime/work-process.js';
 
 const directories: string[] = [];
 let previousHome: string | undefined;

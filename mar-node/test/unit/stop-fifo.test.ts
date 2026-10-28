@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { RunnerSteerResult } from '../../src/runner/abstract-runner.js';
+import type { RunnerSteerResult } from '../../src/runner/contracts.js';
 import {
   ContinuousRunCoordinator,
   type PreparedExecutionInput
 } from '../../src/service/continuous-run-coordinator.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 
 const coordinators: ContinuousRunCoordinator<unknown>[] = [];
 afterEach(() => {
@@ -36,6 +36,8 @@ async function fixture(native = false) {
   const afterExecutionSteered = vi.fn(async () => undefined);
   const goalCurrent = vi.fn((_input: PreparedExecutionInput<unknown>) => true);
   const coordinator = new ContinuousRunCoordinator({
+    executionTerminating: () => undefined,
+    keepRunActive: () => false,
     runtime,
     control: runner.control,
     ...(native ? { steer: runner.steer } : {}),

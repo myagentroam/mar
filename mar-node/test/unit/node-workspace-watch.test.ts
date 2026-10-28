@@ -4,14 +4,21 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
-import { WorkspaceChangeService } from '../../src/service/workspace-change-service.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
+import { WorkspaceChangeService } from '../../src/workspace/workspace-change-service.js';
 import {
   WorkspaceSessionService,
   type WorkspaceSessionServiceOptions
-} from '../../src/service/workspace-session-service.js';
-import { WorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
-import { WorkspaceWatchSnapshotService } from '../../src/service/workspace-watch-snapshot-service.js';
+} from '../../src/workspace/workspace-session-service.js';
+import { WorkspaceWatchService } from '../../src/workspace/workspace-watch-service.js';
+import { WorkspaceWatchSnapshotService } from '../../src/workspace/workspace-watch-snapshot-service.js';
+
+function sessionState(service: WorkspaceSessionService) {
+  return service as unknown as {
+    sessionWatchSignatures: Map<string, string>;
+    sessionCache: Map<string, { sessions: readonly NodeAgentSession[]; expiresAt: number }>;
+    sessionCacheReads: Map<string, Promise<readonly NodeAgentSession[]>>;
+  };
+}
 
 describe('Node Workspace watch', () => {
   it('publishes thirty sessions in the initial snapshot with a cursor for remaining sessions', async () => {
@@ -130,9 +137,8 @@ describe('Node Workspace watch', () => {
   });
 
   it('makes a removed lease inactive before cancelling its queued preparation', () => {
-    const state = new WorkspaceDomainState();
     const observed: boolean[] = [];
-    const service = new WorkspaceWatchService(state, vi.fn(), vi.fn(), vi.fn(), (watch) => {
+    const service = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn(), (watch) => {
       observed.push(
         service.matches(
           watch.workspaceId,
@@ -192,10 +198,9 @@ describe('Node Workspace watch', () => {
 
   it('cleans up Workspace Watch resources from the unified release path when the last lease expires', async () => {
     vi.useFakeTimers();
-    const state = new WorkspaceDomainState();
     const stopSessions = vi.fn();
     const releaseWorkspace = vi.fn();
-    const service = new WorkspaceWatchService(state, vi.fn(), stopSessions, releaseWorkspace);
+    const service = new WorkspaceWatchService(vi.fn(), stopSessions, releaseWorkspace);
     service.create(
       'workspace-1',
       'watch-12345678',
@@ -209,7 +214,9 @@ describe('Node Workspace watch', () => {
     await vi.advanceTimersByTimeAsync(45_000);
 
     expect(service.activeWatches('workspace-1')).toEqual([]);
-    expect(state.watchRevisions.size).toBe(0);
+    expect(
+      (service as unknown as { watchRevisions: Map<string, number> }).watchRevisions.size
+    ).toBe(0);
     expect(stopSessions).toHaveBeenCalledWith('workspace-1');
     expect(releaseWorkspace).toHaveBeenCalledWith('workspace-1');
     vi.useRealTimers();
@@ -409,7 +416,6 @@ describe('Node Workspace watch', () => {
   it.each(['success', 'failure'] as const)(
     'does not reuse or publish a late Changes %s read after parent Git is disabled and re-enabled',
     async (staleOutcome) => {
-      const state = new WorkspaceDomainState();
       const database = new NodeDatabase(':memory:', `node-watch-policy-race-${staleOutcome}`);
       const workspace = database.saveWorkspace({
         path: '/workspace',
@@ -417,7 +423,7 @@ describe('Node Workspace watch', () => {
         gitSummary: { repositoryRoot: '/repository' },
         includeParentRepository: true
       });
-      const changes = new WorkspaceChangeService(state);
+      const changes = new WorkspaceChangeService();
       const oldRead = deferred<unknown>();
       const currentRead = deferred<unknown>();
       const oldReadStarted = deferred<void>();
@@ -434,7 +440,7 @@ describe('Node Workspace watch', () => {
         }
         throw new Error('UNEXPECTED_CHANGES_READ');
       });
-      const watches = new WorkspaceWatchService(state, vi.fn(), vi.fn(), vi.fn());
+      const watches = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn());
       const watch = watches.create(
         workspace.id,
         'watch-parent-git',
@@ -685,7 +691,7 @@ describe('Node Workspace watch', () => {
 
   it('Workspace session observation schedules the next cycle after the previous read completes without overlapping reads', async () => {
     vi.useFakeTimers();
-    const state = new WorkspaceDomainState();
+    const watch = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn());
     let finish!: () => void;
     const listPage = vi
       .fn()
@@ -694,7 +700,7 @@ describe('Node Workspace watch', () => {
       )
       .mockResolvedValue({ sessions: [] });
     const invalidate = vi.fn();
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover: vi.fn().mockResolvedValue([]),
       listPage,
       active: () => true,
@@ -713,7 +719,11 @@ describe('Node Workspace watch', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(listPage).toHaveBeenCalledTimes(2);
     await vi.waitFor(() => expect(invalidate).toHaveBeenCalledOnce());
-    expect(state.watchRevisions.has('workspace-1')).toBe(false);
+    expect(
+      (watch as unknown as { watchRevisions: Map<string, number> }).watchRevisions.has(
+        'workspace-1'
+      )
+    ).toBe(false);
 
     service.clear();
     vi.useRealTimers();
@@ -721,14 +731,13 @@ describe('Node Workspace watch', () => {
 
   it('immediate resubscription after cancellation reuses an unfinished session-observation read', async () => {
     vi.useFakeTimers();
-    const state = new WorkspaceDomainState();
     let finish!: () => void;
     const listPage = vi
       .fn()
       .mockReturnValue(
         new Promise<unknown>((resolve) => (finish = () => resolve({ sessions: [] })))
       );
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover: vi.fn().mockResolvedValue([]),
       listPage,
       active: () => true,
@@ -748,10 +757,9 @@ describe('Node Workspace watch', () => {
   });
 
   it('late session-observation reads after the last subscription release do not restore the signature', async () => {
-    const state = new WorkspaceDomainState();
     let active = true;
     let finish!: () => void;
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover: vi.fn().mockResolvedValue([]),
       listPage: vi
         .fn()
@@ -769,18 +777,16 @@ describe('Node Workspace watch', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(state.sessionWatchSignatures.has('workspace-1')).toBe(false);
+    expect(sessionState(service).sessionWatchSignatures.has('workspace-1')).toBe(false);
     service.clear();
   });
 
   it('refreshes completed Runners independently while preserving pending Runner cache entries', async () => {
-    const state = new WorkspaceDomainState();
     const older = [session('old-mar', 'mar-agent'), session('old-codex', 'codex')];
-    state.sessionCache.set('workspace-1', { sessions: older, expiresAt: 0 });
     let batch!: Parameters<WorkspaceSessionServiceOptions['discover']>[1];
     let finish!: (sessions: readonly NodeAgentSession[]) => void;
     const invalidate = vi.fn();
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover: (_workspaceId, onRunnerDiscovered) => {
         batch = onRunnerDiscovered;
         return new Promise((resolve) => (finish = resolve));
@@ -789,6 +795,7 @@ describe('Node Workspace watch', () => {
       active: () => true,
       invalidate
     });
+    sessionState(service).sessionCache.set('workspace-1', { sessions: older, expiresAt: 0 });
     try {
       await expect(service.cached('workspace-1')).resolves.toEqual(older);
       expect(service.discoveryPending('workspace-1')).toBe(false);
@@ -801,7 +808,7 @@ describe('Node Workspace watch', () => {
       finish([updated]);
       await Promise.resolve();
       await Promise.resolve();
-      expect(state.sessionCache.has('workspace-1')).toBe(false);
+      expect(sessionState(service).sessionCache.has('workspace-1')).toBe(false);
       expect(invalidate).toHaveBeenCalledOnce();
     } finally {
       finish([]);
@@ -812,9 +819,7 @@ describe('Node Workspace watch', () => {
   it.each(['warm', 'cold'] as const)(
     'coalesces events during a %s discovery and keeps its result stale for a follow-up refresh',
     async (mode) => {
-      const state = new WorkspaceDomainState();
       const known = [session('known-mar', 'mar-agent')];
-      if (mode === 'warm') state.sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
       let batch!: Parameters<WorkspaceSessionServiceOptions['discover']>[1];
       let finish!: (sessions: readonly NodeAgentSession[]) => void;
       const discover = vi
@@ -825,32 +830,36 @@ describe('Node Workspace watch', () => {
         })
         .mockResolvedValue(known);
       const invalidate = vi.fn();
-      const service = new WorkspaceSessionService(state, {
+      const service = new WorkspaceSessionService({
         discover,
         listPage: vi.fn(),
         active: () => true,
         invalidate
       });
+      if (mode === 'warm')
+        sessionState(service).sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
       try {
         const initial = service.cached('workspace-1');
-        const read = state.sessionCacheReads.get('workspace-1');
+        const read = sessionState(service).sessionCacheReads.get('workspace-1');
         service.markCacheStale('workspace-1');
         service.markCacheStale('workspace-1');
         batch('mar-agent', known);
         await expect(initial).resolves.toEqual(known);
         await expect(service.cached('workspace-1')).resolves.toEqual(known);
-        expect(state.sessionCacheReads.get('workspace-1')).toBe(read);
+        expect(sessionState(service).sessionCacheReads.get('workspace-1')).toBe(read);
         expect(discover).toHaveBeenCalledOnce();
-        expect(state.sessionCache.get('workspace-1')?.expiresAt).toBe(0);
+        expect(sessionState(service).sessionCache.get('workspace-1')?.expiresAt).toBe(0);
         finish(known);
         await read;
-        expect(state.sessionCache.get('workspace-1')?.expiresAt).toBe(0);
+        expect(sessionState(service).sessionCache.get('workspace-1')?.expiresAt).toBe(0);
         expect(invalidate).toHaveBeenCalledOnce();
 
         await expect(service.cached('workspace-1')).resolves.toEqual(known);
-        await state.sessionCacheReads.get('workspace-1');
+        await sessionState(service).sessionCacheReads.get('workspace-1');
         expect(discover).toHaveBeenCalledTimes(2);
-        expect(state.sessionCache.get('workspace-1')?.expiresAt).toBeGreaterThan(Date.now());
+        expect(sessionState(service).sessionCache.get('workspace-1')?.expiresAt).toBeGreaterThan(
+          Date.now()
+        );
         await service.cached('workspace-1');
         expect(discover).toHaveBeenCalledTimes(2);
       } finally {
@@ -861,23 +870,25 @@ describe('Node Workspace watch', () => {
   );
 
   it('an in-flight display event refreshes again even when discovery publishes no batches or changes', async () => {
-    const state = new WorkspaceDomainState();
     const known = [session('known-codex', 'codex')];
-    state.sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
     let finish!: (sessions: readonly NodeAgentSession[]) => void;
     const invalidate = vi.fn();
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover: () => new Promise((resolve) => (finish = resolve)),
       listPage: vi.fn(),
       active: () => true,
       invalidate
     });
+    sessionState(service).sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
     try {
       await service.cached('workspace-1');
       service.markCacheStale('workspace-1');
       finish(known);
-      await state.sessionCacheReads.get('workspace-1');
-      expect(state.sessionCache.get('workspace-1')).toEqual({ sessions: known, expiresAt: 0 });
+      await sessionState(service).sessionCacheReads.get('workspace-1');
+      expect(sessionState(service).sessionCache.get('workspace-1')).toEqual({
+        sessions: known,
+        expiresAt: 0
+      });
       expect(invalidate).toHaveBeenCalledOnce();
     } finally {
       finish?.([]);
@@ -888,9 +899,7 @@ describe('Node Workspace watch', () => {
   it.each(['invalidateCache', 'clear'] as const)(
     '%s rejects stale discovery writes without consuming a replacement refresh request',
     async (action) => {
-      const state = new WorkspaceDomainState();
       const known = [session('known-codex', 'codex')];
-      state.sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
       const batches: Parameters<WorkspaceSessionServiceOptions['discover']>[1][] = [];
       const finishes: ((sessions: readonly NodeAgentSession[]) => void)[] = [];
       const pending: WorkspaceSessionServiceOptions['discover'] = (_workspaceId, batch) => {
@@ -903,38 +912,41 @@ describe('Node Workspace watch', () => {
         .mockImplementationOnce(pending)
         .mockResolvedValue(known);
       const invalidate = vi.fn();
-      const service = new WorkspaceSessionService(state, {
+      const service = new WorkspaceSessionService({
         discover,
         listPage: vi.fn(),
         active: () => true,
         invalidate
       });
+      sessionState(service).sessionCache.set('workspace-1', { sessions: known, expiresAt: 0 });
       try {
         await service.cached('workspace-1');
-        const previous = state.sessionCacheReads.get('workspace-1');
+        const previous = sessionState(service).sessionCacheReads.get('workspace-1');
         service.markCacheStale('workspace-1');
         if (action === 'clear') service.clear();
         else service.invalidateCache('workspace-1');
         const replacement = service.cached('workspace-1');
-        const current = state.sessionCacheReads.get('workspace-1');
+        const current = sessionState(service).sessionCacheReads.get('workspace-1');
         service.markCacheStale('workspace-1');
         batches[0]!('codex', [session('late-codex', 'codex')]);
         finishes[0]!(known);
         await previous;
-        expect(state.sessionCache.has('workspace-1')).toBe(false);
-        expect(state.sessionCacheReads.get('workspace-1')).toBe(current);
+        expect(sessionState(service).sessionCache.has('workspace-1')).toBe(false);
+        expect(sessionState(service).sessionCacheReads.get('workspace-1')).toBe(current);
         expect(invalidate).not.toHaveBeenCalled();
 
         batches[1]!('codex', known);
         await expect(replacement).resolves.toEqual(known);
         finishes[1]!(known);
         await current;
-        expect(state.sessionCache.get('workspace-1')?.expiresAt).toBe(0);
+        expect(sessionState(service).sessionCache.get('workspace-1')?.expiresAt).toBe(0);
         expect(invalidate).toHaveBeenCalledOnce();
         await service.cached('workspace-1');
-        await state.sessionCacheReads.get('workspace-1');
+        await sessionState(service).sessionCacheReads.get('workspace-1');
         expect(discover).toHaveBeenCalledTimes(3);
-        expect(state.sessionCache.get('workspace-1')?.expiresAt).toBeGreaterThan(Date.now());
+        expect(sessionState(service).sessionCache.get('workspace-1')?.expiresAt).toBeGreaterThan(
+          Date.now()
+        );
       } finally {
         for (const finish of finishes) finish([]);
         service.clear();
@@ -943,7 +955,6 @@ describe('Node Workspace watch', () => {
   );
 
   it('rejects an initial discovery failure and retries; a later failure preserves the confirmed batch and rejects late writes', async () => {
-    const state = new WorkspaceDomainState();
     let batch!: Parameters<WorkspaceSessionServiceOptions['discover']>[1];
     let fail!: (error: Error) => void;
     const confirmed = session('confirmed-mar', 'mar-agent');
@@ -955,7 +966,7 @@ describe('Node Workspace watch', () => {
         return new Promise((_resolve, reject) => (fail = reject));
       })
       .mockResolvedValue([confirmed]);
-    const service = new WorkspaceSessionService(state, {
+    const service = new WorkspaceSessionService({
       discover,
       listPage: vi.fn(),
       active: () => true,
@@ -968,15 +979,17 @@ describe('Node Workspace watch', () => {
       await expect(firstBatch).resolves.toEqual([confirmed]);
       service.markCacheStale('workspace-1');
       fail(new Error('later Runner failure'));
-      await state.sessionCacheReads.get('workspace-1')?.catch(() => undefined);
+      await sessionState(service)
+        .sessionCacheReads.get('workspace-1')
+        ?.catch(() => undefined);
       expect(service.discoveryPending('workspace-1')).toBe(true);
       batch('codex', [session('late-codex', 'codex')]);
-      expect(state.sessionCache.get('workspace-1')).toMatchObject({
+      expect(sessionState(service).sessionCache.get('workspace-1')).toMatchObject({
         sessions: [confirmed],
         expiresAt: 0
       });
       await expect(service.cached('workspace-1')).resolves.toEqual([confirmed]);
-      await state.sessionCacheReads.get('workspace-1');
+      await sessionState(service).sessionCacheReads.get('workspace-1');
       expect(service.discoveryPending('workspace-1')).toBe(false);
       expect(discover).toHaveBeenCalledTimes(3);
     } finally {
@@ -1302,7 +1315,7 @@ describe('Node Workspace watch', () => {
         lastActivityAt: 900
       };
       const internals = connector as unknown as {
-        workspaceState: WorkspaceDomainState;
+        workspaceSessionService: WorkspaceSessionService;
         discoverWorkspaceSessions: WorkspaceSessionServiceOptions['discover'];
         emitSessionWorkbenchEvent(payload: unknown): void;
         send(type: string, payload: unknown): void;
@@ -1310,7 +1323,7 @@ describe('Node Workspace watch', () => {
           invalidateTopic(workspaceId: string, topic: 'sessions'): Promise<void>;
         };
       };
-      internals.workspaceState.sessionCache.set(workspace.id, {
+      sessionState(internals.workspaceSessionService).sessionCache.set(workspace.id, {
         sessions: [pinned, sending],
         expiresAt: Date.now() + 60_000
       });
@@ -1359,7 +1372,7 @@ describe('Node Workspace watch', () => {
       expect(await list()).toEqual([pinned.id, sending.id]);
       expect(discover).toHaveBeenCalledOnce();
       finish([pinned, sending]);
-      await internals.workspaceState.sessionCacheReads.get(workspace.id);
+      await sessionState(internals.workspaceSessionService).sessionCacheReads.get(workspace.id);
       await internals.workspaceWorkbenchService.invalidateTopic(workspace.id, 'sessions');
       expect(await list()).toEqual([pinned.id, sending.id]);
       expect(discover).toHaveBeenCalledTimes(2);
@@ -1382,7 +1395,7 @@ describe('Node Workspace watch', () => {
       const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
       const internals = connector as unknown as {
         emitSessionWorkbenchEvent(payload: unknown): void;
-        workspaceState: WorkspaceDomainState;
+        workspaceSessionService: WorkspaceSessionService;
         workspaceWorkbenchService: {
           invalidateTopic(workspaceId: string, topic: 'sessions'): Promise<void>;
         };
@@ -1391,7 +1404,7 @@ describe('Node Workspace watch', () => {
         .spyOn(internals.workspaceWorkbenchService, 'invalidateTopic')
         .mockResolvedValue(undefined);
       const known = [session('known-codex', 'codex')];
-      internals.workspaceState.sessionCache.set(workspace.id, {
+      sessionState(internals.workspaceSessionService).sessionCache.set(workspace.id, {
         sessions: known,
         expiresAt: Date.now() + 60_000
       });
@@ -1401,7 +1414,9 @@ describe('Node Workspace watch', () => {
       });
 
       expect(refresh).toHaveBeenCalledWith(workspace.id, 'sessions');
-      expect(internals.workspaceState.sessionCache.get(workspace.id)).toEqual({
+      expect(
+        sessionState(internals.workspaceSessionService).sessionCache.get(workspace.id)
+      ).toEqual({
         sessions: known,
         expiresAt: 0
       });

@@ -7,7 +7,7 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 
 const cleanup: Array<() => Promise<void>> = [];

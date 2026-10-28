@@ -1,11 +1,11 @@
 import type { GoalContinuationCoordinator } from '../../src/service/goal-continuation-coordinator.js';
-import { withNonImageAttachmentPrompt } from '../../src/util/node-operation-parsers.js';
+import { withNonImageAttachmentPrompt } from '../../src/session/attachments.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createEnvelope, steerComposerMessage } from '../../../packages/protocol/src/index.js';
-import { CodexAppServerClient } from '../../src/codex-app-server.js';
+import { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { capabilities, codexProfileClientFactory, eventually } from './support/codex-connector.js';

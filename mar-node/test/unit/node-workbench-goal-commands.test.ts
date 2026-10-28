@@ -9,7 +9,7 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
-import type { RunnerSteerResult } from '../../src/runner/abstract-runner.js';
+import type { RunnerSteerResult } from '../../src/runner/contracts.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 
 describe('Node Workbench Manifest and command control', () => {

@@ -16,7 +16,7 @@ import {
   type MailNotificationRequest
 } from '@myagentroam/protocol';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import { sessionGroup } from './session-presentation-service.js';
+import { sessionGroup } from '../session/session-presentation-service.js';
 
 interface Capability {
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;

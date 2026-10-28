@@ -1,7 +1,7 @@
 import type { WorkbenchEvent } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
-import type { ConversationHistoryPage } from '../util/runner-native-session-parsers.js';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
+import { isPlainRecord } from '../util/records.js';
 import {
   composeConversationRuntimePage,
   convergeConversationWatchPage

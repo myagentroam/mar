@@ -3,10 +3,10 @@ import type {
   ConversationSegment,
   ConversationSegmentPage
 } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../runtime-model.js';
-import type { ConversationHistoryPage } from '../util/runner-native-session-parsers.js';
-import { projectConversationWorkProcesses } from './conversation-work-process.js';
+import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
+import { projectConversationWorkProcesses } from '../session/runtime/work-process.js';
 
 const MAX_INITIAL_TURN_PAGE_SIZE = 30;
 

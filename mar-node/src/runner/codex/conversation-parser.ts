@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import { open, stat } from 'node:fs/promises';
 import { StringDecoder } from 'node:string_decoder';
 import { nodeLog } from '../../operational.js';
@@ -148,9 +148,9 @@ export class CodexUsageNormalizer {
   }
 }
 import { basename, extname } from 'node:path';
-import type { RunnerHistoryImageRegistrar } from '../abstract-runner.js';
+import type { RunnerHistoryImageRegistrar } from '../contracts.js';
 import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
+import { runnerErrorProjection } from '../runner-error.js';
 import { conversationImageAttachmentSchema } from '@myagentroam/protocol';
 import type {
   NodeConversationItem,
@@ -1551,10 +1551,10 @@ import {
   compactRunnerText,
   compactRunnerValue,
   boundedConversationItemId,
-  isCanonicalBase64,
-  isPlainRecord,
   nativePageEnd
-} from '../../util/node-operation-parsers.js';
+} from '../normalization.js';
+import { isPlainRecord } from '../../util/records.js';
+import { isCanonicalBase64 } from '../../session/attachments.js';
 
 export function extractId(result: unknown, key: 'thread' | 'turn'): string {
   if (

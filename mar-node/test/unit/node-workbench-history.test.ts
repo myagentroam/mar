@@ -5,10 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
-import { rewindTitle } from '../../src/service/session-catalog-service.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import { rewindTitle } from '../../src/session/session-catalog-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import type { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
-import type { SessionDomainState } from '../../src/service/session-domain-state.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
@@ -42,7 +41,6 @@ describe('Node Workbench history projection and pagination', () => {
     const internals = connector as unknown as {
       runtime: NodeRuntimeState;
       runners: RunnerRegistry;
-      sessionState: SessionDomainState<NodeAgentSession, unknown>;
       nativeSessionProjectionService: NativeSessionProjectionService;
       conversationHistoryService: ConversationHistoryService;
       externalSessionResumeService: ExternalSessionResumeService;
@@ -60,20 +58,20 @@ describe('Node Workbench history projection and pagination', () => {
     activity.mockResolvedValue(undefined);
     await internals.conversationHistoryService.refreshExternalActivity(session);
     expect(setActivity).not.toHaveBeenCalled();
-    expect(internals.sessionState.externalActivity.has(session.id)).toBe(false);
+    expect(internals.externalSessionResumeService.activity(session.id) !== undefined).toBe(false);
 
     activity.mockResolvedValue('BUSY');
     await internals.conversationHistoryService.refreshExternalActivity(session);
     expect(setActivity).toHaveBeenLastCalledWith(session.id, 'BUSY');
-    expect(internals.sessionState.externalActivity.get(session.id)).toBe('BUSY');
+    expect(internals.externalSessionResumeService.activity(session.id)).toBe('BUSY');
     activity.mockResolvedValue(undefined);
     await internals.conversationHistoryService.refreshExternalActivity(session);
     expect(setActivity).toHaveBeenCalledTimes(1);
-    expect(internals.sessionState.externalActivity.get(session.id)).toBe('BUSY');
+    expect(internals.externalSessionResumeService.activity(session.id)).toBe('BUSY');
     activity.mockResolvedValue('IDLE');
     await internals.conversationHistoryService.refreshExternalActivity(session);
     expect(setActivity).toHaveBeenLastCalledWith(session.id, 'IDLE');
-    expect(internals.sessionState.externalActivity.get(session.id)).toBe('IDLE');
+    expect(internals.externalSessionResumeService.activity(session.id)).toBe('IDLE');
     expect(setActivity).toHaveBeenCalledTimes(2);
 
     const release = vi.spyOn(internals.externalSessionResumeService, 'forgetSessions');
@@ -81,8 +79,10 @@ describe('Node Workbench history projection and pagination', () => {
       internals.nativeSessionProjectionService.forget(session, new Set([session.id]))
     ).toBeUndefined();
     expect(release).toHaveBeenCalledExactlyOnceWith(new Set([session.id]), new Set([session.id]));
-    expect(internals.sessionState.externalActivity.has(session.id)).toBe(false);
-    expect(internals.sessionState.directNative.has(session.id)).toBe(false);
+    expect(internals.externalSessionResumeService.activity(session.id) !== undefined).toBe(false);
+    expect(
+      internals.nativeSessionProjectionService.cachedNative().some((item) => item.id === session.id)
+    ).toBe(false);
     expect(internals.runtime.getAgentSession(session.id)).toBeUndefined();
   });
 
@@ -537,7 +537,8 @@ describe('Node Workbench history projection and pagination', () => {
         expect(rollback).toHaveBeenCalledWith(
           expect.objectContaining({ id: source.id, runner }),
           `before-${source.id}`,
-          `after-${source.id}`
+          `after-${source.id}`,
+          undefined
         );
         expect(internals.runtime.listConversationTurns({ sessionId: source.id }).turns).toEqual([]);
         expect(invalidateHistory).toHaveBeenCalledWith(source.id);
@@ -731,9 +732,7 @@ describe('Node Workbench history projection and pagination', () => {
       runtime: {
         createAgentSession(input: unknown): NodeAgentSession;
       };
-      sessionState: {
-        directNative: Map<string, NodeAgentSession>;
-      };
+      nativeSessionProjectionService: { directNative: Map<string, NodeAgentSession> };
     };
     const managed = internals.runtime.createAgentSession({
       workspaceId: workspace.id,
@@ -743,7 +742,7 @@ describe('Node Workbench history projection and pagination', () => {
       cwd: workspace.path,
       title: 'first user message'
     });
-    internals.sessionState.directNative.set(managed.id, {
+    internals.nativeSessionProjectionService.directNative.set(managed.id, {
       ...managed,
       runnerTitle: 'Runner correct title',
       titleSource: 'RUNNER',
@@ -768,7 +767,7 @@ describe('Node Workbench history projection and pagination', () => {
         })
       );
 
-      internals.sessionState.directNative.set(managed.id, {
+      internals.nativeSessionProjectionService.directNative.set(managed.id, {
         ...managed,
         runnerTitle: 'latest user message preview',
         titleSource: 'AUTO',
@@ -1127,7 +1126,8 @@ describe('Node Workbench history projection and pagination', () => {
       expect(rollback).toHaveBeenCalledWith(
         expect.objectContaining({ id: session.id }),
         'native-previous',
-        'native-current'
+        'native-current',
+        undefined
       );
     } finally {
       await connector.stop();

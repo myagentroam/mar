@@ -1,3 +1,5 @@
+import type { RunnerExecutionStatus } from './runner/contracts.js';
+
 export type FakeRunnerStep =
   | { readonly type: 'text'; readonly text: string }
   | { readonly type: 'tool'; readonly name: string; readonly input?: unknown }
@@ -12,11 +14,8 @@ export type FakeRunnerStep =
   | { readonly type: 'long-running' }
   | { readonly type: 'disconnect' };
 
-export type FakeRunnerStatus =
-  'STARTING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
-
 export interface FakeRunnerCallbacks {
-  readonly event: (eventType: string, payload: unknown, status?: FakeRunnerStatus) => void;
+  readonly event: (eventType: string, payload: unknown, status?: RunnerExecutionStatus) => void;
   readonly approval: (approvalId: string, payload: unknown, expiresAt: number) => void;
   readonly disconnect: () => void;
 }

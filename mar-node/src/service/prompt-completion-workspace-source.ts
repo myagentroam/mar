@@ -1,6 +1,6 @@
 import type { PromptCompletionContextInput } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
-import type { ConversationHistoryPage } from '../util/runner-native-session-parsers.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
 import type { CompletionActor } from './prompt-completion-node-service.js';
 import {
   PROMPT_COMPLETION_REFERENCE_POOL_SESSIONS,

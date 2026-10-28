@@ -13,15 +13,15 @@ import {
   type NodeWorkspace
 } from '../../src/database.js';
 import { NodeWorkspaceCoordinator } from '../../src/service/node-workspace-coordinator.js';
-import { updateWorkspaceSkillGitExclude } from '../../src/service/workspace-git-exclude-service.js';
-import * as gitExclude from '../../src/service/workspace-git-exclude-service.js';
-import * as workspaceModule from '../../src/workspace.js';
+import { updateWorkspaceSkillGitExclude } from '../../src/workspace/workspace-git-exclude-service.js';
+import * as gitExclude from '../../src/workspace/workspace-git-exclude-service.js';
+import * as workspaceModule from '../../src/workspace/git.js';
 import {
   inspectWorkspace,
   readCurrentChangeDiff,
   resolveGitRepository,
   resolveWorkspaceGitRoot
-} from '../../src/workspace.js';
+} from '../../src/workspace/git.js';
 
 const directories: string[] = [];
 const execFile = promisify(execFileCallback);

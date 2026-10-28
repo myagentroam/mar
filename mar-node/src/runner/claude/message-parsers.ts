@@ -1,9 +1,6 @@
 import type { NativeTranscriptToolCall } from '../../native-transcript-model.js';
-import {
-  compactRunnerText,
-  compactRunnerValue,
-  isPlainRecord
-} from '../../util/node-operation-parsers.js';
+import { compactRunnerText, compactRunnerValue } from '../normalization.js';
+import { isPlainRecord } from '../../util/records.js';
 export function extractClaudeText(message: Record<string, unknown>): string {
   return claudeContentBlocks(message)
     .flatMap((block) =>

@@ -1,7 +1,7 @@
 import type { NodeDatabase } from '../database.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { TerminalManager } from '../terminal.js';
-import { parseSecretEnvironment } from '../util/secret-environment.js';
+import { parseSecretEnvironment } from '../mcp/secret-environment.js';
 
 export class TerminalService {
   private readonly terminalOwners = new Map<

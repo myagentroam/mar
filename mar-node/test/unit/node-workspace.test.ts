@@ -1,3 +1,4 @@
+import { WorkspaceFileIndex, searchWorkspaceFiles } from '../../src/workspace/file-index.js';
 import {
   access,
   mkdir,
@@ -16,22 +17,21 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertSafeGitRef,
-  createWorkspaceDirectory,
   inspectWorkspace,
   isWorkspaceChangeVisible,
-  isWithinAllowedRoot,
+  readCurrentChanges,
+  readCurrentChangesSummary
+} from '../../src/workspace/git.js';
+import {
+  createWorkspaceDirectory,
   listWorkspaceDirectories,
   listWorkspaceFiles,
   normalizeFilePreviewPath,
-  normalizeWorkspacePath,
   readAbsoluteTextFile,
-  readCurrentChanges,
-  readCurrentChangesSummary,
   readWorkspaceFileContentRange,
-  readWorkspaceTextFile,
-  searchWorkspaceFiles,
-  WorkspaceFileIndex
-} from '../../src/workspace.js';
+  readWorkspaceTextFile
+} from '../../src/workspace/files.js';
+import { isWithinAllowedRoot, normalizeWorkspacePath } from '../../src/workspace/path-access.js';
 import { WorkspaceService } from '../../src/service/workspace-service.js';
 import { nextReconnectDelay } from '../../src/connector.js';
 import {

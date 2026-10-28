@@ -10,8 +10,8 @@ import {
   bundledRipgrepDirectory,
   bundledRipgrepPath
 } from '../../src/ripgrep-binary.js';
-import { WorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
-import type { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import { WorkspaceContentSearchService } from '../../src/workspace/workspace-content-search-service.js';
+import type { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 

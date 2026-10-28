@@ -1,4 +1,4 @@
-import { compactRunnerText, compactRunnerValue } from '../../util/node-operation-parsers.js';
+import { compactRunnerText, compactRunnerValue } from '../normalization.js';
 
 export function normalizeOpenCodeTool(
   toolName: string,

@@ -6,22 +6,22 @@ import type {
   RunnerCommandState
 } from '@myagentroam/protocol';
 import { createEnvelope } from '@myagentroam/protocol';
-import type { ClaudeChannelRunHandle, ClaudeImageAttachment } from '../../claude-agent-sdk.js';
-import { denyPermission } from '../../claude-agent-sdk.js';
-import { ClaudeChannelGate } from '../../claude-channel.js';
-import type { NodeAgentSession } from '../../database.js';
+import type { ClaudeChannelRunHandle, ClaudeImageAttachment } from './claude-agent-sdk.js';
+import { denyPermission } from './claude-agent-sdk.js';
+import { ClaudeChannelGate } from './claude-channel.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
-import type { FakeRunnerStatus } from '../../fake-runner.js';
-import { boundedConversationItemId, compactRunnerText } from '../../util/node-operation-parsers.js';
+import type { RunnerExecutionStatus } from '../contracts.js';
+import { boundedConversationItemId, compactRunnerText } from '../normalization.js';
 import { extractClaudeText, extractClaudeToolUses } from './message-parsers.js';
 import { claudePlanText } from './conversation-parser.js';
 import type { PublicConversationItem } from '../../native-transcript-model.js';
 import { normalizeClaudeTool, extractClaudeToolResults } from './tool-normalizer.js';
 import { claudeContentBlocks } from './message-parsers.js';
 import { ClaudeCodeRunner } from '../claude-code-runner.js';
-import { parseSecretEnvironment } from '../../util/secret-environment.js';
+import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
+import { runnerErrorProjection } from '../runner-error.js';
 import { ResponseLatencyTracker } from '../../service/response-latency-tracker.js';
 import { GenerationTimingTracker } from '../../service/generation-timing-tracker.js';
 
@@ -32,9 +32,10 @@ export interface ClaudeRunnerImageAttachment {
 
 export interface ClaudeManagedRunHost<TAttachment extends ClaudeRunnerImageAttachment> {
   intercepted(): boolean;
-  readonly active: Set<string>;
+  isExecutionActive(runId: string): boolean;
+  executionAccepted(runId: string): void;
   parseAttachments(value: unknown): readonly TAttachment[];
-  emit(runId: string, eventType: string, payload: unknown, status?: FakeRunnerStatus): void;
+  emit(runId: string, eventType: string, payload: unknown, status?: RunnerExecutionStatus): void;
   adopt(input: {
     runId: string;
     sessionId: string;
@@ -169,7 +170,7 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
       typeof payload.input !== 'string' ||
       typeof payload.cwd !== 'string' ||
       this.host.intercepted() ||
-      this.host.active.has(payload.runId)
+      this.host.isExecutionActive(payload.runId)
     )
       return;
     const runId = payload.runId;
@@ -218,7 +219,7 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
       this.host.emit(runId, 'run.rejected', { code: 'SESSION_ACTIVATION_REQUIRED' }, 'FAILED');
       return;
     }
-    this.host.active.add(runId);
+    this.host.executionAccepted(runId);
     this.host.emit(runId, 'run.started', {}, 'STARTING');
     if (contextCompactionItemId !== undefined)
       this.host.emitItem(runId, {
@@ -237,7 +238,7 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
       this.host.emit(runId, 'run.usage', value)
     );
     const finish = (
-      status: FakeRunnerStatus,
+      status: RunnerExecutionStatus,
       eventType: string,
       eventPayload: unknown,
       failure?: unknown,
@@ -271,7 +272,6 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
       this.host.emit(runId, eventType, projected ?? eventPayload, status);
       this.runner.execution.runs.delete(runId);
       handle?.cancel();
-      this.host.active.delete(runId);
     };
     try {
       const gate = new ClaudeChannelGate(sessionId);

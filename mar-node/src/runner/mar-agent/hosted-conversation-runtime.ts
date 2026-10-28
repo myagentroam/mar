@@ -17,7 +17,7 @@ import {
   type AgentSessionCatalog,
   type ToolExecutionResult
 } from '@myagentroam/agent';
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import type { NativeTranscriptImageAttachment } from '../../native-transcript-model.js';
 import { projectMarAgentHistory } from './history-projection.js';
 import type {
@@ -29,7 +29,7 @@ import type {
   HostedConversationRuntimeRollbackInput,
   HostedConversationRuntimeRunInput,
   HostedConversationRuntimeSessionInput
-} from '../../service/hosted-conversation-node-service.js';
+} from '../../hosting/runtime-contracts.js';
 import {
   MarAgentConversationNormalizer,
   type MarAgentGeneratedImageArtifact,
@@ -394,6 +394,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
       },
       cancel: () => {
         if (settled || this.#active.get(input.sessionId)?.handle !== handle) return false;
+        titleController.abort();
         execution.cancel();
         return true;
       }

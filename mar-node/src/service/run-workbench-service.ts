@@ -1,10 +1,10 @@
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
-import { nodeOperationData } from '../util/node-operation-data.js';
+import { nodeOperationData } from '../connection/node-operation-data.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import { isTerminalRunStatus } from '../util/node-operation-parsers.js';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
+import { isTerminalRunStatus } from '../session/runtime/type-guards.js';
+import { isPlainRecord } from '../util/records.js';
 import { isHostedConversationImageRunId } from '../runner/mar-agent/generated-images.js';
 import { assertRunOwner } from './run-ownership-policy.js';
 import { imagePreviews } from './image-preview-service.js';

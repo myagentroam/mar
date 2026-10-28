@@ -1,8 +1,8 @@
 import { release, version } from 'node:os';
 import nodePackage from '../package.json' with { type: 'json' };
 import type { NodeCapabilities } from '@myagentroam/protocol';
-import { probeClaudeCode, probeClaudeCodeAsync } from './claude-agent-sdk.js';
-import { probeCodex, probeCodexAsync } from './codex-app-server.js';
+import { probeClaudeCode, probeClaudeCodeAsync } from './runner/claude/claude-agent-sdk.js';
+import { probeCodex, probeCodexAsync } from './runner/codex/codex-app-server.js';
 import { probeOpenCode, probeOpenCodeAsync } from './opencode-runtime.js';
 import { detectRuntimeCommands } from './runtime-command-detector.js';
 

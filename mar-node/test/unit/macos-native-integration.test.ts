@@ -10,7 +10,7 @@ import { ManagedComputerUseRuntime } from '../../src/computer-use-runtime.js';
 import { bundledCtagsPath, repairBundledCtagsExecutable } from '../../src/ctags-binary.js';
 import { probeComputerUse } from '../../src/runner/mar-agent/computer-use.js';
 import { runCtags } from '../../src/service/code-navigation/ctags-index-storage.js';
-import { revealWorkspaceFileInFileManager } from '../../src/service/workspace-file-manager-service.js';
+import { revealWorkspaceFileInFileManager } from '../../src/workspace/workspace-file-manager-service.js';
 import { removeServiceDefinition, writeServiceDefinition } from '../../src/service.js';
 
 const execFile = promisify(execFileCallback);

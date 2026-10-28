@@ -1,4 +1,4 @@
-import { gitCredentialRequest } from './util/git-credential-client.js';
+import { gitCredentialRequest } from './workspace/git-credential-client.js';
 
 // SSH_ASKPASS points to node itself; NODE_OPTIONS imports this before its prompt argument.
 try {

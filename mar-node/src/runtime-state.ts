@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { projectConversationWorkProcesses } from './service/conversation-work-process.js';
+import { RuntimeApprovals } from './session/runtime/approvals.js';
+import {
+  projectConversationEvent,
+  conversationItemFromEvent,
+  activeConversationItem,
+  completedStatusForRun
+} from './session/runtime/conversation-projection.js';
 import { nodeLog } from './operational.js';
 import { safeErrorCode } from './util/safe-error.js';
-import {
-  permissionStopSchema,
-  type PermissionStop,
-  type AgentRunStatus,
-  type RunPerformance,
-  type RunnerName
-} from '@myagentroam/protocol';
-import type { NativeSessionControl, NodeAgentSession, NodeWorkspace } from './database.js';
+import { type AgentRunStatus, type RunPerformance, type RunnerName } from '@myagentroam/protocol';
+import type { NativeSessionControl, NodeAgentSession } from './session/contracts.js';
+import type { NodeWorkspace } from './workspace/contracts.js';
 import type {
   ConversationItemPage,
   ConversationPage,
@@ -35,10 +36,6 @@ export interface AgentSessionLookup {
 }
 
 /** User inputs arrive with a durable Session identity, unlike execution-local output IDs. */
-export function runConversationItemId(runId: string, itemId: string, kind?: string): string {
-  return kind === 'user_message' ? itemId : `${runId}:${itemId}`;
-}
-
 /**
  * Deliberately process-local runtime domain.  No method in this class writes
  * into Node SQLite: a Node restart loses active runs, approvals, leases and
@@ -46,6 +43,33 @@ export function runConversationItemId(runId: string, itemId: string, kind?: stri
  * the Runner/native transcript, never to MAR.
  */
 export class NodeRuntimeState {
+  private readonly activeExecutions = new Set<string>();
+  private readonly interruptedExecutions = new Set<string>();
+
+  executionAccepted(executionId: string): void {
+    this.activeExecutions.add(executionId);
+  }
+
+  executionReleased(executionId: string): void {
+    this.activeExecutions.delete(executionId);
+  }
+
+  isExecutionActive(executionId: string): boolean {
+    return this.activeExecutions.has(executionId);
+  }
+
+  activeExecutionCount(): number {
+    return this.activeExecutions.size;
+  }
+
+  requestExecutionInterrupt(executionId: string): void {
+    this.interruptedExecutions.add(executionId);
+  }
+
+  isExecutionInterruptRequested(executionId: string): boolean {
+    return this.interruptedExecutions.has(executionId);
+  }
+
   private static readonly MAX_COMPLETED_TURNS_PER_SESSION = 10;
   private readonly sessions = new Map<string, NodeAgentSession>();
   private readonly runs = new Map<string, NodeAgentRun>();
@@ -67,7 +91,12 @@ export class NodeRuntimeState {
   private readonly turns = new Map<string, NodeConversationTurn[]>();
   /** New Sessions retain their full history until the bounded Runtime window drops a Turn. */
   private readonly completeHistorySessions = new Set<string>();
-  private readonly approvals = new Map<string, NodeApproval>();
+  private readonly approvalState = new RuntimeApprovals(
+    (runId) => this.getRun(runId),
+    (runId) => this.currentExecutionId(runId),
+    (runId) => this.canonicalRunId(runId),
+    () => this.now()
+  );
   /** A Session owns at most one running turn; Workspace sessions may run concurrently. */
   private readonly leases = new Map<string, string>();
   /** Blocks new Runs or queued messages while native history is being destructively replaced. */
@@ -976,6 +1005,31 @@ export class NodeRuntimeState {
     }));
     return value;
   }
+  acceptExecutionTerminal(input: {
+    readonly runId: string;
+    readonly sequence: number;
+    readonly eventType: string;
+    readonly payload: unknown;
+    readonly status: AgentRunStatus;
+    readonly pauseQueue: boolean;
+  }): {
+    readonly recorded: RuntimeRunEvent | undefined;
+    readonly current: boolean;
+    readonly interrupted: boolean;
+  } {
+    const run = this.getRun(input.runId);
+    if (run === undefined) return { recorded: undefined, current: false, interrupted: false };
+    const currentId = this.currentExecutionId(run.id);
+    const current =
+      currentId === input.runId || (currentId === undefined && input.runId === run.id);
+    const recorded = this.appendRunEvent(input);
+    if (recorded === undefined) return { recorded, current, interrupted: false };
+    if (current && input.pauseQueue) this.pauseSessionQueue(run.sessionId);
+    this.activeExecutions.delete(input.runId);
+    const interrupted = this.interruptedExecutions.delete(input.runId);
+    return { recorded, current, interrupted: current && interrupted };
+  }
+
   appendRunEvent(input: {
     readonly runId: string;
     readonly sequence: number;
@@ -1206,57 +1260,22 @@ export class NodeRuntimeState {
     readonly payload: unknown;
     readonly expiresAt: number;
   }): NodeApproval {
-    const run = this.getRun(input.runId);
-    if (run === undefined) throw new Error('RUN_NOT_FOUND');
-    if (input.runId !== run.id && this.currentExecutionId(run.id) !== input.runId)
-      throw new Error('RUN_EXECUTION_NOT_CURRENT');
-    if (this.approvals.has(input.approvalId)) throw new Error('APPROVAL_ALREADY_EXISTS');
-    if (input.expiresAt <= this.now()) throw new Error('APPROVAL_EXPIRED');
-    const value: NodeApproval = {
-      id: input.approvalId,
-      runId: input.runId,
-      status: 'PENDING',
-      payload: input.payload,
-      expiresAt: input.expiresAt,
-      createdAt: this.now(),
-      decidedAt: null
-    };
-    this.approvals.set(value.id, value);
-    return value;
+    return this.approvalState.createApproval(input);
   }
   getApproval(id: string): NodeApproval | undefined {
-    const value = this.approvals.get(id);
-    if (value?.status === 'PENDING' && value.expiresAt <= this.now())
-      return this.expireApproval(id);
-    return value;
+    return this.approvalState.getApproval(id);
   }
   listApprovals(runId: string): readonly NodeApproval[] {
-    const canonicalRunId = this.canonicalRunId(runId);
-    return [...this.approvals.values()]
-      .filter((value) => this.canonicalRunId(value.runId) === canonicalRunId)
-      .map((value) => this.getApproval(value.id) as NodeApproval);
+    return this.approvalState.listApprovals(runId);
   }
   expireApproval(id: string): NodeApproval {
-    const value = this.requireApproval(id);
-    if (value.status !== 'PENDING') return value;
-    if (value.expiresAt > this.now()) throw new Error('APPROVAL_NOT_EXPIRED');
-    const next = { ...value, status: 'EXPIRED' as const, decidedAt: this.now() };
-    this.approvals.set(id, next);
-    return next;
+    return this.approvalState.expireApproval(id);
   }
   decideApproval(id: string, decision: 'APPROVED' | 'REJECTED'): NodeApproval {
-    const value = this.getApproval(id);
-    if (value === undefined) throw new Error('APPROVAL_NOT_FOUND');
-    if (value.status === 'EXPIRED') throw new Error('APPROVAL_EXPIRED');
-    if (value.status !== 'PENDING') throw new Error('APPROVAL_ALREADY_DECIDED');
-    const next = { ...value, status: decision, decidedAt: this.now() };
-    this.approvals.set(id, next);
-    return next;
+    return this.approvalState.decideApproval(id, decision);
   }
   expireDueApprovals(): readonly NodeApproval[] {
-    return [...this.approvals.values()]
-      .filter((value) => value.status === 'PENDING' && value.expiresAt <= this.now())
-      .map((value) => this.expireApproval(value.id));
+    return this.approvalState.expireDueApprovals();
   }
   listNonterminalRuns(): readonly NodeAgentRun[] {
     return [...this.runs.values()].filter((run) => !terminal(run.status));
@@ -1317,9 +1336,7 @@ export class NodeRuntimeState {
         this.messageSubmissions.delete(key);
         this.rememberTerminalMessageSubmission(key, runId);
       }
-    for (const [approvalId, approval] of this.approvals)
-      if (approval.runId === runId || executionIds.has(approval.runId))
-        this.approvals.delete(approvalId);
+    this.approvalState.removeRun(runId, executionIds);
   }
   private clearTerminalMessageSubmissions(sessionId: string): void {
     for (const key of this.terminalMessageSubmissions.keys())
@@ -1369,9 +1386,7 @@ export class NodeRuntimeState {
         this.messageSubmissions.delete(key);
     for (const key of this.failedMessageSubmissions.keys())
       if (key.startsWith(`${sessionId}\u0000`)) this.failedMessageSubmissions.delete(key);
-    for (const [approvalId, approval] of this.approvals)
-      if (runIds.has(approval.runId) || executionIds.has(approval.runId))
-        this.approvals.delete(approvalId);
+    this.approvalState.removeRuns(runIds, executionIds);
   }
   beginSessionHistoryMutation(
     sessionId: string,
@@ -1446,9 +1461,7 @@ export class NodeRuntimeState {
       if (separator >= 0 && sessionIds.has(key.slice(0, separator)))
         this.failedMessageSubmissions.delete(key);
     }
-    for (const [approvalId, approval] of this.approvals)
-      if (runIds.has(approval.runId) || executionIds.has(approval.runId))
-        this.approvals.delete(approvalId);
+    this.approvalState.removeRuns(runIds, executionIds);
     for (const sessionId of sessionIds) {
       const queued = this.queuedItems.get(sessionId) ?? [];
       this.queuedItems.delete(sessionId);
@@ -1526,11 +1539,6 @@ export class NodeRuntimeState {
   private requireQueueItem(id: string): NodeQueueItem {
     const value = this.queueItems.get(id);
     if (value === undefined) throw new Error('QUEUE_ITEM_INVALID');
-    return value;
-  }
-  private requireApproval(id: string): NodeApproval {
-    const value = this.approvals.get(id);
-    if (value === undefined) throw new Error('APPROVAL_NOT_FOUND');
     return value;
   }
   private updateTurnForRun(
@@ -1681,164 +1689,8 @@ export class NodeRuntimeState {
       conversationItemFromEvent(event) !== undefined
     )
       this.createItemOnlyTurn(run, event.createdAt);
-    let needsProcessProjection = false;
-    const update = (turn: NodeConversationTurn): NodeConversationTurn => {
-      if (
-        event.eventType === 'text.delta' &&
-        isRecord(event.payload) &&
-        typeof event.payload.text === 'string'
-      ) {
-        const nativeItemId =
-          typeof event.payload.itemId === 'string' && event.payload.itemId.length <= 88
-            ? event.payload.itemId
-            : undefined;
-        const stableItemId =
-          nativeItemId === undefined ? undefined : `${event.runId}:${nativeItemId}`;
-        const lastItem = turn.items.at(-1);
-        const existing =
-          stableItemId === undefined
-            ? lastItem?.kind === 'assistant_message' && activeConversationItem(lastItem.status)
-              ? lastItem
-              : undefined
-            : turn.items.find(
-                (item) => item.id === stableItemId && item.kind === 'assistant_message'
-              );
-        const text = `${existing === undefined ? '' : readableText(existing.payload)}${event.payload.text}`;
-        const sourceItemId = conversationSourceItemId(event.payload) ?? existing?.sourceItemId;
-        needsProcessProjection =
-          existing === undefined ||
-          existing.sourceItemId !== sourceItemId ||
-          (!readableText(existing.payload).trim() && !!text.trim());
-        const item: NodeConversationItem = {
-          id: existing?.id ?? stableItemId ?? `${event.runId}:assistant:${event.sequence}`,
-          ...(sourceItemId === undefined ? {} : { sourceItemId }),
-          sessionId: run.sessionId,
-          turnId: turn.id,
-          runId: event.runId,
-          parentItemId: null,
-          sourceSequence: existing?.sourceSequence ?? event.sequence,
-          revision: event.sequence,
-          kind: 'assistant_message',
-          ...(existing?.processGroup === undefined ? {} : { processGroup: existing.processGroup }),
-          updatedAt: event.createdAt,
-          status: 'IN_PROGRESS',
-          payload: { text, format: 'markdown', model: null },
-          startedAt: existing?.startedAt ?? event.createdAt,
-          completedAt: null
-        };
-        return {
-          ...turn,
-          status: 'RUNNING',
-          startedAt: turn.startedAt ?? event.createdAt,
-          items:
-            existing === undefined
-              ? [...turn.items, item]
-              : turn.items.map((value) => (value.id === item.id ? item : value))
-        };
-      }
-      const projected = conversationItemFromEvent(event);
-      if (projected !== undefined) {
-        const itemId = runConversationItemId(event.runId, projected.itemId, projected.kind);
-        const trailingItem = turn.items.at(-1);
-        const orderedItems =
-          projected.kind !== 'user_message' &&
-          trailingItem?.kind === 'assistant_message' &&
-          activeConversationItem(trailingItem.status)
-            ? turn.items.map((item) =>
-                item.id === trailingItem.id
-                  ? {
-                      ...item,
-                      status: 'COMPLETED',
-                      completedAt: event.createdAt,
-                      updatedAt: event.createdAt
-                    }
-                  : item
-              )
-            : turn.items;
-        const existing =
-          orderedItems.find((item) => item.id === itemId) ??
-          (projected.kind === 'assistant_message' &&
-          projected.itemId.startsWith('codex:') &&
-          trailingItem?.kind === 'assistant_message' &&
-          trailingItem.id.startsWith(`${event.runId}:assistant:`) &&
-          activeConversationItem(trailingItem.status)
-            ? trailingItem
-            : undefined);
-        const status = projected.status;
-        const sourceItemId = projected.sourceItemId ?? existing?.sourceItemId;
-        const parentItemId =
-          projected.parentItemId === undefined
-            ? (existing?.parentItemId ?? null)
-            : runConversationItemId(event.runId, projected.parentItemId);
-        needsProcessProjection =
-          existing === undefined ||
-          existing.kind !== projected.kind ||
-          projected.kind === 'context_compaction' ||
-          existing.parentItemId !== parentItemId ||
-          existing.sourceItemId !== sourceItemId ||
-          (projected.kind === 'assistant_message' &&
-            !!readableText(existing.payload).trim() !== !!readableText(projected.payload).trim()) ||
-          (projected.kind === 'reasoning' && existing.processGroup === undefined);
-        const item: NodeConversationItem = {
-          id: itemId,
-          sessionId: run.sessionId,
-          turnId: turn.id,
-          runId: event.runId,
-          parentItemId,
-          ...(sourceItemId === undefined ? {} : { sourceItemId }),
-          sourceSequence: existing?.sourceSequence ?? event.sequence,
-          revision: (existing?.revision ?? -1) + 1,
-          kind: projected.kind,
-          ...(existing?.processGroup === undefined ? {} : { processGroup: existing.processGroup }),
-          updatedAt: event.createdAt,
-          status,
-          payload: mergeConversationItemPayload(existing?.payload, projected),
-          ...(projected.permissionStop === undefined
-            ? {}
-            : { permissionStop: projected.permissionStop }),
-          startedAt: existing?.startedAt ?? event.createdAt,
-          completedAt: completedConversationItem(status) ? event.createdAt : null
-        };
-        return {
-          ...turn,
-          status: terminal(run.status) ? run.status : 'RUNNING',
-          startedAt: turn.startedAt ?? event.createdAt,
-          items:
-            existing === undefined
-              ? [...orderedItems, item]
-              : orderedItems.map((value) => (value.id === existing.id ? item : value))
-        };
-      }
-      if (event.eventType === 'run.started' || event.eventType === 'run.running')
-        return { ...turn, status: 'RUNNING', startedAt: turn.startedAt ?? event.createdAt };
-      if (
-        event.eventType === 'run.completed' ||
-        event.eventType === 'run.failed' ||
-        event.eventType === 'run.rejected'
-      ) {
-        const status = event.status ?? this.requireRun(event.runId).status;
-        return {
-          ...turn,
-          status,
-          completedAt: event.createdAt,
-          items: turn.items.map((item) =>
-            activeConversationItem(item.status)
-              ? {
-                  ...item,
-                  status: completedStatusForRun(status),
-                  completedAt: event.createdAt
-                }
-              : item
-          )
-        };
-      }
-      return turn;
-    };
-    const project = (turn: NodeConversationTurn) => {
-      const next = update(turn);
-      // Ordinary token/output updates retain membership; only structural input needs a scan.
-      return needsProcessProjection ? projectConversationWorkProcesses(next) : next;
-    };
+    const project = (turn: NodeConversationTurn) =>
+      projectConversationEvent(turn, run, event, terminal(run.status));
     if (turnId === undefined) this.updateCurrentTurnForRun(event.runId, project);
     else {
       const current = this.turns.get(run.sessionId) ?? [];
@@ -1865,199 +1717,6 @@ function transitionAllowed(from: AgentRunStatus, to: AgentRunStatus): boolean {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-function readableText(value: unknown): string {
-  return isRecord(value) && typeof value.text === 'string' ? value.text : '';
-}
-
-type ProjectedConversationItem = {
-  readonly sourceItemId?: string;
-  readonly parentItemId?: string;
-  readonly permissionStop?: PermissionStop;
-  readonly itemId: string;
-  readonly kind: string;
-  readonly status: string;
-  readonly payload: Record<string, unknown>;
-  readonly merge: boolean;
-  readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
-};
-
-function conversationItemFromEvent(event: RuntimeRunEvent): ProjectedConversationItem | undefined {
-  if (isRecord(event.payload)) {
-    const approvalId = event.payload.approvalId;
-    if (typeof approvalId === 'string' && approvalId.length > 0) {
-      if (event.eventType === 'approval.request')
-        return {
-          itemId: `approval:${approvalId}`,
-          kind: 'approval_request',
-          status: 'PENDING',
-          payload: {
-            approvalId,
-            approvalStatus: 'PENDING',
-            approval: event.payload.payload,
-            expiresAt: event.payload.expiresAt
-          },
-          merge: false
-        };
-      if (event.eventType === 'approval.decided') {
-        const decision = event.payload.decision;
-        if (decision === 'APPROVED' || decision === 'REJECTED')
-          return {
-            itemId: `approval:${approvalId}`,
-            kind: 'approval_request',
-            status: decision === 'APPROVED' ? 'COMPLETED' : 'DECLINED',
-            payload: { approvalId, approvalStatus: decision },
-            merge: true
-          };
-      }
-      if (event.eventType === 'approval.expired')
-        return {
-          itemId: `approval:${approvalId}`,
-          kind: 'approval_request',
-          status: 'CANCELLED',
-          payload: { approvalId, approvalStatus: 'EXPIRED' },
-          merge: true
-        };
-    }
-  }
-  if (event.eventType !== 'conversation.item' || !isRecord(event.payload)) return undefined;
-  const itemId = event.payload.itemId;
-  const kind = event.payload.kind;
-  const status = event.payload.status;
-  const payload = event.payload.payload;
-  if (
-    typeof itemId !== 'string' ||
-    itemId.length === 0 ||
-    itemId.length > 88 ||
-    typeof kind !== 'string' ||
-    !projectableConversationKind(kind) ||
-    typeof status !== 'string' ||
-    !projectableConversationStatus(status) ||
-    !isRecord(payload)
-  )
-    return undefined;
-  const append = event.payload.append;
-  const sourceItemId = conversationSourceItemId(event.payload);
-  const permissionStop = permissionStopSchema.safeParse(event.payload.permissionStop);
-  return {
-    itemId,
-    kind,
-    status,
-    payload,
-    ...(sourceItemId === undefined ? {} : { sourceItemId }),
-    ...(typeof event.payload.parentItemId === 'string' &&
-    event.payload.parentItemId.length > 0 &&
-    event.payload.parentItemId.length <= 88
-      ? { parentItemId: event.payload.parentItemId }
-      : {}),
-    ...(permissionStop.success ? { permissionStop: permissionStop.data } : {}),
-    merge: event.payload.merge === true,
-    ...(append === 'sections' || append === 'outputPreview' || append === 'outputSummary'
-      ? { append }
-      : {})
-  };
-}
-
-function conversationSourceItemId(payload: Record<string, unknown>): string | undefined {
-  return typeof payload.sourceItemId === 'string' &&
-    payload.sourceItemId.length > 0 &&
-    payload.sourceItemId.length <= 1024
-    ? payload.sourceItemId
-    : undefined;
-}
-
-function projectableConversationKind(value: string): boolean {
-  return (
-    value === 'user_message' ||
-    value === 'assistant_message' ||
-    value === 'reasoning' ||
-    value === 'tool_call' ||
-    value === 'command_execution' ||
-    value === 'approval_request' ||
-    value === 'user_input_request' ||
-    value === 'plan' ||
-    value === 'todo_list' ||
-    value === 'file_change' ||
-    value === 'context_compaction' ||
-    value === 'unknown' ||
-    value === 'warning' ||
-    value === 'error'
-  );
-}
-
-function projectableConversationStatus(value: string): boolean {
-  return [
-    'PENDING',
-    'IN_PROGRESS',
-    'COMPLETED',
-    'FAILED',
-    'DECLINED',
-    'CANCELLED',
-    'INTERRUPTED'
-  ].includes(value);
-}
-
-function mergeConversationItemPayload(
-  existing: unknown,
-  next: ProjectedConversationItem
-): Record<string, unknown> {
-  const base = next.merge && isRecord(existing) ? existing : {};
-  const value = { ...base, ...next.payload };
-  if (next.append === 'sections') {
-    const prior = Array.isArray(base.sections) ? base.sections : [];
-    const incoming = Array.isArray(next.payload.sections) ? next.payload.sections : [];
-    const sections = new Map<number, string>();
-    for (const section of [...prior, ...incoming]) {
-      if (
-        !isRecord(section) ||
-        typeof section.index !== 'number' ||
-        !Number.isInteger(section.index) ||
-        section.index < 0 ||
-        typeof section.text !== 'string'
-      )
-        continue;
-      sections.set(
-        section.index,
-        appendProjectionText(sections.get(section.index) ?? '', section.text)
-      );
-    }
-    value.sections = [...sections]
-      .sort(([left], [right]) => left - right)
-      .map(([index, text]) => ({ index, text }));
-  }
-  if (next.append === 'outputPreview') {
-    const prior = typeof base.outputPreview === 'string' ? base.outputPreview : '';
-    const incoming =
-      typeof next.payload.outputPreview === 'string' ? next.payload.outputPreview : '';
-    value.outputPreview = appendProjectionText(prior, incoming);
-  }
-  if (next.append === 'outputSummary') {
-    const prior = typeof base.outputSummary === 'string' ? base.outputSummary : '';
-    const incoming =
-      typeof next.payload.outputSummary === 'string' ? next.payload.outputSummary : '';
-    value.outputSummary = appendProjectionText(prior, incoming);
-  }
-  return value;
-}
-
-function appendProjectionText(previous: string, next: string): string {
-  const text = `${previous}${next}`;
-  return text.length <= 10_000 ? text : `${text.slice(0, 9_999)}…`;
-}
-
-function activeConversationItem(status: string): boolean {
-  return status === 'PENDING' || status === 'IN_PROGRESS';
-}
-
-function completedConversationItem(status: string): boolean {
-  return !activeConversationItem(status);
-}
-
-function completedStatusForRun(status: AgentRunStatus): string {
-  if (status === 'INTERRUPTED') return 'INTERRUPTED';
-  if (status === 'CANCELLED') return 'CANCELLED';
-  if (status === 'FAILED') return 'FAILED';
-  return 'COMPLETED';
 }
 function executionStatusForRun(status: AgentRunStatus): NodeRunnerExecution['status'] {
   if (status === 'FAILED') return 'FAILED';

@@ -1,4 +1,4 @@
-import type { CodexAppServerClient } from '../../../src/codex-app-server.js';
+import type { CodexAppServerClient } from '../../../src/runner/codex/codex-app-server.js';
 
 export function codexProfileClientFactory(): CodexAppServerClient {
   return {

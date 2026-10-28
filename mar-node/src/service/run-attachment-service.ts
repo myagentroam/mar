@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { imageRefSchema } from '@myagentroam/protocol';
-import type { CodexComposerInput } from '../codex-app-server.js';
-import type { NodeAgentSession } from '../database.js';
+import type { CodexComposerInput } from '../runner/codex/codex-app-server.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeMessageAttachmentInput } from '../runtime-model.js';
 import type { NativeTranscriptImageAttachment } from '../native-transcript-model.js';
 import {

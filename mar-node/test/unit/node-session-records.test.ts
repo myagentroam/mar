@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import type { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
+import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { capabilities, codexProfileClientFactory } from './support/codex-connector.js';
 

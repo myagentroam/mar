@@ -7,13 +7,12 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
-import type { WorkspaceChangeService } from '../../src/service/workspace-change-service.js';
-import type { WorkspaceCodeNavigationService } from '../../src/service/workspace-code-navigation-service.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
-import { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
-import type { WorkspaceUploadService } from '../../src/service/workspace-upload-service.js';
-import type { WorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
-import type { WorkspaceWorkbenchService } from '../../src/service/workspace-workbench-service.js';
+import type { WorkspaceChangeService } from '../../src/workspace/workspace-change-service.js';
+import type { WorkspaceCodeNavigationService } from '../../src/workspace/workspace-code-navigation-service.js';
+import { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
+import type { WorkspaceUploadService } from '../../src/workspace/workspace-upload-service.js';
+import type { WorkspaceWatchService } from '../../src/workspace/workspace-watch-service.js';
+import type { WorkspaceWorkbenchService } from '../../src/workspace/workspace-workbench-service.js';
 import { executeNodeOperation } from './support/node-connector.js';
 
 const execFile = promisify(execFileCallback);
@@ -23,6 +22,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
+
+function fileIndexes(service: WorkspaceFileService): Map<string, unknown> {
+  return (service as unknown as { fileIndexes: Map<string, unknown> }).fileIndexes;
+}
 
 describe('Workspace successful file mutation invalidation', () => {
   it.each(['write', 'mutate'] as const)(
@@ -36,9 +39,8 @@ describe('Workspace successful file mutation invalidation', () => {
         kind: 'DIRECTORY' as const,
         gitSummary: null
       };
-      const state = new WorkspaceDomainState();
       const callback = vi.fn((id: string) => files.dispose(id));
-      const files = new WorkspaceFileService(state, callback);
+      const files = new WorkspaceFileService(callback);
       cleanups.push(async () => files.dispose());
       await files.search(workspace, { query: 'tracked' });
       const dispose = vi.spyOn(files, 'dispose');
@@ -56,7 +58,7 @@ describe('Workspace successful file mutation invalidation', () => {
 
       expect(callback).toHaveBeenCalledExactlyOnceWith(workspace.id);
       expect(dispose).toHaveBeenCalledExactlyOnceWith(workspace.id);
-      expect(state.fileIndexes.has(workspace.id)).toBe(false);
+      expect(fileIndexes(files).has(workspace.id)).toBe(false);
     }
   );
 
@@ -116,8 +118,8 @@ describe('Workspace successful file mutation invalidation', () => {
       }
 
       expect(events).toEqual(expectedEvents(workspace.id));
-      expect(internals.workspaceState.fileIndexes.has(workspace.id)).toBe(false);
-      expect(internals.workspaceState.fileIndexes.get(other.id)).toBe(fixture.otherIndex);
+      expect(fileIndexes(internals.workspaceFileService).has(workspace.id)).toBe(false);
+      expect(fileIndexes(internals.workspaceFileService).get(other.id)).toBe(fixture.otherIndex);
       expect(internals.workspaceChangeService.revision(workspace.id)).toBe(fixture.revision + 1);
       expect(internals.workspaceChangeService.revision(other.id)).toBe(fixture.otherRevision);
       expect(await internals.workspaceChangeService.current(other)).toBe(fixture.otherChanges);
@@ -190,7 +192,7 @@ describe('Workspace successful file mutation invalidation', () => {
     expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('changed');
     expect(await readFile(join(root, 'collision.txt'), 'utf8')).toBe('keep');
     expect(events).toEqual([]);
-    expect(internals.workspaceState.fileIndexes.get(workspace.id)).toBe(fixture.index);
+    expect(fileIndexes(internals.workspaceFileService).get(workspace.id)).toBe(fixture.index);
     expect(await internals.workspaceChangeService.current(workspace)).toBe(fixture.changes);
   });
 
@@ -250,7 +252,6 @@ describe('Workspace successful file mutation invalidation', () => {
 
 interface ConnectorInternals {
   send(type: string, payload: unknown): void;
-  workspaceState: WorkspaceDomainState;
   workspaceFileService: WorkspaceFileService;
   workspaceUploadService: WorkspaceUploadService;
   workspaceChangeService: WorkspaceChangeService;
@@ -309,8 +310,8 @@ async function connectorFixture() {
   }
   const changes = await internals.workspaceChangeService.current(workspace);
   const otherChanges = await internals.workspaceChangeService.current(other);
-  const index = internals.workspaceState.fileIndexes.get(workspace.id);
-  const otherIndex = internals.workspaceState.fileIndexes.get(other.id);
+  const index = fileIndexes(internals.workspaceFileService).get(workspace.id);
+  const otherIndex = fileIndexes(internals.workspaceFileService).get(other.id);
   const revision = internals.workspaceChangeService.revision(workspace.id);
   const otherRevision = internals.workspaceChangeService.revision(other.id);
   const events: string[] = [];

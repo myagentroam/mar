@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { NodeRuntimeState, runConversationItemId } from '../../mar-node/src/runtime-state.js';
+import { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
+import { runConversationItemId } from '../../mar-node/src/session/runtime/conversation-projection.js';
 import type {
   NodeConversationItem,
   NodeConversationTurn
 } from '../../mar-node/src/runtime-model.js';
 import { marctlSessionProgress } from '../../mar-node/src/service/session-recent-activity.js';
 import { projectWorkbenchPayload } from '../../mar-node/src/service/workbench-event-projection.js';
-import { projectConversationWorkProcesses } from '../../mar-node/src/service/conversation-work-process.js';
+import { projectConversationWorkProcesses } from '../../mar-node/src/session/runtime/work-process.js';
 import { conversationSegments } from '../../mar-node/src/service/conversation-segment-service.js';
 import { CodexManagedRunController } from '../../mar-node/src/runner/codex/managed-run-controller.js';
 import {
   codexOfficialItem,
-  codexTranscriptSourceItemId,
-  type PublicConversationItem
+  codexTranscriptSourceItemId
 } from '../../mar-node/src/runner/codex/conversation-parser.js';
+import type { PublicConversationItem } from '../../mar-node/src/native-transcript-model.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
