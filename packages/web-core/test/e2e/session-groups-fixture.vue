@@ -87,7 +87,11 @@ if (new URL(location.href).searchParams.has('unread-only')) {
 const groupState = computed(() => service.sessionGroupState('node', 'workspace'));
 function activateMarker(group: SessionGroup): void {
   const target = service.sessionGroupTarget(group, { nodeId: 'node', workspaceId: 'workspace' });
-  if (target) selected.value = target.sessionId;
+  if (target) openTarget(target.sessionId);
+}
+function openTarget(sessionId: string): void {
+  selected.value = sessionId;
+  group.value = sessionId === 'main' ? 'MAIN' : 'CHILD';
 }
 const shown = computed(() =>
   sessions.value.filter((session) => session.sessionGroup === group.value)
@@ -202,8 +206,8 @@ const props = {
         :mobile-mode="mobile"
         mobile-panel-target="#recent-mobile"
         :mobile-presented="mobile"
-        @open-recent-run="selected = $event.sessionId"
-        @open-session-target="selected = $event.sessionId"
+        @open-recent-run="openTarget($event.sessionId)"
+        @open-session-target="openTarget($event.sessionId)"
       />
     </div>
   </main>

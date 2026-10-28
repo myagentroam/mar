@@ -26,6 +26,17 @@ export interface OpenSessionOptions {
   readonly deferInitialScroll?: boolean;
   readonly skipSaveCurrent?: boolean;
   readonly markReadAfterOpen?: boolean;
+  readonly onSessionResolved?: (session: Session) => void;
+}
+
+interface OpeningSession {
+  readonly requestId: number;
+  readonly nodeId: string;
+  readonly workspaceId: string | undefined;
+  readonly sessionId: string;
+  session?: Session;
+  onSessionResolved?: (session: Session) => void;
+  markRead: boolean;
 }
 
 export interface WorkbenchSessionSelectionOptions {
@@ -82,6 +93,7 @@ export interface WorkbenchSessionSelectionOptions {
 
 const EMPTY_QUEUE: WorkspaceQueue = { version: 0, paused: false, items: [] };
 export function createWorkbenchSessionSelectionService(options: WorkbenchSessionSelectionOptions) {
+  let opening: OpeningSession | undefined;
   const restoredContent = ref(false);
   let positioningRequest: number | undefined;
   const loadingInitialContent = computed(
@@ -180,6 +192,14 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     if (nodeId === undefined) return;
     const requestId = options.nextRequest();
+    const operation: OpeningSession = {
+      requestId,
+      nodeId,
+      workspaceId,
+      sessionId,
+      markRead: false
+    };
+    opening = operation;
     positioningRequest = undefined;
     options.positioning.value = false;
     options.loadingInitial.value = true;
@@ -210,6 +230,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
           'SESSION_NOT_FOUND',
           'The session does not belong to the selected Workspace.'
         );
+      openOptions.onSessionResolved?.(sessionResult.session);
+      operation.session = sessionResult.session;
+      operation.onSessionResolved?.(sessionResult.session);
       const active = activeRun(options.runs.value, sessionResult.session.id);
       options.replaceSession(sessionId, sessionResult.session);
       options.applyComposerConfiguration(sessionResult.session, true);
@@ -254,7 +277,11 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       await cachedPositioning;
       if (!isCurrent()) return;
       options.positioning.value = false;
-      if (openOptions.markReadAfterOpen && isCurrent())
+      if (
+        (openOptions.markReadAfterOpen || operation.markRead) &&
+        sessionResult.session.workspaceId === workspaceId &&
+        current(requestId, nodeId, sessionId, workspaceId)
+      )
         await options.markSessionRead(nodeId, workspaceId!, sessionResult.session.id);
     } catch (error) {
       await cachedPositioning;
@@ -274,6 +301,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         error
       );
     } finally {
+      if (opening === operation) opening = undefined;
       if (isCurrent()) {
         options.loadingInitial.value = false;
       }
@@ -288,18 +316,46 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     await openSession(sessionId);
   }
 
-  async function openWorkspaceTabSession(sessionId: string): Promise<void> {
+  async function openWorkspaceTabSession(
+    sessionId: string,
+    onSessionResolved?: (session: Session) => void
+  ): Promise<void> {
     const target = options.workspaceTarget.value;
     if (target === undefined) return;
     if (options.selectedSessionId.value === sessionId && !options.draftOpen.value) {
       options.closeMobileSurface();
-      if (options.loadingInitial.value) return;
+      if (options.loadingInitial.value) {
+        if (
+          opening?.requestId === options.currentRequest() &&
+          opening.nodeId === target.nodeId &&
+          opening.workspaceId === target.workspaceId &&
+          opening.sessionId === sessionId
+        ) {
+          if (onSessionResolved !== undefined) {
+            if (opening.session !== undefined) onSessionResolved(opening.session);
+            else opening.onSessionResolved = onSessionResolved;
+          }
+          opening.markRead = true;
+        }
+        return;
+      }
       if (!options.initialLoadFailed.value && options.hasInitialSnapshot(sessionId)) {
+        const session = options.sessions.value.find(
+          (item) => item.id === sessionId && item.workspaceId === target.workspaceId
+        );
+        if (session === undefined && onSessionResolved !== undefined) {
+          await openSession(sessionId, { markReadAfterOpen: true, onSessionResolved });
+          return;
+        }
+        if (session !== undefined) onSessionResolved?.(session);
         await options.markSessionRead(target.nodeId, target.workspaceId, sessionId);
         return;
       }
     }
-    await openSession(sessionId, { markReadAfterOpen: true });
+    await openSession(sessionId, {
+      markReadAfterOpen: true,
+      ...(onSessionResolved === undefined ? {} : { onSessionResolved })
+    });
   }
 
   return { openSession, selectSession, openWorkspaceTabSession, loadingInitialContent };

@@ -419,6 +419,20 @@ describe('Web Workspace Session Discovery', () => {
     );
   });
 
+  it('retains a navigated group while the Node capability is still being resolved', async () => {
+    const supported = ref(false);
+    const fixture = state(
+      [],
+      vi.fn().mockResolvedValue({ sessions: [], nextCursor: null }),
+      () => supported.value
+    );
+    fixture.controller.selectGroup('CHILD', true);
+    expect(fixture.controller.currentGroup.value).toBeUndefined();
+    supported.value = true;
+    await nextTick();
+    expect(fixture.controller.currentGroup.value).toBe('CHILD');
+  });
+
   it('includes the selected group in every Workspace list and search request', async () => {
     const request = vi.fn().mockResolvedValue({ sessions: [], nextCursor: 'next' });
     const { controller, paging } = state([], request, () => true);

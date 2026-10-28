@@ -5,7 +5,7 @@ lastUpdated: 2026-10-28
 
 # Create and Manage Sessions
 
-Select a group badge to open an unread session first, or an active session if none is unread. Selecting the rest of the tab only switches the list and does not change the conversation.
+Select a group badge to open an unread session first, or an active session if none is unread. Chats switches to the opened session's actual group. Notifications, recent sessions, and workspace tabs also synchronize the group when opening a session. Selecting the rest of a group tab only switches the list and does not change the conversation.
 
 On supported Nodes, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions created by `marctl` with a parent relationship appear under Child Sessions; sessions without one, including scheduled and externally discovered sessions, appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. Older Nodes retain the mixed list.
 

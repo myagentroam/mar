@@ -1033,6 +1033,7 @@ export function createWorkbenchPageController<
     markSessionReadAfterOpen = false
   ): Promise<void> {
     try {
+      let groupRevision: number | undefined;
       await navigateWorkbenchNotification(target, {
         workspaceTarget: () => workspaceTarget.value,
         hasSession: (sessionId) =>
@@ -1045,22 +1046,25 @@ export function createWorkbenchPageController<
           ),
         showNodes: () => (view.value = 'nodes'),
         showConversations: () => (view.value = 'conversations'),
-        activateWorkspace: (target) => {
+        activateWorkspace: async (workspace) => {
           const current = workspaceTarget.value;
+          const hasSessionTarget = 'sessionId' in target && target.sessionId !== undefined;
           if (
-            markSessionReadAfterOpen &&
-            current?.nodeId === target.nodeId &&
-            current.workspaceId === target.workspaceId
-          )
-            return Promise.resolve(true);
-          return markSessionReadAfterOpen
-            ? selectWorkspace(target, false)
-            : selectWorkspace(target);
+            hasSessionTarget &&
+            current?.nodeId === workspace.nodeId &&
+            current.workspaceId === workspace.workspaceId
+          ) {
+            closeMobileSidebar();
+            groupRevision = workspaceSessionDiscovery.groupSelectionRevision();
+            return true;
+          }
+          const activated = await selectWorkspace(workspace, !hasSessionTarget);
+          if (activated) groupRevision = workspaceSessionDiscovery.groupSelectionRevision();
+          return activated;
         },
         synchronizeSessions: syncWorkspaceSessions,
-        openSession: markSessionReadAfterOpen
-          ? (sessionId) => workbenchSessionSelectionService.openWorkspaceTabSession(sessionId)
-          : openSession,
+        openSession: (sessionId) =>
+          openNavigatedSession(sessionId, markSessionReadAfterOpen, groupRevision),
         openHostedConversation: openHostedConversationTarget
       });
     } catch (error) {
@@ -1105,6 +1109,28 @@ export function createWorkbenchPageController<
     await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, true);
   }
 
+  function openNavigatedSession(
+    sessionId: string,
+    markReadAfterOpen: boolean,
+    groupRevision = workspaceSessionDiscovery.groupSelectionRevision()
+  ): Promise<void> {
+    const target = workspaceTarget.value;
+    const onSessionResolved = (session: Session) => {
+      if (
+        target !== undefined &&
+        workspaceTarget.value?.nodeId === target.nodeId &&
+        workspaceTarget.value.workspaceId === target.workspaceId &&
+        session.workspaceId === target.workspaceId &&
+        selectedSessionId.value === session.id &&
+        workspaceSessionDiscovery.groupSelectionRevision() === groupRevision
+      )
+        selectWorkspaceSessionGroup(session.sessionGroup ?? 'MAIN', true);
+    };
+    return markReadAfterOpen
+      ? workbenchSessionSelectionService.openWorkspaceTabSession(sessionId, onSessionResolved)
+      : openSession(sessionId, { onSessionResolved });
+  }
+
   function activateWorkspaceSessionGroupMarker(
     group: import('@myagentroam/protocol').SessionGroup
   ): void {
@@ -1115,8 +1141,7 @@ export function createWorkbenchPageController<
       workspaceId: target.workspaceId,
       ...(selectedSessionId.value === undefined ? {} : { lastSessionId: selectedSessionId.value })
     });
-    if (session !== undefined)
-      void workbenchSessionSelectionService.openWorkspaceTabSession(session.sessionId);
+    if (session !== undefined) void openNavigatedSession(session.sessionId, true);
   }
 
   async function openSessionFromList(sessionId: string): Promise<void> {
@@ -1918,8 +1943,7 @@ export function createWorkbenchPageController<
     discardCache: discardWorkspaceViewCache,
     activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
     workspaceTabSession: workbenchNotificationService.workspaceTabSession,
-    openWorkspaceTabSession: (sessionId) =>
-      workbenchSessionSelectionService.openWorkspaceTabSession(sessionId),
+    openWorkspaceTabSession: (sessionId) => openNavigatedSession(sessionId, true),
     clearWorkspace: () => workbenchWorkspaceSelectionService.clear(),
     currentSelectionRevision: () => workbenchWorkspaceSelectionService.currentSelectionRevision(),
     cleanupSessionsEnabled: () => cleanupSessionsEnabled,

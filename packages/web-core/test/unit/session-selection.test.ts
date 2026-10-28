@@ -623,6 +623,84 @@ describe('Shared session selection', () => {
     expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
   });
 
+  it('resolves the group for an already open Tab session without reopening its history', async () => {
+    const f = tabSessionFixture();
+    const child = { ...f.session, sessionGroup: 'CHILD' as const };
+    f.options.selectedSessionId.value = child.id;
+    f.options.sessions.value = [child];
+    const resolved = vi.fn();
+    await f.service.openWorkspaceTabSession(child.id, resolved);
+    expect(resolved).toHaveBeenCalledExactlyOnceWith(child);
+    expect(f.options.request).not.toHaveBeenCalled();
+  });
+
+  it.each(['before detail', 'during watch'] as const)(
+    'reuses the in-flight session when the Tab is activated %s',
+    async (stage) => {
+      const f = tabSessionFixture();
+      let finishDetail!: (result: { session: Session }) => void;
+      let finishWatch!: (loaded: boolean) => void;
+      vi.mocked(f.options.request).mockImplementation(
+        () => new Promise((resolve) => (finishDetail = resolve))
+      );
+      vi.mocked(f.options.beginWatch).mockImplementation(
+        () => new Promise((resolve) => (finishWatch = resolve))
+      );
+      const resolved = vi.fn();
+      const pending = f.service.openSession(f.session.id);
+      if (stage === 'during watch') {
+        finishDetail({ session: f.session });
+        await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+      }
+      await f.service.openWorkspaceTabSession(f.session.id, resolved);
+      expect(f.options.request).toHaveBeenCalledOnce();
+      if (stage === 'before detail') {
+        expect(resolved).not.toHaveBeenCalled();
+        finishDetail({ session: f.session });
+        await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+      }
+      expect(resolved).toHaveBeenCalledExactlyOnceWith(f.session);
+      expect(f.options.markSessionRead).not.toHaveBeenCalled();
+      finishWatch(true);
+      await pending;
+      expect(f.options.beginWatch).toHaveBeenCalledOnce();
+      expect(f.options.markSessionRead).toHaveBeenCalledExactlyOnceWith(
+        'node-1',
+        'workspace-1',
+        f.session.id
+      );
+    }
+  );
+
+  it('does not mark a reused in-flight session read if its Watch fails', async () => {
+    const f = tabSessionFixture();
+    let finishWatch!: (loaded: boolean) => void;
+    vi.mocked(f.options.beginWatch).mockImplementation(
+      () => new Promise((resolve) => (finishWatch = resolve))
+    );
+    const pending = f.service.openSession(f.session.id);
+    await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+    await f.service.openWorkspaceTabSession(f.session.id, vi.fn());
+    finishWatch(false);
+    await pending;
+    expect(f.options.request).toHaveBeenCalledOnce();
+    expect(f.options.markSessionRead).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve a Tab session whose detail arrives after the selection changes', async () => {
+    const f = tabSessionFixture();
+    let complete!: (result: { session: Session }) => void;
+    vi.mocked(f.options.request).mockImplementation(
+      () => new Promise((resolve) => (complete = resolve))
+    );
+    const resolved = vi.fn();
+    const pending = f.service.openWorkspaceTabSession(f.session.id, resolved);
+    f.options.selectedSessionId.value = 'another-session';
+    complete({ session: f.session });
+    await pending;
+    expect(resolved).not.toHaveBeenCalled();
+  });
+
   it.each(['identity', 'history', 'unconfirmed', 'mismatch', 'superseded'] as const)(
     'does not read a Tab target after %s failure or replacement',
     async (failure) => {
