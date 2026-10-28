@@ -144,7 +144,10 @@ async function submit(): Promise<void> {
           <p v-if="result.timedOut" class="workspace-session-cleanup-description">
             {{ translate('generated.workspaceSessionCleanupDialog.timeLimitReached') }}
           </p>
-          <dl class="workspace-session-cleanup-statistics">
+          <dl
+            class="workspace-session-cleanup-statistics"
+            :class="{ 'has-remaining': result.remaining !== undefined }"
+          >
             <div>
               <dt>{{ translate('generated.workspaceSessionCleanupDialog.deleted') }}</dt>
               <dd>{{ result.deleted }}</dd>
@@ -225,6 +228,10 @@ async function submit(): Promise<void> {
   background: var(--mar-border-subtle);
 }
 
+.workspace-session-cleanup-statistics.has-remaining {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .workspace-session-cleanup-statistics > div {
   min-width: 0;
   padding: 10px 12px;
@@ -260,8 +267,8 @@ async function submit(): Promise<void> {
 }
 
 @media (max-width: 767px) {
-  .workspace-session-cleanup-statistics {
-    grid-template-columns: 1fr;
+  .workspace-session-cleanup-statistics.has-remaining {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
