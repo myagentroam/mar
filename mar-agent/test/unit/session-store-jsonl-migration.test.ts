@@ -168,6 +168,10 @@ describe('JSONL v2 generation preparation', () => {
     const fixture = fileURLToPath(new URL('../fixtures/jsonl-v1/records.jsonl', import.meta.url));
     const original = await readFile(fixture, 'utf8');
     await writeFile(join(root, 'events-000001.jsonl'), original);
+    await mkdir(join(root, 'resources'));
+    await mkdir(join(root, 'tool_results'));
+    await writeFile(join(root, 'resources', `${'a'.repeat(64)}.bin`), 'image bytes');
+    await writeFile(join(root, 'tool_results', `${id}.diff`), 'tool result bytes');
     const metadata = {
       id,
       title: 'Example',
@@ -193,6 +197,13 @@ describe('JSONL v2 generation preparation', () => {
     expect(index.sessions[0].storage.encoding).toBe(2);
     expect(await readFile(join(root, 'events-000001.jsonl'), 'utf8')).toBe(original);
     expect((await store.read(id)).map((record) => record.sequence)).toEqual([1, 2, 3, 4]);
+    const generation = join(root, 'v2', index.sessions[0].storage.generation);
+    expect(await readFile(join(generation, 'resources', `${'a'.repeat(64)}.bin`), 'utf8')).toBe(
+      'image bytes'
+    );
+    expect(await readFile(join(generation, 'tool_results', `${id}.diff`), 'utf8')).toBe(
+      'tool result bytes'
+    );
     await store.close();
   });
   it('preserves repeated legacy sequences within and across segments when migrating and resuming', async () => {

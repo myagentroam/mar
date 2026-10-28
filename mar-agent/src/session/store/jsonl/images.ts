@@ -45,7 +45,7 @@ export async function copyGeneratedImages(
   for (const fileName of fileNames) {
     const path = join(target, fileName);
     await copyFile(join(source, fileName), path);
-    const handle = await open(path, 'r');
+    const handle = await open(path, 'r+');
     try {
       await handle.sync();
     } finally {

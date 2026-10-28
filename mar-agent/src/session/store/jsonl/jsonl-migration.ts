@@ -118,7 +118,7 @@ async function copyOptionalFile(source: string, target: string) {
   }
   if (!sourceInfo.isFile()) return;
   await copyFile(source, target);
-  const handle = await open(target, 'r');
+  const handle = await open(target, 'r+');
   await syncAndClose(handle);
 }
 
