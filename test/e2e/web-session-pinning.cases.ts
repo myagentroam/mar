@@ -51,12 +51,27 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
         .request()
         .url()
         .match(/agent-sessions\/([^/]+)\/pin-order/)?.[1] ?? '';
-    const body = JSON.parse(route.request().postData() ?? '{}') as { direction?: 'up' | 'down' };
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      direction?: 'up' | 'down';
+      targetSessionId?: string;
+      position?: 'before' | 'after';
+    };
     const pinned = sessions.filter((entry) => entry.pinOrder !== null);
     const index = pinned.findIndex((entry) => entry.id === id);
-    const adjacent = body.direction === 'up' ? index - 1 : index + 1;
+    const adjacent =
+      body.targetSessionId === undefined
+        ? body.direction === 'up'
+          ? index - 1
+          : index + 1
+        : pinned.findIndex((entry) => entry.id === body.targetSessionId);
     if (index >= 0 && adjacent >= 0 && adjacent < pinned.length) {
-      [pinned[index], pinned[adjacent]] = [pinned[adjacent]!, pinned[index]!];
+      const [moved] = pinned.splice(index, 1);
+      const targetIndex =
+        body.targetSessionId === undefined
+          ? adjacent
+          : pinned.findIndex((entry) => entry.id === body.targetSessionId) +
+            (body.position === 'after' ? 1 : 0);
+      pinned.splice(targetIndex, 0, moved!);
       sessions = [
         ...pinned.map((entry, pinOrder) => ({ ...entry, pinOrder })),
         ...sessions.filter((entry) => entry.pinOrder === null)
@@ -106,9 +121,11 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
   const dragged = rows.filter({ hasText: '普通会话' });
   const target = rows.filter({ hasText: '会话三' });
   await expect(dragged.locator('..')).toHaveAttribute('draggable', 'true');
-  await dragged.locator('..').dragTo(target.locator('..'));
+  await dragged.locator('..').dragTo(target.locator('..'), {
+    targetPosition: { x: 30, y: (await target.locator('..').boundingBox())!.height - 3 }
+  });
   await expect(page.locator('.session-list .session-link strong').nth(3)).toHaveText('普通会话');
-  expect(pinMoveRequests).toBe(3);
+  expect(pinMoveRequests).toBe(2);
 
   await openPlainSessionActions();
   await page

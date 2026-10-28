@@ -426,20 +426,30 @@ export function registerSessionRunRoutes(input: {
 
   app.patch<{
     Params: { sessionId: string };
-    Body: { nodeId?: unknown; direction?: unknown };
+    Body: { nodeId?: unknown; direction?: unknown; targetSessionId?: unknown; position?: unknown };
   }>('/api/agent-sessions/:sessionId/pin-order', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
     if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
     const body = request.body ?? {};
-    if (!isNonEmptyString(body.nodeId) || (body.direction !== 'up' && body.direction !== 'down'))
+    if (
+      !isNonEmptyString(body.nodeId) ||
+      (body.direction !== 'up' && body.direction !== 'down') ||
+      (body.targetSessionId === undefined
+        ? body.position !== undefined
+        : !isNonEmptyString(body.targetSessionId) ||
+          (body.position !== 'before' && body.position !== 'after'))
+    )
       return sendError(reply, 400, 'SESSION_PIN_MOVE_INVALID');
     try {
       return reply.send(
         await requestUserNode(nodeControl, admin, body.nodeId, 'session.pin.move', {
           sessionId: request.params.sessionId,
-          direction: body.direction
+          direction: body.direction,
+          ...(body.targetSessionId === undefined
+            ? {}
+            : { targetSessionId: body.targetSessionId, position: body.position })
         })
       );
     } catch (error) {

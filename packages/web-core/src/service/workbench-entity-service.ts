@@ -199,20 +199,22 @@ export function createWorkbenchEntityService(options: {
   async function movePinnedSession(
     session: Session,
     direction: 'up' | 'down',
-    steps = 1
+    target?: { sessionId: string; position: 'before' | 'after' }
   ): Promise<boolean> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (nodeId === undefined) return false;
     options.loading.value = true;
     try {
-      for (let step = 0; step < steps; step += 1)
-        await options.request(
-          `/api/agent-sessions/${options.sessionPathId(session.id)}/pin-order`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({ nodeId, direction })
-          }
-        );
+      await options.request(`/api/agent-sessions/${options.sessionPathId(session.id)}/pin-order`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nodeId,
+          direction,
+          ...(target === undefined
+            ? {}
+            : { targetSessionId: target.sessionId, position: target.position })
+        })
+      });
       return true;
     } catch (error) {
       options.notice(

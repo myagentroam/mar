@@ -148,7 +148,19 @@ export class SessionLifecycleService {
       (input.direction !== 'up' && input.direction !== 'down')
     )
       throw new Error('SESSION_PIN_MOVE_INVALID');
-    const workspaceId = this.options.database().movePinnedSession(input.sessionId, input.direction);
+    let target: { sessionId: string; position: 'before' | 'after' } | undefined;
+    if (input.targetSessionId !== undefined || input.position !== undefined) {
+      if (
+        typeof input.targetSessionId !== 'string' ||
+        input.targetSessionId.length === 0 ||
+        (input.position !== 'before' && input.position !== 'after')
+      )
+        throw new Error('SESSION_PIN_MOVE_INVALID');
+      target = { sessionId: input.targetSessionId, position: input.position };
+    }
+    const workspaceId = this.options
+      .database()
+      .movePinnedSession(input.sessionId, input.direction, target);
     this.options.invalidateWorkspaceSessions(workspaceId);
     return { moved: true };
   }

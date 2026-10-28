@@ -847,6 +847,91 @@ describe('Node SQLite session records', () => {
     );
   });
 
+  it('moves pinned sessions directly across multiple rows in one transaction', async () => {
+    const database = await createDatabase('node-pin-move');
+    const workspace = database.saveWorkspace({
+      path: '/workspace',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    for (const id of ['three', 'two', 'one'])
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: id,
+        workspaceId: workspace.id,
+        pinned: true
+      });
+    const order = () =>
+      database.listSessionRecords(workspace.id).map((record) => [record.id, record.pinOrder]);
+    database.movePinnedSession('one', 'down', { sessionId: 'three', position: 'after' });
+    expect(order()).toEqual([
+      ['two', 0],
+      ['three', 1],
+      ['one', 2]
+    ]);
+    database.movePinnedSession('one', 'up', { sessionId: 'two', position: 'before' });
+    expect(order()).toEqual([
+      ['one', 0],
+      ['two', 1],
+      ['three', 2]
+    ]);
+    expect(() =>
+      database.movePinnedSession('one', 'down', { sessionId: 'missing', position: 'after' })
+    ).toThrow('SESSION_PIN_MOVE_INVALID');
+    expect(order()).toEqual([
+      ['one', 0],
+      ['two', 1],
+      ['three', 2]
+    ]);
+
+    // A failed write must not leave the displaced rows half reordered.
+    database.raw.exec(
+      "CREATE TRIGGER fail_pin_move BEFORE UPDATE OF pin_order ON agent_sessions WHEN NEW.id = 'three' BEGIN SELECT RAISE(ABORT, 'blocked'); END"
+    );
+    expect(() =>
+      database.movePinnedSession('one', 'down', { sessionId: 'three', position: 'after' })
+    ).toThrow('blocked');
+    expect(order()).toEqual([
+      ['one', 0],
+      ['two', 1],
+      ['three', 2]
+    ]);
+  });
+
+  it.each([
+    ['one', 'three', 'before', ['two', 'one', 'three']],
+    ['one', 'three', 'after', ['two', 'three', 'one']],
+    ['three', 'one', 'before', ['three', 'one', 'two']],
+    ['three', 'one', 'after', ['one', 'three', 'two']],
+    ['one', 'two', 'before', ['one', 'two', 'three']],
+    ['two', 'one', 'after', ['one', 'two', 'three']],
+    ['one', 'one', 'before', ['one', 'two', 'three']]
+  ] as const)(
+    'inserts %s %s %s using persisted pin slots',
+    async (source, target, position, expected) => {
+      const database = await createDatabase('pin-insertion');
+      const workspace = database.saveWorkspace({
+        path: '/workspace',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      for (const id of ['three', 'two', 'one'])
+        database.saveNativeSessionMetadata({
+          runner: 'codex',
+          externalSessionId: id,
+          workspaceId: workspace.id,
+          pinned: true
+        });
+      database.movePinnedSession(source, source === 'three' || source === 'two' ? 'up' : 'down', {
+        sessionId: target,
+        position
+      });
+      expect(
+        database.listSessionRecords(workspace.id).map((record) => [record.id, record.pinOrder])
+      ).toEqual(expected.map((id, index) => [id, index]));
+    }
+  );
+
   it('creates a record on the first local setting, keeps it after unpinning, and can swap pin order', async () => {
     const database = await createDatabase('node-a');
     const workspace = database.saveWorkspace({

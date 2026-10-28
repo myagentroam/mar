@@ -8,6 +8,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Manual session dragging immediately takes over activity reorder motion', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addInitScript(() => {
+    const animate = Element.prototype.animate;
+    let moves = 0;
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = animate.call(this, keyframes, options);
+      if (this.classList.contains('mar-session-reorder-item')) {
+        animation.pause();
+        document.documentElement.dataset.sessionMoves = String(++moves);
+      }
+      return animation;
+    };
+  });
+  await page.goto(`${fixture.url}workbench-style.html?session-reorder=1`);
+  const list = page.getByRole('region', { name: 'Session fixture' });
+  const titles = list.locator('.session-link strong');
+  await expect(titles).toHaveText(['pinned-one', 'pinned-two', 'pinned-three', 'active', 'idle']);
+  await list.getByRole('button', { name: 'Advance session activity' }).click();
+  await expect(titles).toHaveText(['pinned-one', 'pinned-two', 'pinned-three', 'idle', 'active']);
+  await expect(page.locator('html')).toHaveAttribute('data-session-moves', '2');
+  await list.locator('.session-list').evaluate((element) => {
+    element.addEventListener('pointerdown', () => {
+      element.setAttribute(
+        'data-animations-at-pointerdown',
+        String(Array.from(element.children).flatMap((row) => row.getAnimations()).length)
+      );
+    });
+  });
+  const source = list.locator('li').filter({ hasText: 'pinned-one' });
+  const target = list.locator('li').filter({ hasText: 'pinned-two' });
+  await source.dragTo(target, {
+    targetPosition: { x: 30, y: (await target.boundingBox())!.height - 3 }
+  });
+  await expect(list.locator('.session-list')).toHaveAttribute(
+    'data-animations-at-pointerdown',
+    '0'
+  );
+  await expect(titles).toHaveText(['pinned-two', 'pinned-one', 'pinned-three', 'idle', 'active']);
+  await expect(page.locator('html')).toHaveAttribute('data-session-moves', '2');
+  expect(
+    await list
+      .locator('.session-list')
+      .evaluate(
+        (element) => Array.from(element.children).flatMap((row) => row.getAnimations()).length
+      )
+  ).toBe(0);
+
+  await list.getByRole('button', { name: 'Advance session activity' }).click();
+  await expect(titles).toHaveText(['pinned-two', 'pinned-one', 'pinned-three', 'active', 'idle']);
+  await expect(page.locator('html')).toHaveAttribute('data-session-moves', '4');
+});
+
+for (const { sourceId, targetId, after, expected } of [
+  { sourceId: 'one', targetId: 'three', after: false, expected: ['two', 'one', 'three'] },
+  { sourceId: 'one', targetId: 'three', after: true, expected: ['two', 'three', 'one'] },
+  { sourceId: 'three', targetId: 'one', after: false, expected: ['three', 'one', 'two'] },
+  { sourceId: 'three', targetId: 'one', after: true, expected: ['one', 'three', 'two'] },
+  { sourceId: 'one', targetId: 'two', after: false, expected: ['one', 'two', 'three'] },
+  { sourceId: 'two', targetId: 'one', after: true, expected: ['one', 'two', 'three'] }
+]) {
+  test(`Pinned session drop matches the ${after ? 'bottom' : 'top'} line: ${sourceId} to ${targetId}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}workbench-style.html?session-reorder=1`);
+    const list = page.getByRole('region', { name: 'Session fixture' });
+    const source = list.locator('li').filter({ hasText: `pinned-${sourceId}` });
+    const target = list.locator('li').filter({ hasText: `pinned-${targetId}` });
+    const bounds = (await target.boundingBox())!;
+    await source.hover();
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 30, bounds.y + (after ? bounds.height - 3 : 3), { steps: 5 });
+    // Chromium needs a second move to deliver native dragover after dragstart.
+    await page.mouse.move(bounds.x + 31, bounds.y + (after ? bounds.height - 3 : 3));
+    await expect(target).toHaveClass(/drag-over-pinned/);
+    expect(await target.evaluate((row) => row.classList.contains('drag-over-pinned-after'))).toBe(
+      after
+    );
+    await page.mouse.up();
+    await expect(list.locator('.session-link strong')).toHaveText([
+      ...expected.map((id) => `pinned-${id}`),
+      'active',
+      'idle'
+    ]);
+    await expect(list.locator('.drag-over-pinned')).toHaveCount(0);
+  });
+}
+
 for (const scenario of [
   {
     width: 1280,

@@ -14,6 +14,7 @@ interface MotionState {
   animations: Set<Animation>;
   motionPreference: MediaQueryList;
   onMotionPreferenceChange: (event: MediaQueryListEvent) => void;
+  onPointerDown: (event: PointerEvent) => void;
 }
 
 const states = new WeakMap<HTMLElement, MotionState>();
@@ -43,9 +44,16 @@ export const vSessionReorderMotion: ObjectDirective<HTMLElement, SessionReorderS
       motionPreference,
       onMotionPreferenceChange(event) {
         if (event.matches) cancelAnimations(state);
+      },
+      onPointerDown(event) {
+        const row = (event.target as Element).closest(
+          '.mar-session-reorder-item[draggable="true"]'
+        );
+        if (event.button === 0 && row?.parentElement === element) cancelAnimations(state);
       }
     };
     motionPreference.addEventListener('change', state.onMotionPreferenceChange);
+    element.addEventListener('pointerdown', state.onPointerDown, true);
     states.set(element, state);
   },
   beforeUpdate(element, binding) {
@@ -118,6 +126,7 @@ export const vSessionReorderMotion: ObjectDirective<HTMLElement, SessionReorderS
     const state = states.get(element);
     if (state === undefined) return;
     state.motionPreference.removeEventListener('change', state.onMotionPreferenceChange);
+    element.removeEventListener('pointerdown', state.onPointerDown, true);
     cancelAnimations(state);
     states.delete(element);
   }

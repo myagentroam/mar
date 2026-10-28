@@ -72,7 +72,7 @@ const emit = defineEmits<{
   rename: [session: Session];
   pin: [session: Session, pinned: boolean];
   movePin: [session: Session, direction: 'up' | 'down'];
-  movePinTo: [session: Session, targetIndex: number];
+  movePinTo: [session: Session, target: Session, position: 'before' | 'after'];
   deleteSession: [session: Session];
   cleanupSessions: [];
   loadMore: [];
@@ -177,6 +177,7 @@ watch(
   }
 );
 const dragOverPinnedSessionId = ref<string>();
+const dragOverPinnedPosition = ref<'before' | 'after'>('before');
 const hoveredSessionId = ref<string>();
 const focusedSessionId = ref<string>();
 const openSessionActionsId = ref<string>();
@@ -272,6 +273,9 @@ function dragOverPinned(event: DragEvent, session: Session): void {
   event.preventDefault();
   if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
   dragOverPinnedSessionId.value = session.id;
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  dragOverPinnedPosition.value =
+    event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
 }
 
 function dropPinned(session: Session): void {
@@ -280,10 +284,10 @@ function dropPinned(session: Session): void {
     return;
   }
   const source = props.sessions.find((candidate) => candidate.id === draggingPinnedSessionId.value);
-  const targetIndex = pinnedIndex(session);
+  const position = dragOverPinnedPosition.value;
   clearPinnedDrag();
-  if (source === undefined || source.id === session.id || targetIndex < 0) return;
-  emit('movePinTo', source, targetIndex);
+  if (source === undefined || source.id === session.id) return;
+  emit('movePinTo', source, session, position);
 }
 
 function sessionActionsVisible(sessionId: string): boolean {
@@ -468,7 +472,9 @@ function submitSessionSearch(): void {
         class="mar-session-reorder-item"
         :class="{
           'dragging-pinned': draggingPinnedSessionId === session.id,
-          'drag-over-pinned': dragOverPinnedSessionId === session.id
+          'drag-over-pinned': dragOverPinnedSessionId === session.id,
+          'drag-over-pinned-after':
+            dragOverPinnedSessionId === session.id && dragOverPinnedPosition === 'after'
         }"
         :draggable="pinnedDragEnabled(session)"
         @dragend="clearPinnedDrag"
@@ -1194,6 +1200,10 @@ function submitSessionSearch(): void {
 
 .session-list li.drag-over-pinned {
   box-shadow: inset 0 2px var(--mar-color-brand);
+}
+
+.session-list li.drag-over-pinned-after {
+  box-shadow: inset 0 -2px var(--mar-color-brand);
 }
 
 @media (max-width: 767px) {

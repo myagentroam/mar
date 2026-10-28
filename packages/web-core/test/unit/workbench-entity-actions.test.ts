@@ -34,6 +34,99 @@ function state(
 beforeEach(() => vi.resetAllMocks());
 
 describe('Public workbench entity actions', () => {
+  it('moves a dragged pinned session in one request and refreshes once', async () => {
+    const request = vi.fn().mockResolvedValue({ moved: true });
+    const current = state(request);
+    const sessions = ref(
+      ['one', 'two', 'three'].map((id, pinOrder) => ({ id, pinOrder }) as Session)
+    );
+    const refreshSessions = vi.fn().mockResolvedValue(undefined);
+    const controller = createWorkbenchEntityController({
+      actions: current.service,
+      sessions,
+      refreshSessions
+    } as never);
+    await controller.movePinnedSessionTo(sessions.value[0]!, sessions.value[2]!, 'after');
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/agent-sessions/one/pin-order', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        nodeId: 'node',
+        direction: 'down',
+        targetSessionId: 'three',
+        position: 'after'
+      })
+    });
+    expect(refreshSessions).toHaveBeenCalledOnce();
+    expect(current.loading.value).toBe(false);
+  });
+
+  it('reports a rejected pinned move and refreshes the authoritative order', async () => {
+    const error = new Error('offline');
+    const request = vi.fn().mockRejectedValue(error);
+    const current = state(request);
+    const sessions = ref(['one', 'two'].map((id, pinOrder) => ({ id, pinOrder }) as Session));
+    const refreshSessions = vi.fn().mockResolvedValue(undefined);
+    const controller = createWorkbenchEntityController({
+      actions: current.service,
+      sessions,
+      refreshSessions
+    } as never);
+    await controller.movePinnedSessionTo(sessions.value[1]!, sessions.value[0]!, 'before');
+    expect(request).toHaveBeenCalledOnce();
+    expect(current.notice).toHaveBeenCalledWith(expect.any(String), 'error', error);
+    expect(refreshSessions).toHaveBeenCalledOnce();
+    expect(current.loading.value).toBe(false);
+  });
+
+  it('keeps a filtered drag anchored to the visible target instead of a hidden pinned row', async () => {
+    const request = vi.fn().mockResolvedValue({ moved: true });
+    const current = state(request);
+    const sessions = ref(
+      ['one', 'hidden-child', 'two', 'three'].map((id, pinOrder) => ({ id, pinOrder }) as Session)
+    );
+    const refreshSessions = vi.fn().mockResolvedValue(undefined);
+    const controller = createWorkbenchEntityController({
+      actions: current.service,
+      sessions,
+      refreshSessions
+    } as never);
+    // The hidden child must not be used as an anchor for the filtered list.
+    await controller.movePinnedSessionTo(sessions.value[0]!, sessions.value[3]!, 'before');
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/agent-sessions/one/pin-order', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        nodeId: 'node',
+        direction: 'down',
+        targetSessionId: 'three',
+        position: 'before'
+      })
+    });
+  });
+
+  it('moves pinned search results that are not in the loaded page without replaying local indexes', async () => {
+    const request = vi.fn().mockResolvedValue({ moved: true });
+    const current = state(request);
+    const controller = createWorkbenchEntityController({
+      actions: current.service,
+      sessions: ref([]),
+      refreshSessions: vi.fn().mockResolvedValue(undefined)
+    } as never);
+    await controller.movePinnedSessionTo(
+      { id: 'search-source', pinOrder: 3 } as Session,
+      { id: 'search-target', pinOrder: 0 } as Session,
+      'after'
+    );
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/agent-sessions/search-source/pin-order', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        nodeId: 'node',
+        direction: 'up',
+        targetSessionId: 'search-target',
+        position: 'after'
+      })
+    });
+  });
+
   it('does not remove a same-ID session on another Node after deletion returns', async () => {
     const nodeId = ref('node-a');
     const session = { id: 'same-id', workspaceId: 'workspace', runner: 'codex' } as Session;
