@@ -53,10 +53,10 @@ html.console-ui,
 .theme-preview {
   --mar-motion-duration-collapse: 160ms;
   --mar-motion-easing-collapse: cubic-bezier(0.2, 0, 0, 1);
-  /* Keep selected surfaces distinct from neutral unread badges in both themes. */
+  /* Controls share one surface, with selection strength calibrated per theme. */
   --mar-control-segmented-selected-bg: color-mix(
-    in oklab,
-    var(--mar-fill-selection) 73%,
+    in srgb,
+    var(--mar-fill-selection) 97%,
     var(--mar-text-primary)
   );
   --el-border-radius-base: var(--mar-radius-control);
@@ -330,6 +330,11 @@ html.console-ui,
 html.console-ui[data-theme='vscode-dark-2026'],
 .theme-preview[data-theme='vscode-dark-2026'] {
   color-scheme: dark;
+  --mar-control-segmented-selected-bg: color-mix(
+    in oklab,
+    var(--mar-fill-selection) 73%,
+    var(--mar-text-primary)
+  );
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
   --mar-bg-page: #0e1116;

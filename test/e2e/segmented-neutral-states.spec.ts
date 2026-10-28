@@ -65,7 +65,9 @@ for (const scheme of ['Light', 'Dark']) {
             return getComputedStyle(probe).color;
           };
           probe.style.color =
-            'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))';
+            getComputedStyle(element).colorScheme === 'dark'
+              ? 'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))'
+              : 'color-mix(in srgb, var(--mar-fill-selection) 97%, var(--mar-text-primary))';
           const selected = getComputedStyle(probe).color;
           const colors = {
             normal: color('--mar-text-secondary'),

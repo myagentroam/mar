@@ -62,6 +62,7 @@ for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'en-US'],
   [320, 'vscode-dark-2026', 'en-US'],
   [390, 'daylight', 'en-US'],
+  [390, 'daylight', 'zh-CN'],
   [1280, 'daylight', 'zh-CN'],
   [1280, 'custom', 'zh-CN'],
   [1280, 'vscode-dark-2026', 'zh-CN'],
@@ -124,7 +125,9 @@ for (const [width, theme, locale] of [
         const style = getComputedStyle(element);
         const probe = document.createElement('span');
         probe.style.background =
-          'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))';
+          getComputedStyle(element).colorScheme === 'dark'
+            ? 'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))'
+            : 'color-mix(in srgb, var(--mar-fill-selection) 97%, var(--mar-text-primary))';
         element.append(probe);
         const expected = getComputedStyle(probe).backgroundColor;
         probe.remove();
