@@ -32,7 +32,8 @@ export interface HostedConversationRuntimeHandle {
     readonly completedAt: number;
     readonly title?: string;
   }>;
-  readonly cancel: () => boolean;
+  /** User interruption preserves the independent title task; shutdown releases it. */
+  readonly cancel: (reason?: 'interrupt' | 'shutdown') => boolean;
 }
 
 export interface HostedConversationRuntimeSessionInput {

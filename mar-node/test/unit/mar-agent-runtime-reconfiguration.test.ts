@@ -140,9 +140,9 @@ it.each([
     let round = 0;
     let blocked!: () => void;
     const firstBlocked = new Promise<void>((resolve) => (blocked = resolve));
-    let terminal!: () => void;
+    let cleanupStarted!: () => void;
     let finishCleanup!: () => void;
-    const firstTerminal = new Promise<void>((resolve) => (terminal = resolve));
+    const firstCleanup = new Promise<void>((resolve) => (cleanupStarted = resolve));
     const cleanupGate = new Promise<void>((resolve) => (finishCleanup = resolve));
     let first: Promise<void> | undefined;
     const configuration: MarAgentRuntimeModelConfiguration = {
@@ -270,9 +270,7 @@ observe.text("retained fixture result");`
         );
       return agent;
     });
-    const emitRun = vi.fn((runId: string, type: string) => {
-      if (runId === 'first' && type === 'run.cancelled') terminal();
-    });
+    const emitRun = vi.fn();
     const runner = new MarAgentRunner(root);
     const controller = new MarAgentManagedRunController(
       runner,
@@ -305,7 +303,10 @@ observe.text("retained fixture result");`
                   tools: [],
                   call: vi.fn(),
                   close: async () => {
-                    if (runId === 'first') await cleanupGate;
+                    if (runId === 'first') {
+                      cleanupStarted();
+                      await cleanupGate;
+                    }
                   }
                 })
               }
@@ -393,8 +394,17 @@ observe.text("retained fixture result");`
         (cell) => cell.status === (completedCell ? 'completed' : 'running')
       )!.cellId;
       expect(controller.cancel('first', 'INTERRUPT')).toBe(true);
-      if (change === 'late finalizer') await firstTerminal;
-      else await first;
+      if (change === 'late finalizer') {
+        await firstCleanup;
+        expect(
+          emitRun.mock.calls.some(([id, type]) => id === 'first' && type === 'run.cancelled')
+        ).toBe(false);
+        finishCleanup();
+      }
+      await first;
+      expect(
+        emitRun.mock.calls.some(([id, type]) => id === 'first' && type === 'run.cancelled')
+      ).toBe(true);
       if (change === 'git idle gap') {
         await new Promise((resolve) => setTimeout(resolve, 80));
         expect(await capabilityStatus(environments[0]!)).toBe(200);

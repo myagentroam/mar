@@ -90,6 +90,7 @@ describe('Hosted Conversation Run ownership', () => {
     runs.accept('conversation', active);
     const closing = runs.close();
     expect(active.cancel).toHaveBeenCalledOnce();
+    expect(active.cancel).toHaveBeenCalledWith('shutdown');
     expect(runs.expectsInterruption('conversation', 'run')).toBe(true);
     let joined = false;
     const wait = runs.waitForAdmissions('conversation').then(() => {

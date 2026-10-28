@@ -82,6 +82,7 @@ describe('Codex session discovery and first-message activation', () => {
       start: async () => undefined,
       stop: () => undefined,
       clearEnvironment: () => undefined,
+      configureEnvironment: () => undefined,
       onNotification: () => () => undefined,
       resumeThread,
       startTurn
@@ -136,7 +137,7 @@ describe('Codex session discovery and first-message activation', () => {
     releaseResume({ thread: { id: 'slow-thread' } });
     await expect(first).resolves.toMatchObject({ delivery: 'STARTED' });
     await expect(second).resolves.toMatchObject({ delivery: 'QUEUED' });
-    connector.stop();
+    await connector.stop();
   });
 
   it('discovers and selects sessions through thread/list without reading each official thread', async () => {
@@ -454,6 +455,16 @@ describe('Codex session discovery and first-message activation', () => {
     });
     expect(created.session.id).toBe(discovered.sessions[0]?.id);
     await eventually(() => codexTurnRegistered(connector, created.run.id));
+    const runtime = (
+      connector as unknown as {
+        runtime: {
+          currentExecutionId(runId: string): string | undefined;
+          isExecutionActive(executionId: string): boolean;
+        };
+      }
+    ).runtime;
+    const executionId = runtime.currentExecutionId(created.run.id)!;
+    expect(runtime.isExecutionActive(executionId)).toBe(true);
     const repeated = await (
       connector as unknown as {
         executeNodeOperation(
@@ -482,13 +493,7 @@ describe('Codex session discovery and first-message activation', () => {
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
       }
     ).executeNodeOperation('run.cancel', { runId: created.run.id });
-    await eventually(
-      () =>
-        !(
-          connector as unknown as { runState: { active: ReadonlySet<string> } }
-        ).runState.active.has(created.run.id),
-      10_000
-    );
+    await eventually(() => !runtime.isExecutionActive(executionId), 10_000);
     await connector.stop();
   }, 20_000);
 

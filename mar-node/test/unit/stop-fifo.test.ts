@@ -437,13 +437,34 @@ describe('user stop owns the Session FIFO pause', () => {
       paused: false,
       itemIds: [target.id, older.id]
     });
-    f.finishExecution();
+    expect(f.runner.control.mock.calls.filter(([operation]) => operation === 'run.start')).toEqual(
+      []
+    );
+    expect(
+      f.coordinator.acceptExecutionTerminal({
+        executionId: f.executionId,
+        sequence: 1,
+        eventType: 'run.completed',
+        payload: {},
+        status: 'INTERRUPTED'
+      })
+    ).toMatchObject({ finalStatus: 'INTERRUPTED' });
+    expect(f.runtime.getRun(f.run.id)).toMatchObject({
+      status: 'INTERRUPTED',
+      interruptionReason: 'USER_STOP'
+    });
+    f.coordinator.remove(f.executionId);
+    f.runtime.removeTerminalRun(f.run.id);
+    // First dispatch admits the queued Run; the next starts its Execution.
+    await f.coordinator.dispatch(f.session.id);
     await f.coordinator.dispatch(f.session.id);
     expect(f.runner.control).toHaveBeenCalledWith(
       'run.start',
       expect.objectContaining({ input: target.id })
     );
-    expect(f.runtime.activeSessionRun(f.session.id)?.id).toBe(f.run.id);
+    const replacementRun = f.runtime.activeSessionRun(f.session.id);
+    expect(replacementRun).toMatchObject({ sessionId: f.session.id });
+    expect(replacementRun?.id).not.toBe(f.run.id);
     expect(f.runtime.sessionQueue(f.session.id).itemIds).toEqual([older.id]);
   });
 });

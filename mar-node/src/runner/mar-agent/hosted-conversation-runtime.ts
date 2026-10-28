@@ -109,7 +109,6 @@ interface MarAgentHostedConversationRuntimeOptions {
 interface ActiveExecution {
   readonly handle: HostedConversationRuntimeHandle;
   readonly completion: Promise<unknown>;
-  readonly cancelTitle: () => void;
 }
 
 /**
@@ -392,34 +391,28 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
           clientMessageId: request.clientMessageId
         });
       },
-      cancel: () => {
+      cancel: (reason = 'interrupt') => {
         if (settled || this.#active.get(input.sessionId)?.handle !== handle) return false;
-        titleController.abort();
+        if (reason === 'shutdown') titleController.abort();
         execution.cancel();
         return true;
       }
     };
-    this.#active.set(input.sessionId, {
-      handle,
-      completion,
-      cancelTitle: () => titleController.abort()
-    });
+    this.#active.set(input.sessionId, { handle, completion });
     return handle;
   }
 
   async releaseSession(input: HostedConversationRuntimeHistoryInput): Promise<void> {
     const active = this.#active.get(input.sessionId);
     if (active === undefined) return;
-    active.cancelTitle();
-    active.handle.cancel();
+    active.handle.cancel('shutdown');
     await active.completion.catch(() => undefined);
   }
 
   async dispose(): Promise<void> {
     const active = [...this.#active.values()];
     for (const execution of active) {
-      execution.cancelTitle();
-      execution.handle.cancel();
+      execution.handle.cancel('shutdown');
     }
     await Promise.allSettled(active.map((execution) => execution.completion));
   }

@@ -39,7 +39,11 @@ describe('Node Skill async operation', () => {
       })
     );
     const service = new SkillNodeOperationService(
-      () => ({ getWorkspace: () => ({ path: workspace }) }) as unknown as NodeDatabase,
+      () =>
+        ({
+          getWorkspace: () => ({ path: workspace }),
+          getWorkspaceByPath: () => ({ path: workspace, includeParentRepository: true })
+        }) as unknown as NodeDatabase,
       () => ({
         serverUrl: 'https://server.test',
         allowedRoots: [],

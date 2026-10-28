@@ -597,7 +597,7 @@ export class HostedConversationRuns {
       cancelled.add(handle);
       this.markInterruption(conversationId, handle.run.id);
       try {
-        if (!handle.cancel()) this.clearInterruption(conversationId, handle.run.id);
+        if (!handle.cancel('shutdown')) this.clearInterruption(conversationId, handle.run.id);
       } catch (error) {
         this.clearInterruption(conversationId, handle.run.id);
         errors.push(error);
