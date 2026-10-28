@@ -62,6 +62,10 @@ it.each(['initial', 'older'] as const)(
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
+    });
+    vi.stubGlobal('HTMLElement', class {});
     app.component('ElButton', {
       setup:
         (_: unknown, { slots }: SetupContext) =>
