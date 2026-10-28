@@ -738,6 +738,17 @@ html.console-ui :where(input, textarea)::placeholder {
   opacity: 1;
 }
 
+:where(html.console-ui, .theme-preview) .el-dropdown-menu {
+  --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
+  --el-dropdown-menuItem-hover-color: var(--mar-text-primary);
+  --el-text-color-disabled: var(--mar-text-faint);
+}
+
+:where(html.console-ui, .theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+}
+
 :where(html.console-ui, .theme-preview) .el-select {
   --el-border-color-hover: var(--mar-border-medium);
 }

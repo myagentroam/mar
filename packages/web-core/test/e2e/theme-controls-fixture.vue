@@ -3,11 +3,13 @@ import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
+import MarIcon from '../../src/view/common/MarIcon.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 const value = ref('');
 const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
+const menuAction = ref('');
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {
   throw new Error('This visual fixture does not persist prompts');
@@ -103,6 +105,22 @@ function saveFeedbackDialog(): void {
     <el-select v-model="selection" aria-label="Disabled select" disabled>
       <el-option label="One" value="one" />
     </el-select>
+  </section>
+  <section aria-label="Dropdown state samples">
+    <el-dropdown trigger="click" @command="menuAction = $event">
+      <button type="button" class="utility-control">Sample menu</button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="rename"><MarIcon name="edit" />Rename</el-dropdown-item>
+          <el-dropdown-item command="copy"><MarIcon name="copy" />Copy</el-dropdown-item>
+          <el-dropdown-item command="unavailable" disabled>Unavailable</el-dropdown-item>
+          <el-dropdown-item command="delete" divided>
+            <MarIcon name="delete" />Delete
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+    <output aria-label="Selected menu action">{{ menuAction }}</output>
   </section>
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">
     <AgentMarkdown :content="message" />
