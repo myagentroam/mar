@@ -9,6 +9,39 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const width of [1280, 390]) {
+  test(`Standalone legacy source remains readable and read-only on a writable Node at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const bytes = Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4, 13, 10]);
+    await page.route('**/api/workspaces/workspace/files/read?**', (route) =>
+      route.fulfill({
+        json: {
+          file: {
+            path: 'DisplayBoard.c',
+            size: bytes.length,
+            encoding: 'base64',
+            content: bytes.toString('base64'),
+            truncated: false,
+            nextOffset: null,
+            revision: 'source-revision'
+          }
+        }
+      })
+    );
+    await page.goto(
+      `${fixture.url}standalone-preview.html?standaloneFile=1&nodeId=node&workspaceId=workspace&path=DisplayBoard.c&write=1`
+    );
+    const preview = page.locator('.cm-content');
+    await expect(preview).toContainText('// 中文');
+    await expect(preview).toHaveAttribute('contenteditable', 'false');
+    await expect(page.locator('.file-preview-eyebrow')).toContainText('GB18030');
+    await expect(page.getByRole('button', { name: /^(Edit file|编辑文件)$/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(Save|保存)$/ })).toHaveCount(0);
+  });
+}
+
 for (const theme of ['daylight', 'dark', 'custom']) {
   test(`Standalone Markdown stays light under the ${theme} console theme`, async ({ page }) => {
     let release!: () => void;

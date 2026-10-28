@@ -585,6 +585,65 @@ describe('Workspace file preview service', () => {
     }
   );
 
+  it('decodes legacy source in a read-only preview and refuses to save it', async () => {
+    const { preview, request } = createHarness({
+      request: async () => ({
+        file: {
+          ...textFile().file,
+          encoding: 'base64',
+          content: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]).toString('base64')
+        }
+      })
+    });
+    await preview.open(8, fileTarget({ path: 'DisplayBoard.c' }));
+    expect(preview.page(8).fileContent.value).toMatchObject({
+      encoding: 'utf-8',
+      content: '// 中文',
+      previewEncoding: 'gb18030'
+    });
+    await expect(preview.save(8, 'edited', 'a'.repeat(64))).rejects.toThrow('FILE_WRITE_INVALID');
+    expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
+  });
+
+  it('uses the same legacy decoding for direct and Git history reads', async () => {
+    const bytes = Uint8Array.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]);
+    const { preview, request, fetchContent } = createHarness({
+      transfers: {
+        directFileReadRange: async () => ({
+          revision: 'legacy-revision',
+          size: bytes.length,
+          offset: 0,
+          bytes,
+          nextOffset: null
+        }),
+        directGitFileReadRange: async () => ({
+          bytes,
+          revision: 'history-revision',
+          size: bytes.length,
+          nextOffset: null
+        })
+      }
+    });
+    const target = fileTarget({ path: 'DisplayBoard.c' });
+    await preview.open(1, target);
+    await preview.open(2, {
+      ...target,
+      history: { commit: 'commit-1', repositoryPath: '.', refs: ['main'] }
+    });
+    for (const id of [1, 2]) {
+      expect(preview.page(id).fileContent.value).toMatchObject({
+        encoding: 'utf-8',
+        content: '// 中文',
+        previewEncoding: 'gb18030'
+      });
+      await expect(preview.save(id, 'edited', 'legacy-revision')).rejects.toThrow(
+        'FILE_WRITE_INVALID'
+      );
+    }
+    expect(request).not.toHaveBeenCalled();
+    expect(fetchContent).not.toHaveBeenCalled();
+  });
+
   it.each([
     { result: 'COMPLETED' as const, browserFallback: false },
     { result: 'UNAVAILABLE' as const, browserFallback: true },

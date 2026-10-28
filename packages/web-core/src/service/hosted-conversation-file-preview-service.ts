@@ -5,7 +5,7 @@ import type {
 import { computed, ref } from 'vue';
 import { readFilePreview } from './file-preview-read-service.js';
 import {
-  decodeFilePreviewText,
+  decodeFilePreviewContent,
   filePreviewKind,
   shouldReadTextFilePreview,
   type FilePreviewKind
@@ -17,6 +17,7 @@ interface HostedConversationPreviewContent {
   readonly path: string;
   readonly size: number;
   readonly encoding: 'utf-8' | 'base64';
+  readonly previewEncoding?: string;
   readonly content: string;
   readonly truncated: boolean;
 }
@@ -86,14 +87,18 @@ export function createHostedConversationFilePreviewService(
             HostedConversationPreviewContent & { nextOffset: number | null; revision: string }
           > => {
             const read = await options.source.readFile(nextFile.id, 0, limit);
-            const decoded = decodeFilePreviewText(base64Bytes(read.content), read.eof);
+            const decoded = decodeFilePreviewContent(
+              base64Bytes(read.content),
+              path,
+              read.eof,
+              nextFile.mimeType
+            );
             return {
               path,
               size: read.file.size,
-              encoding: decoded === undefined ? 'base64' : 'utf-8',
-              content: decoded ?? '',
-              truncated: decoded !== undefined && !read.eof,
-              nextOffset: decoded === undefined ? null : read.nextOffset,
+              ...decoded,
+              truncated: decoded.encoding === 'utf-8' && !read.eof,
+              nextOffset: decoded.encoding === 'base64' ? null : read.nextOffset,
               revision: String(read.file.updatedAt)
             };
           },

@@ -625,6 +625,40 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(preview.targetColumn.value).toBe(7);
   });
 
+  it('uses the shared legacy text fallback for hosted source previews', async () => {
+    const file = {
+      id: 'legacy-source',
+      conversationId: 'conversation-1',
+      category: 'OUTPUT',
+      relativePath: 'DisplayBoard.c',
+      displayName: 'DisplayBoard.c',
+      mimeType: 'application/octet-stream',
+      size: 7,
+      source: 'AGENT',
+      createdAt: 1,
+      updatedAt: 1
+    } as const;
+    const preview = createHostedConversationFilePreviewService({
+      source: {
+        selectedConversationId: ref(file.conversationId),
+        readFile: async () => ({
+          file,
+          offset: 0,
+          encoding: 'base64',
+          content: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]).toString('base64'),
+          nextOffset: null,
+          eof: true
+        }),
+        contentUrl: vi.fn()
+      },
+      onError: vi.fn()
+    });
+    await preview.openFile(file);
+    expect(preview.kind.value).toBe('text');
+    expect(preview.content.value).toMatchObject({ content: '// 中文', previewEncoding: 'gb18030' });
+    preview.dispose();
+  });
+
   it.each([
     [
       'script.mts',

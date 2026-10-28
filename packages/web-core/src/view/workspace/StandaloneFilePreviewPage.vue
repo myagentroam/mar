@@ -18,13 +18,17 @@ import { translate } from '../../service/locale-preference-service.js';
 import { createStandaloneWorkspaceDirectTransferService } from '../../service/standalone-workspace-direct-transfer-service.js';
 import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
 import { directFileContentRevision } from '../../service/workspace-direct-file-read-service.js';
-import { readFilePreview, readFilePreviewObject } from '../../service/file-preview-read-service.js';
+import {
+  decodeFilePreviewRead,
+  readFilePreview,
+  readFilePreviewObject
+} from '../../service/file-preview-read-service.js';
 import {
   revokeWorkspaceDirectObjectUrl,
   triggerBrowserFileDownload
 } from '../../service/workspace-direct-object-url-service.js';
 import {
-  decodeFilePreviewText,
+  decodeFilePreviewContent,
   filePreviewKind,
   shouldReadTextFilePreview,
   type FilePreviewKind,
@@ -43,6 +47,7 @@ interface FileRead {
   readonly path: string;
   readonly size?: number;
   readonly encoding: 'utf-8' | 'base64';
+  readonly previewEncoding?: string;
   readonly content: string;
   readonly truncated: boolean;
   readonly nextOffset: number | null;
@@ -132,7 +137,6 @@ const kind = computed<FilePreviewKind>(() => {
 let directTransfer: ReturnType<typeof createStandaloneWorkspaceDirectTransferService> | undefined;
 let directIdentity: { readonly revision: string; readonly size: number } | undefined;
 let directReadStarted = false;
-let directTextDecoder = new TextDecoder('utf-8', { fatal: true });
 
 function restoreStandaloneTabs(): void {
   if (renderedPreviewMode) return;
@@ -367,7 +371,6 @@ async function loadFile(serverOnly = false): Promise<void> {
     return;
   }
   try {
-    directTextDecoder = new TextDecoder('utf-8', { fatal: true });
     if (usesRawFilePreview(path) && query.get('rawContent') === '1') {
       const directObject = serverOnly
         ? undefined
@@ -493,14 +496,14 @@ async function loadHostedFile(nodeId: string, path: string): Promise<void> {
       const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
       const readSize = total === undefined ? size : Number(total);
       if (!Number.isSafeInteger(readSize) || readSize < 0) throw new Error('NODE_RESPONSE_INVALID');
-      const decoded = decodeFilePreviewText(bytes, bytes.byteLength >= readSize);
+      const decoded = decodeFilePreviewContent(bytes, path, bytes.byteLength >= readSize, mimeType);
       return {
         path,
         size: readSize,
-        encoding: decoded === undefined ? 'base64' : 'utf-8',
-        content: decoded ?? '',
-        truncated: decoded !== undefined && bytes.byteLength < readSize,
-        nextOffset: decoded !== undefined && bytes.byteLength < readSize ? bytes.byteLength : null
+        ...decoded,
+        truncated: decoded.encoding === 'utf-8' && bytes.byteLength < readSize,
+        nextOffset:
+          decoded.encoding === 'utf-8' && bytes.byteLength < readSize ? bytes.byteLength : null
       };
     });
     if (file.value.encoding === 'base64') contentUrl.value = url;
@@ -530,7 +533,12 @@ async function saveFile(content: string, expectedRevision: string): Promise<stri
   const nodeId = query.get('nodeId');
   const workspaceId = query.get('workspaceId');
   const path = query.get('path');
-  if (nodeId === null || workspaceId === null || path === null)
+  if (
+    nodeId === null ||
+    workspaceId === null ||
+    path === null ||
+    file.value?.previewEncoding !== undefined
+  )
     throw new Error('FILE_WRITE_INVALID');
   const result = await http.request<{
     readonly file?: { readonly revision?: unknown; readonly size?: unknown };
@@ -614,30 +622,11 @@ async function readRange(
       size: direct.size
     };
     const revision = await directFileContentRevision(direct);
-    if (offset === 0) directTextDecoder = new TextDecoder('utf-8', { fatal: true });
-    const content = decodeFilePreviewText(
-      direct.bytes,
-      direct.nextOffset === null,
-      directTextDecoder
-    );
-    if (content !== undefined) {
-      return {
-        path,
-        size: direct.size,
-        encoding: 'utf-8',
-        content,
-        truncated: direct.nextOffset !== null,
-        nextOffset: direct.nextOffset,
-        ...(revision === undefined ? {} : { revision })
-      };
-    }
-    directIdentity = undefined;
-    directTextDecoder = new TextDecoder('utf-8', { fatal: true });
+    const decoded = decodeFilePreviewContent(direct.bytes, path, direct.nextOffset === null);
     return {
       path,
       size: direct.size,
-      encoding: 'base64',
-      content: '',
+      ...decoded,
       truncated: direct.nextOffset !== null,
       nextOffset: direct.nextOffset,
       ...(revision === undefined ? {} : { revision })
@@ -670,7 +659,7 @@ async function readRange(
     (body.file.nextOffset !== null && !Number.isSafeInteger(body.file.nextOffset))
   )
     throw new Error('NODE_RESPONSE_INVALID');
-  return body.file;
+  return decodeFilePreviewRead(body.file, path);
 }
 
 function escapeXml(value: string): string {

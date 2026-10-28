@@ -138,7 +138,7 @@ export async function readRestrictedDiff(
     fromRef,
     toRef
   ]);
-  const binary = result.output.includes(0) || result.text.includes('Binary files ');
+  const binary = isBinaryGitPatch(result.text);
   if (binary) {
     return {
       binary: true,
@@ -762,7 +762,7 @@ export async function readGitHistoryFileDiff(
     `:(literal)${path}`,
     ...(previousPath === undefined || previousPath === path ? [] : [`:(literal)${previousPath}`])
   ]);
-  const binary = result.output.includes(0) || result.text.includes('Binary files ');
+  const binary = isBinaryGitPatch(result.text);
   if (binary) {
     return {
       binary: true,
@@ -912,8 +912,7 @@ export async function readCurrentChangeDiff(
   await assertCurrentChangePathAccessible(workspacePath, path);
   const result = await readCurrentChangeGitDiff(workspacePath, path);
   const after = await readWorkingTreeText(workspacePath, path);
-  const binary =
-    result.output.includes(0) || result.text.includes('Binary files ') || after?.binary === true;
+  const binary = isBinaryGitPatch(result.text);
   if (binary) {
     return {
       binary: true,
@@ -925,8 +924,9 @@ export async function readCurrentChangeDiff(
     binary: false,
     text: result.text,
     truncated: result.truncated || after?.truncated === true,
-    afterText: after?.text ?? '',
-    ...(after === undefined ? {} : { afterTruncated: after.truncated })
+    // A non-UTF-8 worktree must not override Git's text patch or supply lossy context.
+    ...(after?.binary === true ? {} : { afterText: after?.text ?? '' }),
+    ...(after === undefined || after.binary ? {} : { afterTruncated: after.truncated })
   };
 }
 
@@ -995,6 +995,11 @@ async function assertCurrentChangePathAccessible(
   });
   if (metadata === undefined) return;
   await resolveWorkspaceEntry(root, path, false);
+}
+
+function isBinaryGitPatch(text: string): boolean {
+  // Git lines use LF; Unicode line separators inside hunk content are not marker boundaries.
+  return /(?:^|\n)Binary files [^\n]+ differ(?:\r?\n|$)/u.test(text);
 }
 
 interface DiffText {

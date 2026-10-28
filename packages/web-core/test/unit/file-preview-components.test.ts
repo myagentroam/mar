@@ -157,6 +157,7 @@ const filePreviewMessageKeys = [
   'fileEditor.edit',
   'fileEditor.editing',
   'fileEditor.readOnly',
+  'fileEditor.encodingFallback',
   'fileEditor.saved',
   'fileEditor.conflict',
   'fileEditor.saveFailed',
@@ -669,6 +670,30 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       i18n.global.t('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn')
     );
     expect(html).not.toContain('code-file-editor');
+  });
+
+  it('keeps fallback-decoded source read-only even on a writable Node', async () => {
+    stubBrowserEnvironment();
+    localePreferenceService().setLocale(locale);
+    const html = await render(WorkspaceFilePage, {
+      file: {
+        path: 'DisplayBoard.c',
+        encoding: 'utf-8',
+        previewEncoding: 'gb18030',
+        content: '// 中文',
+        revision: 'revision-1',
+        truncated: false
+      },
+      kind: 'text',
+      downloading: false,
+      targetLine: undefined,
+      writeEnabled: true,
+      saveFile: async () => 'revision-2'
+    });
+    expect(html).toContain('GB18030');
+    expect(html).toContain(i18n.global.t('fileEditor.readOnly'));
+    expect(html).not.toContain(i18n.global.t('fileEditor.editing'));
+    expect(html).not.toContain(`aria-label="${i18n.global.t('fileEditor.edit')}"`);
   });
 });
 

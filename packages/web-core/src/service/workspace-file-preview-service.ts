@@ -10,14 +10,18 @@ import {
   directFileContentRevision,
   type WorkspaceDirectFileIdentity
 } from './workspace-direct-file-read-service.js';
-import { readFilePreview, readFilePreviewObject } from './file-preview-read-service.js';
+import {
+  decodeFilePreviewRead,
+  readFilePreview,
+  readFilePreviewObject
+} from './file-preview-read-service.js';
 import {
   revokeWorkspaceDirectObjectUrl,
   triggerBrowserFileDownload
 } from './workspace-direct-object-url-service.js';
 import {
   binaryFilePreviewKind,
-  decodeFilePreviewText,
+  decodeFilePreviewContent,
   shouldReadTextFilePreview,
   TEXT_FILE_PREVIEW_LIMIT_BYTES,
   usesRawFilePreview
@@ -26,6 +30,7 @@ import { errorCode } from '../util/api-error.js';
 
 interface FileRead {
   readonly encoding: 'utf-8' | 'base64';
+  readonly previewEncoding?: string;
   readonly size: number;
   readonly content: string;
   readonly nextOffset: number | null;
@@ -164,14 +169,13 @@ export function createWorkspaceFilePreviewService(input: {
           }
           if (!Number.isSafeInteger(size) || size < bytes.byteLength)
             throw new Error('NODE_RESPONSE_INVALID');
-          const content = decodeFilePreviewText(bytes, bytes.byteLength === size);
+          const decoded = decodeFilePreviewContent(bytes, target.path, bytes.byteLength === size);
           if (current())
             state.fileContent.value = {
               path: target.path,
               size,
-              encoding: content === undefined ? 'base64' : 'utf-8',
-              content: content ?? '',
-              truncated: content !== undefined && bytes.byteLength < size
+              ...decoded,
+              truncated: decoded.encoding === 'utf-8' && bytes.byteLength < size
             };
           return current() ? state.fileContent.value : undefined;
         }
@@ -219,7 +223,6 @@ export function createWorkspaceFilePreviewService(input: {
       }
       let directStarted = false;
       let identity: WorkspaceDirectFileIdentity | undefined;
-      let decoder = new TextDecoder('utf-8', { fatal: true });
       async function read(limit: number, allowDirect: boolean): Promise<FileRead> {
         const direct = allowDirect
           ? await transfers.directFileReadRange?.(
@@ -235,12 +238,14 @@ export function createWorkspaceFilePreviewService(input: {
           directStarted = true;
           identity = { revision: direct.revision, size: direct.size };
           const revision = await directFileContentRevision(direct);
-          decoder = new TextDecoder('utf-8', { fatal: true });
-          const content = decodeFilePreviewText(direct.bytes, direct.nextOffset === null, decoder);
+          const decoded = decodeFilePreviewContent(
+            direct.bytes,
+            target.path,
+            direct.nextOffset === null
+          );
           return {
-            encoding: content === undefined ? 'base64' : 'utf-8',
+            ...decoded,
             size: direct.size,
-            content: content ?? '',
             nextOffset: direct.nextOffset,
             ...(revision === undefined ? {} : { revision })
           };
@@ -259,7 +264,7 @@ export function createWorkspaceFilePreviewService(input: {
           `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`
         );
         if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
-        return result.file;
+        return decodeFilePreviewRead(result.file, target.path);
       }
       let result: FileRead;
       try {
@@ -274,6 +279,9 @@ export function createWorkspaceFilePreviewService(input: {
         path: target.path,
         size: result.size,
         encoding: result.encoding,
+        ...(result.previewEncoding === undefined
+          ? {}
+          : { previewEncoding: result.previewEncoding }),
         content: result.encoding === 'base64' ? '' : result.content,
         truncated: result.encoding !== 'base64' && result.nextOffset !== null,
         ...(result.revision === undefined ? {} : { revision: result.revision })
@@ -330,6 +338,7 @@ export function createWorkspaceFilePreviewService(input: {
       target === undefined ||
       original === undefined ||
       original.encoding !== 'utf-8' ||
+      original.previewEncoding !== undefined ||
       original.truncated ||
       original.revision === undefined ||
       target.history !== undefined ||

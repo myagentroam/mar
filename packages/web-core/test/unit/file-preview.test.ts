@@ -8,6 +8,7 @@ import {
   canUseCodeEditor,
   codeHighlightLanguage,
   decodeFilePreviewText,
+  decodeFilePreviewContent,
   filePreviewKind,
   filePreviewMimeType,
   highlightCodeLines,
@@ -219,6 +220,74 @@ describe('Web unified file preview classification', () => {
     expect(decodeFilePreviewText(new Uint8Array([65, 0xe4, 0xb8]), false, decoder)).toBe('A');
     expect(decodeFilePreviewText(new Uint8Array([0xad, 66]), true, decoder)).toBe('中B');
     expect(decodeFilePreviewText(new Uint8Array([65, 0xe4, 0xb8]), false)).toBe('A');
+  });
+
+  it('previews GB18030 source comments without making a legacy encoding writable', () => {
+    const bytes = Uint8Array.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4, 13, 10]);
+    expect(decodeFilePreviewContent(bytes, 'DisplayBoard.c')).toEqual({
+      encoding: 'utf-8',
+      content: '// 中文\r\n',
+      previewEncoding: 'gb18030'
+    });
+    expect(decodeFilePreviewContent(bytes, 'unknown.bin').encoding).toBe('base64');
+    expect(decodeFilePreviewContent(bytes, 'unknown.bin', true, 'text/plain').content).toBe(
+      '// 中文\r\n'
+    );
+  });
+
+  it.each(['utf-16le', 'utf-16be'])(
+    'recognizes the %s BOM before checking for binary NUL bytes',
+    (encoding) => {
+      const bytes = Buffer.from('\ufeff// 中文', 'utf16le');
+      if (encoding === 'utf-16be') bytes.swap16();
+      expect(decodeFilePreviewContent(bytes, 'unknown.data')).toEqual({
+        encoding: 'utf-8',
+        content: '// 中文',
+        previewEncoding: encoding
+      });
+    }
+  );
+
+  it('keeps damaged text readable but does not recover binary or unknown data as text', () => {
+    expect(decodeFilePreviewContent(Uint8Array.from([65, 0xff, 66]), 'source.c')).toEqual({
+      encoding: 'utf-8',
+      content: 'A�B',
+      previewEncoding: 'utf-8'
+    });
+    for (const bytes of [Uint8Array.from([65, 0, 66]), Uint8Array.from([1, 0xff])]) {
+      expect(decodeFilePreviewContent(bytes, 'source.c').encoding).toBe('base64');
+    }
+    expect(decodeFilePreviewContent(Uint8Array.from([0xff]), 'unknown.bin').encoding).toBe(
+      'base64'
+    );
+    expect(decodeFilePreviewContent(Uint8Array.from([0xef, 0xbb, 0xbf, 0xff]), 'source.c')).toEqual(
+      {
+        encoding: 'utf-8',
+        content: '�',
+        previewEncoding: 'utf-8'
+      }
+    );
+  });
+
+  it('does not replace incomplete UTF-8, GB18030 or UTF-16 preview tails', () => {
+    expect(decodeFilePreviewContent(Uint8Array.from([65, 0xe4, 0xb8]), 'source.c', false)).toEqual({
+      encoding: 'utf-8',
+      content: 'A'
+    });
+    expect(
+      decodeFilePreviewContent(Uint8Array.from([0xd6, 0xd0, 0xce]), 'source.c', false)
+    ).toEqual({
+      encoding: 'utf-8',
+      content: '中',
+      previewEncoding: 'gb18030'
+    });
+    expect(
+      decodeFilePreviewContent(Uint8Array.from([0xff, 0xfe, 65, 0, 45]), 'source.c', false)
+    ).toEqual({
+      encoding: 'utf-8',
+      content: 'A',
+      previewEncoding: 'utf-16le'
+    });
   });
 
   it('Preserves browser-recognized MIME types for blob previews from older Nodes', () => {
