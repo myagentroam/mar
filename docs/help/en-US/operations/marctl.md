@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-27
+lastUpdated: 2026-10-28
 ---
 
 # Manage Nodes with marctl
@@ -97,9 +97,9 @@ marctl sessions start --runner codex --title 'fixer#42 Handle empty totals' --me
 marctl sessions show <session-id> --json
 marctl sessions history <session-id> --limit 10 --json
 marctl sessions send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
-marctl sessions send <session-id> --message-file followup.txt --queue --json
-marctl sessions send <session-id> --queue -m 'Review this screenshot' --image screenshot.png --json
-marctl sessions send <session-id> --queue --image first.png --image second.jpg --json
+marctl sessions send <session-id> --queue -m 'After the current task, review the final diff.' --json
+marctl sessions send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
+marctl sessions send <session-id> --steer --image first.png --image second.jpg --json
 marctl sessions wait <session-id> --run <run-id> --timeout 30s --json
 marctl sessions prompt get <session-id> --json
 marctl sessions prompt set <session-id> --message-file instructions.txt --json
@@ -121,7 +121,7 @@ When an Agent runs `start`, the CLI automatically supplies its current Session a
 
 Create workers as tasks need them, using `fixer#<task-id> <description>` or `reviewer#<task-or-change-id> <description>`. There is no fixed worker count, role registry, or worker pool. Put role, scope, and acceptance criteria in the first ordinary message, or use `prompt` for persistent instructions. Each Runner loads guidance through the entry described above; a target Session does not need to load the guide to receive collaboration messages.
 
-`send` requires exactly one of `--steer` or `--queue`, even when idle; missing, conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context and, when MAR Agent can accept it natively, echoes it immediately. Managed waits may return early without stopping background tasks; other tools still finish normally. Other cases may switch the current execution; Node decides delivery from actual state. Reserve it for decision-changing updates rather than routine reports. `--queue` does not interrupt active execution; during normal active work it waits for that execution and earlier queued work. Use `--steer` for information needed during current work. New input resumes a paused queue with ordinary send admission after cancellation settles, while later explicit stops still apply. An active Goal can delay it until the Goal exits. Start/send generate a `clientMessageId`, or accept `--client-message-id`. `delivery` is `ACCEPTED` for accepted priority context, `QUEUED` for queued input, or `STARTED` when startup has begun. Receipts do not distinguish native steering from internal execution replacement, and do not confirm model processing or business completion. A queued receipt's `runId` may belong to another active input: correlate `queueItemId`/`clientMessageId` with history. Follow history's `nextCursor` only when needed.
+`send` requires exactly one of `--steer` or `--queue`, even when idle; missing, conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context and, when MAR Agent can accept it natively, echoes it immediately. Managed waits may return early without stopping background tasks; other tools still finish normally. Other cases may switch the current execution; Node decides delivery from actual state. Prefer `--steer` for timely coordination: blockers, decision requests, corrections, and results the recipient is waiting for. Do not queue a result merely because it is a report; omit routine progress chatter. Use `--queue` only for deliberately deferred follow-up work that should run after the current execution. `--queue` does not interrupt active execution; during normal active work it waits for that execution and earlier queued work. Use `--steer` for information needed during current work. New input resumes a paused queue with ordinary send admission after cancellation settles, while later explicit stops still apply. An active Goal can delay it until the Goal exits. Start/send generate a `clientMessageId`, or accept `--client-message-id`. `delivery` is `ACCEPTED` for accepted priority context, `QUEUED` for queued input, or `STARTED` when startup has begun. Receipts do not distinguish native steering from internal execution replacement, and do not confirm model processing or business completion. A queued receipt's `runId` may belong to another active input: correlate `queueItemId`/`clientMessageId` with history. Follow history's `nextCursor` only when needed.
 
 The first message from `start` and messages from `send` inside an Agent Session are labeled `From {name}` in history and the queue, using the name captured at send time. The tooltip identifies the source as a Session and shows its ID. Web-share visitor messages use the same `From {name}` title, with a tooltip identifying a Web share; ordinary user messages and original author messages on shared pages keep their existing titles. Without a current Session, such as in a Workbench terminal, the UI shows `From marctl` without extra tooltip details. The internal origin marker is not shown in the message text.
 

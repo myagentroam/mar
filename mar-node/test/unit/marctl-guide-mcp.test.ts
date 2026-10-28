@@ -49,6 +49,15 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
     const result = await client.callTool({ name: 'load_guide', arguments: {} });
     expect(result.isError).not.toBe(true);
     expect(result.content).toEqual([{ type: 'text', text: await skill.load() }]);
+    for (const guidance of [
+      'preferred delivery for timely cross-Session coordination',
+      'results the recipient is waiting for',
+      'Do not queue a result merely because it is a report',
+      'Use --queue only for deliberately deferred follow-up work',
+      'may otherwise switch the current execution'
+    ]) {
+      expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(guidance) }]);
+    }
     expect(result.content).toEqual([
       { type: 'text', text: expect.stringContaining('marctl sessions start --runner mar-agent') }
     ]);
