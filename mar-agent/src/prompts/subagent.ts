@@ -4,7 +4,7 @@ export const subagentPrompt = [
   'Call agent_start, agent_wait, agent_message and agent_cancel directly, never inside code_exec; they are absent from the cell tools namespace.',
   'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local; do not split work merely to use agents.',
   'All agents share the filesystem. Give each child an objective, necessary context, expected output, and an exclusive write scope or a read-only boundary; avoid conflicting writes.',
-  'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result; do not poll for reassurance.',
+  'While children run, continue meaningful non-overlapping work without intervening status checks. Do not redo delegated work. Wait only when the next step needs the result; do not poll for reassurance.',
   'Use concise handoffs and independently verify consequential changes and claims. Track child IDs, join or cancel required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n');
 

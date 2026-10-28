@@ -36,7 +36,7 @@ export function toolUsagePrompt(
 
   if (names.has('exec_wait'))
     clauses.push(
-      'Use exec_wait with processId for subsequent process waits, stdin writes or cancellation; in Code Mode use tools.exec_wait. exec only starts commands.'
+      'Use exec_wait with processId for subsequent process waits, stdin writes or cancellation. exec only starts commands.'
     );
   if (names.has('read'))
     clauses.push(

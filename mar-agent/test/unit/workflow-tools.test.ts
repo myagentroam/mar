@@ -310,7 +310,9 @@ describe('workflow tools', () => {
     expect(execToolDefinition.description).toContain('bounded stdout/stderr');
     expect(execToolDefinition.description).toContain('with processId, not exec');
     expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
-    expect(execWaitToolDefinition.description).toContain('in Code Mode use tools.exec_wait');
+    expect(execWaitToolDefinition.codeModeExposure).toBe('both');
+    expect(execWaitToolDefinition.description).toContain('Prefer direct calls for a single wait');
+    expect(execWaitToolDefinition.description).toContain('use tools.exec_wait for composition');
     expect(execWaitToolDefinition.description).toContain('incremental stdout/stderr');
     expect(execWaitToolDefinition.description).toContain('cannot start a process');
     expect(execToolDefinition.description).toContain('truncated');

@@ -636,6 +636,7 @@ describe('QuickJS Code Mode', () => {
     expect(names).toEqual([
       'skill',
       'tool_search',
+      'exec_wait',
       'code_exec',
       'code_exec_wait',
       'apply_patch',

@@ -108,6 +108,7 @@ describe('system prompt', () => {
     expect(prompt).toContain('Prefer apply_patch');
     expect(prompt).toContain('call skill before generic tools');
     expect(prompt).toContain('# Subagents');
+    expect(prompt).toContain('without intervening status checks');
     expect(prompt).toContain(
       'Unread child messages and terminal results are supplied before the next model request.'
     );
