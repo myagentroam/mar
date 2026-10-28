@@ -1,4 +1,13 @@
 export const composerEnUS = {
+  composerSend: {
+    steer: 'Steer',
+    holdHint: 'Slide up to steer. Move above the Composer to cancel.',
+    holdSendHint: 'Slide up, then release to send. Move above the Composer to cancel.',
+    slideToSteer: 'Slide up to steer · Above the Composer cancels',
+    releaseToSteer: 'Release to steer · Above the Composer cancels',
+    releaseToSend: 'Release to send · Above the Composer cancels',
+    releaseToCancel: 'Release to cancel'
+  },
   quickPrompts: {
     loadFailed: 'Unable to load quick prompts. Try again.',
     noMatches: 'No matching quick prompts.',

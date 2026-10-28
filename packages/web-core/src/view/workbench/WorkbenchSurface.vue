@@ -589,6 +589,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :can-compact-context="page.canCompactContext"
                     :mobile-viewport="page.mobileViewport"
                     :active-run="page.activeComposerRun"
+                    :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
                     :interrupt-visible="page.interruptVisible"
                     :can-interrupt="page.canInterruptTurn"
                     :input-has-content="
@@ -607,6 +608,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @update-access="page.selectComposerAccess"
                     @compact="page.compactCurrentContext"
                     @stop="page.stopActiveRun"
+                    @send="page.sendSessionMessage()"
+                    @steer="page.sendSessionMessage('REPLACE_CURRENT')"
                   />
                 </template>
                 <template #attachments>

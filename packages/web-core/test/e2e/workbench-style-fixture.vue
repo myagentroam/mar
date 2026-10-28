@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, shallowReactive } from 'vue';
+import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
 import type { NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
@@ -10,8 +11,12 @@ import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue'
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const composerFixture = new URL(location.href).searchParams.has('composer');
+const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
+const hostedGestureFixture = new URL(location.href).searchParams.has('hosted-gesture');
+const submittedIntents = ref<string[]>([]);
 const offlineFixture = new URL(location.href).searchParams.has('offline');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
+const managedSessionOnly = new URL(location.href).searchParams.has('managed-session-only');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
@@ -126,7 +131,7 @@ const sessionProps = {
   request: async <T,>() => ({}) as T,
   hasUnread: () => unreadFixture
 };
-const surfacePage = {
+const surfacePage = shallowReactive({
   view: 'nodes',
   mobileViewport: mobile,
   sidebarCollapsed: false,
@@ -156,11 +161,12 @@ const surfacePage = {
     hasUnreadWorkspace: () => false
   },
   mobileWorkspaceSurface: 'conversation'
-};
+});
 if (composerFixture) {
   Object.assign(surfacePage, {
     workspaceHost: { connected: true },
     selectedWorkspace: workspaces[0],
+    activeWorkspaceTabId: 'node:plain',
     visibleWorkspaceSessions: [],
     workspaceWatchTopicStatus: { sessions: 'ready', files: 'ready', changes: 'ready' },
     workspaceKindLabel: () => 'Directory',
@@ -180,7 +186,18 @@ if (composerFixture) {
     displayedConversationTurns: [],
     followConversation: true,
     liveConnected: true,
-    sessionInput: '',
+    selectedSessionId: idleComposer ? undefined : 'active',
+    sessionInput: gestureFixture ? 'Follow up on mobile layout.' : '',
+    activeComposerRun:
+      gestureFixture && !idleComposer && !managedSessionOnly
+        ? { id: 'run-a', sessionId: 'active', status: 'RUNNING', startedAt: Date.now() }
+        : undefined,
+    onComposerInput: () => undefined,
+    sendSessionMessage: (intent?: string) => {
+      submittedIntents.value.push(intent ?? 'SEND');
+      Object.assign(surfacePage, { sessionInput: '' });
+    },
+    stopActiveRun: () => submittedIntents.value.push('STOP'),
     workPromptCompletion: { enabled: false },
     composerWorking: !idleComposer,
     composerWorkingLabel: 'Running',
@@ -210,7 +227,8 @@ if (composerFixture) {
 </script>
 
 <template>
-  <Surface v-if="composerFixture || offlineFixture" :page="surfacePage as never" />
+  <HostedComposerGestureFixture v-if="hostedGestureFixture" />
+  <Surface v-else-if="composerFixture || offlineFixture" :page="surfacePage as never" />
   <main v-else>
     <section aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
@@ -362,6 +380,32 @@ if (composerFixture) {
       />
     </section>
   </main>
+  <aside v-if="gestureFixture" class="gesture-fixture-controls">
+    <output aria-label="Submitted intents">{{ submittedIntents.join(',') }}</output>
+    <button
+      type="button"
+      @click="Object.assign(surfacePage, { activeComposerRun: { id: 'run-b', status: 'RUNNING' } })"
+    >
+      Change run
+    </button>
+    <button type="button" @click="Object.assign(surfacePage, { sessionInput: '' })">
+      Clear draft
+    </button>
+    <button type="button" @click="Object.assign(surfacePage, { selectedSessionId: 'other' })">
+      Change session
+    </button>
+    <button
+      type="button"
+      @click="
+        Object.assign(surfacePage, {
+          selectedWorkspace: workspaces[1],
+          activeWorkspaceTabId: 'node:grouped'
+        })
+      "
+    >
+      Change workspace
+    </button>
+  </aside>
 </template>
 
 <style scoped>
@@ -379,5 +423,11 @@ main > section {
 }
 .surface-fixture :deep(.session-layout) {
   height: 260px;
+}
+.gesture-fixture-controls {
+  position: fixed;
+  top: 70px;
+  right: 8px;
+  z-index: 100;
 }
 </style>

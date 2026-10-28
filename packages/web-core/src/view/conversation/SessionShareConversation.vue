@@ -359,6 +359,7 @@ onBeforeUnmount(() => {
             :can-compact-context="false"
             :mobile-viewport="mobile"
             :active-run="activeRun"
+            :context-key="chat.target.sessionId"
             :can-interrupt="ready && !submission.pending.value"
             :interrupt-visible="busy"
             :input-has-content="
@@ -373,6 +374,8 @@ onBeforeUnmount(() => {
             :effort-label="(value) => value"
             @files="chat.attachments.add"
             @stop="chat.controls.stopActiveRun"
+            @send="chat.send()"
+            @steer="chat.send('REPLACE_CURRENT')"
         /></template>
       </ConversationComposer>
     </section>

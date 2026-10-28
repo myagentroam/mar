@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
+import ComposerSendButton from './ComposerSendButton.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
@@ -31,6 +32,7 @@ const props = defineProps<{
   readonly contextUsageLabel: string;
   readonly canCompactContext: boolean;
   readonly mobileViewport: boolean;
+  readonly contextKey?: string | undefined;
   readonly activeRun: AgentRun | undefined;
   readonly canInterrupt: boolean;
   readonly interruptVisible: boolean;
@@ -49,9 +51,18 @@ const emit = defineEmits<{
   updateAccess: [value: string];
   compact: [];
   stop: [];
+  send: [];
+  steer: [];
 }>();
 
 const fileInput = ref<HTMLInputElement>();
+const canSteer = computed(
+  () =>
+    props.interruptVisible &&
+    props.activeRun?.status !== 'CANCELLING' &&
+    props.canInterrupt &&
+    !props.hasSelectedCommand
+);
 const contextHint = computed(() =>
   [
     props.contextUsageLabel,
@@ -273,7 +284,7 @@ function selectFiles(event: Event): void {
     >
       <MarIcon name="stop" />
     </button>
-    <button
+    <ComposerSendButton
       v-tooltip="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
       v-if="!canInterrupt || inputHasContent"
       class="composer-send-button"
@@ -283,13 +294,17 @@ function selectFiles(event: Event): void {
         submitting ||
         (attachmentsPending && !hasSelectedCommand)
       "
-      type="submit"
-      :aria-label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
-      :aria-busy="submitting || undefined"
-    >
-      <MarIcon name="loading-action" aria-hidden="true" v-if="submitting" />
-      <MarIcon name="send" aria-hidden="true" v-else />
-    </button>
+      :mobile-viewport="mobileViewport"
+      :can-steer="canSteer"
+      :context-key="`${contextKey ?? ''}:${activeRun?.id ?? ''}`"
+      :submitting="submitting"
+      :label="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send')"
+      @send="emit('send')"
+      @steer="emit('steer')"
+    />
+    <span v-if="mobileViewport && inputHasContent" class="composer-steer-discovery">
+      {{ translate(canSteer ? 'composerSend.holdHint' : 'composerSend.holdSendHint') }}
+    </span>
   </div>
 </template>
 
@@ -394,6 +409,13 @@ function selectFiles(event: Event): void {
 .composer-hint {
   position: relative;
   margin-left: auto;
+}
+
+.composer-steer-discovery {
+  grid-column: 1 / -1;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.4;
 }
 
 .composer-hint.is-submitting > :first-child {
