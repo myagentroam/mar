@@ -64,19 +64,14 @@ for (const scheme of ['Light', 'Dark']) {
             probe.style.color = `var(${token})`;
             return getComputedStyle(probe).color;
           };
-          probe.style.color =
-            getComputedStyle(element).colorScheme === 'dark'
-              ? 'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))'
-              : 'color-mix(in srgb, var(--mar-fill-selection) 97%, var(--mar-text-primary))';
-          const selected = getComputedStyle(probe).color;
           const colors = {
             normal: color('--mar-text-secondary'),
             active: color('--mar-text-primary'),
-            background: color('--mar-fill-muted'),
-            selected,
+            background: color('--mar-bg-subtle'),
+            selected: color('--mar-fill-selection'),
             hover: color('--mar-fill-row-hover'),
             disabled: color('--mar-text-faint'),
-            disabledSelection: color('--mar-bg-subtle'),
+            disabledSelection: color('--mar-fill-muted'),
             border: color('--mar-border-default'),
             focus: color('--mar-color-brand')
           };
@@ -86,13 +81,17 @@ for (const scheme of ['Light', 'Dark']) {
         await page.mouse.move(0, 0);
         await expect(node).toBeChecked();
         await expect(scope).toHaveCSS('background-color', palette.background);
-        const surface = await scope.evaluate((element) => ({
-          surrounding: getComputedStyle(element.parentElement!).backgroundColor,
-          shadow: getComputedStyle(element).boxShadow
-        }));
-        expect(palette.background).not.toBe(surface.surrounding);
-        expect(surface.shadow).toContain(palette.border);
-        expect(surface.shadow).toContain('inset');
+        // The track may match its panel, but retains its own opaque fill and inset edge.
+        expect(palette.background).not.toBe('rgba(0, 0, 0, 0)');
+        expect(palette.background).not.toBe(palette.selected);
+        const shadow = await scope.evaluate((element) => getComputedStyle(element).boxShadow);
+        expect(shadow).toContain(palette.border);
+        expect(shadow).toContain('inset');
+        await expect(
+          page
+            .getByRole('region', { name: 'Tabs state samples' })
+            .getByRole('tab', { selected: true })
+        ).toHaveCSS('background-color', palette.selected);
         await expect(nodeLabel).toHaveCSS('color', palette.active);
         await expect(workspaceLabel).toHaveCSS('color', palette.normal);
         await expect(selection).toHaveCSS('background-color', palette.selected);
@@ -119,6 +118,7 @@ for (const scheme of ['Light', 'Dark']) {
           'background-color',
           palette.disabledSelection
         );
+        expect(palette.disabledSelection).not.toBe(palette.background);
         await node.focus();
         await page.keyboard.press('ArrowRight');
         await expect(workspace).toBeFocused();

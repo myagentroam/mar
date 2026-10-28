@@ -18,7 +18,6 @@ import type { createSessionShareAccessService } from './session-share-access-ser
 import { createWorkbenchLiveService } from './workbench-live-service.js';
 import { createWorkbenchSessionWatchController } from './workbench-session-watch-controller.js';
 import { createConversationStateService } from './conversation-state-service.js';
-import { createConversationProjectionService } from './conversation-projection-service.js';
 import { createWorkbenchEventProjectionService } from './workbench-event-projection-service.js';
 import { createWorkbenchConversationPagingService } from './workbench-conversation-paging-service.js';
 import { createConversationScrollService } from './conversation-scroll-service.js';
@@ -26,13 +25,11 @@ import { createWorkbenchSubmissionService } from './workbench-submission-service
 import { createWorkbenchSessionMessageService } from './workbench-session-message-service.js';
 import { createWorkbenchRunControlService } from './workbench-run-control-service.js';
 import { createComposerAttachmentService } from './composer-attachment-service.js';
-import { createRunService, newestRunSnapshot } from './run-service.js';
+import { createRunService } from './run-service.js';
 import { createComposerQueueService } from './composer-queue-service.js';
 import { createWorkspaceQueueService } from './workspace-queue-service.js';
 import { reconcileWorkspaceQueueSnapshot } from './workspace-queue-projection-service.js';
 import { createConversationUserInputService } from './conversation-user-input-service.js';
-import { syncConversationRunStatus } from '../util/conversation-segments.js';
-import { limitConversationHistory } from '../util/conversation-history.js';
 import { errorMessage } from '../util/error-presentation.js';
 import { errorCode } from '../util/api-error.js';
 import { isAgentRun, isSession } from '../util/workbench-guards.js';
@@ -86,7 +83,7 @@ export function createSessionShareConversationService(options: {
     request
   });
   const tokens = createComposerSkillTokenService(skillTokens);
-  const state = createConversationStateService();
+  const state = createConversationStateService(() => void paging.refreshRecentConversationTurns());
   const scroll = createConversationScrollService();
   const runState = createRunService(selectedSessionId);
   const submission = createWorkbenchSubmissionService();
@@ -106,12 +103,7 @@ export function createSessionShareConversationService(options: {
   const busy = computed(
     () => activeRun.value !== undefined || selectedSession.value?.activity === 'MANAGED_ACTIVE'
   );
-  const projection = createConversationProjectionService({
-    turns: state.turns,
-    nextCursor: state.nextCursor,
-    limitHistory: limitConversationHistory,
-    onRecentWindowOverflow: () => void paging.refreshRecentConversationTurns()
-  });
+  const projection = state.projection;
   const mergeSessions = (values: readonly Session[]) => {
     sessions.value = values.filter((value) => value.id === target.sessionId);
   };
@@ -126,11 +118,10 @@ export function createSessionShareConversationService(options: {
   const events = createWorkbenchEventProjectionService({
     nodes: ref([]),
     sessions,
-    runs: runState.runs,
     workspaceTarget,
     selectedSessionId,
     conversationNextCursor: state.nextCursor,
-    workspaceCache: () => undefined,
+    cacheQueue: () => undefined,
     mergeQueue: (value, source) => {
       queue.value = reconcileWorkspaceQueueSnapshot(queue.value, value, source);
     },
@@ -141,8 +132,7 @@ export function createSessionShareConversationService(options: {
       state.contextUsage.value = value as typeof state.contextUsage.value;
     },
     syncTurnStatus: (id, status) => {
-      state.turns.value = syncConversationRunStatus(
-        state.turns.value,
+      projection.syncRunStatus(
         id,
         (['STARTING', 'RUNNING', 'CANCELLING'].includes(status)
           ? 'RUNNING'
@@ -150,7 +140,7 @@ export function createSessionShareConversationService(options: {
       );
     },
     cacheRun: () => undefined,
-    newestRun: newestRunSnapshot,
+    acceptRun: runState.acceptRun,
     openRun: (id) => {
       runState.selectedRunId.value = id;
     },
@@ -267,11 +257,13 @@ export function createSessionShareConversationService(options: {
     selectedSessionId,
     nextCursor: state.nextCursor,
     loadingOlder: state.loadingOlder,
-    turns: state.turns,
-    scrollElement: scroll.element,
+    capturePrependAnchor: scroll.capturePrependAnchor,
     pageSize: 20,
     recentSegmentWindowSize: 20,
     replaceRecent: projection.replaceRecent,
+    mergeOlderPage: projection.mergeOlderPage,
+    recoverWindow: projection.recoverWindow,
+    clearCursor: projection.clearCursor,
     request,
     sessionPathId: encodeURIComponent,
     notice,
@@ -317,7 +309,6 @@ export function createSessionShareConversationService(options: {
     selectedWorkspace: computed(() => undefined),
     selectedSession,
     sessions,
-    runs: runState.runs,
     input,
     skillTokens,
     references,
@@ -349,7 +340,7 @@ export function createSessionShareConversationService(options: {
     clearSkillTokens: () => {
       skillTokens.value = [];
     },
-    newestRun: newestRunSnapshot,
+    acceptRun: runState.acceptRun,
     migrateSessionCache: () => undefined,
     openRun: (id) => {
       runState.selectedRunId.value = id;
@@ -366,7 +357,6 @@ export function createSessionShareConversationService(options: {
     selectedSessionId,
     selectedRunId: runState.selectedRunId,
     activeRun,
-    runs: runState.runs,
     notice,
     runService: runState,
     request,
@@ -380,6 +370,7 @@ export function createSessionShareConversationService(options: {
     currentSessionQueue: computed(() => queue.value),
     workspaceTarget,
     selectedSessionId,
+    currentSelectionRevision: () => 0,
     draggingQueueItemId: queueEditor.draggingQueueItemId,
     editingContent: queueEditor.editingContent,
     serializeEditedContent: queueEditor.serializeEditedContent,

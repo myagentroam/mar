@@ -8,13 +8,13 @@ import {
   resolveInitialLocale,
   translate
 } from '../../ee/web/src/service/locale-preference-service';
-import { ApiError } from '../../ee/web/src/util/api-error';
+import { ApiError } from '@myagentroam/web-core/api-error';
 import {
   absoluteMessageTime,
   absoluteSessionTime,
   errorMessage,
   hostedConversationTitle
-} from '../../ee/web/src/util/workbench-presentation';
+} from '@myagentroam/web-core/workbench-presentation';
 
 afterEach(() => vi.unstubAllGlobals());
 

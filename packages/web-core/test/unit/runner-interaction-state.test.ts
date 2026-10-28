@@ -211,6 +211,27 @@ describe('Web Runner Interaction Status', () => {
     expect(state.deferredDraftCommands.value).toEqual([{ command: goal, input: '/goal' }]);
   });
 
+  it.each([
+    ['codex', 'full-access'],
+    ['claude-code', 'bypass'],
+    ['opencode', 'auto'],
+    ['mar-agent', undefined]
+  ] as const)('prepares a draft Goal for %s only on its first activation', (runner, access) => {
+    const goal = { ...command, runner, id: 'goal', interaction: 'TOGGLE' as const };
+    const state = createRunnerInteractionService({
+      input: ref(''),
+      draftSessionOpen: ref(true),
+      selectedSession: ref(),
+      profile: ref()
+    });
+    expect(state.prepareDraftCommand(goal, ' /goal ')).toEqual({
+      goalAlreadyActive: false,
+      ...(access === undefined ? {} : { access })
+    });
+    expect(state.prepareDraftCommand(goal, '/goal')).toEqual({ goalAlreadyActive: true });
+    expect(state.deferredDraftCommands.value).toEqual([{ command: goal, input: '/goal' }]);
+  });
+
   it('Show the Composer command Tag only when the persistent task is waiting for a target', () => {
     type Options = Parameters<typeof createRunnerInteractionService>[0];
     const selectedSessionSource = ref<{ commandStates: RunnerCommandState[] }>({

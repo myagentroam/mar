@@ -14,6 +14,7 @@ import { serializeComposerTag } from '@myagentroam/protocol';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
@@ -234,6 +235,7 @@ function conversationTurn(
 }
 
 const timelineProps = {
+  captureRenderAnchor: createConversationScrollService().captureRenderAnchor,
   turns: [] as readonly ConversationTurn[],
   workspaceRoot: undefined,
   loading: false,

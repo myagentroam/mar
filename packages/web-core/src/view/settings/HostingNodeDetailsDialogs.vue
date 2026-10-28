@@ -6,7 +6,7 @@ import type { ComputerUseCapability } from '@myagentroam/protocol';
 import CoreDialogs from './NodeDetailsDialogs.vue';
 import type { NodeDetailsProps, NodeDetailsHostingState } from '../../model/node-details.js';
 export type { NodeDetailsHostingState } from '../../model/node-details.js';
-import type { RunnerUsageName } from '../../service/runner-usage-service.js';
+import type { RunnerUsageName } from '../../model/runner-usage.js';
 import ConversationHostingMaintenanceCard from './ConversationHostingMaintenanceCard.vue';
 import { translate } from '../../service/locale-preference-service.js';
 export type {

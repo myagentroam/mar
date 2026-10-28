@@ -5,7 +5,10 @@ import {
   resourceEditBody,
   type OrganizationSummary
 } from './enterprise-management-service.js';
-import { managementUrlValues, replaceManagementUrlValues } from './management-url-service.js';
+import {
+  managementUrlValues,
+  replaceManagementUrlValues
+} from '@myagentroam/web-core/management-url';
 import { translate } from './locale-preference-service.js';
 import type { ResourceRow } from '@myagentroam/web-core/resource-management';
 export type ResourceOwnership =

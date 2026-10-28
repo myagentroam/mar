@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
-import type { HostedConversationSnapshot } from '@myagentroam/protocol';
+import {
+  hostedConversationSnapshotSchema,
+  type HostedConversationSnapshot
+} from '@myagentroam/protocol';
 
 const template = {
   id: 't',
@@ -214,6 +217,16 @@ function fixture() {
 }
 
 describe('Hosted first message ownership', () => {
+  it('decodes the create response once and installs the accepted snapshot without decoding it again', async () => {
+    const decode = vi.spyOn(hostedConversationSnapshotSchema, 'safeParse');
+    const f = fixture();
+    const created = await f.entry.create('create-once');
+    expect(decode).toHaveBeenCalledTimes(1);
+    f.workspace.selectConversation('n', 'c', created);
+    expect(f.workspace.snapshot.value?.conversation.id).toBe('c');
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
   it('retries the same first-message creation after a stale catalog refresh arrives after an unknown result', async () => {
     const f = fixture();
     const catalog = deferred();
@@ -247,7 +260,7 @@ describe('Hosted first message ownership', () => {
     missingModel.entry.removeAttachment(missingModel.entry.attachments.value[0]!.id);
     await missingModel.entry.create().then((created) => {
       missingModel.workspace.selectConversation('n', 'c', { ...created, models: [] });
-      missingModel.workspace.watchReady.value = true;
+      vi.spyOn(missingModel.workspace.watchReady, 'value', 'get').mockReturnValue(true);
       missingModel.entry.target.value = created;
     });
     await expect(missingModel.entry.submit()).rejects.toThrow('HOSTED_CONVERSATION_MODEL_REQUIRED');

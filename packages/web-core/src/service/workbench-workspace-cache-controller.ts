@@ -1,5 +1,5 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { nextTick, type Ref, type ShallowRef } from 'vue';
+import { nextTick, type Ref } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
@@ -7,11 +7,13 @@ import type {
   ComposerSkillToken,
   RunnerDefaultConfiguration,
   Session,
-  WorkspaceQueue,
-  WorkspaceViewCache
+  WorkspaceQueue
 } from '../model/workbench.js';
 import type { createWorkspaceSessionPagingService } from './workspace-session-paging-service.js';
-import type { createWorkspaceViewCacheService } from './workspace-view-cache-service.js';
+import type {
+  createWorkspaceViewCacheService,
+  WorkspaceCacheView
+} from './workspace-view-cache-service.js';
 import type { SessionContextUsage } from './conversation-state-service.js';
 import type { WorkspaceInspectorHandle } from './workbench-surface-state-service.js';
 export type { WorkspaceInspectorHandle } from './workbench-surface-state-service.js';
@@ -19,26 +21,26 @@ export type { WorkspaceInspectorHandle } from './workbench-surface-state-service
 interface WorkbenchWorkspaceCacheControllerOptions {
   readonly cacheService: ReturnType<typeof createWorkspaceViewCacheService>;
   readonly paging: ReturnType<typeof createWorkspaceSessionPagingService>;
-  readonly activeCache: ShallowRef<WorkspaceViewCache | undefined>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
-  readonly turns: Ref<ConversationTurn[]>;
-  readonly nextCursor: Ref<string | null>;
-  readonly contextUsage: Ref<SessionContextUsage | null | undefined>;
+  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
+  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
+  readonly nextCursor: Readonly<Ref<string | null>>;
+  readonly contextUsage: Readonly<Ref<SessionContextUsage | null | undefined>>;
   readonly queue: Ref<WorkspaceQueue>;
   readonly draftOpen: Ref<boolean>;
   readonly input: Ref<string>;
   readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
   readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
-  readonly runner: Ref<Session['runner']>;
-  readonly model: Ref<string>;
-  readonly effort: Ref<RunnerDefaultConfiguration['effort']>;
-  readonly access: Ref<RunnerDefaultConfiguration['access']>;
+  readonly runner: Readonly<Ref<Session['runner']>>;
+  readonly model: Readonly<Ref<string>>;
+  readonly effort: Readonly<Ref<RunnerDefaultConfiguration['effort']>>;
+  readonly access: Readonly<Ref<RunnerDefaultConfiguration['access']>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
   readonly inspector: Ref<WorkspaceInspectorHandle | null | undefined>;
-  readonly normalizeDraft: () => void;
+  readonly restoreDraftConfiguration: (configuration: RunnerDefaultConfiguration) => void;
   readonly persistDraft: () => void;
+  readonly flushConversation: () => void;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly maximumDetails: number;
 }
@@ -48,7 +50,7 @@ export function createWorkbenchWorkspaceCacheController(
   options: WorkbenchWorkspaceCacheControllerOptions
 ) {
   const workspaceViewCache = (nodeId: string, workspaceId: string) =>
-    options.cacheService.get(nodeId, workspaceId);
+    options.cacheService.view(nodeId, workspaceId);
 
   function discardWorkspaceViewCache(nodeId: string, workspaceId: string): void {
     options.cacheService.remove(nodeId, workspaceId);
@@ -62,14 +64,14 @@ export function createWorkbenchWorkspaceCacheController(
 
   function saveCurrentWorkspaceView(): void {
     options.persistDraft();
-    const cache = options.activeCache.value;
-    if (cache === undefined) return;
-    options.cacheService.capture(
-      cache,
+    if (!options.cacheService.hasActive()) return;
+    options.flushConversation();
+    options.cacheService.captureActive(
       {
         sessions: options.sessions.value,
-        inspector:
-          options.inspector.value == null ? cache.inspector : options.inspector.value.snapshot(),
+        ...(options.inspector.value == null
+          ? {}
+          : { inspector: options.inspector.value.snapshot() }),
         draft: {
           input: options.input.value,
           skillTokens: options.skillTokens.value,
@@ -118,7 +120,7 @@ export function createWorkbenchWorkspaceCacheController(
     });
   }
 
-  function restoreWorkspaceDraft(cache: WorkspaceViewCache | undefined): void {
+  function restoreWorkspaceDraft(cache: WorkspaceCacheView | undefined): void {
     const draft = cache?.draft;
     if (draft === undefined) {
       options.input.value = '';
@@ -126,34 +128,52 @@ export function createWorkbenchWorkspaceCacheController(
       if (options.references !== undefined) options.references.value = [];
       return;
     }
-    options.runner.value = draft.runner;
-    options.model.value = draft.model;
-    options.effort.value = draft.effort;
-    options.access.value = draft.access;
-    options.normalizeDraft();
+    options.restoreDraftConfiguration(draft);
     options.input.value = draft.input;
     options.skillTokens.value = draft.skillTokens;
     if (options.references !== undefined) options.references.value = draft.references ?? [];
   }
 
-  function restoreCachedSessionDetail(sessionId: string): CachedSessionDetail | undefined {
+  function restoreCachedSessionDetail(
+    sessionId: string
+  ): Readonly<CachedSessionDetail> | undefined {
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     if (nodeId === undefined || workspaceId === undefined) return undefined;
     const detail = options.cacheService.touchDetail(nodeId, workspaceId, sessionId);
-    if (detail === undefined) return undefined;
-    options.runs.value = [...detail.runs];
-    options.turns.value = [...detail.turns];
-    options.nextCursor.value = detail.nextCursor;
-    options.contextUsage.value = detail.contextUsage ?? null;
     return detail;
   }
 
-  function cachedSessionDetail(sessionId: string): CachedSessionDetail | undefined {
+  function cacheTarget(sessionId: string): { nodeId: string; workspaceId: string } | undefined {
     const session = options.sessions.value.find((candidate) => candidate.id === sessionId);
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (session === undefined || nodeId === undefined) return undefined;
-    return options.cacheService.detail(nodeId, session.workspaceId, sessionId);
+    return { nodeId, workspaceId: session.workspaceId };
+  }
+
+  function updateCachedContext(
+    sessionId: string,
+    context: CachedSessionDetail['contextUsage']
+  ): void {
+    const target = cacheTarget(sessionId);
+    if (target !== undefined)
+      options.cacheService.updateContext(target.nodeId, target.workspaceId, sessionId, context);
+  }
+
+  function syncCachedRunStatus(
+    sessionId: string,
+    runId: string,
+    status: ConversationTurn['status']
+  ): void {
+    const target = cacheTarget(sessionId);
+    if (target !== undefined)
+      options.cacheService.syncRunStatus(
+        target.nodeId,
+        target.workspaceId,
+        sessionId,
+        runId,
+        status
+      );
   }
 
   const cacheRunSnapshotFor = (nodeId: string, workspaceId: string, run: AgentRun) =>
@@ -194,7 +214,8 @@ export function createWorkbenchWorkspaceCacheController(
     restoreWorkspaceInspector,
     restoreWorkspaceDraft,
     restoreCachedSessionDetail,
-    cachedSessionDetail,
+    updateCachedContext,
+    syncCachedRunStatus,
     cacheRunSnapshotFor,
     cacheRunSnapshot,
     cacheConversationTurn,

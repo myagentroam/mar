@@ -7,7 +7,7 @@ import type { OrganizationSummary } from '@/service/enterprise-management-servic
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
 import CorePage from '@myagentroam/web-core/SecretManagementPage.vue';
 import { translate } from '@/service/locale-preference-service';
-import { errorMessage } from '@/util/workbench-presentation';
+import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;

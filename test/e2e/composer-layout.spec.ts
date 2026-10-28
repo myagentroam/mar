@@ -60,13 +60,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
-  test(`New conversations show a responsive Composer startup layout: ${theme}`, async ({
-    page
-  }, testInfo) => {
-    for (const width of [320, 390, 1280]) {
-      await page.setViewportSize({ width, height: 844 });
-      for (const locale of ['en-US', 'zh-CN']) {
-        for (const mode of ['workspace', 'hosted']) {
+  // Each independent layout uses the runner-owned page/context and releases it after the case.
+  for (const width of [320, 390, 1280]) {
+    for (const locale of ['en-US', 'zh-CN']) {
+      for (const mode of ['workspace', 'hosted']) {
+        test(`New conversations show a responsive Composer startup layout: ${theme}, ${width}, ${locale}, ${mode}`, async ({
+          page
+        }, testInfo) => {
+          await page.setViewportSize({ width, height: 844 });
           await page.goto(
             `${fixture.url}visual-alignment.html?empty-conversation=${mode}&theme=${theme}&locale=${locale}${width < 768 ? '&mobile=1' : ''}`
           );
@@ -144,10 +145,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               return bounds.y + bounds.height;
             })
             .toBe(844);
-        }
+        });
       }
     }
-  });
+  }
 
   test(`Composer startup respects reduced motion: ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 844 });

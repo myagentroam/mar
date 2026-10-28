@@ -23,11 +23,14 @@ export function createWorkbenchComposerController(options: {
   readonly draftOpen: Ref<boolean>;
   readonly loading: Ref<boolean>;
   readonly configurationAvailable?: () => boolean;
-  readonly runner: Ref<Session['runner']>;
-  readonly model: Ref<string>;
-  readonly effort: Ref<string>;
-  readonly access: Ref<string>;
-  readonly modelEffortSelection: Ref<string | undefined>;
+  readonly runner: Readonly<Ref<Session['runner']>>;
+  readonly model: Readonly<Ref<string>>;
+  readonly effort: Readonly<Ref<string>>;
+  readonly access: Readonly<Ref<string>>;
+  readonly setModel: (model: string, effort: string) => void;
+  readonly setEffort: (effort: string) => void;
+  readonly setAccess: (access: string) => void;
+  readonly clearModelEffortSelection: () => void;
   readonly codexFastEnabled: Ref<boolean>;
   readonly profileService: RunnerProfileDomain;
   readonly normalize: () => void;
@@ -180,8 +183,7 @@ export function createWorkbenchComposerController(options: {
     )
       return;
     const firstModel = profile.models[0]!;
-    options.model.value = firstModel.id;
-    options.effort.value = defaultEffortForModel(firstModel);
+    options.setModel(firstModel.id, defaultEffortForModel(firstModel));
     repairingSessionId = session.id;
     try {
       await update();
@@ -256,7 +258,7 @@ export function createWorkbenchComposerController(options: {
 
   function selectEffort(effort: string, allowed: readonly string[]): void {
     if (!allowed.includes(effort)) return;
-    options.effort.value = effort;
+    options.setEffort(effort);
     void update();
     if (options.draftOpen.value) saveDefaults();
   }
@@ -270,14 +272,13 @@ export function createWorkbenchComposerController(options: {
   ): void {
     const model = models.find((candidate) => candidate.id === modelId);
     if (model === undefined) return;
-    options.model.value = model.id;
-    options.effort.value = defaultEffortForModel(model);
+    options.setModel(model.id, defaultEffortForModel(model));
     void update();
     if (options.draftOpen.value) saveDefaults();
   }
   function selectAccess(accessId: string, accessOptions: readonly { readonly id: string }[]): void {
     if (!accessOptions.some((item) => item.id === accessId)) return;
-    options.access.value = accessId;
+    options.setAccess(accessId);
     void update();
     if (options.draftOpen.value) saveDefaults();
   }
@@ -297,7 +298,7 @@ export function createWorkbenchComposerController(options: {
       return;
     applyDefaults(value);
     options.clearRunnerCommand();
-    options.modelEffortSelection.value = undefined;
+    options.clearModelEffortSelection();
     void update();
   }
   function selectModelEffort(
@@ -311,7 +312,7 @@ export function createWorkbenchComposerController(options: {
     else if (selected.startsWith('model:')) selectModelValue(selected.slice(6));
     else return;
     void nextTick(() => {
-      options.modelEffortSelection.value = undefined;
+      options.clearModelEffortSelection();
     });
   }
 

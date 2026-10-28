@@ -263,34 +263,20 @@ export interface CachedSessionDetail {
   lastAccessedAt: number;
 }
 
-export interface WorkspaceViewCache {
-  readonly nodeId: string;
-  readonly workspaceId: string;
-  sessions: readonly Session[];
-  selectedSessionId?: string;
-  /** Composer text and configuration for the current Workspace; its tab state owns attachments and uploads. */
-  draft?: {
-    readonly input: string;
-    readonly skillTokens: readonly ComposerSkillToken[];
-    readonly references?: readonly import('@myagentroam/protocol').ComposerFileReference[];
-    readonly runner: RunnerId;
-    readonly model: string;
-    readonly effort: string;
-    readonly access: string;
-  };
-  /** Stores only safely restorable inspector views, excluding file body blobs and incomplete uploads. */
-  inspector?: unknown;
-  readonly queues: Map<string, WorkspaceQueue>;
-  readonly sessionDetails: Map<string, CachedSessionDetail>;
-}
-
 export interface ComposerSkillToken {
   readonly name: string;
   readonly source: 'NODE_HOME' | 'WORKSPACE';
   readonly skillFilePath: string;
   readonly available: boolean;
 }
-export type { UserSessionSummary } from '../service/admin-auth-service.js';
+export interface UserSessionSummary {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly expiresAt: number;
+  readonly ipAddress: string;
+  readonly userAgent: string;
+  readonly current: boolean;
+}
 export interface NodeWorkbenchManifest {
   readonly sessionGroups?: { readonly apiVersion: 1 };
   readonly manifestVersion: number;

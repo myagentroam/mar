@@ -130,7 +130,7 @@ describe('scheduled session restart recovery', () => {
     const internals = connector as unknown as {
       createDirectTransferService(): Promise<undefined>;
       computerUseEnablement: { initialize(): void };
-      controlChannel: { connect(): void };
+      controlChannel: { connect(): void; ready(): boolean };
       terminalChannel: { connect(): void };
       connectionLifecycle: { connected(): void };
       workbenchEventService: { publish(event: unknown): void };
@@ -170,6 +170,7 @@ describe('scheduled session restart recovery', () => {
           .flatMap((event) => (event.payload.event ? [event.payload.event.payload] : []))
           .filter((event) => event['code'] === 'SCHEDULE_RESTART_OUTCOME_UNKNOWN');
       expect(notifications()).toEqual([]);
+      vi.spyOn(internals.controlChannel, 'ready').mockReturnValue(true);
       internals.connectionLifecycle.connected();
       expect(notifications()).toHaveLength(2);
       expect(

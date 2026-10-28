@@ -1,5 +1,5 @@
 import type { ComputerUseCapability, ConversationHostingCapability } from '@myagentroam/protocol';
-import type { RunnerUsage, RunnerUsageName } from '../service/runner-usage-service.js';
+import type { RunnerUsage, RunnerUsageName } from './runner-usage.js';
 
 export interface NodeDetailsHostingState {
   readonly enabled: boolean;

@@ -10,6 +10,7 @@ import type {
   ConversationTurn
 } from '../../../packages/web-core/src/model/workbench.js';
 import ConversationTimeline from '../../../packages/web-core/src/view/conversation/ConversationTimeline.vue';
+import { createConversationScrollService } from '../../../packages/web-core/src/service/conversation-scroll-service.js';
 
 type CompactState =
   'WAITING' | 'BLOCKING_WAITING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'UNRESOLVED';
@@ -178,6 +179,7 @@ const app = createApp({
     };
     return {
       turns,
+      captureRenderAnchor: createConversationScrollService().captureRenderAnchor,
       noImageAttachments: () => [],
       noQuestions: () => [],
       noAnswer: () => '',
@@ -192,6 +194,7 @@ const app = createApp({
         :loading="false"
         :initializing="false"
         :initial-render-version="1"
+        :capture-render-anchor="captureRenderAnchor"
         :image-attachments="noImageAttachments"
         :user-input-questions="noQuestions"
         :user-input-answer="noAnswer"

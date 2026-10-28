@@ -59,12 +59,17 @@ export function createComposerConfigurationService(options: {
     normalize();
   }
 
+  function selectModel(modelId: string, modelEffort: string): void {
+    model.value = modelId;
+    effort.value = modelEffort;
+  }
+
   return {
-    runner,
-    model,
-    effort,
-    access,
-    modelEffortSelection,
+    runner: runner as Readonly<Ref<Session['runner']>>,
+    model: model as Readonly<Ref<string>>,
+    effort: effort as Readonly<Ref<string>>,
+    access: access as Readonly<Ref<string>>,
+    modelEffortSelection: modelEffortSelection as Readonly<Ref<string | undefined>>,
     activeRunner,
     profile,
     models,
@@ -75,6 +80,10 @@ export function createComposerConfigurationService(options: {
     runnerLabel,
     accessLabel,
     normalize,
-    apply
+    apply,
+    selectModel,
+    selectEffort: (value: string) => (effort.value = value),
+    selectAccess: (value: string) => (access.value = value),
+    clearModelEffortSelection: () => (modelEffortSelection.value = undefined)
   };
 }

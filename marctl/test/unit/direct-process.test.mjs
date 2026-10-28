@@ -7,7 +7,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { WebSocketServer } from 'ws';
 import { MarctlClient } from '../../src/client.mjs';
-import { DirectFallbackError, DirectUnsafeError } from '../../src/direct.mjs';
+import {
+  DirectFallbackError,
+  DirectUnsafeError,
+  DirectRejectedError
+} from '../../src/direct-errors.mjs';
 import { openDirectTerminalProcess } from '../../src/direct-process.mjs';
 
 class FakeChild extends EventEmitter {
@@ -148,6 +152,33 @@ test('preserves a confirmed pre-OPEN fallback after permission to attempt attach
   });
   await rejected;
   f.child.kill();
+});
+
+test('preserves a deterministic rejection across IPC before and after attachment', async () => {
+  const before = fixture();
+  const rejected = assert.rejects(
+    before.opening,
+    (error) => error instanceof DirectRejectedError && error.code === 'TERMINAL_NOT_AUTHORIZED'
+  );
+  before.child.receive({
+    type: 'failure',
+    name: 'DirectRejectedError',
+    code: 'TERMINAL_NOT_AUTHORIZED'
+  });
+  await rejected;
+  before.child.kill();
+
+  const after = fixture();
+  after.child.receive({ type: 'attached' });
+  const transport = await after.opening;
+  const errors = [];
+  transport.on('error', (error) => errors.push(error));
+  transport.activate();
+  after.child.receive({ type: 'failure', code: 'TERMINAL_CLOSED' });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof DirectRejectedError);
+  assert.equal(errors[0].code, 'TERMINAL_CLOSED');
+  after.child.kill();
 });
 
 test('fails outstanding writes and the active transport when its process exits', async () => {

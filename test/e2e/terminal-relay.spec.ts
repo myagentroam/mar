@@ -1,7 +1,9 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createSocket } from 'node:dgram';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { expect, test } from '@playwright/test';
 // @ts-expect-error The production Server owns this runtime-only WebSocket client dependency.
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
@@ -18,6 +20,200 @@ import {
   dropPlaywrightTestDatabase,
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
+
+test('marctl executes and copies through isolated Server and Node, with real direct and relay terminals', async () => {
+  test.skip(
+    process.platform !== 'linux',
+    'This journey requires the Linux native direct transport.'
+  );
+  test.setTimeout(120_000);
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const target = resolvePlaywrightTestDatabase(`${runId}-marctl-${randomUUID()}`);
+  await createPlaywrightTestDatabase(target);
+  const directory = await mkdtemp(join(tmpdir(), 'marctl-real-transport-'));
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
+  let connector: NodeConnector | undefined;
+  let socket: TestSocket | undefined;
+  const manager = new TerminalManager({
+    platform: 'linux',
+    cwd: directory,
+    profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
+  });
+  try {
+    const listener = createServer();
+    await new Promise<void>((resolve, reject) => {
+      listener.once('error', reject);
+      listener.listen(0, '127.0.0.1', resolve);
+    });
+    const address = listener.address();
+    if (!address || typeof address === 'string') throw new Error('TEST_PORT_UNAVAILABLE');
+    const origin = `http://127.0.0.1:${address.port}`;
+    await new Promise<void>((resolve, reject) =>
+      listener.close((error) => (error ? reject(error) : resolve()))
+    );
+    const udp = createSocket('udp4');
+    await new Promise<void>((resolve, reject) => {
+      udp.once('error', reject);
+      udp.bind(0, '127.0.0.1', resolve);
+    });
+    const udpPort = udp.address().port;
+    await new Promise<void>((resolve) => udp.close(() => resolve()));
+    app = (
+      await createServerApp({
+        databaseUrl: target.databaseUrl,
+        dataDirectory: join(directory, 'server'),
+        secureCookies: false,
+        publicOrigin: origin
+      })
+    ).app;
+    await app.listen({ host: '127.0.0.1', port: address.port });
+    const admin = await adminHeaders(app);
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/api/node-registration-tokens',
+      headers: admin,
+      payload: { displayName: 'marctl isolated Node' }
+    });
+    expect(registration.statusCode, registration.body).toBe(200);
+    connector = new NodeConnector({
+      configPath: join(directory, 'node.json'),
+      config: {
+        serverUrl: origin,
+        dataDirectory: join(directory, 'node'),
+        directTransfer: { udpPortRangeBegin: udpPort, udpPortRangeEnd: udpPort },
+        allowedRoots: [directory],
+        registrationToken: registration.json<{ token: string }>().token
+      },
+      terminalManager: manager,
+      capabilities: unavailableCapabilities()
+    });
+    await connector.start();
+    const nodes = async () =>
+      (await app!.inject({ method: 'GET', url: '/api/nodes', headers: admin })).json<{
+        nodes: { id: string; connected: boolean }[];
+      }>().nodes;
+    await expect.poll(nodes).toEqual([expect.objectContaining({ connected: true })]);
+    const nodeId = (await nodes())[0]!.id;
+    const openedTerminal = await app.inject({
+      method: 'POST',
+      url: '/api/terminals',
+      headers: admin,
+      payload: { nodeId }
+    });
+    expect(openedTerminal.statusCode, openedTerminal.body).toBe(201);
+    const terminalId = openedTerminal.json<{ terminal: { id: string } }>().terminal.id;
+    const ticketResponse = await app.inject({
+      method: 'POST',
+      url: `/api/terminals/${terminalId}/attach-ticket`,
+      headers: admin,
+      payload: { nodeId, afterSequence: 0 }
+    });
+    expect(ticketResponse.statusCode, ticketResponse.body).toBe(201);
+    socket = new WsClient(
+      `${origin.replace('http', 'ws')}/api/terminals/${terminalId}/connect?ticket=${encodeURIComponent(ticketResponse.json<{ ticket: string }>().ticket)}`,
+      { headers: { cookie: admin.cookie, origin } }
+    ) as TestSocket;
+    const frames: { type: string }[] = [];
+    socket.on('message', (raw: { toString(): string }) => frames.push(JSON.parse(raw.toString())));
+    await opened(socket);
+    await expect.poll(() => frames.some((frame) => frame.type === 'attach')).toBe(true);
+
+    const product = process.cwd();
+    const entry = (file: string) => pathToFileURL(join(product, 'marctl', file)).href;
+    const resultPath = join(directory, 'result.json');
+    const source = join(directory, 'source.bin');
+    const remote = join(directory, 'remote.bin');
+    const copied = join(directory, 'copied.bin');
+    const starts = join(directory, 'starts.txt');
+    const bytes = Buffer.from(Array.from({ length: 65536 }, (_, index) => index % 256));
+    await writeFile(source, bytes);
+    const script = join(directory, 'journey.mjs');
+    await writeFile(
+      script,
+      `
+      import { execFile } from 'node:child_process';
+      import { promisify } from 'node:util';
+      import { writeFile } from 'node:fs/promises';
+      import { Writable } from 'node:stream';
+      import { createRequire } from 'node:module';
+      import { MarctlClient } from ${JSON.stringify(entry('src/client.mjs'))};
+      import { runTerminalSession } from ${JSON.stringify(entry('src/terminal.mjs'))};
+      import { openDirectTerminal } from ${JSON.stringify(entry('src/direct.mjs'))};
+      import { DirectFallbackError } from ${JSON.stringify(entry('src/direct-errors.mjs'))};
+      const WebSocket = createRequire(${JSON.stringify(entry('package.json'))})('ws');
+      const exec = promisify(execFile);
+      const result = {};
+      try {
+        const node = ${JSON.stringify(nodeId)};
+        const cli = ${JSON.stringify(join(product, 'marctl/bin/marssh.mjs'))};
+        const scp = ${JSON.stringify(join(product, 'marctl/bin/marscp.mjs'))};
+        const run = (bin, args) => exec(process.execPath, [bin, ...args], { timeout: 30000, maxBuffer: 1024 * 1024 });
+        result.cli = (await run(cli, [node, ${JSON.stringify(`printf x >> ${JSON.stringify(starts)}; printf cli-ok`)}])).stdout;
+        await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
+        await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
+        const client = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN });
+        for (const mode of ['relay', 'direct']) {
+          let output = '';
+          const stdout = new Writable({ write(chunk, _encoding, done) { output += chunk.toString(); done(); } });
+          const open = mode === 'relay' ? async () => { throw new DirectFallbackError('TEST_RELAY'); } : async (options) => {
+            try { return await openDirectTerminal(options); }
+            catch (error) { throw new Error('DIRECT_REQUIRED:' + error.code); }
+          };
+          const code = await runTerminalSession({ client, WebSocketClass: WebSocket, nodeId: node, command: 'printf ' + mode, stdout, openDirectTerminal: open, connectionTimeoutMs: 20000 });
+          result[mode] = { code, output };
+        }
+      } catch (error) { result.error = String(error?.message ?? error); }
+      await writeFile(${JSON.stringify(resultPath)}, JSON.stringify(result));
+    `
+    );
+    socket.send(
+      JSON.stringify({
+        type: 'input',
+        terminalId,
+        data: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}\n`
+      })
+    );
+    await expect
+      .poll(
+        async () =>
+          readFile(resultPath, 'utf8').then(
+            () => true,
+            () => false
+          ),
+        { timeout: 90000 }
+      )
+      .toBe(true);
+    const result = JSON.parse(await readFile(resultPath, 'utf8'));
+    expect(result).toEqual({
+      cli: 'cli-ok',
+      relay: { code: 0, output: 'relay' },
+      direct: { code: 0, output: 'direct' }
+    });
+    expect(await readFile(starts, 'utf8')).toBe('x');
+    expect(await readFile(copied)).toEqual(bytes);
+    expect(await readFile(remote)).toEqual(bytes);
+  } finally {
+    socket?.close();
+    try {
+      await connector?.stop();
+    } finally {
+      try {
+        await manager.shutdown();
+      } finally {
+        try {
+          await app?.shutdown();
+        } finally {
+          try {
+            await dropPlaywrightTestDatabase(target);
+          } finally {
+            await rm(directory, { recursive: true, force: true });
+          }
+        }
+      }
+    }
+  }
+});
 
 test('A real Terminal shell and foreground job survive Server restart and reattach without replaying input', async () => {
   test.skip(
@@ -579,6 +775,7 @@ async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['ap
 interface TestSocket {
   send(raw: string): void;
   close(code?: number, reason?: string): void;
+  on(type: 'message', listener: (data: { toString(): string }) => void): void;
   addEventListener(
     type: 'open' | 'error',
     listener: () => void,

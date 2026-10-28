@@ -4,9 +4,9 @@ import type {
   Session,
   Workspace,
   WorkspaceTarget,
-  WorkspaceViewCache,
   NodeWorkbenchManifest
 } from '../model/workbench.js';
+import type { WorkspaceCacheView } from './workspace-view-cache-service.js';
 import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 import { sessionHasNativeIdentity } from '../util/session-presentation.js';
@@ -42,20 +42,20 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly startWatch: (workspaceId: string) => Promise<unknown>;
   readonly saveCurrent: () => void;
   readonly activateCache: (nodeId: string, workspaceId: string) => void;
-  readonly activeCache: Readonly<Ref<WorkspaceViewCache | undefined>>;
+  readonly isCacheActive: (nodeId: string, workspaceId: string) => boolean;
   readonly restoreInspector: (nodeId: string, workspaceId: string) => void;
   readonly refreshInspector: (nodeId: string, workspaceId: string) => void;
   readonly initializePaging: (tabId: string) => void;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly rememberWorkspace: (nodeId: string, workspace: Workspace) => void;
-  readonly viewCache: (nodeId: string, workspaceId: string) => WorkspaceViewCache;
+  readonly viewCache: (nodeId: string, workspaceId: string) => WorkspaceCacheView;
   readonly resetQueue: () => void;
   readonly openSession: (
     sessionId: string,
     options?: { readonly skipSaveCurrent?: boolean }
   ) => Promise<void>;
   readonly openDraft: () => void;
-  readonly restoreDraft: (cache: WorkspaceViewCache | undefined) => void;
+  readonly restoreDraft: (cache: WorkspaceCacheView | undefined) => void;
   readonly hasProfiles: (nodeId: string) => boolean;
   readonly loadProfiles: (nodeId: string) => Promise<void>;
   readonly takeRestoredSelection: (
@@ -139,7 +139,7 @@ export function createWorkbenchWorkspaceSelectionService(
     options.manifest.value = options.restoreManifest(target.nodeId);
     options.manifestLoading.value = options.manifest.value === undefined;
     const cache = options.viewCache(target.nodeId, target.workspaceId);
-    const restoreView = switching || options.activeCache.value !== cache;
+    const restoreView = switching || !options.isCacheActive(target.nodeId, target.workspaceId);
     if (restoreView) {
       options.activateCache(target.nodeId, target.workspaceId);
       options.restoreInspector(target.nodeId, target.workspaceId);

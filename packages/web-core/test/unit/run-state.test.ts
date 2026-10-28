@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { conversationWorkProcessBlocks } from '../../src/util/conversation-work-process.js';
-import {
-  isTerminalRunStatus,
-  newestRunSnapshot,
-  createRunService
-} from '../../src/service/run-service.js';
+import { createRunService } from '../../src/service/run-service.js';
+import { isTerminalRunStatus, newestRunSnapshot } from '../../src/util/run-state.js';
 
 describe('Shared Run State Convergence', () => {
   it.each([2, 3])(
@@ -19,7 +16,7 @@ describe('Shared Run State Convergence', () => {
         clientMessageId: 'message-1',
         version: 2
       };
-      state.runs.value = [run];
+      state.replaceRuns([run]);
       state.settleSessionRuns('session-1');
       state.observeManagedSessionActive('session-1');
       // An ordinary response is not authority to revive a settled Run.
@@ -62,7 +59,7 @@ describe('Shared Run State Convergence', () => {
       clientMessageId: 'message-1',
       version: 2
     };
-    state.runs.value = [run];
+    state.replaceRuns([run]);
     state.settleSessionRuns('session-1');
     state.markSessionInterruptionPending('session-1');
     state.resumeSessionAfterInterruption('session-1');
@@ -82,7 +79,7 @@ describe('Shared Run State Convergence', () => {
         clientMessageId: 'message-1',
         version: 2
       };
-      state.runs.value = [run];
+      state.replaceRuns([run]);
       state.settleSessionRuns('session-1', true);
       if (phase !== 'settled') state.markSessionInterrupted('session-1', run.id);
       if (phase === 'resumed') state.resumeSessionAfterInterruption('session-1');
@@ -115,7 +112,7 @@ describe('Shared Run State Convergence', () => {
   it('Keeps an active Run received in real time instead of rolling it back with an older snapshot', () => {
     const selectedSessionId = { value: 'session-1' } as never;
     const state = createRunService(selectedSessionId);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-live',
         sessionId: 'session-1',
@@ -124,7 +121,7 @@ describe('Shared Run State Convergence', () => {
         clientMessageId: 'message-live',
         version: 2
       }
-    ];
+    ]);
 
     state.mergeSnapshots([
       {
@@ -144,7 +141,7 @@ describe('Shared Run State Convergence', () => {
 
   it('An authoritative Session snapshot silently removes an active Run that existed before refresh but is no longer returned by Node', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-stale',
         sessionId: 'session-1',
@@ -152,7 +149,7 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'LIVE',
         clientMessageId: 'message-stale'
       }
-    ];
+    ]);
     state.selectedRunId.value = 'run-stale';
 
     state.mergeAuthoritativeSnapshot([], [...state.runs.value]);
@@ -163,7 +160,7 @@ describe('Shared Run State Convergence', () => {
 
   it('An authoritative Session snapshot does not remove a Run added by a real-time event after refresh began', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-stale',
         sessionId: 'session-1',
@@ -171,9 +168,9 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'LIVE',
         clientMessageId: 'message-stale'
       }
-    ];
+    ]);
     const baseline = [...state.runs.value];
-    state.runs.value = [
+    state.replaceRuns([
       ...state.runs.value,
       {
         id: 'run-realtime',
@@ -182,7 +179,7 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'LIVE',
         clientMessageId: 'message-realtime'
       }
-    ];
+    ]);
 
     state.mergeAuthoritativeSnapshot([], baseline);
 
@@ -191,7 +188,7 @@ describe('Shared Run State Convergence', () => {
 
   it('An authoritative Session snapshot does not remove the same Run updated by a real-time event while refresh is in flight', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-1',
         sessionId: 'session-1',
@@ -200,9 +197,9 @@ describe('Shared Run State Convergence', () => {
         clientMessageId: 'message-1',
         version: 1
       }
-    ];
+    ]);
     const baseline = [...state.runs.value];
-    state.runs.value = [{ ...state.runs.value[0]!, status: 'RUNNING', version: 2 }];
+    state.replaceRuns([{ ...state.runs.value[0]!, status: 'RUNNING', version: 2 }]);
 
     state.mergeAuthoritativeSnapshot([], baseline);
 
@@ -231,7 +228,7 @@ describe('Shared Run State Convergence', () => {
 
   it('A new message after stopping clears the settlement; a late response to the old stop cannot hide the new Run again', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-old',
         sessionId: 'session-1',
@@ -239,7 +236,7 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'LIVE',
         clientMessageId: 'message-old'
       }
-    ];
+    ]);
     state.settleSessionRuns('session-1');
     state.resumeSessionAfterInterruption('session-1');
     state.markSessionInterrupted('session-1', 'run-old');
@@ -266,7 +263,7 @@ describe('Shared Run State Convergence', () => {
 
   it('A Session idle authority event settles an active Run when its terminal frame is missing', () => {
     const state = createRunService({ value: 'session-1' } as never);
-    state.runs.value = [
+    state.replaceRuns([
       {
         id: 'run-stale',
         sessionId: 'session-1',
@@ -281,7 +278,7 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'ACTIVE',
         clientMessageId: 'message-other'
       }
-    ];
+    ]);
     state.selectedRunId.value = 'run-stale';
 
     expect(state.settleSessionRuns('session-1')).toBe(true);
@@ -294,7 +291,7 @@ describe('Shared Run State Convergence', () => {
 
   it('New managed activity clears ordinary idle settlement but not a user-initiated stop', () => {
     const normal = createRunService({ value: 'session-1' } as never);
-    normal.runs.value = [
+    normal.replaceRuns([
       {
         id: 'run-old',
         sessionId: 'session-1',
@@ -302,13 +299,13 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'ACTIVE',
         clientMessageId: 'message-old'
       }
-    ];
+    ]);
     normal.settleSessionRuns('session-1');
     normal.observeManagedSessionActive('session-1');
     expect(normal.sessionInterruptionSettled('session-1')).toBe(false);
 
     const interrupted = createRunService({ value: 'session-1' } as never);
-    interrupted.runs.value = [
+    interrupted.replaceRuns([
       {
         id: 'run-stopped',
         sessionId: 'session-1',
@@ -316,7 +313,7 @@ describe('Shared Run State Convergence', () => {
         recoveryState: 'ACTIVE',
         clientMessageId: 'message-stopped'
       }
-    ];
+    ]);
     interrupted.settleSessionRuns('session-1', true);
     interrupted.observeManagedSessionActive('session-1');
     expect(interrupted.sessionInterruptionSettled('session-1')).toBe(true);

@@ -15,6 +15,7 @@ import MailTemplateManagement from '../../src/view/settings/MailTemplateManageme
 import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
@@ -72,6 +73,7 @@ style.textContent =
 document.head.append(style);
 const app = createApp({
   setup() {
+    const captureRenderAnchor = createConversationScrollService().captureRenderAnchor;
     if (new URL(location.href).searchParams.has('git-change-icons')) {
       const manyChanges = new URL(location.href).searchParams.has('many-changes');
       const entry = {
@@ -218,6 +220,7 @@ const app = createApp({
       return () =>
         h('main', {}, [
           h(ConversationTimeline, {
+            captureRenderAnchor,
             turns: [
               {
                 id: 'turn',
@@ -395,6 +398,7 @@ const app = createApp({
     if (new URL(location.href).searchParams.has('disclosure')) {
       return () =>
         h(ConversationTimeline, {
+          captureRenderAnchor,
           turns: [
             {
               id: 'turn',

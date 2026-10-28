@@ -21,7 +21,6 @@ import type {
   CodexCredentialSummary,
   CodexCredentialUsage,
   CodexLoginAttempt,
-  CodexModelCatalog,
   CodexModelImportResult,
   MarAgentModelSummary,
   MarAgentModelTransportTestResult,
@@ -42,6 +41,13 @@ import {
 } from '../../service/codex-credential-management-service';
 import { translate } from '../../service/locale-preference-service';
 import { createManagementOrderState } from '../../service/management-order-state';
+import {
+  createModelManagementCollectionService,
+  type ManagedModelSummary as ModelSummary,
+  type ModelReasoningEffort as ReasoningEffort
+} from '../../service/model-management-collection-service';
+import { createModelTransportTestService } from '../../service/model-transport-test-service';
+import { createCodexCatalogInteractionService } from '../../service/codex-catalog-interaction-service';
 import { runnerUsageWindowLabel } from '../../service/runner-usage-service';
 import { errorCode } from '../../util/api-error';
 import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-presentation';
@@ -50,11 +56,6 @@ import MarAgentCompactSettings from './MarAgentCompactSettings.vue';
 import PromptCompletionSettings from './PromptCompletionSettings.vue';
 import ChatGPTManageUsageButton from '../common/ChatGPTManageUsageButton.vue';
 
-type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
-type ModelSummary = Omit<MarAgentModelSummary, 'reasoningEfforts' | 'defaultReasoningEffort'> & {
-  reasoningEfforts: ReasoningEffort[];
-  defaultReasoningEffort: ReasoningEffort;
-};
 type ProtocolChoice = ReturnType<typeof modelProtocolChoice>;
 type TransportChoice = 'WEBSOCKET' | 'HTTP_2' | 'HTTP_1_1';
 type ActiveTab = 'modelOrder' | 'models' | 'codexCredentials' | 'imageGeneration' | 'compact';
@@ -150,15 +151,26 @@ const activeTab = ref<ActiveTab>(canManageModels.value ? 'models' : 'modelOrder'
 // Those reads already return the full authorized set with no page or limit, and the
 // expected volume is small, so the shared 20-item management page would only hide rows.
 // Image generation and Compact are not these list tabs. Other management lists keep paging.
-const models = ref<ModelSummary[]>([]);
-const personalModels = ref<ModelSummary[]>([]);
+const managedModels = createModelManagementCollectionService(
+  props.request,
+  '/api/admin/mar-agent/models',
+  () => canManageModels.value
+);
+const userModels = createModelManagementCollectionService(
+  props.request,
+  '/api/mar-agent/models',
+  () => true
+);
+const { models, loading, ready: modelsReady, savingOrder } = managedModels;
+const {
+  models: personalModels,
+  loading: personalOrderLoading,
+  ready: personalOrderReady,
+  savingOrder: savingPersonalOrder
+} = userModels;
 const credentials = ref<readonly CodexCredentialSummary[]>([]);
-const loading = ref(false);
-const personalOrderLoading = ref(false);
 const credentialLoading = ref(false);
 const credentialsLoaded = ref(false);
-const modelsReady = ref(false);
-const personalOrderReady = ref(false);
 const initialLoading = computed(() =>
   activeTab.value === 'models'
     ? loading.value && !modelsReady.value
@@ -169,8 +181,6 @@ const initialLoading = computed(() =>
         : false
 );
 const saving = ref(false);
-const savingOrder = ref(false);
-const savingPersonalOrder = ref(false);
 const {
   sorting,
   draggedId: draggedModelId,
@@ -195,7 +205,14 @@ const {
   personalModels,
   () => props.writable && !savingPersonalOrder.value && !personalOrderLoading.value
 );
-const testingIds = ref(new Set<string>());
+const modelTransportTest = createModelTransportTestService(
+  credentialService.testModel,
+  async (result) => {
+    modelTestResult.value = result;
+    await load(false);
+  }
+);
+const { testingIds } = modelTransportTest;
 const dialog = ref(false);
 const editingId = ref<string>();
 const duplicatingId = ref<string>();
@@ -261,13 +278,11 @@ const credentialDetailLoading = ref(false);
 const credentialUsageLoading = ref(false);
 let credentialDetailSequence = 0;
 const catalogDialog = ref(false);
-const catalogLoading = ref(false);
-const catalogImporting = ref(false);
+const catalogInteraction = createCodexCatalogInteractionService(credentialService);
+const { catalog, loading: catalogLoading, importing: catalogImporting } = catalogInteraction;
 const catalogFormRef = ref<FormInstance>();
 const catalogCredential = ref<CodexCredentialSummary>();
-const catalog = ref<CodexModelCatalog>();
 const catalogRows = ref<CatalogRow[]>([]);
-let catalogSequence = 0;
 const importResult = ref<CodexModelImportResult>();
 const importResultDialog = computed({
   get: () => importResult.value !== undefined,
@@ -279,7 +294,7 @@ const modelTestDialog = ref(false);
 const modelTestModel = ref<ModelSummary>();
 const modelTestNodeId = ref('');
 const modelTestResult = ref<MarAgentModelTransportTestResult>();
-let modelTestSequence = 0;
+let modelDialogSequence = 0;
 
 const loginPoller = new CodexLoginAttemptPoller(credentialService, {
   onChange: (attempt) => {
@@ -446,9 +461,24 @@ watch(activeTab, (tab) => {
 watch(canManageModels, (allowed) => {
   if (!allowed) activeTab.value = 'modelOrder';
 });
-watch(credentialDialog, (open) => {
-  if (!open) resetCredentialDialog();
-});
+watch(
+  dialog,
+  (open) => {
+    if (!open) {
+      modelDialogSequence += 1;
+      saving.value = false;
+      draft.apiKey = '';
+    }
+  },
+  { flush: 'sync' }
+);
+watch(
+  credentialDialog,
+  (open) => {
+    if (!open) resetCredentialDialog();
+  },
+  { flush: 'sync' }
+);
 watch(credentialDetailOpen, (open) => {
   if (!open) resetCredentialDetails();
 });
@@ -457,14 +487,14 @@ watch(catalogDialog, (open) => {
 });
 watch(modelTestDialog, (open) => {
   if (!open) {
-    modelTestSequence += 1;
+    modelTransportTest.invalidate();
     modelTestResult.value = undefined;
     modelTestModel.value = undefined;
     modelTestNodeId.value = '';
   }
 });
 watch(modelTestNodeId, () => {
-  modelTestSequence += 1;
+  modelTransportTest.invalidate();
   modelTestResult.value = undefined;
 });
 watch(eligibleTestNodes, (nodes) => {
@@ -518,46 +548,20 @@ async function load(showLoading = true) {
     await loadCredentials(showLoading);
     return;
   }
-  if (showLoading) loading.value = true;
   try {
-    models.value = (
-      await props.request<{ models: ModelSummary[] }>('/api/admin/mar-agent/models', {
-        cache: 'no-store'
-      })
-    ).models.map((model) => ({
-      ...model,
-      defaultReasoningEffort: resolveMarAgentDefaultReasoningEffort(
-        model.defaultReasoningEffort,
-        model.reasoningEfforts
-      )
-    }));
-    modelsReady.value = true;
+    await managedModels.load(showLoading);
   } catch (error) {
     showMessage(
       error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed'),
       'error',
       error
     );
-  } finally {
-    if (showLoading) loading.value = false;
   }
 }
 
 async function loadPersonalModels(showLoading = true) {
-  if (showLoading) personalOrderLoading.value = true;
   try {
-    personalModels.value = (
-      await props.request<{ models: ModelSummary[] }>('/api/mar-agent/models', {
-        cache: 'no-store'
-      })
-    ).models.map((model) => ({
-      ...model,
-      defaultReasoningEffort: resolveMarAgentDefaultReasoningEffort(
-        model.defaultReasoningEffort,
-        model.reasoningEfforts
-      )
-    }));
-    personalOrderReady.value = true;
+    await userModels.load(showLoading);
   } catch (error) {
     showMessage(
       error instanceof Error
@@ -566,8 +570,6 @@ async function loadPersonalModels(showLoading = true) {
       'error',
       error
     );
-  } finally {
-    if (showLoading) personalOrderLoading.value = false;
   }
 }
 
@@ -651,36 +653,42 @@ function changeProtocol(protocol: ProtocolChoice): void {
 }
 
 async function saveOrder() {
-  savingOrder.value = true;
   try {
-    await props.request('/api/admin/mar-agent/models/order', {
-      method: 'PUT',
-      body: JSON.stringify({ modelIds: models.value.map((model) => model.id) })
-    });
+    const result = await managedModels.saveOrder();
+    if (result === undefined) return;
     finishSorting();
     showMessage(translate('marAgentModels.orderSaved'), 'success');
-    await load(false);
+    if (result.refreshError !== undefined)
+      showMessage(
+        result.refreshError instanceof Error
+          ? errorMessage(result.refreshError)
+          : translate('marAgentModels.loadFailed'),
+        'error',
+        result.refreshError
+      );
   } catch (error) {
     showMessage(
       error instanceof Error ? errorMessage(error) : translate('marAgentModels.orderSaveFailed'),
       'error',
       error
     );
-  } finally {
-    savingOrder.value = false;
   }
 }
 
 async function savePersonalOrder() {
-  savingPersonalOrder.value = true;
   try {
-    await props.request('/api/mar-agent/models/order', {
-      method: 'PUT',
-      body: JSON.stringify({ modelIds: personalModels.value.map((model) => model.id) })
-    });
+    const result = await userModels.saveOrder();
+    if (result === undefined) return;
     finishPersonalSorting();
     showMessage(translate('marAgentModels.personalOrderSaved'), 'success');
-    await loadPersonalModels(false);
+    if (result.refreshError !== undefined)
+      showMessage(
+        result.refreshError instanceof Error
+          ? errorMessage(result.refreshError)
+          : translate('marAgentModels.personalOrderLoadFailed'),
+        'error',
+        result.refreshError
+      );
   } catch (error) {
     showMessage(
       error instanceof Error
@@ -689,8 +697,6 @@ async function savePersonalOrder() {
       'error',
       error
     );
-  } finally {
-    savingPersonalOrder.value = false;
   }
 }
 
@@ -747,33 +753,45 @@ async function openEdit(model: ModelSummary, duplicate = false) {
 }
 
 async function save() {
-  if (!(await formRef.value?.validate().catch(() => false))) return;
+  if (saving.value) return;
+  const sequence = modelDialogSequence;
   saving.value = true;
   try {
-    const path = duplicatingId.value
-      ? `/api/admin/mar-agent/models/${duplicatingId.value}/duplicate`
-      : editingId.value
-        ? `/api/admin/mar-agent/models/${editingId.value}`
-        : '/api/admin/mar-agent/models';
-    await props.request(path, {
-      method: editingId.value ? 'PUT' : 'POST',
-      body: JSON.stringify(modelSaveBody())
+    if (!(await formRef.value?.validate().catch(() => false))) return;
+    if (sequence !== modelDialogSequence || !dialog.value) return;
+    const result = await managedModels.saveModel({
+      ...(editingId.value === undefined ? {} : { editingId: editingId.value }),
+      ...(duplicatingId.value === undefined ? {} : { duplicatingId: duplicatingId.value }),
+      body: modelSaveBody()
     });
-    dialog.value = false;
-    showMessage(
-      translate(duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved'),
-      'success'
-    );
-    await load(false);
+    if (result === undefined) return;
+    if (sequence === modelDialogSequence) {
+      const message = duplicatingId.value ? 'marAgentModels.duplicated' : 'marAgentModels.saved';
+      dialog.value = false;
+      showMessage(translate(message), 'success');
+    }
+    await finishModelMutationRefresh(result.refresh);
   } catch (error) {
+    if (sequence === modelDialogSequence)
+      showMessage(
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed'),
+        'error',
+        error
+      );
+  } finally {
+    if (sequence === modelDialogSequence) saving.value = false;
+  }
+}
+
+async function finishModelMutationRefresh(refresh: Promise<unknown | undefined> | undefined) {
+  if (refresh === undefined) return load(false);
+  const error = await refresh;
+  if (error !== undefined)
     showMessage(
       error instanceof Error ? errorMessage(error) : translate('marAgentModels.loadFailed'),
       'error',
       error
     );
-  } finally {
-    saving.value = false;
-  }
 }
 
 function modelSaveBody(): Record<string, unknown> {
@@ -828,9 +846,10 @@ async function remove(model: ModelSummary) {
         cancelButtonText: translate('marAgentModels.cancel')
       }
     );
-    await props.request(`/api/admin/mar-agent/models/${model.id}`, { method: 'DELETE' });
+    const result = await managedModels.removeModel(model.id);
+    if (result === undefined) return;
     showMessage(translate('marAgentModels.removed'), 'success');
-    await load(false);
+    await finishModelMutationRefresh(result.refresh);
   } catch (error) {
     if (error !== 'cancel')
       showMessage(
@@ -842,7 +861,7 @@ async function remove(model: ModelSummary) {
 }
 
 function openModelTest(model: ModelSummary): void {
-  modelTestSequence += 1;
+  modelTransportTest.invalidate();
   modelTestResult.value = undefined;
   modelTestModel.value = model;
   modelTestNodeId.value = '';
@@ -866,21 +885,11 @@ function openModelTest(model: ModelSummary): void {
 
 async function test(model: ModelSummary) {
   if (!modelTestNodeId.value) return;
-  const requestSequence = ++modelTestSequence;
   modelTestResult.value = undefined;
-  testingIds.value = new Set(testingIds.value).add(model.id);
   try {
-    const result = await credentialService.testModel(model.id, modelTestNodeId.value);
-    if (requestSequence !== modelTestSequence) return;
-    modelTestResult.value = result;
-    await load(false);
+    await modelTransportTest.test(model.id, modelTestNodeId.value);
   } catch (error) {
-    if (requestSequence === modelTestSequence)
-      showCodexRequestError(error, 'marAgentModels.testConnectionFailed');
-  } finally {
-    const next = new Set(testingIds.value);
-    next.delete(model.id);
-    testingIds.value = next;
+    showCodexRequestError(error, 'marAgentModels.testConnectionFailed');
   }
 }
 
@@ -997,19 +1006,23 @@ async function openCredentialEdit(
 
 async function submitCredentialLogin(): Promise<void> {
   if (credentialSaving.value) return;
-  if (!(await credentialFormRef.value?.validate().catch(() => false))) return;
   const sequence = credentialEditSequence;
-  const editingCredentialId = credentialEditId.value;
   credentialSaving.value = true;
+  let editingCredentialId: string | undefined;
   try {
+    if (!(await credentialFormRef.value?.validate().catch(() => false))) return;
+    if (sequence !== credentialEditSequence || !credentialDialog.value) return;
+    editingCredentialId = credentialEditId.value;
     if (editingCredentialId !== undefined) {
       await credentialService.updateCredential(editingCredentialId, {
         name: credentialDraft.name,
         ownership: props.credentialOwnership?.() ?? credentialOwnershipValue.value,
         socks5Url: credentialDraft.socks5Url.trim() || null
       });
-      credentialDialog.value = false;
-      showMessage(translate('marAgentModels.codexCredentialUpdated'), 'success');
+      if (sequence === credentialEditSequence) {
+        credentialDialog.value = false;
+        showMessage(translate('marAgentModels.codexCredentialUpdated'), 'success');
+      }
       await loadCredentials(false);
       return;
     }
@@ -1041,13 +1054,17 @@ async function submitCredentialLogin(): Promise<void> {
         : 'marAgentModels.codexCredentialUpdateFailed'
     );
   } finally {
-    credentialLoginStarting = false;
-    credentialSaving.value = false;
+    if (sequence === credentialEditSequence) {
+      credentialLoginStarting = false;
+      credentialSaving.value = false;
+    }
   }
 }
 
 function resetCredentialDialog(): void {
   if (credentialLoginStarting) void loginPoller.cancel().catch(() => undefined);
+  credentialLoginStarting = false;
+  credentialSaving.value = false;
   credentialEditSequence += 1;
   credentialEditId.value = undefined;
   Object.assign(credentialDraft, emptyCredentialDraft());
@@ -1194,20 +1211,15 @@ function finishCredentialAction(credentialId: string, kind: CredentialAction): v
 }
 
 async function openCatalog(credential: CodexCredentialSummary): Promise<void> {
-  const sequence = ++catalogSequence;
   credentialDetailOpen.value = false;
   catalogCredential.value = credential;
   catalogDialog.value = true;
-  catalogLoading.value = true;
-  catalogImporting.value = false;
-  catalog.value = undefined;
   catalogRows.value = [];
   try {
-    await props.prepareCatalog?.(credential);
-    if (sequence !== catalogSequence) return;
-    const loaded = await credentialService.loadCatalog(credential.id);
-    if (sequence !== catalogSequence) return;
-    catalog.value = loaded;
+    const loaded = await catalogInteraction.open(credential.id, async () => {
+      await props.prepareCatalog?.(credential);
+    });
+    if (loaded === undefined) return;
     catalogRows.value = loaded.models.map((model) => ({
       upstreamModelId: model.upstreamModelId,
       displayName: model.displayName,
@@ -1225,17 +1237,13 @@ async function openCatalog(credential: CodexCredentialSummary): Promise<void> {
       requiredInputs: model.requiredInputs
     }));
   } catch (error) {
-    if (sequence === catalogSequence) {
-      showCodexRequestError(error, 'marAgentModels.codexCatalogLoadFailed');
-      catalogDialog.value = false;
-    }
-  } finally {
-    if (sequence === catalogSequence) catalogLoading.value = false;
+    showCodexRequestError(error, 'marAgentModels.codexCatalogLoadFailed');
+    catalogDialog.value = false;
   }
 }
 
 async function importCatalogModels(): Promise<void> {
-  const sequence = catalogSequence;
+  const sequence = catalogInteraction.currentRevision();
   const credential = catalogCredential.value;
   const currentCatalog = catalog.value;
   if (credential === undefined || currentCatalog === undefined) return;
@@ -1244,22 +1252,20 @@ async function importCatalogModels(): Promise<void> {
     return;
   }
   if (!(await catalogFormRef.value?.validate().catch(() => false))) return;
-  if (sequence !== catalogSequence || catalogImporting.value) return;
-  catalogImporting.value = true;
+  if (!catalogInteraction.isCurrent(sequence) || catalogImporting.value) return;
   try {
     const ownership = props.catalogOwnership?.();
     const request = {
       ...buildCodexModelImportRequest(currentCatalog, catalogRows.value),
       ...(ownership === undefined ? {} : { ownership })
     };
-    const result = await credentialService.importModels(credential.id, request);
-    if (sequence !== catalogSequence) return;
-    importResult.value = result;
-    catalogDialog.value = false;
-    showMessage(translate('marAgentModels.codexImportSucceeded'), 'success');
-    await Promise.all([load(false), loadCredentials(false)]);
+    await catalogInteraction.importModels(sequence, credential.id, request, async (result) => {
+      importResult.value = result;
+      catalogDialog.value = false;
+      showMessage(translate('marAgentModels.codexImportSucceeded'), 'success');
+      await Promise.all([load(false), loadCredentials(false)]);
+    });
   } catch (error) {
-    if (sequence !== catalogSequence) return;
     if (errorCode(error) === 'CODEX_CATALOG_CHANGED') {
       showMessage(translate('marAgentModels.codexErrorCatalogChanged'), 'warning', error);
       await openCatalog(credential);
@@ -1268,17 +1274,12 @@ async function importCatalogModels(): Promise<void> {
     } else {
       showCodexRequestError(error, 'marAgentModels.codexImportFailed');
     }
-  } finally {
-    if (sequence === catalogSequence) catalogImporting.value = false;
   }
 }
 
 function resetCatalogDialog(): void {
-  catalogSequence += 1;
-  catalogLoading.value = false;
-  catalogImporting.value = false;
+  catalogInteraction.reset();
   catalogCredential.value = undefined;
-  catalog.value = undefined;
   catalogRows.value = [];
 }
 
@@ -1447,7 +1448,15 @@ onMounted(() => {
   void (canManageModels.value ? load() : loadPersonalModels());
 });
 onBeforeUnmount(() => {
+  modelDialogSequence += 1;
+  modelTransportTest.dispose();
+  credentialDetailSequence += 1;
+  catalogInteraction.dispose();
+  managedModels.dispose();
+  userModels.dispose();
   credentialEditSequence += 1;
+  draft.apiKey = '';
+  Object.assign(credentialDraft, emptyCredentialDraft());
   loginPoller.dispose();
   stopCountdown();
 });

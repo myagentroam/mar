@@ -1,5 +1,6 @@
 import { ref } from 'vue';
-import type { ConversationTurn } from '../model/workbench.js';
+import { limitConversationHistory } from '../util/conversation-history.js';
+import { createConversationProjectionState } from './conversation-projection-service.js';
 
 export interface SessionContextUsage {
   readonly model: string | null;
@@ -30,7 +31,11 @@ export function contextUsageAfterCompaction(
     : { ...current, usedTokens: 0, percentage: 0 };
 }
 
-export function createConversationStateService() {
+export function createConversationStateService(onRecentWindowOverflow: () => void) {
+  const { turns, nextCursor, projection } = createConversationProjectionState({
+    onRecentWindowOverflow,
+    limitHistory: limitConversationHistory
+  });
   let detailRequest = 0;
   let pendingInitialRender:
     | {
@@ -73,8 +78,9 @@ export function createConversationStateService() {
   }
 
   return {
-    turns: ref<ConversationTurn[]>([]),
-    nextCursor: ref<string | null>(null),
+    turns,
+    nextCursor,
+    projection,
     loadingInitial: ref(false),
     initialLoadFailed: ref(false),
     loadingOlder: ref(false),

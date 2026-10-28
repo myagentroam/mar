@@ -189,6 +189,16 @@ describe('ModelUsageStore', () => {
 });
 
 describe('ModelUsageQueryService', () => {
+  it('keeps positive range and 90-day limits for future queries', () => {
+    const range = { ...query(), from: NOW, to: NOW + MODEL_USAGE_RETENTION_MS };
+    expect(personalUsageQuerySchema.safeParse(range).success).toBe(true);
+    for (const duration of [0, -1, MODEL_USAGE_RETENTION_MS + 1]) {
+      expect(personalUsageQuerySchema.safeParse({ ...range, to: NOW + duration }).success).toBe(
+        false
+      );
+    }
+  });
+
   it('reads both rolling totals in one scan without applying the selected chart filters', async () => {
     const fixture = queryFixture();
     fixture.connection.execute.mockResolvedValueOnce([
@@ -371,15 +381,10 @@ describe('ModelUsageQueryService', () => {
     expect(second.nextCursor).toBeNull();
   });
 
-  it('rejects windows too far in the future and preserves exact BigInt totals', async () => {
+  it('accepts ranges ending in the future and preserves exact BigInt totals', async () => {
     const fixture = queryFixture();
     const service = new ModelUsageQueryService(fixture.pool as never, () => NOW);
-    const validQuery = query({ from: NOW - 86_400_000, to: NOW });
-
-    await expect(
-      service.overview(USER_ID, query({ from: NOW - 1_000, to: NOW + 60_001 }))
-    ).rejects.toMatchObject({ code: 'USAGE_QUERY_INVALID' });
-    expect(fixture.pool.getConnection).not.toHaveBeenCalled();
+    const validQuery = query({ from: NOW - 86_400_000, to: NOW + 7 * 86_400_000 });
 
     const overview = await service.overview(USER_ID, validQuery);
     const expected = (BigInt(fixture.bigInput) + BigInt(fixture.bigOutput)).toString();
@@ -392,6 +397,7 @@ describe('ModelUsageQueryService', () => {
     });
     expect(overview.selected.totalTokens).toBe(expected);
     expect(overview.selected.cacheReadTokens).toBe(fixture.cacheReadTokens);
+    expect(overview.buckets.at(-1)?.to).toBe(NOW);
     expect(overview.buckets[0]?.cacheReadTokens).toBe(fixture.cacheReadTokens);
     expect(overview.runners[0]?.cacheReadTokens).toBe(fixture.cacheReadTokens);
     expect(overview.models[0]?.cacheReadTokens).toBe(fixture.cacheReadTokens);
@@ -446,16 +452,35 @@ describe('ModelUsageQueryService', () => {
     });
   });
 
-  it('clamps the accepted future query tolerance before reading records', async () => {
+  it('caps future range ends at the current snapshot before reading records', async () => {
     const fixture = queryFixture();
     const service = new ModelUsageQueryService(fixture.pool as never, () => NOW);
 
-    await service.records(USER_ID, query({ to: NOW + 30_000 }));
+    await service.records(USER_ID, query({ to: NOW + 7 * 86_400_000 }));
 
     const recordsCall = fixture.connection.execute.mock.calls.find(([sql]) =>
       String(sql).includes('SELECT source_key,ended_at,mode,record')
     );
     expect(recordsCall?.[1]).toEqual([USER_ID, NOW - 86_400_000, NOW, 'conversation']);
+  });
+
+  it('returns an empty result for an entirely future range', async () => {
+    const fixture = queryFixture();
+    fixture.connection.execute.mockImplementation(async (sql: string) =>
+      sql.includes('CAST(COUNT(*) AS CHAR)') ? [[{ total: '0' }], []] : [[], []]
+    );
+    const service = new ModelUsageQueryService(fixture.pool as never, () => NOW);
+    const selected = query({ from: NOW + 86_400_000, to: NOW + 2 * 86_400_000 });
+
+    const overview = await service.overview(USER_ID, selected);
+    expect(overview.buckets).toEqual([]);
+    expect(overview.selected.requests).toBe('0');
+    const records = await service.records(USER_ID, selected);
+    expect(records).toMatchObject({ total: '0', records: [], nextCursor: null });
+    const recordsCall = fixture.connection.execute.mock.calls.find(([sql]) =>
+      sql.includes('SELECT source_key,ended_at,mode,record')
+    );
+    expect(recordsCall?.[1]).toEqual([USER_ID, selected.from, NOW, 'conversation']);
   });
 
   it('accepts a cursor for the same query regardless of parameter property order', async () => {

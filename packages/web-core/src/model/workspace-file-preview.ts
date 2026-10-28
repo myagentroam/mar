@@ -1,7 +1,7 @@
 import type {
   WorkspaceDirectFileIdentity,
   WorkspaceDirectFileRange
-} from '../service/workspace-direct-file-read-service.js';
+} from './workspace-direct-file.js';
 
 export interface WorkspaceFilePreviewContent {
   readonly path: string;
@@ -37,7 +37,8 @@ export interface WorkspaceFilePreviewTransfers {
     | ((
         path: string,
         worktreePath?: string,
-        repositoryPath?: string
+        repositoryPath?: string,
+        signal?: AbortSignal
       ) => Promise<string | undefined>)
     | undefined;
   readonly directFileReadRange?:
@@ -47,7 +48,8 @@ export interface WorkspaceFilePreviewTransfers {
         length: number,
         worktreePath?: string,
         identity?: WorkspaceDirectFileIdentity,
-        repositoryPath?: string
+        repositoryPath?: string,
+        signal?: AbortSignal
       ) => Promise<WorkspaceDirectFileRange | undefined>)
     | undefined;
   readonly directGitFileDownload?:
@@ -63,7 +65,8 @@ export interface WorkspaceFilePreviewTransfers {
         commit: string,
         path: string,
         repositoryPath: string,
-        refs: readonly string[]
+        refs: readonly string[],
+        signal?: AbortSignal
       ) => Promise<string | undefined>)
     | undefined;
   readonly directGitFileReadRange?:
@@ -74,7 +77,8 @@ export interface WorkspaceFilePreviewTransfers {
         refs: readonly string[],
         offset: number,
         length: number,
-        identity?: WorkspaceDirectFileIdentity
+        identity?: WorkspaceDirectFileIdentity,
+        signal?: AbortSignal
       ) => Promise<Omit<WorkspaceDirectFileRange, 'offset'> | undefined>)
     | undefined;
 }

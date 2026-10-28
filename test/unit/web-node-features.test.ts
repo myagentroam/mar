@@ -3,7 +3,7 @@ import {
   NODE_FEATURES,
   isNodeVersionInFeatureRange,
   supportsNodeFeature
-} from '../../ee/web/src/util/node-features.js';
+} from '@myagentroam/web-core/node-features';
 import { FEATURE_DEMO } from '../../packages/web-core/src/util/node-features.js';
 
 describe('Web Node feature version gates', () => {

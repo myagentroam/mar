@@ -40,5 +40,10 @@ export function createWorkbenchSubmissionService() {
     };
   }
 
-  return { pending, context, begin };
+  function transferSession(previousId: string, nextId: string): void {
+    if (context.value === sessionSubmissionContext(previousId))
+      context.value = sessionSubmissionContext(nextId);
+  }
+
+  return { pending, context, begin, transferSession };
 }

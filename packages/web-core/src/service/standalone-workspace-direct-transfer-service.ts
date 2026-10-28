@@ -1,3 +1,4 @@
+import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import type { NodeWorkbenchManifest } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { createWorkbenchLiveService } from './workbench-live-service.js';
@@ -9,8 +10,7 @@ import {
 } from './workspace-direct-download-stream-service.js';
 import {
   readWorkspaceDirectFileMetadata,
-  readWorkspaceDirectFileRange,
-  type WorkspaceDirectFileIdentity
+  readWorkspaceDirectFileRange
 } from './workspace-direct-file-read-service.js';
 
 const INITIAL_DIRECT_WAIT_MS = 800;

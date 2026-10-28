@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NodeConfig } from '../../src/config.js';
 import {
@@ -194,10 +195,12 @@ describe('ManagedComputerUseRuntime', () => {
   });
 
   it.each([
+    ['win32', 'x64', '@myagentroam/computer-runtime-win32-x64'],
     ['win32', 'arm64', '@myagentroam/computer-runtime-win32-arm64'],
     ['darwin', 'x64', '@myagentroam/computer-runtime-darwin-x64'],
     ['darwin', 'arm64', '@myagentroam/computer-runtime-darwin-arm64'],
-    ['linux', 'arm64', '@myagentroam/computer-runtime-linux-arm64']
+    ['linux', 'arm64', '@myagentroam/computer-runtime-linux-arm64'],
+    ['linux', 'x64', '@myagentroam/computer-runtime-linux-x64']
   ] as const)('resolves the managed runtime for %s %s', async (platform, architecture, name) => {
     const root = await mkdtemp(join(tmpdir(), 'mar-computer-runtime-platform-'));
     roots.push(root);
@@ -215,6 +218,7 @@ describe('ManagedComputerUseRuntime', () => {
       architecture,
       async (runtimePackage) => {
         requested.push(runtimePackage.name);
+        expect(runtimePackage.version).toBe(computerUseRuntimeVersion);
         throw new Error('registry unavailable');
       }
     );
@@ -222,6 +226,24 @@ describe('ManagedComputerUseRuntime', () => {
       code: 'COMPUTER_RUNTIME_INSTALL_FAILED'
     } satisfies Partial<ComputerUseRuntimeError>);
     expect(requested).toEqual([name]);
+    const packagePath = fileURLToPath(
+      new URL(
+        `../../../packages/computer-runtime-${platform}-${architecture}/package.json`,
+        import.meta.url
+      )
+    );
+    const metadata = JSON.parse(await readFile(packagePath, 'utf8')) as {
+      name: string;
+      version: string;
+      os: string[];
+      cpu: string[];
+    };
+    expect(metadata).toMatchObject({
+      name,
+      version: computerUseRuntimeVersion,
+      os: [platform],
+      cpu: [architecture]
+    });
   });
 
   it('rejects unsupported platform pairs before resolving a package', async () => {

@@ -6,8 +6,6 @@ import { createWorkbenchPageController } from '../../packages/web-core/src/servi
 import { createWorkbenchNavigationService } from '../../packages/web-core/src/service/workbench-navigation-service.js';
 import { renderComponent } from '../../packages/web-core/test/unit/support/component-renderer.js';
 import { createWorkbenchWorkspaceTreeController } from '../../ee/web/src/service/workbench-workspace-tree-controller.js';
-import { createWorkbenchLiveService as publicLiveService } from '../../packages/web-core/src/service/workbench-live-service';
-import { createWorkbenchLiveService as enterpriseLiveService } from '../../ee/web/src/service/workbench-live-service';
 import {
   localePreferenceService,
   translate
@@ -15,6 +13,13 @@ import {
 
 const root = 'packages/web-core';
 const read = (path: string) => readFileSync(path, 'utf8');
+function expectSharedEntry(path: string, entry: string): void {
+  expect(existsSync(path)).toBe(false);
+  const manifest = JSON.parse(read(`${root}/package.json`));
+  const target: unknown = manifest.exports[`./${entry}`];
+  expect(typeof target).toBe('string');
+  expect(existsSync(`${root}/${target}`)).toBe(true);
+}
 describe('single shared Web implementation', () => {
   it('shares complete model, credential and image flows with private ownership and grant extensions', () => {
     const page = read(`${root}/src/view/settings/MarAgentModelManagementPage.vue`);
@@ -36,8 +41,9 @@ describe('single shared Web implementation', () => {
     expect(adapter).toContain('createModelCredentialOwnershipService');
     expect(adapter).not.toMatch(/CodexLoginAttemptPoller|\/api\/admin\/mar-agent/u);
     expect(existsSync('ee/web/src/view/settings/ImageGenerationManagement.vue')).toBe(false);
-    expect(read('ee/web/src/service/codex-credential-management-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/codex-credential-management';\n"
+    expectSharedEntry(
+      'ee/web/src/service/codex-credential-management-service.ts',
+      'codex-credential-management'
     );
   });
 
@@ -80,9 +86,7 @@ describe('single shared Web implementation', () => {
     expect(read('ee/web/src/view/settings/SystemConfigurationPage.vue')).toContain(
       "key: 'audit-retention'"
     );
-    expect(read('ee/web/src/service/management-url-service.ts')).toContain(
-      '@myagentroam/web-core/management-url'
-    );
+    expectSharedEntry('ee/web/src/service/management-url-service.ts', 'management-url');
   });
 
   it('uses public workbench shell components with host-supplied management IDs and version', () => {
@@ -123,9 +127,7 @@ describe('single shared Web implementation', () => {
       ['workbench-clock-service', 'workbench-clock']
     ]) {
       expect(manifest.exports[`./${entry}`]).toBe(`./src/service/${file}.ts`);
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expect(existsSync(`ee/web/src/service/${file}.ts`)).toBe(false);
       expect(read(`${root}/src/service/${file}.ts`)).not.toMatch(
         /@myagentroam-enterprise|ConversationTemplateService|conversation-template-service|\/api\/admin\/|resource-grants/u
       );
@@ -180,9 +182,7 @@ describe('single shared Web implementation', () => {
       ['util/conversation-presentation', 'conversation-presentation'],
       ['util/conversation-domain', 'conversation-domain']
     ]) {
-      expect(read(`ee/web/src/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expect(existsSync(`ee/web/src/${file}.ts`)).toBe(false);
       expect(manifest.exports[`./${entry}`]).toBe(`./src/${file}.ts`);
     }
     for (const [file, prefix] of [
@@ -195,9 +195,7 @@ describe('single shared Web implementation', () => {
     expect(read(`${root}/src/util/workbench-presentation.ts`)).toContain(
       "export { absoluteMessageTime } from './conversation-presentation.js'"
     );
-    expect(read('ee/web/src/util/workbench-presentation.ts')).not.toContain(
-      'export function absoluteMessageTime'
-    );
+    expect(existsSync('ee/web/src/util/workbench-presentation.ts')).toBe(false);
   });
 
   it('composes one public Workspace Inspector with the existing page-owned subscriptions', () => {
@@ -214,9 +212,7 @@ describe('single shared Web implementation', () => {
     expect(inspector).not.toMatch(
       /from ['"]@\/|@myagentroam-enterprise|HostedConversation|new WebSocket|createWorkspaceWatchService|createSessionWatchService/u
     );
-    expect(read('ee/web/src/util/trailing-task.ts')).toBe(
-      "export * from '@myagentroam/web-core/trailing-task';\n"
-    );
+    expectSharedEntry('ee/web/src/util/trailing-task.ts', 'trailing-task');
     const presentation = read(`${root}/src/util/workbench-presentation.ts`);
     expect(presentation).toContain('./file-presentation.js');
     expect(presentation).not.toMatch(/function (?:currentChangesBranch|fileSizeLabel)\(/u);
@@ -260,9 +256,7 @@ describe('single shared Web implementation', () => {
       ['util/markdown-preview', 'markdown-preview'],
       ['util/mobile-preview-pinch-zoom', 'mobile-preview-pinch-zoom']
     ]) {
-      expect(read(`ee/web/src/${path}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expect(existsSync(`ee/web/src/${path}.ts`)).toBe(false);
       expect(manifest.exports[`./${entry}`]).toBe(`./src/${path}.ts`);
     }
   });
@@ -279,12 +273,11 @@ describe('single shared Web implementation', () => {
       expect(manifest.exports[`./${name}.vue`]).toBe(`./src/view/${folder}/${name}.vue`);
     }
     expect(existsSync('ee/web/src/icon-themes')).toBe(false);
-    expect(read('ee/web/src/service/icon-theme-preference-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/icon-theme-preference';\n"
+    expectSharedEntry(
+      'ee/web/src/service/icon-theme-preference-service.ts',
+      'icon-theme-preference'
     );
-    expect(read('ee/web/src/service/workspace-file-tree-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/workspace-file-tree';\n"
-    );
+    expectSharedEntry('ee/web/src/service/workspace-file-tree-service.ts', 'workspace-file-tree');
     expect(read(`${root}/src/view/workspace/WorkspaceInspector.vue`)).toContain(
       './WorkspaceFileTree.vue'
     );
@@ -385,9 +378,7 @@ describe('single shared Web implementation', () => {
     };
     const manifest = JSON.parse(read(`${root}/package.json`));
     for (const [name, entry] of Object.entries(entries)) {
-      expect(read(`ee/web/src/${name}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expect(existsSync(`ee/web/src/${name}.ts`)).toBe(false);
       expect(manifest.exports[`./${entry}`]).toBe(`./src/${name}.ts`);
       expect(read(`${root}/src/${name}.ts`)).not.toMatch(
         /@\/|@myagentroam-enterprise|\/api\/organizations|ownerOrganizationId|ENTERPRISE_LICENSE/u
@@ -396,15 +387,15 @@ describe('single shared Web implementation', () => {
   });
 
   it('uses one public notification, upload and update client implementation', () => {
+    const manifest = JSON.parse(read(`${root}/package.json`));
     for (const [name, entry] of [
       ['workbench-notification-service', 'notifications'],
       ['workbench-notification-navigation-service', 'notification-navigation'],
       ['workspace-upload-service', 'workspace-upload'],
       ['web-version-update-service', 'web-version-update']
     ]) {
-      expect(read(`ee/web/src/service/${name}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expect(existsSync(`ee/web/src/service/${name}.ts`)).toBe(false);
+      expect(manifest.exports[`./${entry}`]).toBe(`./src/service/${name}.ts`);
     }
     expect(existsSync('ee/web/src/view/workbench/WorkbenchNotificationCenter.vue')).toBe(false);
     expect(read(`${root}/src/view/workbench/WorkbenchNavigation.vue`)).toContain(
@@ -548,9 +539,7 @@ describe('single shared Web implementation', () => {
     const bootstrap = read('ee/web/src/bootstrap.ts');
     expect(bootstrap).toContain("from '@myagentroam/web-core/bootstrap'");
     expect(bootstrap).not.toMatch(/createApp|app\.mount|serviceWorker\.register/u);
-    expect(read('ee/web/src/service/theme-preference-service.ts')).toContain(
-      "export * from '@myagentroam/web-core/theme'"
-    );
+    expectSharedEntry('ee/web/src/service/theme-preference-service.ts', 'theme');
     expect(read('ee/web/src/styles.css')).not.toContain('--mar-bg-page');
     expect(read(`${root}/src/styles.css`)).not.toContain('enterprise-frozen-banner');
     expect(read(`${root}/src/App.vue`)).not.toMatch(
@@ -563,37 +552,30 @@ describe('single shared Web implementation', () => {
     expect(common).not.toMatch(/hosted|Hosted|conversation-templates|\/api\//u);
     const adapter = read(`${root}/src/service/hosted-conversation-watch-coordinator.ts`);
     expect(adapter).toContain("from './workbench-watch-coordinator.js'");
-    expect(read('ee/web/src/service/workbench-watch-coordinator.ts')).toContain(
-      "from '@myagentroam/web-core/hosted-watch-coordinator'"
+    expectSharedEntry(
+      'ee/web/src/service/workbench-watch-coordinator.ts',
+      'hosted-watch-coordinator'
     );
   });
 
   it('reuses the public realtime connection without a second enterprise socket implementation', () => {
-    expect(enterpriseLiveService).toBe(publicLiveService);
-    const adapter = read('ee/web/src/service/workbench-live-service.ts');
-    expect(adapter).toContain("from '@myagentroam/web-core/live'");
-    expect(adapter).not.toMatch(/new WebSocket|setInterval|addEventListener/u);
+    expectSharedEntry('ee/web/src/service/workbench-live-service.ts', 'live');
   });
 
   it('shares Workspace subscriptions and leases without importing enterprise ownership models', () => {
-    expect(read('ee/web/src/service/workspace-watch-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/workspace-watch';\n"
-    );
-    expect(read('ee/web/src/service/watch-lease-lifecycle-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/watch-lease';\n"
-    );
+    expectSharedEntry('ee/web/src/service/workspace-watch-service.ts', 'workspace-watch');
+    expectSharedEntry('ee/web/src/service/watch-lease-lifecycle-service.ts', 'watch-lease');
     expect(read(`${root}/src/service/workspace-watch-service.ts`)).not.toMatch(
       /ownership|ORGANIZATION|ownerOrganizationId|model\/workbench/u
     );
   });
 
   it('shares native Session observation and models while keeping resource ownership and navigation private', () => {
-    expect(read('ee/web/src/service/workbench-session-watch-controller.ts')).toBe(
-      "export * from '@myagentroam/web-core/session-watch-controller';\n"
+    expectSharedEntry(
+      'ee/web/src/service/workbench-session-watch-controller.ts',
+      'session-watch-controller'
     );
-    expect(read('ee/web/src/util/conversation-segments.ts')).toBe(
-      "export * from '@myagentroam/web-core/conversation-segments';\n"
-    );
+    expectSharedEntry('ee/web/src/util/conversation-segments.ts', 'conversation-segments');
     expect(read(`${root}/src/model/workbench.ts`)).not.toMatch(
       /ownership|ORGANIZATION|ownerOrganizationId|ManagementSection|WorkbenchView/u
     );
@@ -621,16 +603,12 @@ describe('single shared Web implementation', () => {
       ['workspace-view-cache-service', 'workspace-cache'],
       ['workspace-runtime-state-service', 'workspace-runtime']
     ]) {
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
       expect(read(`${root}/src/service/${file}.ts`)).not.toMatch(
         /HostedConversation|\/api\/|ownerOrganizationId/u
       );
     }
-    expect(read('ee/web/src/util/conversation-history.ts')).toBe(
-      "export * from '@myagentroam/web-core/conversation-history';\n"
-    );
+    expectSharedEntry('ee/web/src/util/conversation-history.ts', 'conversation-history');
   });
 
   it('shares Composer state and public version gates without including enterprise features', () => {
@@ -645,13 +623,9 @@ describe('single shared Web implementation', () => {
       ['quick-prompt-service', 'quick-prompts'],
       ['workbench-composer-interaction-controller', 'composer-interaction']
     ]) {
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
     }
-    expect(read('ee/web/src/util/node-features.ts')).toContain(
-      "from '@myagentroam/web-core/node-features'"
-    );
+    expectSharedEntry('ee/web/src/util/node-features.ts', 'node-features');
     for (const locale of ['en-US', 'zh-CN']) {
       expect(read(`ee/web/src/i18n/messages.generated.${locale}.ts`)).not.toMatch(
         /'(?:runnerProfileService|workbenchComposerController)\.[^']+':/u
@@ -667,9 +641,7 @@ describe('single shared Web implementation', () => {
       ['composer-skill-token-service', 'skill-tokens'],
       ['effective-workspace-skill-service', 'effective-skills']
     ]) {
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
     }
     expect(read(`${root}/src/service/workbench-selection-state-service.ts`)).not.toMatch(
       /ownership|Organization|Hosted/u
@@ -686,9 +658,7 @@ describe('single shared Web implementation', () => {
         /HostedConversation|hostedConversation|['"]conversations['"]|['"]users['"]|['"]organizations['"]|parseWorkbenchRoute/u
       );
     }
-    expect(read('ee/web/src/service/workbench-route-service.ts')).toContain(
-      '@myagentroam/web-core/route-service'
-    );
+    expectSharedEntry('ee/web/src/service/workbench-route-service.ts', 'route-service');
     expect(read(`${root}/src/service/workbench-route-service.ts`)).toContain(
       "from './workbench-selection-persistence-service.js'"
     );
@@ -698,9 +668,7 @@ describe('single shared Web implementation', () => {
     expect(read('ee/web/src/util/workbench-route.ts')).toContain(
       '@myagentroam/web-core/workbench-route'
     );
-    expect(read('ee/web/src/service/workbench-navigation-watch-service.ts')).toContain(
-      '@myagentroam/web-core/view-watch'
-    );
+    expectSharedEntry('ee/web/src/service/workbench-navigation-watch-service.ts', 'view-watch');
     expect(read('ee/web/src/service/workbench-navigation-service.ts')).toContain(
       '@myagentroam/web-core/navigation'
     );
@@ -722,10 +690,12 @@ describe('single shared Web implementation', () => {
   it('maps the shared Workspace activation intent to the enterprise navigation identity', async () => {
     const view = ref('conversations');
     const closeMobileSidebar = vi.fn();
+    const revealWorkspace = vi.fn();
     const tree = createWorkbenchWorkspaceTreeController({
       workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
       nodes: ref([{ id: 'node-1', connected: true, disabled: false }]),
       workspaces: ref([{ id: 'workspace-1' }]),
+      tree: { revealWorkspace },
       view,
       closeMobileSidebar,
       activateWorkspace: async () => true
@@ -739,6 +709,9 @@ describe('single shared Web implementation', () => {
     });
     expect(view.value).toBe('nodes');
     expect(closeMobileSidebar).toHaveBeenCalledOnce();
+    expect(revealWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 'node-1', workspaceId: 'workspace-1' })
+    );
   });
 
   it('keeps Workspace selection, tree and cache controllers public without product page identifiers', () => {
@@ -749,9 +722,7 @@ describe('single shared Web implementation', () => {
       ['workbench-session-selection-service', 'session-selection'],
       ['workbench-workspace-cache-controller', 'workspace-cache-controller']
     ]) {
-      expect(read(`ee/web/src/service/${name}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${name}.ts`, entry!);
     }
     for (const name of [
       'workbench-workspace-selection-service',
@@ -767,11 +738,11 @@ describe('single shared Web implementation', () => {
   it('composes ordinary and hosted foreground state publicly while the host supplies navigation', () => {
     const common = read('packages/web-core/src/service/workbench-base-state-service.ts');
     expect(common).not.toMatch(/createWorkbenchNavigation|enterprise|@\//u);
-    const enterprise = read('ee/web/src/service/workbench-base-state-service.ts');
-    expect(enterprise).toContain('@myagentroam/web-core/base-state');
-    expect(read('ee/web/src/service/workbench-surface-state-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/surface-state';\n"
-    );
+    expect(existsSync('ee/web/src/service/workbench-base-state-service.ts')).toBe(false);
+    const page = read('packages/web-core/src/service/workbench-page-controller.ts');
+    expect(page).toContain('createWorkbenchPageStateService({');
+    expect(page).toContain('navigation: options.navigation');
+    expectSharedEntry('ee/web/src/service/workbench-surface-state-service.ts', 'surface-state');
     expect(read('packages/web-core/src/service/workbench-surface-state-service.ts')).not.toMatch(
       /WorkbenchWorkspaceCacheController|workbench-workspace-cache-controller/u
     );
@@ -785,9 +756,7 @@ describe('single shared Web implementation', () => {
       ['workbench-session-message-service', 'session-message'],
       ['conversation-user-input-service', 'user-input']
     ]) {
-      expect(read(`ee/web/src/service/${name}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${name}.ts`, entry!);
       expect(read(`packages/web-core/src/service/${name}.ts`)).not.toMatch(
         /enterprise|HostedConversation|hostedConversation|organizationId|@\//u
       );
@@ -795,27 +764,15 @@ describe('single shared Web implementation', () => {
     expect(read(`${root}/src/util/conversation-presentation.ts`)).toContain(
       "export { userInputQuestions } from './conversation-user-input.js'"
     );
-    expect(read('ee/web/src/util/conversation-presentation.ts')).not.toContain(
-      'export function userInputQuestions'
-    );
-    expect(read('ee/web/src/util/conversation-domain.ts')).not.toContain(
-      'export function takeoverFailure'
-    );
+    expect(existsSync('ee/web/src/util/conversation-presentation.ts')).toBe(false);
+    expect(existsSync('ee/web/src/util/conversation-domain.ts')).toBe(false);
   });
 
   it('uses one shared submission gate for ordinary sessions and enterprise conversations', () => {
-    expect(read('ee/web/src/service/workbench-context-command-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/context-command';\n"
-    );
-    expect(read('ee/web/src/service/workbench-plan-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/plan';\n"
-    );
-    expect(read('ee/web/src/service/workbench-run-control-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/run-control';\n"
-    );
-    expect(read('ee/web/src/service/workbench-submission-service.ts')).toBe(
-      "export * from '@myagentroam/web-core/submission';\n"
-    );
+    expectSharedEntry('ee/web/src/service/workbench-context-command-service.ts', 'context-command');
+    expectSharedEntry('ee/web/src/service/workbench-plan-service.ts', 'plan');
+    expectSharedEntry('ee/web/src/service/workbench-run-control-service.ts', 'run-control');
+    expectSharedEntry('ee/web/src/service/workbench-submission-service.ts', 'submission');
     expect(read('packages/web-core/src/service/workbench-submission-service.ts')).not.toMatch(
       /enterprise|HostedConversation|@\//u
     );
@@ -828,9 +785,7 @@ describe('single shared Web implementation', () => {
       ['composer-attachment-input-service', 'attachment-input'],
       ['composer-paste-service', 'composer-paste']
     ]) {
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
       expect(read(`packages/web-core/src/service/${file}.ts`)).not.toMatch(
         /enterprise|hostedConversation|HostedConversation|@\//u
       );
@@ -880,9 +835,7 @@ describe('single shared Web implementation', () => {
       ['workbench-conversation-realtime-service', 'conversation-realtime'],
       ['terminal-relay-service', 'terminal-relay']
     ]) {
-      expect(read(`ee/web/src/service/${file}.ts`)).toBe(
-        `export * from '@myagentroam/web-core/${entry}';\n`
-      );
+      expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
     }
     for (const locale of ['en-US', 'zh-CN']) {
       expect(read(`ee/web/src/i18n/messages.generated.${locale}.ts`)).not.toMatch(

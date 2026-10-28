@@ -30,3 +30,9 @@ When you can manage the owning Node, both its Node details and Workspace details
 Before deleting a Node registration, stop active Agents and close terminals. Deletion removes Server credentials and grants; the host must use a new registration key to register again.
 
 Node management only sends upgrade intent; the host's existing Supervisor performs installation. It never creates Linux systemd units, Windows scheduled tasks, or macOS LaunchAgents, and never elevates privileges. Complete platform-specific automatic startup through [Install and Register a Node](../deployment/node-installation.md) first.
+
+### Long-running Computer Use tasks
+
+An ordinary MAR Agent session with Computer Use enabled can execute bounded desktop scripts. Execution waits for completion by default. The Agent can instead set `yieldMs` to receive a task ID early, prepare the next coordinates or do other work that cannot affect the desktop, then use `mcp__mar_computer__wait` to retrieve the final result and screenshot. Only one task can operate the desktop at a time. There is no independent cursor: do not use the same desktop concurrently, and do not assume another monitor isolates mouse or keyboard input.
+
+A wait timeout does not stop the task. The Agent can explicitly cancel it; stopping the session execution or disabling Computer Use also cancels the task and drains cleanup. `STOPPING` means cleanup has not finished. With `OUTCOME_UNKNOWN`, some actions may already have happened: never replay automatically, and observe again. Early return improves responsiveness but does not promise faster drawing or a shorter total duration.

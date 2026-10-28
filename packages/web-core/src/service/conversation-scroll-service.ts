@@ -70,6 +70,35 @@ export function createConversationScrollService() {
     following.value = true;
   }
 
+  function captureAnchor(followBottom: boolean): () => void {
+    const target = element.value;
+    if (target === undefined) return () => undefined;
+    const previousHeight = target.scrollHeight;
+    const previousTop = target.scrollTop;
+    const wasFollowing = followBottom && following.value;
+    return () => {
+      if (element.value !== target || target.scrollTop !== previousTop) return;
+      if (wasFollowing) {
+        if (following.value) {
+          scrollToLatest();
+          updateLayout(target);
+        }
+        return;
+      }
+      target.scrollTop = previousTop + (target.scrollHeight - previousHeight);
+      lastScrollTop = target.scrollTop;
+      updateLayout(target);
+    };
+  }
+
+  function captureRenderAnchor(): () => void {
+    return captureAnchor(true);
+  }
+
+  function capturePrependAnchor(): () => void {
+    return captureAnchor(false);
+  }
+
   async function scrollToLatestAfterLayout(isCurrent: () => boolean = () => true): Promise<void> {
     const target = element.value;
     if (target === undefined || !isCurrent()) return;
@@ -94,6 +123,8 @@ export function createConversationScrollService() {
     handleResize,
     stopFollowing,
     scrollToLatest,
+    captureRenderAnchor,
+    capturePrependAnchor,
     scrollToLatestAfterLayout
   };
 }

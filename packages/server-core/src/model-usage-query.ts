@@ -143,7 +143,6 @@ export class ModelUsageQueryService {
 
   async overview(userId: number, query: PersonalUsageQuery): Promise<PersonalUsageOverview> {
     const asOf = this.now();
-    if (query.to > asOf + 60_000) throw new ModelUsageQueryError('USAGE_QUERY_INVALID');
     const minimum = asOf - MODEL_USAGE_RETENTION_MS;
     const effectiveQuery = query.to > asOf ? { ...query, to: asOf } : query;
     const selected = filter(userId, effectiveQuery, minimum);
@@ -249,7 +248,6 @@ export class ModelUsageQueryService {
     )
       throw new ModelUsageQueryError('USAGE_QUERY_INVALID');
     const asOf = this.now();
-    if (query.to > asOf + 60_000) throw new ModelUsageQueryError('USAGE_QUERY_INVALID');
     const minimum = asOf - MODEL_USAGE_RETENTION_MS;
     const effectiveQuery = query.to > asOf ? { ...query, to: asOf } : query;
     const selected = filter(userId, effectiveQuery, minimum);

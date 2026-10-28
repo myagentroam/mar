@@ -11,12 +11,28 @@ beforeEach(() => {
   });
 });
 afterEach(() => vi.unstubAllGlobals());
-const options = () => ({ sessionPageSize: 10, onUnauthenticated: vi.fn() });
+const options = () => ({
+  sessionPageSize: 10,
+  onUnauthenticated: vi.fn(),
+  onConversationOverflow: vi.fn()
+});
 
 describe('shared Workbench state composition', () => {
   it('creates isolated ordinary state without product navigation or enterprise targets', () => {
     const a = createWorkbenchBaseStateService(options());
     const b = createWorkbenchBaseStateService(options());
+    if (false) {
+      // @ts-expect-error Run collections can only be installed by their owner.
+      a.run.runs.value = [];
+      // @ts-expect-error Run arrays exposed to consumers are immutable.
+      a.run.runs.value.push(a.run.runs.value[0]!);
+      // @ts-expect-error Conversation windows can only be installed by their owner.
+      a.conversation.turns.value = [];
+      // @ts-expect-error Conversation arrays exposed to consumers are immutable.
+      a.conversation.turns.value.push(a.conversation.turns.value[0]!);
+      // @ts-expect-error Cursor changes belong to the projection owner.
+      a.conversation.nextCursor.value = null;
+    }
     expect(a).not.toHaveProperty('hostedSelection');
     expect(a).not.toHaveProperty('navigation');
     expect(a).not.toHaveProperty('notifications');

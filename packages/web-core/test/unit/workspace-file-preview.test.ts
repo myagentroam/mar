@@ -5,7 +5,7 @@ import type {
   WorkspaceFilePreviewTarget
 } from '../../src/model/workspace-file-preview.js';
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
-import type { WorkspaceDirectFileRange } from '../../src/service/workspace-direct-file-read-service.js';
+import type { WorkspaceDirectFileRange } from '../../src/model/workspace-direct-file.js';
 import { createWorkspaceFilePreviewService } from '../../src/service/workspace-file-preview-service.js';
 
 function deferred<T>() {
@@ -106,6 +106,36 @@ afterEach(() => {
 });
 
 describe('Workspace file preview service', () => {
+  it('cancels an in-flight server read when its tab closes', async () => {
+    const pending = deferred<ReturnType<typeof textFile>>();
+    const { preview, request, onFailure } = createHarness({ request: () => pending.promise });
+    const opening = preview.open(1, defaultTarget, { serverOnly: true });
+    const signal = request.mock.calls[0]?.[1]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    preview.close(1);
+    expect(signal?.aborted).toBe(true);
+    pending.resolve(textFile('late'));
+    await opening;
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('cancels the previous direct range when opening a new target in the tab', async () => {
+    const pending = deferred<WorkspaceDirectFileRange | undefined>();
+    const directFileReadRange = vi.fn(
+      (..._args: Parameters<NonNullable<WorkspaceFilePreviewTransfers['directFileReadRange']>>) =>
+        pending.promise
+    );
+    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const opening = preview.open(1, defaultTarget);
+    const signal = directFileReadRange.mock.calls[0]?.[6] as AbortSignal | undefined;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    const next = preview.open(1, fileTarget({ path: 'next.txt' }), { serverOnly: true });
+    expect(signal?.aborted).toBe(true);
+    pending.resolve(directRange('late'));
+    await Promise.all([opening, next]);
+    expect(preview.page(1).fileContent.value?.path).toBe('next.txt');
+  });
+
   it('reads ordinary text through one bounded direct probe', async () => {
     const content = 'Hello, preview.';
     const directFileReadRange = vi.fn(async () => directRange(content));
@@ -127,7 +157,8 @@ describe('Workspace file preview service', () => {
       4096,
       undefined,
       undefined,
-      undefined
+      undefined,
+      expect.any(AbortSignal)
     );
     expect(request).not.toHaveBeenCalled();
   });
@@ -152,7 +183,8 @@ describe('Workspace file preview service', () => {
       4096,
       undefined,
       undefined,
-      undefined
+      undefined,
+      expect.any(AbortSignal)
     );
   });
 
@@ -429,7 +461,9 @@ describe('Workspace file preview service', () => {
       'repo root',
       ['main', 'release/1'],
       0,
-      512 * 1024
+      512 * 1024,
+      undefined,
+      expect.any(AbortSignal)
     );
     const [fetchUrl, fetchInit] = fetchContent.mock.calls[0]!;
     const url = new URL(String(fetchUrl), 'http://workspace.test');
@@ -477,8 +511,11 @@ describe('Workspace file preview service', () => {
 
     await preview.open(1, fileTarget({ path: 'first.png' }));
     const replacing = preview.open(1, fileTarget({ path: 'second.png' }));
+    const replacementSignal = directFileObjectUrl.mock.calls[1]?.[3];
+    expect(replacementSignal).toBeInstanceOf(AbortSignal);
     expect(revoke).toHaveBeenCalledWith('blob:first');
     await preview.open(1, fileTarget({ path: 'third.png' }));
+    expect(replacementSignal?.aborted).toBe(true);
     pendingReplacement.resolve('blob:stale');
     await replacing;
 

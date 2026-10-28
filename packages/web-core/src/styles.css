@@ -53,12 +53,6 @@ html.console-ui,
 .theme-preview {
   --mar-motion-duration-collapse: 160ms;
   --mar-motion-easing-collapse: cubic-bezier(0.2, 0, 0, 1);
-  /* Controls share one surface, with selection strength calibrated per theme. */
-  --mar-control-segmented-selected-bg: color-mix(
-    in srgb,
-    var(--mar-fill-selection) 97%,
-    var(--mar-text-primary)
-  );
   --el-border-radius-base: var(--mar-radius-control);
   --el-font-family: var(--mar-font-sans);
   --el-font-size-base: var(--mar-font-size-body);
@@ -330,11 +324,6 @@ html.console-ui,
 html.console-ui[data-theme='vscode-dark-2026'],
 .theme-preview[data-theme='vscode-dark-2026'] {
   color-scheme: dark;
-  --mar-control-segmented-selected-bg: color-mix(
-    in oklab,
-    var(--mar-fill-selection) 73%,
-    var(--mar-text-primary)
-  );
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
   --mar-bg-page: #0e1116;
@@ -795,10 +784,10 @@ html.console-ui :where(input, textarea)::placeholder {
 
 :where(html.console-ui, .theme-preview) .el-segmented {
   --el-segmented-color: var(--mar-text-secondary);
-  --el-segmented-bg-color: var(--mar-fill-muted);
+  --el-segmented-bg-color: var(--mar-bg-subtle);
   --el-segmented-item-selected-color: var(--mar-text-primary);
-  --el-segmented-item-selected-bg-color: var(--mar-control-segmented-selected-bg);
-  --el-segmented-item-selected-disabled-bg-color: var(--mar-bg-subtle);
+  --el-segmented-item-selected-bg-color: var(--mar-fill-selection);
+  --el-segmented-item-selected-disabled-bg-color: var(--mar-fill-muted);
   --el-segmented-item-hover-color: var(--mar-text-primary);
   --el-segmented-item-hover-bg-color: var(--mar-fill-row-hover);
   --el-segmented-item-active-bg-color: var(--mar-fill-row-hover);
@@ -1069,8 +1058,8 @@ pre {
   align-items: center;
   border: 0;
   border-radius: var(--mar-radius-marker);
-  background: color-mix(in srgb, var(--mar-text-secondary) 34%, var(--mar-bg-panel));
-  color: color-mix(in srgb, var(--mar-text-secondary) 60%, var(--mar-text-primary));
+  background: color-mix(in srgb, var(--mar-text-secondary) 40%, var(--mar-bg-panel));
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
   line-height: 1.4;

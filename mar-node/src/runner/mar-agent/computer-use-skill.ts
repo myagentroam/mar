@@ -1,4 +1,4 @@
-import { NODE_COMPUTER_TOOL_NAME } from '../../mcp/naming.js';
+import { NODE_COMPUTER_TOOL_NAME, NODE_COMPUTER_WAIT_TOOL_NAME } from '../../mcp/naming.js';
 import type { HostSkill } from '@myagentroam/agent/host';
 
 export const computerUseHostSkill: HostSkill = {
@@ -7,7 +7,7 @@ export const computerUseHostSkill: HostSkill = {
     'Use when the user asks to operate or verify a real desktop GUI through ' +
     NODE_COMPUTER_TOOL_NAME +
     '. Load before the first desktop action.',
-  requiredTools: [NODE_COMPUTER_TOOL_NAME],
+  requiredTools: [NODE_COMPUTER_TOOL_NAME, NODE_COMPUTER_WAIT_TOOL_NAME],
   load: async () => computerUseSkill()
 };
 
@@ -29,10 +29,19 @@ Use \`${NODE_COMPUTER_TOOL_NAME}\` only for user-authorized interaction with app
 - The runtime provides \`pyautogui\`, \`time\`, \`display(image)\`, \`log(value)\`, and \`paste_text(text)\`. Use these directly; do not import or install another desktop automation stack.
 - Keep each script focused and bounded, but prefer one coherent call over several one-action calls when the sequence is deterministic. Use short waits only for expected transitions.
 - Once repeated controls and their geometry are established, batch safe repetitive interactions such as filling several known fields or placing several known items. Do not spend a separate observe-act cycle on every identical row, item, or dialog.
+- For drawing, confirm the canvas, focus, and tool, then make a small test stroke. Combine known geometry into complete strokes or bounded batches; stop and observe at visual decision points. Confirm the format and path before saving. If the user requested real GUI drawing, do not substitute a generated file for that interaction.
+- Keep PyAutoGUI's FAILSAFE enabled. Adjust input timing only when the target application needs it; if a script temporarily changes library settings, restore those settings in a finally block so the warm namespace is not polluted.
+- The desktop lease coordinates MAR callers, not human input isolation. Tell the user: do not operate the same desktop while automation is active.
 - Do not issue sleep-only calls. Wait for an expected transition inside the action that caused it, then use the Runtime's automatic final screenshot to inspect the result.
 - Use PyAutoGUI for clicks, hotkeys, control keys, and compatible ASCII typing. Use \`paste_text\` for Unicode or longer literal text.
 - Do not assume a click, keypress, or paste can be rolled back. Avoid broad destructive shortcuts unless the user explicitly requested their effect.
 - The Runtime already returns a final primary-display screenshot. Call \`display()\` only for an additional image that is materially useful; do not duplicate the automatic final screenshot.
+
+### Overlap independent work safely
+- For a long bounded script, optionally set \`yieldMs\` to return early with a \`taskId\`. Omit it to wait synchronously. Early return changes responsiveness, not mouse speed or the execution timeout.
+- While \`RUNNING\` or \`STOPPING\`, prepare coordinates or do other work that cannot affect the desktop, focus, target application, or files it is using. Do not start another desktop script, observation, or input through another tool; the desktop is not safe for concurrent human input.
+- Call \`${NODE_COMPUTER_WAIT_TOOL_NAME}\` with that taskId and \`action: "poll"\` to obtain the final result and screenshot before claiming completion. A wait timeout or interrupted wait does not stop the task. Use \`action: "cancel"\` to stop and drain it; \`STOPPING\` is not a completed cancellation.
+- Tasks belong to this Execution and are stopped when it ends. Repeated wait/cancel reads the current terminal result without replay; a newly accepted exec replaces it. After \`OUTCOME_UNKNOWN\`, observe again and never automatically replay the script.
 
 ### Verify and recover
 - Verify at decision boundaries and once after the requested result is complete. Intermediate screenshots are unnecessary when a deterministic sequence completed without an error.

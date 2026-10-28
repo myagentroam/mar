@@ -654,6 +654,11 @@ describe('MAR Agent managed run projection', () => {
             name: 'mcp__mar_computer__exec',
             description: 'Computer Use',
             inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'mcp__mar_computer__wait',
+            description: 'Wait for Computer Use',
+            inputSchema: { type: 'object', properties: {} }
           }
         ],
         call: vi.fn(async (_call: unknown) => {
@@ -684,6 +689,25 @@ describe('MAR Agent managed run projection', () => {
               expect(tools.map((tool: ClientToolDefinition) => tool.name)).toContain(
                 'mcp__mar_computer__exec'
               );
+              const catalog = await options.host.listMcpToolCatalog?.({
+                sessionId: 'native-session',
+                executionId,
+                claimExecutionScope: true
+              });
+              expect(
+                catalog?.tools.map(
+                  ({
+                    definition,
+                    rawName
+                  }: {
+                    definition: ClientToolDefinition;
+                    rawName: string;
+                  }) => [definition.name, rawName]
+                )
+              ).toEqual([
+                ['mcp__mar_computer__exec', 'exec'],
+                ['mcp__mar_computer__wait', 'wait']
+              ]);
               const extensions = await options.host.listExecutionExtensions?.({
                 sessionId: 'native-session',
                 executionId,

@@ -2,7 +2,7 @@
   "name": "my-agent-roam",
   "private": true,
   "license": "LicenseRef-MAR-ESAL-1.0",
-  "version": "0.11.38",
+  "version": "0.11.39",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "build": "pnpm --filter @myagentroam/server... --filter @myagentroam/web-console... --filter @myagentroam/node... build",
@@ -33,6 +33,7 @@
     "artifacts:notices": "node scripts/create-third-party-notices.mjs"
   },
   "devDependencies": {
+    "@myagentroam/web-core": "workspace:*",
     "@playwright/mcp": "0.0.83",
     "@playwright/test": "1.62.1",
     "@types/node": "^24.10.1",

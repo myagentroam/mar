@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../../ee/web/src/util/api-error.js';
+import { ApiError } from '@myagentroam/web-core/api-error';
 import {
   conversationTemplateBytesToMiB,
   conversationTemplateModelSelectionIsAvailable,

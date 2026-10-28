@@ -1,13 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, type Ref } from 'vue';
-import type {
-  AgentRun,
-  ConversationTurn,
-  RunnerProfile,
-  Session,
-  Workspace
-} from '../model/workbench.js';
+import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
 import type { SessionContextUsage } from '../service/conversation-state-service.js';
 import { createComposerAttachmentInputService } from '../service/composer-attachment-input-service.js';
 import { translate } from '../service/locale-preference-service.js';
@@ -18,19 +12,17 @@ interface WorkbenchNewSessionControllerOptions {
   readonly selectedRunId: Ref<string | undefined>;
   readonly selectedWorkspace: Readonly<Ref<Workspace | undefined>>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
-  readonly conversationTurns: Ref<ConversationTurn[]>;
-  readonly conversationNextCursor: Ref<string | null>;
+  readonly clearActiveContent: () => void;
   readonly loadingOlderConversation: Ref<boolean>;
   readonly loadingInitialConversation: Ref<boolean>;
   readonly initialLoadFailed: Ref<boolean>;
   readonly sessionContextUsage: Ref<SessionContextUsage | null | undefined>;
   readonly sessionInput: Ref<string>;
   readonly draftSessionOpen: Ref<boolean>;
-  readonly newSessionRunner: Ref<Session['runner']>;
-  readonly newSessionModel: Ref<string | undefined>;
-  readonly newSessionEffort: Ref<string | undefined>;
-  readonly newSessionAccess: Ref<string | undefined>;
+  readonly newSessionRunner: Readonly<Ref<Session['runner']>>;
+  readonly newSessionModel: Readonly<Ref<string | undefined>>;
+  readonly newSessionEffort: Readonly<Ref<string | undefined>>;
+  readonly newSessionAccess: Readonly<Ref<string | undefined>>;
   readonly runnerProfiles: Ref<readonly RunnerProfile[]>;
   readonly draggingComposerAttachments: Ref<boolean>;
   readonly canUseComposer: Readonly<Ref<boolean>>;
@@ -105,10 +97,8 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
       options.draftSessionOpen.value = true;
       options.selectedSessionId.value = undefined;
       options.selectedRunId.value = undefined;
-      options.runs.value = [];
+      options.clearActiveContent();
       options.sessionContextUsage.value = undefined;
-      options.conversationTurns.value = [];
-      options.conversationNextCursor.value = null;
       options.loadingOlderConversation.value = false;
       options.loadingInitialConversation.value = false;
       options.initialLoadFailed.value = false;

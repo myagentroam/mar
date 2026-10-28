@@ -11,7 +11,6 @@ interface WorkbenchRunControlServiceOptions {
   readonly selectedSessionId: Ref<string | undefined>;
   readonly selectedRunId: Ref<string | undefined>;
   readonly activeRun: ComputedRef<AgentRun | undefined>;
-  readonly runs: Ref<AgentRun[]>;
   readonly notice: MessageFeedback;
   readonly runService: ReturnType<typeof createRunService>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -61,10 +60,7 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
         `/api/agent-runs/${encodeURIComponent(run.id)}/interrupt`,
         { method: 'POST', body: JSON.stringify({ nodeId }) }
       );
-      if (result.run !== undefined)
-        options.runs.value = options.runs.value.map((candidate) =>
-          candidate.id === result.run?.id ? result.run : candidate
-        );
+      if (result.run !== undefined) options.runService.replaceExistingRun(result.run);
     } catch (error) {
       const completedInSubmissionWindow = finishSubmission();
       if (!missingRunError(error) && completedInSubmissionWindow) {

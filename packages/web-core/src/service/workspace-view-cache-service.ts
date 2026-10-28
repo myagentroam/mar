@@ -1,19 +1,70 @@
-import { mergeConversationProjectionUnits } from '../util/conversation-segments.js';
+import {
+  mergeConversationProjectionUnits,
+  syncConversationRunStatus
+} from '../util/conversation-segments.js';
 import { shallowRef } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
+  ComposerSkillToken,
   ConversationTurn,
   Session,
-  WorkspaceViewCache
+  WorkspaceQueue
 } from '../model/workbench.js';
-import { newestRunSnapshot } from './run-service.js';
-import { newestWorkspaceQueueSnapshot } from './workspace-queue-projection-service.js';
+import { newestRunSnapshot } from '../util/run-state.js';
+import {
+  newestWorkspaceQueueSnapshot,
+  reconcileWorkspaceQueueSnapshot,
+  type WorkspaceQueueSnapshotSource
+} from './workspace-queue-projection-service.js';
 import { sessionHasNativeIdentity } from '../util/session-presentation.js';
 import {
   limitConversationHistory,
   limitRecentConversationSegments
 } from '../util/conversation-history.js';
+
+export interface WorkspaceCacheDraft {
+  readonly input: string;
+  readonly skillTokens: readonly ComposerSkillToken[];
+  readonly references?: readonly import('@myagentroam/protocol').ComposerFileReference[];
+  readonly runner: Session['runner'];
+  readonly model: string;
+  readonly effort: string;
+  readonly access: string;
+}
+
+export interface WorkspaceCacheView {
+  readonly nodeId: string;
+  readonly workspaceId: string;
+  readonly sessions: readonly Session[];
+  readonly selectedSessionId?: string;
+  readonly draft?: WorkspaceCacheDraft;
+  readonly inspector?: unknown;
+}
+
+export interface WorkspaceCacheCapture {
+  readonly sessions: readonly Session[];
+  readonly inspector?: unknown;
+  readonly draft?: WorkspaceCacheDraft;
+  readonly selectedSessionId?: string;
+  readonly queue?: WorkspaceQueue;
+  readonly detail?: Readonly<CachedSessionDetail>;
+  /** The Conversation projection already applied its byte limit to this immutable window. */
+  readonly detailHistoryAlreadyBounded?: boolean;
+}
+
+interface WorkspaceViewCache {
+  readonly nodeId: string;
+  readonly workspaceId: string;
+  sessions: readonly Session[];
+  selectedSessionId?: string;
+  /** Composer text and configuration; the Workspace tab owns attachments and uploads. */
+  draft?: WorkspaceCacheDraft;
+  /** Only safely restorable Inspector views, excluding file bodies and incomplete uploads. */
+  inspector?: unknown;
+  readonly queues: Map<string, WorkspaceQueue>;
+  readonly sessionDetails: Map<string, CachedSessionDetail>;
+}
 
 export function createWorkspaceViewCacheService(
   tabId: (nodeId: string, workspaceId: string) => string
@@ -43,24 +94,114 @@ export function createWorkspaceViewCacheService(
     caches.delete(id);
   }
 
+  function removeSession(nodeId: string, workspaceId: string, sessionId: string): void {
+    const cache = caches.get(tabId(nodeId, workspaceId));
+    if (cache === undefined) return;
+    cache.sessions = cache.sessions.filter((session) => session.id !== sessionId);
+    cache.sessionDetails.delete(sessionId);
+    cache.queues.delete(sessionId);
+    if (cache.selectedSessionId === sessionId) delete cache.selectedSessionId;
+  }
+
+  function queueFor(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string
+  ): WorkspaceQueue | undefined {
+    return caches.get(tabId(nodeId, workspaceId))?.queues.get(sessionId);
+  }
+
+  function invalidateDetail(nodeId: string, workspaceId: string, sessionId: string): void {
+    caches.get(tabId(nodeId, workspaceId))?.sessionDetails.delete(sessionId);
+  }
+
+  function replaceSession(
+    nodeId: string,
+    workspaceId: string,
+    previousId: string,
+    session: Session
+  ): void {
+    if (previousId !== session.id) {
+      migrateSession(nodeId, workspaceId, previousId, session.id, session);
+      return;
+    }
+    const cache = caches.get(tabId(nodeId, workspaceId));
+    if (cache === undefined) return;
+    cache.sessions = cache.sessions.map((item) => (item.id === previousId ? session : item));
+  }
+
   function removeNode(nodeId: string): void {
     if (active.value?.nodeId === nodeId) active.value = undefined;
     for (const id of caches.keys()) if (id.startsWith(`${nodeId}:`)) caches.delete(id);
   }
 
-  function activate(nodeId: string, workspaceId: string): WorkspaceViewCache {
-    const cache = get(nodeId, workspaceId);
-    active.value = cache;
-    return cache;
+  function activate(nodeId: string, workspaceId: string): void {
+    active.value = get(nodeId, workspaceId);
   }
 
   function deactivate(): void {
     active.value = undefined;
   }
 
+  function view(nodeId: string, workspaceId: string): WorkspaceCacheView {
+    const cache = get(nodeId, workspaceId);
+    return {
+      nodeId: cache.nodeId,
+      workspaceId: cache.workspaceId,
+      sessions: cache.sessions,
+      ...(cache.selectedSessionId === undefined
+        ? {}
+        : { selectedSessionId: cache.selectedSessionId }),
+      ...(cache.draft === undefined ? {} : { draft: cache.draft }),
+      ...(cache.inspector === undefined ? {} : { inspector: cache.inspector })
+    };
+  }
+
+  function isActive(nodeId: string, workspaceId: string): boolean {
+    return active.value?.nodeId === nodeId && active.value.workspaceId === workspaceId;
+  }
+
+  function hasActive(): boolean {
+    return active.value !== undefined;
+  }
+
+  function has(nodeId: string, workspaceId: string): boolean {
+    return caches.has(tabId(nodeId, workspaceId));
+  }
+
+  function captureCommandTarget(nodeId: string, workspaceId: string) {
+    const key = tabId(nodeId, workspaceId);
+    const cache = caches.get(key);
+    if (cache === undefined) return undefined;
+    return {
+      isCurrent: () => caches.get(key) === cache,
+      replaceSession(previousId: string, session: Session): void {
+        if (caches.get(key) === cache) replaceSession(nodeId, workspaceId, previousId, session);
+      },
+      cacheRun(run: AgentRun): void {
+        if (caches.get(key) === cache) cacheRun(nodeId, workspaceId, run);
+      }
+    };
+  }
+
+  function cacheQueue(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    queue: WorkspaceQueue,
+    source: WorkspaceQueueSnapshotSource
+  ): void {
+    const cache = caches.get(tabId(nodeId, workspaceId));
+    if (cache === undefined) return;
+    cache.queues.set(
+      sessionId,
+      reconcileWorkspaceQueueSnapshot(cache.queues.get(sessionId), queue, source)
+    );
+  }
+
   function saveDetail(
     cache: WorkspaceViewCache,
-    detail: CachedSessionDetail,
+    detail: Readonly<CachedSessionDetail>,
     maximum: number,
     protectedSessionId: string,
     historyAlreadyBounded = false
@@ -91,16 +232,7 @@ export function createWorkspaceViewCacheService(
 
   function capture(
     cache: WorkspaceViewCache,
-    input: {
-      readonly sessions: readonly Session[];
-      readonly inspector?: unknown;
-      readonly draft?: WorkspaceViewCache['draft'];
-      readonly selectedSessionId?: string;
-      readonly queue?: WorkspaceViewCache['queues'] extends Map<string, infer T> ? T : never;
-      readonly detail?: CachedSessionDetail;
-      /** The Conversation projection already applied its byte limit to this immutable window. */
-      readonly detailHistoryAlreadyBounded?: boolean;
-    },
+    input: WorkspaceCacheCapture,
     maximumDetails: number
   ): void {
     cache.sessions = input.sessions.filter(
@@ -134,23 +266,62 @@ export function createWorkspaceViewCacheService(
       );
   }
 
+  function captureActive(input: WorkspaceCacheCapture, maximumDetails: number): void {
+    const cache = active.value;
+    if (cache === undefined) return;
+    capture(
+      cache,
+      { ...input, inspector: 'inspector' in input ? input.inspector : cache.inspector },
+      maximumDetails
+    );
+  }
+
   function touchDetail(
     nodeId: string,
     workspaceId: string,
     sessionId: string,
     accessedAt = Date.now()
-  ): CachedSessionDetail | undefined {
-    const detail = get(nodeId, workspaceId).sessionDetails.get(sessionId);
+  ): Readonly<CachedSessionDetail> | undefined {
+    const detail = caches.get(tabId(nodeId, workspaceId))?.sessionDetails.get(sessionId);
     if (detail !== undefined) detail.lastAccessedAt = accessedAt;
     return detail;
+  }
+
+  function mutableDetail(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string
+  ): CachedSessionDetail | undefined {
+    return caches.get(tabId(nodeId, workspaceId))?.sessionDetails.get(sessionId);
   }
 
   function detail(
     nodeId: string,
     workspaceId: string,
     sessionId: string
-  ): CachedSessionDetail | undefined {
-    return caches.get(tabId(nodeId, workspaceId))?.sessionDetails.get(sessionId);
+  ): Readonly<CachedSessionDetail> | undefined {
+    return mutableDetail(nodeId, workspaceId, sessionId);
+  }
+
+  function updateContext(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    context: CachedSessionDetail['contextUsage']
+  ): void {
+    const cached = mutableDetail(nodeId, workspaceId, sessionId);
+    if (cached !== undefined) cached.contextUsage = context;
+  }
+
+  function syncRunStatus(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    runId: string,
+    status: ConversationTurn['status']
+  ): void {
+    const cached = mutableDetail(nodeId, workspaceId, sessionId);
+    if (cached !== undefined) cached.turns = syncConversationRunStatus(cached.turns, runId, status);
   }
 
   function migrateSession(
@@ -188,7 +359,7 @@ export function createWorkspaceViewCacheService(
 
   function cacheRun(nodeId: string, workspaceId: string, run: AgentRun): void {
     if (run.sessionId === undefined) return;
-    const cached = detail(nodeId, workspaceId, run.sessionId);
+    const cached = mutableDetail(nodeId, workspaceId, run.sessionId);
     if (cached === undefined) return;
     const current = cached.runs.find((candidate) => candidate.id === run.id);
     const next = newestRunSnapshot(current, run);
@@ -196,7 +367,7 @@ export function createWorkspaceViewCacheService(
   }
 
   function cacheTurn(nodeId: string, workspaceId: string, turn: ConversationTurn): void {
-    const cached = detail(nodeId, workspaceId, turn.sessionId);
+    const cached = mutableDetail(nodeId, workspaceId, turn.sessionId);
     if (cached === undefined) return;
     const historyLimited = limitConversationHistory(
       mergeConversationProjectionUnits(cached.turns, [turn])
@@ -212,27 +383,35 @@ export function createWorkspaceViewCacheService(
     turns: readonly ConversationTurn[],
     nextCursor: string | null
   ): void {
-    const cached = detail(nodeId, workspaceId, sessionId);
+    const cached = mutableDetail(nodeId, workspaceId, sessionId);
     if (cached === undefined) return;
     cached.turns = limitRecentConversationSegments(limitConversationHistory(turns));
     cached.nextCursor = nextCursor;
   }
 
   return {
-    caches,
-    active,
-    get,
+    view,
+    isActive,
+    hasActive,
+    has,
+    captureCommandTarget,
+    captureActive,
     activate,
     deactivate,
     remove,
+    removeSession,
+    queueFor,
+    invalidateDetail,
+    replaceSession,
     removeNode,
-    saveDetail,
-    capture,
     detail,
+    updateContext,
+    syncRunStatus,
     touchDetail,
     migrateSession,
     cacheRun,
     cacheTurn,
+    cacheQueue,
     replaceTurns
   };
 }

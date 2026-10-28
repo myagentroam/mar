@@ -18,7 +18,7 @@ import {
 } from './composer-skill-token-service.js';
 import { sessionSubmissionContext } from './workbench-submission-service.js';
 import { errorCode } from '../util/api-error.js';
-import { isTerminalRunStatus } from './run-service.js';
+import { isTerminalRunStatus } from '../util/run-state.js';
 
 type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 
@@ -33,7 +33,6 @@ export interface WorkbenchSessionMessageOptions {
   readonly selectedWorkspace: ComputedRef<Workspace | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
   readonly input: Ref<string>;
   readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
   readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
@@ -63,7 +62,7 @@ export interface WorkbenchSessionMessageOptions {
   readonly consumeAttachments: (submitted: readonly ComposerAttachment[]) => void;
   readonly retainAttachments: (submitted: readonly ComposerAttachment[]) => () => void;
   readonly clearSkillTokens: () => void;
-  readonly newestRun: (current: AgentRun | undefined, next: AgentRun) => AgentRun;
+  readonly acceptRun: (run: AgentRun) => AgentRun;
   readonly migrateSessionCache: (
     nodeId: string,
     workspaceId: string,
@@ -397,15 +396,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         submittedWasSelected ||
         (nodeStillSelected && selectedBeforeDelivery === result.session.id)
       ) {
-        const current = options.runs.value.find((candidate) => candidate.id === result.run.id);
-        const latest = options.newestRun(current, {
+        const latest = options.acceptRun({
           ...result.run,
           sessionId: result.run.sessionId ?? result.session.id
         });
-        options.runs.value = [
-          latest,
-          ...options.runs.value.filter((candidate) => candidate.id !== result.run.id)
-        ];
         if (
           (result.delivery === undefined || result.delivery === 'STARTED') &&
           !isTerminalRunStatus(latest.status)

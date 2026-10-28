@@ -1,5 +1,5 @@
 import { translate } from '../service/locale-preference-service.js';
-import { errorCode } from './api-error.js';
+import { errorCode } from '@myagentroam/web-core/api-error';
 
 export function oauthErrorMessage(error: unknown, fallback: string): string {
   const code = errorCode(error) ?? error;

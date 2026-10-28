@@ -1,7 +1,12 @@
 import { fork } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { DirectFallbackError, DirectUnsafeError } from './direct.mjs';
+import {
+  DirectFallbackError,
+  DirectUnsafeError,
+  DirectRejectedError,
+  directControlError
+} from './direct-errors.mjs';
 
 const CLEANUP_TIMEOUT_MS = 1000;
 const MAX_BUFFER_BYTES = 2 * 1024 * 1024;
@@ -113,11 +118,16 @@ export function openDirectTerminalProcess({
         resolve(transport);
       } else if (message.type === 'failure') {
         const error = settled
-          ? new Error(message.code ?? 'TERMINAL_CONNECTION_LOST')
-          : message.name === 'DirectUnsafeError' ||
-              (opening && message.name !== 'DirectFallbackError')
-            ? new DirectUnsafeError(message.code)
-            : new DirectFallbackError(message.code);
+          ? message.name === 'DirectRejectedError' ||
+            directControlError(message.code) instanceof DirectRejectedError
+            ? directControlError(message.code)
+            : new Error(message.code ?? 'TERMINAL_CONNECTION_LOST')
+          : message.name === 'DirectRejectedError'
+            ? directControlError(message.code)
+            : message.name === 'DirectUnsafeError' ||
+                (opening && message.name !== 'DirectFallbackError')
+              ? new DirectUnsafeError(message.code)
+              : new DirectFallbackError(message.code);
         fail(error);
       } else if (message.type === 'frame') {
         transport.frame(message.frame, message.isBinary);
@@ -216,11 +226,13 @@ class IsolatedDirectTransport extends EventEmitter {
     if (this.#closed) return;
     this.#emit(
       'error',
-      new Error(
-        error instanceof DirectFallbackError || error instanceof DirectUnsafeError
-          ? 'TERMINAL_CONNECTION_LOST'
-          : error.message
-      )
+      error instanceof DirectRejectedError
+        ? error
+        : new Error(
+            error instanceof DirectFallbackError || error instanceof DirectUnsafeError
+              ? 'TERMINAL_CONNECTION_LOST'
+              : error.message
+          )
     );
     this.close();
   }
@@ -298,6 +310,7 @@ function runChild() {
         sendIpc(process, { type: 'send.result', id: message.id, code: 'TERMINAL_INPUT_FAILED' });
       }
     } else if (message.type === 'start') {
+      let rejectionSent = false;
       try {
         const { MarctlClient } = await import('./client.mjs');
         const { openDirectTerminal } = await import('./direct.mjs');
@@ -312,6 +325,10 @@ function runChild() {
           peerConnectionFactory: (name, config) => new native.PeerConnection(name, config),
           cleanupNative: cleanup,
           signal: controller.signal,
+          onRejected: (error) => {
+            rejectionSent = true;
+            sendIpc(process, { type: 'failure', name: 'DirectRejectedError', code: error.code });
+          },
           onPrepared: () => callback('prepared'),
           onIceConnected: () => {
             iceSelection = callback('ice');
@@ -328,7 +345,7 @@ function runChild() {
           sendIpc(process, { type: 'frame', frame: String(frame), isBinary }, abort)
         );
         transport.on('error', (error) => {
-          sendIpc(process, { type: 'failure', code: error.message });
+          sendIpc(process, { type: 'failure', code: error.code ?? error.message });
           abort();
         });
         transport.on('close', () => {
@@ -337,11 +354,17 @@ function runChild() {
         });
         transport.activate();
       } catch (error) {
-        sendIpc(process, {
-          type: 'failure',
-          name: error instanceof DirectUnsafeError ? 'DirectUnsafeError' : 'DirectFallbackError',
-          code: error.code ?? 'DIRECT_UNAVAILABLE'
-        });
+        if (!rejectionSent)
+          sendIpc(process, {
+            type: 'failure',
+            name:
+              error instanceof DirectRejectedError
+                ? 'DirectRejectedError'
+                : error instanceof DirectUnsafeError
+                  ? 'DirectUnsafeError'
+                  : 'DirectFallbackError',
+            code: error.code ?? 'DIRECT_UNAVAILABLE'
+          });
         cleanup();
       }
     }

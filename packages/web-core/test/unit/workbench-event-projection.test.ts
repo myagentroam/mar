@@ -1,3 +1,7 @@
+import {
+  conversationProjectionFixture,
+  pagingAnchor
+} from './support/conversation-paging-fixture.js';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -7,6 +11,9 @@ import {
 import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service';
 import { createWorkbenchEventProjectionService } from '../../src/service/workbench-event-projection-service';
 import type { AgentRun, Session } from '../../src/model/workbench';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
+import { createRunService } from '../../src/service/run-service.js';
+import { ref } from 'vue';
 
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -33,6 +40,43 @@ function segmentPage(turns: ReturnType<typeof turn>[], nextCursor: string | null
 }
 
 describe('Workbench Event Projection', () => {
+  it('accepts only the selected Node Run through its owner and does not reopen a stale active update', () => {
+    const selectedSessionId = ref<string | undefined>('session-1');
+    const owner = createRunService(selectedSessionId);
+    owner.acceptRun({
+      id: 'run-1',
+      sessionId: 'session-1',
+      status: 'SUCCEEDED',
+      version: 3
+    } as AgentRun);
+    const openRun = vi.fn();
+    const cacheRun = vi.fn();
+    const service = createWorkbenchEventProjectionService({
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
+      selectedSessionId,
+      syncTurnStatus: vi.fn(),
+      cacheRun,
+      acceptRun: owner.acceptRun,
+      openRun
+    } as never);
+
+    service.apply({
+      nodeId: 'node-1',
+      sequence: 1,
+      category: 'run',
+      payload: { run: { id: 'run-1', sessionId: 'session-1', status: 'RUNNING', version: 2 } }
+    });
+    service.apply({
+      nodeId: 'node-2',
+      sequence: 2,
+      category: 'run',
+      payload: { run: { id: 'other', sessionId: 'session-1', status: 'RUNNING' } }
+    });
+    expect(owner.runs.value).toMatchObject([{ id: 'run-1', status: 'SUCCEEDED', version: 3 }]);
+    expect(cacheRun).toHaveBeenCalledTimes(1);
+    expect(openRun).not.toHaveBeenCalled();
+  });
+
   it('Refreshes complete metadata when a Node reconnects so version-gated capabilities are updated', () => {
     const nodes = {
       value: [{ id: 'node-1', connected: false, nodeAppVersion: '0.9.11' }]
@@ -45,7 +89,7 @@ describe('Workbench Event Projection', () => {
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
       selectedSessionId: { value: undefined },
       conversationNextCursor: { value: null },
-      workspaceCache: () => undefined,
+      cacheQueue: vi.fn(),
       mergeQueue: vi.fn(),
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
@@ -53,7 +97,7 @@ describe('Workbench Event Projection', () => {
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
-      newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+      acceptRun: (next: AgentRun) => next,
       openRun: vi.fn(),
       markLiveTurn: vi.fn(),
       cacheTurn: vi.fn(),
@@ -86,7 +130,7 @@ describe('Workbench Event Projection', () => {
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
       selectedSessionId: { value: undefined },
       conversationNextCursor: { value: null },
-      workspaceCache: () => undefined,
+      cacheQueue: vi.fn(),
       mergeQueue: vi.fn(),
       mergeSessions,
       settleSessionRuns: () => false,
@@ -94,7 +138,7 @@ describe('Workbench Event Projection', () => {
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
-      newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+      acceptRun: (next: AgentRun) => next,
       openRun: vi.fn(),
       markLiveTurn: vi.fn(),
       cacheTurn: vi.fn(),
@@ -139,7 +183,7 @@ describe('Workbench Event Projection', () => {
         }
       ]
     };
-    const cache = { queues: new Map() };
+    const cacheQueue = vi.fn();
     const service = createWorkbenchEventProjectionService({
       nodes: { value: [] },
       sessions,
@@ -147,7 +191,7 @@ describe('Workbench Event Projection', () => {
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
       selectedSessionId: { value: 'bootstrap-1' },
       conversationNextCursor: { value: null },
-      workspaceCache: () => cache,
+      cacheQueue,
       mergeQueue: vi.fn(),
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
@@ -155,7 +199,7 @@ describe('Workbench Event Projection', () => {
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
-      newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+      acceptRun: (next: AgentRun) => next,
       openRun: vi.fn(),
       markLiveTurn: vi.fn(),
       cacheTurn: vi.fn(),
@@ -176,7 +220,7 @@ describe('Workbench Event Projection', () => {
       }
     });
 
-    expect(cache.queues.size).toBe(0);
+    expect(cacheQueue).not.toHaveBeenCalled();
   });
 
   it('A Session Watch initial queue snapshot replaces an expired cache for the same Session', () => {
@@ -192,7 +236,11 @@ describe('Workbench Event Projection', () => {
         }
       ]
     };
-    const cache = { queues: new Map([['session-1', stale]]) };
+    const cacheService = createWorkspaceViewCacheService(
+      (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
+    );
+    cacheService.activate('node-1', 'workspace-1');
+    cacheService.cacheQueue('node-1', 'workspace-1', 'session-1', stale as never, 'initial');
     const mergeQueue = vi.fn();
     const service = createWorkbenchEventProjectionService({
       nodes: { value: [] },
@@ -201,7 +249,7 @@ describe('Workbench Event Projection', () => {
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
       selectedSessionId: { value: 'session-1' },
       conversationNextCursor: { value: null },
-      workspaceCache: () => cache,
+      cacheQueue: cacheService.cacheQueue,
       mergeQueue,
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
@@ -209,7 +257,7 @@ describe('Workbench Event Projection', () => {
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
-      newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+      acceptRun: (next: AgentRun) => next,
       openRun: vi.fn(),
       markLiveTurn: vi.fn(),
       cacheTurn: vi.fn(),
@@ -230,7 +278,7 @@ describe('Workbench Event Projection', () => {
       'initial'
     );
 
-    expect(cache.queues.get('session-1')).toBe(authoritative);
+    expect(cacheService.queueFor('node-1', 'workspace-1', 'session-1')).toBe(authoritative);
     expect(mergeQueue).toHaveBeenCalledWith(authoritative, 'initial');
   });
 
@@ -243,11 +291,11 @@ describe('Workbench Event Projection', () => {
     const replaceRecent = vi.fn();
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
+      selectedSessionId: ref('session-1'),
       nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: undefined } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: CONVERSATION_SEGMENT_PAGE_SIZE,
       recentSegmentWindowSize: CONVERSATION_RECENT_SEGMENT_LIMIT,
       replaceRecent,
@@ -285,13 +333,14 @@ describe('Workbench Event Projection', () => {
   it('Always requests Segment pages through the same turns endpoint', async () => {
     const requests: string[] = [];
     const turns = { value: [turn('turn-1:segment:1', { turnId: 'turn-1', segmentIndex: 1 })] };
+    const nextCursor = { value: 'segment-cursor' as string | null };
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
-      nextCursor: { value: 'segment-cursor' } as never,
+      selectedSessionId: ref('session-1'),
+      nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: undefined } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 30,
       replaceRecent: vi.fn(),
@@ -327,11 +376,11 @@ describe('Workbench Event Projection', () => {
     const replaceRecent = vi.fn();
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
+      selectedSessionId: ref('session-1'),
       nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: undefined } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 30,
       replaceRecent,
@@ -391,7 +440,7 @@ describe('Workbench Event Projection', () => {
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
       selectedSessionId: { value: 'session-1' },
       conversationNextCursor: nextCursor,
-      workspaceCache: () => undefined,
+      cacheQueue: vi.fn(),
       mergeQueue: vi.fn(),
       mergeSessions: (incoming: readonly Session[]) => {
         sessions.value = [...incoming];
@@ -401,7 +450,7 @@ describe('Workbench Event Projection', () => {
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
-      newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+      acceptRun: (next: AgentRun) => next,
       openRun: vi.fn(),
       markLiveTurn: vi.fn(),
       cacheTurn: vi.fn(),
@@ -537,7 +586,7 @@ describe('Workbench Event Projection', () => {
         workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
         selectedSessionId: { value: selectedSessionId },
         conversationNextCursor: { value: 'runtime-cursor' },
-        workspaceCache: () => undefined,
+        cacheQueue: vi.fn(),
         mergeQueue: vi.fn(),
         mergeSessions: (incoming: readonly Session[]) => {
           order.push('merge');
@@ -565,7 +614,7 @@ describe('Workbench Event Projection', () => {
         updateContext: vi.fn(),
         syncTurnStatus: vi.fn(),
         cacheRun: vi.fn(),
-        newestRun: (_current: AgentRun | undefined, next: AgentRun) => next,
+        acceptRun: (next: AgentRun) => next,
         openRun: vi.fn(),
         markLiveTurn: vi.fn(),
         cacheTurn: vi.fn(),

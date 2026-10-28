@@ -75,12 +75,14 @@ describe('Session Watch projection composition', () => {
         }
       ]),
       sessions,
-      runs,
       workspaceTarget,
       selectedSessionId,
       conversationNextCursor: ref(null),
-      workspaceCache: () => undefined,
-      newestRun: (_current, next) => next,
+      cacheQueue: vi.fn(),
+      acceptRun: (next) => {
+        runs.value = [next, ...runs.value.filter((run) => run.id !== next.id)];
+        return next;
+      },
       onNodeConnected,
       invalidateWorkspace
     });

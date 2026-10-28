@@ -92,7 +92,7 @@ function fixture() {
     profilesLoading,
     manifest: ref(),
     manifestLoading: ref(false),
-    activeCache: cache.active,
+    isCacheActive: cache.isActive,
     hasNode,
     isHostAvailable,
     cachedWorkspaces: (nodeId) => cached.get(nodeId) ?? [],
@@ -119,7 +119,7 @@ function fixture() {
     refreshInspector,
     initializePaging: vi.fn(),
     tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
-    viewCache: cache.get,
+    viewCache: cache.view,
     resetQueue: vi.fn(),
     openSession,
     openDraft,
@@ -188,7 +188,7 @@ describe('Workspace-only foreground selection', () => {
       f.loadProfiles.mockImplementation(() => new Promise(() => {}));
       const activation = f.service.select(value);
       expect(f.workspaceTarget.value).toEqual(value);
-      expect(f.cache.active.value).toBe(f.cache.get(value.nodeId, value.workspaceId));
+      expect(f.cache.isActive(value.nodeId, value.workspaceId)).toBe(true);
       expect(f.draftOpen.value).toBe(true);
       await expect(activation).resolves.toBe(true);
       expect(f.service.loading.value).toBe(true);
@@ -197,12 +197,12 @@ describe('Workspace-only foreground selection', () => {
 
   it('restores cached session, Inspector and draft in the same order for every Workspace', async () => {
     const f = fixture();
-    const cached = f.cache.get('node-2', 'workspace-3');
-    cached.sessions = [
+    const sessions = [
       { id: 'saved', externalSessionId: 'saved', workspaceId: 'workspace-3' } as Session
     ];
-    cached.selectedSessionId = 'saved';
-    cached.inspector = {};
+    f.cache.activate('node-2', 'workspace-3');
+    f.cache.captureActive({ sessions, selectedSessionId: 'saved', inspector: {} }, 2);
+    f.cache.deactivate();
     await f.service.select(target('node-2', 'workspace-3'));
     expect(f.events).toEqual([
       'save',
@@ -213,7 +213,7 @@ describe('Workspace-only foreground selection', () => {
       'session',
       'watch'
     ]);
-    expect(f.sessions.value).toEqual(cached.sessions);
+    expect(f.sessions.value).toEqual(sessions);
     expect(f.refreshInspector).toHaveBeenCalledWith('node-2', 'workspace-3');
     expect(f.openSession).toHaveBeenCalledWith('saved', { skipSaveCurrent: true });
   });
@@ -258,7 +258,7 @@ describe('Workspace-only foreground selection', () => {
       await f.service.select(target());
       await vi.waitFor(() => expect(f.invalidateWorkspace).toHaveBeenCalledWith(target()));
       expect(f.workspaceTarget.value).toBeUndefined();
-      expect(f.cache.active.value).toBeUndefined();
+      expect(f.cache.hasActive()).toBe(false);
     }
   );
 
@@ -313,7 +313,7 @@ describe('Workspace-only foreground selection', () => {
     expect(f.workspaceTarget.value).toBeUndefined();
     expect(f.workspaces.value).toEqual([]);
     expect(f.sessions.value).toEqual([]);
-    expect(f.cache.active.value).toBeUndefined();
+    expect(f.cache.hasActive()).toBe(false);
     expect(f.cacheWorkspaces).not.toHaveBeenCalled();
   });
 
@@ -345,8 +345,12 @@ describe('Workspace-only foreground selection', () => {
   it('activates an offline Workspace immediately without requests, then restores its cache after reconnection', async () => {
     const f = fixture();
     f.isHostAvailable.mockReturnValue(false);
-    const cached = f.cache.get('node-2', 'workspace-3');
-    cached.sessions = [{ id: 'saved', workspaceId: 'workspace-3' } as Session];
+    const sessions = [
+      { id: 'saved', externalSessionId: 'saved', workspaceId: 'workspace-3' } as Session
+    ];
+    f.cache.activate('node-2', 'workspace-3');
+    f.cache.captureActive({ sessions }, 2);
+    f.cache.deactivate();
     await f.service.select(target('node-2', 'workspace-3'));
     expect(f.workspaceTarget.value).toEqual(target('node-2', 'workspace-3'));
     expect(f.request).not.toHaveBeenCalled();
@@ -354,7 +358,7 @@ describe('Workspace-only foreground selection', () => {
     expect(f.sessions.value).toEqual([]);
     f.isHostAvailable.mockReturnValue(true);
     await f.service.select(target('node-2', 'workspace-3'));
-    expect(f.sessions.value).toEqual(cached.sessions);
+    expect(f.sessions.value).toEqual(sessions);
     expect(f.activateCache).toHaveBeenCalledWith('node-2', 'workspace-3');
     expect(f.startWatch).toHaveBeenCalledWith('workspace-3');
   });

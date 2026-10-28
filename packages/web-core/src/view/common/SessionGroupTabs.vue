@@ -85,7 +85,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   gap: 2px;
   padding: 2px;
   border-radius: var(--mar-radius-control);
-  background: var(--mar-fill-muted);
+  background: var(--mar-bg-subtle);
   box-shadow: inset 0 0 0 1px var(--mar-border-default);
 }
 .session-group-tabs button {
@@ -113,7 +113,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   color: var(--mar-text-primary);
 }
 .session-group-tabs button[aria-selected='true'] {
-  background: var(--mar-control-segmented-selected-bg);
+  background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }
 .session-group-tabs button:focus-visible {

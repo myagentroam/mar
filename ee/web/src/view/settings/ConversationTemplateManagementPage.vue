@@ -19,8 +19,8 @@ import {
   type ConversationTemplateRequestContext
 } from '@/service/conversation-template-service';
 import { translate } from '@/service/locale-preference-service';
-import { errorCode } from '@/util/api-error';
-import { errorMessage } from '@/util/workbench-presentation';
+import { errorCode } from '@myagentroam/web-core/api-error';
+import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,

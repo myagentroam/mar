@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import type { AdminState } from './admin-auth-service.js';
-import type { UserSessionSummary } from './admin-auth-service.js';
+import type { UserSessionSummary } from '../model/workbench.js';
 
 export function createAdminSessionStateService() {
   return {

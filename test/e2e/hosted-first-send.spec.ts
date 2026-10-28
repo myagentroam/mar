@@ -127,6 +127,9 @@ async function openDraft(
   await page.route('**/api/conversation-templates', (route) =>
     json(route, { templates: [template] })
   );
+  await page.route('**/api/nodes/node-1/conversation-templates/*/model-options', (route) =>
+    json(route, { models: created.models, defaultModelId: 'model-1' })
+  );
   await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
     json(route, {
       items: createFinished ? [created.conversation, history.conversation] : [history.conversation],
@@ -217,7 +220,7 @@ test('Hosted first send locks the simplified template selector while creating an
   page
 }) => {
   const pending = gate();
-  const selector = page.locator('.hosted-template-select').getByRole('combobox');
+  const selector = page.locator('.hosted-template-trigger');
   const alternate = { ...template, id: 'template-2', name: 'Alternate template' };
   const f = await openDraft(page, {
     createGate: pending.promise,
@@ -228,11 +231,11 @@ test('Hosted first send locks the simplified template selector while creating an
       );
       await expect(selector).toBeEnabled();
       await selector.click();
-      await page.getByRole('option', { name: alternate.name, exact: true }).click();
-      await expect(page.locator('.hosted-template-select')).toContainText(alternate.name);
+      await page.getByRole('menuitem', { name: alternate.name, exact: true }).click();
+      await expect(selector).toContainText(alternate.name);
       await selector.click();
-      await page.getByRole('option', { name: template.name, exact: true }).click();
-      await expect(page.locator('.hosted-template-select')).toContainText(template.name);
+      await page.getByRole('menuitem', { name: template.name, exact: true }).click();
+      await expect(selector).toContainText(template.name);
     }
   });
   await expect.poll(() => f.writes().length).toBe(1);

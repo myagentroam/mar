@@ -1,12 +1,17 @@
 import type { Ref } from 'vue';
-import type { ConversationTurnPage } from '../model/workbench.js';
+import type { ConversationTurn, ConversationTurnPage } from '../model/workbench.js';
+
+interface ConversationWindow {
+  readonly turns: readonly ConversationTurn[];
+  readonly nextCursor: string | null;
+}
 
 export function createWorkbenchConversationSnapshotService(options: {
   readonly selectedSessionId: Ref<string | undefined>;
   readonly replaceCurrent: (page: ConversationTurnPage) => boolean;
   readonly mergeCurrent: (page: ConversationTurnPage) => boolean;
-  readonly currentWindow: () => Pick<ConversationTurnPage, 'turns' | 'nextCursor'>;
-  readonly replaceCached: (sessionId: string, page: ConversationTurnPage) => void;
+  readonly currentWindow: () => ConversationWindow;
+  readonly replaceCached: (sessionId: string, page: ConversationWindow) => void;
 }) {
   function apply(
     sessionId: string,

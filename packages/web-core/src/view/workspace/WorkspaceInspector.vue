@@ -153,7 +153,8 @@ const props = defineProps<{
   readonly directFileObjectUrl?: (
     path: string,
     worktreePath?: string,
-    repositoryPath?: string
+    repositoryPath?: string,
+    signal?: AbortSignal
   ) => Promise<string | undefined>;
   readonly directFileReadRange?: (
     path: string,
@@ -161,7 +162,8 @@ const props = defineProps<{
     length: number,
     worktreePath?: string,
     identity?: { readonly revision: string; readonly size: number },
-    repositoryPath?: string
+    repositoryPath?: string,
+    signal?: AbortSignal
   ) => Promise<
     | {
         readonly revision: string;
@@ -182,7 +184,8 @@ const props = defineProps<{
     commit: string,
     path: string,
     repositoryPath: string,
-    refs: readonly string[]
+    refs: readonly string[],
+    signal?: AbortSignal
   ) => Promise<string | undefined>;
   readonly directGitFileReadRange?: (
     commit: string,
@@ -191,7 +194,8 @@ const props = defineProps<{
     refs: readonly string[],
     offset: number,
     length: number,
-    identity?: { readonly revision: string; readonly size: number }
+    identity?: { readonly revision: string; readonly size: number },
+    signal?: AbortSignal
   ) => Promise<
     | {
         readonly revision: string;

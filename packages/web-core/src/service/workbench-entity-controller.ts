@@ -1,13 +1,6 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
-import type {
-  AgentRun,
-  ConversationTurn,
-  NodeWorkbenchManifest,
-  NodeSummary,
-  Session,
-  Workspace
-} from '../model/workbench.js';
+import type { NodeWorkbenchManifest, NodeSummary, Session, Workspace } from '../model/workbench.js';
 import type { createWorkbenchEntityService } from './workbench-entity-service.js';
 import type { createWorkspaceTabService } from './workspace-tab-service.js';
 import type { createWorkspaceTreeService } from './workspace-tree-service.js';
@@ -18,9 +11,8 @@ export function createWorkbenchEntityController(options: {
   readonly actions: ReturnType<typeof createWorkbenchEntityService>;
   readonly nodes: Ref<NodeSummary[]>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
-  readonly turns: Ref<ConversationTurn[]>;
-  readonly nextCursor: Ref<string | null>;
+  readonly clearActiveContent: () => void;
+  readonly clearRuns: () => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly clearWorkspace: () => void;
   readonly selectedSessionId: Ref<string | undefined>;
@@ -81,20 +73,14 @@ export function createWorkbenchEntityController(options: {
   async function deleteSession(session: Session): Promise<void> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (!(await options.actions.deleteSession(session))) return;
-    if (nodeId !== undefined) {
-      const cache = options.caches.get(nodeId, session.workspaceId);
-      cache.sessionDetails.delete(session.id);
-      if (cache.selectedSessionId === session.id) delete cache.selectedSessionId;
-    }
+    if (nodeId !== undefined) options.caches.removeSession(nodeId, session.workspaceId, session.id);
     if (options.workspaceTarget.value?.nodeId !== nodeId) return;
     const wasSelected = options.selectedSessionId.value === session.id;
     options.sessions.value = options.sessions.value.filter((item) => item.id !== session.id);
     if (wasSelected) {
       options.selectedSessionId.value = undefined;
       options.selectedRunId.value = undefined;
-      options.runs.value = [];
-      options.turns.value = [];
-      options.nextCursor.value = null;
+      options.clearActiveContent();
       options.openDraft();
     }
     options.replaceUrl();
@@ -113,7 +99,7 @@ export function createWorkbenchEntityController(options: {
       options.nodeManifest.value = undefined;
       options.workspaces.value = [];
       options.sessions.value = [];
-      options.runs.value = [];
+      options.clearRuns();
     }
     options.clearNodeDetails();
   }

@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam-enterprise/web-implementation",
-  "version": "0.11.38",
+  "version": "0.11.39",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,8 +18,7 @@
     "vue-tsc": "^3.3.9"
   },
   "exports": {
-    ".": "./src/bootstrap.ts",
-    "./locale-config": "./src/i18n/locale-config.ts"
+    ".": "./src/bootstrap.ts"
   },
   "files": [
     "src"

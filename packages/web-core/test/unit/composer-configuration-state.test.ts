@@ -11,6 +11,14 @@ describe('Web Composer Configuration State', () => {
 
     expect(state.runner.value).toBe('mar-agent');
     expect(state.runnerLabel.value).toBe('MAR Agent');
+    if (false) {
+      // @ts-expect-error Configuration values are writable only through their owner.
+      state.runner.value = 'codex';
+      // @ts-expect-error Model selection is installed through its owner command.
+      state.model.value = 'other';
+      // @ts-expect-error The owner controls the transient selection.
+      state.modelEffortSelection.value = undefined;
+    }
   });
 
   it('Falls back to the model default reasoning effort when the runner configuration is incompatible', () => {

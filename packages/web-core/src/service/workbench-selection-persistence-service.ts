@@ -151,15 +151,6 @@ function readSelection(): StoredWorkbenchSelection | undefined {
   try {
     const value = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY) ?? 'null') as unknown;
     if (isSelection(value)) return value;
-    // Existing browser state is a Workspace identity too; normalize it at this boundary.
-    if (typeof value === 'object' && value !== null) {
-      const legacy = value as { nodeId?: unknown; workspaceId?: unknown; sessionId?: unknown };
-      const normalized = {
-        workspace: { nodeId: legacy.nodeId, workspaceId: legacy.workspaceId },
-        ...(legacy.sessionId === undefined ? {} : { sessionId: legacy.sessionId })
-      };
-      if (isSelection(normalized)) return normalized;
-    }
     if (value !== null) localStorage.removeItem(SELECTION_STORAGE_KEY);
     return undefined;
   } catch {

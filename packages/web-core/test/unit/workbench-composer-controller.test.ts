@@ -12,6 +12,24 @@ function ref<T>(value: T): { value: T } {
   return { value };
 }
 
+function createTestComposerController(
+  options: Omit<
+    Parameters<typeof createWorkbenchComposerController>[0],
+    'setModel' | 'setEffort' | 'setAccess' | 'clearModelEffortSelection'
+  > & { modelEffortSelection: { value: string | undefined } }
+) {
+  return createWorkbenchComposerController({
+    ...options,
+    setModel: (model, effort) => {
+      (options.model as { value: string }).value = model;
+      (options.effort as { value: string }).value = effort;
+    },
+    setEffort: (effort) => ((options.effort as { value: string }).value = effort),
+    setAccess: (access) => ((options.access as { value: string }).value = access),
+    clearModelEffortSelection: () => (options.modelEffortSelection.value = undefined)
+  });
+}
+
 const sessionA: Session = { id: 'session-a', workspaceId: 'workspace-a', runner: 'codex' };
 const sessionB: Session = { id: 'session-b', workspaceId: 'workspace-a', runner: 'codex' };
 const defaultConfiguration: RunnerDefaultConfiguration = {
@@ -24,7 +42,7 @@ const defaultConfiguration: RunnerDefaultConfiguration = {
 describe('Workbench Composer Controller', () => {
   it('allows switching to a startable MAR Agent', () => {
     const apply = vi.fn();
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: ref<Session | undefined>(undefined) as never,
       sessions: ref<Session[]>([]) as never,
@@ -77,7 +95,7 @@ describe('Workbench Composer Controller', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce({ profiles: [], defaultsChanged: false });
     const retryDelay = vi.fn(async () => undefined);
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: ref<Session | undefined>(undefined) as never,
       sessions: ref<Session[]>([]) as never,
@@ -129,7 +147,7 @@ describe('Workbench Composer Controller', () => {
         normalized = resolve;
       });
       const retryDelay = vi.fn(async () => undefined);
-      const controller = createWorkbenchComposerController({
+      const controller = createTestComposerController({
         workspaceTarget: workspaceTarget as never,
         selectedSession: ref<Session | undefined>(undefined) as never,
         sessions: ref<Session[]>([]) as never,
@@ -176,7 +194,7 @@ describe('Workbench Composer Controller', () => {
       const updated = { ...sessionA, effort: 'high' };
       const configurationAvailable = reactiveRef(true);
       const request = vi.fn(async () => ({ session: updated }));
-      const controller = createWorkbenchComposerController({
+      const controller = createTestComposerController({
         workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
         configurationAvailable: () => configurationAvailable.value,
         selectedSession: selectedSession as never,
@@ -220,7 +238,7 @@ describe('Workbench Composer Controller', () => {
   it("switches to the target model's default reasoning effort even when the previous effort remains supported", () => {
     const model = ref('model-a');
     const effort = ref('high');
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: ref<Session | undefined>(undefined) as never,
       sessions: ref<Session[]>([]) as never,
@@ -293,7 +311,7 @@ describe('Workbench Composer Controller', () => {
 
   it('synchronizes Composer options after an external session configuration update', () => {
     const apply = vi.fn();
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: ref<Session | undefined>(sessionA) as never,
       sessions: ref<Session[]>([sessionA]) as never,
@@ -388,7 +406,7 @@ describe('Workbench Composer Controller', () => {
         effort: 'low'
       };
       const request = vi.fn(async () => ({ session: updated }));
-      const controller = createWorkbenchComposerController({
+      const controller = createTestComposerController({
         workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
         selectedSession: selectedSession as never,
         sessions: sessions as never,
@@ -504,7 +522,7 @@ describe('Workbench Composer Controller', () => {
       normalize();
     });
     const request = vi.fn(async () => ({ session: authoritativeSession }));
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: selectedSession as never,
       sessions: sessions as never,
@@ -569,7 +587,7 @@ describe('Workbench Composer Controller', () => {
     });
     const apply = vi.fn();
     const notice = vi.fn();
-    const controller = createWorkbenchComposerController({
+    const controller = createTestComposerController({
       workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
       selectedSession: selectedSession as never,
       sessions: sessions as never,

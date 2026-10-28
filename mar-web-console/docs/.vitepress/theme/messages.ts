@@ -2,7 +2,7 @@ import { computed } from 'vue';
 import { useData } from 'vitepress';
 import { enUS } from './messages.en-US';
 import { zhCN } from './messages.zh-CN';
-import { SUPPORTED_LOCALES } from '@myagentroam-enterprise/web-implementation/locale-config';
+import { SUPPORTED_LOCALES } from '@myagentroam/web-core/locale-config';
 
 export type DocumentationMessageKey = keyof typeof enUS;
 

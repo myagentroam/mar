@@ -6,7 +6,7 @@ import {
 export { resolveRunModels } from './execution-input.js';
 import type { ResolvedMcpServer } from '../../mcp/model.js';
 import type { RunnerExecutionStatus } from '../contracts.js';
-import { NODE_MCP } from '../../mcp/naming.js';
+import { NODE_MCP, NODE_COMPUTER_WAIT_TOOL_NAME } from '../../mcp/naming.js';
 import { computerUseHostSkill } from './computer-use-skill.js';
 import { marctlExecutionEnvironment, marctlHostSkill } from './marctl-skill.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -495,6 +495,7 @@ export class MarAgentManagedRunController {
         sessionId: runtime.session.id,
         mode: input.mode,
         enabled: input.computerUseEnabled === true,
+        signal: controller.signal,
         modelSupportsImages: input.model.inputCapabilities.includes('IMAGE')
       });
       use.assertUsable();
@@ -556,7 +557,10 @@ export class MarAgentManagedRunController {
             const computer = nodeTools.map((definition) => ({
               definition,
               serverId: NODE_MCP.computer.name,
-              rawName: NODE_MCP.computer.tools.exec,
+              rawName:
+                definition.name === NODE_COMPUTER_WAIT_TOOL_NAME
+                  ? NODE_MCP.computer.tools.wait
+                  : NODE_MCP.computer.tools.exec,
               sourceIdentity: `node:${input.runId}:computer`,
               definitionRevision: createHash('sha256')
                 .update(JSON.stringify(definition))
@@ -768,6 +772,9 @@ export class MarAgentManagedRunController {
       titleController.abort();
       const cleanup = [
         async () => {
+          await computerUseBinding?.close();
+        },
+        async () => {
           await titleTask;
         },
         async () => {
@@ -775,9 +782,6 @@ export class MarAgentManagedRunController {
         },
         async () => {
           await closeImageCredentialProviders(executionModels);
-        },
-        async () => {
-          await computerUseBinding?.close();
         },
         async () => {
           runtime?.host.unbindExecutionMcp(executionMcpBinding);

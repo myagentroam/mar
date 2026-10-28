@@ -10,7 +10,8 @@ import { managementDateTime } from '../../util/time-presentation.js';
 
 import { ref, watch } from 'vue';
 import type { ComputerUseCapability } from '@myagentroam/protocol';
-import { runnerUsageWindowLabel, type RunnerUsageName } from '../../service/runner-usage-service';
+import { runnerUsageWindowLabel } from '../../service/runner-usage-service';
+import type { RunnerUsageName } from '../../model/runner-usage';
 import EnvironmentSecretManager from './EnvironmentSecretManager.vue';
 import NodeRuntimeEnvironment from './NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from './WorkspaceGitSettings.vue';

@@ -9,7 +9,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-async function unreadBorder(tab: Locator) {
+async function unreadContrast(tab: Locator) {
   return tab.evaluate((element) => {
     const label = element.querySelector('.mar-unread-label')!;
     const labelStyle = getComputedStyle(label);
@@ -30,11 +30,15 @@ async function unreadBorder(tab: Locator) {
     const background = element.classList.contains('active')
       ? tabStyle.getPropertyValue('--mar-fill-selection')
       : tabStyle.backgroundColor;
-    const border = luminance(labelStyle.borderTopColor);
+    const foreground = luminance(labelStyle.color);
+    const fill = luminance(labelStyle.backgroundColor);
     const surface = luminance(background);
+    const ratio = (first: number, second: number) =>
+      (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
     return {
-      contrast: (Math.max(border, surface) + 0.05) / (Math.min(border, surface) + 0.05),
-      color: labelStyle.borderTopColor,
+      textContrast: ratio(foreground, fill),
+      surfaceContrast: ratio(fill, surface),
+      color: labelStyle.color,
       width: labelStyle.borderTopWidth,
       background: labelStyle.backgroundColor
     };
@@ -42,7 +46,7 @@ async function unreadBorder(tab: Locator) {
 }
 
 for (const width of [1280, 390]) {
-  test.describe(`Unread border at ${width}px`, () => {
+  test.describe(`Unread label at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 });
     for (const theme of ['daylight', 'vscode-dark-2026']) {
       test(`stays visible on normal and selected surfaces in ${theme}`, async ({
@@ -58,32 +62,40 @@ for (const width of [1280, 390]) {
           .filter({ has: page.getByRole('tab', { name: 'Workspace 1', exact: true }) });
         await expect(first).toHaveClass(/active/);
         await expect(second).not.toHaveClass(/active/);
-        const normal = await unreadBorder(second);
-        const selected = await unreadBorder(first);
-        expect(normal.contrast).toBeGreaterThanOrEqual(3);
-        expect(selected.contrast).toBeGreaterThanOrEqual(3);
+        const normal = await unreadContrast(second);
+        const selected = await unreadContrast(first);
+        for (const label of [normal, selected]) {
+          expect(label.textContrast).toBeGreaterThanOrEqual(4.5);
+          expect(label.surfaceContrast).toBeGreaterThan(1.25);
+          expect(label.width).toBe('0px');
+          expect(label.background).not.toBe('rgba(0, 0, 0, 0)');
+        }
         expect(selected.color).toBe(normal.color);
-        expect(selected.width).toBe('1px');
-        expect(selected.background).toBe('rgba(0, 0, 0, 0)');
+        expect(selected.background).toBe(normal.background);
         if (width === 1280) {
           await second.hover();
-          expect((await unreadBorder(second)).contrast).toBeGreaterThanOrEqual(3);
+          const hovered = await unreadContrast(second);
+          expect(hovered.textContrast).toBeGreaterThanOrEqual(4.5);
+          expect(hovered.surfaceContrast).toBeGreaterThan(1.25);
         }
         await second.getByRole('tab').click();
         await expect(second).toHaveClass(/active/);
-        expect((await unreadBorder(second)).contrast).toBeGreaterThanOrEqual(3);
+        const switched = await unreadContrast(second);
+        expect(switched.textContrast).toBeGreaterThanOrEqual(4.5);
+        expect(switched.surfaceContrast).toBeGreaterThan(1.25);
         await tabs.screenshot({ path: testInfo.outputPath('unread-selected.png') });
 
         await page.evaluate(() => {
           const style = document.documentElement.style;
           style.setProperty('--mar-text-secondary', '#c5bfac');
-          style.setProperty('--mar-border-medium', '#403d38');
           style.setProperty('--mar-fill-selection', '#35322c');
         });
-        const custom = await unreadBorder(second);
-        expect(custom.color).not.toBe(selected.color);
-        expect(custom.contrast).toBeGreaterThanOrEqual(3);
-        expect(custom.width).toBe('1px');
+        const custom = await unreadContrast(second);
+        expect(custom.background).not.toBe(selected.background);
+        expect(custom.color).toBe(selected.color);
+        expect(custom.textContrast).toBeGreaterThanOrEqual(4.5);
+        expect(custom.surfaceContrast).toBeGreaterThan(1.25);
+        expect(custom.width).toBe('0px');
         await tabs.screenshot({ path: testInfo.outputPath('unread-custom-selected.png') });
       });
     }

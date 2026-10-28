@@ -98,7 +98,9 @@ for (const [width, theme, locale] of [
           brand: color('--mar-color-brand'),
           panel: color('--mar-bg-panel'),
           border: color('--mar-border-default'),
-          track: color('--mar-fill-muted'),
+          track: color('--mar-bg-subtle'),
+          selected: color('--mar-fill-selection'),
+          text: color('--mar-text-primary'),
           hover: color('--mar-fill-row-hover'),
           link: color('--mar-control-link-text'),
           success: color('--mar-color-success-text')
@@ -121,21 +123,13 @@ for (const [width, theme, locale] of [
       for (const dot of await runningDots.all())
         await expect(dot).toHaveCSS('animation-name', 'mar-run-glow');
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      const selectedBackground = await tabs.nth(0).evaluate((element) => {
-        const style = getComputedStyle(element);
-        const probe = document.createElement('span');
-        probe.style.background =
-          getComputedStyle(element).colorScheme === 'dark'
-            ? 'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))'
-            : 'color-mix(in srgb, var(--mar-fill-selection) 97%, var(--mar-text-primary))';
-        element.append(probe);
-        const expected = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return { actual: style.backgroundColor, expected };
-      });
+      const selectedBackground = {
+        actual: await tabs.nth(0).evaluate((element) => getComputedStyle(element).backgroundColor),
+        expected: palette.selected
+      };
       expect(selectedBackground.actual).toBe(selectedBackground.expected);
       await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      expect(palette.track).not.toBe(palette.panel);
+      expect(palette.track).not.toBe('rgba(0, 0, 0, 0)');
       expect(palette.track).not.toBe(selectedBackground.expected);
       await tabs.nth(1).hover();
       await expect(tabs.nth(1)).toHaveCSS('background-color', palette.hover);
@@ -184,6 +178,7 @@ for (const [width, theme, locale] of [
           'color',
           await standalone.evaluate((element) => getComputedStyle(element).color)
         );
+        await expect(unread).toHaveCSS('color', palette.text);
         await expect(unread).toHaveCSS('border-inline-start-width', '0px');
         await expect(unread).toHaveCSS('border-top-width', '0px');
         if (theme !== 'custom' && (await tab.getAttribute('aria-selected')) === 'true') {

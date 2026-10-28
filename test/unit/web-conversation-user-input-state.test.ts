@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayConversationItem } from '../../ee/web/src/util/conversation-domain';
+import { displayConversationItem } from '@myagentroam/web-core/conversation-domain';
 
 describe('Web Conversation input and approval display boundaries', () => {
   it('Pending questions display only when a Run identity exists', () => {

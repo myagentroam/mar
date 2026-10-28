@@ -25,6 +25,7 @@ describe('public page state composition', () => {
     const state = createWorkbenchPageStateService({
       sessionPageSize: 30,
       onUnauthenticated: vi.fn(),
+      onConversationOverflow: vi.fn(),
       navigation
     });
     expect(state.navigation).toBe(navigation);

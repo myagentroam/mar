@@ -6,18 +6,19 @@ import {
   type ComputerUseEnableResult
 } from '@myagentroam/protocol';
 import { computerUseRuntimeExecutable, saveNodeConfig, type NodeConfig } from '../config.js';
-import type {
-  ComputerUseExecutionProvider,
-  ComputerUseSupport
-} from '../runner/mar-agent/computer-use.js';
+import { ComputerUseRuntimeError } from '../computer-use-runtime.js';
+import { ComputerUseError, type ComputerUseSupport } from '../computer-use/contracts.js';
+import type { ComputerUseProvider } from '../computer-use/provider.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import { nodeOperationData } from '../connection/node-operation-data.js';
+import type { NodeConfigMutations } from './node-config-mutations.js';
 
 interface ComputerUseEnablementServiceOptions {
+  readonly mutations: NodeConfigMutations;
   readonly config: () => NodeConfig | undefined;
   readonly setConfig: (config: NodeConfig) => void;
   readonly configPath: string | undefined;
-  readonly provider: ComputerUseExecutionProvider;
+  readonly provider: Pick<ComputerUseProvider, 'support' | 'reset'>;
   readonly prepareRuntime: () => Promise<string>;
   readonly publish: (capability: ComputerUseCapability) => void;
   readonly now?: () => number;
@@ -40,8 +41,8 @@ export class ComputerUseEnablementService {
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
     return {
-      'computer.use.enable': (data) => this.enable(data),
-      'computer.use.disable': (data) => this.disable(data)
+      'computer.use.enable': (data) => this.options.mutations.run(() => this.enable(data)),
+      'computer.use.disable': (data) => this.options.mutations.run(() => this.disable(data))
     };
   }
 
@@ -128,9 +129,11 @@ export class ComputerUseEnablementService {
     });
     void this.options.provider
       .reset()
-      .then(() => this.options.prepareRuntime())
-      .then(() => this.options.provider.support())
-      .then((support) => {
+      .then(async () => {
+        if (generation !== this.#probeGeneration) return;
+        await this.options.prepareRuntime();
+        if (generation !== this.#probeGeneration) return;
+        const support = await this.options.provider.support();
         if (generation !== this.#probeGeneration) return;
         this.#set(this.#fromSupport(support));
       })
@@ -138,8 +141,8 @@ export class ComputerUseEnablementService {
         if (generation !== this.#probeGeneration) return;
         this.#set(
           this.#unavailable(
-            error instanceof Error && /^[A-Z][A-Z0-9_]{0,79}$/u.test(error.message)
-              ? error.message
+            error instanceof ComputerUseError || error instanceof ComputerUseRuntimeError
+              ? error.code
               : 'COMPUTER_PROBE_FAILED'
           )
         );

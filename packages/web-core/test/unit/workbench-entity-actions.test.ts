@@ -5,6 +5,7 @@ const dialogs = vi.hoisted(() => ({ prompt: vi.fn(), confirm: vi.fn() }));
 vi.mock('element-plus', () => ({ ElMessageBox: dialogs }));
 import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
 import { createWorkbenchEntityController } from '../../src/service/workbench-entity-controller.js';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type { NodeSummary, Session } from '../../src/model/workbench.js';
 
@@ -129,14 +130,33 @@ describe('Public workbench entity actions', () => {
 
   it('does not remove a same-ID session on another Node after deletion returns', async () => {
     const nodeId = ref('node-a');
-    const session = { id: 'same-id', workspaceId: 'workspace', runner: 'codex' } as Session;
+    const session = {
+      id: 'same-id',
+      workspaceId: 'workspace',
+      runner: 'codex',
+      externalSessionId: 'native'
+    } as Session;
     const sessions = ref([session]);
     const selectedSessionId = ref<string | undefined>(session.id);
-    const originalCache = {
-      sessionDetails: new Map([[session.id, {}]]),
-      selectedSessionId: session.id
-    };
-    const getCache = vi.fn(() => originalCache);
+    const caches = createWorkspaceViewCacheService(
+      (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
+    );
+    caches.activate('node-a', session.workspaceId);
+    caches.captureActive(
+      {
+        sessions: [session],
+        selectedSessionId: session.id,
+        detail: {
+          sessionId: session.id,
+          runs: [],
+          turns: [],
+          nextCursor: null,
+          contextUsage: null,
+          lastAccessedAt: 1
+        }
+      },
+      2
+    );
     const openDraft = vi.fn();
     const controller = createWorkbenchEntityController({
       workspaceTarget: workspaceTargetRef(nodeId),
@@ -148,13 +168,13 @@ describe('Public workbench entity actions', () => {
       },
       sessions,
       selectedSessionId,
-      caches: { get: getCache },
+      caches,
       openDraft,
       replaceUrl: vi.fn()
     } as never);
     await controller.deleteSession(session);
-    expect(getCache).toHaveBeenCalledWith('node-a', session.workspaceId);
-    expect(originalCache.sessionDetails.has(session.id)).toBe(false);
+    expect(caches.detail('node-a', session.workspaceId, session.id)).toBeUndefined();
+    expect(caches.view('node-a', session.workspaceId).selectedSessionId).toBeUndefined();
     expect(sessions.value).toEqual([session]);
     expect(selectedSessionId.value).toBe(session.id);
     expect(openDraft).not.toHaveBeenCalled();
