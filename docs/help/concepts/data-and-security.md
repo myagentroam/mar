@@ -1,6 +1,6 @@
 ---
 title: 数据归属、凭据与安全边界
-lastUpdated: 2026-09-18
+lastUpdated: 2026-10-29
 ---
 
 # 数据归属、凭据与安全边界
@@ -12,8 +12,8 @@ lastUpdated: 2026-09-18
 | Agent CLI    | 登录状态、模型服务配置、对话历史               | Agent 官方账号与配置目录               |
 | Workspace    | 源码、Git、运行产物                            | 文件权限、仓库密钥与备份               |
 
-MyAgentRoam 不让浏览器直连 Node，不保存终端正文，也不将 Node 或 Agent 凭据交给浏览器。它不能替代主机补丁、磁盘加密、最小权限、代码审查或 Agent 自身的安全设置。
+浏览器通过 Server 认证和授权，不直接访问 Node 的通用 API。获授权的普通工作区文件、Git 和终端数据可使用 WebRTC 直传，无法直传时回退到 Server 中继；直传不替代授权。Server 不持久化终端正文，也不将 Node 或 Agent 凭据交给浏览器。MyAgentRoam 不能替代主机补丁、磁盘加密、最小权限、代码审查或 Agent 自身的安全设置。
 
-MAR Agent 模型 API Key 以明文保存在 Server MySQL，但不会通过查询 API、审计或页面回显。MAR Agent 不提供逐次工具审批；固定 `full-access` 不是操作系统沙箱，工具拥有 Node 服务账号原本具备的系统权限，Host 路径与资源校验仍然生效。
+MAR Agent 模型 API Key 以明文保存在 Server MySQL，但不会通过查询 API、审计或页面回显。工具权限模式不替代操作系统沙箱：Host 路径和资源限制仍然生效，工具使用 Node 服务账号的实际权限。不同入口的默认模式与审批规则见 [MAR Agent 会话与权限](../runners/mar-agent.md#会话与权限)。
 
 下一步：[备份与恢复](../deployment/backup-restore.md)和[上线安全检查清单](../deployment/security-checklist.md)。

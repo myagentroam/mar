@@ -1,6 +1,6 @@
 ---
 title: Deploy MyAgentRoam Server and Web
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-29
 ---
 
 # Deploy MyAgentRoam Server and Web
@@ -26,16 +26,14 @@ Both license states use `/console` for the workbench and `/docs/` for documentat
 
    `MAR_SERVER_SSH_DIR` must be the deployment account's absolute `.ssh` path. Compose mounts it read-only. Create a correctly protected empty directory even if SSH skill sources are not yet used.
 
-2. Restrict the directory and verify non-interactive repository access:
+2. Restrict the directory and private keys to the deployment account. If using an SSH Skill source, verify non-interactive access as that account on the deployment host, replacing the example with a repository you are authorized to access:
 
    ```bash
-   chmod 700 /home/mar/.ssh
-   chmod 600 /home/mar/.ssh/config /home/mar/.ssh/id_* 2>/dev/null || true
    GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
-     git ls-remote git@codeup.aliyun.com:group/project.git HEAD
+     git ls-remote git@<repository-host>:<owner>/<repository>.git HEAD
    ```
 
-   In `.ssh/config`, use `~/.ssh/key-name` for `IdentityFile`. The host deployment UID should match the image `node` user UID (`1000` by default).
+   This command contacts an external repository and, like Server's SSH Skill source, skips host fingerprint verification. That permits server impersonation; use it only for trusted networks and repositories, and do not set this option as a global SSH default. In `.ssh/config`, use `~/.ssh/key-name` for `IdentityFile`. The host deployment UID should match the image `node` user UID (`1000` by default).
 
 3. Start and inspect the services:
 
@@ -50,7 +48,7 @@ Both license states use `/console` for the workbench and `/docs/` for documentat
 
 **Success:** all three Compose services—MySQL, SearXNG, and Server—are healthy, and `/console` opens for sign-in through the HTTPS site.
 
-For failures, inspect `docker compose logs mysql`, verify the external origin, certificate chain, `/api/` proxying, and outbound HTTPS/WSS from Nodes. Never expose an inbound Node port.
+For failures, inspect `docker compose logs mysql`, verify the external origin, certificate chain, `/api/` proxying, and outbound HTTPS/WSS from Nodes. The Node control connection does not require a public inbound HTTP API; see [Network, TLS, and WebSocket](../deployment/network.md) for optional LAN direct-transfer UDP requirements.
 
 Keep `.env` out of Git, chats, and the Web root because it contains database credentials.
 

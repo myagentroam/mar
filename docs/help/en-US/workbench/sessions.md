@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Create and Manage Sessions
@@ -29,7 +29,7 @@ Working sessions hide Delete. If a session starts working during deletion confir
 
 On supported Nodes, choose **Session Prompt** from an existing session's More menu to save multiline instructions of up to 20,000 characters. Leave it blank and save to clear it. The setting belongs only to that session and survives reopening or a Node restart. It is appended after the sender's shared and Agent-specific personal instructions, without replacing account settings or appearing as an ordinary message.
 
-Changes do not interrupt the current execution. They apply from the next execution, including queued messages, Goal continuation, and messages sent to that session through marctl. marctl has no prompt-editing command. Clearing stops future injection; it does not remove old instructions already in the Agent's conversation history. Start a new session if you need to isolate old instructions completely. Hosted conversations do not offer this setting.
+Changes do not interrupt the current execution. They apply from the next execution, including queued messages, Goal continuation, and messages sent to that session through marctl. You can also [read, set, or clear the prompt with marctl](../operations/marctl.md#persistent-instructions-and-approvals). Clearing stops future injection; it does not remove old instructions already in the Agent's conversation history. Start a new session if you need to isolate old instructions completely. Hosted conversations do not offer this setting.
 
 Sessions discovered from an external Agent appear normally. Their first message automatically validates and activates a safe continuation path; if validation fails, no Run is created.
 

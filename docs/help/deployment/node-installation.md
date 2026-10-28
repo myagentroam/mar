@@ -1,11 +1,11 @@
 ---
 title: 安装与注册 Node
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-29
 ---
 
 # 安装与注册 Node
 
-本页适用于把 Windows、Linux 或 macOS 主机接入 MyAgentRoam。Node 只主动连接 Server，不提供浏览器 HTTP API，也不需要向公网暴露本机端口；普通 Workspace 文件直传需要仅对 Browser 局域网开放限定 UDP 范围。完成后节点详情会显示在线状态和已发现的 Agents。托管对话因依赖 Bubblewrap 沙箱，仍仅支持 Linux Node。
+本页适用于把 Windows、Linux 或 macOS 主机接入 MyAgentRoam。Node 只主动连接 Server，不提供浏览器 HTTP API，也不需要向公网暴露本机端口；普通 Workspace 文件、Git 和终端直连需要仅对 Browser 局域网开放限定 UDP 范围。完成后节点详情会显示在线状态和已发现的 Agents。托管对话因依赖 Bubblewrap 沙箱，仍仅支持 Linux Node。
 
 ## 前置条件
 
@@ -14,7 +14,7 @@ lastUpdated: 2026-10-21
 正常重启和受控升级会在旧实例退出后交接。普通断线不会停止已接受的执行，控制连接被替换也不代表旧主机上的执行已结束；本地目录排他不覆盖复制到另一目录或主机的身份，不应通过复制凭据规避重复实例错误。
 
 - Node.js `>=22.13`；最终运行服务的账号也必须能找到同一个 `node` 与 `mar-node`。
-- 可访问 Server 的公开 HTTPS 地址；Node 使用出站 WSS，浏览器不会直连 Node。
+- 可访问 Server 的公开 HTTPS 地址；Node 使用出站 WSS。普通工作区直传的网络要求见下文。
 - 目标 Workspace 在 `allowedRoots` 内，且运行账号有相应目录权限。
 - 首次接入可使用[内置 MAR Agent](../runners/mar-agent.md)：无需外部 Agent CLI，由管理员配置并授权模型。若使用 Codex、Claude Code 或 OpenCode，则在**同一服务账号**下完成对应 CLI 安装、登录或模型服务配置。
 
@@ -60,7 +60,7 @@ Node 还会在服务账号环境中探测以下按需工具，并在节点详情
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
-   Supervisor 使用服务账号可写的 Node 数据目录保存版本化安装，不调用 sudo 或 UAC。首次启用需要按平台文档把自启动入口改为 `mar-node supervise`；之后管理端只会在人工确认后升级到 npm 已发布且不超过当前 Server 版本的最高稳定版本，并向 Supervisor 推送选定的精确版本，详见[升级 MyAgentRoam](upgrade.md)。
+   Supervisor 使用服务账号可写的 Node 数据目录保存版本化安装，不调用 sudo 或 UAC。首次启用需要按平台文档把自启动入口改为 `mar-node supervise`；之后管理端只会在人工确认后升级到 npm 已发布、满足业务基线且不超过当前 Server 版本的最高稳定版本，并向 Supervisor 推送选定的精确版本，详见[升级 MyAgentRoam](upgrade.md)。
 
    远程升级还要求服务账号在非交互环境中能够执行 `node`、`npm` 并访问 npm。检测与安装均自动使用对应运行账号的 npm 配置；无需在 Node JSON 或 Server 环境中重复配置 Registry。
 
@@ -125,12 +125,12 @@ Node 还会在服务账号环境中探测以下按需工具，并在节点详情
 
 **成功标志：** 注册页显示节点在线、正确的平台/Node.js 版本和支持 Agent。此时按平台配置自启动：[Linux systemd](node-linux.md)、[Windows 任务计划](node-windows.md)或[macOS launchd](node-macos.md)。
 
-完成自启动后必须再检查一次远程升级前置状态：重启主机或服务后 Node 自动上线，节点详情中的“升级状态”显示“当前无需升级”或“可升级到 …”，而不是“需手工启用 Supervisor”。首次从不支持 Supervisor 的旧版迁移时，必须手工安装至少 `0.1.6` 并改好自启动入口；旧 Node 无法通过未知操作自举 Supervisor。
+完成自启动后必须再检查一次远程升级前置状态：重启主机或服务后 Node 自动上线，节点详情中的“升级状态”显示“当前无需升级”或“可升级到 …”，而不是“需手工启用 Supervisor”。不支持 Supervisor 的旧版需要先手工安装符合当前业务基线的版本并改好自启动入口；旧 Node 无法通过未知操作自举 Supervisor。
 
 ## 接入后检查与失败排查
 
 1. 在 `allowedRoots` 下登记 Workspace，确认文件、终端和 Agent 会话均可打开。
-2. 重启 Node 服务后，确认它自动重连；不要开放 Node 公网入站端口。需要局域网文件直传时，只允许 Browser 所在局域网访问配置的 UDP 范围，默认 `49152-49215`。同主机多个 Node 可共享默认池并自动选择空闲端口；需要独立容量时，为各配置文件设置互不重叠的范围。
+2. 重启 Node 服务后，确认它自动重连；不要开放 Node 公网入站端口。需要局域网直连时，只允许 Browser 所在局域网访问配置的 UDP 范围，默认 `49152-49215`。同主机多个 Node 可共享默认池并自动选择空闲端口；需要独立容量时，为各配置文件设置互不重叠的范围。
 3. Node 在线但 Agent 不可用时，先以服务账号检查 CLI、`PATH`、用户目录、认证和工作区权限。
 4. MCP 启动失败时，在节点详情确认 `npx` 是否可用；Python Skill 失败时确认页面显示的实际 Python/pip 命令，并在同一服务账号下复现。
 5. Node 完全离线时，检查 Server URL、HTTPS/WSS 出站网络、配置权限与服务日志。

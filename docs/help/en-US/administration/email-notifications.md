@@ -1,6 +1,6 @@
 ---
 title: Configure SMTP Email and Notification Templates
-lastUpdated: 2026-10-18
+lastUpdated: 2026-10-29
 ---
 
 # Configure SMTP Email and Notification Templates
@@ -23,7 +23,7 @@ An administrator can configure one deployment-wide SMTP connection under **Admin
    }
    ```
 
-   `STARTTLS` requires a TLS upgrade; `TLS` encrypts from the start. Enable email sending, complete the fields, then save. The password is not shown again; leave it empty on a later edit to retain it. Switch off **Enable email sending** and save to clear the SMTP configuration and disable delivery. This action requires confirmation because the saved password will be deleted.
+   `STARTTLS` requires a TLS upgrade; `TLS` encrypts from the start. Enable email sending, complete the fields, then save. The password is not shown again; on a later edit, leave it empty to retain it only if the authentication account is unchanged. Switch off **Enable email sending** and save to clear the SMTP configuration and disable delivery. This action requires confirmation because the saved password will be deleted.
 
 2. Select **View email templates** in the configuration dialog to browse the built-in Chinese and English test and notification templates. The preview shows the same formatted email sent to recipients. Templates cannot be edited or replaced; sent messages include styled HTML and a plain-text alternative. Notification subjects support `{{title}}`; message bodies support `{{message}}`, `{{userName}}`, `{{workspaceName}}`, and `{{email}}`.
 3. Select **Send test email** in the template dialog, choose a test template, and enter a single recipient address. The test uses the **saved** SMTP configuration. Success means the SMTP server accepted the message; it does not guarantee inbox delivery. Only administrators can test, and test sends are rate-limited.

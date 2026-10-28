@@ -1,6 +1,6 @@
 ---
 title: Session Stuck in Working or Idle
-lastUpdated: 2026-10-26
+lastUpdated: 2026-10-29
 ---
 
 # Session Stuck in Working or Idle
@@ -13,4 +13,6 @@ lastUpdated: 2026-10-26
 
 If a historical image file is missing or unreadable, MAR Agent omits that image from the model context and continues with the text. Your source files are not deleted. If the task still needs the image, attach it again or ask the Agent to read the source file again; you do not need to create a new session.
 
-Restarting Node terminates active runs and queues. Use that only after reviewing the impact on every user of the Node.
+Stopping a run does not automatically execute queued messages. `Ctrl+Enter` delivers a new message with priority; depending on the Agent and current run, Node uses a gentle addition or stops before sending. See [Composer](../workbench/composer.md). Do not repeatedly refresh, stop, or resend to wake a session; wait for a clear idle or failure state and inspect the Agent logs instead.
+
+Restarting Node affects active processes. An orderly shutdown can conditionally hand off eligible MAR Agent work and queues, but does not promise recovery of every run or after an unexpected exit. Review the impact on all Node users first; see [automatic continuation](../workbench/sessions.md#automatic-continuation-after-orderly-shutdown).

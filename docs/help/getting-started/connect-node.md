@@ -1,19 +1,19 @@
 ---
 title: 接入第一台 Node
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # 接入第一台 Node
 
 目标是在一台实际存放工作区并运行 Agent 的主机上注册 Node。
 
-Server 自带名为 `MyAgentRoam` 的 Node；ADMIN 可以直接选择它，并在服务账号 home 下登记 Workspace。它默认开启托管对话（仍需满足 Linux/Bubblewrap 条件），不需要重复注册或安装。下面流程用于连接其他设备。
+Server 不包含 Node 执行器。即使 Node 与 Server 位于同一主机，也需要独立安装并注册 Node；托管对话另有 Linux 和 Bubblewrap 前提。
 
 ## 前置条件
 
 - 已可登录 MyAgentRoam。
 - 目标主机满足[部署前准备](prerequisites.md)中的 Node 条件。
-- 你对目标 Node 有管理权限。
+- 你有权创建 Node 注册密钥，并可在目标主机的 Node 服务账号下安装和运行程序。
 
 ## 步骤
 

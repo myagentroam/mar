@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # 配置和使用 MAR Agent
@@ -41,7 +41,7 @@ Codex (legacy) 和 ChatGPT 模型均提供 **速度 → 默认 / Fast / Ultrafas
 
 ## 输入预测模型
 
-在 **管理 → MAR Agent 模型 → 高级 → Prompt Tab** 单独保存全局开关、模型和思考强度，不改变 Compact 配置。全局默认启用但不预选模型；用户仍须有模型及凭据使用权，可在 **设置 → 外观（Appearance）** 切换“输入预测”（无已保存偏好时默认开启，已保存关闭仍关闭；仅工作模式，选择立即保存到当前浏览器）。工作模式支持四种 Runner；预测通过 Node 调用 MAR Agent SDK 的独立模型接口，通过结果工具 Schema 接收预测数据，不创建 Agent 会话或执行工具。操作方式和数据范围见 [输入预测](../workbench/composer.md#输入预测prompt-tab)。
+在 **管理 → MAR Agent 模型 → 高级 → Prompt Tab** 单独保存全局开关、模型和思考强度，不改变 Compact 配置。全局默认启用但不预选模型；用户仍须有模型及凭据使用权，可在 **设置 → 外观（Appearance）** 切换“输入预测”（无已保存偏好时默认开启，已保存关闭仍关闭；仅工作模式，选择立即保存到当前浏览器）。工作模式支持四种 Runner；预测通过 Node 调用 MAR Agent SDK 的独立模型接口，通过结果工具 Schema 接收预测数据，不创建 Agent 会话或执行工具。操作方式和数据范围见 [输入预测](../workbench/composer.md#输入预测-prompt-tab)。
 
 ## 专用 Compact 模型
 
@@ -172,7 +172,7 @@ Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host �
 
 开启 Code Mode 时，`apply_patch` 和 `exec_wait` 同时保留直接调用和程序化调用入口。`apply_patch` 由模型按任务自主选择；单进程纯等待优先直接调用 `exec_wait`，并行等待或组合处理仍使用 `tools.exec_wait`。不要通过两种入口重复等待同一进程。其他工具的默认展示策略和原有调用权限不变。
 
-每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。用 `out.text(value)` 显式输出文本，用 `out.image(value)` 输出工具返回的图片。文本输出递归将结构化 `image/*` 对象的 `dataBase64` 字符串替换为简短占位摘要，不修改原对象，也不会自动发送像素；图片仍需单独调用 `out.image`。文本优先输出 `result.data` 或 `result.content`，显式传入的普通字符串不做 Base64 解析或筛选；文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
+每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。使用 `observe.result(result)` 登记未经修改的完整工具结果或捕获的工具错误；对派生值使用 `observe.text(value)`，对图片使用 `observe.image(value)`。观察只选择传给模型的证据，不代表已经读取或检查；没有 `out` 别名。文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 
 `code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程用 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `exec_wait` 或 cell 内的 `tools.exec_wait` 控制，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic；Only 模式下 `exec` 仅展示 Code Mode 入口，`exec_wait` 保留双入口。cell 内等待仍遵守工具自身超时及 Host 策略。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
 
@@ -187,6 +187,55 @@ Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和
 ## 本地 SDK 与 CLI
 
 `@myagentroam/agent` 可作为 TypeScript SDK 直接嵌入，也提供唯一命令 `maragent`。CLI 使用当前用户 HOME 下的 MAR 自有模型目录，不读取 Server 模型配置，也不会自动发现 Claude、Codex 或 OpenCode 配置。模型可配置为静态 API Key 或 `CODEX_AUTH_FILE` 凭据来源；仅当用户为当前命令显式传入 `--codex-auth-file PATH` 时，CLI 才只读加载该 Codex ChatGPT OAuth 文件。文件路径和 Token 不会写入模型目录、Session、日志或事件，CLI 也不会刷新或回写该文件。使用 `maragent --help` 查看运行、恢复、会话和模型管理命令。
+
+独立使用时先安装包，再用 `maragent models list` 检查当前账号的本地模型目录；模型登记与运行选项以 `maragent models --help` 和 `maragent --help` 为准。CLI 的命令和 Agent 工具以运行账号权限执行，先选用专用账号和可信工作目录，不要在生产目录试运行。
+
+SDK 最小示例使用一个兼容 OpenAI Responses 的端点。先按供应商的真实模型能力调整 URL、模型 ID 和 token 限制；设置 `MODEL_API_KEY`、`MODEL_BASE_URL`、`MODEL_ID`、`AGENT_HOME` 与 `WORKSPACE` 后运行。`session.run` 会发起真实模型请求，也可能执行工具；仅在有权限的隔离环境使用，密钥不要写入源文件或提交。
+
+```ts
+import { createAgent, SecretValue, type AgentModelConfiguration } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name}`);
+  return value;
+}
+
+const home = required('AGENT_HOME');
+const workspace = required('WORKSPACE');
+const model: AgentModelConfiguration = {
+  id: 'example',
+  name: 'Example',
+  protocol: 'OPENAI_RESPONSES',
+  baseUrl: required('MODEL_BASE_URL'),
+  apiKey: new SecretValue(required('MODEL_API_KEY')),
+  modelId: required('MODEL_ID'),
+  contextWindowTokens: 128000,
+  maxOutputTokens: 4096,
+  inputCapabilities: ['TEXT'],
+  outputCapabilities: ['TEXT'],
+  reasoningEfforts: [],
+  hostedWebSearch: false,
+  titleGeneration: false,
+  codeMode: false,
+  enabled: true
+};
+const agent = await createAgent({
+  mode: 'normal',
+  host: new LocalAgentHost({ homeDirectory: home, workspace }),
+  models: [model]
+});
+try {
+  const session = await agent.createSession({ workspace, title: 'Example' });
+  const result = await session.run({ prompt: 'Summarize this workspace.' }).result();
+  console.log(result.status, result.finalAnswer);
+} finally {
+  await agent.dispose();
+}
+```
+
+该示例只展示终态；需要增量事件时遍历 `session.run(...)` 返回的 execution handle，并在结束时等待 `result()`。自定义 Host 必须自行提供其声明的能力和权限边界；LocalAgentHost 不替代操作系统隔离。
 
 下一步：[Agent 不可用或模型缺失](runner-troubleshooting.md)。
 

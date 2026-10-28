@@ -1,6 +1,6 @@
 ---
 title: 维护对话模板 Workspace
-lastUpdated: 2026-09-14
+lastUpdated: 2026-10-29
 ---
 
 # 维护对话模板 Workspace
@@ -95,7 +95,7 @@ Session 历史、其他 Session、其他用户或 Conversation、Node 配置、�
 
 ## 沙箱、环境变量与网络规则
 
-- 托管对话只在已启用并通过能力探测的组织 Linux Node 上运行。所有本地命令和本地 stdio MCP 都必须进入 Bubblewrap 沙箱；沙箱不可用、策略无效或挂载失败时直接拒绝运行，不会退回宿主机执行。
+- 托管对话只在已启用并通过能力探测的 Linux Node 上运行。社区版可使用本人 Node；企业共享托管要求组织 Node。所有本地命令和本地 stdio MCP 都必须进入 Bubblewrap 沙箱；沙箱不可用、策略无效或挂载失败时直接拒绝运行，不会退回宿主机执行。
 - 沙箱只暴露前述目录和有限的只读系统运行时，隔离用户、进程、主机名和 IPC，并在平台支持时隔离 cgroup；同时移除 Linux capabilities，并通过 seccomp 和进程资源上限约束本地命令。固定 `full-access` 只表示不逐次弹出应用层权限确认，不会放宽这些边界。单进程 CPU、地址空间、进程数、文件描述符和文件大小限制参阅[系统限制](../reference/limits.md)。
 - 进程环境从干净环境开始。`PATH`、`HOME=/home/mar`、`TMPDIR=/tmp` 和区域设置由 Host 固定；只注入本次工具或已发布 MCP 明确允许的环境变量。不要依赖维护人员的登录配置、Shell alias、当前目录、SSH Agent、全局代理变量或来源 Workspace 的 `.env`。
 - **无网络**会隔离本地进程网络，并同时禁用 Web Search、Web Fetch、模型 Hosted Web 和远程 HTTP MCP；本地 stdio MCP 仍可离线运行。

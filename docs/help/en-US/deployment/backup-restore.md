@@ -1,6 +1,6 @@
 ---
 title: Backup and Restore
-lastUpdated: 2026-09-25
+lastUpdated: 2026-10-29
 ---
 
 # Backup and Restore
@@ -16,7 +16,7 @@ Back up data according to its owner; a Server-only backup is not sufficient.
 | Ordinary MAR Agent history         | Back up the Node service account's `~/.mar/agent/`, including sessions and related generated files; this does not replace the hosted-directory backup                                                                                                                | Ordinary history and related files are readable                                    |
 | Workspaces and other Agents        | Back up required source, Git, business data, installed Skills, and other Agents' officially documented configuration/history; protect deployment-account repository credentials separately                                                                           | Files, Git, Skills, and Agent authentication work                                  |
 
-Resolve actual paths from the service account, Node configuration, and Compose mounts; see [Ports and Data Locations](../reference/ports-paths-data.md). Logs are not backups. Active runs, queues, Goals, and terminals are not recoverable runtime state.
+Resolve actual paths from the service account, Node configuration, and Compose mounts; see [Ports and Data Locations](../reference/ports-paths-data.md). Logs are not backups. Running processes and terminals cannot resume from a backup. Normal shutdown of MAR Agent in a regular Workspace conditionally hands off unfinished work, Goals, and queues; see [Session recovery](../workbench/sessions.md#automatic-continuation-after-orderly-shutdown). Do not assume an arbitrary backup or abnormal exit preserves that runtime state.
 
 ## Before backing up
 
@@ -32,7 +32,7 @@ Resolve actual paths from the service account, Node configuration, and Compose m
 2. Prevent restored copies from connecting to production Server. Never run two instances with the same Node identity. If identity continuity cannot be guaranteed, [register a replacement Node](../getting-started/connect-node.md) and recheck resource relationships.
 3. Start Server and verify health and sign-in. Start Nodes one at a time and check Workspace paths and service-account permissions.
 4. Read ordinary sessions and files. If hosting is used, open an existing conversation, read uploads and outputs, create a test conversation from a published template, and perform a read-only request.
-5. Switch the production services only after validation. Runs, queues, Goals, and terminals active before Node restarted are not restored; do not assume their work completed.
+5. Switch the production services only after validation. Do not assume interrupted work completed or that an arbitrary backup contains a normal-shutdown handoff; inspect session state before deciding whether to continue.
 
 **Success:** registrations and Agent history are readable, and new tasks and terminals can be created.
 

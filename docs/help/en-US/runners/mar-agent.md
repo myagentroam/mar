@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Configure and Use MAR Agent
@@ -172,7 +172,7 @@ Code Mode is disabled by default. MAR Agent exposes a restricted JavaScript orch
 
 With Code Mode enabled, `apply_patch` and `exec_wait` remain available both directly and programmatically. The model chooses either entry point for `apply_patch`; for a single process wait, prefer direct `exec_wait`, while concurrent waits or composed processing can use `tools.exec_wait`. Do not wait for the same process through both entry points at once. Default exposure for other tools and existing caller permissions remain unchanged.
 
-Each cell uses a fresh QuickJS WASM runtime in a Host-managed worker process. Top-level `await` and `Promise.all` are supported; Node globals, module imports, native file/network APIs, and `console.*` are unavailable. Emit text explicitly with `out.text(value)` and returned tool images with `out.image(value)`. Text output recursively replaces the `dataBase64` string of structured `image/*` objects with a compact placeholder, leaving the original object intact. This does not send pixels; use `out.image` separately. Prefer `result.data` or `result.content` for text; explicitly supplied strings are not parsed or screened for Base64. Files, commands, and network access require explicit `programmatic` permission on `tools.NAME(input)`, retaining each tool's own authorization and safety checks. Results use a shared envelope: raw file text is in `result.data.results[0].text`, not the line-numbered `content` display.
+Each cell uses a fresh QuickJS WASM runtime in a Host-managed worker process. Top-level `await` and `Promise.all` are supported; Node globals, module imports, native file/network APIs, and `console.*` are unavailable. Use `observe.result(result)` to register an unmodified complete tool result or caught tool error; use `observe.text(value)` for derived values and `observe.image(value)` for images. Observation selects evidence for the model; it does not prove the model read or inspected it. There is no `out` alias. Files, commands, and network access require explicit `programmatic` permission on `tools.NAME(input)`, retaining each tool's own authorization and safety checks. Results use a shared envelope: raw file text is in `result.data.results[0].text`, not the line-numbered `content` display.
 
 `code_exec`, `code_exec_wait`, `tool_search`, `question`, and direct-only tools cannot run inside a cell. Ordinary external MCP tools have programmatic permission by default and run through Code Mode in Only mode; explicitly direct-only tools remain direct. Discover deferred tools with a direct `tool_search` call. Search results carry names, descriptions, and input definitions without growing the Code Mode description; discovered programmatic tools become callable in a cell from the next model response. Await every tool call. Language isolation does not replace Host file permissions, process controls, or OS sandbox policy, and does not make writable tools read-only. Input and text output are each limited to 1 MiB, with up to 128 tool calls per cell. Synchronous JavaScript execution has a 120-second budget; asynchronous tool waits do not consume it, and cells have no fixed wall-clock deadline. Cancellation, timeout, or output limits may follow completed operations; failure does not roll back changes. Start background processes with `tools.exec({ command, ... })` inside a cell, then use direct `exec_wait` or `tools.exec_wait` inside a cell with the returned `processId`. It defaults to waiting and also supports `action: "write"` and `action: "cancel"`. Both process tools support direct and programmatic calls; Only mode exposes `exec` through Code Mode and keeps both entry points for `exec_wait`. Waits inside a cell still follow individual tool timeouts and Host policy. `exec` no longer accepts the old `action` parameter. The initial wait defaults to 10 seconds, capped at 30 seconds; `exec_wait` defaults to 10 seconds, capped at 300 seconds. Explicit `yieldMs: 0` returns immediately. Cancelling a wait does not terminate the process, and wait windows do not extend the process timeout.
 
@@ -187,6 +187,55 @@ The Web conversation displays each `code_exec` call as a command card with its o
 ## Local SDK and CLI
 
 `@myagentroam/agent` is an embeddable TypeScript SDK and provides the single `maragent` command. The CLI uses MAR's own model catalog under the current user's HOME. It does not read Server model settings and does not automatically discover Claude, Codex, or OpenCode configuration. A model can use a static API key or the `CODEX_AUTH_FILE` credential source. The CLI reads a Codex ChatGPT OAuth file only when the user explicitly supplies `--codex-auth-file PATH` for the current command. The path and tokens are not written to the model catalog, Session, logs, or events, and the CLI never refreshes or rewrites the file. Run `maragent --help` for execution, resume, session, and model commands.
+
+For standalone use, install the package, then use `maragent models list` to inspect the current account's local model catalog. Consult `maragent --help` for model registration and execution options. CLI commands and Agent tools run with the account's privileges: use a dedicated account and trusted workspace, not a production directory for experiments.
+
+This minimal SDK example uses an OpenAI Responses-compatible endpoint. Set the URL, model ID, and token limits to the provider's actual capabilities, then set `MODEL_API_KEY`, `MODEL_BASE_URL`, `MODEL_ID`, `AGENT_HOME`, and `WORKSPACE`. `session.run` makes a real model request and may execute tools. Run it only in an authorized isolated environment; do not put credentials in source files or commits.
+
+```ts
+import { createAgent, SecretValue, type AgentModelConfiguration } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name}`);
+  return value;
+}
+
+const home = required('AGENT_HOME');
+const workspace = required('WORKSPACE');
+const model: AgentModelConfiguration = {
+  id: 'example',
+  name: 'Example',
+  protocol: 'OPENAI_RESPONSES',
+  baseUrl: required('MODEL_BASE_URL'),
+  apiKey: new SecretValue(required('MODEL_API_KEY')),
+  modelId: required('MODEL_ID'),
+  contextWindowTokens: 128000,
+  maxOutputTokens: 4096,
+  inputCapabilities: ['TEXT'],
+  outputCapabilities: ['TEXT'],
+  reasoningEfforts: [],
+  hostedWebSearch: false,
+  titleGeneration: false,
+  codeMode: false,
+  enabled: true
+};
+const agent = await createAgent({
+  mode: 'normal',
+  host: new LocalAgentHost({ homeDirectory: home, workspace }),
+  models: [model]
+});
+try {
+  const session = await agent.createSession({ workspace, title: 'Example' });
+  const result = await session.run({ prompt: 'Summarize this workspace.' }).result();
+  console.log(result.status, result.finalAnswer);
+} finally {
+  await agent.dispose();
+}
+```
+
+The example shows only the final result. For incremental events, iterate the execution handle returned by `session.run(...)` and await `result()` when finished. A custom Host is responsible for the capabilities and permission boundaries it declares; LocalAgentHost does not replace operating-system isolation.
 
 Next: [Agent or Model Unavailable](runner-troubleshooting.md).
 

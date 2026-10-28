@@ -1,6 +1,6 @@
 ---
 title: Upgrade MyAgentRoam
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Upgrade MyAgentRoam
@@ -28,3 +28,13 @@ The first transition from the combined Server is not a routine automatic upgrade
 7. After reconnection, verify a new session, file read, terminal, and automatic startup after a service or host restart.
 
 The system does not automatically upgrade or downgrade Nodes. **Target npm package unavailable** means the published versions cannot be queried, no stable package satisfies both the Server ceiling and business baseline, or the Server version is invalid. Check the Server version, registry access, network, and publication status, then refresh.
+
+## Upgrade status and recovery
+
+- **Upgrade available** identifies an eligible target for a Node with Supervisor support. The Node must also be online and enabled before a push.
+- **No upgrade needed** means the Node has reached or exceeded the selected target; the system does not downgrade it. An unknown or unsupported version requires checking the Node installation. If Supervisor is not enabled, follow the platform instructions above to configure it manually.
+- **Waiting for runs** allows cancellation while active runs drain. **Preparing to restart** no longer allows cancellation. On failure, inspect the Node and Supervisor service logs and the upgrade result in the Node data directory; correct the npm network, registry, disk, permissions, or security software issue before pushing again.
+
+If the push action is absent, check that your account can manage that Node, the enterprise License is not frozen, and the Node is online and enabled. Remote upgrade only installs the Node package and switches its child process: it does not install Node.js, configure a system service, elevate permissions, or update Server/Web. Server and Node service accounts must each be able to access the selected npm package.
+
+If a database migration fails, stop the upgrade and restore a matching backup rather than modifying the schema by hand. See [Backup and restore](backup-restore.md).

@@ -1,11 +1,11 @@
 ---
 title: 生产部署与反向代理
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # 生产部署与反向代理
 
-生产部署由 MySQL、自带 Web 的 Server 和外部 HTTPS 基础设施组成，不需要额外的产品 Web/Nginx 服务。Node 不需要入站端口，只需能向 Server 出站连接。
+生产部署由 MySQL、自带 Web 的 Server 和外部 HTTPS 基础设施组成，不需要额外的产品 Web/Nginx 服务。Node 控制连接只需向 Server 出站；可选的局域网直连 UDP 配置见[网络说明](network.md)。
 
 ## 前置条件
 

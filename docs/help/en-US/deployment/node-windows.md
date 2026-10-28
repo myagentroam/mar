@@ -1,6 +1,6 @@
 ---
 title: Windows Node and Task Scheduler
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # Windows Node and Task Scheduler
@@ -92,6 +92,6 @@ Start-ScheduledTask -TaskName $taskName
 
 Changing an elevated task can require UAC; restarting it briefly disconnects Web Terminals and Agents. Verify `LogonType = Interactive`, `RunLevel = Limited`, a `wscript.exe` action with `//B //NoLogo` and `start-mar-node-hidden.vbs`, a Node host `MainWindowHandle` of `0`, and a GUI application launched from the Web Terminal or an Agent tool still appearing on the current desktop. `LastTaskResult = 0x41301` means the task is running, not failed.
 
-Restart the task, then restart Windows and sign in again. Verify automatic reconnection, stable Node identity, Agent discovery, file access, a ConPTY terminal, and a GUI application launched from the Web Terminal or an Agent tool. From management, follow [Upgrade MyAgentRoam](upgrade.md) to push the highest published stable npm version that does not exceed the current Server version. Endpoint protection must allow the package installation and native `node-pty` rebuild used by upgrades.
+Restart the task, then restart Windows and sign in again. Verify automatic reconnection, stable Node identity, Agent discovery, file access, a ConPTY terminal, and a GUI application launched from the Web Terminal or an Agent tool. From management, follow [Upgrade MyAgentRoam](upgrade.md) to push the highest published stable npm version that meets the current business baseline and does not exceed the Server version. Endpoint protection must allow the package installation and native `node-pty` rebuild used by upgrades.
 
 If the Node does not start, inspect the sign-in trigger, interactive logon type, resolved launcher, configuration path, account environment, and Workspace permissions. If a GUI window does not appear, confirm that the currently signed-in desktop belongs to the same account that runs the task.

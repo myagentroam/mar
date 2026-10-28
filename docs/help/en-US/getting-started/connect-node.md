@@ -1,13 +1,18 @@
 ---
 title: Connect Your First Node
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # Connect Your First Node
 
 Register a Node on the host that stores your Workspace and runs Agents.
 
-The Server includes a Node named `MyAgentRoam`. ADMIN can select it immediately and register a Workspace under the service account's home. Hosting is enabled by default, subject to Linux/Bubblewrap requirements; no second registration or installation is needed. The procedure below connects another device.
+Server does not include a Node executor. Install and register Node separately, even when it runs on the same host as Server. Hosted conversations also require Linux and Bubblewrap.
+
+## Prerequisites
+
+- You can sign in to MyAgentRoam, and the host meets the [Node prerequisites](prerequisites.md).
+- You are authorized to create a Node registration key and can install and run the program under the Node service account on the target host.
 
 ## Procedure
 

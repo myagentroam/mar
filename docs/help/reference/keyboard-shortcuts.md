@@ -58,4 +58,4 @@ lastUpdated: 2026-10-26
 
 按序号选择 Workspace Tab 在所有平台均使用 Control，不再提供 Alt/Option 加数字的等价组合。目标存在时消耗长按的重复按键，但不会重复激活标签。浏览器若自行处理 `Ctrl+1…9/0`，请点击工作区标签，或使用 `Alt+←/→`（macOS 为 `Option+←/→`）切换。
 
-工作模式输入预测启用后，在前台 Composer 中按 `Tab Tab` 手动请求，生成中单按 `Tab` 取消；候选显示时 `Tab` 采用、`Esc` 取消且不停止 Agent。输入框始终拦截普通 `Tab` 并保持焦点，即使预测不可用，`Shift+Tab` 保持原行为。详见 [输入预测](../workbench/composer.md#输入预测prompt-tab)。
+工作模式输入预测启用后，在前台 Composer 中按 `Tab Tab` 手动请求，生成中单按 `Tab` 取消；候选显示时 `Tab` 采用、`Esc` 取消且不停止 Agent。输入框始终拦截普通 `Tab` 并保持焦点，即使预测不可用，`Shift+Tab` 保持原行为。详见 [输入预测](../workbench/composer.md#输入预测-prompt-tab)。

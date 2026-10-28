@@ -1,13 +1,13 @@
 ---
 title: MyAgentRoam 是什么
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-29
 ---
 
 # MyAgentRoam 是什么
 
 MyAgentRoam 是面向团队私有化部署、支持“工作 / 对话”两种模式的共享 Agent 工作台。团队只需在自己的 Windows、Linux 或 macOS 主机上配置一次 Agent、任意大模型、项目目录和工具链，就能把这个可直接工作的空间授权给成员。“工作”模式提供完整的 Node、Workspace、Agent 会话、文件、Git 和终端能力；“对话”模式让成员从管理员发布并授权的模板直接开始。无需在每台个人设备重复搭建环境。托管对话因依赖 Bubblewrap 沙箱，目前仅可由 Linux Node 承载。
 
-源码、Agent 凭据和终端始终留在团队自己的主机中，浏览器不直接连接工作主机。MyAgentRoam 负责把获授权的成员安全地带到同一工作环境，让 Agent 能力可以共享、工作进度可以衔接，同时保留清晰的数据和权限边界。个人用户也可以用它统一管理自己的多台工作主机。
+工作区源码、外部 Agent 的本机凭据和终端留在团队自己的主机中；Server 管理的模型与凭据配置保存在 Server。MyAgentRoam 让获授权的成员共享工作环境并衔接进度，同时保留清晰的数据和权限边界。个人用户也可以用它统一管理自己的多台工作主机。
 
 ## 四个组件
 
@@ -18,7 +18,7 @@ MyAgentRoam 是面向团队私有化部署、支持“工作 / 对话”两种�
 | Node   | 每台工作主机 | 工作区、Agent、文件、Git 与终端       |
 | Agent  | Node 本机    | 使用团队接入的 Agent 与大模型完成工作 |
 
-浏览器只连接 Server，Node 主动向 Server 建立出站连接；无需把工作主机暴露到公网。每个 Workspace 属于一台 Node，不能跨 Node 混用文件、终端或会话。
+浏览器通过 Server 认证和授权，Node 主动向 Server 建立出站控制连接；普通工作区数据也可在授权后使用 WebRTC 直传。直传的网络条件和回退见[网络、TLS 与 WebSocket](../deployment/network.md)。每个 Workspace 属于一台 Node，不能跨 Node 混用文件、终端或会话。
 
 ## 界面语言
 
@@ -36,4 +36,4 @@ MyAgentRoam 是面向团队私有化部署、支持“工作 / 对话”两种�
 
 社区版适合单人使用，不限制登记 Node 数量；企业 License 启用组织、角色、共享、SSO 和审计。详情见[用户、组织与资源权限](../concepts/permissions-and-sharing.md)。
 
-下一步：[部署前准备](prerequisites.md)或[已经可用，开始日常工作](next-steps.md)。
+已有可用 Server 的用户可从[首次登录](first-login.md)、[接入 Node](connect-node.md)或[开始第一次 Agent 对话](first-agent-session.md)进入；管理员部署时从[部署前准备](prerequisites.md)开始。

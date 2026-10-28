@@ -1,6 +1,6 @@
 ---
 title: 会话卡在 Working 或 Idle
-lastUpdated: 2026-10-26
+lastUpdated: 2026-10-29
 ---
 
 # 会话卡在 Working 或 Idle
@@ -15,6 +15,6 @@ MAR Agent 遇到历史图片文件缺失或无法读取时，会从模型上下�
 
 **成功标志：** 会话与当前任务状态一致，队列按预期继续或保持暂停。
 
-主动停止不会自动执行已排队消息；使用 `Ctrl+Enter` 的“停止后优先发送”才会停止当前任务并优先执行新消息。若 Agent CLI 本身异常，参阅[Agent 排障](../runners/runner-troubleshooting.md)。
+主动停止不会自动执行已排队消息。`Ctrl+Enter` 会优先投递新消息；Node 根据当前 Agent 和运行状态决定温和补充或停止后发送，详见 [Composer](../workbench/composer.md)。若 Agent CLI 本身异常，参阅[Agent 排障](../runners/runner-troubleshooting.md)。
 
 不要通过连续刷新、重复点击停止或重复发送来“唤醒”会话。先等待状态明确变为 `Idle` 或显示失败，再根据 Agent 本机日志定位；额外操作只会增加消息队列干扰。
