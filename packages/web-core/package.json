@@ -195,6 +195,7 @@
     "./page-interaction": "./src/service/workbench-page-interaction-service.ts",
     "./new-session-controller": "./src/service/workbench-new-session-controller.ts",
     "./runner-usage": "./src/service/runner-usage-service.ts",
+    "./runner-usage-model": "./src/model/runner-usage.ts",
     "./workbench-composition-messages": "./src/i18n/workbench-composition.ts",
     "./session-list": "./src/util/session-list.ts",
     "./WorkbenchHeader.vue": "./src/view/workbench/WorkbenchHeader.vue",

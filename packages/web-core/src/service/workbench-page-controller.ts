@@ -1,6 +1,7 @@
+import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import { clearMessages, showMessage } from './message-feedback-service.js';
 import { marIcon } from '../util/mar-icons.js';
-import type { GoalExitSummary, WorkspaceTarget } from '../model/workbench.js';
+import type { WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ElMessageBox } from './message-box-service.js';
@@ -13,6 +14,7 @@ import { createWorkspaceSessionService } from './workspace-session-service.js';
 import { createConversationImageService } from './conversation-image-service.js';
 import { filePreviewErrorMessage } from '../util/error-presentation.js';
 import { createWorkspaceQueueService } from './workspace-queue-service.js';
+import { createWorkbenchRunnerCommandService } from './workbench-runner-command-service.js';
 import {
   absoluteSessionTime as formatSessionTime,
   agentSessionPathId,
@@ -32,7 +34,6 @@ import {
 import { createWorkbenchRouteService } from './workbench-route-service.js';
 import { createMobileMenuHistoryService } from './mobile-menu-history-service.js';
 import { captureMobileLayerRoute } from './mobile-layer-history-service.js';
-import { createConversationProjectionService } from './conversation-projection-service.js';
 import { createWorkbenchEntityService } from './workbench-entity-service.js';
 import { createWorkbenchEventProjectionService } from './workbench-event-projection-service.js';
 import { createWorkbenchPerformanceService } from './workbench-performance-service.js';
@@ -47,8 +48,7 @@ import {
 import {
   readWorkspaceDirectFileMetadata,
   readGitDirectFileMetadata,
-  readWorkspaceDirectFileRange,
-  type WorkspaceDirectFileIdentity
+  readWorkspaceDirectFileRange
 } from './workspace-direct-file-read-service.js';
 import { createWebPerformanceDiagnostics } from './web-performance-diagnostic-service.js';
 import { createWorkbenchLayoutService } from './workbench-layout-service.js';
@@ -81,6 +81,7 @@ import {
 import { createWorkbenchSessionSelectionService } from './workbench-session-selection-service.js';
 import { createWorkbenchSessionHistoryMutationService } from './workbench-session-history-mutation-service.js';
 import { createWorkbenchSessionMessageService } from './workbench-session-message-service.js';
+import { replaceSessionIdentity } from './workbench-session-identity.js';
 import {
   createWorkbenchSubmissionService,
   sessionSubmissionContext
@@ -97,8 +98,7 @@ import { createWorkbenchRunnerChannelService } from './workbench-runner-channel-
 import { createWorkbenchApprovalService } from './workbench-approval-service.js';
 import { createWorkbenchSessionWatchController } from './workbench-session-watch-controller.js';
 import { createWorkbenchConversationRealtimeService } from './workbench-conversation-realtime-service.js';
-import { createWorkbenchConversationSnapshotService } from './workbench-conversation-snapshot-service.js';
-import { createWorkbenchConversationPagingService } from './workbench-conversation-paging-service.js';
+import { createWorkbenchConversationComposition } from './workbench-conversation-composition.js';
 import { createWorkbenchEntityController } from './workbench-entity-controller.js';
 import { createWorkbenchPageStateService } from './workbench-base-state-service.js';
 import { createWorkbenchPageInteractionService } from './workbench-page-interaction-service.js';
@@ -106,7 +106,6 @@ import { createWebVersionUpdateService } from './web-version-update-service.js';
 import { createWorkbenchNewSessionController } from './workbench-new-session-controller.js';
 import { createWorkbenchComposerInteractionController } from './workbench-composer-interaction-controller.js';
 import { installWorkbenchPageLifecycle } from './workbench-page-lifecycle-service.js';
-import { newestRunSnapshot } from './run-service.js';
 import {
   reconcileWorkspaceQueueSnapshot,
   type WorkspaceQueueSnapshotSource
@@ -128,8 +127,7 @@ import { PromptCompletionClientService } from './prompt-completion-client-servic
 import { ApiError, errorCode } from '../util/api-error.js';
 import {
   CONVERSATION_RECENT_SEGMENT_LIMIT,
-  CONVERSATION_SEGMENT_PAGE_SIZE,
-  limitConversationHistory
+  CONVERSATION_SEGMENT_PAGE_SIZE
 } from '../util/conversation-history.js';
 import { userInputQuestions } from '../util/conversation-presentation.js';
 import { createWorkspaceTabService } from './workspace-tab-service.js';
@@ -193,10 +191,14 @@ export function createWorkbenchPageController<
   const managementComposition = options.management;
   let focusComposerInputAt: (cursor: number) => void = () => undefined;
 
+  function refreshRecentConversationWindow(): Promise<void> {
+    return conversationPagingService.refreshRecentConversationTurns();
+  }
   const baseState = createWorkbenchPageStateService({
     navigation: options.navigation,
     sessionPageSize: WORKSPACE_SESSION_PAGE_SIZE,
     onUnauthenticated: () => returnToLogin(),
+    onConversationOverflow: () => void refreshRecentConversationWindow(),
     onWorkspaceRunCompleted: refreshCurrentWorkspaceInspector,
     onNotificationClick: openWorkbenchNotification
   });
@@ -514,24 +516,15 @@ export function createWorkbenchPageController<
     };
   };
 
-  let refreshRecentConversationWindow = async (): Promise<void> => undefined;
-  const conversationProjectionService = createConversationProjectionService({
-    turns: conversationTurns,
-    nextCursor: conversationNextCursor,
-    onRecentWindowOverflow: () => void refreshRecentConversationWindow(),
-    limitHistory: limitConversationHistory
-  });
+  const conversationProjectionService = conversationState.projection;
 
   const {
-    resetHistory: resetConversationProjection,
-    restore: restoreConversationProjection,
+    restoreWindow: restoreConversationWindow,
     clearSession: clearConversationProjectionSession,
     markLive: markLiveConversationTurn,
     mergeItem: mergeLiveConversationItem,
     mergeTextDelta: mergeLiveConversationTextDelta,
-    mergeLatest: mergeLatestConversationTurns,
-    replaceRecent: replaceRecentConversationTurns,
-    replaceAuthoritative: replaceAuthoritativeConversationTurns
+    mergeLatest: mergeLatestConversationTurns
   } = conversationProjectionService;
 
   const composerQueueService = createComposerQueueService();
@@ -551,10 +544,6 @@ export function createWorkbenchPageController<
   } = conversationScrollService;
 
   const workspaceViewCacheService = createWorkspaceViewCacheService(workspaceTabId);
-
-  const workspaceViewCaches = workspaceViewCacheService.caches;
-
-  const activeWorkspaceViewCache = workspaceViewCacheService.active;
 
   const workspaceTreeService = createWorkspaceTreeService({
     persist: persistWorkbenchState
@@ -766,8 +755,7 @@ export function createWorkbenchPageController<
     pickerKind: composerPickerKind,
     selectQuickPrompt: selectQuickPromptFromPicker,
     activeCommandStates,
-    clearCommand: clearRunnerCommand,
-    stageDraftCommand
+    clearCommand: clearRunnerCommand
   } = runnerInteractionService;
 
   const composerCommandReady = computed(() => selectedRunnerCommand.value !== undefined);
@@ -894,6 +882,8 @@ export function createWorkbenchPageController<
     currentSessionQueue,
     workspaceTarget,
     selectedSessionId,
+    currentSelectionRevision: () =>
+      currentDetailRequest() + workbenchWorkspaceSelectionService.currentSelectionRevision(),
     draggingQueueItemId,
     editingContent: editingQueueContent,
     serializeEditedContent: composerQueueService.serializeEditedContent,
@@ -1154,7 +1144,8 @@ export function createWorkbenchPageController<
     restoreWorkspaceInspector,
     restoreWorkspaceDraft,
     restoreCachedSessionDetail,
-    cachedSessionDetail,
+    updateCachedContext,
+    syncCachedRunStatus,
     cacheRunSnapshotFor,
     cacheRunSnapshot,
     cacheConversationTurn,
@@ -1162,7 +1153,6 @@ export function createWorkbenchPageController<
   } = createWorkbenchWorkspaceCacheController({
     cacheService: workspaceViewCacheService,
     paging: workspaceSessionPaging,
-    activeCache: activeWorkspaceViewCache,
     sessions,
     runs,
     turns: conversationTurns,
@@ -1180,23 +1170,30 @@ export function createWorkbenchPageController<
     workspaceTarget,
     selectedSessionId,
     inspector: workspaceInspector,
-    normalizeDraft: () => normalizeNewSessionOptions(),
+    restoreDraftConfiguration: applyComposerDefaultConfiguration,
     persistDraft: persistSessionDraft,
+    flushConversation: conversationProjectionService.flushPendingTextDeltas,
     tabId: workspaceTabId,
     maximumDetails: MAX_CACHED_SESSION_DETAILS
   });
 
-  const { apply: applyConversationSnapshot } = createWorkbenchConversationSnapshotService({
-    selectedSessionId,
-    replaceCurrent: replaceAuthoritativeConversationTurns,
-    mergeCurrent: mergeLatestConversationTurns,
-    currentWindow: () => ({
-      turns: conversationTurns.value,
-      nextCursor: conversationNextCursor.value
-    }),
-    replaceCached: (sessionId, page) =>
-      replaceConversationTurns(sessionId, page.turns, page.nextCursor)
-  });
+  const { applySnapshot: applyConversationSnapshot, paging: conversationPagingService } =
+    createWorkbenchConversationComposition({
+      workspaceTarget,
+      selectedSessionId,
+      turns: conversationTurns,
+      nextCursor: conversationNextCursor,
+      loadingOlder: loadingOlderConversation,
+      capturePrependAnchor: conversationScrollService.capturePrependAnchor,
+      pageSize: CONVERSATION_SEGMENT_PAGE_SIZE,
+      recentSegmentWindowSize: CONVERSATION_RECENT_SEGMENT_LIMIT,
+      projection: conversationProjectionService,
+      replaceCached: replaceConversationTurns,
+      request,
+      sessionPathId: agentSessionPathId,
+      notice,
+      errorMessage: message
+    });
 
   let reactivateConnectedWorkspace = (_nodeId: string): boolean => false;
 
@@ -1253,10 +1250,7 @@ export function createWorkbenchPageController<
       const contextUsage = contextUsageAfterCompaction(payload, sessionContextUsage.value);
       sessionContextUsage.value = contextUsage;
       const sessionId = selectedSessionId.value;
-      if (sessionId !== undefined) {
-        const detail = cachedSessionDetail(sessionId);
-        if (detail !== undefined) detail.contextUsage = contextUsage;
-      }
+      if (sessionId !== undefined) updateCachedContext(sessionId, contextUsage);
     }
     return true;
   }
@@ -1264,12 +1258,10 @@ export function createWorkbenchPageController<
   const workbenchEventProjection = createWorkbenchEventProjectionService({
     nodes,
     sessions,
-    runs,
     workspaceTarget,
     selectedSessionId,
     conversationNextCursor,
-    workspaceCache: (nodeId, workspaceId) =>
-      workspaceViewCaches.get(workspaceTabId(nodeId, workspaceId)),
+    cacheQueue: workspaceViewCacheService.cacheQueue,
     mergeQueue: mergeWorkspaceQueue,
     // Realtime frames can precede the Workspace sessions snapshot. Preserve visibility until the
     // next authoritative snapshot places the session in its stable list order.
@@ -1278,13 +1270,12 @@ export function createWorkbenchPageController<
     observeManagedSessionActive: runService.observeManagedSessionActive,
     updateContext: (sessionId, context) => {
       const value = context as SessionContextUsage | null;
-      const detail = cachedSessionDetail(sessionId);
-      if (detail !== undefined) detail.contextUsage = value;
+      updateCachedContext(sessionId, value);
       if (sessionId === selectedSessionId.value) sessionContextUsage.value = value;
     },
     syncTurnStatus: syncConversationTurnStatus,
     cacheRun: (run) => cacheRunSnapshot(run),
-    newestRun: newestRunSnapshot,
+    acceptRun: runService.acceptRun,
     openRun,
     markLiveTurn: markLiveConversationTurn,
     cacheTurn: (turn) => cacheConversationTurn(turn),
@@ -1494,7 +1485,12 @@ export function createWorkbenchPageController<
     return nodeId !== undefined && directTransport.networkInfo(nodeId)?.scope === 'LOOPBACK';
   });
 
-  function workspaceDirectFile(path: string, worktreePath?: string, repositoryPath?: string) {
+  function workspaceDirectFile(
+    path: string,
+    worktreePath?: string,
+    repositoryPath?: string,
+    signal?: AbortSignal
+  ) {
     if (isComposerAttachmentResourcePath(path)) return undefined;
     const nodeId = workspaceNodeId.value;
     const workspaceId = activeWorkspaceId.value;
@@ -1521,7 +1517,12 @@ export function createWorkbenchPageController<
       resource,
       metadata: () =>
         manifest?.directTransfer?.download === true
-          ? readWorkspaceDirectFileMetadata({ request, nodeId, resource })
+          ? readWorkspaceDirectFileMetadata({
+              request,
+              nodeId,
+              resource,
+              ...(signal === undefined ? {} : { signal })
+            })
           : Promise.resolve(undefined)
     };
   }
@@ -1530,7 +1531,8 @@ export function createWorkbenchPageController<
     commit: string,
     path: string,
     repositoryPath: string,
-    refs: readonly string[]
+    refs: readonly string[],
+    signal?: AbortSignal
   ) {
     const nodeId = workspaceNodeId.value;
     const workspaceId = activeWorkspaceId.value;
@@ -1556,7 +1558,14 @@ export function createWorkbenchPageController<
       nodeId,
       nodeGeneration,
       resource,
-      metadata: () => readGitDirectFileMetadata({ request, nodeId, resource, refs: capturedRefs })
+      metadata: () =>
+        readGitDirectFileMetadata({
+          request,
+          nodeId,
+          resource,
+          refs: capturedRefs,
+          ...(signal === undefined ? {} : { signal })
+        })
     };
   }
 
@@ -1566,16 +1575,18 @@ export function createWorkbenchPageController<
     length: number,
     worktreePath?: string,
     identity?: WorkspaceDirectFileIdentity,
-    repositoryPath?: string
+    repositoryPath?: string,
+    signal?: AbortSignal
   ) {
     if (nodeManifest.value?.directTransfer?.range !== true) return undefined;
-    const target = workspaceDirectFile(path, worktreePath, repositoryPath);
+    const target = workspaceDirectFile(path, worktreePath, repositoryPath, signal);
     if (target === undefined) return undefined;
     return readWorkspaceDirectFileRange({
       ...target,
       fileName: path.split('/').at(-1) ?? 'file',
       offset,
       length,
+      ...(signal === undefined ? {} : { signal }),
       ...(identity === undefined ? {} : { identity })
     }).catch(() => undefined);
   }
@@ -1587,16 +1598,18 @@ export function createWorkbenchPageController<
     refs: readonly string[],
     offset: number,
     length: number,
-    identity?: WorkspaceDirectFileIdentity
+    identity?: WorkspaceDirectFileIdentity,
+    signal?: AbortSignal
   ) {
     if (nodeManifest.value?.directTransfer?.range !== true) return undefined;
-    const target = gitDirectFile(commit, path, repositoryPath, refs);
+    const target = gitDirectFile(commit, path, repositoryPath, refs, signal);
     if (target === undefined) return undefined;
     return readWorkspaceDirectFileRange({
       ...target,
       fileName: path.split('/').at(-1) ?? 'file',
       offset,
       length,
+      ...(signal === undefined ? {} : { signal }),
       ...(identity === undefined ? {} : { identity })
     }).catch(() => undefined);
   }
@@ -1604,10 +1617,18 @@ export function createWorkbenchPageController<
   async function directWorkspaceFileObjectUrl(
     path: string,
     worktreePath?: string,
-    repositoryPath?: string
+    repositoryPath?: string,
+    signal?: AbortSignal
   ): Promise<string | undefined> {
-    const target = workspaceDirectFile(path, worktreePath, repositoryPath);
-    return target === undefined ? undefined : (await readWorkspaceDirectObjectUrl(target))?.url;
+    const target = workspaceDirectFile(path, worktreePath, repositoryPath, signal);
+    return target === undefined
+      ? undefined
+      : (
+          await readWorkspaceDirectObjectUrl({
+            ...target,
+            ...(signal === undefined ? {} : { signal })
+          })
+        )?.url;
   }
 
   async function directWorkspaceFileDownload(
@@ -1624,10 +1645,18 @@ export function createWorkbenchPageController<
     commit: string,
     path: string,
     repositoryPath: string,
-    refs: readonly string[]
+    refs: readonly string[],
+    signal?: AbortSignal
   ): Promise<string | undefined> {
-    const target = gitDirectFile(commit, path, repositoryPath, refs);
-    return target === undefined ? undefined : (await readWorkspaceDirectObjectUrl(target))?.url;
+    const target = gitDirectFile(commit, path, repositoryPath, refs, signal);
+    return target === undefined
+      ? undefined
+      : (
+          await readWorkspaceDirectObjectUrl({
+            ...target,
+            ...(signal === undefined ? {} : { signal })
+          })
+        )?.url;
   }
 
   async function directGitFileDownload(
@@ -2080,7 +2109,10 @@ export function createWorkbenchPageController<
     model: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
-    modelEffortSelection: composerModelEffortSelection,
+    setModel: composerConfigurationService.selectModel,
+    setEffort: composerConfigurationService.selectEffort,
+    setAccess: composerConfigurationService.selectAccess,
+    clearModelEffortSelection: composerConfigurationService.clearModelEffortSelection,
     codexFastEnabled,
     profileService: runnerProfileService,
     normalize: normalizeComposerConfiguration,
@@ -2192,7 +2224,7 @@ export function createWorkbenchPageController<
     draftOpen: draftSessionOpen,
     profilesLoading: runnerProfilesLoading,
     selectedRunId,
-    activeCache: activeWorkspaceViewCache,
+    isCacheActive: workspaceViewCacheService.isActive,
     manifest: nodeManifest,
     manifestLoading: nodeManifestLoading,
     hasNode: (nodeId) => nodes.value.some((node) => node.id === nodeId),
@@ -2229,9 +2261,8 @@ export function createWorkbenchPageController<
     deactivateCache: workspaceViewCacheService.deactivate,
     clearContent: () => {
       nextDetailRequest();
-      runs.value = [];
-      conversationTurns.value = [];
-      conversationNextCursor.value = null;
+      runService.replaceRuns([]);
+      restoreConversationWindow([], null);
       sessionContextUsage.value = undefined;
     },
     showWorkbench: () => {
@@ -2416,10 +2447,8 @@ export function createWorkbenchPageController<
     sessions,
     runs,
     turns: conversationTurns,
-    nextCursor: conversationNextCursor,
     loadingInitial: loadingInitialConversation,
     initialLoadFailed: initialConversationLoadFailed,
-    contextUsage: sessionContextUsage,
     queue: workspaceQueue,
     positioning: positioningInitialConversation,
     draftOpen: draftSessionOpen,
@@ -2438,13 +2467,21 @@ export function createWorkbenchPageController<
     applyComposerConfiguration,
     restoreCachedDetail: restoreCachedSessionDetail,
     cachedQueue: (nodeId, workspaceId, sessionId) =>
-      workspaceViewCache(nodeId, workspaceId).queues.get(sessionId) ?? {
+      workspaceViewCacheService.queueFor(nodeId, workspaceId, sessionId) ?? {
         version: 0,
         paused: false,
         items: []
       },
-    restoreProjection: restoreConversationProjection,
-    resetProjection: resetConversationProjection,
+    installCachedDetail: (detail) => {
+      runService.replaceRuns(detail.runs);
+      restoreConversationWindow(detail.turns, detail.nextCursor);
+      sessionContextUsage.value = detail.contextUsage ?? null;
+    },
+    clearActiveContent: () => {
+      runService.replaceRuns([]);
+      restoreConversationWindow([], null);
+      sessionContextUsage.value = undefined;
+    },
     openRun,
     scrollLatest: () => {
       const requestId = currentDetailRequest();
@@ -2542,9 +2579,11 @@ export function createWorkbenchPageController<
     actions: workbenchEntityActions,
     nodes,
     sessions,
-    runs,
-    turns: conversationTurns,
-    nextCursor: conversationNextCursor,
+    clearActiveContent: () => {
+      runService.replaceRuns([]);
+      restoreConversationWindow([], null);
+    },
+    clearRuns: () => runService.replaceRuns([]),
     workspaceTarget,
     selectedSessionId,
     selectedRunId,
@@ -2595,9 +2634,10 @@ export function createWorkbenchPageController<
     selectedRunId,
     selectedWorkspace,
     sessions,
-    runs,
-    conversationTurns,
-    conversationNextCursor,
+    clearActiveContent: () => {
+      runService.replaceRuns([]);
+      restoreConversationWindow([], null);
+    },
     loadingOlderConversation,
     loadingInitialConversation,
     initialLoadFailed: initialConversationLoadFailed,
@@ -2740,17 +2780,15 @@ export function createWorkbenchPageController<
     replaceSession,
     openSession: (id, options) => openSession(id, { ...options, throwOnFailure: true }),
     invalidateDetail: (nodeId, session) => {
-      workspaceViewCache(nodeId, session.workspaceId).sessionDetails.delete(session.id);
+      workspaceViewCacheService.invalidateDetail(nodeId, session.workspaceId, session.id);
     },
     clearHistory: (sessionId) => {
       clearConversationProjectionSession(
         sessionId,
         runs.value.map((run) => run.id)
       );
-      conversationTurns.value = [];
-      conversationNextCursor.value = null;
-      runs.value = [];
-      resetConversationProjection();
+      restoreConversationWindow([], null);
+      runService.replaceRuns([]);
       watchCoordinator.current?.stopSession();
     }
   });
@@ -2862,37 +2900,63 @@ export function createWorkbenchPageController<
   }
 
   function replaceSession(previousId: string, next: Session): void {
-    const current = sessions.value.find((session) => session.id === previousId);
-    const value = preserveManagedActiveSession(current, next);
-    const wasSelected = selectedSessionId.value === previousId;
-    mergeSessions([value]);
-    if (previousId !== value.id && sessions.value.some((session) => session.id === previousId))
-      sessions.value = sessions.value.filter((session) => session.id !== previousId);
-    if (wasSelected) {
-      if (submissionService.context.value === sessionSubmissionContext(previousId))
-        submissionService.context.value = sessionSubmissionContext(value.id);
-      selectedSessionId.value = value.id;
-    }
+    replaceSessionIdentity(
+      {
+        sessions,
+        selectedSessionId,
+        currentSelectionRevision: currentDetailRequest,
+        preserveManagedActive: preserveManagedActiveSession,
+        mergeSessions,
+        transferSubmission: submissionService.transferSession
+      },
+      previousId,
+      next
+    );
   }
 
   function stageComposerDraftCommand(command: RunnerCommand, input: string): void {
-    const goalAlreadyActive =
-      command.id === 'goal' &&
-      deferredDraftCommands.value.some((candidate) => candidate.command.id === 'goal');
-    stageDraftCommand(command, input);
-    if (command.id !== 'goal') return;
-    if (goalAlreadyActive) {
+    const result = runnerInteractionService.prepareDraftCommand(command, input);
+    if (result.goalAlreadyActive) {
       showMessage(translate('goal.alreadyActive'), 'info');
       return;
     }
-    if (command.runner === 'mar-agent') return;
-    newSessionAccess.value =
-      command.runner === 'codex'
-        ? 'full-access'
-        : command.runner === 'claude-code'
-          ? 'bypass'
-          : 'auto';
+    if (result.access !== undefined) composerConfigurationService.selectAccess(result.access);
   }
+
+  const runnerCommandService = createWorkbenchRunnerCommandService({
+    workspaceTarget,
+    selectedSessionId,
+    currentSelectionRevision: currentDetailRequest,
+    acceptRun: runService.acceptRun,
+    captureCacheTarget: workspaceViewCacheService.captureCommandTarget,
+    request,
+    sessionPathId: agentSessionPathId,
+    acceptSession: (nodeId, workspaceId, previousId, session, applyToSelected) => {
+      if (
+        workspaceTarget.value?.nodeId === nodeId &&
+        workspaceTarget.value.workspaceId === workspaceId &&
+        (selectedSessionId.value !== previousId || applyToSelected)
+      )
+        replaceSession(previousId, session);
+    },
+    configure: applyComposerConfiguration,
+    resetHistory: async (nodeId, session) => {
+      workspaceViewCacheService.invalidateDetail(nodeId, session.workspaceId, session.id);
+      clearConversationProjectionSession(
+        session.id,
+        runs.value.map((run) => run.id)
+      );
+      restoreConversationWindow([], null);
+      runService.replaceRuns([]);
+      watchCoordinator.current?.stopSession();
+      await openSession(session.id, {
+        preserveMobileWorkspaceSurface: true,
+        deferInitialScroll: true
+      });
+    },
+    openRun,
+    notifyGoalAlreadyActive: () => showMessage(translate('goal.alreadyActive'), 'info')
+  });
 
   const sessionMessageService = createWorkbenchSessionMessageService({
     workspaceTarget,
@@ -2900,7 +2964,6 @@ export function createWorkbenchPageController<
     selectedWorkspace,
     selectedSession,
     sessions,
-    runs,
     input: sessionInput,
     skillTokens: composerSkillTokens,
     references: composerFileReferences,
@@ -2926,7 +2989,7 @@ export function createWorkbenchPageController<
     consumeAttachments: composerAttachmentService.consume,
     retainAttachments: composerAttachmentService.retainForSubmission,
     clearSkillTokens: composerSkillTokenService.clear,
-    newestRun: newestRunSnapshot,
+    acceptRun: runService.acceptRun,
     migrateSessionCache: (nodeId, workspaceId, previousId, nextId, session) =>
       workspaceViewCacheService.migrateSession(nodeId, workspaceId, previousId, nextId, session),
     openRun,
@@ -2984,72 +3047,13 @@ export function createWorkbenchPageController<
     );
   }
 
-  async function executeRunnerCommandById(
+  function executeRunnerCommandById(
     session: Session,
     commandId: string,
     input: string,
     destructive = false
-  ): Promise<{
-    session?: Session;
-    run?: AgentRun;
-    goalAccessChanged?: boolean;
-    goalAlreadyActive?: boolean;
-    goalExit?: GoalExitSummary;
-  }> {
-    const nodeId = workspaceNodeId.value;
-    const result = await request<{
-      session?: Session;
-      run?: AgentRun;
-      goalAccessChanged?: boolean;
-      goalAlreadyActive?: boolean;
-      goalExit?: GoalExitSummary;
-    }>(`/api/agent-sessions/${agentSessionPathId(session.id)}/commands`, {
-      method: 'POST',
-      body: JSON.stringify({
-        nodeId: workspaceNodeId.value,
-        workspaceId: session.workspaceId,
-        commandId,
-        input,
-        ...(session.runner === 'mar-agent' && session.model ? { model: session.model } : {})
-      })
-    });
-    const stillSelected =
-      nodeId !== undefined &&
-      workspaceNodeId.value === nodeId &&
-      selectedSessionId.value === session.id;
-    if (result.session !== undefined && workspaceNodeId.value === nodeId) {
-      replaceSession(session.id, result.session);
-      if (stillSelected) applyComposerConfiguration(result.session);
-    }
-    if (destructive && stillSelected) {
-      workspaceViewCache(nodeId, session.workspaceId).sessionDetails.delete(session.id);
-      clearConversationProjectionSession(
-        session.id,
-        runs.value.map((run) => run.id)
-      );
-      conversationTurns.value = [];
-      conversationNextCursor.value = null;
-      runs.value = [];
-      resetConversationProjection();
-      watchCoordinator.current?.stopSession();
-      await openSession(session.id, {
-        preserveMobileWorkspaceSurface: true,
-        deferInitialScroll: true
-      });
-    }
-    if (commandId === 'goal' && result.goalAlreadyActive === true)
-      showMessage(translate('goal.alreadyActive'), 'info');
-    if (result.run !== undefined) {
-      if (stillSelected) {
-        const current = runs.value.find((candidate) => candidate.id === result.run?.id);
-        runs.value = [
-          newestRunSnapshot(current, result.run),
-          ...runs.value.filter((candidate) => candidate.id !== result.run?.id)
-        ];
-        openRun(result.run.id);
-      } else if (nodeId !== undefined) cacheRunSnapshotFor(nodeId, session.workspaceId, result.run);
-    }
-    return result;
+  ) {
+    return runnerCommandService.execute(session, commandId, input, destructive);
   }
 
   const contextCommands = createWorkbenchContextCommandService({
@@ -3125,10 +3129,10 @@ export function createWorkbenchPageController<
     selectedSessionId,
     selectedRunId,
     runs,
-    turns: conversationTurns,
+    syncTurnStatus: conversationProjectionService.syncRunStatus,
     channelToken,
     refreshChannelToken: refreshClaudeChannelToken,
-    cachedDetail: cachedSessionDetail
+    syncCachedRunStatus
   });
 
   function openRun(runId: string): void {
@@ -3185,23 +3189,7 @@ export function createWorkbenchPageController<
       refreshSelectedSessionSnapshot();
   }
 
-  const conversationPagingService = createWorkbenchConversationPagingService({
-    workspaceTarget,
-    selectedSessionId,
-    nextCursor: conversationNextCursor,
-    loadingOlder: loadingOlderConversation,
-    turns: conversationTurns,
-    scrollElement: conversationScroll,
-    pageSize: CONVERSATION_SEGMENT_PAGE_SIZE,
-    recentSegmentWindowSize: CONVERSATION_RECENT_SEGMENT_LIMIT,
-    replaceRecent: replaceRecentConversationTurns,
-    request,
-    sessionPathId: agentSessionPathId,
-    notice,
-    errorMessage: message
-  });
   const { loadOlderConversationTurns, olderHistoryError } = conversationPagingService;
-  refreshRecentConversationWindow = conversationPagingService.refreshRecentConversationTurns;
 
   const { decideApproval } = createWorkbenchApprovalService({
     workspaceTarget,
@@ -3216,7 +3204,6 @@ export function createWorkbenchPageController<
     selectedSessionId,
     selectedRunId,
     activeRun: activeComposerRun,
-    runs,
     notice,
     runService,
     request,
@@ -3378,7 +3365,7 @@ export function createWorkbenchPageController<
     syncWorkbenchRoute,
     normalizeNewSessionOptions,
     clearRunnerCommand,
-    clearComposerModelEffort: () => (composerModelEffortSelection.value = undefined),
+    clearComposerModelEffort: composerConfigurationService.clearModelEffortSelection,
     closeFileReferences: () => {
       fileReferenceService.cancelSearch();
       fileReferenceService.close();
@@ -3591,6 +3578,7 @@ export function createWorkbenchPageController<
     onComposerKeydown,
     onComposerScroll,
     stopFollowingConversation: conversationScrollService.stopFollowing,
+    captureConversationRenderAnchor: conversationScrollService.captureRenderAnchor,
     onNewSessionPaste,
     onlineNodeCount,
     openAgentWorkspaceFile,

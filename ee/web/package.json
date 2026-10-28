@@ -18,8 +18,7 @@
     "vue-tsc": "^3.3.9"
   },
   "exports": {
-    ".": "./src/bootstrap.ts",
-    "./locale-config": "./src/i18n/locale-config.ts"
+    ".": "./src/bootstrap.ts"
   },
   "files": [
     "src"

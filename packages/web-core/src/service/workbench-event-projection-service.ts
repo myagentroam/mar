@@ -9,14 +9,10 @@ import type {
   ConversationTurnPage,
   NodeSummary,
   Session,
-  WorkspaceQueue,
-  WorkspaceViewCache
+  WorkspaceQueue
 } from '../model/workbench.js';
 import type { WorkbenchLiveEvent } from '../service/workbench-live-service.js';
-import {
-  reconcileWorkspaceQueueSnapshot,
-  type WorkspaceQueueSnapshotSource
-} from './workspace-queue-projection-service.js';
+import type { WorkspaceQueueSnapshotSource } from './workspace-queue-projection-service.js';
 import {
   isConversationSegment,
   parseConversationSegmentPage,
@@ -26,11 +22,16 @@ import {
 export function createWorkbenchEventProjectionService(options: {
   readonly nodes: Ref<NodeSummary[]>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
-  readonly conversationNextCursor: Ref<string | null>;
-  readonly workspaceCache: (nodeId: string, workspaceId: string) => WorkspaceViewCache | undefined;
+  readonly conversationNextCursor: Readonly<Ref<string | null>>;
+  readonly cacheQueue: (
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    queue: WorkspaceQueue,
+    source: WorkspaceQueueSnapshotSource
+  ) => void;
   readonly mergeQueue: (queue: WorkspaceQueue, source?: WorkspaceQueueSnapshotSource) => void;
   readonly mergeSessions: (sessions: readonly Session[]) => void;
   readonly settleSessionRuns: (sessionId: string) => boolean;
@@ -38,7 +39,7 @@ export function createWorkbenchEventProjectionService(options: {
   readonly updateContext: (sessionId: string, context: unknown) => void;
   readonly syncTurnStatus: (runId: string, status: string, sessionId?: string) => void;
   readonly cacheRun: (run: AgentRun) => void;
-  readonly newestRun: (current: AgentRun | undefined, next: AgentRun) => AgentRun;
+  readonly acceptRun: (run: AgentRun) => AgentRun;
   readonly openRun: (runId: string) => void;
   readonly markLiveTurn: (turn: ConversationTurn, sequence?: number) => void;
   readonly cacheTurn: (turn: ConversationTurn) => void;
@@ -93,14 +94,14 @@ export function createWorkbenchEventProjectionService(options: {
       ) {
         const session = options.sessions.value.find((candidate) => candidate.id === sessionId);
         if (session !== undefined) {
-          const cache = options.workspaceCache(event.nodeId, session.workspaceId);
-          if (cache !== undefined && sessionHasNativeIdentity(session)) {
-            const next = queue as WorkspaceQueue;
-            cache.queues.set(
+          if (sessionHasNativeIdentity(session))
+            options.cacheQueue(
+              event.nodeId,
+              session.workspaceId,
               sessionId,
-              reconcileWorkspaceQueueSnapshot(cache.queues.get(sessionId), next, source)
+              queue as WorkspaceQueue,
+              source
             );
-          }
         }
         if (sessionId === options.selectedSessionId.value)
           options.mergeQueue(queue as WorkspaceQueue, source);
@@ -135,14 +136,7 @@ export function createWorkbenchEventProjectionService(options: {
         run.sessionId === options.selectedSessionId.value &&
         event.nodeId === options.workspaceTarget.value?.nodeId
       ) {
-        const latest = options.newestRun(
-          options.runs.value.find((candidate) => candidate.id === run.id),
-          run
-        );
-        options.runs.value = [
-          latest,
-          ...options.runs.value.filter((candidate) => candidate.id !== run.id)
-        ];
+        const latest = options.acceptRun(run);
         if (['STARTING', 'RUNNING', 'CANCELLING'].includes(latest.status)) options.openRun(run.id);
       }
       return;

@@ -1,4 +1,4 @@
-import type { Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import { conversationProcessGroupSchema } from '@myagentroam/protocol';
 import {
   CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT,
@@ -13,14 +13,34 @@ import {
   mergeConversationPayload,
   restoreLocalSteers
 } from '../util/conversation-history.js';
+
 import type { ConversationTurn, ConversationTurnPage } from '../model/workbench.js';
 
 import {
   latestConversationProjectionIndex,
-  mergeConversationProjectionUnits
+  mergeConversationProjectionUnits,
+  syncConversationRunStatus
 } from '../util/conversation-segments.js';
 
 const deltaEncoder = new TextEncoder();
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function createConversationProjectionState(options: {
+  readonly onRecentWindowOverflow: () => void;
+  readonly limitHistory: (turns: readonly ConversationTurn[]) => ConversationTurn[];
+}) {
+  const turns = ref<ConversationTurn[]>([]);
+  const nextCursor = ref<string | null>(null);
+  const projection = createConversationProjectionService({ ...options, turns, nextCursor });
+  return {
+    turns: turns as Readonly<Ref<readonly ConversationTurn[]>>,
+    nextCursor: nextCursor as Readonly<Ref<string | null>>,
+    projection
+  };
+}
 
 export function createConversationProjectionService(options: {
   readonly turns: Ref<ConversationTurn[]>;
@@ -109,6 +129,80 @@ export function createConversationProjectionService(options: {
 
   function restore(_turns: readonly ConversationTurn[]): void {
     resetHistory();
+  }
+
+  function restoreWindow(turns: readonly ConversationTurn[], nextCursor: string | null): void {
+    resetHistory();
+    options.turns.value = [...turns];
+    options.nextCursor.value = nextCursor;
+  }
+
+  function mergeOlderPage(page: Pick<ConversationTurnPage, 'turns' | 'nextCursor'>): void {
+    const known = new Set(options.turns.value.map((turn) => turn.id));
+    options.turns.value = options.limitHistory([
+      ...page.turns.filter((turn) => !known.has(turn.id)),
+      ...options.turns.value
+    ]);
+    options.nextCursor.value = page.nextCursor;
+  }
+
+  function recoverWindow(page: ConversationTurnPage): void {
+    options.turns.value = options.limitHistory(
+      mergeConversationProjectionUnits(options.turns.value, page.turns)
+    );
+    options.nextCursor.value = page.nextCursor;
+  }
+
+  function clearCursor(): void {
+    options.nextCursor.value = null;
+  }
+
+  function syncRunStatus(runId: string, status: ConversationTurn['status']): void {
+    options.turns.value = syncConversationRunStatus(options.turns.value, runId, status);
+  }
+
+  function updateOptimisticUserMessage(clientMessageId: string): boolean {
+    let changed = false;
+    const next = options.turns.value.map((turn) => {
+      if (!isOptimisticUserTurn(turn, clientMessageId)) return turn;
+      let turnChanged = false;
+      const items = turn.items.map((item) => {
+        if (
+          item.id !== clientMessageId ||
+          item.kind !== 'user_message' ||
+          !record(item.payload) ||
+          item.payload.clientMessageId !== clientMessageId
+        )
+          return item;
+        turnChanged = true;
+        changed = true;
+        return { ...item, payload: { ...item.payload, delivery: 'ACCEPTED' } };
+      });
+      return turnChanged ? { ...turn, items } : turn;
+    });
+    if (changed) options.turns.value = next;
+    return changed;
+  }
+
+  function removeOptimisticUserMessage(clientMessageId: string): boolean {
+    const next = options.turns.value.filter((turn) => !isOptimisticUserTurn(turn, clientMessageId));
+    if (next.length === options.turns.value.length) return false;
+    options.turns.value = next;
+    return true;
+  }
+
+  function isOptimisticUserTurn(turn: ConversationTurn, clientMessageId: string): boolean {
+    return (
+      turn.id === clientMessageId &&
+      turn.runId === null &&
+      turn.items.some(
+        (item) =>
+          item.id === clientMessageId &&
+          item.kind === 'user_message' &&
+          record(item.payload) &&
+          item.payload.clientMessageId === clientMessageId
+      )
+    );
   }
 
   function clearSession(sessionId: string, runIds: readonly string[]): void {
@@ -543,6 +637,13 @@ export function createConversationProjectionService(options: {
   return {
     resetHistory,
     restore,
+    restoreWindow,
+    mergeOlderPage,
+    recoverWindow,
+    clearCursor,
+    syncRunStatus,
+    updateOptimisticUserMessage,
+    removeOptimisticUserMessage,
     clearSession,
     markLive,
     mergeItem,

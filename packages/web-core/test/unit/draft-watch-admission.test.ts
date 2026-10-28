@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, ref } from 'vue';
-import type { AgentRun, Session, WorkspaceTarget } from '../../src/model/workbench.js';
+import type { Session, WorkspaceTarget } from '../../src/model/workbench.js';
+import { createRunService } from '../../src/service/run-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import { createWorkbenchSessionMessageService } from '../../src/service/workbench-session-message-service.js';
 import { createWorkbenchSubmissionService } from '../../src/service/workbench-submission-service.js';
@@ -160,7 +161,6 @@ function fixture() {
       selectedWorkspace: computed(() => workspace),
       selectedSession: computed(() => sessions.value.find((s) => s.id === selectedSessionId.value)),
       sessions,
-      runs: ref<AgentRun[]>([]),
       input,
       skillTokens: ref([]),
       attachments: ref([]),
@@ -189,7 +189,7 @@ function fixture() {
       consumeAttachments: vi.fn(),
       retainAttachments: () => () => undefined,
       clearSkillTokens: vi.fn(),
-      newestRun: (_current, next) => next,
+      acceptRun: createRunService(ref<string | undefined>(draft.id)).acceptRun,
       migrateSessionCache,
       openRun: vi.fn(),
       cacheRun,

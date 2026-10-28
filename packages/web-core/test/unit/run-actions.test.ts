@@ -110,6 +110,7 @@ describe('Workbench Run Actions', () => {
       currentSessionQueue: queue as never,
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: selectedSessionId as never,
+      currentSelectionRevision: () => 0,
       draggingQueueItemId: { value: undefined } as never,
       editingContent: { value: '' } as never,
       request: async (path) => {
@@ -161,6 +162,7 @@ describe('Workbench Run Actions', () => {
       currentSessionQueue: queue as never,
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: selectedSessionId as never,
+      currentSelectionRevision: () => 0,
       draggingQueueItemId: { value: undefined } as never,
       editingContent: { value: '' } as never,
       request: async (path) => {
@@ -200,6 +202,7 @@ describe('Workbench Run Actions', () => {
       currentSessionQueue: queue as never,
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' } as never,
+      currentSelectionRevision: () => 0,
       draggingQueueItemId: { value: 'queue-1' } as never,
       editingContent: { value: 'Edited' } as never,
       request: async (path, init) => {
@@ -246,6 +249,7 @@ describe('Workbench Run Actions', () => {
         currentSessionQueue: queue as never,
         workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
         selectedSessionId: { value: 'session-1' } as never,
+        currentSelectionRevision: () => 0,
         draggingQueueItemId: { value: 'first' } as never,
         editingContent: { value: '' } as never,
         request,
@@ -291,6 +295,7 @@ describe('Workbench Run Actions', () => {
       currentSessionQueue: queue as never,
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' } as never,
+      currentSelectionRevision: () => 0,
       draggingQueueItemId: { value: undefined } as never,
       editingContent: { value: 'Unused body' } as never,
       request: async (path, init) => {
@@ -331,6 +336,69 @@ describe('Workbench Run Actions', () => {
     expect(finishSubmission).toHaveBeenCalledOnce();
   });
 
+  it.each(['session', 'workspace', 'session-return'])(
+    'does not execute after the %s changes while the edit is saving',
+    async (change) => {
+      const item = { queueItemId: 'queue-1', sessionId: 'session-1', workspaceId: 'workspace-1' };
+      const queue = { value: { version: 1, paused: false, items: [item] } };
+      const node = { value: 'node-1' };
+      const workspace = { value: 'workspace-1' };
+      const session = { value: 'session-1' };
+      let revision = 0;
+      const requests: Array<{ path: string; body: unknown }> = [];
+      let completeSave!: () => void;
+      const savePending = new Promise<void>((resolve) => {
+        completeSave = resolve;
+      });
+      const finishEditing = vi.fn();
+      const finishSubmission = vi.fn(() => true);
+      const service = createWorkspaceQueueService({
+        queue: queue as never,
+        currentSessionQueue: queue as never,
+        workspaceTarget: workspaceTargetRef(node, workspace),
+        selectedSessionId: session as never,
+        currentSelectionRevision: () => revision,
+        draggingQueueItemId: { value: undefined } as never,
+        editingContent: { value: 'Current edit body' } as never,
+        request: async (path, init) => {
+          requests.push({ path, body: JSON.parse(String(init?.body)) });
+          if (init?.method === 'PATCH') await savePending;
+          return {} as never;
+        },
+        finishEditing,
+        notice: vi.fn(),
+        errorMessage: String,
+        beginSubmission: () => finishSubmission,
+        missingQueueItemError: () => false
+      });
+
+      const operation = service.execute(item as never, 'Current edit body');
+      if (change === 'workspace') workspace.value = 'workspace-2';
+      else session.value = 'session-2';
+      revision++;
+      if (change === 'session-return') {
+        session.value = 'session-1';
+        revision++;
+      }
+      completeSave();
+      await operation;
+
+      expect(requests).toEqual([
+        {
+          path: '/api/queue-items/queue-1',
+          body: {
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'session-1',
+            content: 'Current edit body'
+          }
+        }
+      ]);
+      expect(finishEditing).not.toHaveBeenCalled();
+      expect(finishSubmission).toHaveBeenCalledOnce();
+    }
+  );
+
   it('Does not execute immediately when saving the edited content fails', async () => {
     const item = {
       queueItemId: 'queue-1',
@@ -353,6 +421,7 @@ describe('Workbench Run Actions', () => {
       currentSessionQueue: queue as never,
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' } as never,
+      currentSelectionRevision: () => 0,
       draggingQueueItemId: { value: undefined } as never,
       editingContent: { value: 'Current edit body' } as never,
       request: async (path) => {

@@ -10,6 +10,40 @@ function scrollElement(values: {
 }
 
 describe('Web session scrolling status', () => {
+  it('owns progressive mounting anchor compensation without overriding an intervening user scroll', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 300, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.following.value = false;
+    const restore = state.captureRenderAnchor();
+    Object.defineProperty(element, 'scrollHeight', { value: 1200, configurable: true });
+    restore();
+    expect(element.scrollTop).toBe(500);
+    const afterUserScroll = state.captureRenderAnchor();
+    element.scrollTop = 400;
+    state.handleScroll(vi.fn());
+    Object.defineProperty(element, 'scrollHeight', { value: 1400, configurable: true });
+    afterUserScroll();
+    expect(element.scrollTop).toBe(400);
+  });
+
+  it('keeps a following reader at the bottom but honors explicit upward intent during mounting', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    const restore = state.captureRenderAnchor();
+    Object.defineProperty(element, 'scrollHeight', { value: 1200, configurable: true });
+    restore();
+    expect(element.scrollTop).toBe(1200);
+    const cancelled = state.captureRenderAnchor();
+    state.stopFollowing();
+    element.scrollTop = 700;
+    Object.defineProperty(element, 'scrollHeight', { value: 1400, configurable: true });
+    cancelled();
+    expect(element.scrollTop).toBe(700);
+    expect(state.following.value).toBe(false);
+  });
+
   it.each([true, false])('Preserves follow intent during content expansion: %s', (following) => {
     const element = scrollElement({
       scrollHeight: 1000,

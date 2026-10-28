@@ -1,18 +1,23 @@
 import { parseComposerTags, composerVisibleText } from '@myagentroam/protocol';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
+import { ref, watch } from 'vue';
+import { createRunService } from '../../src/service/run-service.js';
 import type { ComposerAttachment, Session, Workspace } from '../../src/model/workbench.js';
 import {
   createWorkbenchSessionMessageService,
   resolveDeliveryIntent,
   resolveSessionWorkspaceId
 } from '../../src/service/workbench-session-message-service.js';
+import { replaceSessionIdentity } from '../../src/service/workbench-session-identity.js';
 import {
   createWorkbenchSubmissionService,
   sessionSubmissionContext
 } from '../../src/service/workbench-submission-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { createWorkspaceSessionService } from '../../src/service/workspace-session-service.js';
+import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
@@ -28,6 +33,195 @@ const workspace: Workspace = {
   path: '/workspace',
   kind: 'DIRECTORY'
 };
+
+describe('Session identity handoff', () => {
+  it('does not restore an old selection when a synchronous list observer selects another session', () => {
+    const draft: Session = { ...session, id: 'draft:one' };
+    const saved: Session = { ...session, id: 'saved' };
+    const sessions = ref<Session[]>([draft]);
+    const selectedSessionId = ref<string | undefined>(draft.id);
+    const submission = createWorkbenchSubmissionService();
+    const finish = submission.begin(sessionSubmissionContext(draft.id))!;
+    const stop = watch(
+      sessions,
+      () => {
+        selectedSessionId.value = 'other';
+      },
+      { flush: 'sync' }
+    );
+    try {
+      replaceSessionIdentity(
+        {
+          sessions,
+          selectedSessionId,
+          currentSelectionRevision: () => 0,
+          preserveManagedActive: (_current, next) => next,
+          mergeSessions: (values) => {
+            sessions.value = [...sessions.value, ...values];
+          },
+          transferSubmission: submission.transferSession
+        },
+        draft.id,
+        saved
+      );
+      expect(selectedSessionId.value).toBe('other');
+      expect(submission.context.value).toBe(sessionSubmissionContext(draft.id));
+    } finally {
+      stop();
+      finish();
+    }
+  });
+
+  it('does not promote a stale identity after a synchronous A to B to A selection', () => {
+    const draft: Session = { ...session, id: 'draft:one' };
+    const saved: Session = { ...session, id: 'saved' };
+    const sessions = ref<Session[]>([draft]);
+    const selectedSessionId = ref<string | undefined>(draft.id);
+    const submission = createWorkbenchSubmissionService();
+    const finish = submission.begin(sessionSubmissionContext(draft.id))!;
+    let revision = 0;
+    let switched = false;
+    const stop = watch(
+      sessions,
+      () => {
+        if (switched) return;
+        switched = true;
+        selectedSessionId.value = 'other';
+        revision += 1;
+        selectedSessionId.value = draft.id;
+        revision += 1;
+      },
+      { flush: 'sync' }
+    );
+    try {
+      replaceSessionIdentity(
+        {
+          sessions,
+          selectedSessionId,
+          currentSelectionRevision: () => revision,
+          preserveManagedActive: (_current, next) => next,
+          mergeSessions: (values) => {
+            sessions.value = [...sessions.value, ...values];
+          },
+          transferSubmission: submission.transferSession
+        },
+        draft.id,
+        saved
+      );
+      expect(selectedSessionId.value).toBe(draft.id);
+      expect(submission.context.value).toBe(sessionSubmissionContext(draft.id));
+      expect(sessions.value.some((candidate) => candidate.id === draft.id)).toBe(true);
+    } finally {
+      stop();
+      finish();
+    }
+  });
+
+  it('does not remove a new same-ID session installed during identity handoff', () => {
+    const draft: Session = { ...session, id: 'draft:one' };
+    const reopened: Session = { ...draft, runnerTitle: 'reopened' };
+    const saved: Session = { ...session, id: 'saved' };
+    const sessions = ref<Session[]>([draft]);
+    const selectedSessionId = ref<string | undefined>(draft.id);
+    let revision = 0;
+    replaceSessionIdentity(
+      {
+        sessions,
+        selectedSessionId,
+        currentSelectionRevision: () => revision,
+        preserveManagedActive: (_current, next) => next,
+        mergeSessions: (values) => {
+          revision += 1;
+          sessions.value = [reopened, ...values];
+        },
+        transferSubmission: vi.fn()
+      },
+      draft.id,
+      saved
+    );
+    expect(sessions.value).toContainEqual(reopened);
+  });
+
+  it('transfers submission when session discovery synchronously migrates the same native identity', () => {
+    const draft = { ...session, id: 'draft:one', externalSessionId: 'native-one' };
+    const saved = { ...session, id: 'saved', externalSessionId: 'native-one' };
+    const sessions = ref<Session[]>([draft]);
+    const selectedSessionId = ref<string | undefined>(draft.id);
+    const discovery = createWorkspaceSessionService({
+      sessions,
+      runs: ref([]),
+      selectedSessionId,
+      workspaceTarget: workspaceTargetRef(ref('node-1')),
+      paging: createWorkspaceSessionPagingService(30),
+      pageSize: 30,
+      tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
+      request: vi.fn(),
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    const submission = createWorkbenchSubmissionService();
+    const finish = submission.begin(sessionSubmissionContext(draft.id))!;
+    try {
+      replaceSessionIdentity(
+        {
+          sessions,
+          selectedSessionId,
+          currentSelectionRevision: () => 0,
+          preserveManagedActive: discovery.preserveManagedActive,
+          mergeSessions: discovery.merge,
+          transferSubmission: submission.transferSession
+        },
+        draft.id,
+        saved
+      );
+      expect(selectedSessionId.value).toBe(saved.id);
+      expect(submission.context.value).toBe(sessionSubmissionContext(saved.id));
+    } finally {
+      finish();
+    }
+  });
+  it.each([true, false])(
+    'preserves the submission owner when the replaced session is selected: %s',
+    (selected) => {
+      const draft: Session = { ...session, id: 'draft:one' };
+      const saved: Session = { ...session, id: 'saved' };
+      const sessions = ref<Session[]>([draft]);
+      const selectedSessionId = ref<string | undefined>(selected ? draft.id : 'other');
+      const discovery = createWorkspaceSessionService({
+        sessions,
+        runs: ref([]),
+        workspaceTarget: workspaceTargetRef(ref('node-1')),
+        selectedSessionId,
+        paging: createWorkspaceSessionPagingService(10),
+        pageSize: 10,
+        tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
+        request: vi.fn() as never,
+        notice: vi.fn(),
+        errorMessage: String
+      });
+      const submission = createWorkbenchSubmissionService();
+      const finish = submission.begin(sessionSubmissionContext(draft.id))!;
+      replaceSessionIdentity(
+        {
+          sessions,
+          selectedSessionId,
+          currentSelectionRevision: () => 0,
+          preserveManagedActive: discovery.preserveManagedActive,
+          mergeSessions: discovery.merge,
+          transferSubmission: submission.transferSession
+        },
+        draft.id,
+        saved
+      );
+      expect(sessions.value.map((value) => value.id)).toEqual(['saved']);
+      expect(selectedSessionId.value).toBe(selected ? 'saved' : 'other');
+      expect(submission.context.value).toBe(
+        sessionSubmissionContext(selected ? 'saved' : draft.id)
+      );
+      expect(finish()).toBe(true);
+    }
+  );
+});
 
 describe('Composer command dismissal', () => {
   it.each([
@@ -169,7 +363,7 @@ function pendingRequestHarness(
   const skillTokens = {
     value: [] as import('../../src/model/workbench.js').ComposerSkillToken[]
   };
-  const selectedSessionId = { value: selectedSession?.id };
+  const selectedSessionId = ref(selectedSession?.id);
   const selectedNodeId = { value: 'node-1' };
   const selectedWorkspaceId = { value: workspace.id };
   const sessions = { value: selectedSession === undefined ? [] : [selectedSession] };
@@ -180,7 +374,8 @@ function pendingRequestHarness(
     sessions.value = sessions.value.filter((candidate) => candidate.id !== previousId).concat(next);
     if (wasSelected) selectedSessionId.value = next.id;
   });
-  const runs = { value: [] as import('../../src/model/workbench.js').AgentRun[] };
+  const runState = createRunService(selectedSessionId);
+  const runs = runState.runs;
   const submission = createWorkbenchSubmissionService();
   const notice = vi.fn();
   const service = createWorkbenchSessionMessageService({
@@ -194,7 +389,6 @@ function pendingRequestHarness(
     },
     selectedRunId: { value: undefined },
     sessions,
-    runs,
     input: inputValue,
     skillTokens,
     attachments,
@@ -238,7 +432,7 @@ function pendingRequestHarness(
     restoreAttachments: (values: never[]) => values,
     markSessionActive: vi.fn(),
     forgetSessionActivity: vi.fn(),
-    newestRun: (_current: never, next: never) => next,
+    acceptRun: runState.acceptRun,
     migrateSessionCache: vi.fn(),
     openRun,
     acceptConversationTurn,
@@ -254,6 +448,7 @@ function pendingRequestHarness(
   return {
     service,
     runs,
+    replaceRuns: runState.replaceRuns,
     submission,
     notice,
     resolveRequest,
@@ -310,7 +505,7 @@ describe('Workbench Message Submission Status', () => {
     async (status) => {
       const fixture = pendingRequestHarness();
       const active = { ...acceptedResult.run, id: 'newer-run', status: 'RUNNING' };
-      fixture.runs.value = [active as never];
+      fixture.replaceRuns([active as never]);
       const pending = fixture.service.send();
       fixture.resolveRequest({
         ...acceptedResult,

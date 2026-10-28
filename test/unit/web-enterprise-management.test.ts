@@ -16,7 +16,7 @@ import { createSkillCenterService } from '../../ee/web/src/service/skill-center-
 import {
   managementUrlValues,
   replaceManagementUrlValues
-} from '../../ee/web/src/service/management-url-service.js';
+} from '@myagentroam/web-core/management-url';
 import { parseWorkbenchRoute } from '../../ee/web/src/util/workbench-route.js';
 import { i18n } from '../../ee/web/src/service/locale-preference-service.js';
 import { createEnterpriseManagementComposition } from '../../ee/web/src/composition/enterprise-management.js';

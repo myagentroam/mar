@@ -22,7 +22,7 @@ interface SessionPaging {
 
 export function createWorkspaceSessionService(options: {
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
+  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
   readonly paging: SessionPaging;

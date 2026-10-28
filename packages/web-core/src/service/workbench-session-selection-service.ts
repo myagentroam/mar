@@ -11,7 +11,6 @@ import type {
   Session,
   WorkspaceQueue
 } from '../model/workbench.js';
-import type { SessionContextUsage } from './conversation-state-service.js';
 import { CONVERSATION_INITIAL_SEGMENT_LIMIT } from '../util/conversation-history.js';
 import {
   parseConversationSegmentPage,
@@ -44,12 +43,10 @@ export interface WorkbenchSessionSelectionOptions {
   readonly selectedSessionId: Ref<string | undefined>;
   readonly selectedRunId: Ref<string | undefined>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
-  readonly turns: Ref<ConversationTurn[]>;
-  readonly nextCursor: Ref<string | null>;
+  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
+  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
   readonly loadingInitial: Ref<boolean>;
   readonly initialLoadFailed: Ref<boolean>;
-  readonly contextUsage: Ref<SessionContextUsage | null | undefined>;
   readonly queue: Ref<WorkspaceQueue>;
   readonly positioning: Ref<boolean>;
   readonly draftOpen: Ref<boolean>;
@@ -72,10 +69,10 @@ export interface WorkbenchSessionSelectionOptions {
     session: Session | undefined,
     authoritative?: boolean
   ) => void;
-  readonly restoreCachedDetail: (sessionId: string) => CachedSessionDetail | undefined;
+  readonly restoreCachedDetail: (sessionId: string) => Readonly<CachedSessionDetail> | undefined;
   readonly cachedQueue: (nodeId: string, workspaceId: string, sessionId: string) => WorkspaceQueue;
-  readonly restoreProjection: (turns: readonly ConversationTurn[]) => void;
-  readonly resetProjection: () => void;
+  readonly installCachedDetail: (detail: Readonly<CachedSessionDetail>) => void;
+  readonly clearActiveContent: () => void;
   readonly openRun: (runId: string) => void;
   readonly scrollLatest: () => Promise<void>;
   readonly beginInitialRender: () => Promise<void>;
@@ -141,8 +138,11 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       options.selectedCommand.value = undefined;
       options.commandPickerOpen.value = false;
     }
-    options.selectedSessionId.value = sessionId;
+    let activeRunId: string | undefined;
     if (switching) {
+      // Detach the old identity before replacing its projection. Synchronous observers must not
+      // associate the previous window with the new Session during this handoff.
+      options.selectedSessionId.value = undefined;
       options.queue.value =
         options.workspaceTarget.value?.workspaceId === undefined
           ? EMPTY_QUEUE
@@ -152,17 +152,15 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       options.selectedRunId.value = undefined;
       if (cached !== undefined) {
         restored = true;
-        options.restoreProjection(options.turns.value);
+        options.installCachedDetail(cached);
         const active = activeRun(options.runs.value, sessionId);
-        if (active !== undefined) options.openRun(active.id);
+        activeRunId = active?.id;
       } else {
-        options.turns.value = [];
-        options.nextCursor.value = null;
-        options.resetProjection();
-        options.contextUsage.value = undefined;
-        options.runs.value = [];
+        options.clearActiveContent();
       }
     }
+    options.selectedSessionId.value = sessionId;
+    if (activeRunId !== undefined) options.openRun(activeRunId);
     return { switching, restored };
   }
 

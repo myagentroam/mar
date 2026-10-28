@@ -25,7 +25,7 @@ import type {
 } from './NodeDetailsDialogs.vue';
 import ResourceManagementFilters from './ResourceManagementFilters.vue';
 import { translate } from '../../service/locale-preference-service';
-import type { RunnerUsage, RunnerUsageName } from '../../service/runner-usage-service';
+import type { RunnerUsage, RunnerUsageName } from '../../model/runner-usage';
 import { errorMessage } from '../../util/workbench-presentation';
 import {
   createManagementPageService,

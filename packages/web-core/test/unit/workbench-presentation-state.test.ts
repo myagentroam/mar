@@ -225,7 +225,7 @@ describe('Workbench mutually exclusive controls', () => {
     'locks controls during %s even before session activity updates',
     (status) => {
       const f = controlsFixture();
-      f.runService.runs.value = [
+      f.runService.replaceRuns([
         {
           id: 'run-1',
           sessionId: 'session-1',
@@ -233,7 +233,7 @@ describe('Workbench mutually exclusive controls', () => {
           recoveryState: 'NONE',
           clientMessageId: 'message-1'
         }
-      ];
+      ]);
       f.runService.selectedRunId.value = 'run-1';
       expect(f.state.rewindConversationEnabled.value).toBe(false);
       expect(f.state.canCompactContext.value).toBe(false);

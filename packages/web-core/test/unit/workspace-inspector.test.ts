@@ -1369,7 +1369,8 @@ it.each([
         4096,
         undefined,
         undefined,
-        repositoryPath
+        repositoryPath,
+        expect.any(AbortSignal)
       );
       expect(directFileReadRange).toHaveBeenCalledTimes(bytes.length > 4096 ? 2 : 1);
       if (direct && bytes.length > 4096)
@@ -1382,7 +1383,8 @@ it.each([
             revision: 'revision-1',
             size: bytes.length
           },
-          repositoryPath
+          repositoryPath,
+          expect.any(AbortSignal)
         );
       expect(loadedPage?.props.file).toMatchObject({
         encoding,

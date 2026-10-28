@@ -83,7 +83,7 @@ import {
   completedConversationDurations
 } from '../../util/conversation-activity.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
-import { isTerminalRunStatus } from '../../service/run-service.js';
+import { isTerminalRunStatus } from '../../util/run-state.js';
 
 interface ImageAttachment {
   readonly name: string;
@@ -128,6 +128,7 @@ const props = defineProps<{
   readonly toolChangeEnabled?: boolean;
   readonly rewindEnabled: boolean;
   readonly rollbackEnabled: boolean;
+  readonly captureRenderAnchor: () => () => void;
 }>();
 
 provide(CONVERSATION_MARKDOWN_CACHE_KEY, createConversationMarkdownCache());
@@ -300,13 +301,7 @@ function scheduleProgressiveRender(): void {
   renderFrame = requestAnimationFrame(async () => {
     if (generation !== renderGeneration) return;
     renderFrame = undefined;
-    const scroll = timelineElement.value?.closest<HTMLElement>('.conversation-scroll');
-    const previousHeight = scroll?.scrollHeight ?? 0;
-    const previousTop = scroll?.scrollTop ?? 0;
-    const following =
-      scroll === null ||
-      scroll === undefined ||
-      scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 28;
+    const restoreAnchor = props.captureRenderAnchor();
     renderedItemCount.value = nextConversationRenderItemCount(
       props.turns,
       renderedItemCount.value,
@@ -316,10 +311,7 @@ function scheduleProgressiveRender(): void {
     );
     await nextTick();
     if (generation !== renderGeneration) return;
-    if (scroll !== null && scroll !== undefined) {
-      if (following) scroll.scrollTop = scroll.scrollHeight;
-      else scroll.scrollTop = previousTop + (scroll.scrollHeight - previousHeight);
-    }
+    restoreAnchor();
     scheduleProgressiveRender();
   });
 }

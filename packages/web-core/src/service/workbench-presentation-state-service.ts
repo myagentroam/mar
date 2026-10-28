@@ -51,8 +51,8 @@ interface WorkbenchPresentationStateOptions {
   readonly selectedRunId: Ref<string | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly sessions: Ref<Session[]>;
-  readonly runs: Ref<AgentRun[]>;
-  readonly turns: Ref<ConversationTurn[]>;
+  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
+  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
   readonly attachments: Ref<ComposerAttachment[]>;
   readonly draftOpen: Ref<boolean>;
   readonly runnerProfilesLoading: Ref<boolean>;

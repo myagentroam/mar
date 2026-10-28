@@ -579,6 +579,7 @@ async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['ap
 interface TestSocket {
   send(raw: string): void;
   close(code?: number, reason?: string): void;
+  on(type: 'message', listener: (data: { toString(): string }) => void): void;
   addEventListener(
     type: 'open' | 'error',
     listener: () => void,

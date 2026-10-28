@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { computed } from 'vue';
 import type { ConversationTemplateSummary } from '@myagentroam/protocol';
-import { listAvailableConversationTemplates } from '../../src/service/hosted-conversation-entry-service.js';
+import { listAvailableConversationTemplates } from '../../src/service/hosted-conversation-template-client.js';
 import {
   hostedConversationsEnUS,
   hostedConversationsZhCN

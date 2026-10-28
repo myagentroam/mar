@@ -25,6 +25,38 @@ afterEach(() => {
 });
 
 describe('Workspace direct file operations', () => {
+  it('passes preview cancellation through metadata and prevents a transfer after late metadata', async () => {
+    const controller = new AbortController();
+    const request = vi.fn(async (_path: string, _init?: RequestInit) => ({ file: identity }));
+    await readWorkspaceDirectFileMetadata({
+      request,
+      nodeId: 'node',
+      resource,
+      signal: controller.signal
+    });
+    expect(request.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    let release!: (value: typeof identity) => void;
+    const direct = { download: vi.fn() };
+    const reading = readWorkspaceDirectFileRange({
+      direct,
+      nodeId: 'node',
+      nodeGeneration: 'generation',
+      resource,
+      fileName: 'image.bin',
+      offset: 0,
+      length: 3,
+      signal: controller.signal,
+      metadata: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    });
+    controller.abort();
+    release(identity);
+    await expect(reading).rejects.toMatchObject({ name: 'AbortError' });
+    expect(direct.download).not.toHaveBeenCalled();
+  });
+
   it('preserves explicit Workspace targets and parses the same metadata body as standalone', async () => {
     const request = vi.fn(async (_path: string) => ({ file: identity }));
     await expect(

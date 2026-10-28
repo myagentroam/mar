@@ -1,4 +1,5 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
+import type { UserSessionSummary } from '../model/workbench.js';
 import type { Ref } from 'vue';
 import type { AppLocale } from '../i18n/locale-config.js';
 import { ApiError } from '../util/api-error.js';
@@ -7,15 +8,6 @@ export interface AuthenticationPresentation {
   readonly translate: (key: string, parameters?: Record<string, string | number>) => string;
   readonly currentLocale: () => AppLocale;
   readonly setLocale: (locale: AppLocale) => void;
-}
-
-export interface UserSessionSummary {
-  readonly id: string;
-  readonly createdAt: number;
-  readonly expiresAt: number;
-  readonly ipAddress: string;
-  readonly userAgent: string;
-  readonly current: boolean;
 }
 
 export interface AdminState {

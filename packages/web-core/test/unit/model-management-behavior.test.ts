@@ -124,6 +124,104 @@ afterEach(() => {
 });
 
 describe('Model management component behavior', () => {
+  it('does not submit twice or submit an old draft after validation outlives the dialog', async () => {
+    const request = requestFixture();
+    const gate = deferred<boolean>();
+    const validate = vi.fn(() => gate.promise);
+    const view = renderComponent(
+      Page,
+      { request, canManageModels: true, writable: true, nodes: [] },
+      {},
+      { validate }
+    );
+    try {
+      await flushComponent();
+      await trigger(button(view, messages.add), 'onClick');
+      const first = trigger(button(view, messages.save), 'onClick');
+      const second = trigger(button(view, messages.save), 'onClick');
+      expect(validate).toHaveBeenCalledOnce();
+      const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+      await trigger(dialog, 'onUpdate:modelValue', false);
+      await trigger(button(view, messages.add), 'onClick');
+      gate.resolve(true);
+      await Promise.all([first, second]);
+      expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+      expect(view.findAll('ElDialog').some((node) => node.props['modelValue'] === true)).toBe(true);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('does not start a credential login from validation belonging to a closed dialog', async () => {
+    const request = requestFixture();
+    const gate = deferred<boolean>();
+    const validate = vi.fn(() => gate.promise);
+    const view = renderComponent(
+      Page,
+      { request, canManageModels: true, writable: true, nodes: [] },
+      {},
+      { validate }
+    );
+    try {
+      await flushComponent();
+      await trigger(button(view, messages.codexAddCredential), 'onClick');
+      const first = trigger(button(view, messages.codexStartLogin), 'onClick');
+      const second = trigger(button(view, messages.codexStartLogin), 'onClick');
+      expect(validate).toHaveBeenCalledOnce();
+      const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+      await trigger(dialog, 'onUpdate:modelValue', false);
+      await trigger(button(view, messages.codexAddCredential), 'onClick');
+      gate.resolve(true);
+      await Promise.all([first, second]);
+      expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'keeps a reopened draft intact when an already submitted model save returns %s',
+    async (outcome) => {
+      const base = requestFixture();
+      const gate = deferred<void>();
+      const request = vi.fn(async (path: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          await gate.promise;
+          if (outcome === 'failure') throw new Error('old save failed');
+          return {};
+        }
+        return base(path, init);
+      });
+      const view = renderComponent(
+        Page,
+        { request, canManageModels: true, writable: true, nodes: [] },
+        {},
+        { validate: async () => true }
+      );
+      try {
+        await flushComponent();
+        await trigger(button(view, messages.add), 'onClick');
+        const pending = trigger(button(view, messages.save), 'onClick');
+        await flushComponent();
+        expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+        const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+        await trigger(dialog, 'onUpdate:modelValue', false);
+        await trigger(button(view, messages.add), 'onClick');
+        await trigger(control(view, messages.name, 'ElInput'), 'onUpdate:modelValue', 'New draft');
+        vi.mocked(showMessage).mockClear();
+        gate.resolve();
+        await pending;
+        expect(control(view, messages.name, 'ElInput').props['modelValue']).toBe('New draft');
+        expect(showMessage).not.toHaveBeenCalled();
+        expect(
+          base.mock.calls.filter(([path]) => path === '/api/admin/mar-agent/models')
+        ).toHaveLength(outcome === 'success' ? 2 : 1);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it('opens the dedicated compact settings from the advanced management tab', async () => {
     const baseRequest = requestFixture();
     const request = vi.fn(async (path: string, init?: RequestInit) => {

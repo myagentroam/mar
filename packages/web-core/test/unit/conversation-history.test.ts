@@ -27,7 +27,7 @@ describe('Conversation History Window and Render State', () => {
   afterEach(() => vi.useRealTimers());
 
   it('Releases the waiter when the render window is replaced or canceled; an old confirmation cannot complete the new window', async () => {
-    const state = createConversationStateService();
+    const state = createConversationStateService(vi.fn());
     const first = state.beginInitialRender();
     const firstVersion = state.initialRenderVersion.value;
     let settled = false;
@@ -48,7 +48,7 @@ describe('Conversation History Window and Render State', () => {
 
   it('Resolves the render wait within its bound when the timeline is not mounted, without leaving a loading state hanging', async () => {
     vi.useFakeTimers();
-    const state = createConversationStateService();
+    const state = createConversationStateService(vi.fn());
     const settled = vi.fn();
     const completed = state.beginInitialRender().then(settled);
     await vi.advanceTimersByTimeAsync(9_999);
@@ -83,7 +83,7 @@ describe('Conversation History Window and Render State', () => {
   });
 
   it('Waits for the timeline to confirm the current render generation before completing the initial render', async () => {
-    const state = createConversationStateService();
+    const state = createConversationStateService(vi.fn());
     let settled = false;
     const completed = state.beginInitialRender().then(() => {
       settled = true;

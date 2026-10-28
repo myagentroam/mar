@@ -1218,6 +1218,7 @@ onBeforeUnmount(() => {
             :loading="rollbackPending"
             :initializing="openingConversationKey !== undefined"
             :initial-render-version="0"
+            :capture-render-anchor="conversationScrollService.captureRenderAnchor"
             :image-attachments="conversationImages.attachments"
             :user-input-questions="() => []"
             :user-input-answer="() => ''"

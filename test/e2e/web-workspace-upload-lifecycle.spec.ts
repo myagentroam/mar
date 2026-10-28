@@ -156,6 +156,20 @@ test('Workspace upload restore before late cleanup failure preserves the warning
     });
     await page.getByRole('button', { name: '开始上传', exact: true }).click();
     await expect.poll(() => creates.length).toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const mock = (
+            window as unknown as {
+              __consoleMockWorkbenchWebSocket: { instances: { url: string; readyState: number }[] };
+            }
+          ).__consoleMockWorkbenchWebSocket;
+          return mock.instances.filter(
+            (socket) => socket.url.includes('/api/workbench/live') && socket.readyState === 1
+          ).length;
+        })
+      )
+      .toBe(1);
     const remountUrl = await page.evaluate(() => {
       const bootstrap = performance
         .getEntriesByType('resource')
@@ -165,6 +179,17 @@ test('Workspace upload restore before late cleanup failure preserves the warning
         __vue_app__: { unmount(): void };
       };
       root.__vue_app__.unmount();
+      const mock = (
+        window as unknown as {
+          __consoleMockWorkbenchWebSocket: { instances: { url: string; readyState: number }[] };
+        }
+      ).__consoleMockWorkbenchWebSocket;
+      if (
+        mock.instances.some(
+          (socket) => socket.url.includes('/api/workbench/live') && socket.readyState === 1
+        )
+      )
+        throw new Error('Unmount left the previous page connection open');
       const url = new URL(bootstrap.name);
       url.searchParams.set('upload-recovery-remount', '1');
       return url.href;
@@ -175,6 +200,24 @@ test('Workspace upload restore before late cleanup failure preserves the warning
     await page.evaluate(async (url) => {
       await import(url);
     }, remountUrl);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const mock = (
+            window as unknown as {
+              __consoleMockWorkbenchWebSocket: { instances: { url: string; readyState: number }[] };
+            }
+          ).__consoleMockWorkbenchWebSocket;
+          const sockets = mock.instances.filter((socket) =>
+            socket.url.includes('/api/workbench/live')
+          );
+          return {
+            total: sockets.length,
+            open: sockets.filter((socket) => socket.readyState === 1).length
+          };
+        })
+      )
+      .toEqual({ total: 2, open: 1 });
     await page.getByRole('button', { name: '打开通知中心' }).click();
     const transfer = page.getByRole('complementary', { name: '通知中心' });
     const task = transfer.locator('.workbench-notification-upload');

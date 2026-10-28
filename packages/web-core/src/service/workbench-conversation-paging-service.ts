@@ -1,30 +1,24 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, ref, watch, type Ref } from 'vue';
-import type {
-  ConversationSegmentPage,
-  ConversationTurn,
-  ConversationTurnPage
-} from '../model/workbench.js';
+import type { ConversationSegmentPage, ConversationTurnPage } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
-import { limitConversationHistory } from '../util/conversation-history.js';
-import {
-  segmentPageAsTurnPage,
-  mergeConversationProjectionUnits
-} from '../util/conversation-segments.js';
+import { segmentPageAsTurnPage } from '../util/conversation-segments.js';
 import { errorCode } from '../util/api-error.js';
 
 /** Owns older-turn pagination and scroll-position preservation. */
 export function createWorkbenchConversationPagingService(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
-  readonly nextCursor: Ref<string | null>;
+  readonly nextCursor: Readonly<Ref<string | null>>;
   readonly loadingOlder: Ref<boolean>;
-  readonly turns: Ref<ConversationTurn[]>;
-  readonly scrollElement: Ref<HTMLElement | undefined>;
+  readonly capturePrependAnchor: () => () => void;
   readonly pageSize: number;
   readonly recentSegmentWindowSize: number;
   readonly replaceRecent: (page: ConversationTurnPage) => boolean | void;
+  readonly mergeOlderPage: (page: ConversationTurnPage) => void;
+  readonly recoverWindow: (page: ConversationTurnPage) => void;
+  readonly clearCursor: () => void;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
   readonly notice: MessageFeedback;
@@ -62,8 +56,6 @@ export function createWorkbenchConversationPagingService(options: {
     )
       return;
     const revision = windowRevision;
-    const element = options.scrollElement.value;
-    let previousHeight = element?.scrollHeight ?? 0;
     options.loadingOlder.value = true;
     olderHistoryError.value = '';
     let requestCursor = cursor;
@@ -88,11 +80,10 @@ export function createWorkbenchConversationPagingService(options: {
         );
         if (recoveredCursor === undefined) return;
         if (recoveredCursor === null) {
-          options.nextCursor.value = null;
+          options.clearCursor();
           return;
         }
         await nextTick();
-        previousHeight = element?.scrollHeight ?? previousHeight;
         requestCursor = recoveredCursor;
         page = await requestOlderPage(nodeId, sessionId, limit, requestCursor);
       }
@@ -103,14 +94,15 @@ export function createWorkbenchConversationPagingService(options: {
         options.nextCursor.value !== requestCursor
       )
         return;
-      const known = new Set(options.turns.value.map((turn) => turn.id));
-      options.turns.value = limitConversationHistory([
-        ...page.turns.filter((turn) => !known.has(turn.id)),
-        ...options.turns.value
-      ]);
-      options.nextCursor.value = page.nextCursor;
+      const restoreAnchor = options.capturePrependAnchor();
+      options.mergeOlderPage(page);
       await nextTick();
-      if (element !== undefined) element.scrollTop += element.scrollHeight - previousHeight;
+      if (
+        windowRevision === revision &&
+        options.workspaceTarget.value?.nodeId === nodeId &&
+        options.selectedSessionId.value === sessionId
+      )
+        restoreAnchor();
     } catch (error) {
       if (
         options.workspaceTarget.value?.nodeId === nodeId &&
@@ -156,10 +148,7 @@ export function createWorkbenchConversationPagingService(options: {
       options.nextCursor.value !== expiredCursor
     )
       return undefined;
-    options.turns.value = limitConversationHistory(
-      mergeConversationProjectionUnits(options.turns.value, page.turns)
-    );
-    options.nextCursor.value = page.nextCursor;
+    options.recoverWindow(page);
     return page.nextCursor;
   }
 

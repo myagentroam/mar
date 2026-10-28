@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MOBILE_WORKBENCH_VIEWPORT_QUERY,
   transitionMobileWorkbenchLayout
-} from '../../ee/web/src/util/mobile-workbench';
+} from '@myagentroam/web-core/mobile-workbench';
 import { createWorkbenchNavigationService } from '../../ee/web/src/service/workbench-navigation-service';
 
 describe('Mobile Workbench layout state', () => {

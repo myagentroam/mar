@@ -7,7 +7,7 @@ import {
   MANAGEMENT_PAGE_SIZE,
   createManagementPaginationService,
   managementPageItems
-} from '../../ee/web/src/service/management-pagination-service';
+} from '@myagentroam/web-core/management-pagination';
 
 describe('management pagination', () => {
   const items = Array.from({ length: 45 }, (_, index) => index + 1);

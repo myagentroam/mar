@@ -6,7 +6,10 @@ import { ApiError } from '../../src/util/api-error.js';
 
 function setup(sessionId: string | undefined = 'saved') {
   const values = new Map<string, string>();
-  const stored = { nodeId: 'n', workspaceId: 'w', ...(sessionId ? { sessionId } : {}) };
+  const stored = {
+    workspace: { nodeId: 'n', workspaceId: 'w' },
+    ...(sessionId ? { sessionId } : {})
+  };
   values.set('mar.workbench.selection.v1', JSON.stringify(stored));
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => values.get(key) ?? null,
@@ -72,6 +75,19 @@ function setup(sessionId: string | undefined = 'saved') {
 }
 
 describe('Workbench Selection Restoration', () => {
+  it('discards a legacy flat workspace selection without touching other storage', async () => {
+    const f = setup();
+    f.values.set(
+      'mar.workbench.selection.v1',
+      JSON.stringify({ nodeId: 'n', workspaceId: 'w', sessionId: 'saved' })
+    );
+    f.values.set('unrelated', 'keep');
+    await f.service.restore();
+    expect(f.values.has('mar.workbench.selection.v1')).toBe(false);
+    expect(f.values.get('unrelated')).toBe('keep');
+    expect(f.activateWorkspace).not.toHaveBeenCalled();
+  });
+
   it('discards a legacy host-only record instead of restoring a foreground Node', async () => {
     const f = setup();
     f.values.set('mar.workbench.selection.v1', JSON.stringify({ nodeId: 'n' }));

@@ -2,6 +2,8 @@
 import { nextTick, onMounted, ref } from 'vue';
 import type { ConversationTurn, Session } from '../../src/model/workbench.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
+import { createConversationStateService } from '../../src/service/conversation-state-service.js';
+import { createRunService } from '../../src/service/run-service.js';
 import {
   createWorkbenchSessionSelectionService,
   type WorkbenchSessionSelectionOptions
@@ -10,8 +12,10 @@ import ConversationScroll from '../../src/view/conversation/ConversationScroll.v
 
 const scroll = createConversationScrollService();
 const { following, positioningInitialConversation: positioning } = scroll;
-const selectedSessionId = ref<string>('previous-session');
-const turns = ref<ConversationTurn[]>([]);
+const selectedSessionId = ref<string | undefined>('previous-session');
+const conversation = createConversationStateService(() => undefined);
+const run = createRunService(selectedSessionId);
+const turns = conversation.turns;
 const history = ref<HTMLElement>();
 const historyHeight = ref(4000);
 const loading = ref(false);
@@ -28,12 +32,10 @@ const options: WorkbenchSessionSelectionOptions = {
   selectedSessionId,
   selectedRunId: ref(),
   sessions: ref([session]),
-  runs: ref([]),
+  runs: run.runs,
   turns,
-  nextCursor: ref(null),
   loadingInitial: loading,
   initialLoadFailed: ref(false),
-  contextUsage: ref(),
   queue: ref({ version: 0, paused: false, items: [] }),
   positioning,
   draftOpen: ref(false),
@@ -50,7 +52,7 @@ const options: WorkbenchSessionSelectionOptions = {
   selectWorkspace: async () => true,
   applyComposerConfiguration: () => undefined,
   restoreCachedDetail: () => {
-    turns.value = [
+    const cachedTurns: ConversationTurn[] = [
       {
         id: 'cached-turn',
         sessionId: session.id,
@@ -70,15 +72,21 @@ const options: WorkbenchSessionSelectionOptions = {
     return {
       sessionId: session.id,
       runs: [],
-      turns: turns.value,
+      turns: cachedTurns,
       nextCursor: null,
       contextUsage: null,
       lastAccessedAt: 1
     };
   },
   cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-  restoreProjection: () => undefined,
-  resetProjection: () => undefined,
+  installCachedDetail: (detail) => {
+    run.replaceRuns(detail.runs);
+    conversation.projection.restoreWindow(detail.turns, detail.nextCursor);
+  },
+  clearActiveContent: () => {
+    run.replaceRuns([]);
+    conversation.projection.restoreWindow([], null);
+  },
   openRun: () => undefined,
   scrollLatest: () => {
     const request = revision;

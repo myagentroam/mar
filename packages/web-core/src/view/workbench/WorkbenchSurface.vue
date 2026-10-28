@@ -435,6 +435,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   :turns="page.displayedConversationTurns"
                   :initializing="page.loadingInitialConversation"
                   :initial-render-version="page.conversationInitialRenderVersion"
+                  :capture-render-anchor="page.captureConversationRenderAnchor"
                   :workspace-root="page.selectedWorkspace?.path"
                   :image-resource-url="workspaceImageResourceUrl"
                   :loading="page.loading || page.composerSubmitting"

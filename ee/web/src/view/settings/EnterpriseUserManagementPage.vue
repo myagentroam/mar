@@ -17,9 +17,12 @@ import {
   type EnterpriseRole,
   type OrganizationSummary
 } from '@/service/enterprise-management-service';
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
+import {
+  managementUrlValues,
+  replaceManagementUrlValues
+} from '@myagentroam/web-core/management-url';
 import { translate } from '@/service/locale-preference-service';
-import { errorMessage } from '@/util/workbench-presentation';
+import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 import { createUserManagementService } from '@/service/user-management-service';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 

@@ -18,7 +18,11 @@ const USER_CSRF_STORAGE_KEY = 'mar.user.csrf-token';
 /** Creates ordinary tab-local state; product navigation and extensions stay with the host. */
 export function createWorkbenchBaseStateService<
   WorkspaceType extends Workspace = Workspace
->(options: { readonly sessionPageSize: number; readonly onUnauthenticated: () => void }) {
+>(options: {
+  readonly sessionPageSize: number;
+  readonly onUnauthenticated: () => void;
+  readonly onConversationOverflow: () => void;
+}) {
   const admin = createAdminSessionStateService();
   const http = createWorkbenchHttpService({
     csrfToken: admin.csrfToken,
@@ -31,7 +35,7 @@ export function createWorkbenchBaseStateService<
   const draft = createSessionDraftService({
     workspaceTarget: selection.workspaceTarget
   });
-  const conversation = createConversationStateService();
+  const conversation = createConversationStateService(options.onConversationOverflow);
   const surface = createWorkbenchSurfaceStateService();
   return { admin, http, selection, paging, draft, run, conversation, surface };
 }
@@ -43,6 +47,7 @@ export function createWorkbenchPageStateService<
 >(options: {
   readonly sessionPageSize: number;
   readonly onUnauthenticated: () => void;
+  readonly onConversationOverflow: () => void;
   readonly navigation: Navigation;
   readonly onWorkspaceRunCompleted?: (nodeId: string, workspaceId: string) => void;
   readonly onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>;

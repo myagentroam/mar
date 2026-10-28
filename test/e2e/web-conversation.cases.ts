@@ -1602,7 +1602,8 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   expect(previewBounds.textOverflow).toBe('ellipsis');
   await expect(card.locator('.reasoning-subtitle')).toHaveText(latestSummary);
   await expect(card.locator('summary > strong')).toBeVisible();
-  await expect(card.locator('summary svg')).toHaveCount(1);
+  await expect(card.locator('summary > svg.mar-disclosure-icon')).toHaveCount(1);
+  await expect(card.locator('summary > svg.conversation-record-icon')).toHaveCount(1);
   await card.screenshot({
     path: testInfo.outputPath('reasoning-live-mobile.png'),
     animations: 'disabled'

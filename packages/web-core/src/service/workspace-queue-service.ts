@@ -10,6 +10,7 @@ export function createWorkspaceQueueService(options: {
   readonly currentSessionQueue: ComputedRef<WorkspaceQueue>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
+  readonly currentSelectionRevision: () => number;
   readonly draggingQueueItemId: Ref<string | undefined>;
   readonly editingContent: Ref<string>;
   readonly serializeEditedContent?: (content: string) => string;
@@ -20,8 +21,14 @@ export function createWorkspaceQueueService(options: {
   readonly missingQueueItemError: (error: unknown) => boolean;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
 }) {
-  function current(nodeId: string, workspaceId: string, sessionId: string): boolean {
+  function current(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string,
+    revision: number
+  ): boolean {
     return (
+      options.currentSelectionRevision() === revision &&
       options.workspaceTarget.value?.nodeId === nodeId &&
       options.workspaceTarget.value?.workspaceId === workspaceId &&
       options.selectedSessionId.value === sessionId
@@ -33,6 +40,7 @@ export function createWorkspaceQueueService(options: {
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const sessionId = options.selectedSessionId.value;
+    const revision = options.currentSelectionRevision();
     if (
       sourceQueueItemId === undefined ||
       sourceQueueItemId === targetQueueItemId ||
@@ -58,7 +66,7 @@ export function createWorkspaceQueueService(options: {
         })
       });
     } catch (error) {
-      if (current(nodeId, workspaceId, sessionId))
+      if (current(nodeId, workspaceId, sessionId, revision))
         options.notice(
           translate(
             errorCode(error) === 'QUEUE_VERSION_CONFLICT'
@@ -70,7 +78,10 @@ export function createWorkspaceQueueService(options: {
           error
         );
     } finally {
-      if (options.draggingQueueItemId.value === sourceQueueItemId)
+      if (
+        current(nodeId, workspaceId, sessionId, revision) &&
+        options.draggingQueueItemId.value === sourceQueueItemId
+      )
         options.draggingQueueItemId.value = undefined;
     }
   }
@@ -82,6 +93,7 @@ export function createWorkspaceQueueService(options: {
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const sessionId = options.selectedSessionId.value;
+    const revision = options.currentSelectionRevision();
     const content = options.serializeEditedContent?.(nextContent) ?? nextContent.trim();
     if (
       nodeId === undefined ||
@@ -95,14 +107,14 @@ export function createWorkspaceQueueService(options: {
         method: 'PATCH',
         body: JSON.stringify({ nodeId, workspaceId, sessionId, content })
       });
-      if (current(nodeId, workspaceId, sessionId)) options.finishEditing();
+      if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
       return true;
     } catch (error) {
       if (options.missingQueueItemError(error)) {
-        if (current(nodeId, workspaceId, sessionId)) options.finishEditing();
+        if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
         return false;
       }
-      if (current(nodeId, workspaceId, sessionId))
+      if (current(nodeId, workspaceId, sessionId, revision))
         options.notice(
           translate('generated.workspaceQueueService.unableToEditTheQueuedMessage', {
             value0: options.errorMessage(error)
@@ -118,6 +130,7 @@ export function createWorkspaceQueueService(options: {
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const sessionId = options.selectedSessionId.value;
+    const revision = options.currentSelectionRevision();
     if (nodeId === undefined || workspaceId === undefined) return;
     try {
       await options.request(`/api/queue-items/${encodeURIComponent(queueItemId)}`, {
@@ -126,7 +139,7 @@ export function createWorkspaceQueueService(options: {
       });
     } catch (error) {
       if (options.missingQueueItemError(error)) return;
-      if (sessionId !== undefined && current(nodeId, workspaceId, sessionId))
+      if (sessionId !== undefined && current(nodeId, workspaceId, sessionId, revision))
         options.notice(
           translate('generated.workspaceQueueService.unableToDeleteTheQueuedMessage', {
             value0: options.errorMessage(error)
@@ -141,13 +154,18 @@ export function createWorkspaceQueueService(options: {
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const sessionId = item.sessionId ?? options.selectedSessionId.value;
+    const revision = options.currentSelectionRevision();
     if (nodeId === undefined || workspaceId === undefined) return;
     const finishSubmission = options.beginSubmission(
       sessionId === undefined ? undefined : `session:${sessionId}`
     );
     if (finishSubmission === undefined) return;
     try {
-      if (editedContent !== undefined && !(await save(item.queueItemId, editedContent))) return;
+      if (editedContent !== undefined) {
+        if (sessionId === undefined || !current(nodeId, workspaceId, sessionId, revision)) return;
+        if (!(await save(item.queueItemId, editedContent))) return;
+        if (!current(nodeId, workspaceId, sessionId, revision)) return;
+      }
       await options.request(`/api/queue-items/${encodeURIComponent(item.queueItemId)}/execute`, {
         method: 'POST',
         body: JSON.stringify({ nodeId, workspaceId })
@@ -158,7 +176,7 @@ export function createWorkspaceQueueService(options: {
       if (
         completedInSubmissionWindow &&
         sessionId !== undefined &&
-        current(nodeId, workspaceId, sessionId)
+        current(nodeId, workspaceId, sessionId, revision)
       )
         options.notice(
           translate('generated.workspaceQueueService.unableToRunTheQueuedMessageNow', {

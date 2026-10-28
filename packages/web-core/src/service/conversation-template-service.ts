@@ -1,6 +1,6 @@
 import { parseManagementPage } from './management-page-service.js';
 import type { ManagementPage } from '@myagentroam/protocol';
-import { listAvailableConversationTemplates } from '@myagentroam/web-core/hosted-conversation-entry';
+import { listAvailableConversationTemplates } from './hosted-conversation-template-client.js';
 import {
   conversationTemplateDraftSchema,
   conversationTemplateModelReferenceSchema,

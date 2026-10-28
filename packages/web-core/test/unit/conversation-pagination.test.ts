@@ -1,3 +1,7 @@
+import {
+  conversationProjectionFixture,
+  pagingAnchor
+} from './support/conversation-paging-fixture.js';
 import { ref } from 'vue';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -36,6 +40,35 @@ function segmentPage(turns: ReturnType<typeof turn>[], nextCursor: string | null
 }
 
 describe('Conversation History Pagination', () => {
+  it('does not restore an old paging anchor after a synchronous session switch', async () => {
+    const selectedSessionId = ref('session-1');
+    const turns = ref<ConversationTurn[]>([turn('current') as ConversationTurn]);
+    const nextCursor = ref<string | null>('cursor');
+    const projection = conversationProjectionFixture(turns, nextCursor);
+    const restore = vi.fn();
+    const service = createWorkbenchConversationPagingService({
+      workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      selectedSessionId,
+      nextCursor,
+      loadingOlder: ref(false),
+      capturePrependAnchor: () => restore,
+      pageSize: 10,
+      recentSegmentWindowSize: 30,
+      ...projection,
+      mergeOlderPage: (page) => {
+        projection.mergeOlderPage(page);
+        selectedSessionId.value = 'session-2';
+      },
+      replaceRecent: vi.fn(),
+      request: async () => segmentPage([turn('older')], null) as never,
+      sessionPathId: (value) => value,
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    await service.loadOlderConversationTurns();
+    expect(restore).not.toHaveBeenCalled();
+  });
+
   it('does not merge a first-generation A page after A to B to A', async () => {
     const workspaceTarget = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const turns = ref([turn('current')]);
@@ -45,10 +78,10 @@ describe('Conversation History Pagination', () => {
     const service = createWorkbenchConversationPagingService({
       workspaceTarget,
       selectedSessionId: ref('session-1'),
-      turns: turns as never,
+      ...conversationProjectionFixture(turns, nextCursor),
       nextCursor,
       loadingOlder,
-      scrollElement: ref(),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 30,
       replaceRecent: vi.fn(),
@@ -79,11 +112,11 @@ describe('Conversation History Pagination', () => {
       let rejectRequest!: (error: Error) => void;
       const service = createWorkbenchConversationPagingService({
         workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-        selectedSessionId: { value: 'session-1' } as never,
+        selectedSessionId: ref('session-1'),
         nextCursor: nextCursor as never,
         loadingOlder: { value: false } as never,
-        turns: turns as never,
-        scrollElement: { value: undefined } as never,
+        ...conversationProjectionFixture(turns, nextCursor),
+        capturePrependAnchor: pagingAnchor(),
         pageSize: 10,
         recentSegmentWindowSize: 30,
         replaceRecent: vi.fn(),
@@ -128,11 +161,11 @@ describe('Conversation History Pagination', () => {
     };
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
+      selectedSessionId: ref('session-1'),
       nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: scrollElement } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(scrollElement as never),
       pageSize: 10,
       recentSegmentWindowSize: 15,
       replaceRecent: vi.fn(),
@@ -173,11 +206,11 @@ describe('Conversation History Pagination', () => {
     const requests: string[] = [];
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
+      selectedSessionId: ref('session-1'),
       nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: undefined } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 15,
       replaceRecent: vi.fn(),
@@ -225,10 +258,10 @@ describe('Conversation History Pagination', () => {
     const service = createWorkbenchConversationPagingService({
       workspaceTarget,
       selectedSessionId: ref('session-1'),
-      turns: turns as never,
+      ...conversationProjectionFixture(turns, nextCursor),
       nextCursor,
       loadingOlder,
-      scrollElement: ref(),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 30,
       replaceRecent: (page) => {
@@ -269,10 +302,10 @@ describe('Conversation History Pagination', () => {
     const service = createWorkbenchConversationPagingService({
       workspaceTarget,
       selectedSessionId: ref('session-1'),
-      turns: turns as never,
+      ...conversationProjectionFixture(turns, nextCursor),
       nextCursor,
       loadingOlder: ref(false),
-      scrollElement: ref(),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 30,
       replaceRecent,
@@ -301,11 +334,11 @@ describe('Conversation History Pagination', () => {
     let resolveRecovery!: (value: unknown) => void;
     const service = createWorkbenchConversationPagingService({
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
-      selectedSessionId: { value: 'session-1' } as never,
+      selectedSessionId: ref('session-1'),
       nextCursor: nextCursor as never,
       loadingOlder: { value: false } as never,
-      turns: turns as never,
-      scrollElement: { value: undefined } as never,
+      ...conversationProjectionFixture(turns, nextCursor),
+      capturePrependAnchor: pagingAnchor(),
       pageSize: 10,
       recentSegmentWindowSize: 15,
       replaceRecent: vi.fn(),

@@ -5,7 +5,7 @@ import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, ref } from 'vue';
 
 import { translate } from '@/service/locale-preference-service';
-import { errorMessage } from '@/util/workbench-presentation';
+import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 
 const PERMANENT_LICENSE_EXPIRES_AT = 253_402_300_799_000;
 

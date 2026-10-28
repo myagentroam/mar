@@ -1,12 +1,14 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { createWorkbenchSessionSelectionService } from '../../src/service/workbench-session-selection-service.js';
 import type { WorkbenchSessionSelectionOptions } from '../../src/service/workbench-session-selection-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
+import { createRunService } from '../../src/service/run-service.js';
+import { conversationProjectionFixture } from './support/conversation-paging-fixture.js';
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -20,18 +22,21 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
 function tabSessionFixture() {
   const session: Session = { id: 'outside-page', workspaceId: 'workspace-1', runner: 'mar-agent' };
   const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+  const selectedSessionId = ref<string>();
+  const runOwner = createRunService(selectedSessionId);
+  const runs = runOwner.runs;
+  const turns = ref<import('../../src/model/workbench.js').ConversationTurn[]>([]);
+  const conversationOwner = conversationProjectionFixture(turns, ref<string | null>(null));
   let revision = 0;
   const options: WorkbenchSessionSelectionOptions = {
     workspaceTarget: target,
-    selectedSessionId: ref(),
+    selectedSessionId,
     selectedRunId: ref(),
     sessions: ref([]),
-    runs: ref([]),
-    turns: ref([]),
-    nextCursor: ref(null),
+    runs,
+    turns,
     loadingInitial: ref(false),
     initialLoadFailed: ref(false),
-    contextUsage: ref(),
     queue: ref({ version: 0, paused: false, items: [] }),
     positioning: ref(false),
     draftOpen: ref(false),
@@ -49,8 +54,14 @@ function tabSessionFixture() {
     applyComposerConfiguration: vi.fn(),
     restoreCachedDetail: () => undefined,
     cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-    restoreProjection: vi.fn(),
-    resetProjection: vi.fn(),
+    installCachedDetail: (detail) => {
+      runOwner.replaceRuns(detail.runs);
+      conversationOwner.restoreWindow(detail.turns, detail.nextCursor);
+    },
+    clearActiveContent: () => {
+      runOwner.replaceRuns([]);
+      conversationOwner.restoreWindow([], null);
+    },
     openRun: vi.fn(),
     scrollLatest: vi.fn(async () => undefined),
     beginInitialRender: vi.fn(async () => undefined),
@@ -65,8 +76,60 @@ function tabSessionFixture() {
     notice: vi.fn(),
     errorMessage: String
   };
-  return { session, target, options, service: createWorkbenchSessionSelectionService(options) };
+  return {
+    session,
+    target,
+    options,
+    runs,
+    turns,
+    service: createWorkbenchSessionSelectionService(options)
+  };
 }
+
+describe('Synchronous Session handoff', () => {
+  it.each(['uncached', 'cached'] as const)(
+    'never exposes a new Session with the previous %s window to synchronous observers',
+    async (mode) => {
+      const f = tabSessionFixture();
+      f.options.selectedSessionId.value = 'previous';
+      f.options.sessions.value = [
+        { id: 'previous', workspaceId: 'workspace-1', runner: 'mar-agent' },
+        f.session
+      ];
+      f.turns.value = [turn('old', { sessionId: 'previous' })];
+      const previousWindow = f.turns.value;
+      if (mode === 'cached')
+        vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
+          const detail = {
+            sessionId: f.session.id,
+            runs: [],
+            turns: [turn('cached', { sessionId: f.session.id })],
+            nextCursor: null,
+            contextUsage: null,
+            lastAccessedAt: 1
+          };
+          return detail;
+        });
+      const invalid: string[] = [];
+      const stop = watch(
+        [f.options.selectedSessionId, f.turns],
+        ([id, turns]) => {
+          if (id === f.session.id && turns.some((item) => item.sessionId === 'previous'))
+            invalid.push(id);
+        },
+        { flush: 'sync' }
+      );
+      try {
+        await f.service.openSession(f.session.id);
+        expect(invalid).toEqual([]);
+        expect(f.options.selectedSessionId.value).toBe(f.session.id);
+        expect(previousWindow.map((item) => item.id)).toEqual(['old']);
+      } finally {
+        stop();
+      }
+    }
+  );
+});
 
 async function watchedTabFixture() {
   const f = tabSessionFixture();
@@ -209,7 +272,6 @@ describe('Shared session selection', () => {
         })
       ];
       vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
-        f.options.turns.value = cachedTurns;
         return {
           sessionId: f.session.id,
           runs: [],
@@ -261,7 +323,6 @@ describe('Shared session selection', () => {
             items: [{ id: 'reply', kind: 'assistant_message', payload: { text: 'Cached reply' } }]
           })
         ];
-        f.options.turns.value = turns;
         return {
           sessionId,
           runs: [],
@@ -285,7 +346,7 @@ describe('Shared session selection', () => {
         // Opening a draft invalidates the detail request without opening another session.
         f.options.nextRequest();
         f.options.selectedSessionId.value = undefined;
-        f.options.turns.value = [];
+        f.turns.value = [];
       }
       finishPositioning[0]!();
       await first;
@@ -301,7 +362,7 @@ describe('Shared session selection', () => {
   it('does not start cached calibration after reading intent cancels the pre-layout guard', async () => {
     const f = tabSessionFixture();
     vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
-      f.options.turns.value = [
+      const turns = [
         turn('cached-turn', {
           items: [{ id: 'reply', kind: 'assistant_message', payload: { text: 'Cached reply' } }]
         })
@@ -309,7 +370,7 @@ describe('Shared session selection', () => {
       return {
         sessionId: f.session.id,
         runs: [],
-        turns: f.options.turns.value,
+        turns,
         nextCursor: null,
         contextUsage: null,
         lastAccessedAt: 1
@@ -340,7 +401,6 @@ describe('Shared session selection', () => {
       })
     ];
     vi.spyOn(f.options, 'restoreCachedDetail').mockImplementation(() => {
-      f.options.turns.value = cachedTurns;
       return {
         sessionId: f.session.id,
         runs: [],
@@ -360,7 +420,7 @@ describe('Shared session selection', () => {
     vi.spyOn(f.options, 'hasInitialSnapshot').mockReturnValue(false);
     const opening = f.service.openWorkspaceTabSession(f.session.id);
     await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
-    expect(f.options.turns.value).toEqual(cachedTurns);
+    expect(f.turns.value).toEqual(cachedTurns);
     expect(f.options.loadingInitial.value).toBe(true);
     expect(f.service.loadingInitialContent.value).toBe(false);
     expect(f.options.beginInitialRender).not.toHaveBeenCalled();
@@ -391,10 +451,10 @@ describe('Shared session selection', () => {
         ]
       })
     ];
-    f.options.turns.value = cachedTurns;
+    f.turns.value = cachedTurns;
     vi.mocked(f.options.beginWatch).mockRejectedValue(new Error('HISTORY_UNAVAILABLE'));
     await f.service.openSession(f.session.id);
-    expect(f.options.turns.value).toEqual(cachedTurns);
+    expect(f.turns.value).toEqual(cachedTurns);
     expect(f.options.initialLoadFailed.value).toBe(true);
     expect(f.options.loadingInitial.value).toBe(false);
     expect(f.service.loadingInitialContent.value).toBe(false);
@@ -739,10 +799,8 @@ describe('Shared session selection', () => {
       sessions: ref([session]),
       runs: ref([]),
       turns: ref([]),
-      nextCursor: ref(null),
       loadingInitial: ref(false),
       initialLoadFailed: ref(false),
-      contextUsage: ref(),
       queue: ref({ version: 0, paused: false, items: [] }),
       positioning: ref(false),
       draftOpen: ref(false),
@@ -760,8 +818,8 @@ describe('Shared session selection', () => {
       applyComposerConfiguration: vi.fn(),
       restoreCachedDetail: () => undefined,
       cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-      restoreProjection: vi.fn(),
-      resetProjection: vi.fn(),
+      installCachedDetail: vi.fn(),
+      clearActiveContent: vi.fn(),
       openRun: vi.fn(),
       scrollLatest: vi.fn(async () => undefined),
       beginInitialRender: vi.fn(async () => undefined),
@@ -847,10 +905,8 @@ describe('Shared session selection', () => {
       sessions,
       runs,
       turns: { value: [] },
-      nextCursor: { value: null },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
-      contextUsage: { value: undefined },
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -868,8 +924,8 @@ describe('Shared session selection', () => {
       applyComposerConfiguration: vi.fn(),
       restoreCachedDetail: () => undefined,
       cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-      restoreProjection: vi.fn(),
-      resetProjection: vi.fn(),
+      installCachedDetail: vi.fn(),
+      clearActiveContent: vi.fn(),
       openRun,
       scrollLatest: async () => {
         order.push('scroll');
@@ -953,10 +1009,8 @@ describe('Shared session selection', () => {
       sessions,
       runs: { value: [] },
       turns: { value: [] },
-      nextCursor: { value: null },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
-      contextUsage: { value: undefined },
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -974,8 +1028,8 @@ describe('Shared session selection', () => {
       applyComposerConfiguration: vi.fn(),
       restoreCachedDetail: () => undefined,
       cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-      restoreProjection: vi.fn(),
-      resetProjection: vi.fn(),
+      installCachedDetail: vi.fn(),
+      clearActiveContent: vi.fn(),
       openRun: vi.fn(),
       scrollLatest: async () => undefined,
       beginInitialRender: async () => {
@@ -1034,10 +1088,8 @@ describe('Shared session selection', () => {
       sessions: { value: [provisional] },
       runs: { value: [] },
       turns: { value: [] },
-      nextCursor: { value: null },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
-      contextUsage: { value: undefined },
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1055,8 +1107,8 @@ describe('Shared session selection', () => {
       applyComposerConfiguration,
       restoreCachedDetail: () => undefined,
       cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-      restoreProjection: vi.fn(),
-      resetProjection: vi.fn(),
+      installCachedDetail: vi.fn(),
+      clearActiveContent: vi.fn(),
       openRun: vi.fn(),
       scrollLatest: async () => undefined,
       beginInitialRender: async () => undefined,
@@ -1090,10 +1142,8 @@ describe('Shared session selection', () => {
       },
       runs: { value: [] },
       turns: { value: [] },
-      nextCursor: { value: null },
       loadingInitial: { value: false },
       initialLoadFailed,
-      contextUsage: { value: undefined },
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1111,8 +1161,8 @@ describe('Shared session selection', () => {
       applyComposerConfiguration: vi.fn(),
       restoreCachedDetail: () => undefined,
       cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-      restoreProjection: vi.fn(),
-      resetProjection: vi.fn(),
+      installCachedDetail: vi.fn(),
+      clearActiveContent: vi.fn(),
       openRun: vi.fn(),
       scrollLatest: vi.fn(),
       beginInitialRender: vi.fn(),

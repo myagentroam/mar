@@ -1,14 +1,13 @@
 import {
   hostedConversationModelOptionsSchema,
   hostedConversationSnapshotSchema,
-  conversationTemplateSummarySchema,
   type ConversationTemplateSummary,
   type HostedConversationModelOptions,
   type HostedConversationSnapshot,
   type HostedConversationUpload
 } from '@myagentroam/protocol';
 import { computed, ref, shallowRef, type Ref } from 'vue';
-import type { createHostedConversationWorkspaceService } from './hosted-conversation-workspace-service.js';
+import { listAvailableConversationTemplates } from './hosted-conversation-template-client.js';
 import { errorCode } from '../util/api-error.js';
 
 export interface HostedAttachment {
@@ -25,7 +24,27 @@ export interface HostedAttachment {
 }
 
 interface FirstMessageSubmission {
-  readonly workspace: ReturnType<typeof createHostedConversationWorkspaceService>;
+  readonly workspace: {
+    readonly selectedNodeId: Readonly<Ref<string | undefined>>;
+    readonly selectedConversationId: Readonly<Ref<string | undefined>>;
+    readonly watchReady: Readonly<Ref<boolean>>;
+    readonly snapshot: Readonly<
+      Ref<Pick<HostedConversationSnapshot, 'conversation' | 'models'> | undefined>
+    >;
+    rememberConversation(conversation: HostedConversationSnapshot['conversation']): void;
+    uploadFile(
+      file: File,
+      clientRequestId: string,
+      onProgress?: (upload: HostedConversationUpload) => void,
+      signal?: AbortSignal
+    ): Promise<HostedConversationUpload>;
+    sendMessage(input: {
+      readonly prompt: string;
+      readonly attachmentIds: readonly string[];
+      readonly clientMessageId: string;
+      readonly modelId?: string;
+    }): Promise<unknown>;
+  };
   readonly select: (snapshot: HostedConversationSnapshot) => Promise<void>;
 }
 
@@ -459,21 +478,4 @@ function persistPreferredTemplateId(
   } catch {
     // Template preference is a local convenience only.
   }
-}
-
-/** Reads only the authorized published catalog; management data is never accepted. */
-export async function listAvailableConversationTemplates(
-  request: Request
-): Promise<readonly ConversationTemplateSummary[]> {
-  const value = await request<unknown>('/api/conversation-templates');
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error('CONVERSATION_TEMPLATE_RESPONSE_INVALID');
-  const body = value as Record<string, unknown>;
-  if (Object.keys(body).some((key) => key !== 'templates') || !Array.isArray(body['templates']))
-    throw new Error('CONVERSATION_TEMPLATE_RESPONSE_INVALID');
-  return body['templates'].map((template: unknown) => {
-    const result = conversationTemplateSummarySchema.safeParse(template);
-    if (!result.success) throw new Error('CONVERSATION_TEMPLATE_RESPONSE_INVALID');
-    return result.data;
-  });
 }

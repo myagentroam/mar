@@ -33,6 +33,7 @@
     "artifacts:notices": "node scripts/create-third-party-notices.mjs"
   },
   "devDependencies": {
+    "@myagentroam/web-core": "workspace:*",
     "@playwright/mcp": "0.0.83",
     "@playwright/test": "1.62.1",
     "@types/node": "^24.10.1",

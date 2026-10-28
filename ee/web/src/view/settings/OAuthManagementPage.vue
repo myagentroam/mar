@@ -14,7 +14,10 @@ import {
   oauthProviderInput,
   type OAuthProviderDraft
 } from '@/service/enterprise-management-service';
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
+import {
+  managementUrlValues,
+  replaceManagementUrlValues
+} from '@myagentroam/web-core/management-url';
 import { oauthErrorMessage } from '@/util/oauth-callback';
 import { translate } from '@/service/locale-preference-service';
 interface OAuthProvider extends Omit<OAuthProviderDraft, 'clientSecret' | 'callbackUri'> {

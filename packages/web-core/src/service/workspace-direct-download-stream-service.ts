@@ -1,6 +1,6 @@
 import type { DirectTransferResource } from '@myagentroam/protocol';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
-import type { WorkspaceDirectFileIdentity } from './workspace-direct-file-read-service.js';
+import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 
 export type WorkspaceDirectDownloadResult = 'COMPLETED' | 'UNAVAILABLE' | 'CANCELLED' | 'FAILED';
 

@@ -37,7 +37,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   profilesLoading: ref(false),
   manifest: ref(),
   manifestLoading: ref(false),
-  activeCache: cache.active,
+  isCacheActive: cache.isActive,
   hasNode: () => true,
   isHostAvailable: () => true,
   cachedWorkspaces: (nodeId) =>
@@ -62,12 +62,15 @@ const selection = createWorkbenchWorkspaceSelectionService({
   stopWatch: noop,
   startWatch: async () => {},
   saveCurrent: () => {
-    if (cache.active.value && inspector.value)
-      cache.active.value.inspector = inspector.value.snapshot();
+    const current = target.value;
+    if (current && cache.isActive(current.nodeId, current.workspaceId) && inspector.value) {
+      const view = cache.view(current.nodeId, current.workspaceId);
+      cache.captureActive({ ...view, inspector: inspector.value.snapshot() }, 2);
+    }
   },
   activateCache: cache.activate,
   restoreInspector: (nodeId, workspaceId) => {
-    const snapshot = cache.get(nodeId, workspaceId).inspector;
+    const snapshot = cache.view(nodeId, workspaceId).inspector;
     if (snapshot !== undefined) inspector.value?.restoreWorkspace(nodeId, workspaceId, snapshot);
   },
   refreshInspector: (nodeId, workspaceId) => {
@@ -75,7 +78,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   },
   initializePaging: noop,
   tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
-  viewCache: cache.get,
+  viewCache: cache.view,
   resetQueue: noop,
   openSession: async () => {},
   openDraft: noop,

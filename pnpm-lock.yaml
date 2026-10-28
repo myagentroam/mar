@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.5
+      '@myagentroam/web-core':
+        specifier: workspace:*
+        version: link:packages/web-core
       '@playwright/mcp':
         specifier: 0.0.83
         version: 0.0.83

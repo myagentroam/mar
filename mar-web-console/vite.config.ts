@@ -5,10 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
-import {
-  SUPPORTED_LOCALES,
-  localeFromLanguages
-} from '@myagentroam-enterprise/web-implementation/locale-config';
+import { SUPPORTED_LOCALES, localeFromLanguages } from '@myagentroam/web-core/locale-config';
 
 const webPackage = JSON.parse(
   readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')

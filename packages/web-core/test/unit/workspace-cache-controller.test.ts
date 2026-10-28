@@ -15,6 +15,8 @@ import {
 import type { SessionContextUsage } from '../../src/service/conversation-state-service.js';
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
+import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
+import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 
 function nativeSession(id = 'session-1'): Session {
   return {
@@ -61,17 +63,30 @@ function fixture() {
   const draftOpen = ref(false);
   const input = ref('');
   const skillTokens = ref<readonly ComposerSkillToken[]>([]);
-  const runner = ref<Session['runner']>('codex');
-  const model = ref('model-a');
-  const effort = ref('medium');
-  const access = ref('on-request');
+  const configuration = createComposerConfigurationService({
+    selectedSession: ref(undefined),
+    profiles: ref([]),
+    effortLabel: String
+  });
+  configuration.apply({
+    runner: 'codex',
+    model: 'model-a',
+    effort: 'medium',
+    access: 'on-request'
+  });
+  const { runner, model, effort, access } = configuration;
   const currentInspector = ref<WorkspaceInspectorHandle | null>();
-  const normalizeDraft = vi.fn();
+  const normalizeDraft = vi.fn(configuration.apply);
   const persistDraft = vi.fn();
+  const projection = createConversationProjectionService({
+    turns,
+    nextCursor,
+    onRecentWindowOverflow: vi.fn(),
+    limitHistory: (values) => [...values]
+  });
   const controller = createWorkbenchWorkspaceCacheController({
     cacheService,
     paging,
-    activeCache: cacheService.active,
     sessions,
     runs,
     turns,
@@ -88,8 +103,9 @@ function fixture() {
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
     inspector: currentInspector,
-    normalizeDraft,
+    restoreDraftConfiguration: normalizeDraft,
     persistDraft,
+    flushConversation: projection.flushPendingTextDeltas,
     tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
     maximumDetails: 5
   });
@@ -116,11 +132,37 @@ function fixture() {
     currentInspector,
     normalizeDraft,
     persistDraft,
+    projection,
     controller
   };
 }
 
 describe('Public Workspace Cache Controller', () => {
+  it('captures a pending streaming delta before switching and restoring the session', () => {
+    const f = fixture();
+    f.selectedNodeId.value = 'node-1';
+    f.selectedWorkspaceId.value = 'workspace-1';
+    f.selectedSessionId.value = 'session-1';
+    f.sessions.value = [nativeSession()];
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.turns.value = [
+      { id: 'turn-1', sessionId: 'session-1', runId: 'run-1', status: 'RUNNING', items: [] }
+    ];
+    f.projection.mergeTextDelta('run-1', { itemId: 'reply', text: 'pending tail' }, 1);
+
+    f.controller.saveCurrentWorkspaceView();
+    f.turns.value = [];
+    f.projection.resetHistory();
+    const cached = f.controller.restoreCachedSessionDetail('session-1')!;
+    f.projection.restoreWindow(cached.turns, cached.nextCursor);
+
+    expect(f.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'pending tail' });
+    f.projection.mergeTextDelta('run-1', { itemId: 'reply', text: ' new' }, 2);
+    f.projection.flushPendingTextDeltas();
+    expect(f.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'pending tail new' });
+    expect(cached.turns[0]?.items[0]?.payload).toMatchObject({ text: 'pending tail' });
+  });
+
   it('Captures restorable sessions, selection, queues, details, inspector, and draft when saving the current view', () => {
     const f = fixture();
     const savedInspector = inspector({ tab: 'files', path: 'src/main.ts' });
@@ -172,19 +214,25 @@ describe('Public Workspace Cache Controller', () => {
 
     f.controller.saveCurrentWorkspaceView();
 
-    const cache = f.cacheService.get('node-1', 'workspace-1');
+    const cache = f.cacheService.view('node-1', 'workspace-1');
     expect(f.persistDraft).toHaveBeenCalledOnce();
     expect(cache.sessions).toEqual([nativeSession()]);
     expect(cache.selectedSessionId).toBe('session-1');
-    expect(cache.queues.get('session-1')).toEqual({ version: 2, paused: true, items: [] });
-    expect(cache.sessionDetails.get('session-1')).toMatchObject({
+    expect(f.cacheService.queueFor('node-1', 'workspace-1', 'session-1')).toEqual({
+      version: 2,
+      paused: true,
+      items: []
+    });
+    expect(f.cacheService.detail('node-1', 'workspace-1', 'session-1')).toMatchObject({
       sessionId: 'session-1',
       runs: f.runs.value,
       turns: f.turns.value,
       nextCursor: 'before-turn-1',
       contextUsage: f.contextUsage.value
     });
-    expect(cache.sessionDetails.get('session-1')?.turns).not.toBe(f.turns.value);
+    expect(f.cacheService.detail('node-1', 'workspace-1', 'session-1')?.turns).not.toBe(
+      f.turns.value
+    );
     expect(cache.inspector).toEqual({ tab: 'files', path: 'src/main.ts' });
     expect(cache.draft).toMatchObject({
       input: 'continue this task',
@@ -198,21 +246,32 @@ describe('Public Workspace Cache Controller', () => {
 
   it('Preserves the cached Inspector snapshot when saving while its Vue ref is unmounted', () => {
     const f = fixture();
-    const cache = f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.activate('node-1', 'workspace-1');
     const snapshot = { tab: 'files', path: 'src/main.ts' };
-    cache.inspector = snapshot;
+    f.cacheService.captureActive({ sessions: [], inspector: snapshot }, 2);
     f.currentInspector.value = null;
 
     f.controller.saveCurrentWorkspaceView();
 
-    expect(cache.inspector).toBe(snapshot);
+    expect(f.cacheService.view('node-1', 'workspace-1').inspector).toBe(snapshot);
   });
 
-  it('Copies the cached detail window and refreshes its last-access time when restoring a match', () => {
+  it('clears the old Inspector snapshot when the mounted Inspector explicitly captures none', () => {
+    const f = fixture();
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.captureActive({ sessions: [], inspector: { tab: 'files' } }, 2);
+    f.currentInspector.value = inspector(undefined);
+
+    f.controller.saveCurrentWorkspaceView();
+
+    expect(f.cacheService.view('node-1', 'workspace-1').inspector).toBeUndefined();
+  });
+
+  it('returns a cached detail and refreshes its last-access time without writing active projections', () => {
     const f = fixture();
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
-    const cache = f.cacheService.get('node-1', 'workspace-1');
+    f.cacheService.activate('node-1', 'workspace-1');
     const detail = {
       sessionId: 'session-1',
       runs: [
@@ -237,17 +296,22 @@ describe('Public Workspace Cache Controller', () => {
       contextUsage: null,
       lastAccessedAt: 1
     };
-    cache.sessionDetails.set('session-1', detail);
+    f.cacheService.captureActive(
+      { sessions: [nativeSession()], selectedSessionId: 'session-1', detail },
+      2
+    );
+    const cached = f.cacheService.detail('node-1', 'workspace-1', 'session-1');
 
     const restored = f.controller.restoreCachedSessionDetail('session-1');
 
-    expect(restored).toBe(detail);
-    expect(f.runs.value).toEqual(detail.runs);
-    expect(f.runs.value).not.toBe(detail.runs);
-    expect(f.turns.value).toEqual(detail.turns);
-    expect(f.turns.value).not.toBe(detail.turns);
-    expect(f.nextCursor.value).toBe('before-turn-1');
-    expect(detail.lastAccessedAt).toBeGreaterThan(1);
+    expect(restored).toBe(cached);
+    expect(restored?.runs).toEqual(detail.runs);
+    expect(restored?.turns).toEqual(detail.turns);
+    expect(restored?.nextCursor).toBe('before-turn-1');
+    expect(f.runs.value).toEqual([]);
+    expect(f.turns.value).toEqual([]);
+    expect(f.nextCursor.value).toBeNull();
+    expect(cached?.lastAccessedAt).toBeGreaterThan(1);
     expect(f.controller.restoreCachedSessionDetail('missing')).toBeUndefined();
   });
 
@@ -274,8 +338,6 @@ describe('Public Workspace Cache Controller', () => {
       nodeId: 'node-1',
       workspaceId: 'workspace-1',
       sessions: [],
-      queues: new Map(),
-      sessionDetails: new Map(),
       draft: {
         input: 'restored input',
         skillTokens: [],
@@ -299,7 +361,8 @@ describe('Public Workspace Cache Controller', () => {
     const savedSnapshot = { tab: 'search', query: 'TODO' };
     const activeInspector = inspector(undefined);
     f.currentInspector.value = activeInspector;
-    f.cacheService.get('node-1', 'workspace-1').inspector = savedSnapshot;
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
 
@@ -316,7 +379,8 @@ describe('Public Workspace Cache Controller', () => {
     const f = fixture();
     const savedSnapshot = { tab: 'search', query: 'TODO' };
     const activeInspector = inspector(undefined);
-    f.cacheService.get('node-1', 'workspace-1').inspector = savedSnapshot;
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
 
@@ -331,7 +395,8 @@ describe('Public Workspace Cache Controller', () => {
     const f = fixture();
     const savedSnapshot = { tab: 'search', query: 'TODO' };
     const activeInspector = inspector(undefined);
-    f.cacheService.get('node-1', 'workspace-1').inspector = savedSnapshot;
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
     f.currentInspector.value = null;
@@ -347,7 +412,8 @@ describe('Public Workspace Cache Controller', () => {
     const f = fixture();
     const savedSnapshot = { tab: 'search', query: 'TODO' };
     const activeInspector = inspector(undefined);
-    f.cacheService.get('node-1', 'workspace-1').inspector = savedSnapshot;
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
 

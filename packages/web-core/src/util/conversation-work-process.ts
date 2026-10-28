@@ -5,7 +5,7 @@ import {
   CONVERSATION_INITIAL_RENDER_CHARACTERS,
   conversationPayload
 } from './conversation-history.js';
-import { isTerminalRunStatus } from '../service/run-service.js';
+import { isTerminalRunStatus } from './run-state.js';
 import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
   aggregateConversationDisplayItems,

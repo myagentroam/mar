@@ -219,6 +219,7 @@ onBeforeUnmount(() => {
           :loading="submission.pending.value"
           :initializing="loadingInitial"
           :initial-render-version="initialRenderVersion"
+          :capture-render-anchor="chat.scroll.captureRenderAnchor"
           :image-attachments="images.attachments"
           :user-input-questions="userInputQuestions"
           :user-input-answer="chat.questions.answer"

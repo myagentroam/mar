@@ -2,7 +2,7 @@
 import DefaultTheme from 'vitepress/theme';
 import DocumentMeta from './components/DocumentMeta.vue';
 import { DOCUMENTATION_LOCALES, useDocumentationMessages } from './messages';
-import { LOCALE_STORAGE_KEY } from '@myagentroam-enterprise/web-implementation/locale-config';
+import { LOCALE_STORAGE_KEY } from '@myagentroam/web-core/locale-config';
 import { nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useData, useRoute, useRouter } from 'vitepress';
 

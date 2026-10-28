@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchLayoutService } from '../../ee/web/src/service/workbench-layout-service';
-import { createWorkbenchRouteService } from '../../ee/web/src/service/workbench-route-service';
-import { createSessionSnapshotRefreshService } from '../../ee/web/src/service/session-snapshot-refresh-service';
+import { createWorkbenchLayoutService } from '@myagentroam/web-core/layout-persistence';
+import { createWorkbenchRouteService } from '@myagentroam/web-core/route-service';
+import { createSessionSnapshotRefreshService } from '@myagentroam/web-core/snapshot-refresh';
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -58,7 +58,7 @@ describe('Web Workbench application shell services', () => {
     const storage = memoryStorage();
     storage.setItem(
       'mar.workbench.selection.v1',
-      JSON.stringify({ nodeId: 'n1', workspaceId: 'w1', sessionId: 's1' })
+      JSON.stringify({ workspace: { nodeId: 'n1', workspaceId: 'w1' }, sessionId: 's1' })
     );
     vi.stubGlobal('window', {
       location: {
@@ -161,7 +161,10 @@ describe('Web Workbench application shell services', () => {
     const storage = memoryStorage();
     storage.setItem(
       'mar.workbench.selection.v1',
-      JSON.stringify({ nodeId: 'missing', workspaceId: 'workspace-1', sessionId: 'session-1' })
+      JSON.stringify({
+        workspace: { nodeId: 'missing', workspaceId: 'workspace-1' },
+        sessionId: 'session-1'
+      })
     );
     vi.stubGlobal('window', {
       location: { search: '', href: 'http://localhost/console' },
@@ -194,7 +197,10 @@ describe('Web Workbench application shell services', () => {
     const storage = memoryStorage();
     storage.setItem(
       'mar.workbench.selection.v1',
-      JSON.stringify({ nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'session-1' })
+      JSON.stringify({
+        workspace: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+        sessionId: 'session-1'
+      })
     );
     vi.stubGlobal('window', {
       location: {
@@ -230,7 +236,10 @@ describe('Web Workbench application shell services', () => {
     const storage = memoryStorage();
     storage.setItem(
       'mar.workbench.selection.v1',
-      JSON.stringify({ nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'missing' })
+      JSON.stringify({
+        workspace: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+        sessionId: 'missing'
+      })
     );
     vi.stubGlobal('window', {
       location: { search: '', href: 'http://localhost/console' },

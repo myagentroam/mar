@@ -3,7 +3,7 @@ import {
   conversationHostingMaintenanceAvailability,
   createConversationHostingMaintenanceService,
   sameConversationHostingMaintenanceContext
-} from '../../ee/web/src/service/conversation-hosting-maintenance-service.js';
+} from '@myagentroam/web-core/hosting-maintenance';
 import {
   conversationHostingDisablementAvailability,
   conversationHostingEnablementAvailability,

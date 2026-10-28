@@ -1,18 +1,16 @@
 import type { DirectTransferDescriptor, DirectTransferResource } from '@myagentroam/protocol';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
 
-export interface WorkspaceDirectFileIdentity {
-  readonly revision: string;
-  readonly size: number;
-}
+import type {
+  WorkspaceDirectFileIdentity,
+  WorkspaceDirectFileRange
+} from '../model/workspace-direct-file.js';
 
-export interface WorkspaceDirectFileRange extends WorkspaceDirectFileIdentity {
-  readonly offset: number;
-  readonly bytes: Uint8Array<ArrayBuffer>;
-  readonly nextOffset: number | null;
-}
+type MetadataRequest = (path: string, init?: RequestInit) => Promise<unknown>;
 
-type MetadataRequest = (path: string) => Promise<unknown>;
+function requestMetadata(request: MetadataRequest, path: string, signal?: AbortSignal) {
+  return signal === undefined ? request(path) : request(path, { signal });
+}
 
 function metadataIdentity(body: unknown): WorkspaceDirectFileIdentity | undefined {
   const file = (body as { readonly file?: { size?: unknown; revision?: unknown } }).file;
@@ -25,6 +23,7 @@ export async function readWorkspaceDirectFileMetadata(input: {
   readonly request: MetadataRequest;
   readonly nodeId: string;
   readonly resource: Extract<DirectTransferResource, { kind: 'WORKSPACE_FILE' }>;
+  readonly signal?: AbortSignal;
 }): Promise<WorkspaceDirectFileIdentity | undefined> {
   const { resource } = input;
   const parameters = new URLSearchParams({ nodeId: input.nodeId, path: resource.path });
@@ -32,8 +31,10 @@ export async function readWorkspaceDirectFileMetadata(input: {
     parameters.set('repositoryPath', resource.repositoryPath);
   if (resource.worktreePath !== undefined) parameters.set('worktreePath', resource.worktreePath);
   return metadataIdentity(
-    await input.request(
-      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/files/direct-metadata?${parameters}`
+    await requestMetadata(
+      input.request,
+      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/files/direct-metadata?${parameters}`,
+      input.signal
     )
   );
 }
@@ -43,6 +44,7 @@ export async function readGitDirectFileMetadata(input: {
   readonly nodeId: string;
   readonly resource: Extract<DirectTransferResource, { kind: 'GIT_COMMIT_BLOB' }>;
   readonly refs: readonly string[];
+  readonly signal?: AbortSignal;
 }): Promise<WorkspaceDirectFileIdentity | undefined> {
   const { resource } = input;
   const parameters = new URLSearchParams({ nodeId: input.nodeId, path: resource.path });
@@ -50,8 +52,10 @@ export async function readGitDirectFileMetadata(input: {
     parameters.set('repositoryPath', resource.repositoryPath);
   for (const ref of input.refs) parameters.append('refs', ref);
   return metadataIdentity(
-    await input.request(
-      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/git/commits/${encodeURIComponent(resource.commit)}/files/direct-metadata?${parameters}`
+    await requestMetadata(
+      input.request,
+      `/api/workspaces/${encodeURIComponent(resource.workspaceId)}/git/commits/${encodeURIComponent(resource.commit)}/files/direct-metadata?${parameters}`,
+      input.signal
     )
   );
 }
@@ -80,6 +84,7 @@ export async function readWorkspaceDirectFileRange(input: {
 }): Promise<WorkspaceDirectFileRange> {
   const identity = input.identity ?? (await input.metadata());
   if (identity === undefined) throw new Error('DIRECT_METADATA_UNAVAILABLE');
+  input.signal?.throwIfAborted();
   const length = Math.min(input.length, identity.size - input.offset);
   if (length <= 0)
     return {

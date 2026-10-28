@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { ApiError } from '../../src/util/api-error.js';
 import { createHostedConversationFilePreviewService } from '../../src/service/hosted-conversation-file-preview-service.js';
+import { createHostedConversationWatchService } from '../../src/service/hosted-conversation-watch-service.js';
 import {
   createHostedConversationWorkspaceService,
   hostedConversationFileForPath,
@@ -19,6 +20,7 @@ const conversation = {
   titleSource: 'CUSTOM',
   pinnedAt: null,
   status: 'ACTIVE',
+  activity: { status: 'IDLE', version: 0, updatedAt: 0 },
   modelId: 'model-1',
   createdAt: 1,
   updatedAt: 1,
@@ -209,6 +211,165 @@ function recoveryHarness() {
 }
 
 describe('Web Hosted Conversation Workspace Service', () => {
+  it('does not let a late old Watch response cancel the new initial waiter', async () => {
+    const requests = new Map<string, ReturnType<typeof deferred<unknown>>>();
+    const node = ref<string | undefined>('node-1');
+    const selected = ref<string | undefined>('conversation-1');
+    const owner = createHostedConversationWatchService({
+      request: async (_path, init) => {
+        if (init?.method === 'DELETE') return undefined as never;
+        const { watchId } = JSON.parse(String(init?.body)) as { watchId: string };
+        const response = deferred<unknown>();
+        requests.set(watchId, response);
+        return response.promise as never;
+      },
+      selectedNodeId: node,
+      selectedConversationId: selected,
+      workbenchConnectionId: () => 'connection-current',
+      heartbeatMs: 60_000,
+      requestTimeoutMs: 1_000,
+      confirmationTimeoutMs: 60_000,
+      installSnapshot: () => {},
+      applyHostedPayload: () => {}
+    });
+    const first = owner.beginSelectedConversationWatch().catch(() => {});
+    const oldId = owner.selectedWatchId()!;
+    owner.stopSelectedConversationWatch();
+    selected.value = 'conversation-2';
+    const second = owner.beginSelectedConversationWatch();
+    const newId = owner.selectedWatchId()!;
+    const accept = (id: string) =>
+      requests.get(id)!.resolve({
+        accepted: true,
+        watchId: id,
+        nodeGeneration: 'generation-current',
+        expiresAt: Date.now() + 45_000
+      });
+    accept(newId);
+    await new Promise((resolve) => setImmediate(resolve));
+    accept(oldId);
+    await new Promise((resolve) => setImmediate(resolve));
+    owner.handleWatchEvent({
+      type: 'watch.hosted-conversation.snapshot',
+      workbenchConnectionId: 'connection-current',
+      watchId: newId,
+      nodeGeneration: 'generation-current',
+      nodeId: 'node-1',
+      conversationId: 'conversation-2',
+      snapshotSequence: 1,
+      payload: { ...snapshot, conversation: { ...conversation, id: 'conversation-2' } }
+    });
+    await expect(second).resolves.toBeUndefined();
+    expect(owner.watchReady.value).toBe(true);
+    owner.stopSelectedConversationWatch();
+    await first;
+  });
+
+  it('does not publish old Watch readiness after snapshot installation synchronously changes selection', async () => {
+    const node = ref<string | undefined>('node-1');
+    const selected = ref<string | undefined>('conversation-1');
+    let second: Promise<void> | undefined;
+    const owner = createHostedConversationWatchService({
+      request: async (_path, init) => {
+        if (init?.method === 'DELETE') return undefined as never;
+        const { watchId } = JSON.parse(String(init?.body)) as { watchId: string };
+        return {
+          accepted: true,
+          watchId,
+          nodeGeneration: 'generation-current',
+          expiresAt: Date.now() + 45_000
+        } as never;
+      },
+      selectedNodeId: node,
+      selectedConversationId: selected,
+      workbenchConnectionId: () => 'connection-current',
+      heartbeatMs: 60_000,
+      requestTimeoutMs: 1_000,
+      confirmationTimeoutMs: 60_000,
+      installSnapshot: () => {
+        owner.stopSelectedConversationWatch();
+        selected.value = 'conversation-2';
+        second = owner.beginSelectedConversationWatch();
+      },
+      applyHostedPayload: () => {}
+    });
+    const first = owner.beginSelectedConversationWatch().catch(() => {});
+    const oldId = owner.selectedWatchId()!;
+    owner.handleWatchEvent({
+      type: 'watch.hosted-conversation.snapshot',
+      workbenchConnectionId: 'connection-current',
+      watchId: oldId,
+      nodeGeneration: 'generation-current',
+      nodeId: 'node-1',
+      conversationId: 'conversation-1',
+      snapshotSequence: 1,
+      payload: snapshot
+    });
+    expect(owner.selectedWatchId()).not.toBe(oldId);
+    expect(owner.watchReady.value).toBe(false);
+    let secondSettled = false;
+    void second!.finally(() => {
+      secondSettled = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(secondSettled).toBe(false);
+    owner.stopSelectedConversationWatch();
+    await second;
+    await first;
+  });
+  it('never pairs a newly selected hosted identity with the previous conversation snapshot', () => {
+    const workspace = service(async () => undefined as never);
+    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    const mismatches: string[] = [];
+    const stop = watch(
+      [workspace.selectedConversationId, workspace.snapshot],
+      ([selected, current]) => {
+        if (selected !== undefined && current !== undefined && selected !== current.conversation.id)
+          mismatches.push(`${selected}:${current.conversation.id}`);
+      },
+      { flush: 'sync' }
+    );
+    try {
+      workspace.selectConversation('node-1', 'conversation-2');
+      expect(mismatches).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
+  it('installs the supplied hosted snapshot before publishing its new identity', () => {
+    const workspace = service(async () => undefined as never);
+    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    const observations: Array<string | undefined> = [];
+    const stop = watch(
+      workspace.selectedConversationId,
+      (id) => {
+        if (id === 'conversation-2') observations.push(workspace.snapshot.value?.conversation.id);
+      },
+      { flush: 'sync' }
+    );
+    try {
+      workspace.selectConversation('node-1', 'conversation-2', {
+        ...snapshot,
+        conversation: { ...conversation, id: 'conversation-2' }
+      } as never);
+      expect(observations).toEqual(['conversation-2']);
+    } finally {
+      stop();
+    }
+  });
+  it('exposes a read-only hosted conversation window', () => {
+    const workspace = service(async () => undefined as never);
+    if (false) {
+      // @ts-expect-error Hosted consumers cannot replace the projection window.
+      workspace.turns.value = [];
+      // @ts-expect-error Hosted consumers cannot mutate the projected turn list.
+      workspace.turns.value.push(workspace.turns.value[0]!);
+      // @ts-expect-error Hosted consumers cannot replace the projection cursor.
+      workspace.historyNextCursor.value = null;
+    }
+    expect(workspace.turns.value).toEqual([]);
+  });
   it.each([
     new ApiError('SESSION_WATCH_NOT_FOUND', 'The observation lease no longer exists.'),
     new ApiError('WATCH_REQUEST_TIMEOUT', 'The watch request timed out.'),
@@ -1323,6 +1484,72 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
   });
 
+  it('does not replace text flushed while a rollback response is pending', async () => {
+    const rollbackResponse = deferred<unknown>();
+    let watchId = '';
+    const workspace = service(async (path, init) => {
+      if (path.endsWith('/watch')) {
+        watchId = (JSON.parse(String(init?.body)) as { watchId: string }).watchId;
+        return {
+          accepted: true,
+          watchId,
+          nodeGeneration: 'generation-current',
+          expiresAt: Date.now() + 45_000
+        } as never;
+      }
+      if (path.endsWith('/rollback')) return rollbackResponse.promise as never;
+      throw new Error('UNEXPECTED_REQUEST');
+    });
+    workspace.selectConversation('node-1', 'conversation-1');
+    const initial = workspace.beginSelectedConversationWatch();
+    await Promise.resolve();
+    const identity = {
+      workbenchConnectionId: 'connection-current',
+      watchId,
+      nodeGeneration: 'generation-current',
+      nodeId: 'node-1',
+      conversationId: 'conversation-1',
+      expiresAt: Date.now() + 45_000
+    };
+    workspace.handleWatchEvent({
+      type: 'watch.hosted-conversation.snapshot',
+      ...identity,
+      revision: 1,
+      snapshotSequence: 1,
+      payload: snapshot
+    });
+    await initial;
+    const emitRuntime = (sequence: number, kind: string, payload: unknown) =>
+      workspace.handleWatchEvent({
+        type: 'watch.hosted-conversation.event',
+        ...identity,
+        event: {
+          sequence,
+          category: 'hosted-conversation',
+          payload: {
+            conversationId: 'conversation-1',
+            kind: 'runtime',
+            runtimeEvent: {
+              kind,
+              executionId: 'run-1',
+              turnId: 'turn-1',
+              sequence,
+              createdAt: sequence,
+              payload
+            }
+          }
+        }
+      });
+    emitRuntime(2, 'RUN', { status: 'RUNNING' });
+    emitRuntime(3, 'DELTA', { itemId: 'assistant-1', text: 'new text' });
+    const rollback = workspace.rollback('turn-1', null);
+    await Promise.resolve();
+    expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
+    rollbackResponse.resolve({ ...snapshot, snapshotSequence: 2 });
+    await rollback;
+    expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
+  });
+
   it('Merge by Stable Turn, Item, File ID and do not infer files from message text', async () => {
     let watchId = '';
     const workspace = service(async (path, init) => {
@@ -1668,9 +1895,38 @@ describe('Web Hosted Conversation Workspace Service', () => {
 
   it('Message responses must not override concurrent real-time snapshots or roll back the final state of the same run', async () => {
     const response = deferred<unknown>();
-    const workspace = service(async () => response.promise as never);
-    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
-    workspace.watchReady.value = true;
+    let watchId = '';
+    const workspace = service(async (path, init) => {
+      if (path.endsWith('/watch')) {
+        watchId = (JSON.parse(String(init?.body)) as { watchId: string }).watchId;
+        return {
+          accepted: true,
+          watchId,
+          nodeGeneration: 'generation-current',
+          expiresAt: Date.now() + 45_000
+        } as never;
+      }
+      return response.promise as never;
+    });
+    workspace.selectConversation('node-1', 'conversation-1');
+    const initial = workspace.beginSelectedConversationWatch();
+    await Promise.resolve();
+    const identity = {
+      workbenchConnectionId: 'connection-current',
+      watchId,
+      nodeGeneration: 'generation-current',
+      nodeId: 'node-1',
+      conversationId: 'conversation-1',
+      expiresAt: Date.now() + 45_000
+    };
+    workspace.handleWatchEvent({
+      type: 'watch.hosted-conversation.snapshot',
+      ...identity,
+      revision: 1,
+      snapshotSequence: 1,
+      payload: snapshot
+    });
+    await initial;
     const operation = workspace.sendMessage({
       prompt: 'Continue.',
       attachmentIds: [],
@@ -1686,25 +1942,31 @@ describe('Web Hosted Conversation Workspace Service', () => {
       code: 'HOSTED_CONVERSATION_FILE_RECONCILE_FAILED',
       message: 'Hosted conversation file projection failed.'
     } as const;
-    workspace.snapshot.value = {
-      ...snapshot,
-      run: terminalRun,
-      files: [
-        {
-          id: 'file-race',
-          conversationId: 'conversation-1',
-          category: 'OUTPUT',
-          relativePath: 'race.txt',
-          displayName: 'race.txt',
-          mimeType: 'text/plain',
-          size: 4,
-          source: 'AGENT',
-          createdAt: 3,
-          updatedAt: 3
-        }
-      ],
-      error: preservedError
-    } as never;
+    workspace.handleWatchEvent({
+      type: 'watch.hosted-conversation.snapshot',
+      ...identity,
+      revision: 2,
+      snapshotSequence: 2,
+      payload: {
+        ...snapshot,
+        run: terminalRun,
+        files: [
+          {
+            id: 'file-race',
+            conversationId: 'conversation-1',
+            category: 'OUTPUT',
+            relativePath: 'race.txt',
+            displayName: 'race.txt',
+            mimeType: 'text/plain',
+            size: 4,
+            source: 'AGENT',
+            createdAt: 3,
+            updatedAt: 3
+          }
+        ],
+        error: preservedError
+      }
+    });
     response.resolve({
       conversation: { ...conversation, updatedAt: 2, lastActivityAt: 2 },
       run: { id: 'run-race', status: 'RUNNING', startedAt: 2, completedAt: null }
@@ -1866,6 +2128,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
         payload: { text: 'Partial answer' }
       })
     );
+    expect(workspace.snapshot.value?.turns).toBe(workspace.turns.value);
 
     runtimeEvent(6, {
       kind: 'ITEM',
@@ -1918,7 +2181,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       throw new Error('NETWORK_FAILED');
     });
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
-    workspace.watchReady.value = true;
+    vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
 
     await expect(
       workspace.sendMessage({
@@ -1935,7 +2198,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const response = deferred<unknown>();
     const workspace = service(async () => response.promise as never);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
-    workspace.watchReady.value = true;
+    vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
 
     const operation = workspace.sendMessage({
       prompt: 'Continue.',

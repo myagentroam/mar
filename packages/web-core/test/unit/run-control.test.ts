@@ -16,7 +16,7 @@ describe('Shared Run interrupt control', () => {
       recoveryState: 'ACTIVE' as const,
       clientMessageId: 'message-1'
     };
-    runService.runs.value = [run];
+    runService.replaceRuns([run]);
     let resolveRequest!: (value: unknown) => void;
     const notice = vi.fn();
     const controller = createWorkbenchRunControlService({
@@ -24,7 +24,6 @@ describe('Shared Run interrupt control', () => {
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => runService.runs.value[0]),
-      runs: runService.runs,
       notice,
       runService,
       request: vi.fn(() => new Promise((resolve) => (resolveRequest = resolve))) as never,
@@ -64,7 +63,6 @@ describe('Shared Run interrupt control', () => {
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => undefined),
-      runs: runService.runs,
       notice,
       runService,
       request: vi.fn(async () => ({
@@ -105,7 +103,6 @@ describe('Shared Run interrupt control', () => {
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => undefined),
-      runs: runService.runs,
       notice: vi.fn(),
       runService,
       request: request as never,
@@ -133,7 +130,7 @@ describe('Shared Run interrupt control', () => {
   it('Does not mark a known Run as cancelling while its stop request is in flight', async () => {
     const selectedSessionId = ref<string | undefined>('session-1');
     const runService = createRunService(selectedSessionId);
-    runService.runs.value = [
+    runService.replaceRuns([
       {
         id: 'run-1',
         sessionId: 'session-1',
@@ -141,7 +138,7 @@ describe('Shared Run interrupt control', () => {
         recoveryState: 'ACTIVE',
         clientMessageId: 'message-1'
       }
-    ];
+    ]);
     runService.selectedRunId.value = 'run-1';
     const notice = vi.fn();
     const error = new Error('INTERRUPT_DENIED');
@@ -154,7 +151,6 @@ describe('Shared Run interrupt control', () => {
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => runService.runs.value[0]),
-      runs: runService.runs,
       notice,
       runService,
       request: vi.fn(() => new Promise((_resolve, reject) => (rejectRequest = reject))) as never,
@@ -189,7 +185,7 @@ describe('Shared Run interrupt control', () => {
         clientMessageId: 'message-1'
       };
       if (snapshot === 'known Run') {
-        runService.runs.value = [run];
+        runService.replaceRuns([run]);
         runService.selectedRunId.value = run.id;
       }
       const notice = vi.fn();
@@ -204,7 +200,6 @@ describe('Shared Run interrupt control', () => {
         selectedSessionId,
         selectedRunId: runService.selectedRunId,
         activeRun: computed(() => runService.runs.value[0]),
-        runs: runService.runs,
         notice,
         runService,
         request: vi.fn(async () => {
@@ -237,7 +232,6 @@ describe('Shared Run interrupt control', () => {
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
       activeRun: computed(() => undefined),
-      runs: runService.runs,
       notice,
       runService,
       request: vi.fn(async () => {

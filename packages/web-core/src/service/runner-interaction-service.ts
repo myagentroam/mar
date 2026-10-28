@@ -225,6 +225,30 @@ export function createRunnerInteractionService(options: {
     ];
   }
 
+  function prepareDraftCommand(
+    command: RunnerCommand,
+    input: string
+  ): {
+    readonly goalAlreadyActive: boolean;
+    readonly access?: string;
+  } {
+    const goalAlreadyActive =
+      command.id === 'goal' &&
+      deferredDraftCommands.value.some((candidate) => candidate.command.id === 'goal');
+    stageDraftCommand(command, input);
+    if (command.id !== 'goal' || goalAlreadyActive || command.runner === 'mar-agent')
+      return { goalAlreadyActive };
+    return {
+      goalAlreadyActive,
+      access:
+        command.runner === 'codex'
+          ? 'full-access'
+          : command.runner === 'claude-code'
+            ? 'bypass'
+            : 'auto'
+    };
+  }
+
   function closeCommandState(
     state: RunnerCommandState,
     send: (command: RunnerCommand, input: string) => void
@@ -335,6 +359,7 @@ export function createRunnerInteractionService(options: {
     selectSkill,
     selectQuickPrompt,
     stageDraftCommand,
+    prepareDraftCommand,
     closeCommandState,
     onInput,
     onKeydown

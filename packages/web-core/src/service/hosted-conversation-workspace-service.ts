@@ -1,35 +1,31 @@
 import {
+  createHostedConversationDirectoryService,
+  mergeConversationSummary,
+  targetKey
+} from './hosted-conversation-directory-service.js';
+import {
   conversationFileProjectionSchema,
   hostedConversationDeleteResultSchema,
-  hostedConversationDirectoryPageSchema,
-  hostedConversationActivityMessageSchema,
-  hostedConversationFileDeleteResultSchema,
-  hostedConversationFileReadResultSchema,
   hostedConversationHistoryPageSchema,
   hostedConversationSnapshotSchema,
   hostedConversationSummarySchema,
   hostedConversationTemplateSwitchResultSchema,
-  hostedConversationUploadPreflightResultSchema,
-  hostedConversationUploadSchema,
-  watchAcceptedSchema,
   type ConversationFileProjection,
-  type HostedConversationFileDeleteResult,
-  type HostedConversationFileReadResult,
   type HostedConversationSnapshot,
-  type HostedConversationSummary,
-  type HostedConversationUpload,
-  type HostedConversationActivity
+  type HostedConversationSummary
 } from '@myagentroam/protocol';
 import { computed, ref, type Ref } from 'vue';
 import type {
   ConversationItem as WorkbenchConversationItem,
   ConversationTurn as WorkbenchConversationTurn
 } from '../model/workbench.js';
+import type { HostedConversationView } from '../model/hosted-conversation-view.js';
 import { limitConversationHistory } from '../util/conversation-history.js';
 import { errorCode } from '../util/api-error.js';
-import { listAvailableConversationTemplates } from './hosted-conversation-entry-service.js';
-import { createConversationProjectionService } from './conversation-projection-service.js';
-import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
+import { listAvailableConversationTemplates } from './hosted-conversation-template-client.js';
+import { createConversationProjectionState } from './conversation-projection-service.js';
+import { createHostedConversationFileService } from './hosted-conversation-file-service.js';
+import { createHostedConversationWatchService } from './hosted-conversation-watch-service.js';
 import { createWorkbenchSubmissionService } from './workbench-submission-service.js';
 
 export type HostedConversationRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -76,39 +72,20 @@ interface HostedConversationWorkspaceServiceOptions {
   readonly onWatchExpired?: () => void;
 }
 
-interface PendingInitialSnapshot {
-  readonly nodeId: string;
-  readonly conversationId: string;
-  readonly watchId: string;
-  readonly resolve: () => void;
-  readonly reject: (error: Error) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
-  readonly removeAbortListener: () => void;
-}
-
 /** Owns the Node directory, selected hosted conversation, and its single page Watch lease. */
 export function createHostedConversationWorkspaceService(
   options: HostedConversationWorkspaceServiceOptions
 ) {
-  const pageSize = options.pageSize ?? 20;
-  const conversations = ref<HostedConversationSummary[]>([]);
-  const hasMoreConversations = ref(false);
-  const loadingConversations = ref(false);
-  const loadingMoreConversations = ref(false);
-  const loadMoreConversationsError = ref<unknown>();
-  const conversationsLoaded = ref(false);
   const selectedNodeId = options.selectedNodeId ?? ref<string>();
   const selectedConversationId = options.selectedConversationId ?? ref<string>();
-  const snapshot = ref<HostedConversationSnapshot>();
+  const snapshotMetadata = ref<Omit<HostedConversationSnapshot, 'turns'>>();
   const loadingOlderHistory = ref(false);
   const olderHistoryError = ref<unknown>();
-  const watchReady = ref(false);
-  const watchFailureCode = ref<string>();
-  const projectedTurns = ref<WorkbenchConversationTurn[]>([]);
-  const projectionNextCursor = ref<string | null>(null);
-  const conversationProjection = createConversationProjectionService({
+  const {
     turns: projectedTurns,
     nextCursor: projectionNextCursor,
+    projection: conversationProjection
+  } = createConversationProjectionState({
     onRecentWindowOverflow: () => {
       historyWindowRevision += 1;
       olderHistoryError.value = undefined;
@@ -119,340 +96,78 @@ export function createHostedConversationWorkspaceService(
     },
     limitHistory: limitConversationHistory
   });
+  const snapshot = computed<HostedConversationView | undefined>(() =>
+    snapshotMetadata.value === undefined
+      ? undefined
+      : { ...snapshotMetadata.value, turns: projectedTurns.value }
+  );
+  const directory = createHostedConversationDirectoryService({
+    request: options.request,
+    selectedNodeId,
+    selectedConversationId,
+    pageSize: options.pageSize ?? 20,
+    onActivity: (nodeId, conversationId, activity) => {
+      const current = snapshot.value;
+      if (
+        current?.conversation.nodeId === nodeId &&
+        current.conversation.id === conversationId &&
+        activity.version > current.conversation.activity.version
+      )
+        replaceSnapshot({ ...current, conversation: { ...current.conversation, activity } });
+    }
+  });
+  const {
+    conversations,
+    hasMoreConversations,
+    loadingConversations,
+    loadingMoreConversations,
+    loadMoreConversationsError,
+    conversationsLoaded,
+    loadConversations,
+    loadMoreConversations,
+    projectActivityMessage,
+    conversationIsRunning,
+    upsertConversation
+  } = directory;
+
+  const watch = createHostedConversationWatchService({
+    request: options.request,
+    workbenchConnectionId: options.workbenchConnectionId,
+    selectedNodeId,
+    selectedConversationId,
+    heartbeatMs: options.heartbeatMs,
+    requestTimeoutMs: options.requestTimeoutMs,
+    confirmationTimeoutMs: options.confirmationTimeoutMs,
+    ...(options.onWatchExpired === undefined ? {} : { onWatchExpired: options.onWatchExpired }),
+    installSnapshot,
+    applyHostedPayload
+  });
+  const {
+    watchReady,
+    watchFailureCode,
+    selectedWatchId,
+    beginSelectedConversationWatch,
+    restartSelectedConversationWatch,
+    pauseSelectedConversationWatch,
+    stopSelectedConversationWatch,
+    handleVisibility,
+    handleWatchEvent
+  } = watch;
+
   const messageSubmission = createWorkbenchSubmissionService();
   const templateChanges = ref(new Set<string>());
   const templateChanging = computed(() => {
     const target = selectedTarget();
     return target !== undefined && templateChanges.value.has(target);
   });
-  let listSequence = 0;
-  let loadMoreOperation = 0;
-  let watchId: string | undefined;
-  let acceptingWatchEvents = false;
-  let watchedNodeId: string | undefined;
-  let watchedConversationId: string | undefined;
-  let watchedConnectionId: string | undefined;
-  let nodeGeneration: string | undefined;
-  let lastSnapshotSequence = 0;
-  let lastEventSequence = 0;
   let historyRevision = 0;
   let historyExpanded = false;
   let historyWindowRevision = 0;
-  let directoryCursor: string | null = null;
-  let pendingInitial: PendingInitialSnapshot | undefined;
-  const activityProjections = new Map<
-    string,
-    { readonly activity: HostedConversationActivity; readonly revision: number }
-  >();
-  let activityMessageRevision = 0;
   let recentHistoryRefresh: Promise<void> | undefined;
 
   function responseInvalid(): Error {
     return new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
   }
-
-  function parseListPage(value: unknown) {
-    const parsed = hostedConversationDirectoryPageSchema.safeParse(value);
-    if (!parsed.success) throw responseInvalid();
-    return parsed.data;
-  }
-
-  function mergeProjectedActivity(
-    conversation: HostedConversationSummary,
-    requestActivityRevision: number
-  ): HostedConversationSummary {
-    const key = targetKey(conversation.nodeId, conversation.id);
-    const projected = activityProjections.get(key);
-    if (
-      projected !== undefined &&
-      projected.revision > requestActivityRevision &&
-      projected.activity.version > conversation.activity.version
-    )
-      return { ...conversation, activity: projected.activity };
-    activityProjections.set(key, {
-      activity: conversation.activity,
-      revision: requestActivityRevision
-    });
-    return conversation;
-  }
-
-  function projectActivityMessage(value: unknown): boolean {
-    const parsed = hostedConversationActivityMessageSchema.safeParse(value);
-    if (!parsed.success) return false;
-    const message = parsed.data;
-    const key = targetKey(message.nodeId, message.conversationId);
-    const current = activityProjections.get(key);
-    if (current !== undefined && message.activity.version <= current.activity.version) return true;
-    activityProjections.set(key, {
-      activity: message.activity,
-      revision: ++activityMessageRevision
-    });
-    conversations.value = conversations.value.map((conversation) =>
-      conversation.nodeId === message.nodeId && conversation.id === message.conversationId
-        ? { ...conversation, activity: message.activity }
-        : conversation
-    );
-    const currentSnapshot = snapshot.value;
-    if (
-      currentSnapshot?.conversation.nodeId === message.nodeId &&
-      currentSnapshot.conversation.id === message.conversationId &&
-      message.activity.version > currentSnapshot.conversation.activity.version
-    )
-      replaceSnapshot({
-        ...currentSnapshot,
-        conversation: {
-          ...currentSnapshot.conversation,
-          activity: message.activity
-        }
-      });
-    return true;
-  }
-
-  function conversationIsRunning(conversation: HostedConversationSummary): boolean {
-    return ['STARTING', 'RUNNING', 'CANCELLING'].includes(conversation.activity.status);
-  }
-
-  async function loadConversations(): Promise<void> {
-    const sequence = ++listSequence;
-    const requestActivityRevision = activityMessageRevision;
-    loadMoreOperation += 1;
-    loadingConversations.value = true;
-    loadingMoreConversations.value = false;
-    loadMoreConversationsError.value = undefined;
-    try {
-      const page = parseListPage(
-        await options.request<unknown>(`/api/hosted-conversations?limit=${pageSize}`)
-      );
-      if (sequence !== listSequence) return;
-      const currentConversations = conversations.value;
-      const currentByKey = new Map(
-        currentConversations.map((conversation) => [
-          targetKey(conversation.nodeId, conversation.id),
-          conversation
-        ])
-      );
-      const selectedConversation = currentConversations.find(
-        (conversation) =>
-          conversation.nodeId === selectedNodeId.value &&
-          conversation.id === selectedConversationId.value
-      );
-      const items = page.items.map((conversation) => {
-        conversation = mergeProjectedActivity(conversation, requestActivityRevision);
-        const current = currentByKey.get(targetKey(conversation.nodeId, conversation.id));
-        if (current === undefined) return conversation;
-        const merged = mergeConversationSummary(conversation, current);
-        return merged.activity === conversation.activity
-          ? merged
-          : { ...merged, activity: conversation.activity };
-      });
-      if (
-        page.items.length > 0 &&
-        selectedConversation !== undefined &&
-        !page.items.some(
-          (conversation) =>
-            conversation.nodeId === selectedConversation.nodeId &&
-            conversation.id === selectedConversation.id
-        )
-      )
-        items.push(selectedConversation);
-      conversations.value = deduplicateConversations(items);
-      directoryCursor = page.nextCursor;
-      hasMoreConversations.value = directoryCursor !== null;
-      conversationsLoaded.value = true;
-    } finally {
-      if (sequence === listSequence) loadingConversations.value = false;
-    }
-  }
-
-  async function loadMoreConversations(): Promise<void> {
-    const cursor = directoryCursor;
-    if (cursor === null || loadingMoreConversations.value || loadingConversations.value) return;
-    const sequence = listSequence;
-    const operation = ++loadMoreOperation;
-    const requestActivityRevision = activityMessageRevision;
-    loadingMoreConversations.value = true;
-    loadMoreConversationsError.value = undefined;
-    try {
-      const page = parseListPage(
-        await options.request<unknown>(
-          `/api/hosted-conversations?limit=${pageSize}&cursor=${encodeURIComponent(cursor)}`
-        )
-      );
-      if (sequence !== listSequence) return;
-      if (page.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
-      conversations.value = deduplicateConversations([
-        ...conversations.value,
-        ...page.items.map((conversation) =>
-          mergeProjectedActivity(conversation, requestActivityRevision)
-        )
-      ]);
-      directoryCursor = page.nextCursor;
-      hasMoreConversations.value = directoryCursor !== null;
-    } catch (error) {
-      if (sequence === listSequence) loadMoreConversationsError.value = error;
-    } finally {
-      if (operation === loadMoreOperation) loadingMoreConversations.value = false;
-    }
-  }
-
-  function cancelPendingInitial(code = 'HOSTED_CONVERSATION_WATCH_INITIAL_FAILED'): void {
-    const pending = pendingInitial;
-    if (pending === undefined) return;
-    pendingInitial = undefined;
-    clearTimeout(pending.timer);
-    pending.removeAbortListener();
-    pending.reject(new Error(code));
-  }
-
-  function waitForInitialSnapshot(
-    nodeId: string,
-    conversationId: string,
-    currentWatchId: string,
-    signal: AbortSignal
-  ): Promise<void> {
-    cancelPendingInitial();
-    return new Promise((resolve, reject) => {
-      const abort = () => {
-        if (pendingInitial?.watchId !== currentWatchId) return;
-        cancelPendingInitial();
-      };
-      signal.addEventListener('abort', abort, { once: true });
-      const timer = setTimeout(abort, options.requestTimeoutMs);
-      pendingInitial = {
-        nodeId,
-        conversationId,
-        watchId: currentWatchId,
-        resolve,
-        reject,
-        timer,
-        removeAbortListener: () => signal.removeEventListener('abort', abort)
-      };
-      if (signal.aborted) abort();
-    });
-  }
-
-  function eligible(target: string): boolean {
-    const nodeId = selectedNodeId.value;
-    return (
-      target === selectedTarget() &&
-      nodeId !== undefined &&
-      options.workbenchConnectionId() !== undefined &&
-      (typeof document === 'undefined' || document.visibilityState === 'visible')
-    );
-  }
-
-  async function requestWatch(
-    target: string,
-    signal: AbortSignal,
-    mode: 'initial' | 'renew'
-  ): Promise<void> {
-    const nodeId = selectedNodeId.value;
-    const conversationId = selectedConversationId.value;
-    const connectionId = options.workbenchConnectionId();
-    if (
-      nodeId === undefined ||
-      conversationId === undefined ||
-      connectionId === undefined ||
-      target !== targetKey(nodeId, conversationId)
-    )
-      return;
-    if (mode === 'initial') {
-      watchReady.value = false;
-      acceptingWatchEvents = true;
-      watchId = randomWatchId();
-      watchedNodeId = nodeId;
-      watchedConversationId = conversationId;
-      watchedConnectionId = connectionId;
-      nodeGeneration = undefined;
-      lastSnapshotSequence = 0;
-      lastEventSequence = 0;
-    }
-    const currentWatchId = watchId ?? randomWatchId();
-    watchId = currentWatchId;
-    const initialSnapshot =
-      mode === 'initial'
-        ? waitForInitialSnapshot(nodeId, conversationId, currentWatchId, signal)
-        : undefined;
-    void initialSnapshot?.catch(() => undefined);
-    try {
-      const response = await options.request<unknown>(
-        `/api/nodes/${encodeURIComponent(nodeId)}/hosted-conversations/${encodeURIComponent(conversationId)}/watch`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            mode,
-            workbenchConnectionId: connectionId,
-            watchId: currentWatchId
-          }),
-          signal
-        }
-      );
-      if (
-        selectedTarget() !== target ||
-        watchedConnectionId !== connectionId ||
-        watchId !== currentWatchId
-      ) {
-        cancelPendingInitial();
-        return;
-      }
-      if (mode === 'initial') {
-        const accepted = watchAcceptedSchema.safeParse(response);
-        if (
-          !accepted.success ||
-          accepted.data.watchId !== currentWatchId ||
-          (nodeGeneration !== undefined && accepted.data.nodeGeneration !== nodeGeneration)
-        ) {
-          cancelPendingInitial('HOSTED_CONVERSATION_RESPONSE_INVALID');
-          throw responseInvalid();
-        }
-        nodeGeneration = accepted.data.nodeGeneration;
-      }
-      await initialSnapshot;
-    } catch (error) {
-      if (pendingInitial?.watchId === currentWatchId) cancelPendingInitial();
-      await initialSnapshot?.catch(() => undefined);
-      throw error;
-    }
-  }
-
-  const watchLifecycle = createWatchLeaseLifecycleService({
-    heartbeatMs: options.heartbeatMs,
-    requestTimeoutMs: options.requestTimeoutMs,
-    confirmationTimeoutMs: options.confirmationTimeoutMs,
-    maxFailures: 3,
-    eligible,
-    renew: requestWatch,
-    recovery: {
-      retryable: (error) => {
-        const code = errorCode(error);
-        if (code !== undefined)
-          return [
-            'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
-            'SESSION_WATCH_NOT_FOUND',
-            'HOSTED_CONVERSATION_WATCH_INITIAL_FAILED',
-            'NODE_OFFLINE',
-            'NODE_REQUEST_TIMEOUT',
-            'WATCH_REQUEST_TIMEOUT',
-            'REQUEST_FAILED_408',
-            'REQUEST_FAILED_429',
-            'REQUEST_FAILED_502',
-            'REQUEST_FAILED_503',
-            'REQUEST_FAILED_504'
-          ].includes(code);
-        return (
-          error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')
-        );
-      },
-      onFailure: (error) => {
-        acceptingWatchEvents = false;
-        watchFailureCode.value = errorCode(error) ?? 'HOSTED_CONVERSATION_WATCH_EXPIRED';
-      }
-    },
-    onExpired: () => {
-      watchFailureCode.value ??= 'HOSTED_CONVERSATION_WATCH_EXPIRED';
-      options.onWatchExpired?.();
-    }
-  });
 
   function selectedTarget(): string | undefined {
     const nodeId = selectedNodeId.value;
@@ -462,195 +177,48 @@ export function createHostedConversationWorkspaceService(
       : targetKey(nodeId, conversationId);
   }
 
-  function beginSelectedConversationWatch(): Promise<void> {
-    const target = selectedTarget();
-    if (target === undefined) return Promise.reject(new Error('HOSTED_CONVERSATION_REQUIRED'));
-    const operation = watchLifecycle.start(target);
-    if (operation === undefined) return Promise.resolve();
-    void operation.catch(() => undefined);
-    return operation;
-  }
-
   function selectConversation(
     nodeId: string,
     conversationId: string,
     initialSnapshot?: HostedConversationSnapshot
   ): void {
+    if (
+      initialSnapshot !== undefined &&
+      (initialSnapshot.conversation.nodeId !== nodeId ||
+        initialSnapshot.conversation.id !== conversationId)
+    )
+      throw responseInvalid();
     if (selectedNodeId.value === nodeId && selectedConversationId.value === conversationId) {
       if (initialSnapshot !== undefined) installSnapshot(nodeId, conversationId, initialSnapshot);
       return;
     }
     stopSelectedConversationWatch();
-    selectedNodeId.value = nodeId;
-    selectedConversationId.value = conversationId;
-    snapshot.value = undefined;
-    projectedTurns.value = [];
-    projectionNextCursor.value = null;
+    selectedConversationId.value = undefined;
+    snapshotMetadata.value = undefined;
+    conversationProjection.restoreWindow([], null);
     loadingOlderHistory.value = false;
     historyExpanded = false;
     historyWindowRevision += 1;
     olderHistoryError.value = undefined;
     recentHistoryRefresh = undefined;
-    conversationProjection.resetHistory();
-    watchFailureCode.value = undefined;
+    watch.clearFailure();
     if (initialSnapshot !== undefined) installSnapshot(nodeId, conversationId, initialSnapshot);
+    selectedNodeId.value = nodeId;
+    selectedConversationId.value = conversationId;
   }
 
   function clearSelectedConversation(): void {
     stopSelectedConversationWatch();
-    selectedNodeId.value = undefined;
     selectedConversationId.value = undefined;
-    snapshot.value = undefined;
-    projectedTurns.value = [];
-    projectionNextCursor.value = null;
+    selectedNodeId.value = undefined;
+    snapshotMetadata.value = undefined;
+    conversationProjection.restoreWindow([], null);
     loadingOlderHistory.value = false;
     historyExpanded = false;
     historyWindowRevision += 1;
     olderHistoryError.value = undefined;
     recentHistoryRefresh = undefined;
-    conversationProjection.resetHistory();
-    watchFailureCode.value = undefined;
-  }
-
-  function stopSelectedConversationWatch(): void {
-    watchReady.value = false;
-    cancelPendingInitial();
-    watchLifecycle.stop();
-    const nodeId = watchedNodeId;
-    const conversationId = watchedConversationId;
-    const connectionId = watchedConnectionId;
-    const currentWatchId = watchId;
-    watchedNodeId = undefined;
-    watchedConversationId = undefined;
-    watchedConnectionId = undefined;
-    watchId = undefined;
-    acceptingWatchEvents = false;
-    nodeGeneration = undefined;
-    lastSnapshotSequence = 0;
-    lastEventSequence = 0;
-    if (
-      nodeId === undefined ||
-      conversationId === undefined ||
-      connectionId === undefined ||
-      currentWatchId === undefined
-    )
-      return;
-    void options
-      .request(
-        `/api/nodes/${encodeURIComponent(nodeId)}/hosted-conversations/${encodeURIComponent(conversationId)}/watch`,
-        {
-          method: 'DELETE',
-          body: JSON.stringify({
-            workbenchConnectionId: connectionId,
-            watchId: currentWatchId
-          })
-        }
-      )
-      .catch(() => undefined);
-  }
-
-  function restartSelectedConversationWatch(): Promise<void> {
-    stopSelectedConversationWatch();
-    return beginSelectedConversationWatch();
-  }
-
-  function pauseSelectedConversationWatch(): void {
-    watchReady.value = false;
-    watchLifecycle.pause();
-  }
-
-  function handleVisibility(): void {
-    if (document.visibilityState !== 'visible') stopSelectedConversationWatch();
-  }
-
-  function handleWatchEvent(value: unknown): boolean {
-    if (!record(value)) return false;
-    if (value.type === 'watch.failed') return handleWatchFailure(value);
-    if (
-      (value.type !== 'watch.hosted-conversation.snapshot' &&
-        value.type !== 'watch.hosted-conversation.event') ||
-      !matchesWatchIdentity(value)
-    )
-      return false;
-    nodeGeneration ??= value.nodeGeneration as string;
-    if (value.type === 'watch.hosted-conversation.snapshot') {
-      if (
-        !Number.isInteger(value.snapshotSequence) ||
-        (value.snapshotSequence as number) <= lastSnapshotSequence
-      )
-        return false;
-      const parsed = hostedConversationSnapshotSchema.safeParse(value.payload);
-      if (
-        !parsed.success ||
-        parsed.data.conversation.id !== watchedConversationId ||
-        parsed.data.conversation.nodeId !== watchedNodeId
-      ) {
-        cancelPendingInitial('HOSTED_CONVERSATION_RESPONSE_INVALID');
-        watchFailureCode.value = 'HOSTED_CONVERSATION_RESPONSE_INVALID';
-        return true;
-      }
-      lastSnapshotSequence = value.snapshotSequence as number;
-      installSnapshot(watchedNodeId!, watchedConversationId!, parsed.data);
-      watchReady.value = true;
-      watchFailureCode.value = undefined;
-      const pending = pendingInitial;
-      if (
-        pending?.nodeId === watchedNodeId &&
-        pending.conversationId === watchedConversationId &&
-        pending.watchId === watchId
-      ) {
-        pendingInitial = undefined;
-        clearTimeout(pending.timer);
-        pending.removeAbortListener();
-        pending.resolve();
-      }
-      watchLifecycle.confirm(targetKey(watchedNodeId!, watchedConversationId!));
-      return true;
-    }
-    const event = record(value.event) ? value.event : undefined;
-    if (
-      event === undefined ||
-      event.category !== 'hosted-conversation' ||
-      !Number.isInteger(event.sequence) ||
-      (event.sequence as number) <= lastEventSequence
-    )
-      return false;
-    const payload = record(event.payload) ? event.payload : undefined;
-    if (payload === undefined || payload.conversationId !== watchedConversationId) return false;
-    lastEventSequence = event.sequence as number;
-    applyHostedPayload(payload, event.sequence as number);
-    watchLifecycle.confirm(targetKey(watchedNodeId!, watchedConversationId!));
-    return true;
-  }
-
-  function matchesWatchIdentity(event: Record<string, unknown>): boolean {
-    return (
-      acceptingWatchEvents &&
-      event.workbenchConnectionId === options.workbenchConnectionId() &&
-      event.workbenchConnectionId === watchedConnectionId &&
-      event.watchId === watchId &&
-      event.nodeId === watchedNodeId &&
-      event.conversationId === watchedConversationId &&
-      typeof event.nodeGeneration === 'string' &&
-      (nodeGeneration === undefined || event.nodeGeneration === nodeGeneration) &&
-      selectedNodeId.value === watchedNodeId &&
-      selectedConversationId.value === watchedConversationId
-    );
-  }
-
-  function handleWatchFailure(event: Record<string, unknown>): boolean {
-    if (
-      event.watchType !== 'hosted-conversation' ||
-      !matchesWatchIdentity(event) ||
-      typeof event.code !== 'string'
-    )
-      return false;
-    nodeGeneration ??= event.nodeGeneration as string;
-    watchFailureCode.value = event.code;
-    acceptingWatchEvents = false;
-    cancelPendingInitial(event.code);
-    watchLifecycle.pause();
-    return true;
+    watch.clearFailure();
   }
 
   function installSnapshot(
@@ -659,18 +227,13 @@ export function createHostedConversationWorkspaceService(
     value: HostedConversationSnapshot,
     replaceHistory = snapshot.value === undefined
   ): void {
-    const parsed = hostedConversationSnapshotSchema.safeParse(value);
-    if (
-      !parsed.success ||
-      parsed.data.conversation.nodeId !== nodeId ||
-      parsed.data.conversation.id !== conversationId
-    )
+    if (value.conversation.nodeId !== nodeId || value.conversation.id !== conversationId)
       throw responseInvalid();
     const page = {
-      turns: projectHostedTurns(parsed.data.turns),
-      nextCursor: parsed.data.historyNextCursor,
+      turns: projectHostedTurns(value.turns),
+      nextCursor: value.historyNextCursor,
       source: 'official' as const,
-      snapshotSequence: parsed.data.snapshotSequence,
+      snapshotSequence: value.snapshotSequence,
       readAt: Date.now()
     };
     if (replaceHistory) {
@@ -684,12 +247,11 @@ export function createHostedConversationWorkspaceService(
         ...page,
         nextCursor: historyExpanded ? projectionNextCursor.value : page.nextCursor
       });
-    commitProjectedTurns(
-      { ...parsed.data, historyNextCursor: projectionNextCursor.value },
-      parsed.data.snapshotSequence > 0 ? parsed.data.snapshotSequence : null,
-      0
+    replaceSnapshot(
+      { ...value, turns: projectedTurns.value, historyNextCursor: projectionNextCursor.value },
+      true
     );
-    upsertConversation(parsed.data.conversation);
+    upsertConversation(value.conversation);
   }
 
   async function loadOlderHistory(): Promise<void> {
@@ -714,19 +276,13 @@ export function createHostedConversationWorkspaceService(
       )
         return;
       const older = projectHostedTurns(parsed.data.turns);
-      const known = new Set(projectedTurns.value.map((turn) => turn.id));
-      projectedTurns.value = limitConversationHistory([
-        ...older.filter((turn) => !known.has(turn.id)),
-        ...projectedTurns.value
-      ]);
-      projectionNextCursor.value = parsed.data.nextCursor;
+      conversationProjection.mergeOlderPage({
+        turns: older,
+        nextCursor: parsed.data.nextCursor
+      });
       historyExpanded = true;
       conversationProjection.restore(projectedTurns.value);
-      commitProjectedTurns(
-        { ...snapshot.value, historyNextCursor: parsed.data.nextCursor },
-        null,
-        0
-      );
+      commitHistoryMetadata({ ...snapshot.value, historyNextCursor: parsed.data.nextCursor });
     } catch (error) {
       if (
         sameSelectedContext(context) &&
@@ -760,11 +316,7 @@ export function createHostedConversationWorkspaceService(
         source: 'official',
         readAt: Date.now()
       });
-      commitProjectedTurns(
-        { ...snapshot.value, historyNextCursor: parsed.data.nextCursor },
-        null,
-        0
-      );
+      commitHistoryMetadata({ ...snapshot.value, historyNextCursor: parsed.data.nextCursor });
     })()
       .catch(() => undefined)
       .finally(() => {
@@ -778,7 +330,7 @@ export function createHostedConversationWorkspaceService(
     const current = snapshot.value;
     if (current === undefined) return;
     if (payload.kind === 'template-changed' && payload.conversationId === current.conversation.id) {
-      void refreshTemplateBinding(requireSelectedContext(), watchId);
+      void refreshTemplateBinding(requireSelectedContext(), selectedWatchId());
       return;
     }
     if (payload.kind === 'runtime' && record(payload.runtimeEvent)) {
@@ -833,12 +385,15 @@ export function createHostedConversationWorkspaceService(
       return;
     }
     if (payload.kind === 'run') {
-      replaceSnapshot({ ...current, run: normalizeRun(payload.run, current.run) }, true);
+      const run = hostedConversationSnapshotSchema
+        .innerType()
+        .shape.run.safeParse(normalizeRun(payload.run, current.run));
+      if (run.success) replaceSnapshot({ ...current, run: run.data }, true);
     }
   }
 
   function applyRuntimeEvent(
-    current: HostedConversationSnapshot,
+    current: HostedConversationView,
     runtime: Record<string, unknown>,
     sourceSequence: number
   ): void {
@@ -891,7 +446,7 @@ export function createHostedConversationWorkspaceService(
               readAt: createdAt
             });
         }
-        commitProjectedTurns(current, sourceSequence, runtime.sequence as number);
+        commitHistoryMetadata(current);
       }
       return;
     }
@@ -904,7 +459,7 @@ export function createHostedConversationWorkspaceService(
           createdAt
         )
       )
-        commitProjectedTurns(current, sourceSequence, runtime.sequence as number);
+        commitHistoryMetadata(current);
       return;
     }
     const status = runtimeStatus(runtime.payload.status);
@@ -930,11 +485,11 @@ export function createHostedConversationWorkspaceService(
       snapshotSequence: sourceSequence,
       readAt: createdAt
     });
-    commitProjectedTurns(current, sourceSequence, runtime.sequence as number);
+    commitHistoryMetadata(current);
   }
 
   function ensureRuntimeTurn(
-    current: HostedConversationSnapshot,
+    current: HostedConversationView,
     executionId: string,
     turnId: string,
     createdAt: number,
@@ -965,90 +520,20 @@ export function createHostedConversationWorkspaceService(
     });
   }
 
-  function commitProjectedTurns(
-    current: HostedConversationSnapshot,
-    sourceSequence: number | null,
-    revision: number
-  ): void {
-    replaceSnapshot(
-      {
-        ...current,
-        turns: projectedTurns.value.map((turn) => {
-          const currentTurn = current.turns.find(
-            (candidate) =>
-              candidate.id === turn.id || (turn.runId !== null && candidate.runId === turn.runId)
-          );
-          return {
-            ...turn,
-            userItemId:
-              currentTurn?.userItemId ??
-              turn.items.find((item) => item.kind === 'user_message')?.id ??
-              null,
-            model: currentTurn?.model ?? current.conversation.modelId,
-            effort: currentTurn?.effort ?? null,
-            access: currentTurn?.access ?? 'full-access',
-            items: turn.items.map((item) => {
-              const raw = item as unknown as Record<string, unknown>;
-              const currentItem = currentTurn?.items.find((candidate) => candidate.id === item.id);
-              return {
-                ...item,
-                sessionId:
-                  typeof raw.sessionId === 'string'
-                    ? raw.sessionId
-                    : current.conversation.sessionId,
-                turnId:
-                  typeof raw.turnId === 'string' ? raw.turnId : (currentItem?.turnId ?? turn.id),
-                runId: typeof raw.runId === 'string' || raw.runId === null ? raw.runId : turn.runId,
-                parentItemId:
-                  typeof raw.parentItemId === 'string' || raw.parentItemId === null
-                    ? raw.parentItemId
-                    : (currentItem?.parentItemId ?? null),
-                sourceSequence:
-                  typeof raw.sourceSequence === 'number' || raw.sourceSequence === null
-                    ? raw.sourceSequence
-                    : sourceSequence,
-                revision: typeof raw.revision === 'number' ? raw.revision : revision,
-                startedAt:
-                  typeof raw.startedAt === 'number' || raw.startedAt === null
-                    ? raw.startedAt
-                    : null,
-                completedAt:
-                  typeof raw.completedAt === 'number' || raw.completedAt === null
-                    ? raw.completedAt
-                    : null
-              };
-            })
-          };
-        })
-      },
-      true
-    );
+  function commitHistoryMetadata(current: HostedConversationView): void {
+    replaceSnapshot({ ...current, historyNextCursor: projectionNextCursor.value }, true);
   }
 
-  function replaceSnapshot(value: unknown, historyChanged = false): void {
-    const parsed = hostedConversationSnapshotSchema.safeParse(value);
-    if (parsed.success) {
-      snapshot.value = parsed.data;
-      if (historyChanged) historyRevision += 1;
-    }
-  }
-
-  function upsertConversation(value: HostedConversationSummary): void {
-    const index = conversations.value.findIndex(
-      (candidate) => candidate.nodeId === value.nodeId && candidate.id === value.id
-    );
-    if (index < 0) conversations.value = sortConversations([value, ...conversations.value]);
-    else {
-      const next = [...conversations.value];
-      next.splice(index, 1, mergeConversationSummary(value, next[index]!));
-      conversations.value = sortConversations(next);
-    }
+  function replaceSnapshot(value: HostedConversationView, historyChanged = false): void {
+    const { turns: _turns, ...metadata } = value;
+    snapshotMetadata.value = metadata;
+    if (historyChanged) historyRevision += 1;
   }
 
   function requireSelectedContext(): {
     readonly nodeId: string;
     readonly conversationId: string;
-    readonly snapshot: HostedConversationSnapshot;
+    readonly snapshot: HostedConversationView;
     readonly historyRevision: number;
   } {
     const nodeId = selectedNodeId.value;
@@ -1087,27 +572,27 @@ export function createHostedConversationWorkspaceService(
     context: {
       readonly nodeId: string;
       readonly conversationId: string;
-      readonly snapshot: HostedConversationSnapshot;
+      readonly snapshot: HostedConversationView;
     },
     includeRun: boolean
-  ): HostedConversationSnapshot {
+  ): Pick<HostedConversationSnapshot, 'conversation' | 'run'> {
     if (
       !record(value) ||
       !exactKeys(value, includeRun ? ['conversation', 'run'] : ['conversation'])
     )
       throw responseInvalid();
-    const candidate = hostedConversationSnapshotSchema.safeParse({
-      ...context.snapshot,
-      conversation: value.conversation,
-      ...(includeRun ? { run: value.run } : {})
-    });
+    const conversation = hostedConversationSummarySchema.safeParse(value.conversation);
+    const run = hostedConversationSnapshotSchema
+      .innerType()
+      .shape.run.safeParse(includeRun ? value.run : context.snapshot.run);
     if (
-      !candidate.success ||
-      candidate.data.conversation.nodeId !== context.nodeId ||
-      candidate.data.conversation.id !== context.conversationId
+      !conversation.success ||
+      !run.success ||
+      conversation.data.nodeId !== context.nodeId ||
+      conversation.data.id !== context.conversationId
     )
       throw responseInvalid();
-    return candidate.data;
+    return { conversation: conversation.data, run: run.data };
   }
 
   function parseConversationSummaryResponse(
@@ -1152,7 +637,8 @@ export function createHostedConversationWorkspaceService(
       const next = parseConversationResponse(response, context, true);
       if (next.run === null) throw responseInvalid();
       if (sameSelectedContext(context) && snapshot.value !== undefined) {
-        updateOptimisticUserMessage(input.clientMessageId, 'ACCEPTED', snapshot.value);
+        if (conversationProjection.updateOptimisticUserMessage(input.clientMessageId))
+          commitHistoryMetadata(snapshot.value);
         const conversation = mergeConversationSummary(
           next.conversation,
           snapshot.value.conversation
@@ -1170,7 +656,8 @@ export function createHostedConversationWorkspaceService(
       return next.run;
     } catch (error) {
       if (sameSelectedContext(context) && snapshot.value !== undefined)
-        removeOptimisticUserMessage(input.clientMessageId, snapshot.value);
+        if (conversationProjection.removeOptimisticUserMessage(input.clientMessageId))
+          commitHistoryMetadata(snapshot.value);
       throw error;
     } finally {
       finishSubmission();
@@ -1178,7 +665,7 @@ export function createHostedConversationWorkspaceService(
   }
 
   function projectOptimisticUserMessage(
-    current: HostedConversationSnapshot,
+    current: HostedConversationView,
     input: {
       readonly prompt: string;
       readonly clientMessageId: string;
@@ -1215,65 +702,7 @@ export function createHostedConversationWorkspaceService(
       source: 'runtime',
       readAt: createdAt
     });
-    commitProjectedTurns(current, null, 0);
-  }
-
-  function updateOptimisticUserMessage(
-    clientMessageId: string,
-    delivery: 'ACCEPTED',
-    current: HostedConversationSnapshot
-  ): void {
-    let changed = false;
-    projectedTurns.value = projectedTurns.value.map((turn) => {
-      if (!isOptimisticUserTurn(turn, clientMessageId)) return turn;
-      let turnChanged = false;
-      const items = turn.items.map((item) => {
-        if (
-          item.id !== clientMessageId ||
-          item.kind !== 'user_message' ||
-          !record(item.payload) ||
-          item.payload.clientMessageId !== clientMessageId
-        )
-          return item;
-        turnChanged = true;
-        changed = true;
-        return {
-          ...item,
-          payload: {
-            ...item.payload,
-            delivery
-          }
-        };
-      });
-      return turnChanged ? { ...turn, items } : turn;
-    });
-    if (changed) commitProjectedTurns(current, null, 0);
-  }
-
-  function removeOptimisticUserMessage(
-    clientMessageId: string,
-    current: HostedConversationSnapshot
-  ): void {
-    const next = projectedTurns.value.filter(
-      (turn) => !isOptimisticUserTurn(turn, clientMessageId)
-    );
-    if (next.length === projectedTurns.value.length) return;
-    projectedTurns.value = next;
-    commitProjectedTurns(current, null, 0);
-  }
-
-  function isOptimisticUserTurn(turn: WorkbenchConversationTurn, clientMessageId: string): boolean {
-    return (
-      turn.id === clientMessageId &&
-      turn.runId === null &&
-      turn.items.some(
-        (item) =>
-          item.id === clientMessageId &&
-          item.kind === 'user_message' &&
-          record(item.payload) &&
-          item.payload.clientMessageId === clientMessageId
-      )
-    );
+    commitHistoryMetadata(current);
   }
 
   async function updateConfiguration(input: {
@@ -1399,7 +828,7 @@ export function createHostedConversationWorkspaceService(
     if (targetNodeId === undefined || targetConversationId === undefined)
       throw new Error('HOSTED_CONVERSATION_REQUIRED');
     const target = { nodeId: targetNodeId, conversationId: targetConversationId };
-    const restartWatchOnFailure = sameSelectedContext(target) && watchId !== undefined;
+    const restartWatchOnFailure = sameSelectedContext(target) && selectedWatchId() !== undefined;
     if (sameSelectedContext(target)) stopSelectedConversationWatch();
     let deletedConversationId: string;
     try {
@@ -1418,10 +847,7 @@ export function createHostedConversationWorkspaceService(
       }
       throw error;
     }
-    conversations.value = conversations.value.filter(
-      (conversation) =>
-        conversation.nodeId !== targetNodeId || conversation.id !== targetConversationId
-    );
+    directory.remove(targetNodeId, targetConversationId);
     if (sameSelectedContext(target)) clearSelectedConversation();
     return { deletedConversationId };
   }
@@ -1436,13 +862,12 @@ export function createHostedConversationWorkspaceService(
     context: { readonly nodeId: string; readonly conversationId: string },
     originalWatchId: string | undefined
   ): Promise<void> {
-    if (!sameSelectedContext(context) || watchId !== originalWatchId) return;
+    if (!sameSelectedContext(context) || selectedWatchId() !== originalWatchId) return;
     try {
       await restartSelectedConversationWatch();
     } catch (error) {
       if (sameSelectedContext(context)) {
-        watchReady.value = false;
-        watchFailureCode.value = errorCode(error) ?? 'HOSTED_CONVERSATION_WATCH_EXPIRED';
+        watch.markRestartFailure(error);
       }
     }
   }
@@ -1465,7 +890,7 @@ export function createHostedConversationWorkspaceService(
     )
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const key = targetKey(context.nodeId, context.conversationId);
-    const originalWatchId = watchId;
+    const originalWatchId = selectedWatchId();
     templateChanges.value.add(key);
     try {
       const parsed = hostedConversationTemplateSwitchResultSchema.safeParse(
@@ -1509,166 +934,25 @@ export function createHostedConversationWorkspaceService(
     }
   }
 
-  async function deleteFile(fileId: string): Promise<HostedConversationFileDeleteResult> {
-    const context = requireSelectedContext();
-    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
-    const parsed = hostedConversationFileDeleteResultSchema.safeParse(
-      await options.request<unknown>(
-        `${conversationBasePath(context)}/files/${encodeURIComponent(fileId)}`,
-        {
-          method: 'DELETE',
-          body: '{}'
-        }
-      )
-    );
-    if (
-      !parsed.success ||
-      parsed.data.deletedFileId !== fileId ||
-      parsed.data.files.some((file) => file.conversationId !== context.conversationId)
-    )
-      throw responseInvalid();
-    if (sameSelectedContext(context) && snapshot.value !== undefined) {
-      replaceSnapshot({
-        ...snapshot.value,
-        files: snapshot.value.files.filter((file) => file.id !== fileId)
-      });
-    }
-    return parsed.data;
-  }
-
-  async function readFile(
-    fileId: string,
-    offset = 0,
-    limit = 512 * 1024
-  ): Promise<HostedConversationFileReadResult> {
-    const context = requireSelectedContext();
-    const response = await options.request<unknown>(
-      `${conversationBasePath(context)}/files/${encodeURIComponent(fileId)}?offset=${offset}&limit=${limit}`
-    );
-    const parsed = hostedConversationFileReadResultSchema.safeParse(response);
-    if (
-      !parsed.success ||
-      parsed.data.file.id !== fileId ||
-      parsed.data.file.conversationId !== context.conversationId ||
-      parsed.data.offset !== offset
-    )
-      throw responseInvalid();
-    const contentBytes = base64DecodedByteLength(parsed.data.content);
-    const nextOffset = offset + contentBytes;
-    if (
-      contentBytes > limit ||
-      nextOffset > parsed.data.file.size ||
-      (parsed.data.eof
-        ? parsed.data.nextOffset !== null || nextOffset !== parsed.data.file.size
-        : parsed.data.nextOffset !== nextOffset)
-    )
-      throw responseInvalid();
-    return parsed.data;
-  }
-
-  function contentUrl(file: ConversationFileProjection, download = false): string {
-    const context = requireSelectedContext();
-    if (file.conversationId !== context.conversationId) throw responseInvalid();
-    return `${conversationBasePath(context)}/files/${encodeURIComponent(file.id)}/content${
-      download ? '?download=1' : ''
-    }`;
-  }
-
-  async function uploadFile(
-    file: File,
-    clientRequestId: string,
-    onProgress?: (upload: HostedConversationUpload) => void,
-    signal?: AbortSignal
-  ): Promise<HostedConversationUpload> {
-    const context = requireSelectedContext();
-    if (templateChanging.value) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
-    const mimeType = file.type.trim() || 'application/octet-stream';
-    signal?.throwIfAborted();
-    const preflight = hostedConversationUploadPreflightResultSchema.safeParse(
-      await options.request<unknown>(`${conversationBasePath(context)}/uploads/preflight`, {
-        method: 'POST',
-        body: JSON.stringify({
-          files: [{ name: file.name, size: file.size, mimeType }]
-        }),
-        ...(signal === undefined ? {} : { signal })
-      })
-    );
-    if (
-      !preflight.success ||
-      preflight.data.files.length !== 1 ||
-      preflight.data.files[0]?.name !== file.name
-    )
-      throw responseInvalid();
-    if (preflight.data.files[0].status !== 'READY')
-      throw new Error(`HOSTED_CONVERSATION_UPLOAD_${preflight.data.files[0].status}`);
-
-    let upload = parseUploadResponse(
-      await options.request<unknown>(`${conversationBasePath(context)}/uploads`, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: file.name,
-          size: file.size,
-          mimeType,
-          clientRequestId
-        }),
-        ...(signal === undefined ? {} : { signal })
-      }),
-      context.conversationId
-    );
-    onProgress?.(upload);
-    const chunkSize = 512 * 1024;
-    try {
-      for (let offset = upload.receivedBytes; offset < file.size; offset += chunkSize) {
-        const end = Math.min(file.size, offset + chunkSize);
-        const chunk = new Uint8Array(await file.slice(offset, end).arrayBuffer());
-        signal?.throwIfAborted();
-        if (chunk.byteLength !== end - offset) throw responseInvalid();
-        upload = parseUploadResponse(
-          await options.request<unknown>(
-            `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/chunks`,
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                offset,
-                dataBase64: bytesToBase64(chunk)
-              }),
-              ...(signal === undefined ? {} : { signal })
-            }
-          ),
-          context.conversationId
-        );
-        if (upload.receivedBytes !== end) throw responseInvalid();
-        onProgress?.(upload);
+  const { deleteFile, readFile, contentUrl, uploadFile } = createHostedConversationFileService({
+    request: options.request,
+    requireContext: requireSelectedContext,
+    templateChanging: () => templateChanging.value,
+    removeFile: (context, fileId) => {
+      if (sameSelectedContext(context) && snapshot.value !== undefined)
+        replaceSnapshot({
+          ...snapshot.value,
+          files: snapshot.value.files.filter((file) => file.id !== fileId)
+        });
+    },
+    acceptFile: (context, file) => {
+      if (sameSelectedContext(context) && snapshot.value !== undefined) {
+        const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
+        files.set(file.id, file);
+        replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
       }
-      upload = parseUploadResponse(
-        await options.request<unknown>(
-          `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/complete`,
-          {
-            method: 'POST',
-            body: '{}',
-            ...(signal === undefined ? {} : { signal })
-          }
-        ),
-        context.conversationId
-      );
-      if (upload.status !== 'COMPLETED' || upload.file === undefined) throw responseInvalid();
-    } catch (error) {
-      await options
-        .request(
-          `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/cancel`,
-          { method: 'POST', body: '{}' }
-        )
-        .catch(() => undefined);
-      throw error;
     }
-    if (sameSelectedContext(context) && snapshot.value !== undefined) {
-      const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
-      files.set(upload.file.id, upload.file);
-      replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
-    }
-    onProgress?.(upload);
-    return upload;
-  }
+  });
 
   return {
     conversations,
@@ -1686,7 +970,7 @@ export function createHostedConversationWorkspaceService(
     olderHistoryError,
     watchReady,
     watchFailureCode,
-    selectedWatchId: () => watchId,
+    selectedWatchId,
     messageSubmitting: messageSubmission.pending,
     messageSubmissionContext: messageSubmission.context,
     templateChanging,
@@ -1771,6 +1055,7 @@ function hostedRunStatus(
 function validSnapshotError(value: unknown): boolean {
   return (
     record(value) &&
+    exactKeys(value, ['code', 'message']) &&
     typeof value.code === 'string' &&
     /^[A-Z][A-Z0-9_]{0,79}$/.test(value.code) &&
     typeof value.message === 'string' &&
@@ -1782,36 +1067,44 @@ function validSnapshotError(value: unknown): boolean {
 function projectHostedTurns(
   turns: HostedConversationSnapshot['turns']
 ): WorkbenchConversationTurn[] {
-  return turns.map((turn) => ({
-    id: turn.id,
-    sessionId: turn.sessionId,
-    runId: turn.runId,
-    status: turn.status,
-    ...(turn.rewind === undefined ? {} : { rewind: turn.rewind }),
-    items: turn.items.map((item) => {
-      const projected: WorkbenchConversationItem = {
-        id: item.id,
-        kind: item.kind,
-        status: item.status,
-        payload: item.payload,
-        startedAt: item.startedAt,
-        completedAt: item.completedAt,
-        ...(item.processGroup === undefined ? {} : { processGroup: item.processGroup }),
-        ...(item.segmentId === undefined ? {} : { segmentId: item.segmentId }),
-        ...(item.segmentIndex === undefined ? {} : { segmentIndex: item.segmentIndex })
-      };
-      return Object.assign(projected, {
-        sessionId: item.sessionId,
-        turnId: item.turnId,
-        runId: item.runId,
-        parentItemId: item.parentItemId,
-        sourceSequence: item.sourceSequence,
-        revision: item.revision
-      });
-    }),
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt
-  }));
+  return turns.map((turn) => {
+    const projected: WorkbenchConversationTurn = {
+      id: turn.id,
+      sessionId: turn.sessionId,
+      runId: turn.runId,
+      status: turn.status,
+      ...(turn.rewind === undefined ? {} : { rewind: turn.rewind }),
+      items: turn.items.map((item) => {
+        const projectedItem: WorkbenchConversationItem = {
+          id: item.id,
+          kind: item.kind,
+          status: item.status,
+          payload: item.payload,
+          startedAt: item.startedAt,
+          completedAt: item.completedAt,
+          ...(item.processGroup === undefined ? {} : { processGroup: item.processGroup }),
+          ...(item.segmentId === undefined ? {} : { segmentId: item.segmentId }),
+          ...(item.segmentIndex === undefined ? {} : { segmentIndex: item.segmentIndex })
+        };
+        return Object.assign(projectedItem, {
+          sessionId: item.sessionId,
+          turnId: item.turnId,
+          runId: item.runId,
+          parentItemId: item.parentItemId,
+          sourceSequence: item.sourceSequence,
+          revision: item.revision
+        });
+      }),
+      startedAt: turn.startedAt,
+      completedAt: turn.completedAt
+    };
+    return Object.assign(projected, {
+      userItemId: turn.userItemId,
+      model: turn.model,
+      effort: turn.effort,
+      access: turn.access
+    });
+  });
 }
 
 function runtimeStatus(value: unknown): WorkbenchConversationTurn['status'] | undefined {
@@ -1824,88 +1117,10 @@ function terminalTurnStatus(status: WorkbenchConversationTurn['status']): boolea
   return ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(status);
 }
 
-function mergeConversationSummary(
-  incoming: HostedConversationSummary,
-  current: HostedConversationSummary
-): HostedConversationSummary {
-  const summary =
-    incoming.updatedAt < current.updatedAt || incoming.lastActivityAt < current.lastActivityAt
-      ? current
-      : incoming;
-  const incomingActivity = conversationActivity(incoming);
-  const currentActivity = conversationActivity(current);
-  const activity =
-    incomingActivity.version > currentActivity.version ? incomingActivity : currentActivity;
-  return summary.activity === activity ? summary : { ...summary, activity };
-}
-
-function conversationActivity(conversation: HostedConversationSummary): HostedConversationActivity {
-  return (
-    (conversation as Partial<HostedConversationSummary>).activity ?? {
-      status: 'IDLE',
-      version: 0,
-      updatedAt: 0
-    }
-  );
-}
-
-function deduplicateConversations(
-  values: readonly HostedConversationSummary[]
-): HostedConversationSummary[] {
-  const items = new Map<string, HostedConversationSummary>();
-  for (const value of values) {
-    const key = targetKey(value.nodeId, value.id);
-    const current = items.get(key);
-    items.set(key, current === undefined ? value : mergeConversationSummary(value, current));
-  }
-  return sortConversations([...items.values()]);
-}
-
-function sortConversations(
-  values: readonly HostedConversationSummary[]
-): HostedConversationSummary[] {
-  return [...values].sort(
-    (left, right) =>
-      Number(right.pinnedAt !== null) - Number(left.pinnedAt !== null) ||
-      right.lastActivityAt - left.lastActivityAt ||
-      left.nodeId.localeCompare(right.nodeId, 'en-US') ||
-      left.id.localeCompare(right.id, 'en-US')
-  );
-}
-
-function parseUploadResponse(value: unknown, conversationId: string): HostedConversationUpload {
-  if (!record(value) || !exactKeys(value, ['upload']))
-    throw new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
-  const parsed = hostedConversationUploadSchema.safeParse(value.upload);
-  if (!parsed.success || parsed.data.conversationId !== conversationId)
-    throw new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
-  return parsed.data;
-}
-
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const stride = 32 * 1024;
-  for (let offset = 0; offset < bytes.length; offset += stride)
-    binary += String.fromCharCode(
-      ...bytes.subarray(offset, Math.min(bytes.length, offset + stride))
-    );
-  return btoa(binary);
-}
-
-function base64DecodedByteLength(value: string): number {
-  if (value.length === 0) return 0;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  return (value.length * 3) / 4 - padding;
-}
-
-function targetKey(nodeId: string, conversationId: string): string {
-  return `${nodeId}\0${conversationId}`;
 }
 
 export function hostedConversationSubmissionContext(
@@ -1913,10 +1128,6 @@ export function hostedConversationSubmissionContext(
   conversationId: string
 ): string {
   return targetKey(nodeId, conversationId);
-}
-
-function randomWatchId(): string {
-  return crypto.randomUUID().replace(/-/g, '');
 }
 
 function record(value: unknown): value is Record<string, unknown> {

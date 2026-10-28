@@ -14,7 +14,9 @@ import ThemePreview from '../../src/view/settings/ThemePreview.vue';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 
+const captureRenderAnchor = createConversationScrollService().captureRenderAnchor;
 const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
@@ -422,6 +424,7 @@ function finishPreview() {
       :loading="false"
       :initializing="initializing"
       :initial-render-version="renderVersion"
+      :capture-render-anchor="captureRenderAnchor"
       :image-attachments="() => []"
       :user-input-questions="() => []"
       :user-input-answer="() => ''"

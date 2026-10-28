@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { AgentRun, CachedSessionDetail, ConversationTurn } from '../../src/model/workbench.js';
 import { createWorkbenchConversationRealtimeService } from '../../src/service/workbench-conversation-realtime-service.js';
+import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
+import { conversationProjectionFixture } from './support/conversation-paging-fixture.js';
 
 function fixture() {
   const segment = (id: string, segmentIndex: number): ConversationTurn => ({
@@ -24,6 +26,25 @@ function fixture() {
     lastAccessedAt: 0
   };
   const selectedNodeId = ref<string>();
+  const cache = createWorkspaceViewCacheService(
+    (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
+  );
+  cache.activate('node-1', 'workspace-1');
+  cache.captureActive(
+    {
+      sessions: [
+        {
+          id: 'session-1',
+          workspaceId: 'workspace-1',
+          runner: 'codex',
+          externalSessionId: 'native'
+        }
+      ],
+      selectedSessionId: 'session-1',
+      detail: cached
+    },
+    2
+  );
   const selectedRunId = ref<string>();
   const channelToken = ref<string | undefined>('old-token');
   const refreshChannelToken = vi.fn(async () => undefined);
@@ -32,10 +53,11 @@ function fixture() {
     selectedSessionId: ref('session-1'),
     selectedRunId,
     runs: ref<AgentRun[]>([]),
-    turns,
+    syncTurnStatus: conversationProjectionFixture(turns, ref<string | null>(null)).syncRunStatus,
     channelToken,
     refreshChannelToken,
-    cachedDetail: (id) => (id === cached.sessionId ? cached : undefined)
+    syncCachedRunStatus: (sessionId, runId, status) =>
+      cache.syncRunStatus('node-1', 'workspace-1', sessionId, runId, status)
   });
   return {
     service,
@@ -44,7 +66,7 @@ function fixture() {
     channelToken,
     refreshChannelToken,
     turns,
-    cached
+    cached: () => cache.detail('node-1', 'workspace-1', 'session-1')!
   };
 }
 
@@ -73,7 +95,7 @@ describe('Public Conversation Real-Time Coordination', () => {
       const state = fixture();
       state.service.syncConversationTurnStatus('run-1', status, 'session-1');
       expect(state.turns.value.map((turn) => turn.status)).toEqual(['SUCCEEDED', expected]);
-      expect(state.cached.turns.map((turn) => turn.status)).toEqual(['SUCCEEDED', expected]);
+      expect(state.cached().turns.map((turn) => turn.status)).toEqual(['SUCCEEDED', expected]);
       expect(state.refreshChannelToken).not.toHaveBeenCalled();
     }
   );
@@ -83,7 +105,7 @@ describe('Public Conversation Real-Time Coordination', () => {
     const previous = [...state.turns.value];
     state.service.syncConversationTurnStatus('other-run', 'FAILED', 'missing-session');
     expect(state.turns.value).toEqual(previous);
-    expect(state.cached.turns.map((turn) => turn.status)).toEqual(['SUCCEEDED', 'RUNNING']);
+    expect(state.cached().turns.map((turn) => turn.status)).toEqual(['SUCCEEDED', 'RUNNING']);
     expect(state.refreshChannelToken).not.toHaveBeenCalled();
   });
 });

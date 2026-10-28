@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
 import {
   createHostedConversationWorkspaceService,
@@ -16,6 +16,7 @@ const conversation = {
   titleSource: 'CUSTOM',
   pinnedAt: null,
   status: 'ACTIVE',
+  activity: { status: 'IDLE', version: 0, updatedAt: 0 },
   modelId: 'model-1',
   createdAt: 1,
   updatedAt: 1,
@@ -109,7 +110,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
 
-    workspace.watchReady.value = true;
+    vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
     await workspace.sendMessage({
       prompt: 'Continue.',
       attachmentIds: ['file-1'],
@@ -182,7 +183,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       nodeAppVersion: 'unknown'
     } as never);
 
-    workspace.watchReady.value = true;
+    vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
     await workspace.sendMessage({
       prompt: 'Replace the active Run.',
       attachmentIds: [],

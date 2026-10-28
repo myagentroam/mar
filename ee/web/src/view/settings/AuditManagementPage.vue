@@ -10,9 +10,12 @@ import { marIcon } from '@myagentroam/web-core/icons';
 import type { TagProps } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { managementUrlValues, replaceManagementUrlValues } from '@/service/management-url-service';
+import {
+  managementUrlValues,
+  replaceManagementUrlValues
+} from '@myagentroam/web-core/management-url';
 import { currentLocale, translate } from '@/service/locale-preference-service';
-import { errorMessage } from '@/util/workbench-presentation';
+import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 import {
   auditTimestamp,
   classifyAuditEvent,
@@ -21,7 +24,7 @@ import {
 import {
   createManagementPaginationService,
   MANAGEMENT_PAGE_SIZE
-} from '@/service/management-pagination-service';
+} from '@myagentroam/web-core/management-pagination';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 
 interface AuditEvent {

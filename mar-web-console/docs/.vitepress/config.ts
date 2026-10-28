@@ -2,7 +2,7 @@ import { zhSidebar, zhDocumentationMessages as zh } from './navigation.zh-CN';
 import { enSidebar } from './navigation.en-US';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitepress';
-import { SUPPORTED_LOCALES } from '@myagentroam-enterprise/web-implementation/locale-config';
+import { SUPPORTED_LOCALES } from '@myagentroam/web-core/locale-config';
 
 const localeLabel = (value: 'zh-CN' | 'en-US') =>
   SUPPORTED_LOCALES.find((locale) => locale.value === value)!.nativeLabel;

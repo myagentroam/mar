@@ -1,3 +1,4 @@
+import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { readonly, ref, shallowRef } from 'vue';
 import type { ScopedHttpService } from './scoped-http-service.js';
@@ -6,10 +7,7 @@ import type {
   WorkspaceFilePreviewTarget,
   WorkspaceFilePreviewTransfers
 } from '../model/workspace-file-preview.js';
-import {
-  directFileContentRevision,
-  type WorkspaceDirectFileIdentity
-} from './workspace-direct-file-read-service.js';
+import { directFileContentRevision } from './workspace-direct-file-read-service.js';
 import {
   decodeFilePreviewRead,
   readFilePreview,
@@ -67,6 +65,7 @@ export function createWorkspaceFilePreviewService(input: {
       contentUrl: ref<string>(),
       loading: ref(false),
       downloading: ref(false),
+      readController: undefined as AbortController | undefined,
       operation: 0
     };
   }
@@ -98,6 +97,7 @@ export function createWorkspaceFilePreviewService(input: {
     const state = pages.get(id);
     if (state === undefined) return;
     state.operation += 1;
+    state.readController?.abort();
     state.loading.value = false;
     state.downloading.value = false;
     releaseUrl(state);
@@ -117,6 +117,9 @@ export function createWorkspaceFilePreviewService(input: {
     } = {}
   ): Promise<WorkspaceFilePreviewContent | undefined> {
     const state = internalPage(id);
+    state.readController?.abort();
+    const readController = new AbortController();
+    state.readController = readController;
     const operation = ++state.operation;
     const current = () => pages.get(id) === state && state.operation === operation;
     const fixedTarget = {
@@ -150,7 +153,9 @@ export function createWorkspaceFilePreviewService(input: {
             history.repositoryPath,
             history.refs,
             0,
-            TEXT_FILE_PREVIEW_LIMIT_BYTES
+            TEXT_FILE_PREVIEW_LIMIT_BYTES,
+            undefined,
+            readController.signal
           );
           if (!current()) return;
           let bytes: Uint8Array<ArrayBuffer>, size: number;
@@ -160,6 +165,7 @@ export function createWorkspaceFilePreviewService(input: {
           } else {
             const response = await (input.fetchContent ?? fetch)(fallback, {
               credentials: 'same-origin',
+              signal: readController.signal,
               headers: { range: `bytes=0-${TEXT_FILE_PREVIEW_LIMIT_BYTES - 1}` }
             });
             if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
@@ -180,7 +186,9 @@ export function createWorkspaceFilePreviewService(input: {
           return current() ? state.fileContent.value : undefined;
         }
         if (binaryFilePreviewKind(target.path) === 'unsupported') return state.fileContent.value;
-        const size = await historyFileSize(fixedTarget, transfers).catch(() => undefined);
+        const size = await historyFileSize(fixedTarget, transfers, readController.signal).catch(
+          () => undefined
+        );
         if (!current()) return;
         state.fileContent.value = {
           path: target.path,
@@ -194,7 +202,8 @@ export function createWorkspaceFilePreviewService(input: {
             history.commit,
             target.path,
             history.repositoryPath,
-            history.refs
+            history.refs,
+            readController.signal
           )
         );
         if (!current()) {
@@ -211,7 +220,8 @@ export function createWorkspaceFilePreviewService(input: {
               transfers.directFileObjectUrl?.(
                 target.path,
                 target.worktreePath,
-                target.repositoryPath
+                target.repositoryPath,
+                readController.signal
               )
             );
         if (!current()) {
@@ -231,9 +241,11 @@ export function createWorkspaceFilePreviewService(input: {
               limit,
               target.worktreePath,
               identity,
-              target.repositoryPath
+              target.repositoryPath,
+              readController.signal
             )
           : undefined;
+        readController.signal.throwIfAborted();
         if (direct !== undefined) {
           directStarted = true;
           identity = { revision: direct.revision, size: direct.size };
@@ -261,7 +273,8 @@ export function createWorkspaceFilePreviewService(input: {
           parameters.set('repositoryPath', target.repositoryPath);
         if (target.worktreePath !== undefined) parameters.set('worktreePath', target.worktreePath);
         const result = await input.http.request(
-          `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`
+          `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`,
+          { signal: readController.signal }
         );
         if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
         return decodeFilePreviewRead(result.file, target.path);
@@ -299,13 +312,17 @@ export function createWorkspaceFilePreviewService(input: {
         };
       else input.onFailure(error, fixedTarget);
     } finally {
-      if (current()) state.loading.value = false;
+      if (current()) {
+        state.loading.value = false;
+        state.readController = undefined;
+      }
     }
   }
 
   async function historyFileSize(
     target: WorkspaceFilePreviewTarget,
-    transfers: WorkspaceFilePreviewTransfers
+    transfers: WorkspaceFilePreviewTransfers,
+    signal: AbortSignal
   ): Promise<number> {
     const history = target.history!;
     const direct = await transfers.directGitFileReadRange?.(
@@ -314,11 +331,15 @@ export function createWorkspaceFilePreviewService(input: {
       history.repositoryPath,
       history.refs,
       0,
-      1
+      1,
+      undefined,
+      signal
     );
     if (direct !== undefined) return direct.size;
+    signal.throwIfAborted();
     const response = await (input.fetchContent ?? fetch)(workspaceFilePreviewUrl(target), {
       credentials: 'same-origin',
+      signal,
       headers: { range: 'bytes=0-0' }
     });
     if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);

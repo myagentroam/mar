@@ -2,29 +2,7 @@ import { ref, type Ref } from 'vue';
 import type { AgentRun } from '../model/workbench.js';
 
 const ACTIVE_RUN_STATUSES = new Set(['STARTING', 'RUNNING', 'CANCELLING']);
-const TERMINAL_RUN_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST']);
-
-export function runStatusRank(status: string): number {
-  if (status === 'STARTING') return 1;
-  if (status === 'RUNNING') return 2;
-  if (status === 'CANCELLING') return 3;
-  return TERMINAL_RUN_STATUSES.has(status) ? 4 : -1;
-}
-
-export function isTerminalRunStatus(status: string): boolean {
-  return TERMINAL_RUN_STATUSES.has(status);
-}
-
-export function newestRunSnapshot(current: AgentRun | undefined, next: AgentRun): AgentRun {
-  if (current === undefined) return next;
-  if (
-    current.version !== undefined &&
-    next.version !== undefined &&
-    current.version !== next.version
-  )
-    return current.version > next.version ? current : next;
-  return runStatusRank(current.status) > runStatusRank(next.status) ? current : next;
-}
+import { isTerminalRunStatus, newestRunSnapshot } from '../util/run-state.js';
 
 export function createRunService(selectedSessionId: Ref<string | undefined>) {
   const runs = ref<AgentRun[]>([]);
@@ -33,6 +11,21 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
   const pendingSessionInterruptions = new Set<string>();
   const requestedSessionInterruptions = new Set<string>();
   const suppressedInterruptedRunIds = new Map<string, { sessionId: string; requested: boolean }>();
+
+  function acceptRun(run: AgentRun): AgentRun {
+    const current = runs.value.find((candidate) => candidate.id === run.id);
+    const accepted = newestRunSnapshot(current, run);
+    runs.value = [accepted, ...runs.value.filter((candidate) => candidate.id !== run.id)];
+    return accepted;
+  }
+
+  function replaceRuns(next: readonly AgentRun[]): void {
+    runs.value = [...next];
+  }
+
+  function replaceExistingRun(run: AgentRun): void {
+    runs.value = runs.value.map((candidate) => (candidate.id === run.id ? run : candidate));
+  }
 
   function mergeSnapshots(next: readonly AgentRun[]): void {
     const currentById = new Map(runs.value.map((run) => [run.id, run]));
@@ -182,8 +175,11 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
   }
 
   return {
-    runs,
+    runs: runs as Readonly<Ref<readonly AgentRun[]>>,
     selectedRunId,
+    acceptRun,
+    replaceRuns,
+    replaceExistingRun,
     mergeSnapshots,
     mergeAuthoritativeSnapshot,
     markSessionInterrupted,
