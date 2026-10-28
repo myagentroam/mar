@@ -1,3 +1,9 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeCapabilities } from '../../../packages/protocol/src/index.js';
 import {
@@ -20,6 +26,7 @@ describe('Node capability version reporting', () => {
         responsesOptionalParameters: true,
         responsesHttpContinuation: true,
         conversationModels: true,
+        resourceInput: true,
         serviceTiers: ['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']
       });
       expect(capabilities.workspaceDirectTransfer).toEqual({
@@ -111,14 +118,14 @@ describe('Node capability version reporting', () => {
         capabilities: initial,
         capabilityDetector: () => current
       });
-      (connector as unknown as { socket: unknown }).socket = {
+      connectTestSocket(connector, {
         readyState: 1,
         OPEN: 1,
         send(raw: string) {
           sent.push(JSON.parse(raw) as { type: string; payload: unknown });
         },
         close() {}
-      };
+      });
       (connector as unknown as { startCapabilityRefresh: () => void }).startCapabilityRefresh();
 
       await vi.advanceTimersByTimeAsync(59_999);
@@ -161,7 +168,7 @@ describe('Node capability version reporting', () => {
             throw new Error('PROBE_FAILED');
           }
         });
-        (connector as unknown as { socket: unknown }).socket = {
+        connectTestSocket(connector, {
           readyState: 1,
           OPEN: 1,
           send(raw: string) {
@@ -169,7 +176,7 @@ describe('Node capability version reporting', () => {
             if (message.type === 'capabilities') sent.push(message);
           },
           close() {}
-        };
+        });
 
         await (
           connector as unknown as { refreshCapabilities: () => Promise<void> }

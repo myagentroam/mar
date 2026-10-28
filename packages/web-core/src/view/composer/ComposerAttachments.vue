@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
+import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
 
@@ -37,6 +38,7 @@ const emit = defineEmits<{
           :alt="attachment.file.name"
         />
       </button>
+      <FileTypeIcon v-else :name="attachment.file.name" />
       <span class="attachment-name">{{ attachment.file.name }}</span>
       <small>{{ Math.ceil(attachment.file.size / 1024) }} KiB</small>
       <small v-if="attachment.status === 'UPLOADING'">
@@ -103,7 +105,7 @@ const emit = defineEmits<{
 
 .attachment-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 1rem minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 0.55rem;
   min-height: 32px;

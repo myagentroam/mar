@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import * as workspaceFiles from '../../src/workspace.js';
+import * as workspaceFiles from '../../src/workspace/files.js';
 import * as uploadFiles from 'node:fs/promises';
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,10 +7,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeAgentSession, NodeWorkspace } from '../../src/database.js';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
-import { SessionContextService } from '../../src/service/session-context-service.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
-import { WorkspaceUploadService } from '../../src/service/workspace-upload-service.js';
-import { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import { SessionContextService } from '../../src/session/session-context-service.js';
+import { WorkspaceUploadService } from '../../src/workspace/workspace-upload-service.js';
+import { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs/promises')>())
@@ -26,12 +25,23 @@ afterEach(async () => {
   );
 });
 
+function uploadState(service: WorkspaceUploadService) {
+  return service as unknown as {
+    uploads: Map<
+      string,
+      import('../../src/workspace/workspace-upload-service.js').ActiveWorkspaceUpload
+    >;
+    composerAttachments: Map<
+      string,
+      import('../../src/workspace/workspace-upload-service.js').CompletedComposerAttachment
+    >;
+  };
+}
+
 describe('Node process cache cleanup', () => {
   it('reports cleanup failures without forgetting its cancelled upload or keeping its handle open', async () => {
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const service = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => root
     );
@@ -42,13 +52,13 @@ describe('Node process cache cleanup', () => {
       overwrite: false,
       sha256: createHash('sha256').digest('hex')
     });
-    const record = state.uploads.get(upload.uploadId)!;
+    const record = uploadState(service).uploads.get(upload.uploadId)!;
     const close = vi.spyOn(record.handle, 'close');
     const remove = vi.spyOn(uploadFiles, 'rm').mockRejectedValueOnce(new Error('cleanup denied'));
     try {
       await expect(service.cancel(upload.uploadId)).rejects.toThrow('cleanup denied');
       expect(close).toHaveBeenCalledOnce();
-      expect(state.uploads.get(upload.uploadId)).toBe(record);
+      expect(uploadState(service).uploads.get(upload.uploadId)).toBe(record);
       expect(() => service.status(upload.uploadId)).toThrow('UPLOAD_NOT_FOUND');
     } finally {
       remove.mockRestore();
@@ -59,9 +69,7 @@ describe('Node process cache cleanup', () => {
 
   it('validates the final target and staging size before publishing an upload', async () => {
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const service = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => root
     );
@@ -78,7 +86,7 @@ describe('Node process cache cleanup', () => {
     try {
       const upload = await service.createDirect(workspace, input);
       await service.writeDirect(upload.uploadId, payload);
-      const record = state.uploads.get(upload.uploadId)!;
+      const record = uploadState(service).uploads.get(upload.uploadId)!;
       await writeFile(record.temporaryPath, 'changed size');
       await expect(service.complete(upload.uploadId)).rejects.toThrow('UPLOAD_STAGING_INVALID');
       expect(await readFile(target, 'utf8')).toBe('old');
@@ -106,9 +114,7 @@ describe('Node process cache cleanup', () => {
     'handles attachment %s and relay retry without reading OS file identity',
     async (operation) => {
       const root = await temporaryDirectory();
-      const state = new WorkspaceDomainState();
       const service = new WorkspaceUploadService(
-        state,
         () => undefined,
         () => root
       );
@@ -150,8 +156,8 @@ describe('Node process cache cleanup', () => {
         } else {
           await service.cancel(upload.uploadId);
         }
-        expect(state.uploads.size).toBe(0);
-        expect(state.composerAttachments.size).toBe(0);
+        expect(uploadState(service).uploads.size).toBe(0);
+        expect(uploadState(service).composerAttachments.size).toBe(0);
         await expect(access(join(root, id))).rejects.toThrow();
 
         const retry = await service.create(workspace, input);
@@ -172,7 +178,6 @@ describe('Node process cache cleanup', () => {
   it('does not replace a newly existing target when overwrite is not authorized', async () => {
     const root = await temporaryDirectory();
     const service = new WorkspaceUploadService(
-      new WorkspaceDomainState(),
       () => undefined,
       () => root
     );
@@ -204,7 +209,6 @@ describe('Node process cache cleanup', () => {
   it('leaves the target unchanged when completion authorization has been cancelled', async () => {
     const root = await temporaryDirectory();
     const service = new WorkspaceUploadService(
-      new WorkspaceDomainState(),
       () => undefined,
       () => root
     );
@@ -229,7 +233,6 @@ describe('Node process cache cleanup', () => {
   it('rejects overlapping direct chunks instead of advancing the same offset twice', async () => {
     const root = await temporaryDirectory();
     const service = new WorkspaceUploadService(
-      new WorkspaceDomainState(),
       () => undefined,
       () => join(root, 'temp-files')
     );
@@ -260,9 +263,7 @@ describe('Node process cache cleanup', () => {
     async (reason) => {
       vi.useFakeTimers();
       const root = await temporaryDirectory();
-      const state = new WorkspaceDomainState();
       const service = new WorkspaceUploadService(
-        state,
         () => undefined,
         () => join(root, 'temp-files')
       );
@@ -277,12 +278,12 @@ describe('Node process cache cleanup', () => {
           sha256: createHash('sha256').update('new').digest('hex')
         });
         await service.writeDirect(upload.uploadId, Buffer.from('n'));
-        const temporary = state.uploads.get(upload.uploadId)!.temporaryPath;
+        const temporary = uploadState(service).uploads.get(upload.uploadId)!.temporaryPath;
         if (reason === 'cancel') await service.cancel(upload.uploadId);
         else if (reason === 'shutdown') await service.shutdown();
         else await vi.advanceTimersByTimeAsync(60 * 60_000);
         vi.useRealTimers();
-        await vi.waitFor(() => expect(state.uploads.size).toBe(0));
+        await vi.waitFor(() => expect(uploadState(service).uploads.size).toBe(0));
         await vi.waitFor(async () => {
           await expect(access(temporary)).rejects.toThrow();
         });
@@ -295,9 +296,7 @@ describe('Node process cache cleanup', () => {
 
   it('rechecks path and overwrite authorization before resuming staging', async () => {
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const service = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'temp-files')
     );
@@ -333,9 +332,7 @@ describe('Node process cache cleanup', () => {
     const workspace = { id: 'workspace-1', path: root } as NodeWorkspace;
     const target = join(root, 'file.bin');
     await writeFile(target, 'original');
-    const state = new WorkspaceDomainState();
     const service = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -362,7 +359,7 @@ describe('Node process cache cleanup', () => {
 
       const staged = await service.createDirect(workspace, input);
       await service.writeDirect(staged.uploadId, payload);
-      const stagedFile = state.uploads.get(staged.uploadId)!;
+      const stagedFile = uploadState(service).uploads.get(staged.uploadId)!;
       await writeFile(stagedFile.temporaryPath, 'changed');
       await expect(service.completeDirect(staged.uploadId, payload.length)).rejects.toThrow(
         'DIRECT_INTEGRITY_FAILED'
@@ -705,16 +702,14 @@ describe('Node process cache cleanup', () => {
     const root = await temporaryDirectory();
     const workspace = { id: 'workspace-1', path: join(root, 'workspace') } as NodeWorkspace;
     await mkdir(workspace.path);
-    const state = new WorkspaceDomainState();
     const tempRoot = () => join(root, 'node-data', 'temp-files');
-    const uploads = new WorkspaceUploadService(state, () => undefined, tempRoot);
+    const uploads = new WorkspaceUploadService(() => undefined, tempRoot);
     const attachments = new RunAttachmentService(
       () => [],
       () => false,
       tempRoot
     );
     const files = new WorkspaceFileService(
-      state,
       () => undefined,
       {},
       (id, path) => uploads.fileResource(id, path) ?? attachments.fileResource(id, path)
@@ -806,9 +801,7 @@ describe('Node process cache cleanup', () => {
   it('deletes completed but unconsumed Composer attachments after their TTL', async () => {
     vi.useFakeTimers();
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const service = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -823,18 +816,16 @@ describe('Node process cache cleanup', () => {
     });
 
     await service.complete(created.uploadId);
-    expect(state.composerAttachments.size).toBe(1);
+    expect(uploadState(service).composerAttachments.size).toBe(1);
     await vi.advanceTimersByTimeAsync(60 * 60_000);
-    await vi.waitFor(() => expect(state.composerAttachments.size).toBe(0));
+    await vi.waitFor(() => expect(uploadState(service).composerAttachments.size).toBe(0));
     await service.shutdown();
   });
 
   it('adopts same-name uploads in place and retains every directory through Session and execution migration', async () => {
     vi.useFakeTimers();
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const uploads = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -855,7 +846,7 @@ describe('Node process cache cleanup', () => {
         )
       );
       reservation.release();
-      expect(state.composerAttachments.size).toBe(0);
+      expect(uploadState(uploads).composerAttachments.size).toBe(0);
       await expect(uploads.reserve(workspace.id, [first.id])).rejects.toThrow(
         'COMPOSER_ATTACHMENT_UNAVAILABLE'
       );
@@ -881,9 +872,7 @@ describe('Node process cache cleanup', () => {
   it('reserves an entire upload batch exclusively and restores the original expiry after failed preparation', async () => {
     vi.useFakeTimers();
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const uploads = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -915,7 +904,7 @@ describe('Node process cache cleanup', () => {
       retry.release();
       await vi.advanceTimersByTimeAsync(1);
       await vi.waitFor(async () => {
-        expect(state.composerAttachments.size).toBe(0);
+        expect(uploadState(uploads).composerAttachments.size).toBe(0);
         await expect(access(file.path)).rejects.toThrow();
       });
     } finally {
@@ -925,9 +914,7 @@ describe('Node process cache cleanup', () => {
 
   it('releases the whole reservation after file validation or ownership transfer fails', async () => {
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const uploads = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -972,9 +959,7 @@ describe('Node process cache cleanup', () => {
 
   it('prevents a stopped upload reservation from transferring or resurrecting files', async () => {
     const root = await temporaryDirectory();
-    const state = new WorkspaceDomainState();
     const uploads = new WorkspaceUploadService(
-      state,
       () => undefined,
       () => join(root, 'node-data', 'temp-files')
     );
@@ -986,7 +971,7 @@ describe('Node process cache cleanup', () => {
     expect(() => reservation.commit(retain)).toThrow('COMPOSER_ATTACHMENT_UNAVAILABLE');
     expect(retain).not.toHaveBeenCalled();
     reservation.release();
-    expect(state.composerAttachments.size).toBe(0);
+    expect(uploadState(uploads).composerAttachments.size).toBe(0);
     await expect(access(file.path)).rejects.toThrow();
   });
 });

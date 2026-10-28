@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { createEnvelope, type NodeCapabilities, type NodeEnvelope } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import { ControlOutboundScheduler } from '../control-outbound-scheduler.js';
-import { nodeConnectEndpoint } from '../util/node-operation-parsers.js';
+import { nodeConnectEndpoint } from '../connection/endpoints.js';
 
 interface NodeControlChannelOptions {
   readonly config: () => NodeConfig | undefined;
@@ -65,10 +65,6 @@ export class NodeControlChannel {
 
   connected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
-  }
-  /** Keeps transport injection at the transport boundary for contract tests. */
-  replaceSocketForTesting(socket: WebSocket | undefined): void {
-    this.socket = socket;
   }
   close(code?: number, reason?: string): void {
     this.socket?.close(code, reason);

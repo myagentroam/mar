@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, SteerResult } from '@myagentroam/agent';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
@@ -5,7 +6,7 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
-import type { RunnerSteerInput } from '../../src/runner/abstract-runner.js';
+import type { RunnerSteerInput } from '../../src/runner/contracts.js';
 import type { MarAgentRuntimeModelConfiguration } from '../../../packages/protocol/src/index.js';
 
 const entry = {
@@ -66,7 +67,7 @@ describe('MAR native steer integration', () => {
       dispose: vi.fn()
     }));
     const host = {
-      active: new Set<string>(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),

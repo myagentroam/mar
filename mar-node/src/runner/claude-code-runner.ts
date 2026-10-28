@@ -4,28 +4,29 @@ import {
   type ClaudeChannelRunHandle,
   type ClaudeQueryInput,
   type ClaudeRunHandle
-} from '../claude-agent-sdk.js';
-import {
-  AbstractRunner,
-  type ExternalResumeContext,
-  type ExternalResumeResult,
-  type RunnerDiscoveryContext,
-  type RunnerConversationHistoryPage,
-  type RunnerConversationHistoryReaders,
-  type RunnerSessionPresentationContext,
-  type RunnerSessionPresentation
-} from './abstract-runner.js';
+} from './claude/claude-agent-sdk.js';
+import type {
+  ExternalResumeContext,
+  ExternalResumeResult,
+  RunnerDiscoveryContext,
+  RunnerConversationHistoryPage,
+  RunnerConversationHistoryReaders,
+  RunnerSessionPresentationContext,
+  RunnerSessionPresentation
+} from './contracts.js';
+import { AbstractRunner } from './abstract-runner.js';
 import type {
   NodeCapabilities,
   RunnerDefaultConfiguration,
   RunnerProfile
 } from '@myagentroam/protocol';
 import { claudeDefaultModel, declaredRunnerProfiles } from '../runner-profiles.js';
-import { ClaudeChannelGate } from '../claude-channel.js';
-import type { ChannelDelivery } from '../claude-channel.js';
+import { ClaudeChannelGate } from './claude/claude-channel.js';
+import type { ChannelDelivery } from './contracts.js';
 import { claudeUserInputQuestions } from './claude/conversation-parser.js';
 import { withClaudePlanTag } from '../runner-command-engine.js';
-import type { NodeAgentSession, NodeWorkspace } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
 import { discoverNativeSessions, readNativeSession } from '../native-session-history.js';
 import { readClaudeNativeContextUsage } from './claude/native-context-usage.js';
 import type { NativeSessionHistory } from '../native-transcript-model.js';
@@ -35,7 +36,7 @@ import {
   isNativeHistory,
   isWithinWorkspace,
   latestNativeActivity
-} from '../util/runner-native-session-parsers.js';
+} from '../session/runner-native-session-parsers.js';
 
 export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   readonly name = 'claude-code' as const;

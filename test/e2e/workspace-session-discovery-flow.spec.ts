@@ -6,8 +6,7 @@ import { NodeConnector } from '../../mar-node/src/connector.js';
 import { NodeDatabase } from '../../mar-node/src/database.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
 import type { RunnerRegistry } from '../../mar-node/src/runner/runner-registry.js';
-import type { WorkspaceSessionService } from '../../mar-node/src/service/workspace-session-service.js';
-import type { WorkspaceDomainState } from '../../mar-node/src/service/workspace-domain-state.js';
+import type { WorkspaceSessionService } from '../../mar-node/src/workspace/workspace-session-service.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
 test('Cold Node session discovery streams batches through the real relay and slow Runner retries do not expose persistent titles early', async ({
@@ -74,7 +73,6 @@ test('Cold Node session discovery streams batches through the real relay and slo
     const internals = connector as unknown as {
       runners: RunnerRegistry;
       workspaceSessionService: WorkspaceSessionService;
-      workspaceState: WorkspaceDomainState;
     };
     for (const runner of internals.runners.advertised()) {
       const name = runner.name;
@@ -182,7 +180,6 @@ test('Cold Node session discovery streams batches through the real relay and slo
     await expect(rows.filter({ hasText: 'Child session' })).toHaveCount(0);
     await expect(rows.filter({ hasText: 'Pinned slow custom title' })).toHaveCount(0);
     firstSlow.reject(new Error('TEST_NATIVE_DISCOVERY_FAILED'));
-    await internals.workspaceState.sessionCacheReads.get(workspaceId)?.catch(() => undefined);
     expect(internals.workspaceSessionService.discoveryPending(workspaceId)).toBe(true);
     await page.getByRole('button', { name: '刷新当前工作区会话' }).click();
     await expect.poll(() => reads.get('codex')).toBe(2);

@@ -1,12 +1,14 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
-import type { ComposerAttachmentFile } from '@myagentroam/protocol';
+import type { ComposerAttachmentFile, PermissionStop } from '@myagentroam/protocol';
+import type { RunnerExecutionStatus } from '../runner/contracts.js';
+import type { GoalState } from './goal-runtime.js';
 import type { NodeMcpInstallation, ResolvedMcpServer } from '../mcp/model.js';
 import type { NodeAgentRun, NodeMessageAttachmentInput, NodeQueueItem } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import type { NodeAgentSession } from '../database.js';
-import { withNonImageAttachmentPrompt } from '../util/node-operation-parsers.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import { withNonImageAttachmentPrompt } from '../session/attachments.js';
 import { safeErrorCode } from '../util/safe-error.js';
-import { withSessionPrompt } from '../util/personal-instructions.js';
+import { withSessionPrompt } from '../runner/personal-instructions.js';
 import { prepareComposerResourceInput } from './composer-message-input.js';
 import { nodeLog } from '../operational.js';
 
@@ -76,13 +78,30 @@ interface NativeSteerAdmission {
   readonly task: Promise<boolean>;
 }
 
+export interface ExecutionTerminalInput {
+  readonly executionId: string;
+  readonly sequence: number;
+  readonly eventType: string;
+  readonly payload: unknown;
+  readonly status: RunnerExecutionStatus;
+  readonly permissionStop?: PermissionStop;
+}
+
+export interface ExecutionTerminalResult {
+  readonly recorded: ReturnType<NodeRuntimeState['appendRunEvent']>;
+  readonly finalStatus?: RunnerExecutionStatus;
+  readonly manuallyInterrupted: boolean;
+  readonly goalUpdate?: { readonly session: NodeAgentSession; readonly goal: GoalState };
+  readonly queueChangedSessionId?: string;
+}
+
 export interface ContinuousRunCoordinatorOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
   readonly steer?: (
     prepared: PreparedExecutionInput<unknown>,
     item: NodeQueueItem,
     executionId: string
-  ) => Promise<import('../runner/abstract-runner.js').RunnerSteerResult> | undefined;
+  ) => Promise<import('../runner/contracts.js').RunnerSteerResult> | undefined;
   readonly runtime: NodeRuntimeState;
   readonly emitQueue: (workspaceId: string, sessionId: string) => void;
   readonly emitConversation: (turn: unknown) => void;
@@ -118,6 +137,17 @@ export interface ContinuousRunCoordinatorOptions {
   readonly goalCurrent?: (input: PreparedExecutionInput<unknown>) => boolean;
   readonly revokeExecutionMcps?: (executionId: string) => void;
   readonly goalActive?: (sessionId: string) => boolean;
+  readonly executionTerminating: (
+    executionId: string,
+    status: RunnerExecutionStatus,
+    permissionStop?: PermissionStop
+  ) =>
+    | {
+        readonly goalUpdate?: { readonly session: NodeAgentSession; readonly goal: GoalState };
+        readonly queueChangedSessionId?: string;
+      }
+    | undefined;
+  readonly keepRunActive: (sessionId: string) => boolean;
 }
 
 export class ContinuousRunCoordinator<TAttachment> {
@@ -136,6 +166,49 @@ export class ContinuousRunCoordinator<TAttachment> {
   private suspended = false;
 
   constructor(private readonly options: ContinuousRunCoordinatorOptions) {}
+
+  acceptExecutionTerminal(input: ExecutionTerminalInput): ExecutionTerminalResult {
+    const run = this.options.runtime.getRun(input.executionId);
+    if (run === undefined) return { recorded: undefined, manuallyInterrupted: false };
+    let accepted: ReturnType<NodeRuntimeState['acceptExecutionTerminal']>;
+    try {
+      accepted = this.options.runtime.acceptExecutionTerminal({
+        runId: input.executionId,
+        sequence: input.sequence,
+        eventType: input.eventType,
+        payload: input.payload,
+        status: input.status,
+        pauseQueue: input.permissionStop !== undefined
+      });
+    } catch {
+      return { recorded: undefined, manuallyInterrupted: false };
+    }
+    const { recorded, interrupted: manuallyInterrupted } = accepted;
+    if (recorded === undefined || !accepted.current) return { recorded, manuallyInterrupted };
+    const goalResult = this.options.executionTerminating(
+      input.executionId,
+      input.status,
+      input.permissionStop
+    );
+    const queue = this.options.runtime.sessionQueue(run.sessionId);
+    const continues =
+      run.status !== 'CANCELLING' &&
+      input.permissionStop === undefined &&
+      ((!queue.paused && queue.itemIds.length > 0) || this.options.keepRunActive(run.sessionId));
+    let finalStatus: RunnerExecutionStatus | undefined;
+    if (!continues) {
+      finalStatus =
+        input.status === 'CANCELLED' || manuallyInterrupted ? 'INTERRUPTED' : input.status;
+      if (finalStatus === 'SUCCEEDED' || finalStatus === 'FAILED' || finalStatus === 'INTERRUPTED')
+        this.options.runtime.finishRun(run.id, finalStatus);
+    }
+    return {
+      recorded,
+      manuallyInterrupted,
+      ...(finalStatus === undefined ? {} : { finalStatus }),
+      ...goalResult
+    };
+  }
 
   suspend(): void {
     this.suspended = true;
@@ -608,14 +681,14 @@ export class ContinuousRunCoordinator<TAttachment> {
     });
   }
 
-  deleteQueueItem(itemId: string): void {
+  deleteQueueItem(itemId: string, publish = true): void {
     const item = this.options.runtime.getQueueItem(itemId);
     if (item === undefined) throw new Error('QUEUE_ITEM_INVALID');
     this.options.runtime.deleteQueueItem(item.id);
     this.remove(item.id);
     this.options.clearImages(item.id);
     this.options.cleanupAttachments(item.id);
-    this.options.emitQueue(item.workspaceId, item.sessionId);
+    if (publish) this.options.emitQueue(item.workspaceId, item.sessionId);
   }
 
   publishCurrentTurn(runId: string): void {
@@ -925,8 +998,10 @@ export class ContinuousRunCoordinator<TAttachment> {
   removeGoalQueue(
     sessionId: string,
     preservedGoal?: { readonly id: string; readonly revision: number },
-    preservedSubmissionId?: string
-  ): void {
+    preservedSubmissionId?: string,
+    publish = true
+  ): boolean {
+    let changed = false;
     for (const [id, pending] of this.preparedInputs) {
       if (id === preservedSubmissionId) continue;
       // Native admission owns receiving items until its receipt settles.
@@ -935,8 +1010,12 @@ export class ContinuousRunCoordinator<TAttachment> {
       if (pending.goal.id === preservedGoal?.id && pending.goal.revision === preservedGoal.revision)
         continue;
       const item = this.options.runtime.getQueueItem(id);
-      if (item !== undefined) this.deleteQueueItem(id);
+      if (item !== undefined) {
+        this.deleteQueueItem(id, publish);
+        changed = true;
+      }
     }
+    return changed;
   }
 
   removePendingQueue(sessionId: string, preservedItemId?: string): void {

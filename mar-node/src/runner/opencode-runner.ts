@@ -4,21 +4,22 @@ import type {
   RunnerDefaultConfiguration,
   RunnerProfile
 } from '@myagentroam/protocol';
-import type { NodeAgentSession, NodeDatabase, NodeWorkspace } from '../database.js';
-import { OpenCodeServerClient } from '../opencode-server.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
+import { OpenCodeServerClient } from './opencode/opencode-server.js';
 import { openCodeContextLimits, openCodeProfileModels } from '../opencode-runtime.js';
 import { declaredRunnerProfiles } from '../runner-profiles.js';
-import {
-  AbstractRunner,
-  type ExternalResumeContext,
-  type ExternalResumeResult,
-  type RunnerDiscoveryContext,
-  type RunnerConversationHistoryPage,
-  type RunnerConversationHistoryReaders,
-  type RunnerSessionPresentation,
-  type RunnerSessionPresentationContext
-} from './abstract-runner.js';
-import { isWithinWorkspace } from '../util/runner-native-session-parsers.js';
+import type {
+  ExternalResumeContext,
+  ExternalResumeResult,
+  RunnerDiscoveryContext,
+  RunnerConversationHistoryPage,
+  RunnerConversationHistoryReaders,
+  RunnerSessionPresentation,
+  RunnerSessionPresentationContext
+} from './contracts.js';
+import { AbstractRunner } from './abstract-runner.js';
+import { isWithinWorkspace } from '../session/runner-native-session-parsers.js';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import {
@@ -26,7 +27,7 @@ import {
   openCodeUserMessagePreview
 } from './opencode/conversation-parser.js';
 import { nodeLog } from '../operational.js';
-import { runnerErrorProjection } from '../util/runner-error.js';
+import { runnerErrorProjection } from './runner-error.js';
 import type { GenerationTimingTracker } from '../service/generation-timing-tracker.js';
 
 const PROFILE_ENTRY_TTL_MS = 30 * 60_000;
@@ -500,12 +501,10 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
 
   override async renameNative(
     session: NodeAgentSession,
-    input: { readonly title?: string | null; readonly pinned?: boolean },
-    database: NodeDatabase
+    input: { readonly title?: string | null; readonly pinned?: boolean }
   ): Promise<void> {
     if (session.externalSessionId !== null && input.title !== undefined)
       await this.client.updateSession(session.cwd, session.externalSessionId, input.title ?? '');
-    await super.renameNative(session, input, database);
   }
 
   override async removeNative(

@@ -1,5 +1,5 @@
-import type { NodeAgentSession } from '../database.js';
-import { sessionGroup } from './session-presentation-service.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import { sessionGroup } from '../session/session-presentation-service.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import {
   composerVisibleText,

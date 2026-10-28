@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope, type NodeCapabilities } from '../../../packages/protocol/src/index.js';
-import { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
-import { CodexAppServerClient } from '../../src/codex-app-server.js';
+import { ClaudeAgentSdkAdapter } from '../../src/runner/claude/claude-agent-sdk.js';
+import { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { FakeRunner } from '../../src/fake-runner.js';
 import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
@@ -10,7 +10,7 @@ import { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import type { ResolvedMcpServer } from '../../src/mcp/model.js';
-import { OpenCodeServerClient } from '../../src/opencode-server.js';
+import { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 
 const capabilities: NodeCapabilities = {
   platform: 'linux',

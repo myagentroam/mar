@@ -1,19 +1,19 @@
 import type { NodeCapabilities } from '@myagentroam/protocol';
-import { projectConversationWorkProcesses } from './conversation-work-process.js';
-import type { NodeAgentSession } from '../database.js';
+import { projectConversationWorkProcesses } from '../session/runtime/work-process.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { discoverNativeSessions, readNativeSession } from '../native-session-history.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import type { RunnerConversationHistoryPage } from '../runner/abstract-runner.js';
+import type { RunnerConversationHistoryPage } from '../runner/contracts.js';
 import {
   nativeConversationPage,
   type ConversationHistoryPage
-} from '../util/runner-native-session-parsers.js';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
-import { conversationClientMessageId } from '../util/conversation-identity.js';
+} from '../session/runner-native-session-parsers.js';
+import { isPlainRecord } from '../util/records.js';
+import { conversationClientMessageId } from '../session/conversation-identity.js';
 import type { RunAttachmentService } from './run-attachment-service.js';
-import type { ExternalSessionActivationState } from './session-domain-state.js';
+import type { ExternalSessionActivationState } from '../session/contracts.js';
 import { nodeLog } from '../operational.js';
 
 export function hasManagedActiveRun(runtime: NodeRuntimeState, session: NodeAgentSession): boolean {

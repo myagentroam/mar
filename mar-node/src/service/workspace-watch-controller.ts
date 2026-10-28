@@ -1,7 +1,7 @@
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import type { NodeWorkspace } from '../database.js';
-import type { WorkspaceWatchService } from './workspace-watch-service.js';
-import type { WorkspaceWatchSnapshotService } from './workspace-watch-snapshot-service.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
+import type { WorkspaceWatchService } from '../workspace/workspace-watch-service.js';
+import type { WorkspaceWatchSnapshotService } from '../workspace/workspace-watch-snapshot-service.js';
 
 export interface WorkspaceWatchControllerOptions {
   readonly requireWorkspace: (workspaceId: unknown) => NodeWorkspace;

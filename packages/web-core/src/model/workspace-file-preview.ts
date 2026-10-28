@@ -7,6 +7,7 @@ export interface WorkspaceFilePreviewContent {
   readonly path: string;
   readonly size?: number;
   readonly encoding: 'utf-8' | 'base64';
+  readonly previewEncoding?: string;
   readonly content: string;
   readonly truncated: boolean;
   readonly revision?: string;

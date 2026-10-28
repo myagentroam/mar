@@ -1,14 +1,20 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
-import { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
+import { ClaudeAgentSdkAdapter } from '../../src/runner/claude/claude-agent-sdk.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
-import type { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
-import type { SessionPresentationService } from '../../src/service/session-presentation-service.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
+import type { SessionPresentationService } from '../../src/session/session-presentation-service.js';
 import type { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
 import {
   recordSent,
@@ -569,13 +575,13 @@ describe('Claude session discovery, resumption, and projection', () => {
       'emitRun'
     );
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = {
+    connectTestSocket(connector, {
       readyState: 1,
       OPEN: 1,
       send(raw: string) {
         recordSent(sent, JSON.parse(raw) as { type: string; payload: Record<string, unknown> });
       }
-    };
+    });
     (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
       JSON.stringify(
         createEnvelope('run.start', {

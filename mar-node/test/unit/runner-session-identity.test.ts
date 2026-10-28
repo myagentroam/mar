@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { SessionIdentityService } from '../../src/service/session-identity-service.js';
+import type { SessionIdentityService } from '../../src/session/session-identity-service.js';
 import type { RunnerInteractionService } from '../../src/service/runner-interaction-service.js';
 import type { CodexManagedRunController } from '../../src/runner/codex/managed-run-controller.js';
 import type { OpenCodeManagedRunController } from '../../src/runner/opencode/managed-run-controller.js';
@@ -13,10 +13,10 @@ import type { CodexRunner } from '../../src/runner/codex-runner.js';
 import type { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import type { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
-import type { ClaudeChannelRunHandle } from '../../src/claude-agent-sdk.js';
-import type { OpenCodeServerClient } from '../../src/opencode-server.js';
-import { ClaudeChannelGate } from '../../src/claude-channel.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
+import type { ClaudeChannelRunHandle } from '../../src/runner/claude/claude-agent-sdk.js';
+import type { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
+import { ClaudeChannelGate } from '../../src/runner/claude/claude-channel.js';
 import { capabilities } from './support/codex-connector.js';
 
 async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
@@ -50,7 +50,6 @@ async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
     openCodeClient: OpenCodeRunner;
     codexRunController: CodexManagedRunController<never>;
     openCodeRunController: OpenCodeManagedRunController;
-    runState: { active: Set<string> };
   };
   const session = node.runtime.createAgentSession({
     workspaceId: workspace.id,
@@ -65,7 +64,7 @@ async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
   const execution = node.runtime.createExecution(run.id);
   node.runtime.transitionRun(run.id, 'STARTING');
   node.runtime.transitionRun(run.id, 'RUNNING');
-  node.runState.active.add(execution.id);
+  node.runtime.executionAccepted(execution.id);
   return { node, session, run, execution, root, interrupt, respond };
 }
 

@@ -2,6 +2,17 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+const filesystemGate = vi.hoisted(() => ({ wait: undefined as undefined | (() => Promise<void>) }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    lstat: async (...args: Parameters<typeof original.lstat>) => {
+      await filesystemGate.wait?.();
+      return original.lstat(...args);
+    }
+  };
+});
 import { WorkspacePathResolver } from '../../mar-agent/src/tools/shared/path-resolver.js';
 import { ReadTool } from '../../mar-agent/src/tools/local/read.js';
 import { ApplyPatchTool } from '../../mar-agent/src/tools/local/apply-patch.js';
@@ -771,14 +782,6 @@ describe('Node hosted conversation runtime', () => {
   it('does not let a delayed configuration update replace title metadata changed while it loads', async () => {
     const fixture = await runtimeFixture();
     const conversation = await createConversation(fixture);
-    const internals = fixture.service as unknown as {
-      loadTemplateVersion(
-        versionId: string,
-        templateId: string,
-        requireAvailable?: boolean
-      ): Promise<unknown>;
-    };
-    const loadTemplateVersion = internals.loadTemplateVersion.bind(fixture.service);
     let reportVersionLoad!: () => void;
     let releaseVersionLoad!: () => void;
     const versionLoadStarted = new Promise<void>((resolve) => {
@@ -787,11 +790,11 @@ describe('Node hosted conversation runtime', () => {
     const versionLoadReleased = new Promise<void>((resolve) => {
       releaseVersionLoad = resolve;
     });
-    vi.spyOn(internals, 'loadTemplateVersion').mockImplementationOnce(async (...args) => {
+    filesystemGate.wait = async () => {
+      filesystemGate.wait = undefined;
       reportVersionLoad();
       await versionLoadReleased;
-      return loadTemplateVersion(...args);
-    });
+    };
 
     const configuration = fixture.service.operations()['conversation.hosted.config.update']!({
       conversationId: conversation.id,
@@ -1274,6 +1277,85 @@ describe('Node hosted conversation runtime', () => {
       for (const run of fixture.pendingRuns)
         run.complete({ status: 'SUCCEEDED', completedAt: 6_000 });
     }
+  });
+
+  it('waits for an admitted start, cancels its eventual handle and joins settlement during dispose', async () => {
+    const fixture = await runtimeFixture();
+    const conversation = await createConversation(fixture);
+    const pending = deferredRun('run-dispose-starting');
+    let entered!: () => void;
+    let release!: () => void;
+    const starting = new Promise<void>((resolve) => (entered = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    fixture.runtime.startRun.mockImplementationOnce(async () => {
+      entered();
+      await gate;
+      return pending.handle;
+    });
+    const message = fixture.service.operations()['conversation.hosted.message']!({
+      conversationId: conversation.id,
+      clientMessageId: 'dispose-starting',
+      prompt: 'Start.',
+      attachmentIds: [],
+      __requestUserId: 7,
+      __marAgentModel: modelOne,
+      __marAgentModels: [modelOne]
+    });
+    await starting;
+    let disposed = false;
+    const closing = fixture.service.dispose().then(() => (disposed = true));
+    await Promise.resolve();
+    expect(disposed).toBe(false);
+    release();
+    await message;
+    await vi.waitFor(() => expect(pending.handle.cancel).toHaveBeenCalledOnce());
+    expect(disposed).toBe(false);
+    pending.complete({ status: 'INTERRUPTED', completedAt: 3_000 });
+    await closing;
+    expect(fixture.store.findMessage(7, conversation.id, 'dispose-starting')).toMatchObject({
+      status: 'INTERRUPTED'
+    });
+  });
+
+  it('continues cancellation and cleanup after a handle fails, then reports the first failure', async () => {
+    const fixture = await runtimeFixture();
+    const first = await createConversation(fixture);
+    const second = (await fixture.service.operations()['conversation.hosted.create']!({
+      ...createRequest(),
+      clientRequestId: 'create-second-close-failure'
+    })) as { conversation: HostedConversationSummary };
+    const operations = fixture.service.operations();
+    for (const [index, conversation] of [first, second.conversation].entries()) {
+      await operations['conversation.hosted.message']!({
+        conversationId: conversation.id,
+        clientMessageId: `close-failure-${index}`,
+        prompt: 'Run',
+        attachmentIds: [],
+        __requestUserId: 7,
+        __marAgentModel: modelOne,
+        __marAgentModels: [modelOne]
+      });
+    }
+    const failure = new Error('FIRST_CANCEL_FAILED');
+    fixture.pendingRuns[0]!.handle.cancel.mockImplementation(() => {
+      throw failure;
+    });
+    const uploads = (fixture.service as unknown as { hostedUploads: { close(): Promise<void> } })
+      .hostedUploads;
+    const closeUploads = vi
+      .spyOn(uploads, 'close')
+      .mockRejectedValue(new Error('UPLOAD_CLOSE_FAILED'));
+    const closing = fixture.service.dispose();
+    expect(fixture.pendingRuns[1]!.handle.cancel).toHaveBeenCalledOnce();
+    fixture.pendingRuns[0]!.complete({ status: 'FAILED', completedAt: 3_000 });
+    fixture.pendingRuns[1]!.complete({ status: 'INTERRUPTED', completedAt: 3_000 });
+    await expect(closing).rejects.toBe(failure);
+    expect(closeUploads).toHaveBeenCalledOnce();
+    expect(fixture.store.findMessage(7, first.id, 'close-failure-0')?.status).toBe('FAILED');
+    expect(fixture.store.findMessage(7, second.conversation.id, 'close-failure-1')?.status).toBe(
+      'INTERRUPTED'
+    );
+    closeUploads.mockRestore();
   });
 
   it('cancels and waits for a started Run when message acceptance persistence fails', async () => {

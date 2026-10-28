@@ -2,12 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
-import { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { ClaudeAgentSdkAdapter } from '../../src/runner/claude/claude-agent-sdk.js';
+import { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import {
-  fakeServer,
+  fakeServer as serverScript,
   capabilities,
   codexProfileClientFactory,
   eventually
@@ -46,11 +46,13 @@ const emptyClaudeClient = {
 
 let previousHome: string | undefined;
 let isolatedHome: string;
+let fakeServer: string;
 
 beforeEach(async () => {
   previousHome = process.env.HOME;
   isolatedHome = await mkdtemp(join(tmpdir(), 'mar-codex-discovery-'));
   process.env.HOME = isolatedHome;
+  fakeServer = serverScript.replaceAll('/workspace', isolatedHome);
 });
 
 afterEach(async () => {
@@ -64,7 +66,7 @@ describe('Codex session discovery and first-message activation', () => {
     const database = new NodeDatabase(':memory:', 'node-deferred-codex-resume');
     database.saveWorkspace({
       id: 'workspace-1',
-      path: '/workspace',
+      path: isolatedHome,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -80,6 +82,7 @@ describe('Codex session discovery and first-message activation', () => {
       start: async () => undefined,
       stop: () => undefined,
       clearEnvironment: () => undefined,
+      configureEnvironment: () => undefined,
       onNotification: () => () => undefined,
       resumeThread,
       startTurn
@@ -106,7 +109,7 @@ describe('Codex session discovery and first-message activation', () => {
       workspaceId: 'workspace-1',
       runner: 'codex',
       externalSessionId: 'slow-thread',
-      cwd: '/workspace'
+      cwd: isolatedHome
     });
 
     const execute = connector as unknown as {
@@ -134,7 +137,7 @@ describe('Codex session discovery and first-message activation', () => {
     releaseResume({ thread: { id: 'slow-thread' } });
     await expect(first).resolves.toMatchObject({ delivery: 'STARTED' });
     await expect(second).resolves.toMatchObject({ delivery: 'QUEUED' });
-    connector.stop();
+    await connector.stop();
   });
 
   it('discovers and selects sessions through thread/list without reading each official thread', async () => {
@@ -142,7 +145,7 @@ describe('Codex session discovery and first-message activation', () => {
     try {
       database.saveWorkspace({
         id: 'workspace-1',
-        path: '/workspace',
+        path: isolatedHome,
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -155,14 +158,14 @@ describe('Codex session discovery and first-message activation', () => {
             ...Array.from({ length: 12 }, (_, index) => ({
               id: `thread-${index}`,
               source: 'vscode',
-              cwd: '/workspace',
+              cwd: isolatedHome,
               name: `thread ${index}`
             })),
             {
               id: 'thread-subagent',
               sourceKind: 'cli',
               source: { subagent: { thread_spawn: { parent_thread_id: 'thread-0' } } },
-              cwd: '/workspace',
+              cwd: isolatedHome,
               name: 'derived session'
             }
           ]
@@ -210,12 +213,12 @@ describe('Codex session discovery and first-message activation', () => {
     }
   });
 
-  it('keeps an overlong official title for display without creating a session record', async () => {
+  it('keeps an overlong official title for display and records its bounded native title', async () => {
     const database = new NodeDatabase(':memory:', 'node-codex-long-title');
     try {
       database.saveWorkspace({
         id: 'workspace-long-title',
-        path: '/workspace',
+        path: isolatedHome,
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -224,7 +227,7 @@ describe('Codex session discovery and first-message activation', () => {
         start: async () => undefined,
         onNotification: () => () => undefined,
         listThreads: async () => ({
-          data: [{ id: 'thread-long-title', source: 'vscode', cwd: '/workspace', name: title }]
+          data: [{ id: 'thread-long-title', source: 'vscode', cwd: isolatedHome, name: title }]
         }),
         readThread: async () => ({
           thread: { id: 'thread-long-title', status: { type: 'idle' } }
@@ -249,7 +252,9 @@ describe('Codex session discovery and first-message activation', () => {
       })) as { sessions: { runnerTitle: string | null }[] };
 
       expect(result.sessions[0]?.runnerTitle).toBe(title);
-      expect(database.listSessionRecords('workspace-long-title')).toEqual([]);
+      expect(database.listSessionRecords('workspace-long-title')).toMatchObject([
+        { id: 'thread-long-title', metadata: { runnerTitle: title.slice(0, 160) } }
+      ]);
     } finally {
       database.close();
     }
@@ -260,7 +265,7 @@ describe('Codex session discovery and first-message activation', () => {
     try {
       database.saveWorkspace({
         id: 'workspace-1',
-        path: '/workspace',
+        path: isolatedHome,
         kind: 'DIRECTORY',
         gitSummary: null
       });
@@ -292,7 +297,7 @@ describe('Codex session discovery and first-message activation', () => {
     const database = new NodeDatabase(':memory:', 'node-codex-resume-defaults');
     database.saveWorkspace({
       id: 'workspace-codex-resume-defaults',
-      path: '/workspace',
+      path: isolatedHome,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -345,7 +350,7 @@ describe('Codex session discovery and first-message activation', () => {
     const database = new NodeDatabase(':memory:', 'node-1');
     database.saveWorkspace({
       id: 'workspace-1',
-      path: '/workspace',
+      path: isolatedHome,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -450,6 +455,16 @@ describe('Codex session discovery and first-message activation', () => {
     });
     expect(created.session.id).toBe(discovered.sessions[0]?.id);
     await eventually(() => codexTurnRegistered(connector, created.run.id));
+    const runtime = (
+      connector as unknown as {
+        runtime: {
+          currentExecutionId(runId: string): string | undefined;
+          isExecutionActive(executionId: string): boolean;
+        };
+      }
+    ).runtime;
+    const executionId = runtime.currentExecutionId(created.run.id)!;
+    expect(runtime.isExecutionActive(executionId)).toBe(true);
     const repeated = await (
       connector as unknown as {
         executeNodeOperation(
@@ -478,13 +493,7 @@ describe('Codex session discovery and first-message activation', () => {
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
       }
     ).executeNodeOperation('run.cancel', { runId: created.run.id });
-    await eventually(
-      () =>
-        !(
-          connector as unknown as { runState: { active: ReadonlySet<string> } }
-        ).runState.active.has(created.run.id),
-      10_000
-    );
+    await eventually(() => !runtime.isExecutionActive(executionId), 10_000);
     await connector.stop();
   }, 20_000);
 
@@ -492,7 +501,7 @@ describe('Codex session discovery and first-message activation', () => {
     const database = new NodeDatabase(':memory:', 'node-1');
     database.saveWorkspace({
       id: 'workspace-1',
-      path: '/workspace',
+      path: isolatedHome,
       kind: 'DIRECTORY',
       gitSummary: null
     });
@@ -541,7 +550,7 @@ describe('Codex session discovery and first-message activation', () => {
     const database = new NodeDatabase(':memory:', 'node-not-loaded-resume');
     database.saveWorkspace({
       id: 'workspace-1',
-      path: '/workspace',
+      path: isolatedHome,
       kind: 'DIRECTORY',
       gitSummary: null
     });

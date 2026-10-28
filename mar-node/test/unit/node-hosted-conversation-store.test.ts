@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 
 const directories: string[] = [];
 

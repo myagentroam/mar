@@ -3,7 +3,7 @@ import { NODE_SCHEMA_MIGRATION_V18 } from './migrations/v018.js';
 import { NODE_SCHEMA_MIGRATION_V19 } from './migrations/v019.js';
 import { NODE_SCHEMA_MIGRATION_V20 } from './migrations/v020.js';
 import { NODE_SCHEMA_MIGRATION_V21 } from './migrations/v021.js';
-import { normalizeSessionPrompt } from './util/personal-instructions.js';
+import { normalizeSessionPrompt } from './runner/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -47,68 +47,23 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
 
-/** Whether a native session ID was created by this Node or merely discovered. */
-export type NativeSessionControl = 'MAR_MANAGED' | 'EXTERNAL';
+import type { NodeWorkspace, WorkspaceSettings } from './workspace/contracts.js';
+import type {
+  NativeSessionControl,
+  NodeAgentSession,
+  NativeSessionMetadata
+} from './session/contracts.js';
+export type { NodeWorkspace, WorkspaceSettings } from './workspace/contracts.js';
+export type {
+  NativeSessionControl,
+  NodeAgentSession,
+  NativeSessionMetadata
+} from './session/contracts.js';
+
 export interface NodeSettings {
   readonly runnerDefaults?: Partial<
     Record<RunnerDefaultConfiguration['runner'], Omit<RunnerDefaultConfiguration, 'runner'>>
   >;
-}
-
-export interface WorkspaceSettings {
-  readonly git?: {
-    readonly preserveGitConfig?: boolean;
-    readonly includeParentRepository?: boolean;
-  };
-}
-
-export interface NodeWorkspace {
-  readonly id: string;
-  readonly path: string;
-  readonly kind: 'DIRECTORY' | 'GIT_WORKSPACE';
-  readonly gitSummary: unknown | null;
-  readonly settings?: WorkspaceSettings;
-  readonly preserveGitConfig?: boolean;
-  readonly includeParentRepository?: boolean;
-}
-
-export interface NodeAgentSession {
-  readonly id: string;
-  readonly parentSessionId?: string | null;
-  readonly nodeId: string;
-  readonly workspaceId: string;
-  readonly runner: RunnerName;
-  readonly externalSessionId: string | null;
-  readonly nativeControl: NativeSessionControl;
-  readonly channelToken: string | null;
-  readonly cwd: string;
-  /** Runner preferences chosen when this managed session was created. */
-  readonly model: string | null;
-  readonly effort: string | null;
-  readonly access: string | null;
-  readonly customTitle: string | null;
-  readonly sessionPrompt?: string | null;
-  readonly runnerTitle: string | null;
-  readonly pinnedAt: number | null;
-  readonly pinOrder?: number | null;
-  /** False only for a local record absent from the current Runner discovery result. */
-  readonly externalDiscovered?: boolean;
-  readonly titleSource: 'AUTO' | 'RUNNER' | 'CUSTOM';
-  readonly lastActivityAt: number;
-  readonly createdAt: number;
-}
-
-export interface NativeSessionMetadata {
-  readonly parentSessionId?: string | null;
-  readonly customTitle: string | null;
-  readonly sessionPrompt?: string | null;
-  readonly runnerTitle: string | null;
-  readonly runnerTitlePending: boolean;
-  readonly pinnedAt: number | null;
-  readonly pinOrder: number | null;
-  readonly model: string | null;
-  readonly effort: string | null;
-  readonly access: string | null;
 }
 
 /** Terminal output and input are deliberately never part of this projection. */
@@ -621,7 +576,11 @@ export class NodeDatabase {
     return row === undefined ? undefined : sessionRecord(row);
   }
 
-  movePinnedSession(sessionId: string, direction: 'up' | 'down'): string {
+  movePinnedSession(
+    sessionId: string,
+    direction: 'up' | 'down',
+    target?: { sessionId: string; position: 'before' | 'after' }
+  ): string {
     const current = this.raw
       .prepare('SELECT workspace_id, pin_order FROM agent_sessions WHERE id = ?')
       .get(sessionId) as SqlRow | undefined;
@@ -629,22 +588,53 @@ export class NodeDatabase {
       throw new Error('SESSION_NOT_PINNED');
     const order = numberValue(current, 'pin_order');
     const workspaceId = stringValue(current, 'workspace_id');
-    const adjacent = this.raw
+    const destination =
+      target === undefined
+        ? (this.raw
+            .prepare(
+              direction === 'up'
+                ? 'SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND pin_order < ? ORDER BY pin_order DESC LIMIT 1'
+                : 'SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND pin_order > ? ORDER BY pin_order ASC LIMIT 1'
+            )
+            .get(workspaceId, order) as SqlRow | undefined)
+        : (this.raw
+            .prepare(
+              'SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND id = ? AND pin_order IS NOT NULL'
+            )
+            .get(workspaceId, target.sessionId) as SqlRow | undefined);
+    if (target !== undefined && destination === undefined)
+      throw new Error('SESSION_PIN_MOVE_INVALID');
+    if (destination === undefined) return workspaceId;
+    const targetOrder = numberValue(destination, 'pin_order');
+    if (targetOrder === order) return workspaceId;
+    const excludedTargetId =
+      target !== undefined &&
+      ((targetOrder > order && target.position === 'before') ||
+        (targetOrder < order && target.position === 'after'))
+        ? target.sessionId
+        : null;
+    const displaced = this.raw
       .prepare(
-        direction === 'up'
-          ? 'SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND pin_order < ? ORDER BY pin_order DESC LIMIT 1'
-          : 'SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND pin_order > ? ORDER BY pin_order ASC LIMIT 1'
+        `SELECT id, pin_order FROM agent_sessions WHERE workspace_id = ? AND pin_order BETWEEN ? AND ? AND id != ? AND (? IS NULL OR id != ?) ORDER BY pin_order ${targetOrder < order ? 'DESC' : 'ASC'}`
       )
-      .get(workspaceId, order) as SqlRow | undefined;
-    if (adjacent === undefined) return workspaceId;
+      .all(
+        workspaceId,
+        Math.min(order, targetOrder),
+        Math.max(order, targetOrder),
+        sessionId,
+        excludedTargetId,
+        excludedTargetId
+      ) as SqlRow[];
+    if (displaced.length === 0) return workspaceId;
     this.raw.exec('BEGIN IMMEDIATE');
     try {
-      this.raw
-        .prepare('UPDATE agent_sessions SET pin_order = ? WHERE id = ?')
-        .run(order, stringValue(adjacent, 'id'));
-      this.raw
-        .prepare('UPDATE agent_sessions SET pin_order = ? WHERE id = ?')
-        .run(numberValue(adjacent, 'pin_order'), sessionId);
+      const update = this.raw.prepare('UPDATE agent_sessions SET pin_order = ? WHERE id = ?');
+      let nextOrder = order;
+      for (const row of displaced) {
+        update.run(nextOrder, stringValue(row, 'id'));
+        nextOrder = numberValue(row, 'pin_order');
+      }
+      update.run(nextOrder, sessionId);
       this.raw.exec('COMMIT');
     } catch (error) {
       this.raw.exec('ROLLBACK');

@@ -378,6 +378,58 @@ export function decodeFilePreviewText(
   }
 }
 
+export interface FilePreviewDecoding {
+  readonly encoding: 'utf-8' | 'base64';
+  readonly content: string;
+  /** Present only for read-only fallback decoding, never for writable UTF-8. */
+  readonly previewEncoding?: string;
+}
+
+/** Decode a bounded range starting at byte zero without changing the source bytes. */
+export function decodeFilePreviewContent(
+  bytes: Uint8Array,
+  path: string,
+  eof = true,
+  mimeType = ''
+): FilePreviewDecoding {
+  const unsupported = { encoding: 'base64' as const, content: '' };
+  const utf16 =
+    bytes[0] === 0xff && bytes[1] === 0xfe
+      ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff
+        ? 'utf-16be'
+        : undefined;
+  if (utf16 !== undefined) {
+    const content = new TextDecoder(utf16).decode(bytes, { stream: !eof });
+    return readablePreviewText(content)
+      ? { encoding: 'utf-8', content, previewEncoding: utf16 }
+      : unsupported;
+  }
+  if (bytes.includes(0)) return unsupported;
+  const utf8 = decodeFilePreviewText(bytes, eof);
+  if (utf8 !== undefined) return { encoding: 'utf-8', content: utf8 };
+  // Legacy guessing and lossy recovery are limited to known text routes.
+  if (!isTextFilePreview(path, mimeType)) return unsupported;
+  try {
+    // An explicit UTF-8 BOM takes precedence over a legacy encoding guess.
+    if (!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)) {
+      const content = new TextDecoder('gb18030', { fatal: true }).decode(bytes, { stream: !eof });
+      if (readablePreviewText(content))
+        return { encoding: 'utf-8', content, previewEncoding: 'gb18030' };
+    }
+  } catch {
+    // Mixed or damaged encodings remain readable as a lossy, read-only preview.
+  }
+  const content = new TextDecoder('utf-8').decode(bytes, { stream: !eof });
+  return readablePreviewText(content)
+    ? { encoding: 'utf-8', content, previewEncoding: 'utf-8' }
+    : unsupported;
+}
+
+function readablePreviewText(content: string): boolean {
+  return !/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/u.test(content);
+}
+
 export function isLegacyOfficeFile(path: string): boolean {
   return ['doc', 'ppt', 'xls'].includes(fileExtension(path));
 }

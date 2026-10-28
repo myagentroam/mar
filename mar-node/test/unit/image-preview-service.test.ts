@@ -8,7 +8,7 @@ import {
   ImagePreviewService,
   MAX_IMAGE_PREVIEW_SOURCE_BYTES
 } from '../../src/service/image-preview-service.js';
-import { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 
 const directories: string[] = [];
 
@@ -154,7 +154,7 @@ describe('image previews', () => {
     const path = join(directory, 'image.png');
     const source = await png(48, 32);
     await writeFile(path, source);
-    const files = new WorkspaceFileService({} as never, () => undefined);
+    const files = new WorkspaceFileService(() => undefined);
     const workspace = { id: 'workspace-1', path: directory } as NodeWorkspace;
 
     const preview = { maxWidth: 2560, maxHeight: 2560 };

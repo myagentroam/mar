@@ -10,8 +10,8 @@ import type {
   ComputerUseExecutionProvider,
   ComputerUseSupport
 } from '../runner/mar-agent/computer-use.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import { nodeOperationData } from '../util/node-operation-data.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
+import { nodeOperationData } from '../connection/node-operation-data.js';
 
 interface ComputerUseEnablementServiceOptions {
   readonly config: () => NodeConfig | undefined;

@@ -124,6 +124,20 @@ for (const locale of ['en-US', 'zh-CN']) {
       ).toBeVisible();
       await expect(dialog.getByText('7', { exact: true })).toBeVisible();
       await expect(dialog.getByText('Codex 3', { exact: true })).toBeVisible();
+      const statistics = dialog.locator('.workspace-session-cleanup-statistics');
+      const cells = statistics.locator(':scope > div');
+      await expect(cells).toHaveCount(4);
+      const boxes = await cells.evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            top: rect.top,
+            overflow: element.scrollWidth - element.clientWidth
+          };
+        })
+      );
+      expect(new Set(boxes.map((box) => box.top)).size).toBe(viewport.width < 768 ? 2 : 1);
+      expect(boxes.every((box) => box.overflow <= 1)).toBe(true);
       await expect(page.locator('.el-message--error')).toHaveCount(0);
       await expectBounded(dialog);
       await dialog

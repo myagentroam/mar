@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -160,7 +161,7 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
   const controller = new MarAgentManagedRunController(
     new MarAgentRunner(),
     {
-      active: new Set<string>(),
+      ...executionActivity(),
       adopt: vi.fn(),
       promote: vi.fn(),
       syncTitle: vi.fn(),

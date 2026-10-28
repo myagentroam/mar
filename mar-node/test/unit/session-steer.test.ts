@@ -10,7 +10,7 @@ import {
   ContinuousRunCoordinator,
   type ContinuousRunCoordinatorOptions
 } from '../../src/service/continuous-run-coordinator.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 
 function fixture(
@@ -35,6 +35,8 @@ function fixture(
   });
   const control = vi.fn();
   const coordinator = new ContinuousRunCoordinator({
+    executionTerminating: () => undefined,
+    keepRunActive: () => false,
     runtime,
     control,
     stopped: () => true,
@@ -130,7 +132,7 @@ describe('Node steering delivery', () => {
 
   it('consumes only the natively accepted item, preserving the active turn and other queue order', async () => {
     const admission =
-      Promise.withResolvers<import('../../src/runner/abstract-runner.js').RunnerSteerResult>();
+      Promise.withResolvers<import('../../src/runner/contracts.js').RunnerSteerResult>();
     const steer = vi.fn(() => admission.promise);
     const emitRun = vi.fn();
     const f = fixture({ steer, emitRun, stopped: () => false });
@@ -256,7 +258,7 @@ describe('Node steering delivery', () => {
 
   it('does not interrupt on a failed admission or resend a nonaccepted item during shutdown', async () => {
     const admission =
-      Promise.withResolvers<import('../../src/runner/abstract-runner.js').RunnerSteerResult>();
+      Promise.withResolvers<import('../../src/runner/contracts.js').RunnerSteerResult>();
     const f = fixture({ steer: () => admission.promise, stopped: () => false });
     f.start();
     const item = f.queue('target');

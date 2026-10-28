@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { personalGitRuntimeSchema } from '@myagentroam/protocol';
-import type { NodeWorkspace } from '../database.js';
-import { parseSecretEnvironment } from '../util/secret-environment.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
+import { parseSecretEnvironment } from '../mcp/secret-environment.js';
 import type { GitExecutionService } from './git-execution-service.js';
 
 export const gitOperationEnvironment = new AsyncLocalStorage<Readonly<Record<string, string>>>();

@@ -5,7 +5,7 @@ import {
   type MarAgentModelTransportTestResult
 } from '@myagentroam/protocol';
 import type { MarAgentRuntimeModelFactory } from '../runner/mar-agent/runtime-model-factory.js';
-import { runnerErrorProjection } from '../util/runner-error.js';
+import { runnerErrorProjection } from '../runner/runner-error.js';
 
 interface MarAgentModelTransportTestServiceOptions {
   readonly modelFactory: Pick<MarAgentRuntimeModelFactory, 'create'>;

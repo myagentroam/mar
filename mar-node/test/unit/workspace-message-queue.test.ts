@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
-import { SessionMessageService } from '../../src/service/session-message-service.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
-import { withNonImageAttachmentPrompt } from '../../src/util/node-operation-parsers.js';
+import { SessionMessageService } from '../../src/session/session-message-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
+import { withNonImageAttachmentPrompt } from '../../src/session/attachments.js';
 import { steerComposerMessage } from '@myagentroam/protocol';
 import * as operational from '../../src/operational.js';
 

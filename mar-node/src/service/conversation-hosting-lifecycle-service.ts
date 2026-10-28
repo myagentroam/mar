@@ -1,14 +1,14 @@
 import type { NodeCapabilities } from '@myagentroam/protocol';
 import type { NodeDatabase } from '../database.js';
 import { hostedConversationStorePath, nodeDataDirectory, type NodeConfig } from '../config.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import { HostedConversationStore } from './hosted-conversation-store.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
+import { HostedConversationStore } from '../hosting/hosted-conversation-store.js';
 import { ConversationTemplateNodeService } from './conversation-template-node-service.js';
-import { HostedConversationNodeService } from './hosted-conversation-node-service.js';
+import { HostedConversationNodeService } from '../hosting/hosted-conversation-node-service.js';
 import { ConversationHostingMaintenanceService } from './conversation-hosting-maintenance-service.js';
 import { MarAgentHostedConversationRuntime } from '../runner/mar-agent/hosted-conversation-runtime.js';
 import { BubblewrapSandboxExecutor } from '@myagentroam/agent/sandbox/linux';
-import { hostedConversationSandboxProfile } from './hosted-conversation-sandbox-profile.js';
+import { hostedConversationSandboxProfile } from '../hosting/hosted-conversation-sandbox-profile.js';
 import {
   conversationHostingCapability,
   type ConversationHostingProbe

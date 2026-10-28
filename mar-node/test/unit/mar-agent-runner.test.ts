@@ -20,11 +20,11 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
-import { projectConversationWorkProcesses } from '../../src/service/conversation-work-process.js';
-import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
+import { projectConversationWorkProcesses } from '../../src/session/runtime/work-process.js';
+import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
 import { RunnerService } from '../../src/service/runner-service.js';
-import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
+import { SessionLifecycleService } from '../../src/session/session-lifecycle-service.js';
 import {
   composerVisibleText,
   parseComposerTags,
@@ -1847,7 +1847,6 @@ describe('MAR Agent Node Runner', () => {
       runtime: { updateAgentSessionConfiguration } as never,
       runners: { require: () => runner } as never,
       capabilities: () => unavailableCapabilities(),
-      state: {} as never,
       commands: {} as never,
       releaseResumeState: vi.fn(),
       present: (value) => value as never

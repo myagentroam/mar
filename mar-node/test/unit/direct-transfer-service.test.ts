@@ -5,15 +5,14 @@ import {
   loopbackHostCandidate,
   probeUdp4Port,
   type DirectTransferServiceOptions
-} from '../../src/service/direct-transfer-service.js';
+} from '../../src/connection/direct-transfer-service.js';
 import { createSocket } from 'node:dgram';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { NodeWorkspace } from '../../src/database.js';
-import { WorkspaceDomainState } from '../../src/service/workspace-domain-state.js';
-import { WorkspaceUploadService } from '../../src/service/workspace-upload-service.js';
+import { WorkspaceUploadService } from '../../src/workspace/workspace-upload-service.js';
 
 const browserFingerprint = `sha-256 ${'AA:'.repeat(31)}AA`;
 const nodeFingerprint = `sha-256 ${'BB:'.repeat(31)}BB`;
@@ -174,6 +173,19 @@ function prepareTransfer(
     openExpiresAt: 500,
     expiresAt: 900
   });
+}
+
+function uploadState(service: WorkspaceUploadService) {
+  return service as unknown as {
+    uploads: Map<
+      string,
+      import('../../src/workspace/workspace-upload-service.js').ActiveWorkspaceUpload
+    >;
+    composerAttachments: Map<
+      string,
+      import('../../src/workspace/workspace-upload-service.js').CompletedComposerAttachment
+    >;
+  };
 }
 
 describe('Node direct transfer service', () => {
@@ -393,9 +405,7 @@ describe('Node direct transfer service', () => {
     'reauthorizes after %s disconnect and commits from the Node offset, not the requested offset',
     async (connection) => {
       const root = await mkdtemp(join(tmpdir(), 'mar-direct-resume-'));
-      const state = new WorkspaceDomainState();
       const uploads = new WorkspaceUploadService(
-        state,
         () => undefined,
         () => root
       );
@@ -445,7 +455,7 @@ describe('Node direct transfer service', () => {
         );
         if (connection === 'channel') first.close();
         else f.service.close('DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
-        expect(state.uploads.size).toBe(1);
+        expect(uploadState(uploads).uploads.size).toBe(1);
         expect(await readFile(join(root, 'file.bin'), 'utf8')).toBe('old target');
 
         if (connection === 'control') await connectTransport(f);
@@ -472,7 +482,7 @@ describe('Node direct transfer service', () => {
           })
         );
         expect(await readFile(join(root, 'file.bin'), 'utf8')).toBe('original');
-        expect(state.uploads.size).toBe(0);
+        expect(uploadState(uploads).uploads.size).toBe(0);
       } finally {
         f.service.dispose();
         await uploads.shutdown();

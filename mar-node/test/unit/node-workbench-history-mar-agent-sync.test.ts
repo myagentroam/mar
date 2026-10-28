@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeAgentSession } from '../../src/database.js';
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
-import type { ConversationHistoryPage } from '../../src/util/runner-native-session-parsers.js';
+import type { ConversationHistoryPage } from '../../src/session/runner-native-session-parsers.js';
 import {
   ConversationHistoryService,
   convergeConversationWatchPage

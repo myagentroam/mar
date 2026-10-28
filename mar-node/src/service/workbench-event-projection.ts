@@ -3,13 +3,11 @@ import {
   conversationSegments
 } from './conversation-segment-service.js';
 import type { WorkbenchEventCategory } from '@myagentroam/protocol';
-import { runConversationItemId, type NodeRuntimeState } from '../runtime-state.js';
+import type { NodeRuntimeState } from '../runtime-state.js';
+import { runConversationItemId } from '../session/runtime/conversation-projection.js';
 import type { marctlSessionProgress } from './session-recent-activity.js';
-import {
-  isNodeAgentRun,
-  isNodeConversationTurn,
-  isPlainRecord
-} from '../util/node-operation-parsers.js';
+import { isNodeAgentRun, isNodeConversationTurn } from '../session/runtime/type-guards.js';
+import { isPlainRecord } from '../util/records.js';
 
 export interface WorkbenchEventProjectionQueries {
   readonly getRun: NodeRuntimeState['getRun'];

@@ -1,6 +1,11 @@
-import { marAgentEnvelopeInput, resolveMarAgentExecutionInput } from './execution-input.js';
+import {
+  marAgentEnvelopeInput,
+  resolveMarAgentExecutionInput,
+  type MarAgentExecutionInput
+} from './execution-input.js';
 export { resolveRunModels } from './execution-input.js';
 import type { ResolvedMcpServer } from '../../mcp/model.js';
+import type { RunnerExecutionStatus } from '../contracts.js';
 import { NODE_MCP } from '../../mcp/naming.js';
 import { computerUseHostSkill } from './computer-use-skill.js';
 import { marctlExecutionEnvironment, marctlHostSkill } from './marctl-skill.js';
@@ -24,19 +29,19 @@ import {
   type NodeEnvelope
 } from '@myagentroam/protocol';
 import type { RunnerCommandDescriptor, RunnerCommandState } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../../database.js';
-import { boundedConversationItemId } from '../../util/node-operation-parsers.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
+import { boundedConversationItemId } from '../normalization.js';
 import { MarAgentRunner } from '../mar-agent-runner.js';
-import { parseSecretEnvironment } from '../../util/secret-environment.js';
-import type { RunnerCommandContext } from '../abstract-runner.js';
+import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
+import type { RunnerCommandContext } from '../contracts.js';
 import { MarAgentMcpClientCache, type MarAgentMcpClientLease } from './mcp-client-pool.js';
 import {
   MarAgentConversationNormalizer,
   normalizeMarAgentUsage,
   type MarAgentGeneratedImageArtifact
 } from './conversation-normalizer.js';
-import { parseRunnerImageAttachments } from '../../util/node-operation-parsers.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
+import { parseRunnerImageAttachments } from '../../session/attachments.js';
+import { runnerErrorProjection } from '../runner-error.js';
 import {
   MarAgentRuntimeModelFactory,
   sdkModelConfigurations,
@@ -67,7 +72,8 @@ interface MarAgentRunHost {
     payload: unknown;
     expiresAt: number;
   }): void;
-  readonly active: Set<string>;
+  isExecutionActive(runId: string): boolean;
+  executionAccepted(runId: string): void;
   adopt(input: {
     runId: string;
     sessionId: string;
@@ -150,8 +156,8 @@ export class MarAgentManagedRunController {
   readonly #steerTargets = new Map<
     string,
     (
-      input: import('../abstract-runner.js').RunnerSteerInput
-    ) => Promise<import('../abstract-runner.js').RunnerSteerResult>
+      input: import('../contracts.js').RunnerSteerInput
+    ) => Promise<import('../contracts.js').RunnerSteerResult>
   >();
   readonly #runtimes: MarAgentSessionRuntimeRegistry;
   readonly #questions = new Map<string, PendingInteraction<Record<string, unknown>>>();
@@ -259,7 +265,9 @@ export class MarAgentManagedRunController {
       throw new Error('RUNNER_COMMAND_UNAVAILABLE');
     const execution = context.executionContext;
     const resolved = resolveMarAgentExecutionInput(
-      execution?.runner === 'mar-agent' ? execution.runnerInput : undefined,
+      execution?.runner === 'mar-agent'
+        ? (execution.runnerInput as MarAgentExecutionInput | undefined)
+        : undefined,
       session.model ?? ''
     );
     if (resolved === undefined) throw new Error('RUNNER_COMMAND_UNAVAILABLE');
@@ -288,8 +296,8 @@ export class MarAgentManagedRunController {
   }
 
   steer(
-    input: import('../abstract-runner.js').RunnerSteerInput
-  ): Promise<import('../abstract-runner.js').RunnerSteerResult> {
+    input: import('../contracts.js').RunnerSteerInput
+  ): Promise<import('../contracts.js').RunnerSteerResult> {
     return (
       this.#steerTargets.get(input.expectedExecutionId)?.(input) ??
       Promise.resolve({ status: 'notAccepted' })
@@ -305,7 +313,7 @@ export class MarAgentManagedRunController {
       typeof payload.input !== 'string' ||
       typeof payload.cwd !== 'string' ||
       typeof payload.model !== 'string' ||
-      this.host.active.has(payload.runId)
+      this.host.isExecutionActive(payload.runId)
     )
       return;
     const resolved = resolveMarAgentExecutionInput(marAgentEnvelopeInput(payload), payload.model);
@@ -435,7 +443,13 @@ export class MarAgentManagedRunController {
     this.#executions.set(input.runId, execution);
     let runtime: MarAgentSessionRuntime | undefined;
     let use: MarAgentRuntimeUse | undefined;
-    let terminalPublished = false;
+    let terminalEvent:
+      | {
+          readonly eventType: string;
+          readonly payload: unknown;
+          readonly status: RunnerExecutionStatus;
+        }
+      | undefined;
     let executionMcpLease: MarAgentMcpClientLease | undefined;
     let executionMcpBinding: LocalAgentExecutionMcpBinding | undefined;
     let computerUseBinding: ComputerUseExecutionBinding | undefined;
@@ -443,7 +457,7 @@ export class MarAgentManagedRunController {
     let titleTask: Promise<string | undefined> | undefined;
     let cancelledDuringPreparation = false;
     try {
-      this.host.active.add(input.runId);
+      this.host.executionAccepted(input.runId);
       this.host.adopt({
         runId: input.runId,
         sessionId: input.sessionId,
@@ -632,39 +646,47 @@ export class MarAgentManagedRunController {
             : result;
         });
       this.host.emit(input.runId, 'run.running', {}, 'RUNNING');
-      for await (const event of handle) {
-        if (event.type === 'execution.started' && metadata?.automaticTitlePending && !titleTask) {
-          titleTask = this.#generateTitle({
-            models: sdkModelConfigurations(executionModels),
-            currentModelId: input.model.id,
-            prompt: input.input,
-            onModelUsage: (usage) =>
-              this.host.emit(
-                input.runId,
-                'run.usage',
-                normalizeMarAgentUsage({
-                  ...usage,
+      const consumeEvents = async () => {
+        for await (const event of handle) {
+          if (event.type === 'execution.started' && metadata?.automaticTitlePending && !titleTask) {
+            titleTask = this.#generateTitle({
+              models: sdkModelConfigurations(executionModels),
+              currentModelId: input.model.id,
+              prompt: input.input,
+              onModelUsage: (usage) =>
+                this.host.emit(
+                  input.runId,
+                  'run.usage',
+                  normalizeMarAgentUsage({
+                    ...usage,
+                    sessionId: session.id,
+                    executionId: handle.executionId,
+                    purpose: 'title',
+                    agentRole: 'root'
+                  })
+                ),
+              signal: titleController.signal
+            }).catch((error) => {
+              if (!titleController.signal.aborted)
+                nodeLog('runner.mar-agent.title.failed', {
                   sessionId: session.id,
-                  executionId: handle.executionId,
-                  purpose: 'title',
-                  agentRole: 'root'
-                })
-              ),
-            signal: titleController.signal
-          }).catch((error) => {
-            if (!titleController.signal.aborted)
-              nodeLog('runner.mar-agent.title.failed', {
-                sessionId: session.id,
-                runId: input.runId,
-                stage: 'generate',
-                code: runnerErrorProjection(error, 'MAR_AGENT_TITLE_GENERATION_FAILED').code
-              });
-            return undefined;
-          });
+                  runId: input.runId,
+                  stage: 'generate',
+                  code: runnerErrorProjection(error, 'MAR_AGENT_TITLE_GENERATION_FAILED').code
+                });
+              return undefined;
+            });
+          }
+          this.project(input.runId, event);
         }
-        this.project(input.runId, event);
-      }
-      const result = await handle.result();
+      };
+      const [eventsResult, executionResult] = await Promise.allSettled([
+        consumeEvents(),
+        (async () => handle.result())()
+      ]);
+      if (eventsResult.status === 'rejected') throw eventsResult.reason;
+      if (executionResult.status === 'rejected') throw executionResult.reason;
+      const result = executionResult.value;
       const title = await titleTask;
       if (title && !titleController.signal.aborted)
         await runtime.agent
@@ -692,17 +714,16 @@ export class MarAgentManagedRunController {
               ? 'CANCELLED'
               : 'FAILED';
       use?.terminal();
-      terminalPublished = true;
-      this.host.emit(
-        input.runId,
-        status === 'SUCCEEDED'
-          ? 'run.completed'
-          : status === 'CANCELLED'
-            ? 'run.cancelled'
-            : status === 'FAILED'
-              ? 'run.failed'
-              : 'run.completed',
-        {
+      terminalEvent = {
+        eventType:
+          status === 'SUCCEEDED'
+            ? 'run.completed'
+            : status === 'CANCELLED'
+              ? 'run.cancelled'
+              : status === 'FAILED'
+                ? 'run.failed'
+                : 'run.completed',
+        payload: {
           status,
           ...(result.errorCode ? { code: result.errorCode } : {}),
           ...(result.errorMessage ? { message: result.errorMessage } : {}),
@@ -718,9 +739,9 @@ export class MarAgentManagedRunController {
               })
         },
         status
-      );
+      };
     } catch (error) {
-      if (terminalPublished) {
+      if (terminalEvent !== undefined) {
         nodeLog('runner.mar-agent.run.cleanup_failed', {
           runId: input.runId,
           code: 'MAR_AGENT_RUN_CLEANUP_FAILED'
@@ -741,7 +762,7 @@ export class MarAgentManagedRunController {
             retryAfterMs: null
           }
         });
-        this.host.emit(input.runId, 'run.failed', projected, 'FAILED');
+        terminalEvent = { eventType: 'run.failed', payload: projected, status: 'FAILED' };
       }
     } finally {
       titleController.abort();
@@ -779,13 +800,27 @@ export class MarAgentManagedRunController {
       } finally {
         use?.terminal();
         this.#normalizers.delete(input.runId);
-        this.host.active.delete(input.runId);
+
         this.#executions.delete(input.runId);
         this.#steerTargets.delete(input.runId);
-        resolveSettled();
+        if (cancelledDuringPreparation)
+          terminalEvent = {
+            eventType: 'run.cancelled',
+            payload: { status: 'CANCELLED' },
+            status: 'CANCELLED'
+          };
+        try {
+          if (terminalEvent !== undefined)
+            this.host.emit(
+              input.runId,
+              terminalEvent.eventType,
+              terminalEvent.payload,
+              terminalEvent.status
+            );
+        } finally {
+          resolveSettled();
+        }
       }
-      if (cancelledDuringPreparation)
-        this.host.emit(input.runId, 'run.cancelled', { status: 'CANCELLED' }, 'CANCELLED');
     }
   }
 

@@ -10,9 +10,9 @@ import {
   resolveMarAgentDefaultReasoningEffort,
   serializeComposerTag
 } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import { nodeLog } from '../operational.js';
-import { runnerErrorProjection } from '../util/runner-error.js';
+import { runnerErrorProjection } from './runner-error.js';
 import {
   AgentError,
   openAgentSessionCatalog,
@@ -24,15 +24,15 @@ import type { NativeTranscriptImageAttachment } from '../native-transcript-model
 import type { NodeConversationTurn } from '../runtime-model.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import {
-  AbstractRunner,
-  type ExternalResumeContext,
-  type ExternalResumeResult,
-  type NativeSessionRemovalResult,
-  type RunnerDiscoveryContext,
-  type RunnerSessionPresentation,
-  type RunnerSessionPresentationContext
-} from './abstract-runner.js';
+import type {
+  ExternalResumeContext,
+  ExternalResumeResult,
+  NativeSessionRemovalResult,
+  RunnerDiscoveryContext,
+  RunnerSessionPresentation,
+  RunnerSessionPresentationContext
+} from './contracts.js';
+import { AbstractRunner } from './abstract-runner.js';
 import type { MarAgentGeneratedImageArtifact } from './mar-agent/conversation-normalizer.js';
 import {
   marAgentGeneratedImageSources,
@@ -344,7 +344,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   }
   async discoverSessions(
     context: RunnerDiscoveryContext,
-    workspace?: import('../database.js').NodeWorkspace
+    workspace?: import('../workspace/contracts.js').NodeWorkspace
   ): Promise<readonly NodeAgentSession[]> {
     let catalog: AgentSessionCatalog | undefined;
     try {

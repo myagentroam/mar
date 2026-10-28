@@ -8,7 +8,7 @@ import { hasManagedActiveRun } from '../../src/service/conversation-history-serv
 import {
   SessionPresentationService,
   type PresentedSession
-} from '../../src/service/session-presentation-service.js';
+} from '../../src/session/session-presentation-service.js';
 import { createTestSessionWatch } from './support/conversation-watch.js';
 
 function fixture() {

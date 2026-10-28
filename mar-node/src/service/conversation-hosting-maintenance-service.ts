@@ -9,9 +9,9 @@ import {
   type ConversationHostingStorageCapacity,
   type HostedConversationManifest
 } from '@myagentroam/protocol';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
-import { nodeOperationData } from '../util/node-operation-data.js';
-import type { HostedConversationStore } from './hosted-conversation-store.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
+import { nodeOperationData } from '../connection/node-operation-data.js';
+import type { HostedConversationStore } from '../hosting/hosted-conversation-store.js';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const AUTOMATIC_CLEANUP_INTERVAL_MS = DAY_MS;

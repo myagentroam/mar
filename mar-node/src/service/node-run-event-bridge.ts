@@ -1,7 +1,7 @@
 import type { WorkbenchEventCategory } from '@myagentroam/protocol';
-import type { FakeRunnerStatus } from '../fake-runner.js';
+import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import type { RunEventService } from './run-event-service.js';
-import type { WorkspaceQueueWorkbenchService } from './workspace-queue-workbench-service.js';
+import type { WorkspaceQueueWorkbenchService } from '../workspace/workspace-queue-workbench-service.js';
 interface NodeRunEventBridgeOptions {
   readonly modelUsage?: (runId: string, payload: unknown) => void;
   readonly bindModelUsage?: (runId: string) => void;
@@ -29,7 +29,12 @@ export class NodeRunEventBridge {
     this.emitRun(input.runId, 'approval.request', input);
   }
 
-  emitRun(runId: string, eventType: string, payload: unknown, status?: FakeRunnerStatus): void {
+  emitRun(
+    runId: string,
+    eventType: string,
+    payload: unknown,
+    status?: RunnerExecutionStatus
+  ): void {
     if (eventType === 'run.started') this.options.bindModelUsage?.(runId);
     if (eventType === 'run.usage') {
       this.options.modelUsage?.(runId, payload);

@@ -7,17 +7,17 @@ import type { NodeConfig } from '../../src/config.js';
 import { ConversationHostingLifecycleService } from '../../src/service/conversation-hosting-lifecycle-service.js';
 import { ConversationHostingMaintenanceService } from '../../src/service/conversation-hosting-maintenance-service.js';
 import { ConversationTemplateNodeService } from '../../src/service/conversation-template-node-service.js';
-import { HostedConversationNodeService } from '../../src/service/hosted-conversation-node-service.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import { HostedConversationNodeService } from '../../src/hosting/hosted-conversation-node-service.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 import { MarAgentHostedConversationRuntime } from '../../src/runner/mar-agent/hosted-conversation-runtime.js';
 
-vi.mock('../../src/service/hosted-conversation-store.js', () => ({
+vi.mock('../../src/hosting/hosted-conversation-store.js', () => ({
   HostedConversationStore: vi.fn(function HostedConversationStoreMock() {})
 }));
 vi.mock('../../src/service/conversation-template-node-service.js', () => ({
   ConversationTemplateNodeService: vi.fn(function ConversationTemplateNodeServiceMock() {})
 }));
-vi.mock('../../src/service/hosted-conversation-node-service.js', () => ({
+vi.mock('../../src/hosting/hosted-conversation-node-service.js', () => ({
   HostedConversationNodeService: vi.fn(function HostedConversationNodeServiceMock() {})
 }));
 vi.mock('../../src/service/conversation-hosting-maintenance-service.js', () => ({

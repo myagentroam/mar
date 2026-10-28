@@ -13,7 +13,7 @@ import * as codexTools from '../../src/runner/codex/tool-normalizer.js';
 import * as claudeTools from '../../src/runner/claude/tool-normalizer.js';
 import { readCodexNativeContextUsage } from '../../src/runner/codex/native-context-usage.js';
 import { readClaudeNativeContextUsage } from '../../src/runner/claude/native-context-usage.js';
-import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
+import { nativeConversationPage } from '../../src/session/runner-native-session-parsers.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeConnector } from '../../src/connector.js';

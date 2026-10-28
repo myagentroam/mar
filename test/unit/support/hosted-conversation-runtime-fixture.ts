@@ -10,12 +10,12 @@ import type {
   WorkbenchEvent
 } from '../../../packages/protocol/src/index.js';
 import { NodeDatabase } from '../../../mar-node/src/database.js';
-import { HostedConversationStore } from '../../../mar-node/src/service/hosted-conversation-store.js';
+import { HostedConversationStore } from '../../../mar-node/src/hosting/hosted-conversation-store.js';
 import {
   HostedConversationNodeService,
   type HostedConversationProcessExecutorInput,
   type HostedConversationRuntime
-} from '../../../mar-node/src/service/hosted-conversation-node-service.js';
+} from '../../../mar-node/src/hosting/hosted-conversation-node-service.js';
 
 const directories: string[] = [];
 

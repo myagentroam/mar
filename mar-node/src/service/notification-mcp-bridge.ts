@@ -16,7 +16,7 @@ import {
   type MailNotificationRequest
 } from '@myagentroam/protocol';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import { sessionGroup } from './session-presentation-service.js';
+import { sessionGroup } from '../session/session-presentation-service.js';
 
 interface Capability {
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
@@ -172,7 +172,11 @@ export class NotificationMcpBridge {
       )
         throw new Error('MAIL_INPUT_INVALID');
       const parsed = mailNotificationRequestSchema.safeParse({
-        ...current,
+        executionId: current.executionId,
+        sessionId: current.sessionId,
+        workspaceId: current.workspaceId,
+        userId: current.userId,
+        source: current.source,
         templateId: templateId ?? '',
         ...(title === undefined ? {} : { title }),
         ...(recipientEmail === undefined ? {} : { recipientEmail }),

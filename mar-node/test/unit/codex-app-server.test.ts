@@ -7,7 +7,7 @@ import {
   isCodexRolloutMissingError,
   isSupportedCodexVersion,
   probeCodex
-} from '../../src/codex-app-server.js';
+} from '../../src/runner/codex/codex-app-server.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
 import type { NodeAgentSession } from '../../src/database.js';
 

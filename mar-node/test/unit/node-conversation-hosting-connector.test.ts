@@ -1,3 +1,9 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import type { ConversationHostingLifecycleService } from '../../src/service/conversation-hosting-lifecycle-service.js';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -185,14 +191,14 @@ describe('Node conversation hosting connector integration', () => {
       readonly replyTo?: string;
       readonly payload: unknown;
     }> = [];
-    (connector as unknown as { socket: unknown }).socket = {
+    connectTestSocket(connector, {
       readyState: 1,
       OPEN: 1,
       send(raw: string) {
         sent.push(JSON.parse(raw) as { type: string; payload: unknown });
       },
       close() {}
-    };
+    });
     const initialize = vi.spyOn(
       (connector as unknown as { conversationHosting: ConversationHostingLifecycleService })
         .conversationHosting,
@@ -361,14 +367,14 @@ describe('Node conversation hosting connector integration', () => {
       }
     });
     const sent: Array<{ readonly type: string; readonly payload: unknown }> = [];
-    (connector as unknown as { socket: unknown }).socket = {
+    connectTestSocket(connector, {
       readyState: 1,
       OPEN: 1,
       send(raw: string) {
         sent.push(JSON.parse(raw) as { type: string; payload: unknown });
       },
       close() {}
-    };
+    });
 
     await expect(
       execute(connector, 'conversation.hosting.enable', { enabled: true })
@@ -488,14 +494,14 @@ describe('Node conversation hosting connector integration', () => {
     });
     await initializeConversationHosting(connector);
     const sent: Array<{ readonly type: string; readonly payload: unknown }> = [];
-    (connector as unknown as { socket: unknown }).socket = {
+    connectTestSocket(connector, {
       readyState: 1,
       OPEN: 1,
       send(raw: string) {
         sent.push(JSON.parse(raw) as { type: string; payload: unknown });
       },
       close() {}
-    };
+    });
     const requestId = 'template-inspect-request';
     const now = Date.now();
 

@@ -7,8 +7,8 @@ import {
   type ClaudeSdkBindings,
   denyPermission,
   probeClaudeCode
-} from '../../src/claude-agent-sdk.js';
-import { ClaudeChannelGate } from '../../src/claude-channel.js';
+} from '../../src/runner/claude/claude-agent-sdk.js';
+import { ClaudeChannelGate } from '../../src/runner/claude/claude-channel.js';
 
 describe('T008 Claude Agent SDK adapter', () => {
   it('detects the fixed Claude Code compatibility version and authentication state', async () => {

@@ -4,24 +4,21 @@ import type {
   RunnerCommandDescriptor,
   RunnerCommandState
 } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
 import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
-import type { CodexComposerInput, CodexRunConfiguration } from '../../codex-app-server.js';
-import type { FakeRunnerStatus } from '../../fake-runner.js';
+import type { CodexComposerInput, CodexRunConfiguration } from './codex-app-server.js';
+import type { RunnerExecutionStatus } from '../contracts.js';
 import { extractId } from './conversation-parser.js';
 import { normalizeCodexApproval } from './tool-normalizer.js';
-import { parseSecretEnvironment } from '../../util/secret-environment.js';
+import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
+import { runnerErrorProjection } from '../runner-error.js';
 import { CodexRunner } from '../codex-runner.js';
 import { ResponseLatencyTracker } from '../../service/response-latency-tracker.js';
 import { GenerationTimingTracker } from '../../service/generation-timing-tracker.js';
-import {
-  boundedConversationItemId,
-  compactRunnerText,
-  isPlainRecord
-} from '../../util/node-operation-parsers.js';
+import { boundedConversationItemId, compactRunnerText } from '../normalization.js';
+import { isPlainRecord } from '../../util/records.js';
 import {
   codexImageAttachments,
   codexLiveConversationItem,
@@ -67,9 +64,8 @@ export function resolveCodexNotificationRun<T extends CodexNotificationRun>(
 export interface CodexManagedRunHost<TAttachment> {
   readonly available: () => boolean;
   readonly intercepted: () => boolean;
-  readonly active: ReadonlySet<string>;
-  addActive(runId: string): void;
-  removeActive(runId: string): void;
+  isExecutionActive(runId: string): boolean;
+  executionAccepted(runId: string): void;
   adopt(input: {
     runId: string;
     sessionId: string;
@@ -90,7 +86,7 @@ export interface CodexManagedRunHost<TAttachment> {
   completeCancelled(runId: string, cwd: string): boolean;
   promoteSession(sessionId: string, nativeSessionId: string): void;
   send(type: string, payload: unknown): void;
-  emit(runId: string, eventType: string, payload: unknown, status?: FakeRunnerStatus): void;
+  emit(runId: string, eventType: string, payload: unknown, status?: RunnerExecutionStatus): void;
   nativeGoalUpdated(
     runId: string,
     goal: {
@@ -258,7 +254,7 @@ export class CodexManagedRunController<TAttachment> {
       externalSessionId: threadId,
       ...(initiatedByUserId === undefined ? {} : { initiatedByUserId })
     });
-    this.host.addActive(runId);
+    this.host.executionAccepted(runId);
     this.runner.execution.runs.set(runId, {
       sessionId: session.id,
       threadId,
@@ -286,7 +282,7 @@ export class CodexManagedRunController<TAttachment> {
       this.usage.delete(runId);
       this.runner.execution.runs.delete(runId);
       this.runner.releaseEnvironment(runId);
-      this.host.removeActive(runId);
+
       throw error;
     }
   }
@@ -526,7 +522,7 @@ export class CodexManagedRunController<TAttachment> {
       if (this.finishing.has(runId)) return;
       this.endPendingGenerations(activeRun, receiptAt);
       const status = turn?.status;
-      const terminal: FakeRunnerStatus =
+      const terminal: RunnerExecutionStatus =
         status === 'completed' ? 'SUCCEEDED' : status === 'interrupted' ? 'INTERRUPTED' : 'FAILED';
       if (terminal === 'FAILED') this.emitError(runId, turn?.error ?? turn, 'CODEX_RUN_FAILED');
       const failure =
@@ -555,7 +551,7 @@ export class CodexManagedRunController<TAttachment> {
         this.runner.execution.runs.delete(runId);
         if (titleRefresh === undefined) this.runner.releaseEnvironment(runId);
         else void titleRefresh.finally(() => this.runner.releaseEnvironment(runId));
-        this.host.removeActive(runId);
+
         this.finishing.delete(runId);
       };
       if (usage.hasRollout && turnId !== undefined) {
@@ -810,7 +806,7 @@ export class CodexManagedRunController<TAttachment> {
       typeof payload.input !== 'string' ||
       typeof payload.cwd !== 'string' ||
       this.host.intercepted() ||
-      this.host.active.has(payload.runId)
+      this.host.isExecutionActive(payload.runId)
     )
       return;
     const { runId, sessionId, input, cwd } = payload;
@@ -868,7 +864,7 @@ export class CodexManagedRunController<TAttachment> {
       );
       return;
     }
-    this.host.addActive(runId);
+    this.host.executionAccepted(runId);
     void this.run(
       {
         runId,
@@ -1028,7 +1024,6 @@ export class CodexManagedRunController<TAttachment> {
       this.usage.delete(runId);
       this.runner.execution.runs.delete(runId);
       this.runner.releaseEnvironment(runId);
-      this.host.removeActive(runId);
     }
   }
 

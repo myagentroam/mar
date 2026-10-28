@@ -1,12 +1,12 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { SessionQueryService } from '../../src/service/session-query-service.js';
+import { SessionQueryService } from '../../src/session/session-query-service.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
-import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
-import { WorkspaceQueueWorkbenchService } from '../../src/service/workspace-queue-workbench-service.js';
+import { SessionLifecycleService } from '../../src/session/session-lifecycle-service.js';
+import { WorkspaceQueueWorkbenchService } from '../../src/workspace/workspace-queue-workbench-service.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -25,6 +25,7 @@ async function fixture() {
     createdAt: 1,
     updatedAt: 1
   }));
+  await Promise.all(workspaces.map(({ path }) => mkdir(path)));
   const workspace = (id: string) => workspaces.find((value) => value.id === id);
   const runtime = new NodeRuntimeState(() => 'node', workspace);
   const sessions = workspaces.map((value) =>
@@ -119,7 +120,7 @@ it('reads cold Session details and queues without loading or resuming the Sessio
     await expect(queues['workspace.queue.get']!({ ...input, sessionId })).rejects.toThrow(
       'SESSION_NOT_FOUND'
     );
-  expect(() => queues['workspace.queue.pause']!(input)).toThrow('SESSION_NOT_FOUND');
+  await expect(queues['workspace.queue.pause']!(input)).rejects.toThrow('SESSION_NOT_FOUND');
   expect(f.runtime.getAgentSession(saved.id)).toBeUndefined();
   expect(f.runtime.activeWorkspaceLeaseCount()).toBe(0);
   expect(emit).not.toHaveBeenCalled();
@@ -235,7 +236,7 @@ it('preserves an explicitly requested CLI title across native promotion and auto
   const input = {
     runner: 'codex',
     workspaceId: 'local',
-    cwd: '/fixture',
+    cwd: workspace('local')!.path,
     customTitle: 'fixer#42 Preserve title'
   };
   const created = (await service.operations()['session.create']!(input)) as {
@@ -247,14 +248,14 @@ it('preserves an explicitly requested CLI title across native promotion and auto
     customTitle: input.customTitle,
     titleSource: 'CUSTOM'
   });
-  expect(() => service.operations()['session.create']!({ ...input, customTitle: 42 })).toThrow(
-    'SESSION_INVALID'
-  );
+  await expect(
+    service.operations()['session.create']!({ ...input, customTitle: 42 })
+  ).rejects.toThrow('SESSION_INVALID');
 });
 
 it('preserves inline images and delegated notification policy on Session startup', async () => {
   const execute = vi.fn(async (operation: string) => {
-    if (operation === 'session.create') return { session: { id: 'bootstrap' } };
+    if (operation === 'session.create') return { session: { id: 'bootstrap', runner: 'codex' } };
     return { run: { id: 'run' }, delivery: 'STARTED', idempotent: false };
   });
   const service = new SessionLifecycleService({
@@ -264,7 +265,7 @@ it('preserves inline images and delegated notification policy on Session startup
       getRun: () => ({ id: 'run' }),
       conversationTurnForRun: () => ({ id: 'turn' })
     } as never,
-    runners: {} as never,
+    runners: { require: () => ({ prepareExecutionContext: () => undefined }) } as never,
     projection: {} as never,
     identity: { wait: async () => 'native', reject: vi.fn() } as never,
     present: (session) => session,

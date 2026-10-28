@@ -1,6 +1,6 @@
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 
 /** Owns managed native-session identity and best-effort native title refresh. */
 export class ManagedRunnerSessionService {

@@ -1,6 +1,6 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import type { NodeAgentRun } from '../runtime-model.js';
-import type { FakeRunnerStatus } from '../fake-runner.js';
+import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import type { ScheduledSessionTask } from './scheduled-session-store.js';
 import {
   ScheduledSessionStore,
@@ -47,7 +47,7 @@ export class ScheduledSessionCoordinator {
 
   executionTerminated(
     run: Pick<NodeAgentRun, 'source' | 'clientMessageId' | 'id'>,
-    status: FakeRunnerStatus
+    status: RunnerExecutionStatus
   ): void {
     if (run.source !== 'SCHEDULED') return;
     const store = this.options.store();
@@ -83,7 +83,7 @@ export class ScheduledSessionCoordinator {
       | { readonly kind: 'SCHEDULE_FAILED' | 'SCHEDULE_SKIPPED'; readonly code: string }
       | {
           readonly kind: 'SCHEDULE_TERMINAL';
-          readonly outcome: FakeRunnerStatus;
+          readonly outcome: RunnerExecutionStatus;
           readonly runId: string;
         }
   ): void => {

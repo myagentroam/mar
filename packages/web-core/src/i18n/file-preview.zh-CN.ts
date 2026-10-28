@@ -78,6 +78,7 @@ export const filePreviewZhCN = {
     edit: '编辑文件',
     editing: '正在编辑',
     readOnly: '只读文件',
+    encodingFallback: '{encoding} 回退解码，文字可能不准确',
     saved: '文件已保存。',
     saveFailed: '文件保存失败。',
     conflict: '文件已被其他操作修改，请重新加载后再编辑。',

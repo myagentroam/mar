@@ -60,6 +60,8 @@ function fixture(sessionIds = ['native-session']) {
     () => 20_000
   );
   const coordinator = new ContinuousRunCoordinator({
+    executionTerminating: () => undefined,
+    keepRunActive: () => false,
     runtime,
     emitQueue: vi.fn(),
     emitConversation: vi.fn(),

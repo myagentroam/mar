@@ -1,6 +1,12 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket, disconnectTestSocket } from './support/control-socket.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
-import { CodexAppServerClient } from '../../src/codex-app-server.js';
+import { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { fakeServer, captureSocket, capabilities, eventually } from './support/codex-connector.js';
@@ -73,7 +79,7 @@ describe('Codex Run lifecycle and control', () => {
       database
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     const internals = connector as unknown as {
       runtime: {
         createAgentSession(input: Record<string, unknown>): { readonly id: string };
@@ -122,7 +128,7 @@ describe('Codex Run lifecycle and control', () => {
         database
       });
       const sent: { type: string; payload: Record<string, unknown> }[] = [];
-      (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+      connectTestSocket(connector, captureSocket(sent, connector));
       const internals = connector as unknown as {
         runtime: {
           createAgentSession(input: Record<string, unknown>): { readonly id: string };
@@ -172,7 +178,7 @@ describe('Codex Run lifecycle and control', () => {
       );
       expectRunProjection(sent, 'SUCCEEDED');
       expect(internals.runtime.getRun(run.id)).toBeUndefined();
-      (connector as unknown as { socket: unknown }).socket = undefined;
+      disconnectTestSocket(connector);
       connector.stop();
     } finally {
       vi.useRealTimers();
@@ -208,7 +214,7 @@ describe('Codex Run lifecycle and control', () => {
       }
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
       JSON.stringify(
         createEnvelope('run.start', {
@@ -250,7 +256,7 @@ describe('Codex Run lifecycle and control', () => {
       }
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     (connector as unknown as { handleMessage(raw: string): void }).handleMessage(
       JSON.stringify(
         createEnvelope('run.start', {
@@ -296,7 +302,7 @@ describe('Codex Run lifecycle and control', () => {
       codexClient: codex
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     const runtime = (
       connector as unknown as {
         runtime: {
@@ -352,7 +358,7 @@ describe('Codex Run lifecycle and control', () => {
       database
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     const runtime = (
       connector as unknown as {
         runtime: {
@@ -424,7 +430,7 @@ describe('Codex Run lifecycle and control', () => {
       database
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     const runtime = (
       connector as unknown as {
         runtime: {

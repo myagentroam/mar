@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { NodeConfig } from '../config.js';
 import { safeErrorCode } from '../util/safe-error.js';
-import { hostedConversationSandboxProfile } from './hosted-conversation-sandbox-profile.js';
+import { hostedConversationSandboxProfile } from '../hosting/hosted-conversation-sandbox-profile.js';
 
 const CONVERSATION_HOSTING_API_VERSION = 1;
 

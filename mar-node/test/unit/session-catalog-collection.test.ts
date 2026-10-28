@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { NativeSessionProjectionService } from '../../src/service/native-session-projection-service.js';
-import { SessionCatalogService } from '../../src/service/session-catalog-service.js';
+import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
+import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 
 function fixture() {

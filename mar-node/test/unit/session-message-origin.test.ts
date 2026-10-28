@@ -6,7 +6,7 @@ import { parseComposerTags, composerVisibleText } from '@myagentroam/protocol';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { capabilities, codexProfileClientFactory, eventually } from './support/codex-connector.js';
 
 it.each(['completed', 'failed', 'interrupted'] as const)(

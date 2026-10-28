@@ -1,8 +1,8 @@
-import type { NodeAgentSession } from '../database.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { WorkbenchEvent } from '@myagentroam/protocol';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
-import type { ConversationHistoryPage } from '../util/runner-native-session-parsers.js';
+import { isPlainRecord } from '../util/records.js';
+import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
 import {
   ConversationObservation,
   type ConversationObservationOptions,

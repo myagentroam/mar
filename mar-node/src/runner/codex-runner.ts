@@ -5,30 +5,30 @@ import {
   type CodexComposerInput,
   type CodexRunConfiguration,
   type JsonRpcNotification
-} from '../codex-app-server.js';
-import {
-  AbstractRunner,
-  type ExternalResumeContext,
-  type ExternalResumeResult,
-  type RunnerDiscoveryContext,
-  type RunnerConversationHistoryPage,
-  type RunnerConversationHistoryReaders,
-  type RunnerConversationRewindInput,
-  type RunnerHistoryImageRegistrar,
-  type RunnerSessionPresentationContext,
-  type RunnerSessionPresentation,
-  type RunnerProjectionTitleInput
-} from './abstract-runner.js';
+} from './codex/codex-app-server.js';
+import type {
+  ExternalResumeContext,
+  ExternalResumeResult,
+  RunnerDiscoveryContext,
+  RunnerConversationHistoryPage,
+  RunnerConversationHistoryReaders,
+  RunnerConversationRewindInput,
+  RunnerHistoryImageRegistrar,
+  RunnerSessionPresentationContext,
+  RunnerSessionPresentation,
+  RunnerProjectionTitleInput
+} from './contracts.js';
+import { AbstractRunner } from './abstract-runner.js';
 import type {
   NodeCapabilities,
   RunnerDefaultConfiguration,
   RunnerProfile
 } from '@myagentroam/protocol';
 import { declaredRunnerProfiles } from '../runner-profiles.js';
-import type { NodeAgentSession, NodeDatabase } from '../database.js';
+import type { NativeSessionMetadata, NodeAgentSession } from '../session/contracts.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import type { NodeWorkspace } from '../database.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
 import { discoverAllNativeSessions } from '../native-session-history.js';
 import { readCodexNativeContextUsage } from './codex/native-context-usage.js';
 import { codexThreadCwd, extractCodexThreads } from './codex/conversation-parser.js';
@@ -36,17 +36,17 @@ import {
   deduplicateDirectSessions,
   isWithinWorkspace,
   latestNativeActivity
-} from '../util/runner-native-session-parsers.js';
+} from '../session/runner-native-session-parsers.js';
 import {
   codexThreadHistoryModes,
   codexPaginatedThread,
   codexPaginatedCursor,
   codexPaginatedConversationPage
 } from './codex/conversation-parser.js';
-import { codexSessionControl } from '../codex-app-server.js';
+import { codexSessionControl } from './codex/codex-app-server.js';
 import { extractId } from './codex/conversation-parser.js';
 import { nodeLog } from '../operational.js';
-import { conversationClientMessageId } from '../util/conversation-identity.js';
+import { conversationClientMessageId } from '../session/conversation-identity.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import type { ResponseLatencyTracker } from '../service/response-latency-tracker.js';
 import type { GenerationTimingTracker } from '../service/generation-timing-tracker.js';
@@ -347,46 +347,26 @@ export class CodexRunner extends AbstractRunner<'codex'> {
 
   override async renameNative(
     session: NodeAgentSession,
-    input: { readonly title?: string | null; readonly pinned?: boolean },
-    database: NodeDatabase
+    input: { readonly title?: string | null; readonly pinned?: boolean }
   ): Promise<void> {
     if (session.externalSessionId === null) return;
     if (input.title !== undefined) {
       await this.start();
       await this.setThreadName(session.externalSessionId, input.title ?? '');
     }
-    database.saveNativeSessionMetadata({
-      runner: this.name,
-      externalSessionId: session.externalSessionId,
-      workspaceId: session.workspaceId,
-      ...(input.title === undefined ? {} : { runnerTitle: input.title }),
-      ...(input.title === undefined
-        ? {}
-        : { runnerTitlePending: input.title !== null && input.title.trim().length > 0 }),
-      ...(input.pinned === undefined ? {} : { pinned: input.pinned })
-    });
   }
 
   override projectedRunnerTitle(
-    metadata: ReturnType<NodeDatabase['getNativeSessionMetadata']>,
-    input: RunnerProjectionTitleInput,
-    database: NodeDatabase | undefined
-  ): string | null {
+    metadata: NativeSessionMetadata | undefined,
+    input: RunnerProjectionTitleInput
+  ): { readonly title: string | null; readonly clearPending: boolean } {
     const cached = metadata?.runnerTitle ?? null;
     if (input.titleOrigin !== 'OFFICIAL' || input.title === undefined)
-      return cached ?? input.title ?? null;
+      return { title: cached ?? input.title ?? null, clearPending: false };
     if (metadata?.runnerTitlePending === true) {
-      if (input.title === cached)
-        database?.saveNativeSessionMetadata({
-          runner: this.name,
-          externalSessionId: input.externalSessionId,
-          workspaceId: input.workspaceId,
-          runnerTitle: cached,
-          runnerTitlePending: false
-        });
-      return cached ?? input.title;
+      return { title: cached ?? input.title, clearPending: input.title === cached };
     }
-    return input.title;
+    return { title: input.title, clearPending: false };
   }
 
   override async readConversationHistory(

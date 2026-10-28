@@ -1,6 +1,6 @@
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../../runtime-model.js';
-import { boundedConversationItemId, compactRunnerText } from '../../util/node-operation-parsers.js';
+import { boundedConversationItemId, compactRunnerText } from '../normalization.js';
 import { publicGoalHistoryText } from '../../service/goal-runtime.js';
 import { normalizeOpenCodeTool } from './tool-normalizer.js';
 import {

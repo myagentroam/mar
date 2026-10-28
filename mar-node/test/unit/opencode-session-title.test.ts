@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeAgentSession } from '../../src/database.js';
-import { OpenCodeServerClient } from '../../src/opencode-server.js';
+import { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { openCodeUserMessagePreview } from '../../src/runner/opencode/conversation-parser.js';
 

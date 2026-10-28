@@ -14,8 +14,8 @@ import { SessionWatchSlotCoordinator } from '../../src/service/session-watch-slo
 import {
   HostedConversationNodeService,
   type HostedConversationRuntime
-} from '../../src/service/hosted-conversation-node-service.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+} from '../../src/hosting/hosted-conversation-node-service.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
 
 const directories: string[] = [];
@@ -240,6 +240,73 @@ describe('Node hosted conversation watch', () => {
       f.database.close();
     }
   });
+  it('releases the admission after a runtime start failure so a later message can start', async () => {
+    const f = await watchFixture();
+    try {
+      const conversationId = await createConversation(f);
+      f.runtime.startRun.mockRejectedValueOnce(new Error('START_FAILED'));
+      const send = (clientMessageId: string) =>
+        f.service.operations()['conversation.hosted.message']!({
+          conversationId,
+          clientMessageId,
+          prompt: 'hello',
+          attachmentIds: [],
+          __requestUserId: 7,
+          __marAgentModels: [model]
+        });
+      await expect(send('failed')).rejects.toThrow('START_FAILED');
+      expect(f.store.findMessage(7, conversationId, 'failed')).toBeUndefined();
+      await expect(send('retry')).resolves.toMatchObject({ run: { status: 'RUNNING' } });
+      f.completeRun({ status: 'SUCCEEDED', completedAt: 2300 });
+    } finally {
+      await f.service.dispose();
+      f.database.close();
+    }
+  });
+
+  it('cancels and joins the native handle when message acceptance persistence fails', async () => {
+    const f = await watchFixture();
+    try {
+      const conversationId = await createConversation(f);
+      const completion = Promise.withResolvers<{ status: 'INTERRUPTED'; completedAt: number }>();
+      const cancel = vi.fn(() => true);
+      f.runtime.startRun.mockResolvedValueOnce({
+        run: { id: 'failed-acceptance', status: 'RUNNING', startedAt: 2000, completedAt: null },
+        completion: completion.promise,
+        cancel
+      });
+      vi.spyOn(f.store, 'saveMessageAcceptance').mockRejectedValueOnce(new Error('SAVE_FAILED'));
+      const operation = f.service.operations()['conversation.hosted.message']!({
+        conversationId,
+        clientMessageId: 'failed',
+        prompt: 'hello',
+        attachmentIds: [],
+        __requestUserId: 7,
+        __marAgentModels: [model]
+      });
+      await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+      completion.resolve({ status: 'INTERRUPTED', completedAt: 2100 });
+      await expect(operation).rejects.toThrow('SAVE_FAILED');
+      expect(f.store.findMessage(7, conversationId, 'failed')).toMatchObject({
+        status: 'INTERRUPTED'
+      });
+      await expect(
+        f.service.operations()['conversation.hosted.message']!({
+          conversationId,
+          clientMessageId: 'retry',
+          prompt: 'retry',
+          attachmentIds: [],
+          __requestUserId: 7,
+          __marAgentModels: [model]
+        })
+      ).resolves.toMatchObject({ run: { status: 'RUNNING' } });
+      f.completeRun({ status: 'SUCCEEDED', completedAt: 2300 });
+    } finally {
+      await f.service.dispose();
+      f.database.close();
+    }
+  });
+
   it('does not advertise or expose Prompt Tab in hosted conversations', async () => {
     const fixture = await watchFixture();
     try {
@@ -665,20 +732,24 @@ describe('Node hosted conversation watch', () => {
       ).toHaveLength(1)
     );
     const service = fixture.service as unknown as {
-      readonly activeRuns: Map<
-        string,
-        {
-          readonly run: {
-            readonly id: string;
-            readonly status: 'RUNNING';
-            readonly startedAt: number;
-            readonly completedAt: null;
-          };
-        }
-      >;
-      refreshReadyWatchSnapshots(conversationId: string, completedRunId: string): Promise<void>;
+      readonly runs: {
+        accept(
+          conversationId: string,
+          handle: {
+            readonly run: {
+              readonly id: string;
+              readonly status: 'RUNNING';
+              readonly startedAt: number;
+              readonly completedAt: null;
+            };
+          }
+        ): void;
+      };
+      hostedWatch: {
+        refreshReadySnapshots(conversationId: string, completedRunId: string): Promise<void>;
+      };
     };
-    service.activeRuns.set(conversationId, {
+    service.runs.accept(conversationId, {
       run: {
         id: 'run-newer',
         status: 'RUNNING',
@@ -687,7 +758,7 @@ describe('Node hosted conversation watch', () => {
       }
     });
 
-    await service.refreshReadyWatchSnapshots(conversationId, 'run-completed');
+    await service.hostedWatch.refreshReadySnapshots(conversationId, 'run-completed');
 
     expect(
       fixture.frames.filter((frame) => frame.type === 'watch.hosted-conversation.snapshot')

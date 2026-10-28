@@ -1,8 +1,8 @@
 import type { RunnerDefaultConfiguration } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import type { ExternalSessionActivationState, SessionDomainState } from './session-domain-state.js';
+import type { ExternalSessionActivationState } from '../session/contracts.js';
 
 const RESUME_FAILURE_TTL_MS = 30 * 60_000;
 
@@ -10,7 +10,6 @@ interface ExternalSessionResumeServiceOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
   readonly runtime: NodeRuntimeState;
   readonly runners: RunnerRegistry;
-  readonly state: SessionDomainState<NodeAgentSession, unknown>;
   readonly available: (runner: NodeAgentSession['runner']) => boolean;
   readonly projectionFor: (session: NodeAgentSession) => NodeAgentSession | undefined;
   readonly managedAliasFor: (session: NodeAgentSession) => NodeAgentSession | undefined;
@@ -26,25 +25,46 @@ export interface AcceptedMessageSession {
 }
 
 export class ExternalSessionResumeService {
+  private readonly externalActivity = new Map<string, ExternalSessionActivationState>();
+  private readonly resumedByDirectId = new Map<string, string>();
+  private readonly resumeFailures = new Map<string, string>();
+  private readonly messageResumeFailures = new Map<string, string>();
+  private readonly resumeFailureDetails = new Map<string, string>();
+  private readonly failureTimers = new Map<string, NodeJS.Timeout>();
+
+  activity(sessionId: string): ExternalSessionActivationState | undefined {
+    return this.externalActivity.get(sessionId);
+  }
+
   private readonly transitions = new Set<string>();
   private readonly resumeTasks = new Map<string, Promise<NodeAgentSession | undefined>>();
 
   constructor(private readonly options: ExternalSessionResumeServiceOptions) {}
 
+  async close(): Promise<void> {
+    await Promise.allSettled([...this.resumeTasks.values()]);
+    for (const timer of this.failureTimers.values()) clearTimeout(timer);
+    this.failureTimers.clear();
+    this.externalActivity.clear();
+    this.resumedByDirectId.clear();
+    this.resumeFailures.clear();
+    this.messageResumeFailures.clear();
+    this.resumeFailureDetails.clear();
+  }
+
   setActivity(sessionId: string, activity: ExternalSessionActivationState): void {
-    this.options.state.externalActivity.set(sessionId, activity);
+    this.externalActivity.set(sessionId, activity);
   }
 
   forgetSessions(directIds: ReadonlySet<string>, projectionIds: ReadonlySet<string>): void {
     for (const directId of directIds) {
-      this.options.state.externalActivity.delete(directId);
-      this.options.state.resumedByDirectId.delete(directId);
+      this.externalActivity.delete(directId);
+      this.resumedByDirectId.delete(directId);
       this.clearFailure(directId);
     }
-    for (const [directId, resumedId] of this.options.state.resumedByDirectId)
-      if (projectionIds.has(resumedId)) this.options.state.resumedByDirectId.delete(directId);
-    for (const projectionId of projectionIds)
-      this.options.state.externalActivity.delete(projectionId);
+    for (const [directId, resumedId] of this.resumedByDirectId)
+      if (projectionIds.has(resumedId)) this.resumedByDirectId.delete(directId);
+    for (const projectionId of projectionIds) this.externalActivity.delete(projectionId);
   }
 
   transitioning(sessionId: string): boolean {
@@ -65,12 +85,12 @@ export class ExternalSessionResumeService {
 
   private async performResume(external: NodeAgentSession): Promise<NodeAgentSession | undefined> {
     this.clearFailure(external.id);
-    const priorId = this.options.state.resumedByDirectId.get(external.id);
+    const priorId = this.resumedByDirectId.get(external.id);
     const prior = priorId === undefined ? undefined : this.options.runtime.getAgentSession(priorId);
     if (prior !== undefined) return this.options.ensureConfiguration(prior);
     const runner = this.options.runners.product(external.runner);
     if (runner === undefined) {
-      this.options.state.externalActivity.set(external.id, 'IDLE');
+      this.externalActivity.set(external.id, 'IDLE');
       this.setFailure(external.id, 'RUNNER_UNAVAILABLE');
       return undefined;
     }
@@ -90,7 +110,7 @@ export class ExternalSessionResumeService {
           projectionFor: this.options.projectionFor,
           managedAliasFor: this.options.managedAliasFor,
           currentResumed: (sessionId) => {
-            const resumedId = this.options.state.resumedByDirectId.get(sessionId);
+            const resumedId = this.resumedByDirectId.get(sessionId);
             return resumedId === undefined
               ? undefined
               : this.options.runtime.getAgentSession(resumedId);
@@ -129,12 +149,11 @@ export class ExternalSessionResumeService {
       this.transitions.delete(external.id);
       releaseMutation();
     }
-    if (result.activity !== undefined)
-      this.options.state.externalActivity.set(external.id, result.activity);
+    if (result.activity !== undefined) this.externalActivity.set(external.id, result.activity);
     else if (result.failureCode === 'RUNNER_UNAVAILABLE')
-      this.options.state.externalActivity.set(external.id, 'IDLE');
+      this.externalActivity.set(external.id, 'IDLE');
     if (result.session !== undefined) {
-      this.options.state.resumedByDirectId.set(external.id, result.session.id);
+      this.resumedByDirectId.set(external.id, result.session.id);
       return result.session;
     }
     this.setFailure(
@@ -142,7 +161,7 @@ export class ExternalSessionResumeService {
       result.failureCode ?? 'SESSION_RESUME_REJECTED',
       result.failureDetail
     );
-    this.options.state.messageResumeFailures.set(
+    this.messageResumeFailures.set(
       external.id,
       result.messageFailureCode ?? result.failureCode ?? 'SESSION_RESUME_REJECTED'
     );
@@ -150,13 +169,13 @@ export class ExternalSessionResumeService {
   }
 
   failure(sessionId: string): { readonly code: string; readonly detail?: string } {
-    const code = this.options.state.resumeFailures.get(sessionId) ?? 'SESSION_RESUME_REJECTED';
-    const detail = this.options.state.resumeFailureDetails.get(sessionId);
+    const code = this.resumeFailures.get(sessionId) ?? 'SESSION_RESUME_REJECTED';
+    const detail = this.resumeFailureDetails.get(sessionId);
     return detail === undefined ? { code } : { code, detail };
   }
 
   async resolveForMessage(sessionId: string): Promise<NodeAgentSession> {
-    const resumedId = this.options.state.resumedByDirectId.get(sessionId);
+    const resumedId = this.resumedByDirectId.get(sessionId);
     const current =
       this.options.runtime.getAgentSession(resumedId ?? sessionId) ??
       (await this.options.resolve(sessionId));
@@ -164,11 +183,9 @@ export class ExternalSessionResumeService {
     if (current.nativeControl !== 'EXTERNAL') return current;
     const resumed = await this.resume(current);
     if (resumed !== undefined) return resumed;
-    if (this.options.state.externalActivity.get(current.id) === 'BUSY')
+    if (this.externalActivity.get(current.id) === 'BUSY')
       throw new Error('EXTERNAL_SESSION_ACTIVE');
-    throw new Error(
-      this.options.state.messageResumeFailures.get(current.id) ?? this.failure(current.id).code
-    );
+    throw new Error(this.messageResumeFailures.get(current.id) ?? this.failure(current.id).code);
   }
 
   async acceptForMessage(sessionId: string): Promise<AcceptedMessageSession> {
@@ -176,21 +193,21 @@ export class ExternalSessionResumeService {
   }
 
   private clearFailure(sessionId: string): void {
-    const timer = this.options.state.failureTimers.get(sessionId);
+    const timer = this.failureTimers.get(sessionId);
     if (timer !== undefined) clearTimeout(timer);
-    this.options.state.failureTimers.delete(sessionId);
-    this.options.state.resumeFailures.delete(sessionId);
-    this.options.state.resumeFailureDetails.delete(sessionId);
-    this.options.state.messageResumeFailures.delete(sessionId);
+    this.failureTimers.delete(sessionId);
+    this.resumeFailures.delete(sessionId);
+    this.resumeFailureDetails.delete(sessionId);
+    this.messageResumeFailures.delete(sessionId);
   }
 
   private setFailure(sessionId: string, code: string, detail?: string): void {
     this.clearFailure(sessionId);
-    this.options.state.resumeFailures.set(sessionId, code);
-    if (detail === undefined) this.options.state.resumeFailureDetails.delete(sessionId);
-    else this.options.state.resumeFailureDetails.set(sessionId, detail);
+    this.resumeFailures.set(sessionId, code);
+    if (detail === undefined) this.resumeFailureDetails.delete(sessionId);
+    else this.resumeFailureDetails.set(sessionId, detail);
     const timer = setTimeout(() => this.clearFailure(sessionId), RESUME_FAILURE_TTL_MS);
     timer.unref();
-    this.options.state.failureTimers.set(sessionId, timer);
+    this.failureTimers.set(sessionId, timer);
   }
 }

@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -272,7 +273,7 @@ describe('MAR Agent compact extension', () => {
       const controller = new MarAgentManagedRunController(
         new MarAgentRunner(root),
         {
-          active: new Set(),
+          ...executionActivity(),
           adopt: vi.fn(),
           promote: vi.fn(),
           syncTitle: vi.fn(),

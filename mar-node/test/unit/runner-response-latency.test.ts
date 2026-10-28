@@ -1,8 +1,9 @@
+import { executionActivity } from './support/execution-activity.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeEnvelope } from '@myagentroam/protocol';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
-import type { ClaudeQueryInput } from '../../src/claude-agent-sdk.js';
-import type { OpenCodeServerClient } from '../../src/opencode-server.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
+import type { ClaudeQueryInput } from '../../src/runner/claude/claude-agent-sdk.js';
+import type { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
 import { CodexManagedRunController } from '../../src/runner/codex/managed-run-controller.js';
 import type { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
@@ -34,7 +35,7 @@ describe('Native Runner observed response latency', () => {
         emitItem: vi.fn(),
         appendImages: () => [],
         session: () => undefined,
-        removeActive: vi.fn()
+        executionReleased: vi.fn()
       } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
       const event = (method: string, params: Record<string, unknown> = {}) =>
         controller.handleNotification({
@@ -85,7 +86,7 @@ describe('Native Runner observed response latency', () => {
       emitItem: vi.fn(),
       appendImages: () => [],
       session: () => undefined,
-      removeActive: vi.fn()
+      executionReleased: vi.fn()
     } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
     const event = (method: string, params: Record<string, unknown> = {}) =>
       controller.handleNotification({
@@ -128,7 +129,7 @@ describe('Native Runner observed response latency', () => {
         emitItem: vi.fn(),
         appendImages: () => [],
         session: () => undefined,
-        removeActive: vi.fn()
+        executionReleased: vi.fn()
       } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
       const event = (method: string, params: Record<string, unknown> = {}) =>
         controller.handleNotification({
@@ -191,7 +192,7 @@ describe('Native Runner observed response latency', () => {
       emitItem: vi.fn(),
       appendImages: () => [],
       session: () => undefined,
-      removeActive: vi.fn()
+      executionReleased: vi.fn()
     } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
     const event = (method: string, params: Record<string, unknown> = {}) =>
       controller.handleNotification({
@@ -251,7 +252,7 @@ describe('Native Runner observed response latency', () => {
       emitItem: vi.fn(),
       appendImages: () => [],
       session: () => undefined,
-      removeActive: vi.fn()
+      executionReleased: vi.fn()
     } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
     const event = (method: string, params: Record<string, unknown> = {}) =>
       controller.handleNotification({
@@ -316,7 +317,7 @@ describe('Native Runner observed response latency', () => {
       emitItem: vi.fn(),
       appendImages: () => [],
       session: () => undefined,
-      removeActive: vi.fn()
+      executionReleased: vi.fn()
     } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
     const event = (method: string, params: Record<string, unknown> = {}) =>
       controller.handleNotification({
@@ -450,7 +451,7 @@ describe('Native Runner observed response latency', () => {
       }
     } as unknown as ClaudeCodeRunner;
     const controller = new ClaudeManagedRunController(runner, {
-      active: new Set(),
+      ...executionActivity(),
       intercepted: () => false,
       parseAttachments: () => [],
       adopt: vi.fn(),
@@ -575,7 +576,7 @@ describe('Native Runner observed response latency', () => {
       }
     } as unknown as ClaudeCodeRunner;
     const controller = new ClaudeManagedRunController(runner, {
-      active: new Set(),
+      ...executionActivity(),
       intercepted: () => false,
       parseAttachments: () => [],
       adopt: vi.fn(),
@@ -698,11 +699,7 @@ describe('Native Runner observed response latency', () => {
     expect(
       emit.mock.calls.filter(([, type]) => type === 'run.performance').map(([, , value]) => value)
     ).toEqual([{ latencyMs: 200 }, { tokensPerSecond: 75 }]);
-    expect(
-      emit.mock.calls.some(
-        ([, type, value]) => type === 'text.delta' && value?.text === 'child-visible'
-      )
-    ).toBe(true);
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('child-visible');
     expect(JSON.stringify(emit.mock.calls)).not.toContain('REDACTED_RAW');
   });
 

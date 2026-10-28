@@ -1,10 +1,11 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it } from 'vitest';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
 import { ClaudeManagedRunController } from '../../src/runner/claude/managed-run-controller.js';
 import { CodexManagedRunController } from '../../src/runner/codex/managed-run-controller.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { runnerErrorProjection } from '../../src/util/runner-error.js';
-import { nativeConversationPage } from '../../src/util/runner-native-session-parsers.js';
+import { runnerErrorProjection } from '../../src/runner/runner-error.js';
+import { nativeConversationPage } from '../../src/session/runner-native-session-parsers.js';
 
 describe('Runner error projection', () => {
   it('preserves the structured provider code and message ahead of an HTTP fallback', () => {
@@ -95,7 +96,7 @@ describe('Runner error projection', () => {
           calls.push({ type: eventType, value: payload }),
         appendImages: () => [],
         session: () => undefined,
-        removeActive: () => undefined
+        executionReleased: () => undefined
       } as never
     );
 
@@ -134,7 +135,7 @@ describe('Runner error projection', () => {
       runner as never,
       {
         intercepted: () => false,
-        active: new Set(),
+        ...executionActivity(),
         parseAttachments: () => [],
         adopt: () => undefined,
         run: () => ({ status: 'STARTING' }),

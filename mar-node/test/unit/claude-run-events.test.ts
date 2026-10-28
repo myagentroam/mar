@@ -1,9 +1,17 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEnvelope } from '../../../packages/protocol/src/index.js';
-import { ClaudeAgentSdkAdapter, type ClaudeSdkBindings } from '../../src/claude-agent-sdk.js';
+import {
+  ClaudeAgentSdkAdapter,
+  type ClaudeSdkBindings
+} from '../../src/runner/claude/claude-agent-sdk.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeDatabase } from '../../src/database.js';

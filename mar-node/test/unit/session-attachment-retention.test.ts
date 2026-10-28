@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
-import { SessionIdentityService } from '../../src/service/session-identity-service.js';
+import { SessionIdentityService } from '../../src/session/session-identity-service.js';
 
 const directories: string[] = [];
 const services: RunAttachmentService[] = [];

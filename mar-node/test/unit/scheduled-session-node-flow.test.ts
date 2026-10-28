@@ -8,7 +8,7 @@ import { NodeDatabase } from '../../src/database.js';
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
 import type { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
-import { SessionScheduleService } from '../../src/service/session-schedule-service.js';
+import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NodeRunEventBridge } from '../../src/service/node-run-event-bridge.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';

@@ -44,6 +44,7 @@ interface FileContent {
   readonly path: string;
   readonly size?: number;
   readonly encoding: 'utf-8' | 'base64';
+  readonly previewEncoding?: string;
   readonly content: string;
   readonly truncated: boolean;
   readonly revision?: string;
@@ -166,6 +167,7 @@ const canWrite = computed(
   () =>
     codeEditorEnabled.value &&
     props.writeEnabled === true &&
+    props.file.previewEncoding === undefined &&
     props.saveFile !== undefined &&
     revision.value !== undefined
 );
@@ -669,6 +671,15 @@ defineExpose({
     <template #status>
       <span class="file-preview-eyebrow"
         >{{ editing ? translate('fileEditor.editing') : translate('fileEditor.readOnly') }}
+        <span
+          v-if="file.previewEncoding !== undefined"
+          v-tooltip="
+            translate('fileEditor.encodingFallback', {
+              encoding: file.previewEncoding.toUpperCase()
+            })
+          "
+          >· {{ file.previewEncoding.toUpperCase() }}</span
+        >
         <span v-if="file.size !== undefined" class="file-preview-size"
           >· {{ fileSizeLabel(file.size) }}</span
         ></span

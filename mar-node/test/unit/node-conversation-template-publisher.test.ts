@@ -22,12 +22,12 @@ import {
   type ConversationTemplateVersion
 } from '../../../packages/protocol/src/index.js';
 import { NodeDatabase } from '../../src/database.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 import { ConversationTemplateNodeService } from '../../src/service/conversation-template-node-service.js';
 import {
   HostedConversationNodeService,
   type HostedConversationRuntime
-} from '../../src/service/hosted-conversation-node-service.js';
+} from '../../src/hosting/hosted-conversation-node-service.js';
 
 const directories: string[] = [];
 

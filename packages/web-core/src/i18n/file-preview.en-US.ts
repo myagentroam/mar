@@ -83,6 +83,7 @@ export const filePreviewEnUS = {
     edit: 'Edit file',
     editing: 'Editing',
     readOnly: 'Read-only file',
+    encodingFallback: '{encoding} fallback; text may be inaccurate',
     saved: 'File saved.',
     saveFailed: 'Unable to save the file.',
     conflict: 'The file changed elsewhere. Reload it before editing again.',

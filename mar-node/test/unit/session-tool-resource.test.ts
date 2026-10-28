@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   SessionQueryService,
   type SessionQueryServiceOptions
-} from '../../src/service/session-query-service.js';
+} from '../../src/session/session-query-service.js';
 
 describe('Session tool resource workspace boundary', () => {
   it('checks the resolved Session workspace before reading any resource', async () => {

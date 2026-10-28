@@ -1,3 +1,9 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CodexUsageNormalizer } from '../../src/runner/codex/conversation-parser.js';
 import { ClaudeUsageNormalizer } from '../../src/runner/claude/tool-normalizer.js';
@@ -8,12 +14,12 @@ import { ModelUsageOutbox } from '../../src/service/model-usage-outbox.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { RunnerUsageFact } from '../../src/service/runner-usage-tracker.js';
 import { createEnvelope, type ModelUsageGrant } from '@myagentroam/protocol';
-import { SessionLifecycleService } from '../../src/service/session-lifecycle-service.js';
+import { SessionLifecycleService } from '../../src/session/session-lifecycle-service.js';
 import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { CodexManagedRunController } from '../../src/runner/codex/managed-run-controller.js';
 import { RunnerInteractionService } from '../../src/service/runner-interaction-service.js';
 import { NodeConnector } from '../../src/connector.js';
@@ -188,7 +194,7 @@ describe('native request usage normalizers', () => {
         emit,
         emitItem: vi.fn(),
         session: () => undefined,
-        removeActive: vi.fn()
+        executionReleased: vi.fn()
       } as unknown as ConstructorParameters<typeof CodexManagedRunController>[1]);
       const attach = (
         controller as unknown as {
@@ -239,8 +245,7 @@ describe('native request usage normalizers', () => {
       const interactions = new RunnerInteractionService({
         codex: () => runner,
         settleCodexUsage: (runId: string, turnId: string) => controller.settleUsage(runId, turnId),
-        runtime: { getRun: () => ({ status: 'CANCELLING' }) },
-        state: { active: new Set(['run']) },
+        runtime: { getRun: () => ({ status: 'CANCELLING' }), executionReleased: vi.fn() },
         emitRun: (_run: string, type: string) => events.push(type)
       } as unknown as ConstructorParameters<typeof RunnerInteractionService>[0]);
       try {
@@ -445,7 +450,6 @@ describe('execution-private attribution to durable outbox', () => {
     const internals = connector as unknown as {
       usageOutbox: ModelUsageOutbox;
       nodeRequests: NodeRequestService;
-      socket: unknown;
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
     };
     const diagnostics = vi.fn();
@@ -455,7 +459,7 @@ describe('execution-private attribution to durable outbox', () => {
       send: vi.fn(),
       diagnose: diagnostics
     });
-    internals.socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     const grant = (userId: number): ModelUsageGrant => {
       const scopeId = `00000000-0000-4000-8000-00000000000${userId}`;
       return {

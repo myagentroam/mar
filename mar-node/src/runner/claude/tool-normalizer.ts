@@ -1,5 +1,5 @@
 import { claudeContentBlocks } from './message-parsers.js';
-import { compactRunnerText, compactRunnerValue } from '../../util/node-operation-parsers.js';
+import { compactRunnerText, compactRunnerValue } from '../normalization.js';
 import type {
   NativeTranscriptToolCall,
   NativeTranscriptSubagentResult

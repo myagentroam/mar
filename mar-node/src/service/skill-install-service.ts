@@ -15,11 +15,11 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { skillInstallMetadataSchema, type SkillInstallMetadata } from '@myagentroam/protocol';
-import { GitCommandError, resolveWorkspaceGitRoot } from '../workspace.js';
+import { GitCommandError, resolveWorkspaceGitRoot } from '../workspace/git.js';
 import {
   rewriteWorkspaceGitExclude,
   updateWorkspaceSkillGitExclude
-} from './workspace-git-exclude-service.js';
+} from '../workspace/workspace-git-exclude-service.js';
 
 export interface SkillBundleFile {
   readonly path: string;

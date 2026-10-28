@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SessionMessageService } from '../../src/service/session-message-service.js';
+import { SessionMessageService } from '../../src/session/session-message-service.js';
 
 describe('Channel Git environment forwarding', () => {
   it('preserves the authenticated environment when adapting a channel message', async () => {

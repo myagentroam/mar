@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AgentError,
@@ -9,7 +10,7 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 
 function fixture() {
   const host = {
-    active: new Set<string>(),
+    ...executionActivity(),
     adopt: vi.fn(),
     promote: vi.fn(),
     syncTitle: vi.fn(),

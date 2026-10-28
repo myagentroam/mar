@@ -17,6 +17,7 @@ const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
+const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
@@ -44,9 +45,48 @@ const action = ref('');
 // Keep transport pending while the real dock and xterm render their presentation.
 const terminalDirect = { attach: () => new Promise<never>(() => undefined) };
 const selectedSession = ref('active');
-const sessions = ['active', 'idle', 'other'].map(
-  (id) => ({ id, runner: 'mar', status: 'READY' }) as Session
+const sessions = ref(
+  (reorderFixture
+    ? ['pinned-one', 'pinned-two', 'pinned-three', 'active', 'idle']
+    : ['active', 'idle', 'other']
+  ).map(
+    (id, index) =>
+      ({
+        id,
+        runner: 'mar',
+        status: 'READY',
+        ...(reorderFixture
+          ? { lastActivityAt: 1000 - index * 100, pinOrder: index < 3 ? index : null }
+          : {})
+      }) as Session
+  )
 );
+function advanceSessionActivity(): void {
+  const next = sessions.value.at(-1)!;
+  const pinned = sessions.value.filter((session) => session.pinOrder !== null);
+  const unpinned = sessions.value.filter((session) => session.pinOrder === null);
+  sessions.value = [
+    ...pinned,
+    {
+      ...next,
+      lastActivityAt: Math.max(...unpinned.map((session) => session.lastActivityAt!)) + 1
+    },
+    ...unpinned.filter((session) => session.id !== next.id)
+  ];
+}
+function movePinnedSession(session: Session, target: Session, position: 'before' | 'after'): void {
+  const pinned = sessions.value.filter((session) => session.pinOrder !== null);
+  pinned.splice(
+    pinned.findIndex((candidate) => candidate.id === session.id),
+    1
+  );
+  const targetIndex = pinned.findIndex((candidate) => candidate.id === target.id);
+  pinned.splice(targetIndex + (position === 'after' ? 1 : 0), 0, session);
+  sessions.value = [
+    ...pinned.map((candidate, pinOrder) => ({ ...candidate, pinOrder })),
+    ...sessions.value.filter((candidate) => candidate.pinOrder === null)
+  ];
+}
 const sessionProps = {
   ...(unreadFixture
     ? {
@@ -57,7 +97,6 @@ const sessionProps = {
         }
       }
     : {}),
-  sessions,
   mobileViewport: mobile,
   canLoadMore: false,
   loadingMore: false,
@@ -208,6 +247,9 @@ if (composerFixture) {
       />
     </section>
     <section aria-label="Session fixture">
+      <button v-if="reorderFixture" type="button" @click="advanceSessionActivity">
+        Advance session activity
+      </button>
       <select v-if="listStateFixture" v-model="listState" aria-label="Set fixture list state">
         <option
           v-for="state in ['ready', 'main', 'child', 'loading', 'failed', 'no-nodes', 'unselected']"
@@ -232,6 +274,7 @@ if (composerFixture) {
         @open="selectedSession = $event"
         @refresh="action = 'refresh'"
         @search="action = 'search:' + $event"
+        @move-pin-to="movePinnedSession"
       />
       <input v-model="search" aria-label="Set fixture search" />
       <output aria-label="Session action">{{ action }}</output>

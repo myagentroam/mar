@@ -21,6 +21,7 @@ import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileRef
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
+import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 
 async function render(
   component: Component,
@@ -450,6 +451,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
   });
 
   it('renders attachment progress, preview and escaped filenames', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    vi.stubGlobal('document', {
+      documentElement: {
+        setAttribute: vi.fn(),
+        removeAttribute: vi.fn(),
+        classList: { add: vi.fn(), remove: vi.fn() },
+        style: { removeProperty: vi.fn(), setProperty: vi.fn() }
+      },
+      querySelector: () => null
+    });
     const html = await render(ComposerAttachments, {
       attachments: [
         {
@@ -474,6 +485,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain('generated.report.txt');
     expect(html).toContain('Remote failure');
     expect(html).toContain('src="/preview.png"');
+    const icon = await render(FileTypeIcon, { name: 'generated.report.txt' });
+    expect(html.replace(/ data-v-[\da-f]+/gu, '')).toContain(
+      icon.replace(/ data-v-[\da-f]+/gu, '')
+    );
+    expect(html.match(/class="file-type-icon /gu)).toHaveLength(1);
     expect(html).toContain(i18n.global.t('generated.composerAttachments.uploading2'));
     expect(html).toContain(i18n.global.t('generated.composerAttachments.uploadFailed'));
     expect(await render(ComposerAttachments, { attachments: [] })).not.toContain('<ul');

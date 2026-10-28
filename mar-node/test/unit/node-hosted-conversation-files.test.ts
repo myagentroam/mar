@@ -16,9 +16,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { HostedConversationRuntime } from '../../src/service/hosted-conversation-node-service.js';
-import { HostedConversationNodeService } from '../../src/service/hosted-conversation-node-service.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import type { HostedConversationRuntime } from '../../src/hosting/hosted-conversation-node-service.js';
+import { HostedConversationNodeService } from '../../src/hosting/hosted-conversation-node-service.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 import { NodeDatabase } from '../../src/database.js';
 import type {
   ConversationTemplateDraft,

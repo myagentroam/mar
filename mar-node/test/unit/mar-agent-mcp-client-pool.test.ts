@@ -1,3 +1,4 @@
+import { executionActivity } from './support/execution-activity.js';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -299,7 +300,7 @@ describe('MAR Agent MCP client pool', () => {
       expect(runner.mcpConfiguration(userInstallations, {}, [executionServer])).toEqual(expected);
 
       const controller = new MarAgentManagedRunController(runner, {
-        active: new Set(),
+        ...executionActivity(),
         adopt: vi.fn(),
         promote: vi.fn(),
         syncTitle: vi.fn(),

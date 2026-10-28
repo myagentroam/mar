@@ -1,3 +1,9 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,8 +12,8 @@ import { createEnvelope } from '@myagentroam/protocol';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
-import { SessionContextService } from '../../src/service/session-context-service.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
+import { SessionContextService } from '../../src/session/session-context-service.js';
 import { RunWorkbenchService } from '../../src/service/run-workbench-service.js';
 import { captureSocket } from './support/codex-connector.js';
 
@@ -1279,7 +1285,7 @@ describe('Node Workbench Manifest and command control', () => {
       nativeControl: 'MAR_MANAGED'
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent);
+    connectTestSocket(connector, captureSocket(sent));
     const emitRealtime = vi.spyOn(internals.nativeSessionWatchService, 'emitRealtime');
     internals.runtime.pauseSessionQueue(session.id);
     const result = (await operation(connector, 'session.command.execute', {

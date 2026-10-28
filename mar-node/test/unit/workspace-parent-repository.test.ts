@@ -13,15 +13,15 @@ import {
   type NodeWorkspace
 } from '../../src/database.js';
 import { NodeWorkspaceCoordinator } from '../../src/service/node-workspace-coordinator.js';
-import { updateWorkspaceSkillGitExclude } from '../../src/service/workspace-git-exclude-service.js';
-import * as gitExclude from '../../src/service/workspace-git-exclude-service.js';
-import * as workspaceModule from '../../src/workspace.js';
+import { updateWorkspaceSkillGitExclude } from '../../src/workspace/workspace-git-exclude-service.js';
+import * as gitExclude from '../../src/workspace/workspace-git-exclude-service.js';
+import * as workspaceModule from '../../src/workspace/git.js';
 import {
   inspectWorkspace,
   readCurrentChangeDiff,
   resolveGitRepository,
   resolveWorkspaceGitRoot
-} from '../../src/workspace.js';
+} from '../../src/workspace/git.js';
 
 const directories: string[] = [];
 const execFile = promisify(execFileCallback);
@@ -539,6 +539,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 async function initializeRepository(repositoryRoot: string): Promise<void> {
   await mkdir(repositoryRoot, { recursive: true });
   await git(repositoryRoot, ['init', '-b', 'main']);
+  await git(repositoryRoot, ['config', 'core.autocrlf', 'false']);
   await git(repositoryRoot, ['config', 'user.email', 'test@example.invalid']);
   await git(repositoryRoot, ['config', 'user.name', 'Test']);
 }

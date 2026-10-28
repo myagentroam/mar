@@ -1,12 +1,12 @@
 import type { ExecutionResult, AgentSessionHistoryEntry } from '@myagentroam/agent';
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../../runtime-model.js';
 import {
   MarAgentConversationNormalizer,
   type MarAgentGeneratedImageArtifact
 } from './conversation-normalizer.js';
 import { publicGoalHistoryText } from '../../service/goal-runtime.js';
-import { boundedConversationItemId } from '../../util/node-operation-parsers.js';
+import { boundedConversationItemId } from '../normalization.js';
 
 interface MarAgentHistoryProjectionOptions {
   readonly registerInputImages?: (

@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-10-26
+lastUpdated: 2026-10-28
 ---
 
 # Browse, Search, and Manage Files
@@ -27,6 +27,8 @@ The Workspace must be online and readable. Creating, renaming, moving, or deleti
 Standalone rendered Markdown/HTML pages retain the browser's native context menu instead of the Copy, Paste, and Reload menu used by ordinary file pages.
 
 The unified preview supports code and text, common images, PDF, DOCX, XLSX, PPTX, common video, and audio. The workbench renders PDF pages itself and does not depend on the browser's built-in PDF viewer. PDF and media are read on demand. Modern Office files are parsed locally in the browser and are not sent to an external preview service. PPTX previews are constrained by both available width and height, preserving the complete slide ratio in very wide or short windows. Legacy DOC, XLS, and PPT files and other unsupported formats keep a download action. A damaged or oversized Office file may also fall back to download.
+
+Legacy text previews recognize BOM-marked UTF-16 and automatically try GB18030 for known text files when UTF-8 decoding fails. Damaged text can fall back to UTF-8 with replacement characters. The preview identifies fallback decoding and always remains read-only; it does not convert or overwrite the source file. Unknown binary formats still fall back to download. Git Diff displays the patch returned by Git rather than recomputing differences from decoded previews; a non-UTF-8 worktree does not suppress a text patch, but Git-reported binary differences remain unsupported for text comparison.
 
 In ordinary Work mode, chat file and image links support absolute paths readable by the Node service account, including session image directories outside the Workspace. Relative paths still resolve within the current Workspace. Absolute paths are for read-only preview and download; they do not expand the file tree, search, or write scope and do not apply to hosted conversations. **Users with Workspace access can read other host files available to the Node service account by their absolute paths; Workspaces and allowed roots are not file confidentiality boundaries.** When sharing a Node, isolate sensitive data through the service account and operating-system file permissions.
 

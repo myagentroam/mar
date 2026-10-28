@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeMetrics } from '../../src/operational.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { RunDomainState } from '../../src/service/run-domain-state.js';
 import { RunEventService } from '../../src/service/run-event-service.js';
+import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
 import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
 import { marctlSessionProgress } from '../../src/service/session-recent-activity.js';
@@ -10,7 +10,10 @@ import { conversationSegments } from '../../src/service/conversation-segment-ser
 import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
 import type { NodeEnvelope, WorkbenchEvent } from '@myagentroam/protocol';
 
-function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
+function fixture(
+  keepRunActive: (sessionId: string) => boolean = () => false,
+  observe?: (runtime: NodeRuntimeState, category: string) => void
+) {
   let now = 100;
   const runtime = new NodeRuntimeState(
     () => 'node-1',
@@ -20,24 +23,32 @@ function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
         : undefined,
     () => now++
   );
-  const state = new RunDomainState();
   const events: Array<{ category: string; payload: unknown }> = [];
   const dispatchQueue = vi.fn(async () => undefined);
   const refreshWorkspaceSessions = vi.fn(async (): Promise<void> => {});
+  const coordinator = new ContinuousRunCoordinator({
+    runtime,
+    executionTerminating: () => undefined,
+    keepRunActive
+  } as unknown as ConstructorParameters<typeof ContinuousRunCoordinator>[0]);
   const service = new RunEventService({
     runtime,
-    state,
     metrics: new NodeMetrics(),
     isBootstrapSession: () => false,
     presentSession: (session) => session,
     rejectBootstrap: vi.fn(),
-    emitWorkbench: (category, payload) => events.push({ category, payload }),
+    emitWorkbench: (category, payload) => {
+      observe?.(runtime, category);
+      events.push({ category, payload });
+    },
     cleanupAttachments: vi.fn(),
     expireImages: vi.fn(),
     scheduleContextRefresh: vi.fn(),
     refreshWorkspaceSessions,
     dispatchQueue,
-    keepRunActive,
+    acceptExecutionTerminal: (input) => coordinator.acceptExecutionTerminal(input),
+    publishGoalUpdate: vi.fn(),
+    publishQueueChange: vi.fn(),
     releaseExecution: vi.fn()
   });
   const createRun = (
@@ -69,12 +80,11 @@ function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
       .filter((event) => event?.eventType === 'notification');
   const startExecution = (runId: string) => {
     const execution = runtime.createExecution(runId);
-    state.active.add(execution.id);
+    runtime.executionAccepted(execution.id);
     return execution;
   };
   return {
     runtime,
-    state,
     service,
     createRun,
     startExecution,
@@ -86,15 +96,68 @@ function fixture(keepRunActive: (sessionId: string) => boolean = () => false) {
 }
 
 describe('Node Run notification attachment events', () => {
+  it('accepts terminal facts and finalizes state before synchronous publication', () => {
+    const observed: Array<{ category: string; status: string | undefined; active: boolean }> = [];
+    let runId = '';
+    let executionId = '';
+    const f = fixture(
+      () => false,
+      (runtime, category) => {
+        observed.push({
+          category,
+          status: runtime.getRun(runId)?.status,
+          active: runtime.isExecutionActive(executionId)
+        });
+      }
+    );
+    const run = f.createRun('synchronous-terminal');
+    const execution = f.startExecution(run.id);
+    runId = run.id;
+    executionId = execution.id;
+    f.service.emit(executionId, 'run.completed', {}, 'SUCCEEDED');
+
+    expect(observed.slice(0, 3)).toEqual([
+      { category: 'run', status: 'SUCCEEDED', active: false },
+      { category: 'session', status: 'SUCCEEDED', active: false },
+      { category: 'conversation', status: 'SUCCEEDED', active: false }
+    ]);
+    expect(f.dispatchQueue).not.toHaveBeenCalled();
+  });
+
+  it('publishes a continuing turn before dispatching the next input', () => {
+    const order: string[] = [];
+    let runId = '';
+    const f = fixture(
+      () => true,
+      (runtime, category) => {
+        if (category === 'conversation') {
+          order.push(`publish:${runtime.getRun(runId)?.status}`);
+        }
+      }
+    );
+    const run = f.createRun('continuing-terminal');
+    const execution = f.startExecution(run.id);
+    runId = run.id;
+    f.service.emit(execution.id, 'run.running', {}, 'RUNNING');
+    order.length = 0;
+    f.dispatchQueue.mockImplementation(async () => {
+      order.push('dispatch');
+    });
+
+    f.service.emit(execution.id, 'run.completed', {}, 'SUCCEEDED');
+
+    expect(order).toEqual(['publish:RUNNING', 'publish:RUNNING', 'dispatch']);
+    expect(f.runtime.isExecutionActive(execution.id)).toBe(false);
+  });
+
   it.each(['CANCELLED', 'INTERRUPTED', 'SUCCEEDED'] as const)(
     'projects a manually stopped Run as INTERRUPTED after the Runner reports %s',
     (status) => {
-      const { runtime, state, service, createRun, startExecution, notifications, events } =
-        fixture();
+      const { runtime, service, createRun, startExecution, notifications, events } = fixture();
       const run = createRun('manually-stopped');
       const execution = startExecution(run.id);
       runtime.transitionRun(run.id, 'CANCELLING');
-      state.interruptRequested.add(execution.id);
+      runtime.requestExecutionInterrupt(execution.id);
 
       service.emit(execution.id, 'run.completed', {}, status);
 
@@ -115,12 +178,11 @@ describe('Node Run notification attachment events', () => {
   it.each(['STARTING', 'RUNNING'] as const)(
     'keeps the user stop reason when a late Runner %s event arrives before completion',
     (status) => {
-      const { runtime, state, service, createRun, startExecution, notifications, events } =
-        fixture();
+      const { runtime, service, createRun, startExecution, notifications, events } = fixture();
       const run = createRun('stopped-before-runner-start');
       const execution = startExecution(run.id);
       runtime.transitionRun(run.id, 'CANCELLING');
-      state.interruptRequested.add(execution.id);
+      runtime.requestExecutionInterrupt(execution.id);
 
       service.emit(execution.id, status === 'STARTING' ? 'run.started' : 'run.running', {}, status);
       expect(runtime.getRun(run.id)?.status).toBe('CANCELLING');
@@ -516,7 +578,7 @@ describe('Node Run notification attachment events', () => {
   });
 
   it('continues the same Run after an intermediate queue success without creating a terminal notification for an intentional interruption', () => {
-    const { runtime, state, service, createRun, startExecution, notifications } = fixture();
+    const { runtime, service, createRun, startExecution, notifications } = fixture();
     const first = createRun('message-1');
     const firstExecution = startExecution(first.id);
     runtime.createQueueItem({
@@ -530,7 +592,7 @@ describe('Node Run notification attachment events', () => {
 
     const interrupted = createRun('message-3');
     const interruptedExecution = startExecution(interrupted.id);
-    state.interruptRequested.add(interruptedExecution.id);
+    runtime.requestExecutionInterrupt(interruptedExecution.id);
     service.emit(interruptedExecution.id, 'run.completed', {}, 'INTERRUPTED');
 
     expect(notifications()).toEqual([]);

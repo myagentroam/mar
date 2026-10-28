@@ -1,7 +1,8 @@
-import type { NodeAgentSession } from '../database.js';
+import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeConversationItem } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import { isPlainRecord, isTerminalRunStatus } from '../util/node-operation-parsers.js';
+import { isPlainRecord } from '../util/records.js';
+import { isTerminalRunStatus } from '../session/runtime/type-guards.js';
 
 interface PublicActivity {
   readonly name: string;

@@ -1,9 +1,15 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
@@ -86,7 +92,7 @@ async function createFixture() {
     runEvents.push({ runId: input.runId, eventType: input.eventType, payload: input.payload });
     return appendRunEvent(input);
   };
-  (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+  connectTestSocket(connector, captureSocket(sent, connector));
   const session = internals.runtime.createAgentSession({
     workspaceId: workspace.id,
     runner: 'codex',

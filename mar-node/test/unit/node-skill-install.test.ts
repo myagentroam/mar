@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SkillInstallService } from '../../src/service/skill-install-service.js';
-import { ensureWorkspaceGitExclude } from '../../src/service/workspace-git-exclude-service.js';
+import { ensureWorkspaceGitExclude } from '../../src/workspace/workspace-git-exclude-service.js';
 
 const roots: string[] = [];
 afterEach(async () =>

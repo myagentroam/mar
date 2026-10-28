@@ -5,13 +5,13 @@ import type {
   RunnerCommandDescriptor,
   RunnerCommandState
 } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../../database.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
 import { nodeExecutionEnvironment } from '../../node-execution-environment.js';
-import type { FakeRunnerStatus } from '../../fake-runner.js';
+import type { RunnerExecutionStatus } from '../contracts.js';
 import type { RunnerImageAttachment } from '../../service/run-attachment-service.js';
-import { parseSecretEnvironment } from '../../util/secret-environment.js';
-import { runnerErrorProjection } from '../../util/runner-error.js';
-import { boundedConversationItemId, compactRunnerText } from '../../util/node-operation-parsers.js';
+import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
+import { runnerErrorProjection } from '../runner-error.js';
+import { boundedConversationItemId, compactRunnerText } from '../normalization.js';
 import { openCodePatchToolPayload, openCodeQuestions } from './conversation-parser.js';
 import { normalizeOpenCodeTool } from './tool-normalizer.js';
 import { OpenCodeRunner } from '../opencode-runner.js';
@@ -20,14 +20,15 @@ import { GenerationTimingTracker } from '../../service/generation-timing-tracker
 
 interface OpenCodeManagedRunHost {
   intercepted(): boolean;
-  readonly active: Set<string>;
+  isExecutionActive(runId: string): boolean;
+  executionAccepted(runId: string): void;
   parseAttachments(value: unknown): readonly RunnerImageAttachment[];
   persistAttachments(
     cwd: string,
     runId: string,
     attachments: readonly RunnerImageAttachment[]
   ): Promise<readonly string[]>;
-  emit(runId: string, eventType: string, payload: unknown, status?: FakeRunnerStatus): void;
+  emit(runId: string, eventType: string, payload: unknown, status?: RunnerExecutionStatus): void;
   emitItem(runId: string, item: OpenCodePublicItem): void;
   adopt(input: {
     runId: string;
@@ -82,7 +83,7 @@ type OpenCodePublicItem = {
 interface PendingPermission {
   readonly runId: string;
   readonly requestId: string;
-  readonly client: import('../../opencode-server.js').OpenCodeServerClient;
+  readonly client: import('./opencode-server.js').OpenCodeServerClient;
   readonly cwd: string;
   readonly timer: NodeJS.Timeout;
 }
@@ -90,7 +91,7 @@ interface PendingPermission {
 interface PendingQuestion {
   readonly runId: string;
   readonly requestId: string;
-  readonly client: import('../../opencode-server.js').OpenCodeServerClient;
+  readonly client: import('./opencode-server.js').OpenCodeServerClient;
   readonly cwd: string;
   readonly questionIds: readonly string[];
   readonly timer: NodeJS.Timeout;
@@ -110,7 +111,7 @@ export class OpenCodeManagedRunController {
   private readonly completedCompactionParents = new Map<string, Set<string>>();
   private readonly startingClients = new Map<
     string,
-    import('../../opencode-server.js').OpenCodeServerClient
+    import('./opencode-server.js').OpenCodeServerClient
   >();
 
   constructor(
@@ -172,7 +173,7 @@ export class OpenCodeManagedRunController {
       externalSessionId: session.externalSessionId,
       ...(initiatedByUserId === undefined ? {} : { initiatedByUserId })
     });
-    this.host.active.add(runId);
+    this.host.executionAccepted(runId);
     this.runner.execution.set(runId, {
       runId,
       sessionId: session.id,
@@ -216,7 +217,7 @@ export class OpenCodeManagedRunController {
       typeof payload.cwd !== 'string' ||
       typeof payload.model !== 'string' ||
       this.host.intercepted() ||
-      this.host.active.has(payload.runId)
+      this.host.isExecutionActive(payload.runId)
     )
       return;
     let environment: Readonly<Record<string, string>>;
@@ -350,7 +351,7 @@ export class OpenCodeManagedRunController {
     );
     this.startingClients.set(input.runId, client);
     this.startingCwds.set(input.runId, input.cwd);
-    this.host.active.add(input.runId);
+    this.host.executionAccepted(input.runId);
     this.host.emit(input.runId, 'run.started', {}, 'STARTING');
     let settlePrompt!: () => void;
     const promptSettled = new Promise<void>((resolve) => {
@@ -899,7 +900,7 @@ export class OpenCodeManagedRunController {
 
   private finish(
     runId: string,
-    status: FakeRunnerStatus,
+    status: RunnerExecutionStatus,
     eventType: string,
     payload: unknown,
     fallbackCode = 'OPENCODE_RUN_FAILED'
@@ -923,7 +924,7 @@ export class OpenCodeManagedRunController {
     this.messageParents.delete(runId);
     this.compactionPartIds.delete(runId);
     this.completedCompactionParents.delete(runId);
-    this.host.active.delete(runId);
+
     for (const [id, pending] of this.permissions)
       if (pending.runId === runId) {
         clearTimeout(pending.timer);

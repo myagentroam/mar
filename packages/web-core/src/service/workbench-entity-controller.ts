@@ -67,16 +67,14 @@ export function createWorkbenchEntityController(options: {
       await options.refreshSessions();
   }
 
-  async function movePinnedSessionTo(session: Session, targetIndex: number): Promise<void> {
-    const pinnedSessions = options.sessions.value.filter(
-      (candidate) => candidate.pinOrder !== null && candidate.pinOrder !== undefined
-    );
-    const sourceIndex = pinnedSessions.findIndex((candidate) => candidate.id === session.id);
-    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= pinnedSessions.length) return;
-    const direction = targetIndex < sourceIndex ? 'up' : 'down';
-    const steps = Math.abs(targetIndex - sourceIndex);
-    if (steps === 0) return;
-    await options.actions.movePinnedSession(session, direction, steps);
+  async function movePinnedSessionTo(
+    session: Session,
+    target: Session,
+    position: 'before' | 'after'
+  ): Promise<void> {
+    if (session.id === target.id) return;
+    const direction = session.pinOrder! > target.pinOrder! ? 'up' : 'down';
+    await options.actions.movePinnedSession(session, direction, { sessionId: target.id, position });
     await options.refreshSessions();
   }
 

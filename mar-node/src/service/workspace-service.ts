@@ -1,14 +1,11 @@
 import { realpath, rmdir } from 'node:fs/promises';
 import type { NodeConfig } from '../config.js';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
-import {
-  createWorkspaceDirectory,
-  inspectWorkspace,
-  listWorkspaceDirectories
-} from '../workspace.js';
-import { ensureWorkspaceGitExclude } from './workspace-git-exclude-service.js';
+import { createWorkspaceDirectory, listWorkspaceDirectories } from '../workspace/files.js';
+import { inspectWorkspace } from '../workspace/git.js';
+import { ensureWorkspaceGitExclude } from '../workspace/workspace-git-exclude-service.js';
 import { workspaceGitSettingsSchema } from '@myagentroam/protocol';
 
 export class WorkspaceService {

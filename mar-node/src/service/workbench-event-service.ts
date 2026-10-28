@@ -4,7 +4,7 @@ import {
   type WorkbenchEvent,
   type WorkbenchEventCategory
 } from '@myagentroam/protocol';
-import { isPlainRecord } from '../util/node-operation-parsers.js';
+import { isPlainRecord } from '../util/records.js';
 import {
   projectWorkbenchPayload,
   workbenchPayloadSessionId,

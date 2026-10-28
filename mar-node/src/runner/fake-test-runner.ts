@@ -1,8 +1,8 @@
 import { FakeRunner, type FakeRunnerCallbacks, type FakeRunnerStep } from '../fake-runner.js';
 import { AbstractRunner } from './abstract-runner.js';
 import type { RunnerDefaultConfiguration, RunnerProfile } from '@myagentroam/protocol';
-import type { NodeAgentSession } from '../database.js';
-import type { ExternalResumeResult } from './abstract-runner.js';
+import type { NodeAgentSession } from '../session/contracts.js';
+import type { ExternalResumeResult } from './contracts.js';
 
 /** Registered only by tests; never contributes a production Runner Profile. */
 export class FakeTestRunner extends AbstractRunner<'fake'> {

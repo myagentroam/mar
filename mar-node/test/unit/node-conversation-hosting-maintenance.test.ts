@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostedConversationManifest } from '../../../packages/protocol/src/index.js';
 import { NodeDatabase } from '../../src/database.js';
 import { ConversationHostingMaintenanceService } from '../../src/service/conversation-hosting-maintenance-service.js';
-import { HostedConversationStore } from '../../src/service/hosted-conversation-store.js';
+import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();

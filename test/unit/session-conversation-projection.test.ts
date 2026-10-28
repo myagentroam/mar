@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ref } from 'vue';
 import { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
 import { NodeMetrics } from '../../mar-node/src/operational.js';
-import { RunDomainState } from '../../mar-node/src/service/run-domain-state.js';
 import { RunEventService } from '../../mar-node/src/service/run-event-service.js';
+import { ContinuousRunCoordinator } from '../../mar-node/src/service/continuous-run-coordinator.js';
 import { projectWorkbenchPayload } from '../../mar-node/src/service/workbench-event-projection.js';
 import { marctlSessionProgress } from '../../mar-node/src/service/session-recent-activity.js';
 import { conversationSegments } from '../../mar-node/src/service/conversation-segment-service.js';
@@ -95,7 +95,11 @@ describe('Node-to-Web conversation projection boundary', () => {
       () => 'node',
       (id) => ({ id, path: '/isolated', kind: 'DIRECTORY', gitSummary: null })
     );
-    const state = new RunDomainState();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      executionTerminating: () => undefined,
+      keepRunActive: () => true
+    } as unknown as ConstructorParameters<typeof ContinuousRunCoordinator>[0]);
     const session = runtime.createAgentSession({
       workspaceId: 'workspace',
       runner: 'mar-agent',
@@ -133,7 +137,6 @@ describe('Node-to-Web conversation projection boundary', () => {
     };
     const events = new RunEventService({
       runtime,
-      state,
       metrics: new NodeMetrics(),
       isBootstrapSession: () => false,
       presentSession: (value) => value,
@@ -144,7 +147,9 @@ describe('Node-to-Web conversation projection boundary', () => {
       scheduleContextRefresh: noop,
       refreshWorkspaceSessions: async () => undefined,
       dispatchQueue: async () => undefined,
-      keepRunActive: () => true,
+      acceptExecutionTerminal: (input) => coordinator.acceptExecutionTerminal(input),
+      publishGoalUpdate: noop,
+      publishQueueChange: noop,
       releaseExecution: noop
     });
     const snapshot = () => {
@@ -175,7 +180,7 @@ describe('Node-to-Web conversation projection boundary', () => {
         content: 'same text'
       }).run;
       const first = runtime.createExecution(run.id);
-      state.active.add(first.id);
+      runtime.executionAccepted(first.id);
       emit('conversation', { turn: runtime.conversationTurnForRun(run.id)! });
       events.emit(first.id, 'run.running', {}, 'RUNNING');
       events.emit(first.id, 'conversation.item', {
@@ -194,7 +199,7 @@ describe('Node-to-Web conversation projection boundary', () => {
       });
       runtime.claimNextQueueItem(session.id);
       const second = runtime.createExecution(run.id);
-      state.active.add(second.id);
+      runtime.executionAccepted(second.id);
       emit('conversation', { turn: runtime.conversationTurnForRun(run.id)! });
       events.emit(second.id, 'run.running', {}, 'RUNNING');
       expect(users()).toHaveLength(2);

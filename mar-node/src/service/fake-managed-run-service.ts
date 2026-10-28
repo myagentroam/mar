@@ -1,22 +1,20 @@
 import type { NodeEnvelope } from '@myagentroam/protocol';
-import type { FakeRunnerStatus, FakeRunnerStep } from '../fake-runner.js';
+import type { FakeRunnerStep } from '../fake-runner.js';
+import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { FakeTestRunner } from '../runner/fake-test-runner.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import { isTerminalRunStatus } from '../util/node-operation-parsers.js';
-import type { RunDomainState } from './run-domain-state.js';
 
 interface FakeManagedRunServiceOptions {
   readonly runner: FakeTestRunner;
   readonly script: (input: unknown, runId: string) => readonly FakeRunnerStep[];
   readonly runners: RunnerRegistry;
   readonly runtime: NodeRuntimeState;
-  readonly state: RunDomainState;
   readonly emitRun: (
     runId: string,
     type: string,
     payload: unknown,
-    status?: FakeRunnerStatus
+    status?: RunnerExecutionStatus
   ) => void;
   readonly publishApproval: (input: {
     readonly runId: string;
@@ -40,7 +38,8 @@ export class FakeManagedRunService {
       input?: unknown;
       cwd?: unknown;
     };
-    if (typeof payload.runId !== 'string' || this.options.state.active.has(payload.runId)) return;
+    if (typeof payload.runId !== 'string' || this.options.runtime.isExecutionActive(payload.runId))
+      return;
     const runId = payload.runId;
     const cwd = typeof payload.cwd === 'string' ? payload.cwd : undefined;
     if (
@@ -58,14 +57,11 @@ export class FakeManagedRunService {
         cwd
       });
     }
-    this.options.state.active.add(runId);
+    this.options.runtime.executionAccepted(runId);
     void this.options.runner
       .start(runId, this.options.script(payload.input, runId), {
         event: (eventType, eventPayload, status) => {
           this.options.emitRun(runId, eventType, eventPayload, status);
-          if (status !== undefined && isTerminalRunStatus(status)) {
-            this.options.state.active.delete(runId);
-          }
         },
         approval: (approvalId, approvalPayload, expiresAt) => {
           try {
@@ -87,6 +83,6 @@ export class FakeManagedRunService {
         },
         disconnect: this.options.disconnect
       })
-      .finally(() => this.options.state.active.delete(runId));
+      .finally(() => this.options.runtime.executionReleased(runId));
   }
 }

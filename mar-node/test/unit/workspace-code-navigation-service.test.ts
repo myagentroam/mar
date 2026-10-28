@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceContentSearch } from '@myagentroam/protocol';
 import type { NodeWorkspace } from '../../src/database.js';
 import * as operational from '../../src/operational.js';
-import type { WorkspaceFileEntry } from '../../src/workspace.js';
-import { WorkspaceCodeNavigationService } from '../../src/service/workspace-code-navigation-service.js';
+import type { WorkspaceFileEntry } from '../../src/workspace/contracts.js';
+import { WorkspaceCodeNavigationService } from '../../src/workspace/workspace-code-navigation-service.js';
 import { runCtags } from '../../src/service/code-navigation/ctags-index-storage.js';
-import type { WorkspaceFileService } from '../../src/service/workspace-file-service.js';
+import type { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 
 const temporaryDirectories: string[] = [];
 const fixtureCleanups: Array<() => Promise<void>> = [];

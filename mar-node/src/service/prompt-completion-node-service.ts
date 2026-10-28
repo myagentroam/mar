@@ -13,7 +13,7 @@ import {
   type PromptCompletionTarget,
   type RunnerName
 } from '@myagentroam/protocol';
-import type { NodeOperationHandler } from '../connector/node-operation-router.js';
+import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
 import type { MarAgentRuntimeModelFactory } from '../runner/mar-agent/runtime-model-factory.js';
 import { PromptCompletionCache, type CompletionReference } from './prompt-completion-cache.js';

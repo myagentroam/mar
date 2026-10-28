@@ -3,11 +3,11 @@ import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
 import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
-import type { ClaudeAgentSdkAdapter } from '../../src/claude-agent-sdk.js';
-import type { CodexAppServerClient } from '../../src/codex-app-server.js';
+import type { ClaudeAgentSdkAdapter } from '../../src/runner/claude/claude-agent-sdk.js';
+import type { CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { discoverAllNativeSessions } from '../../src/native-session-history.js';
-import type { OpenCodeServerClient } from '../../src/opencode-server.js';
-import type { RunnerDiscoveryContext } from '../../src/runner/abstract-runner.js';
+import type { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
+import type { RunnerDiscoveryContext } from '../../src/runner/contracts.js';
 
 const catalog = vi.hoisted(() => ({
   list: vi.fn(),

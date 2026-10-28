@@ -1,8 +1,17 @@
+vi.mock('ws', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ws')>();
+  const { mockedWebSocket } = await import('./support/control-socket.js');
+  return { ...actual, default: mockedWebSocket(actual.default) };
+});
+import { connectTestSocket } from './support/control-socket.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { CodexAppServerClient, CodexAppServerRpcError } from '../../src/codex-app-server.js';
+import {
+  CodexAppServerClient,
+  CodexAppServerRpcError
+} from '../../src/runner/codex/codex-app-server.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
@@ -510,7 +519,7 @@ describe('Codex input, commands, and event projection', () => {
       } as unknown as CodexAppServerClient
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     await primeCodexProfile(connector);
     const internals = connector as unknown as {
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
@@ -623,7 +632,7 @@ describe('Codex input, commands, and event projection', () => {
       } as unknown as CodexAppServerClient
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     await primeCodexProfile(connector);
     const internals = connector as unknown as {
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
@@ -704,7 +713,7 @@ describe('Codex input, commands, and event projection', () => {
       } as unknown as CodexAppServerClient
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     await primeCodexProfile(connector);
     const execute = connector as unknown as {
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
@@ -774,7 +783,7 @@ describe('Codex input, commands, and event projection', () => {
       } as unknown as CodexAppServerClient
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     await primeCodexProfile(connector);
     const execute = connector as unknown as {
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
@@ -945,7 +954,7 @@ describe('Codex input, commands, and event projection', () => {
       } as unknown as CodexAppServerClient
     });
     const sent: { type: string; payload: Record<string, unknown> }[] = [];
-    (connector as unknown as { socket: unknown }).socket = captureSocket(sent, connector);
+    connectTestSocket(connector, captureSocket(sent, connector));
     await primeCodexProfile(connector);
     const internals = connector as unknown as {
       executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
