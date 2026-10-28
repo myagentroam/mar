@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { buildAgent } from '../support/build-agent.js';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const execute = promisify(execFile);
 const servers: Array<ReturnType<typeof createServer>> = [];
@@ -33,9 +32,7 @@ function executeWithClosedStdin(file: string, arguments_: string[], cwd: string)
   });
 }
 const homes: string[] = [];
-beforeAll(async () => {
-  await buildAgent();
-});
+// The test entry builds once before workers start; tests only consume dist.
 afterEach(async () =>
   Promise.all([
     ...homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),

@@ -46,7 +46,7 @@
   "scripts": {
     "build": "node ../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "vitest run --config vitest.config.ts test/unit",
+    "test:unit": "pnpm build && vitest run --config vitest.config.ts test/unit",
     "analyze:session": "node test/tools/session-analyzer.mjs",
     "benchmark:compaction": "node test/e2e/compaction-benchmark.mjs",
     "test:performance": "vitest run --config vitest.performance.config.ts",

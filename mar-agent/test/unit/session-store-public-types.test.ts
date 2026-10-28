@@ -4,15 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
-import { beforeAll, expect, it } from 'vitest';
-import { buildAgent } from '../support/build-agent.js';
+import { expect, it } from 'vitest';
 
 const execute = promisify(execFile);
 const require = createRequire(import.meta.url);
-// Reuse this build for the public-entry compiler check; no package installation is needed.
-beforeAll(async () => {
-  await buildAgent();
-});
+// The test entry builds once before workers start; tests only consume dist.
 
 it('allows an external strict NodeNext consumer to use execution handles and inject the Store', async () => {
   const root = await mkdtemp(join(tmpdir(), 'mar-store-types-'));
