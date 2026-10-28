@@ -283,6 +283,49 @@ describe('shared ordinary Session and Run routes', () => {
     }
   });
 
+  it('validates and relays registered-only workspace reads without changing the default', async () => {
+    const { app, requestNode, headers } = fixture();
+    for (const value of ['true', 'false']) {
+      requestNode.mockClear();
+      const result = await app.inject({
+        url: `/api/agent-sessions?nodeId=node-one&workspaceId=workspace-one&registeredOnly=${value}`,
+        headers
+      });
+      expect(result.statusCode).toBe(200);
+      expect(requestNode.mock.calls[0]).toContainEqual(
+        expect.objectContaining({ workspaceId: 'workspace-one', registeredOnly: value === 'true' })
+      );
+    }
+    for (const suffix of [
+      'registeredOnly=true',
+      'workspaceId=workspace-one&registeredOnly=1',
+      'workspaceId=workspace-one&registeredOnly='
+    ]) {
+      requestNode.mockClear();
+      expect(
+        (await app.inject({ url: `/api/agent-sessions?nodeId=node-one&${suffix}`, headers }))
+          .statusCode
+      ).toBe(400);
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+    requestNode.mockClear();
+    await app.inject({
+      url: '/api/agent-sessions?nodeId=node-one&workspaceId=workspace-one',
+      headers
+    });
+    expect(requestNode.mock.calls[0]).not.toContainEqual(
+      expect.objectContaining({ registeredOnly: expect.anything() })
+    );
+    requestNode.mockClear();
+    requestNode.mockRejectedValueOnce(new Error('WORKSPACE_FORBIDDEN'));
+    const forbidden = await app.inject({
+      url: '/api/agent-sessions?nodeId=node-one&workspaceId=workspace-one&registeredOnly=true',
+      headers
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect(requestNode).toHaveBeenCalledOnce();
+  });
+
   it('reads stable native sources without serving an index-based conditional cache hit', async () => {
     const { app, requestNode, headers } = fixture();
     const runId = 'native-history:session-one';

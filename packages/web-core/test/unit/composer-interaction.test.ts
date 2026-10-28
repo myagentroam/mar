@@ -2,9 +2,9 @@ import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkbenchComposerInteractionController } from '../../src/service/workbench-composer-interaction-controller.js';
 import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
-import { createFileReferenceService } from '../../src/service/file-reference-service.js';
+import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
 
-function fixture() {
+function fixture(sessionEnabled = false) {
   const input = ref('');
   const runnerInteractions = createRunnerInteractionService({
     input,
@@ -33,7 +33,18 @@ function fixture() {
       { id: 'review', phrase: 'review', prompt: 'Review the changes', updatedAt: 1 }
     ])
   });
-  const fileReferences = createFileReferenceService(input);
+  const fileReferences = createComposerReferenceService(
+    input,
+    sessionEnabled
+      ? {
+          nodeId: ref('node'),
+          workspaceId: ref('workspace'),
+          ready: () => true,
+          request: vi.fn(async () => ({ sessions: [], nextCursor: null })) as never,
+          sessions: { ready: () => true, currentSessionId: ref(undefined) }
+        }
+      : undefined
+  );
   const options = {
     input,
     workspaceTarget: ref<import('../../src/model/workbench.js').WorkspaceTarget | undefined>({
@@ -59,12 +70,30 @@ function fixture() {
     handleConversationScroll: vi.fn(),
     scrollToLatest: vi.fn(),
     scrollToLatestAfterLayout: vi.fn().mockResolvedValue(undefined),
-    focusInputAt: vi.fn()
+    editRange: vi.fn((start: number, end: number, text: string) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      return true;
+    })
   };
   return { ...options, controller: createWorkbenchComposerInteractionController(options) };
 }
 
 describe('Public Composer Input Coordination', () => {
+  it.each(['@session #topic', '@session /topic'])(
+    'keeps %s in session search without loading unrelated prompt or command sources',
+    (value) => {
+      const f = fixture(true);
+      f.input.value = value;
+      f.controller.onComposerInput();
+      expect(f.fileReferences.open.value).toBe(true);
+      expect(f.fileReferences.match.value?.sessionOnly).toBe(true);
+      expect(f.ensureQuickPrompts).not.toHaveBeenCalled();
+      expect(f.ensureComposerSkills).not.toHaveBeenCalled();
+      expect(f.loadRunnerProfiles).not.toHaveBeenCalled();
+      expect(f.commandPickerOpen.value).toBe(false);
+      f.fileReferences.close();
+    }
+  );
   it('Escape routes an active turn to the same stop callback as the toolbar', () => {
     const f = fixture();
     f.canInterruptTurn.value = true;
@@ -166,7 +195,7 @@ describe('Public Composer Input Coordination', () => {
     expect(f.fileReferences.selected.value).toEqual([
       { type: 'file', path: 'src/main.ts', label: 'main.ts' }
     ]);
-    expect(f.focusInputAt).toHaveBeenCalledWith(f.input.value.length);
+    expect(f.editRange).toHaveBeenCalledWith(0, 4, '');
     expect(f.sendMessage).not.toHaveBeenCalled();
   });
 

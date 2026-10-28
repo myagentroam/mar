@@ -41,7 +41,7 @@ import ComposerQueue from '../../view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../view/composer/ComposerCommandPicker.vue';
-import ComposerFileReferencePicker from '../../view/composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../../view/composer/ComposerReferencePicker.vue';
 import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
 import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
@@ -77,7 +77,11 @@ const managementComposition = useManagementComposition<ManagementSection>();
 const managementPage = computed(() =>
   managementComposition.resolve(props.page.managementSection, props.page.admin)
 );
-const composer = ref<{ focusAt(cursor: number): void; focus(): void }>();
+const composer = ref<{
+  focusAt(cursor: number): void;
+  focus(): void;
+  replaceRange(start: number, end: number, text: string): boolean;
+}>();
 const composerToolbar = ref<{ openModelMenu(): boolean }>();
 const cleanupDialogOpen = ref(false);
 const inspectorElement = ref<HTMLElement>();
@@ -142,7 +146,13 @@ const workspaceImageResourceUrl = computed(() => {
 });
 
 props.page.setComposerInputFocus((cursor) => composer.value?.focusAt(cursor));
-onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
+props.page.setComposerRangeEditor(
+  (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
+);
+onBeforeUnmount(() => {
+  props.page.setComposerInputFocus(() => undefined);
+  props.page.setComposerRangeEditor(() => false);
+});
 const mobileToolsFocus = createMobileSurfaceFocusService({
   isOpen: () => props.page.mobileViewport && props.page.mobileWorkspaceSurface !== 'conversation',
   regions: () => [
@@ -511,7 +521,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :completion="page.workPromptCompletion"
                 :completion-blocked="
                   page.commandPickerOpen ||
-                  page.fileReferencePickerOpen ||
+                  page.referencePickerOpen ||
                   page.selectedRunnerCommand !== undefined ||
                   page.composerAttachmentsPending
                 "
@@ -634,14 +644,25 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @select-skill="page.selectComposerSkill"
                     @select-quick-prompt="page.selectComposerQuickPrompt"
                   />
-                  <ComposerFileReferencePicker
-                    :open="page.fileReferencePickerOpen"
-                    :entries="page.fileReferenceEntries"
+                  <ComposerReferencePicker
+                    :open="page.referencePickerOpen"
+                    :candidates="page.referenceCandidates"
                     :active-index="page.activeFileReferenceIndex"
                     :loading="page.fileReferenceLoading"
-                    :query="page.activeFileReferenceMatch?.query ?? ''"
+                    :query="page.activeReferenceMatch?.query ?? ''"
+                    :session-enabled="true"
+                    :session-ready="page.referenceSessionAvailable()"
+                    :file-ready="page.filesReady"
+                    :filter="page.referenceFilter"
+                    :session-only="page.activeReferenceMatch?.sessionOnly ?? false"
+                    :session-loading="page.referenceSessionLoading"
+                    :file-error="page.referenceFileError"
+                    :session-error="page.referenceSessionError"
+                    :file-more="page.referenceFileMore"
+                    :session-more="page.referenceSessionMore"
                     @activate="page.activeFileReferenceIndex = $event"
-                    @select="page.selectFileReference"
+                    @select="page.selectReference"
+                    @filter="page.setReferenceFilter"
                   />
                 </template>
               </ConversationComposer>

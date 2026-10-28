@@ -115,7 +115,7 @@ import { createComposerSkillService } from './composer-skill-service.js';
 import { createComposerSkillTokenService } from './composer-skill-token-service.js';
 import { createQuickPromptService } from './quick-prompt-service.js';
 import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-service.js';
-import { createFileReferenceService } from './file-reference-service.js';
+import { createComposerReferenceService } from './composer-reference-service.js';
 import { createConversationUserInputService } from './conversation-user-input-service.js';
 import { createHostedConversationWorkspaceService } from './hosted-conversation-workspace-service.js';
 import {
@@ -190,6 +190,7 @@ export function createWorkbenchPageController<
 }) {
   const managementComposition = options.management;
   let focusComposerInputAt: (cursor: number) => void = () => undefined;
+  let editComposerRange: (start: number, end: number, text: string) => boolean = () => false;
 
   function refreshRecentConversationWindow(): Promise<void> {
     return conversationPagingService.refreshRecentConversationTurns();
@@ -753,31 +754,38 @@ export function createWorkbenchPageController<
     visibleSkills: visibleComposerSkills,
     visibleQuickPrompts,
     pickerKind: composerPickerKind,
-    selectQuickPrompt: selectQuickPromptFromPicker,
     activeCommandStates,
     clearCommand: clearRunnerCommand
   } = runnerInteractionService;
 
   const composerCommandReady = computed(() => selectedRunnerCommand.value !== undefined);
 
-  const fileReferenceService = createFileReferenceService(
+  const composerReferenceService = createComposerReferenceService(
     sessionInput,
     {
       nodeId: workspaceNodeId,
       workspaceId: activeWorkspaceId,
       ready: () => filesReady.value,
+      sessions: { ready: () => nodeReady.value, currentSessionId: selectedSessionId },
       request
     },
     composerFileReferences
   );
 
   const {
-    open: fileReferencePickerOpen,
+    open: referencePickerOpen,
     entries: fileReferenceEntries,
     activeIndex: activeFileReferenceIndex,
     loading: fileReferenceLoading,
-    match: activeFileReferenceMatch
-  } = fileReferenceService;
+    candidates: referenceCandidates,
+    filter: referenceFilter,
+    sessionLoading: referenceSessionLoading,
+    fileError: referenceFileError,
+    sessionError: referenceSessionError,
+    fileMore: referenceFileMore,
+    sessionMore: referenceSessionMore,
+    match: activeReferenceMatch
+  } = composerReferenceService;
 
   const {
     activeComposerRun,
@@ -3030,8 +3038,7 @@ export function createWorkbenchPageController<
   }
 
   function selectComposerQuickPrompt(prompt: QuickPrompt): void {
-    const cursor = selectQuickPromptFromPicker(prompt);
-    if (cursor !== undefined) focusComposerInputAt(cursor);
+    composerInteractions.selectQuickPrompt(prompt);
   }
 
   async function executeRunnerCommand(
@@ -3096,8 +3103,10 @@ export function createWorkbenchPageController<
     composerInteractions.onComposerKeydown(event);
   }
 
-  function selectFileReference(entry: Parameters<typeof fileReferenceService.select>[0]): void {
-    composerInteractions.selectFileReference(entry);
+  function selectReference(
+    entry: Parameters<typeof composerReferenceService.selectCandidate>[0]
+  ): void {
+    composerInteractions.selectReference(entry);
   }
 
   function onComposerScroll(): void {
@@ -3289,7 +3298,7 @@ export function createWorkbenchPageController<
     runnerProfilesLoading,
     runnerProfilesFailed,
     commandPickerOpen,
-    fileReferences: fileReferenceService,
+    fileReferences: composerReferenceService,
     runnerInteractions: runnerInteractionService,
     hasRunnerProfile: (nodeId) => runnerProfileService.has(nodeId),
     loadRunnerProfiles,
@@ -3310,7 +3319,7 @@ export function createWorkbenchPageController<
       }),
     scrollToLatest: conversationScrollService.scrollToLatest,
     scrollToLatestAfterLayout: conversationScrollService.scrollToLatestAfterLayout,
-    focusInputAt: (cursor) => focusComposerInputAt(cursor)
+    editRange: (start, end, text) => editComposerRange(start, end, text)
   });
 
   const { onComposerCursor, onComposerInput } = composerInteractions;
@@ -3367,8 +3376,8 @@ export function createWorkbenchPageController<
     clearRunnerCommand,
     clearComposerModelEffort: composerConfigurationService.clearModelEffortSelection,
     closeFileReferences: () => {
-      fileReferenceService.cancelSearch();
-      fileReferenceService.close();
+      composerReferenceService.cancelSearch();
+      composerReferenceService.close();
     },
     saveCurrentWorkspaceView,
     scrollConversationToLatest,
@@ -3383,7 +3392,7 @@ export function createWorkbenchPageController<
     handleSessionWatchVisibility,
     onGlobalKeydown,
     refreshAdmin,
-    cancelFileReferenceSearch: fileReferenceService.cancelSearch,
+    cancelFileReferenceSearch: composerReferenceService.cancelSearch,
     disposeNavigation: () => {
       mobileMenuHistory.dispose();
       disposeNavigation();
@@ -3406,7 +3415,16 @@ export function createWorkbenchPageController<
     activeCommandStates,
     activeComposerRun,
     activeFileReferenceIndex,
-    activeFileReferenceMatch,
+    activeReferenceMatch,
+    referenceCandidates,
+    referenceFilter,
+    referenceSessionLoading,
+    referenceFileError,
+    referenceSessionError,
+    referenceFileMore,
+    referenceSessionMore,
+    referenceSessionAvailable: composerReferenceService.sessionAvailable,
+    setReferenceFilter: composerReferenceService.setFilter,
     activePlanContinuation,
     activeRunnerCommandIndex,
     activeWorkspaceTabId,
@@ -3465,7 +3483,7 @@ export function createWorkbenchPageController<
     composerSkillTokens,
     removeComposerSkillToken: composerSkillTokenService.remove,
     composerFileReferences,
-    removeComposerFileReference: fileReferenceService.remove,
+    removeComposerFileReference: composerReferenceService.remove,
     composerWorking,
     composerWorkingLabel,
     composerWorkingBusy,
@@ -3514,7 +3532,7 @@ export function createWorkbenchPageController<
     workspaceTreeRevealTarget: workspaceTreeService.revealTarget,
     fileReferenceEntries,
     fileReferenceLoading,
-    fileReferencePickerOpen,
+    referencePickerOpen,
     filesReady,
     contentSearchReady,
     codeNavigationReady,
@@ -3655,8 +3673,9 @@ export function createWorkbenchPageController<
     selectHostedConversation,
     selectComposerModelEffort,
     selectComposerRunner,
-    selectFileReference,
+    selectReference,
     setComposerInputFocus: (focus: (cursor: number) => void) => (focusComposerInputAt = focus),
+    setComposerRangeEditor: (edit: typeof editComposerRange) => (editComposerRange = edit),
     selectManagementSection,
     selectNavigation,
     selectMobileUtilityPanel,

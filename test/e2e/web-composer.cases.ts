@@ -1774,6 +1774,9 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await page.route(/\/api\/agent-sessions\?.*registeredOnly=true/, (route) =>
+    json(route, { sessions: [], nextCursor: null })
+  );
   let searchUrl = '';
   let searchCount = 0;
   const longReferencePath = `src/${'very-long-directory-name/'.repeat(8)}LongTarget.ts`;
@@ -1804,7 +1807,7 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
         entries: [
           { path: 'src/App.vue', name: 'App.vue', kind: 'FILE' },
           { path: 'src/App.test.ts', name: 'App.test.ts', kind: 'FILE' },
-          ...Array.from({ length: 12 }, (_, index) => ({
+          ...Array.from({ length: 5 }, (_, index) => ({
             path: `src/app-result-${index}.ts`,
             name: `app-result-${index}.ts`,
             kind: 'FILE'
@@ -1829,9 +1832,12 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
 
   const composer = page.getByRole('textbox', { name: '输入消息' });
-  await expect(composer).toHaveAttribute('placeholder', /用 @ 提及工作区文件或文件夹，或添加附件/);
+  await expect(composer).toHaveAttribute(
+    'placeholder',
+    /用 @ 提及工作区文件、文件夹或会话，或添加附件/
+  );
   await composer.fill('请检查 @app');
-  await expect(page.getByRole('listbox', { name: '引用文件或文件夹' })).toBeVisible();
+  await expect(page.getByRole('listbox', { name: '引用文件或会话' })).toBeVisible();
   await expect(page.getByRole('option', { name: /App\.vue/ })).toBeVisible();
   await expect(page.getByRole('option', { name: /app folder.*文件夹/ })).toBeAttached();
   await composer.press('ArrowDown');
@@ -1845,28 +1851,26 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
     'true'
   );
   expect(searchCount).toBe(1);
-  for (let index = 0; index < 13; index += 1) await composer.press('ArrowDown');
+  for (let index = 0; index < 6; index += 1) await composer.press('ArrowDown');
   const targetOption = page.getByRole('option', { name: /LongTarget\.ts/ });
   await expect(targetOption).toHaveAttribute('aria-selected', 'true');
-  const pickerLayout = await page
-    .getByRole('listbox', { name: '引用文件或文件夹' })
-    .evaluate((picker) => {
-      const selected = picker.querySelector<HTMLElement>('[aria-selected="true"]');
-      if (selected === null) throw new Error('未找到选中的文件引用');
-      const pickerBounds = picker.getBoundingClientRect();
-      const selectedBounds = selected.getBoundingClientRect();
-      return {
-        selectedVisible:
-          selectedBounds.top >= pickerBounds.top && selectedBounds.bottom <= pickerBounds.bottom,
-        horizontalOverflow: picker.scrollWidth > picker.clientWidth
-      };
-    });
+  const pickerLayout = await page.locator('.file-reference-picker').evaluate((picker) => {
+    const selected = picker.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (selected === null) throw new Error('未找到选中的文件引用');
+    const pickerBounds = picker.getBoundingClientRect();
+    const selectedBounds = selected.getBoundingClientRect();
+    return {
+      selectedVisible:
+        selectedBounds.top >= pickerBounds.top && selectedBounds.bottom <= pickerBounds.bottom,
+      horizontalOverflow: picker.scrollWidth > picker.clientWidth
+    };
+  });
   expect(pickerLayout).toEqual({ selectedVisible: true, horizontalOverflow: false });
   await composer.press('Enter');
   await expect(composer).toHaveValue('请检查 ');
   await expect(page.locator('.composer-file-reference-state')).toContainText('LongTarget.ts');
-  await expect(page.locator('.composer-file-reference-state')).toHaveAttribute(
-    'title',
+  await page.locator('.composer-file-reference-state').hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: longReferencePath })).toHaveText(
     longReferencePath
   );
   expect(searchUrl).toContain('q=app');
@@ -1885,4 +1889,90 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
   expect(submitted.content).not.toContain('@src');
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
   expect(writes.some((entry) => entry.url.includes('/uploads'))).toBe(false);
+});
+
+test('Composer sends a file reference and a Session mention together without loading its history', async ({
+  page
+}) => {
+  const writes: {
+    readonly url: string;
+    readonly csrf: string | undefined;
+    readonly body: string;
+  }[] = [];
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  const candidateReads: string[] = [];
+  const historyReads: string[] = [];
+  await page.route(/\/api\/agent-sessions\?.*registeredOnly=true/, (route) => {
+    candidateReads.push(route.request().url());
+    return json(route, {
+      sessions: [
+        {
+          id: 'target-session',
+          workspaceId: 'workspace-1',
+          runner: 'mar-agent',
+          customTitle: 'Target Session',
+          externalSessionId: 'target-session'
+        }
+      ],
+      nextCursor: null
+    });
+  });
+  await page.route(/\/api\/agent-sessions\/target-session\/.*(?:turns|watch).*/, (route) => {
+    historyReads.push(route.request().url());
+    return json(route, { turns: [], nextCursor: null });
+  });
+  await page.route(/\/api\/workspaces\/workspace-1\/files\/search(?:\?.*)?$/, (route) =>
+    json(route, {
+      files: { entries: [{ path: 'src/App.vue', name: 'App.vue', kind: 'FILE' }], nextCursor: null }
+    })
+  );
+  await page.route('**/api/agent-sessions/start', (route) =>
+    write(route, writes, {
+      session: {
+        id: 'session-1',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        externalSessionId: 'session-1',
+        control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+      },
+      run: {
+        id: 'run-1',
+        sessionId: 'session-1',
+        workspaceId: 'workspace-1',
+        status: 'STARTING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: 'mixed-reference'
+      }
+    })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
+  await page.getByRole('button', { name: '新建会话', exact: true }).click();
+  const composer = page.getByRole('textbox', { name: '输入消息' });
+  await composer.fill('检查 @app');
+  await page.getByRole('option', { name: /App\.vue/ }).click();
+  await composer.pressSequentially('@session Target');
+  await page.getByRole('option', { name: /Target Session/ }).click();
+  await expect(composer).toHaveValue('检查 <mar-session: Target Session> ');
+  await expect(page.locator('.composer-file-reference-state')).toContainText('App.vue');
+  await composer.press('Enter');
+  await expect.poll(() => writes.filter((entry) => entry.url.includes('/start')).length).toBe(1);
+  const submitted = JSON.parse(writes.find((entry) => entry.url.includes('/start'))!.body);
+  expect(submitted.content).toContain('<mar-session: Target Session>');
+  expect(submitted.content).toContain('<mar_references>');
+  expect(submitted.content).toContain('src/App.vue');
+  expect(submitted.content).not.toContain('target-session');
+  expect(candidateReads.length).toBeGreaterThan(0);
+  expect(candidateReads.at(-1)).toContain('sessionGroup=MAIN');
+  expect(candidateReads.at(-1)).toContain('limit=10');
+  expect(historyReads).toEqual([]);
 });

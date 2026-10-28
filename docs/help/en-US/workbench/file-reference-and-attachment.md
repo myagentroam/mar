@@ -1,11 +1,15 @@
 ---
 title: References, Folders, and Attachments
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-29
 ---
 
 # References, Folders, and Attachments
 
 Type `@` to search Workspace files and folders. Selecting a result adds a removable Composer tag rather than inserting a path into the message body. References are sent to the Agent as resource inputs and hidden in the sent message. The Agent reads the original resources through its normal tools and permissions; references are not uploaded, copied, or subject to attachment cleanup.
+
+In regular work mode, the same `@` picker also offers registered main Sessions in the current Node and Workspace. Use the All, Files, or Sessions filter, or type `@session` or `@session keyword` to search only Sessions. A bare `@` shows the first Sessions; enter a path to search files. Each source shows only its first results, so refine the query when more are available. The current Session and child Sessions are excluded. Hosted conversations and shared-session entries do not expose the ordinary Session directory.
+
+Selecting a Session inserts ordinary text, `<mar-session: Session name>`, at the caret. You can edit or undo it. It does not import history, send a message, or automatically read the source Session. Names are not unique: after a rename or when names match, the Agent may need to use existing tools to find the ID. Any actual read remains subject to the Agent's existing permissions. File tags and Session text can be used together in one message.
 
 Use the attachment action for files outside the Workspace. The first message accepts up to five files, each larger than zero and no larger than 5 MiB, with a combined limit of 10 MiB. Wait for every upload to complete before sending.
 

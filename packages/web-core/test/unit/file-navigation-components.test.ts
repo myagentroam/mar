@@ -5,7 +5,7 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
-import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../../src/view/composer/ComposerReferencePicker.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import {
   quickOpenScore,
@@ -116,7 +116,7 @@ async function renderFileTypeIcon(
 const FILE_NAVIGATION_SOURCES = [
   '../../src/view/workspace/QuickOpenDialog.vue',
   '../../src/view/workspace/WorkspaceFileTree.vue',
-  '../../src/view/composer/ComposerFileReferencePicker.vue'
+  '../../src/view/composer/ComposerReferencePicker.vue'
 ] as const;
 
 const requiredFileNavigationMessageKeys = [
@@ -344,26 +344,34 @@ describe('public file navigation components', () => {
     });
 
     it('renders file-reference candidates, loading and empty states while preserving file names as text', async () => {
-      const candidates = await render(ComposerFileReferencePicker, {
+      const candidates = await render(ComposerReferencePicker, {
         open: true,
-        entries: [
-          { path: 'docs/<guide>.md', name: '<guide>.md', kind: 'FILE' },
-          { path: 'docs', name: 'docs', kind: 'DIRECTORY' }
+        candidates: [
+          {
+            type: 'file',
+            key: 'file:docs/<guide>.md',
+            entry: { path: 'docs/<guide>.md', name: '<guide>.md', kind: 'FILE' }
+          },
+          {
+            type: 'file',
+            key: 'file:docs',
+            entry: { path: 'docs', name: 'docs', kind: 'DIRECTORY' }
+          }
         ],
         activeIndex: 1,
         loading: false,
         query: 'doc'
       });
-      const loading = await render(ComposerFileReferencePicker, {
+      const loading = await render(ComposerReferencePicker, {
         open: true,
-        entries: [],
+        candidates: [],
         activeIndex: 0,
         loading: true,
         query: 'doc'
       });
-      const empty = await render(ComposerFileReferencePicker, {
+      const empty = await render(ComposerReferencePicker, {
         open: true,
-        entries: [],
+        candidates: [],
         activeIndex: 0,
         loading: false,
         query: 'missing'
@@ -385,6 +393,49 @@ describe('public file navigation components', () => {
       expect(empty).not.toContain('role="option"');
       expect(loading).not.toMatch(/generated\.|composerFileReferencePicker\./u);
       expect(empty).not.toMatch(/generated\.|composerFileReferencePicker\./u);
+    });
+
+    it('preserves file-only reference feedback in the shared conversation', async () => {
+      const source = readFileSync(
+        new URL('../../src/view/conversation/SessionShareConversation.vue', import.meta.url),
+        'utf8'
+      );
+      expect(source).toContain(':file-error="fileReferences.fileError.value"');
+      expect(source).toContain(':file-more="fileReferences.fileMore.value"');
+
+      const props = {
+        open: true,
+        candidates: [],
+        activeIndex: 0,
+        loading: false,
+        query: 'doc'
+      };
+      const failed = await render(ComposerReferencePicker, { ...props, fileError: true });
+      expect(failed).toContain(i18n.global.t('composerReference.fileError'));
+      expect(failed).not.toContain(
+        i18n.global.t('generated.composerFileReferencePicker.noMatchingPaths')
+      );
+
+      const limited = await render(ComposerReferencePicker, {
+        ...props,
+        candidates: [
+          {
+            type: 'file',
+            key: 'file:docs/guide.md',
+            entry: { path: 'docs/guide.md', name: 'guide.md', kind: 'FILE' }
+          }
+        ],
+        fileMore: true
+      });
+      expect(limited).toContain('guide.md');
+      expect(limited).toContain(i18n.global.t('composerReference.refine'));
+      for (const html of [failed, limited]) {
+        expect(html).toContain(
+          `aria-label="${i18n.global.t('generated.composerFileReferencePicker.referenceAFileOrFolder')}"`
+        );
+        expect(html).not.toContain('reference-filters');
+        expect(html).not.toContain(i18n.global.t('composerReference.session'));
+      }
     });
 
     it('keeps selected and disabled file rows within the virtual window and preserves directory/file semantics', async () => {

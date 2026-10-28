@@ -4,7 +4,7 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
-import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../../src/view/composer/ComposerReferencePicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import type {
   RunnerCommand,
@@ -196,14 +196,14 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       />
     </section>
     <section class="picker-host" data-testid="files">
-      <ComposerFileReferencePicker
+      <ComposerReferencePicker
         :open="true"
-        :entries="entries"
+        :candidates="entries.map((entry) => ({ type: 'file', key: `file:${entry.path}`, entry }))"
         :active-index="0"
         :loading="false"
         query="file"
         @activate="record(`file-active:${$event}`)"
-        @select="record(`file:${$event.name}`)"
+        @select="record(`file:${$event.type === 'file' ? $event.entry.name : ''}`)"
       />
     </section>
   </main>

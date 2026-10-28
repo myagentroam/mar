@@ -44,7 +44,7 @@ export const workbenchPageEnUS = {
       agentConversation: 'Agent conversation',
       run: 'Run /{value0}',
       typeForCommandsToReferenceWorkspaceFiles:
-        "Type / for commands, # for quick prompts, {'@'} to reference workspace files or folders, or add attachments and ask {value0}…",
+        "Type / for commands, # for quick prompts, {'@'} to reference workspace files, folders, or Sessions, or add attachments and ask {value0}…",
       readOnlyInspector: 'Read-only inspector',
       workspace: 'Workspace'
     },

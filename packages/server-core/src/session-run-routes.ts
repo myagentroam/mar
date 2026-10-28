@@ -465,6 +465,7 @@ export function registerSessionRunRoutes(input: {
       limit?: string;
       query?: string;
       sessionGroup?: string;
+      registeredOnly?: string;
     };
   }>('/api/agent-sessions', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
@@ -481,6 +482,9 @@ export function registerSessionRunRoutes(input: {
       (request.query.sessionGroup !== undefined &&
         request.query.sessionGroup !== 'MAIN' &&
         request.query.sessionGroup !== 'CHILD') ||
+      (request.query.registeredOnly !== undefined &&
+        (request.query.workspaceId === undefined ||
+          (request.query.registeredOnly !== 'true' && request.query.registeredOnly !== 'false'))) ||
       (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100))
     )
       return sendError(reply, 400, 'SESSION_INVALID');
@@ -493,6 +497,9 @@ export function registerSessionRunRoutes(input: {
           ...(request.query.workspaceId === undefined
             ? {}
             : { workspaceId: request.query.workspaceId }),
+          ...(request.query.registeredOnly === undefined
+            ? {}
+            : { registeredOnly: request.query.registeredOnly === 'true' }),
           ...(request.query.cursor === undefined ? {} : { cursor: request.query.cursor }),
           ...(request.query.query === undefined || request.query.query.trim().length === 0
             ? {}

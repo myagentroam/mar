@@ -8,6 +8,12 @@ import type {
 } from '../model/workbench.js';
 import { localizedRunnerCommandState } from '../util/runner-presentation.js';
 import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-service.js';
+import { quickPromptAtCursor, quickPromptRangeAtCursor } from '../util/quick-prompt-range.js';
+export {
+  quickPromptAtCursor,
+  quickPromptRangeAtCursor,
+  replaceQuickPromptAtCursor
+} from '../util/quick-prompt-range.js';
 
 export interface DeferredRunnerCommand {
   readonly command: RunnerCommand;
@@ -31,28 +37,6 @@ export function removeSlashCommandAtCursor(value: string, cursor = value.length)
 }
 
 /** Returns the quick-prompt phrase under the caret; `#` only starts after whitespace or text start. */
-export function quickPromptAtCursor(value: string, cursor = value.length): string | undefined {
-  const beforeCursor = value.slice(0, Math.max(0, Math.min(cursor, value.length)));
-  const match = /(?:^|\s)#([^\s]*)$/.exec(beforeCursor);
-  return match === null ? undefined : match[1]!.toLocaleLowerCase();
-}
-
-export function replaceQuickPromptAtCursor(
-  value: string,
-  replacement: string,
-  cursor = value.length
-): { readonly value: string; readonly cursor: number } | undefined {
-  const bounded = Math.max(0, Math.min(cursor, value.length));
-  const beforeCursor = value.slice(0, bounded);
-  const match = /(^|\s)#[^\s]*$/.exec(beforeCursor);
-  if (match === null) return undefined;
-  const start = match.index + match[1]!.length;
-  return {
-    value: `${beforeCursor.slice(0, start)}${replacement}${value.slice(bounded)}`,
-    cursor: start + replacement.length
-  };
-}
-
 export function createRunnerInteractionService(options: {
   readonly input: Ref<string>;
   readonly draftSessionOpen: Ref<boolean>;
@@ -194,17 +178,15 @@ export function createRunnerInteractionService(options: {
     stage(skill, cursor);
   }
 
-  function selectQuickPrompt(prompt: QuickPrompt): number | undefined {
-    const replacement = replaceQuickPromptAtCursor(
-      options.input.value,
-      prompt.prompt,
-      commandCursor.value
-    );
-    if (replacement === undefined) return undefined;
-    options.input.value = replacement.value;
+  function selectQuickPrompt(
+    prompt: QuickPrompt,
+    edit: (start: number, end: number, text: string) => boolean
+  ): number | undefined {
+    const range = quickPromptRangeAtCursor(options.input.value, commandCursor.value);
+    if (range === undefined || !edit(range.start, range.end, prompt.prompt)) return undefined;
     commandPickerOpen.value = false;
     pickerKind.value = undefined;
-    return replacement.cursor;
+    return range.start + prompt.prompt.length;
   }
 
   function stageDraftCommand(command: RunnerCommand, input: string): void {

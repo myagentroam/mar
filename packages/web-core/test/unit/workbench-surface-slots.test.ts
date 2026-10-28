@@ -25,6 +25,7 @@ describe('Workbench surface host slots', () => {
         admin: { authenticated: true },
         workspaceRegistrationNodeId: 'node-a',
         setComposerInputFocus: vi.fn(),
+        setComposerRangeEditor: vi.fn(),
         hostedConversationWorkspace: {
           snapshot: ref(),
           conversations: ref([]),
@@ -60,6 +61,7 @@ describe('Workbench surface host slots', () => {
         })
       );
       try {
+        expect(page.setComposerRangeEditor).toHaveBeenCalledOnce();
         const text = textContent(rendered.root);
         expect(text).toContain('Host registration');
         expect(text.includes('Host settings')).toBe(view === 'settings');
@@ -68,6 +70,7 @@ describe('Workbench surface host slots', () => {
       } finally {
         rendered.unmount();
       }
+      expect(page.setComposerRangeEditor).toHaveBeenCalledTimes(2);
     }
   );
 });

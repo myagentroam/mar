@@ -116,7 +116,7 @@
     "./WorkspaceFileTree.vue": "./src/view/workspace/WorkspaceFileTree.vue",
     "./QuickOpenDialog.vue": "./src/view/workspace/QuickOpenDialog.vue",
     "./quick-open": "./src/service/quick-open-service.ts",
-    "./ComposerFileReferencePicker.vue": "./src/view/composer/ComposerFileReferencePicker.vue",
+    "./ComposerReferencePicker.vue": "./src/view/composer/ComposerReferencePicker.vue",
     "./icon-theme-preference": "./src/service/icon-theme-preference-service.ts",
     "./workspace-file-tree": "./src/service/workspace-file-tree-service.ts",
     "./icon-themes": "./src/icon-themes/index.ts",

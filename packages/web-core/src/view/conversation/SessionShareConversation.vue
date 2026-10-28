@@ -26,7 +26,7 @@ import ComposerQueue from '../composer/ComposerQueue.vue';
 import ImagePreviewDialogs from './ImagePreviewDialogs.vue';
 import SessionShareNameDialog from './SessionShareNameDialog.vue';
 import ComposerCommandPicker from '../composer/ComposerCommandPicker.vue';
-import ComposerFileReferencePicker from '../composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../composer/ComposerReferencePicker.vue';
 import { createWorkbenchComposerInteractionController } from '../../service/workbench-composer-interaction-controller.js';
 import type { EffectiveWorkspaceSkill } from '../../service/effective-workspace-skill-service.js';
 const props = defineProps<{ access: ReturnType<typeof createSessionShareAccessService> }>();
@@ -112,7 +112,7 @@ const interaction = createWorkbenchComposerInteractionController({
   handleConversationScroll: chat.scroll.handleScroll,
   scrollToLatest: chat.scroll.scrollToLatest,
   scrollToLatestAfterLayout: chat.scroll.scrollToLatestAfterLayout,
-  focusInputAt: (cursor) => composer.value?.focusAt(cursor)
+  editRange: (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
 });
 const observer = window.matchMedia('(max-width: 767px)');
 const onResize = () => {
@@ -302,14 +302,16 @@ onBeforeUnmount(() => {
             @remove-attachment="chat.attachments.remove"
         /></template>
         <template #picker>
-          <ComposerFileReferencePicker
+          <ComposerReferencePicker
             :open="fileReferences.open.value"
-            :entries="fileReferences.entries.value"
+            :candidates="fileReferences.candidates.value"
             :active-index="fileReferences.activeIndex.value"
             :loading="fileReferences.loading.value"
             :query="fileReferences.match.value?.query ?? ''"
+            :file-error="fileReferences.fileError.value"
+            :file-more="fileReferences.fileMore.value"
             @activate="(index) => (fileReferences.activeIndex.value = index)"
-            @select="interaction.selectFileReference"
+            @select="interaction.selectReference"
           />
           <ComposerCommandPicker
             :open="interactions.commandPickerOpen.value"

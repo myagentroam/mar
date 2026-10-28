@@ -51,6 +51,7 @@ async function renderOfflineSurface() {
       selectedConversationId: ref(undefined as string | undefined)
     },
     setComposerInputFocus: vi.fn(),
+    setComposerRangeEditor: vi.fn(),
     workspaceHost: { connected: false },
     workspaceTarget: { nodeId: 'node-1', workspaceId: 'workspace-1' },
     selectedWorkspace: undefined,

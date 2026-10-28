@@ -128,6 +128,7 @@ function pageFixture() {
       selectedConversationId: ref(undefined)
     },
     setComposerInputFocus: vi.fn(),
+    setComposerRangeEditor: vi.fn(),
     refreshAdmin: vi.fn(),
     workspaceHost: { connected: false },
     workspaceTarget: { nodeId: 'node', workspaceId: 'one' },

@@ -1,4 +1,19 @@
 export const composerEnUS = {
+  composerReference: {
+    picker: 'Reference files or sessions',
+    filter: 'Reference type',
+    all: 'All',
+    file: 'Files',
+    session: 'Sessions',
+    fileUnavailable: 'File search is unavailable.',
+    enterPath: 'Type a path to search files and folders.',
+    fileError: 'File search failed. Change the query to try again.',
+    sessionLoading: 'Searching sessions…',
+    sessionUnavailable: 'Session search is unavailable.',
+    sessionError: 'Session search failed. Change the query to try again.',
+    noSessions: 'No matching sessions.',
+    refine: 'More results available. Refine your search.'
+  },
   composerSend: {
     steer: 'Steer',
     holdHint: 'Slide up to steer. Move above the Composer to cancel.',

@@ -15,7 +15,7 @@ import {
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
 import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import { createSessionDraftService } from '../../src/service/session-draft-service.js';
-import { createFileReferenceService } from '../../src/service/file-reference-service.js';
+import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 
 const references = serializeComposerTag('mar_references', {
@@ -45,6 +45,19 @@ afterEach(() => {
 });
 
 describe('Composer product tag presentation', () => {
+  it('retains a session mention as ordinary visible text alongside file references', () => {
+    const body = 'Compare <mar-session: Alpha session> with this file';
+    const raw = `${body}\n${references}`;
+    expect(composerVisibleText(raw)).toContain(body);
+    expect(parseComposerTags(raw).map((part) => part.kind)).toEqual(['text', 'mar_references']);
+    expect(composerMessagePresentation({ text: raw }).text).toBe(body);
+    expect(conversationItemText('user_message', { text: raw })).toBe(body);
+    const queue = createComposerQueueService();
+    queue.startEditing({ queueItemId: 'session-reference', content: raw });
+    expect(queue.editingContent.value).toBe(body);
+    expect(queue.serializeEditedContent(body)).toContain(body);
+  });
+
   it('hides attachment instructions in history and queue editing while retaining mixed files', () => {
     const instruction = 'Images are included. Use view_image only to revisit them.';
     const mixedFiles = [
@@ -358,19 +371,25 @@ describe('Composer product tag presentation', () => {
 
   it('deduplicates and removes Composer reference tokens without inserting paths into the body', () => {
     const input = ref('Review @main');
-    const state = createFileReferenceService(input, {
+    const state = createComposerReferenceService(input, {
       nodeId: ref('node'),
       workspaceId: ref('workspace'),
       ready: () => true,
       request: async () => ({})
     } as never);
+    const edit = (start: number, end: number, text: string) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      return true;
+    };
     state.update(input.value.length);
-    state.select({ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' });
+    state.entries.value = [{ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' }];
+    state.selectCandidate(state.candidates.value[0]!, edit);
     expect(input.value).toBe('Review ');
     expect(state.selected.value).toHaveLength(1);
     input.value = '@main';
     state.update(5);
-    state.select({ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' });
+    state.entries.value = [{ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' }];
+    state.selectCandidate(state.candidates.value[0]!, edit);
     expect(state.selected.value).toHaveLength(1);
     state.remove('src/main.ts');
     expect(state.selected.value).toEqual([]);

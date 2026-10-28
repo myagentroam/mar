@@ -382,9 +382,18 @@ describe('Web Runner Interaction Status', () => {
       ])
     });
     state.updatePicker(11);
+    const edit = (start: number, end: number, text: string) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      return true;
+    };
     expect(state.pickerKind.value).toBe('quick-prompt');
     expect(state.visibleQuickPrompts.value).toHaveLength(1);
-    expect(state.selectQuickPrompt(state.visibleQuickPrompts.value[0]!)).toBe(29);
+    expect(
+      state.selectQuickPrompt(state.visibleQuickPrompts.value[0]!, () => false)
+    ).toBeUndefined();
+    expect(input.value).toBe('Before #rev After');
+    expect(state.commandPickerOpen.value).toBe(true);
+    expect(state.selectQuickPrompt(state.visibleQuickPrompts.value[0]!, edit)).toBe(29);
     expect(input.value).toBe('Before Please review the code After');
   });
 
@@ -432,7 +441,11 @@ describe('Web Runner Interaction Status', () => {
         send: () => {
           throw new Error('Picking a quick prompt must not send the message');
         },
-        selectQuickPrompt: (prompt) => state.selectQuickPrompt(prompt)
+        selectQuickPrompt: (prompt) =>
+          state.selectQuickPrompt(prompt, (start, end, text) => {
+            input.value = input.value.slice(0, start) + text + input.value.slice(end);
+            return true;
+          })
       });
       expect(input.value).toBe('review, fix, loop');
       expect(state.commandPickerOpen.value).toBe(false);

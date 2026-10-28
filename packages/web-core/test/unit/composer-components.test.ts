@@ -17,7 +17,7 @@ import { serializeComposerTag } from '@myagentroam/protocol';
 import type { WorkspaceQueueItem } from '../../src/model/workbench.js';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
-import ComposerFileReferencePicker from '../../src/view/composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../../src/view/composer/ComposerReferencePicker.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
@@ -539,10 +539,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     });
     const fileHints: unknown[] = [];
     const fileHtml = await render(
-      ComposerFileReferencePicker,
+      ComposerReferencePicker,
       {
         open: true,
-        entries: [{ name: 'example.ts', path: 'src/nested/example.ts', kind: 'FILE' }],
+        candidates: [
+          {
+            type: 'file',
+            key: 'file:src/nested/example.ts',
+            entry: { name: 'example.ts', path: 'src/nested/example.ts', kind: 'FILE' }
+          }
+        ],
         activeIndex: 0,
         loading: false,
         query: 'example'

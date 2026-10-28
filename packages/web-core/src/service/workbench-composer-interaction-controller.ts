@@ -1,7 +1,10 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
-import type { FileReferenceEntry } from './file-reference-service.js';
-import type { createFileReferenceService } from './file-reference-service.js';
+import type {
+  ComposerReferenceCandidate,
+  ComposerRangeEdit
+} from './composer-reference-service.js';
+import type { createComposerReferenceService } from './composer-reference-service.js';
 import type { createRunnerInteractionService } from './runner-interaction-service.js';
 import { quickPromptAtCursor, slashCommandAtCursor } from './runner-interaction-service.js';
 
@@ -14,7 +17,7 @@ interface WorkbenchComposerInteractionOptions {
   readonly runnerProfilesLoading: Ref<boolean>;
   readonly runnerProfilesFailed: Ref<boolean>;
   readonly commandPickerOpen: Ref<boolean>;
-  readonly fileReferences: ReturnType<typeof createFileReferenceService>;
+  readonly fileReferences: ReturnType<typeof createComposerReferenceService>;
   readonly runnerInteractions: ReturnType<typeof createRunnerInteractionService>;
   readonly hasRunnerProfile: (nodeId: string) => boolean;
   readonly loadRunnerProfiles: (nodeId: string) => Promise<unknown>;
@@ -34,7 +37,7 @@ interface WorkbenchComposerInteractionOptions {
   readonly handleConversationScroll: (loadOlder: () => void) => void;
   readonly scrollToLatest: () => void;
   readonly scrollToLatestAfterLayout: () => Promise<void>;
-  readonly focusInputAt: (cursor: number) => void;
+  readonly editRange: ComposerRangeEdit;
 }
 
 export function createWorkbenchComposerInteractionController(
@@ -43,7 +46,10 @@ export function createWorkbenchComposerInteractionController(
   function updatePickers(cursor = options.input.value.length): void {
     options.runnerInteractions.onInput(cursor);
     options.fileReferences.update(cursor);
-    if (!options.filesReady.value || options.workspaceTarget.value?.workspaceId === undefined)
+    if (
+      (!options.filesReady.value && !options.fileReferences.sessionAvailable()) ||
+      options.workspaceTarget.value?.workspaceId === undefined
+    )
       options.fileReferences.close();
     if (options.fileReferences.open.value) options.commandPickerOpen.value = false;
     options.fileReferences.scheduleSearch();
@@ -61,9 +67,10 @@ export function createWorkbenchComposerInteractionController(
     }
     const slashQuery = slashCommandAtCursor(options.input.value, cursor);
     const quickPromptQuery = quickPromptAtCursor(options.input.value, cursor);
+    updatePickers(cursor);
+    if (options.fileReferences.open.value) return;
     if (slashQuery !== undefined) options.ensureComposerSkills();
     if (quickPromptQuery !== undefined) options.ensureQuickPrompts();
-    updatePickers(cursor);
     if (
       slashQuery !== undefined &&
       options.workspaceTarget.value?.nodeId !== undefined &&
@@ -79,18 +86,19 @@ export function createWorkbenchComposerInteractionController(
   }
 
   function onComposerKeydown(event: KeyboardEvent): void {
+    if (event.isComposing) return;
     if (options.fileReferences.open.value) {
       if (
         (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
-        options.fileReferences.entries.value.length > 0
+        options.fileReferences.candidates.value.length > 0
       ) {
         event.preventDefault();
         const delta = event.key === 'ArrowDown' ? 1 : -1;
         options.fileReferences.activeIndex.value =
           (options.fileReferences.activeIndex.value +
             delta +
-            options.fileReferences.entries.value.length) %
-          options.fileReferences.entries.value.length;
+            options.fileReferences.candidates.value.length) %
+          options.fileReferences.candidates.value.length;
         return;
       }
       if (
@@ -99,13 +107,11 @@ export function createWorkbenchComposerInteractionController(
         !event.shiftKey &&
         !event.altKey
       ) {
+        event.preventDefault();
         const entry =
-          options.fileReferences.entries.value[options.fileReferences.activeIndex.value];
-        if (entry !== undefined) {
-          event.preventDefault();
-          selectFileReference(entry);
-          return;
-        }
+          options.fileReferences.candidates.value[options.fileReferences.activeIndex.value];
+        if (entry !== undefined) selectReference(entry);
+        return;
       }
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -119,19 +125,19 @@ export function createWorkbenchComposerInteractionController(
       canInterrupt: options.canInterruptTurn.value,
       stop: () => void options.stopActiveRun(),
       send: options.sendMessage,
-      selectQuickPrompt: (prompt) => {
-        const cursor = options.runnerInteractions.selectQuickPrompt(prompt);
-        if (cursor !== undefined) options.focusInputAt(cursor);
-      },
+      selectQuickPrompt: selectQuickPrompt,
       selectSkill: options.selectSkill
     });
   }
 
-  function selectFileReference(entry: FileReferenceEntry): void {
-    const cursor = options.fileReferences.select(entry);
-    if (cursor === undefined) return;
-    options.fileReferences.cancelSearch();
-    options.focusInputAt(cursor);
+  function selectReference(entry: ComposerReferenceCandidate): void {
+    options.fileReferences.selectCandidate(entry, options.editRange);
+  }
+
+  function selectQuickPrompt(
+    prompt: Parameters<typeof options.runnerInteractions.selectQuickPrompt>[0]
+  ): void {
+    options.runnerInteractions.selectQuickPrompt(prompt, options.editRange);
   }
 
   function onComposerScroll(): void {
@@ -145,6 +151,7 @@ export function createWorkbenchComposerInteractionController(
     onComposerScroll,
     scrollConversationToLatest: options.scrollToLatest,
     scrollConversationToLatestAfterLayout: options.scrollToLatestAfterLayout,
-    selectFileReference
+    selectReference,
+    selectQuickPrompt
   };
 }
