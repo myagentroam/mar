@@ -563,7 +563,9 @@ describe('Core MySQL schema', () => {
       'COMMIT'
     ]);
     expect(CORE_MYSQL_SCHEMA_V9.mar_agent_models).not.toContain('service_tier');
-    expect(CORE_MYSQL_SCHEMA.mar_agent_models).toContain("'flex','priority','fast','ultrafast'");
+    expect(CORE_MYSQL_SCHEMA_V17.mar_agent_models).toContain(
+      "'flex','priority','fast','ultrafast'"
+    );
   });
 
   it('rolls back a failed service-tier backfill and leaves the additive DDL retryable', async () => {
@@ -596,7 +598,7 @@ describe('Core MySQL schema', () => {
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33
+      33, 34
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');
@@ -652,15 +654,27 @@ describe('Core MySQL schema', () => {
     );
   });
 
-  it('keeps current common model and Workspace fields in the frozen baseline', () => {
+  it('preserves the frozen model baseline while projecting the v34 settings storage', () => {
     expect(CORE_MYSQL_SCHEMA.workspaces).toContain('`group_name` varchar(128) DEFAULT NULL');
     expect(CORE_MYSQL_SCHEMA_V9.mar_agent_models).toContain(
       "`high_density_compaction` tinyint(1) NOT NULL DEFAULT '0'"
     );
     expect(CORE_MYSQL_SCHEMA.mar_agent_models).not.toContain('high_density_compaction');
-    expect(CORE_MYSQL_SCHEMA.mar_agent_models).toContain(
+    expect(CORE_MYSQL_SCHEMA_V9.mar_agent_models).toContain(
       "`fast_mode` tinyint(1) NOT NULL DEFAULT '0'"
     );
+    for (const column of [
+      'fast_mode',
+      'service_tier',
+      'hosted_web_search',
+      'responses_transport',
+      'responses_previous_response_id'
+    ]) {
+      expect(CORE_MYSQL_SCHEMA_V17.mar_agent_models).toContain(`\`${column}\``);
+      expect(CORE_MYSQL_SCHEMA.mar_agent_models).not.toContain(`\`${column}\``);
+    }
+    expect(CORE_MYSQL_SCHEMA_V9.system_settings).toContain('`setting_key` varchar(128)');
+    expect(CORE_MYSQL_SCHEMA.system_settings).toContain('`setting_key` varchar(191)');
     expect(CORE_MYSQL_SCHEMA.mar_agent_models).toContain(
       "`owner_type` enum('PERSONAL','ORGANIZATION') NOT NULL"
     );

@@ -397,7 +397,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         width >= 768 ? '14px' : '13px'
       );
       for (const tag of await inspector.locator('.repository-tags-row .el-tag').all()) {
-        await expect(tag).toHaveCSS('height', '20px');
+        const height = await tag.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).height)
+        );
+        expect(height).toBeCloseTo((width >= 768 ? 12 : 11) * 1.65, 1);
         await expect(tag).toHaveCSS('font-weight', '400');
         await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
       }

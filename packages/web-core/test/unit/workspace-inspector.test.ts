@@ -1320,7 +1320,7 @@ it.each([
             content:
               encoding === 'utf-8'
                 ? new TextDecoder().decode(slice, { stream: slice.length < bytes.length })
-                : '',
+                : Buffer.from(slice).toString('base64'),
             size: bytes.length,
             nextOffset: slice.length < bytes.length ? slice.length : null
           }

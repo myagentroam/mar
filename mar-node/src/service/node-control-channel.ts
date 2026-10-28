@@ -4,6 +4,9 @@ import type { NodeConfig } from '../config.js';
 import { ControlOutboundScheduler } from '../control-outbound-scheduler.js';
 import { nodeConnectEndpoint } from '../connection/endpoints.js';
 
+const MAX_PREAUTH_FRAMES = 1024;
+const MAX_PREAUTH_BYTES = 8 * 1024 * 1024;
+
 interface NodeControlChannelOptions {
   readonly config: () => NodeConfig | undefined;
   readonly capabilities: () => NodeCapabilities;
@@ -18,8 +21,11 @@ interface NodeControlChannelOptions {
 
 export class NodeControlChannel {
   private socket: WebSocket | undefined;
+  private authenticated = false;
+  private preauthFrames = 0;
+  private preauthBytes = 0;
   private readonly outbound = new ControlOutboundScheduler(
-    () => this.socket,
+    () => (this.authenticated ? this.socket : undefined),
     () => this.socket?.close(1013, 'NODE_CONTROL_BACKPRESSURE_TIMEOUT')
   );
   private reconnectTimer: NodeJS.Timeout | undefined;
@@ -43,18 +49,31 @@ export class NodeControlChannel {
     socket.once('open', () => {
       this.attempts = 0;
       if (config.nodeId !== undefined && config.credential !== undefined)
-        this.send('authenticate', { nodeId: config.nodeId, credential: config.credential });
+        socket.send(
+          JSON.stringify(
+            createEnvelope('authenticate', { nodeId: config.nodeId, credential: config.credential })
+          )
+        );
       else if (config.registrationToken !== undefined)
-        this.send('register', {
-          registrationToken: config.registrationToken,
-          capabilities: this.options.capabilities()
-        });
+        socket.send(
+          JSON.stringify(
+            createEnvelope('register', {
+              registrationToken: config.registrationToken,
+              capabilities: this.options.capabilities()
+            })
+          )
+        );
       else socket.close(4000, 'NODE_CREDENTIAL_MISSING');
     });
-    socket.on('message', (raw) => this.options.onMessage(raw.toString()));
+    socket.on('message', (raw) => {
+      if (this.socket === socket) this.options.onMessage(raw.toString());
+    });
     socket.once('close', (code, reason) => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      this.authenticated = false;
+      this.preauthFrames = 0;
+      this.preauthBytes = 0;
       this.outbound.reset();
       const reasonText = reason.toString();
       this.options.onClose(code, reasonText);
@@ -64,7 +83,24 @@ export class NodeControlChannel {
   }
 
   connected(): boolean {
-    return this.socket?.readyState === WebSocket.OPEN;
+    return this.authenticated && this.socket?.readyState === WebSocket.OPEN;
+  }
+  connection(): object | undefined {
+    return this.socket;
+  }
+  ready(capabilities: NodeCapabilities, connection: object | undefined = this.socket): boolean {
+    if (
+      connection === undefined ||
+      connection !== this.socket ||
+      this.socket?.readyState !== WebSocket.OPEN
+    )
+      return false;
+    this.socket.send(JSON.stringify(createEnvelope('capabilities', capabilities)));
+    this.authenticated = true;
+    this.preauthFrames = 0;
+    this.preauthBytes = 0;
+    this.outbound.resume();
+    return true;
   }
   close(code?: number, reason?: string): void {
     this.socket?.close(code, reason);
@@ -75,6 +111,9 @@ export class NodeControlChannel {
     this.outbound.reset();
     this.socket?.close();
     this.socket = undefined;
+    this.authenticated = false;
+    this.preauthFrames = 0;
+    this.preauthBytes = 0;
   }
 
   send(type: string, payload: unknown, replyTo?: string): void {
@@ -84,7 +123,18 @@ export class NodeControlChannel {
   }
 
   sendEnvelope(envelope: NodeEnvelope): void {
-    if (!this.connected()) return;
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    if (!this.authenticated) {
+      // ready() sends the latest capability snapshot; an older queued snapshot
+      // must not overwrite it after authentication.
+      if (envelope.type === 'capabilities') return;
+      this.preauthFrames++;
+      this.preauthBytes += Buffer.byteLength(JSON.stringify(envelope));
+      if (this.preauthFrames > MAX_PREAUTH_FRAMES || this.preauthBytes > MAX_PREAUTH_BYTES) {
+        this.socket.close(1013, 'NODE_CONTROL_PREAUTH_BACKPRESSURE');
+        return;
+      }
+    }
     this.outbound.enqueue(envelope, envelope.type === 'workbench.event' ? 'normal' : 'high');
   }
 

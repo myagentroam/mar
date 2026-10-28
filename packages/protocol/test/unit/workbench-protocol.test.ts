@@ -388,7 +388,7 @@ describe('Workbench protocol contracts', () => {
       marAgentNodeModelSummarySchema.safeParse({
         ...runtime,
         sortOrder,
-        fastMode: 'yes'
+        serviceTier: 'invalid'
       }).success
     ).toBe(false);
     expect(

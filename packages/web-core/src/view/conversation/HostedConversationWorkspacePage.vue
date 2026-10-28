@@ -40,7 +40,6 @@ import ConversationTimeline from './ConversationTimeline.vue';
 import ToolChangeReviewWindow from '../workspace/ToolChangeReviewWindow.vue';
 import { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
-import { supportsNodeFeature } from '../../util/node-features.js';
 import HostedConversationComposer from '../../view/conversation/HostedConversationComposer.vue';
 import HostedConversationEntryPage from '../../view/conversation/HostedConversationEntryPage.vue';
 import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
@@ -72,11 +71,7 @@ const props = defineProps<{
 }>();
 const standaloneFileWindow = createStandaloneFileWindowService();
 const toolReview = createToolChangeReviewService(props.request);
-const toolChangeEnabled = computed(
-  () =>
-    interactionReady.value &&
-    supportsNodeFeature(props.workspace.snapshot.value?.nodeAppVersion ?? '', 'TOOL_RESULT_DIFF')
-);
+const toolChangeEnabled = computed(() => interactionReady.value);
 function openFileChange(entry: FileChangeEntry): void {
   const nodeId = props.workspace.selectedNodeId.value;
   const sessionId = props.workspace.selectedConversationId.value;

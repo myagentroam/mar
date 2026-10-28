@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
-  CoreJsonValue,
-  CoreSessionExtensionContext,
-  CoreMcpConnectionRef
-} from '../../mar-agent/src/index.js';
+  ExtensionJsonValue,
+  SessionExtensionContext,
+  ExtensionMcpConnectionRef
+} from '../../mar-agent/src/extensions.js';
 import {
   fixture,
   answer,
@@ -17,8 +17,8 @@ import {
 } from './support/core-extension-mcp-client.js';
 
 afterEach(cleanupCoreFixtures);
-const configuration = (value: unknown): CoreJsonValue =>
-  JSON.parse(JSON.stringify(value)) as CoreJsonValue;
+const configuration = (value: unknown): ExtensionJsonValue =>
+  JSON.parse(JSON.stringify(value)) as ExtensionJsonValue;
 const modes = (['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const).flatMap((protocol) =>
   [false, true].map((codeMode) => ({ protocol, codeMode }))
 );
@@ -32,7 +32,7 @@ describe('Core Extension with the existing application MCP Client', () => {
         let cwd = '';
         const bridge = mcpLeasePort(() => cwd);
         let name = '';
-        let context!: CoreSessionExtensionContext;
+        let context!: SessionExtensionContext;
         try {
           const f = await fixture(
             [
@@ -125,9 +125,9 @@ describe('Core Extension with the existing application MCP Client', () => {
       let cwd = '';
       const bridge = mcpLeasePort(() => cwd);
       let name = '';
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       const attempts: Array<{
-        fact: import('../../mar-agent/src/index.js').CoreToolCompletion;
+        fact: import('../../mar-agent/src/extensions.js').ExtensionToolCompletion;
         entry: string;
         executionId: string | undefined;
       }> = [];
@@ -227,8 +227,8 @@ describe('Core Extension with the existing application MCP Client', () => {
     async ({ protocol, codeMode }) => {
       let cwd = '';
       const bridge = mcpLeasePort(() => cwd);
-      let context!: CoreSessionExtensionContext;
-      let ref!: import('../../mar-agent/src/index.js').CoreToolRef;
+      let context!: SessionExtensionContext;
+      let ref!: import('../../mar-agent/src/extensions.js').ExtensionToolRef;
       try {
         const f = await fixture(
           [
@@ -296,7 +296,7 @@ describe('Core Extension with the existing application MCP Client', () => {
   it('keeps an acquired real stdio lease after its connect request signal is cancelled', async () => {
     let cwd = '';
     const bridge = mcpLeasePort(() => cwd);
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     try {
       const f = await fixture(
         [
@@ -341,8 +341,8 @@ describe('Core Extension with the existing application MCP Client', () => {
   it('releases only the owning Session lease and revokes old refs on reconnect', async () => {
     let cwd = '';
     const bridge = mcpLeasePort(() => cwd);
-    const contexts = new Map<string, CoreSessionExtensionContext>();
-    const connections = new Map<string, CoreMcpConnectionRef>();
+    const contexts = new Map<string, SessionExtensionContext>();
+    const connections = new Map<string, ExtensionMcpConnectionRef>();
     try {
       const f = await fixture(
         [
@@ -414,7 +414,7 @@ describe('Core Extension with the existing application MCP Client', () => {
     const http = await httpMcpFixture();
     let cwd = '';
     const bridge = mcpLeasePort(() => cwd);
-    let context!: CoreSessionExtensionContext;
+    let context!: SessionExtensionContext;
     try {
       const f = await fixture(
         [
@@ -477,7 +477,7 @@ describe('Core Extension with the existing application MCP Client', () => {
       const http = await httpMcpFixture();
       let cwd = '';
       const bridge = mcpLeasePort(() => cwd);
-      let context!: CoreSessionExtensionContext;
+      let context!: SessionExtensionContext;
       let survivor: Awaited<ReturnType<typeof bridge.cache.acquire>> | undefined;
       try {
         const f = await fixture(

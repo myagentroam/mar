@@ -878,7 +878,8 @@ describe('Hosted template changes', () => {
     name: 'Second template',
     currentVersionId: 'version-2'
   };
-  const initial = { ...snapshot, nodeAppVersion: '0.11.31' };
+  // Version is display metadata; admission and live state determine availability.
+  const initial = { ...snapshot, nodeAppVersion: 'unknown' };
   const changed = {
     ...initial,
     conversation: {

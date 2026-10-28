@@ -27,7 +27,6 @@ import type {
 } from '../model/workbench.js';
 import { limitConversationHistory } from '../util/conversation-history.js';
 import { errorCode } from '../util/api-error.js';
-import { supportsNodeFeature } from '../util/node-features.js';
 import { listAvailableConversationTemplates } from './hosted-conversation-entry-service.js';
 import { createConversationProjectionService } from './conversation-projection-service.js';
 import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
@@ -1455,10 +1454,6 @@ export function createHostedConversationWorkspaceService(
     if (conversation.templateId !== expectedTemplateId)
       throw new Error('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
     if (
-      !supportsNodeFeature(
-        context.snapshot.nodeAppVersion ?? '',
-        'HOSTED_CONVERSATION_TEMPLATE_SWITCH'
-      ) ||
       conversation.status !== 'ACTIVE' ||
       !watchReady.value ||
       context.snapshot.run !== null ||

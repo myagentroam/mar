@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
 import { ManagementQueryError } from '@myagentroam/server-core/management-pagination';
-import type { MysqlServerDatabase } from '../mysql/server-database.js';
+import type { SessionLookup } from '@myagentroam/server-core/session';
 import type { EnterpriseUserService } from '../rbac/enterprise-user-service.js';
-import type { NodeControl } from '../node-control.js';
 import {
   databaseError,
   normalizedOptionalText,
@@ -17,10 +16,10 @@ type EnterpriseRole = 'ADMIN' | 'ORG_ADMIN' | 'MEMBER';
 
 export function registerEnterpriseUserRoutes(input: {
   readonly app: FastifyInstance;
-  readonly database: MysqlServerDatabase;
+  readonly database: SessionLookup;
   readonly users: EnterpriseUserService;
   readonly publicOrigin: string | undefined;
-  readonly nodeControl: NodeControl;
+  readonly nodeControl: { closeUserSessions(userId: number): void };
 }): void {
   const { app, database, users, publicOrigin, nodeControl } = input;
   app.get<{ Querystring: Record<string, unknown> }>(
@@ -151,7 +150,7 @@ function userInput(body: {
 }
 
 function writableActor(
-  database: MysqlServerDatabase,
+  database: SessionLookup,
   request: Parameters<typeof protectedAdmin>[1],
   reply: Parameters<typeof protectedAdmin>[2],
   publicOrigin: string | undefined

@@ -129,7 +129,7 @@ export const hostedConversationsZhCN = {
     stop: '停止',
     stopWithEsc: '停止（Esc）',
     runActive: '当前任务仍在进行中。',
-    replaceCurrentHint: '任务进行中，按 Ctrl+Enter 可优先补充这条消息。',
+    replaceCurrentHint: '任务进行中，按 Ctrl+Enter 可插入消息。',
     replaceCurrentUnsupported: '当前节点暂不支持在任务进行中发送替换消息。',
     rollbackTitle: '回滚对话？',
     rollbackConfirmation: '回滚会永久移除此消息及其后的对话历史，且无法撤销。是否继续？',

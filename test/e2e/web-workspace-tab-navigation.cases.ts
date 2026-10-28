@@ -13,7 +13,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     async ({ page }) => {
       test.setTimeout(60_000);
       const english = locale === 'en-US';
-      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start']);
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
       await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
       await mockEmptyWorkspaceFiles(
         page,
@@ -303,7 +303,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       locale,
     async ({ page }) => {
       const english = locale === 'en-US';
-      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start']);
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
       await page.addInitScript((value) => {
         localStorage.setItem('mar.locale.v2', value);
         const gap = {

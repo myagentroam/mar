@@ -1,9 +1,10 @@
-import { safeAuditMetadata } from '@myagentroam/server-core/audit';
+import { emitAudit, safeAuditMetadata } from '@myagentroam/server-core/audit';
 import { scopedAuditEvent } from './audit-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AuditConversationInputMode, AuditConversationReceipt } from '@myagentroam/protocol';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import type { AuditInput, SharedConversationAuditInput } from '../database.js';
+import type { AuditEvent } from '@myagentroam/server-core/audit';
+import type { SharedConversationAuditInput } from './audit-contracts.js';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { AuthorizationProvider } from '../product/product-policy.js';
 import { withMysqlTransaction } from '@myagentroam/server-core/mysql-reference-store';
@@ -30,9 +31,9 @@ export class AuditService {
     private readonly now: () => number = Date.now
   ) {}
 
-  async record(input: AuditInput): Promise<void> {
+  async record(input: AuditEvent): Promise<void> {
     const metadata = safeAuditMetadata(input.metadata);
-    await this.database.audit({ ...input, ...(metadata === undefined ? {} : { metadata }) });
+    emitAudit(this.database, { ...input, ...(metadata === undefined ? {} : { metadata }) });
   }
 
   async recordSharedConversation(input: {

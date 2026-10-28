@@ -42,7 +42,6 @@ export interface NodeSummary {
     readonly marAgentRuntimeCredentials?: {
       readonly apiVersion: number;
       readonly websocket: boolean;
-      readonly fastMode?: boolean;
       readonly serviceTiers?: readonly MarAgentResponsesServiceTier[];
       readonly namespacedTools?: boolean;
       readonly responsesHttpContinuation?: boolean;

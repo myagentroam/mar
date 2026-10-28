@@ -126,13 +126,13 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(link).toHaveAttribute('href', '#');
       await expect(link).toHaveCSS('cursor', 'pointer');
       await link.click();
-      opened.push({ path, line, external: false });
+      opened.push({ path, ...(line === undefined ? {} : { line }), external: false });
       await expect(output).toHaveText(JSON.stringify(opened));
       await link.press('Shift+Tab');
       await page.keyboard.press('Tab');
       await expect(link).toBeFocused();
       await page.keyboard.press('Enter');
-      opened.push({ path, line, external: false });
+      opened.push({ path, ...(line === undefined ? {} : { line }), external: false });
       await expect(output).toHaveText(JSON.stringify(opened));
       await expect(page).toHaveURL(/custom-theme\.html$/u);
     }

@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
 import { createEnvelope, type NodeEnvelope } from '../../packages/protocol/src/index.js';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
 test('Admin queries and controls sessions through Server and Node without storing execution data on Server', async () => {
@@ -31,6 +32,7 @@ test('Admin queries and controls sessions through Server and Node without storin
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: process.version,
+            nodeAppVersion: nodePackage.version,
             codex: { available: true, version: 'test' },
             claudeCode: { available: true, version: 'test' }
           }

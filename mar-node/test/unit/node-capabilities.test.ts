@@ -21,7 +21,6 @@ describe('Node capability version reporting', () => {
         apiVersion: 1,
         websocket: true,
         httpVersions: ['1.1', '2'],
-        fastMode: true,
         namespacedTools: true,
         responsesOptionalParameters: true,
         responsesHttpContinuation: true,
@@ -126,6 +125,12 @@ describe('Node capability version reporting', () => {
         },
         close() {}
       });
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({
+        type: 'capabilities',
+        payload: { nodeAppVersion: initial.nodeAppVersion, codex: initial.codex }
+      });
+      sent.length = 0;
       (connector as unknown as { startCapabilityRefresh: () => void }).startCapabilityRefresh();
 
       await vi.advanceTimersByTimeAsync(59_999);
@@ -177,6 +182,12 @@ describe('Node capability version reporting', () => {
           },
           close() {}
         });
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toMatchObject({
+          type: 'capabilities',
+          payload: { nodeAppVersion: initial.nodeAppVersion, codex: initial.codex }
+        });
+        sent.length = 0;
 
         await (
           connector as unknown as { refreshCapabilities: () => Promise<void> }

@@ -15,10 +15,8 @@ import { databaseError } from './domain-errors.js';
 import { sendError } from './http-errors.js';
 import { requestUserNode } from './workspace-http-support.js';
 import { publicNode } from './node-projection.js';
-import { compareStableVersions } from './node-upgrade-service.js';
+import { emitAudit } from './audit.js';
 import type { SessionRunNodeControl } from './session-run-contracts.js';
-const CONVERSATION_HOSTING_ENABLE_MINIMUM_NODE_VERSION = '0.9.28';
-const CONVERSATION_HOSTING_DISABLE_MINIMUM_NODE_VERSION = '0.9.37';
 
 export function registerConversationHostingRoutes(input: {
   app: FastifyInstance;
@@ -27,7 +25,7 @@ export function registerConversationHostingRoutes(input: {
       eventType: string;
       actorUserId: number;
       metadata: string;
-    }): unknown | Promise<unknown>;
+    }): void | Promise<void>;
   };
   nodeControl: Pick<SessionRunNodeControl, 'requestNode'> & {
     listNodes():
@@ -76,7 +74,7 @@ export function registerConversationHostingRoutes(input: {
           'storage',
           conversationHostingStorageCapacitySchema
         );
-        await database.audit({
+        emitAudit(database, {
           eventType: 'conversation_hosting_storage_inspected',
           actorUserId: admin.userId,
           metadata: JSON.stringify({ nodeId: node.id })
@@ -116,16 +114,9 @@ export function registerConversationHostingRoutes(input: {
       if (!node.connected || node.disabled) return sendError(reply, 409, 'NODE_OFFLINE');
       const projection = publicNode(node) as {
         readonly platform: string;
-        readonly nodeAppVersion: string;
       };
       if (projection.platform !== 'linux')
         return sendError(reply, 409, 'CONVERSATION_HOSTING_ENABLE_PLATFORM_UNSUPPORTED');
-      const versionComparison = compareStableVersions(
-        projection.nodeAppVersion,
-        CONVERSATION_HOSTING_ENABLE_MINIMUM_NODE_VERSION
-      );
-      if (versionComparison === undefined || versionComparison < 0)
-        return sendError(reply, 409, 'CONVERSATION_HOSTING_ENABLE_NODE_VERSION_UNSUPPORTED');
       try {
         const result = conversationHostingEnableResultSchema.parse(
           await requestUserNode(
@@ -165,16 +156,9 @@ export function registerConversationHostingRoutes(input: {
       if (!node.connected || node.disabled) return sendError(reply, 409, 'NODE_OFFLINE');
       const projection = publicNode(node) as {
         readonly platform: string;
-        readonly nodeAppVersion: string;
       };
       if (projection.platform !== 'linux')
         return sendError(reply, 409, 'CONVERSATION_HOSTING_DISABLE_PLATFORM_UNSUPPORTED');
-      const versionComparison = compareStableVersions(
-        projection.nodeAppVersion,
-        CONVERSATION_HOSTING_DISABLE_MINIMUM_NODE_VERSION
-      );
-      if (versionComparison === undefined || versionComparison < 0)
-        return sendError(reply, 409, 'CONVERSATION_HOSTING_DISABLE_NODE_VERSION_UNSUPPORTED');
       try {
         const result = conversationHostingEnableResultSchema.parse(
           await requestUserNode(
@@ -226,7 +210,7 @@ export function registerConversationHostingRoutes(input: {
           conversationHostingCleanupPreviewSchema
         );
         const response = { preview };
-        await database.audit({
+        emitAudit(database, {
           eventType: 'conversation_hosting_cleanup_previewed',
           actorUserId: admin.userId,
           metadata: JSON.stringify({

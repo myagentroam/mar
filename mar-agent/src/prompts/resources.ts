@@ -36,7 +36,7 @@ export function retainedSessionResourcesSnapshot(
       : []),
     processes.length === 0
       ? ''
-      : 'Use exec_wait with processId to wait, write stdin or cancel; in Code Mode use tools.exec_wait. Cancelling a wait leaves the process running; explicit cancel releases the process resource.',
+      : 'Use exec_wait with processId to wait, write stdin or cancel. Cancelling a wait leaves the process running; explicit cancel releases the process resource.',
     subagents.length === 0
       ? ''
       : 'agent_cancel stops only the current child turn and retains its Session for later messages or explicit deletion.',

@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../packages/protocol/src/index.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
-import { NodeControl } from '../../ee/server/src/node-control.js';
+import { createTestNodeControl } from '../support/create-test-node-control.js';
 import {
   loadOrCreateRuntimeCredentialHmacKey,
   RuntimeCredentialService
-} from '../../ee/server/src/service/runtime-credential-service.js';
+} from '../../packages/server-core/src/runtime-credential-service.js';
 
 const NOW = 1_800_000_000_000;
 
@@ -467,7 +467,13 @@ describe('Server MAR Agent runtime credential service', () => {
         }
       }))
     };
-    const control = new NodeControl(database, undefined, undefined, runtimeCredentials as never);
+    const control = createTestNodeControl(
+      database,
+      (userId, nodeId) => database.userOwnsNode(userId, nodeId),
+      undefined,
+      undefined,
+      runtimeCredentials as never
+    );
     const registration = database.createNodeRegistrationToken(database.getAdmin().id);
     const sent: Array<Record<string, unknown>> = [];
     type TestSocket = {
@@ -536,7 +542,7 @@ describe('Server MAR Agent runtime credential service', () => {
         capabilities: {
           platform: 'linux',
           architecture: 'x64',
-          nodeAppVersion: '0.9.27',
+          nodeAppVersion: '0.11.38',
           nodeVersion: 'v24.15.0',
           codex: { available: true },
           claudeCode: { available: true },
@@ -562,7 +568,7 @@ describe('Server MAR Agent runtime credential service', () => {
       createEnvelope('capabilities', {
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.9.27',
+        nodeAppVersion: '0.11.38',
         nodeVersion: 'v24.15.0',
         codex: { available: true },
         claudeCode: { available: true },

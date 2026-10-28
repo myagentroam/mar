@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/server-core",
-  "version": "0.11.37",
+  "version": "0.11.38",
   "private": true,
   "type": "module",
   "files": [
@@ -20,15 +20,10 @@
       "types": "./dist/mar-agent-resource-input-service.d.ts",
       "import": "./dist/mar-agent-resource-input-service.js"
     },
-    "./database-identity": {
-      "development": "./src/database-identity.ts",
-      "types": "./dist/database-identity.d.ts",
-      "import": "./dist/database-identity.js"
-    },
-    ".": {
-      "development": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+    "./scheduled-run-authorization-channel": {
+      "development": "./src/scheduled-run-authorization-channel.ts",
+      "types": "./dist/scheduled-run-authorization-channel.d.ts",
+      "import": "./dist/scheduled-run-authorization-channel.js"
     },
     "./auth": {
       "development": "./src/auth.ts",
@@ -74,6 +69,11 @@
       "development": "./src/product-capabilities.ts",
       "types": "./dist/product-capabilities.d.ts",
       "import": "./dist/product-capabilities.js"
+    },
+    "./mysql-migration-contracts": {
+      "development": "./src/mysql-migration-contracts.ts",
+      "types": "./dist/mysql-migration-contracts.d.ts",
+      "import": "./dist/mysql-migration-contracts.js"
     },
     "./mysql-migrations": {
       "development": "./src/mysql-migrations.ts",
@@ -134,6 +134,11 @@
       "development": "./src/node-projection.ts",
       "types": "./dist/node-projection.d.ts",
       "import": "./dist/node-projection.js"
+    },
+    "./node-access-contracts": {
+      "development": "./src/node-access-contracts.ts",
+      "types": "./dist/node-access-contracts.d.ts",
+      "import": "./dist/node-access-contracts.js"
     },
     "./node-request-channel": {
       "development": "./src/node-request-channel.ts",
@@ -210,11 +215,6 @@
       "types": "./dist/run-http-support.d.ts",
       "import": "./dist/run-http-support.js"
     },
-    "./session-run-contracts": {
-      "development": "./src/session-run-contracts.ts",
-      "types": "./dist/session-run-contracts.d.ts",
-      "import": "./dist/session-run-contracts.js"
-    },
     "./run-model-payload": {
       "development": "./src/run-model-payload.ts",
       "types": "./dist/run-model-payload.d.ts",
@@ -280,11 +280,6 @@
       "types": "./dist/mar-agent-model-service.d.ts",
       "import": "./dist/mar-agent-model-service.js"
     },
-    "./prompt-completion-settings": {
-      "development": "./src/prompt-completion-settings.ts",
-      "types": "./dist/prompt-completion-settings.d.ts",
-      "import": "./dist/prompt-completion-settings.js"
-    },
     "./runtime-credential-service": {
       "development": "./src/runtime-credential-service.ts",
       "types": "./dist/runtime-credential-service.d.ts",
@@ -305,15 +300,15 @@
       "types": "./dist/credential-document.d.ts",
       "import": "./dist/credential-document.js"
     },
+    "./credential-document-store": {
+      "development": "./src/credential-document-store.ts",
+      "types": "./dist/credential-document-store.d.ts",
+      "import": "./dist/credential-document-store.js"
+    },
     "./codex-credential-service": {
       "development": "./src/codex-credential-service.ts",
       "types": "./dist/codex-credential-service.d.ts",
       "import": "./dist/codex-credential-service.js"
-    },
-    "./credential-scope-policy": {
-      "development": "./src/credential-scope-policy.ts",
-      "types": "./dist/credential-scope-policy.d.ts",
-      "import": "./dist/credential-scope-policy.js"
     },
     "./codex-credential-routes": {
       "development": "./src/codex-credential-routes.ts",
@@ -344,11 +339,6 @@
       "development": "./src/recent-run-service.ts",
       "types": "./dist/recent-run-service.d.ts",
       "import": "./dist/recent-run-service.js"
-    },
-    "./notification-contracts": {
-      "development": "./src/notification-contracts.ts",
-      "types": "./dist/notification-contracts.d.ts",
-      "import": "./dist/notification-contracts.js"
     },
     "./notification-routes": {
       "development": "./src/notification-routes.ts",
@@ -455,11 +445,6 @@
       "types": "./dist/marctl-user-credentials.d.ts",
       "import": "./dist/marctl-user-credentials.js"
     },
-    "./catalog-policy": {
-      "development": "./src/catalog-policy.ts",
-      "types": "./dist/catalog-policy.d.ts",
-      "import": "./dist/catalog-policy.js"
-    },
     "./skill-source-service": {
       "development": "./src/skill-source-service.ts",
       "types": "./dist/skill-source-service.d.ts",
@@ -495,11 +480,6 @@
       "types": "./dist/skill-discovery-service.d.ts",
       "import": "./dist/skill-discovery-service.js"
     },
-    "./catalog-route-contracts": {
-      "development": "./src/catalog-route-contracts.ts",
-      "types": "./dist/catalog-route-contracts.d.ts",
-      "import": "./dist/catalog-route-contracts.js"
-    },
     "./skill-source-routes": {
       "development": "./src/skill-source-routes.ts",
       "types": "./dist/skill-source-routes.d.ts",
@@ -519,11 +499,6 @@
       "development": "./src/mcp-routes.ts",
       "types": "./dist/mcp-routes.d.ts",
       "import": "./dist/mcp-routes.js"
-    },
-    "./hosted-contracts": {
-      "development": "./src/hosted-contracts.ts",
-      "types": "./dist/hosted-contracts.d.ts",
-      "import": "./dist/hosted-contracts.js"
     },
     "./hosted-http-support": {
       "development": "./src/hosted-http-support.ts",

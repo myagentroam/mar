@@ -84,6 +84,33 @@ const notificationTemplate = {
 };
 
 describe('MailSmtpService', () => {
+  it('checks the caller guard after loading SMTP configuration and before transport starts', async () => {
+    const fixture = smtpDatabase();
+    const deliver = vi.fn(async () => undefined);
+    const service = new MailSmtpService(fixture.database, Buffer.alloc(32, 6), deliver);
+    await service.write(JSON.stringify(smtpConfiguration));
+    const execute = fixture.execute.getMockImplementation()!;
+    let resume!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => (resume = resolve));
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    fixture.execute.mockImplementationOnce(async (sql, parameters) => {
+      entered();
+      await gate;
+      return execute(sql, parameters);
+    });
+    let authorized = true;
+    const sending = service.send(
+      { to: 'recipient@example.test', subject: 'Done', text: 'Done' },
+      async () => authorized
+    );
+    await started;
+    authorized = false;
+    resume();
+    await expect(sending).rejects.toThrow('MAIL_ACCESS_DENIED');
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it('keeps legacy configurations readable when the sender name is absent', async () => {
     const fixture = smtpDatabase();
     const service = new MailSmtpService(fixture.database, Buffer.alloc(32, 6));

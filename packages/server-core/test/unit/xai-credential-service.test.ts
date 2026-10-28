@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { XAI_SUBSCRIPTION_BASE_URL, XAI_SUBSCRIPTION_PROXY_BASE_URL } from '@myagentroam/protocol';
 import { CodexCredentialService } from '../../src/codex-credential-service.js';
 import type { CredentialScopePolicy } from '../../src/credential-scope-policy.js';
+import { CredentialDocumentStore } from '../../src/credential-document-store.js';
 import { normalizeXaiCatalog, normalizeXaiUsage } from '../../src/xai-oauth-provider.js';
 import { startSocks5Proxy } from '../support/socks5-proxy.js';
 
@@ -87,7 +88,8 @@ function fixture(proxy = false) {
       request: request as typeof fetch,
       now: () => now,
       id: randomUUID,
-      createScopePolicy: () => policy,
+      scopePolicy: policy,
+      documentStore: new CredentialDocumentStore({ execute } as unknown as Pool, () => now),
       projectVersion: '0.10.9'
     }
   );

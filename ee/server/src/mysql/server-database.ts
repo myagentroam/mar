@@ -30,13 +30,10 @@ import {
   assertResetPasswordPolicy,
   hashPassword
 } from '@myagentroam/server-core/password';
-import type {
-  AuditInput,
-  CurrentUserSession,
-  SharedConversationAuditInput,
-  UserSession,
-  UserSessionSummary
-} from '../database.js';
+import type { AuditEvent } from '@myagentroam/server-core/audit';
+import type { CurrentUserSession } from '@myagentroam/server-core/session';
+import type { UserSession, UserSessionSummary } from '@myagentroam/server-core/auth-contracts';
+import type { SharedConversationAuditInput } from '../audit/audit-contracts.js';
 import type { ResourceOwnership } from '@myagentroam/protocol';
 
 type ListedUser = {
@@ -64,14 +61,6 @@ export class MysqlServerDatabase {
   }
   private readonly nodeIdentities: MysqlNodeIdentityStorage;
   private readonly authentication: MysqlAuthenticationStorage;
-  private nodeAccessResolver?: (userId: number, nodeId: string) => Promise<boolean>;
-  private nodeRequestAccessResolver?: (
-    userId: number,
-    nodeId: string,
-    operation: string,
-    data: unknown,
-    workspaceId?: string
-  ) => Promise<boolean>;
   constructor(
     readonly raw: Pool,
     private readonly now: () => number = Date.now,
@@ -561,43 +550,6 @@ export class MysqlServerDatabase {
     return this.nodeIdentities.listNodesForUser(userId);
   }
 
-  async userOwnsNode(userId: number, nodeId: string): Promise<boolean> {
-    if (this.nodeAccessResolver !== undefined) return this.nodeAccessResolver(userId, nodeId);
-    const [rows] = await this.raw.execute<RowDataPacket[]>(
-      "SELECT 1 FROM nodes WHERE id=? AND owner_type='PERSONAL' AND owner_user_id=? AND disabled=FALSE",
-      [nodeId, userId]
-    );
-    return rows.length === 1;
-  }
-
-  setNodeAccessResolver(resolver: (userId: number, nodeId: string) => Promise<boolean>): void {
-    this.nodeAccessResolver = resolver;
-  }
-
-  async userCanRequestNode(
-    userId: number,
-    nodeId: string,
-    operation: string,
-    data: unknown,
-    workspaceId?: string
-  ): Promise<boolean> {
-    if (this.nodeRequestAccessResolver !== undefined)
-      return this.nodeRequestAccessResolver(userId, nodeId, operation, data, workspaceId);
-    return this.userOwnsNode(userId, nodeId);
-  }
-
-  setNodeRequestAccessResolver(
-    resolver: (
-      userId: number,
-      nodeId: string,
-      operation: string,
-      data: unknown,
-      workspaceId?: string
-    ) => Promise<boolean>
-  ): void {
-    this.nodeRequestAccessResolver = resolver;
-  }
-
   updateNodeDisplayName(nodeId: string, displayName: string | null, actorUserId?: number) {
     return this.nodeIdentities.updateNodeDisplayName(nodeId, displayName, actorUserId);
   }
@@ -608,7 +560,7 @@ export class MysqlServerDatabase {
     return this.nodeIdentities.deleteNode(nodeId, actorUserId);
   }
 
-  async audit(input: AuditInput): Promise<void> {
+  async audit(input: AuditEvent): Promise<void> {
     const event = {
       ...input,
       occurredAt: input.occurredAt ?? this.now(),
@@ -622,7 +574,7 @@ export class MysqlServerDatabase {
 
   async auditWithConnection(
     connection: Pick<PoolConnection, 'execute'>,
-    input: AuditInput
+    input: AuditEvent
   ): Promise<void> {
     const event = {
       ...input,
@@ -634,7 +586,7 @@ export class MysqlServerDatabase {
     });
   }
 
-  private async persistAudit(input: AuditInput): Promise<void> {
+  private async persistAudit(input: AuditEvent): Promise<void> {
     const connection = this.auditRaw;
     await connection.execute(
       `INSERT INTO audit_events
@@ -920,6 +872,13 @@ async function deletePersonalModels(
   await connection.execute(`DELETE FROM user_mar_agent_model_orders WHERE model_id IN (${marks})`, [
     ...modelIds
   ]);
+  await connection.execute(
+    `DELETE FROM system_settings WHERE setting_key IN (${sqlPlaceholders(modelIds.flatMap(() => ['', '']))})`,
+    modelIds.flatMap((id) => [
+      `mar_agent_model_config:${id}`,
+      `mar_agent_resource_input:model:${id}`
+    ])
+  );
   await connection.execute(`DELETE FROM mar_agent_models WHERE id IN (${marks})`, [...modelIds]);
 }
 

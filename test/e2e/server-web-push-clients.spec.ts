@@ -42,6 +42,7 @@ test('Server notifications persist without browser clients and retain occurrence
     const store = { raw: pool, userCanRequestNode: async () => true };
     const notifications = new WorkbenchNotificationService(
       store,
+      store.userCanRequestNode,
       () => undefined,
       () => now
     );
@@ -61,6 +62,7 @@ test('Server notifications persist without browser clients and retain occurrence
 
     const restored = new WorkbenchNotificationService(
       store,
+      store.userCanRequestNode,
       () => undefined,
       () => now
     );
@@ -89,7 +91,7 @@ test('Product Web Push enables with the default transport and retains its VAPID 
   const database = resolvePlaywrightTestDatabase(`${runId}-web-push-product-${randomUUID()}`);
   await createPlaywrightTestDatabase(database);
   let directory: string | undefined;
-  let app: ReturnType<typeof createServerApp> | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   const previousLicenseKey = process.env['MAR_LICENSE_PUBLIC_KEY'];
   try {
     process.env['MAR_LICENSE_PUBLIC_KEY'] = getPlaywrightTestLicensePublicKey();
@@ -103,7 +105,7 @@ test('Product Web Push enables with the default transport and retains its VAPID 
       productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID,
       secureCookies: false
     };
-    app = createServerApp(options);
+    app = (await createServerApp(options)).app;
     await app.ready();
     const login = await app.inject({
       method: 'POST',
@@ -161,7 +163,7 @@ test('Product Web Push enables with the default transport and retains its VAPID 
       expect(Buffer.from(value.publicKey, 'base64url')).toHaveLength(65);
     }
     await app.close();
-    app = createServerApp(options);
+    app = (await createServerApp(options)).app;
     await app.ready();
     const restored = await app.inject({ url: '/api/notifications/push', headers });
     expect(restored.statusCode).toBe(200);
@@ -410,7 +412,8 @@ test('Core v27 initializes web-push storage idempotently and isolates MySQL clie
     // Exercise the real v28 receipt columns and JSON round-trip; SMTP remains a fake boundary.
     let emailAttempts = 0;
     const channelDependencies = {
-      database: { raw: pool, userCanRequestNode: async () => true } as never,
+      database: { raw: pool },
+      authorize: async () => true,
       notifications: { consume: async () => true, bySource: async () => undefined },
       mail: {
         send: async () => {

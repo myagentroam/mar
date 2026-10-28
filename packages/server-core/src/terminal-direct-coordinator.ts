@@ -8,7 +8,7 @@ import type {
   DirectTransferBrowserIdentity,
   DirectTransferCoordinator
 } from './direct-transfer-coordinator.js';
-import { NodeRequestError } from './node-request-channel.js';
+import { NodeRequestError } from './node-request-error.js';
 
 const LEASE_MS = 30_000;
 const OPEN_MS = 15_000;

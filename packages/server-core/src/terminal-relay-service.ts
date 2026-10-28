@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuditObserver } from './audit.js';
 import type { RawData, WebSocket } from 'ws';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
-import type { UserNodeAuthorization } from './workbench-relay-service.js';
+import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
 
 const TERMINAL_TICKET_TTL_MS = 30_000;
@@ -68,15 +68,8 @@ export interface TerminalRelayOptions {
       | { readonly id: string; readonly disabled: boolean }
       | undefined
       | Promise<{ readonly id: string; readonly disabled: boolean } | undefined>;
-    userOwnsNode(userId: number, nodeId: string): boolean | Promise<boolean>;
-    userCanRequestNode?: (
-      userId: number,
-      nodeId: string,
-      operation: string,
-      data: unknown,
-      workspaceId?: string
-    ) => boolean | Promise<boolean>;
   };
+  readonly authorizeNodeRequest: NodeRequestAuthorization;
   readonly traffic?: {
     record(channel: 'terminal', direction: 'in' | 'out', bytes: number): void;
     backpressure(channel: 'terminal', bytes: number): void;
@@ -305,17 +298,17 @@ export class TerminalRelayService {
       const key = `${record.userId}\0${record.nodeId}\0${record.workspaceId ?? ''}`;
       const existing = authorizationChecks.get(key);
       if (existing !== undefined) return existing;
-      const check = Promise.resolve(
-        typeof this.options.database.userCanRequestNode === 'function'
-          ? this.options.database.userCanRequestNode(
-              record.userId,
-              record.nodeId,
-              'terminal.attach.authorize',
-              {},
-              record.workspaceId
-            )
-          : this.options.database.userOwnsNode(record.userId, record.nodeId)
-      ).catch(() => false);
+      const check = Promise.resolve()
+        .then(() =>
+          this.options.authorizeNodeRequest(
+            record.userId,
+            record.nodeId,
+            'terminal.attach.authorize',
+            {},
+            record.workspaceId
+          )
+        )
+        .catch(() => false);
       authorizationChecks.set(key, check);
       return check;
     };

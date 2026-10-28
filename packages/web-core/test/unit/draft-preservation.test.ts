@@ -227,13 +227,13 @@ interface HostedBindings {
     Array<Omit<ReturnType<typeof attachment>, 'fileId'> & { fileId?: string | undefined }>
   >;
   readonly composerReadonly: Ref<boolean>;
-  send(): Promise<void>;
+  send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void>;
   selectTemplate(id: string): Promise<void>;
   retryAttachment(id: string): void;
   refreshDraftTemplates(visible: boolean): Promise<void>;
 }
 
-function hostedFixture() {
+function hostedFixture(mobileViewport = false) {
   const gate = createWorkbenchSubmissionService();
   const responses: ReturnType<typeof deferred<void>>[] = [];
   const sendMessage = vi.fn(
@@ -283,7 +283,7 @@ function hostedFixture() {
   };
   const composer = mountBindings<HostedBindings>(HostedConversationComposer, {
     workspace,
-    mobileViewport: false,
+    mobileViewport,
     readonly: false,
     readonlyReason: ''
   });
@@ -292,6 +292,27 @@ function hostedFixture() {
 }
 
 describe('hosted message draft preservation', () => {
+  it('allows a mobile follow-up to use the existing replacement intent without queueing', async () => {
+    const { composer, workspace, sendMessage, responses } = hostedFixture(true);
+    workspace.snapshot.value = {
+      ...workspace.snapshot.value,
+      run: { id: 'run-a', status: 'RUNNING', startedAt: Date.now() } as never
+    };
+    await nextTick();
+    expect(composer.composerReadonly.value).toBe(false);
+    composer.input.value = 'Mobile follow-up';
+    await nextTick();
+    const pending = composer.send('REPLACE_CURRENT');
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Mobile follow-up',
+        deliveryIntent: 'REPLACE_CURRENT'
+      })
+    );
+    responses[0]!.resolve();
+    await pending;
+    expect(composer.input.value).toBe('');
+  });
   it('does not reuse an uncertain send identity after another client changes the template', async () => {
     const { composer, workspace, responses, sendMessage } = hostedFixture();
     composer.input.value = 'Unsent draft';

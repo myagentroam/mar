@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
 import { isAllowedOrigin } from './auth.js';
 import { currentSession, type SessionLookup } from './session.js';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 
 /** The host registers the WebSocket plugin before installing this route. */
 export function registerWorkbenchRoute(input: {

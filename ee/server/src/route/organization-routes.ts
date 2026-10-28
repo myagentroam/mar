@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
-import type { MysqlServerDatabase } from '../mysql/server-database.js';
+import type { SessionLookup } from '@myagentroam/server-core/session';
 import type { OrganizationService } from '../rbac/organization-service.js';
-import type { NodeControl } from '../node-control.js';
 import {
   databaseError,
   normalizedOptionalText,
@@ -14,10 +13,10 @@ import {
 
 export function registerOrganizationRoutes(input: {
   readonly app: FastifyInstance;
-  readonly database: MysqlServerDatabase;
+  readonly database: SessionLookup;
   readonly organizations: OrganizationService;
   readonly publicOrigin: string | undefined;
-  readonly nodeControl: NodeControl;
+  readonly nodeControl: { closeUserSessions(userId: number): void };
 }): void {
   const { app, database, organizations, publicOrigin, nodeControl } = input;
   app.get('/api/organizations', async (request, reply) => {
@@ -95,7 +94,7 @@ export function registerOrganizationRoutes(input: {
 }
 
 function writableActor(
-  database: MysqlServerDatabase,
+  database: SessionLookup,
   request: Parameters<typeof protectedAdmin>[1],
   reply: Parameters<typeof protectedAdmin>[2],
   publicOrigin: string | undefined

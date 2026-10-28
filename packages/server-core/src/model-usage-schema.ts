@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MysqlMigration } from './mysql-migrations.js';
+import type { MysqlMigration } from './mysql-migration-contracts.js';
 import { normalizeMysqlTableDefinition, validateMysqlSchema } from './mysql-schema-support.js';
 
 export const MODEL_USAGE_SQL = `CREATE TABLE \`model_usage_records\` (

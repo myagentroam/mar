@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
 import { MarctlUserCredentials } from '../../src/marctl-user-credentials.js';
@@ -84,6 +85,9 @@ describe('user-scoped marctl authorization', () => {
     const authenticated = await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`);
     expect(authenticated?.userId).toBe(9);
     expect(authenticated?.sessionHash).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(authenticated?.sessionHash).toBe(
+      createHash('sha256').update(environment.MAR_CTL_USER_TOKEN!).digest('base64url')
+    );
     enabled = false;
     expect(await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`)).toBeUndefined();
     expect(execute.mock.calls.at(-1)?.[0]).toContain('u.enabled=TRUE');

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { createEnvelope, type NodeEnvelope } from '../../packages/protocol/src/index.js';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { RunAttachmentService } from '../../mar-node/src/service/run-attachment-service.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 

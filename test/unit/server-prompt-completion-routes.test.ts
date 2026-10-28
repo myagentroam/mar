@@ -231,7 +231,7 @@ describe('Server prompt completion routes', () => {
     expect(f.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
   });
 
-  it('rejects Nodes missing the prompt-completion capability or below its minimum version', async () => {
+  it('uses the capability rather than a historical per-feature version gate', async () => {
     const f = fixture();
     const url = '/api/nodes/node-1/prompt-completion/context';
     const request = await f.app.inject({
@@ -242,8 +242,8 @@ describe('Server prompt completion routes', () => {
     });
     expect(request.statusCode).toBe(200);
 
-    f.nodes[0]!.metadata = capabilityMetadata('0.10.20');
-    const oldVersion = await f.app.inject({
+    f.nodes[0]!.metadata = capabilityMetadata('unknown');
+    const unknownVersion = await f.app.inject({
       method: 'POST',
       url,
       headers: memberHeaders(),
@@ -257,14 +257,13 @@ describe('Server prompt completion routes', () => {
       payload: contextInput()
     });
 
-    expect(oldVersion.statusCode).toBe(409);
-    expect(oldVersion.json()).toMatchObject({ error: { code: 'PROMPT_COMPLETION_UNAVAILABLE' } });
+    expect(unknownVersion.statusCode).toBe(200);
     expect(missingCapability.statusCode).toBe(409);
     expect(missingCapability.json()).toMatchObject({
       error: { code: 'PROMPT_COMPLETION_UNAVAILABLE' }
     });
-    expect(f.resources.assertCanUseWorkspace).toHaveBeenCalledTimes(1);
-    expect(f.nodeControl.requestNode).toHaveBeenCalledTimes(1);
+    expect(f.resources.assertCanUseWorkspace).toHaveBeenCalledTimes(2);
+    expect(f.nodeControl.requestNode).toHaveBeenCalledTimes(2);
   });
 
   it('routes authorized Workspace requests and rejects hosted requests before forwarding', async () => {

@@ -1,4 +1,13 @@
 export const composerZhCN = {
+  composerSend: {
+    steer: '插入消息',
+    holdHint: '上滑插入消息，越过输入框顶部取消。',
+    holdSendHint: '上滑后松手发送，越过输入框顶部取消。',
+    slideToSteer: '上滑插入消息 · 越过输入框顶部取消',
+    releaseToSteer: '松手插入消息 · 越过输入框顶部取消',
+    releaseToSend: '松手发送 · 越过输入框顶部取消',
+    releaseToCancel: '松手取消'
+  },
   quickPrompts: {
     loadFailed: '读取快捷提示词失败，请重试。',
     noMatches: '没有匹配的快捷提示词。',

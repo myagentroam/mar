@@ -13,7 +13,7 @@ import { AuthorizationService } from '../../ee/server/src/rbac/authorization-ser
 import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
 import { CodexCredentialService } from '../../ee/server/src/service/codex-credential-service.js';
 import { MarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
-import { RuntimeCredentialService } from '../../ee/server/src/service/runtime-credential-service.js';
+import { RuntimeCredentialService } from '../../packages/server-core/src/runtime-credential-service.js';
 import { createPlaywrightTestLicenseDocument } from './support/playwright-test-license.js';
 import { createEnterpriseTestServer } from './support/enterprise-test-server.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
@@ -215,7 +215,10 @@ test('Codex credential scope governs management, model grants, visibility, and r
     const authorization = new AuthorizationService(database);
     const credentials = new CodexCredentialService(database, {
       authorization,
-      now: () => now
+      now: () => now,
+      request: async () => {
+        throw new Error('Unexpected external credential request');
+      }
     });
     const resources = new ResourceAccessService(database, authorization, () => now, credentials);
     const models = new MarAgentModelService(

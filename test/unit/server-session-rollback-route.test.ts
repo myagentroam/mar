@@ -8,7 +8,9 @@ import { registerSessionRunRoutes } from '../../packages/server-core/src/session
 describe('Server ordinary Session rollback route', () => {
   it('forwards a selected itemId and rejects invalid selectors before contacting Node', async () => {
     const csrfToken = 'csrf-token';
-    const requestNode = vi.fn(async () => ({ session: { id: 'session-1' } }));
+    const requestNode = vi.fn(async (_nodeId: string, _operation: string, _data: unknown) => ({
+      session: { id: 'session-1' }
+    }));
     const app = Fastify();
     registerSessionRunRoutes({
       app,

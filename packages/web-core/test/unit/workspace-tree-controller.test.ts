@@ -32,7 +32,7 @@ function node(id: string, overrides?: Partial<NodeSummary>): NodeSummary {
 }
 
 function workspace(id: string, overrides?: Partial<Workspace>): Workspace {
-  return { id, path: `/tmp/${id}`, kind: 'DIRECTORY', ...overrides };
+  return { id, path: `/tmp/${id}`, kind: 'DIRECTORY', manageable: true, ...overrides };
 }
 
 function fixture() {
@@ -1134,7 +1134,7 @@ describe('Public Workspace tree controller', () => {
     expect(f.tree.workspacesForNode('node-1')[0]?.groupName).toBe('Group');
   });
 
-  it('allows a registration-capable user to remove an otherwise unmanaged Workspace', async () => {
+  it('does not let registration capability remove an unmanaged Workspace', async () => {
     const f = fixture();
     const value = workspace('workspace-1', { manageable: false });
     f.nodes.value = [node('node-1', { workspaceCreatable: true, manageable: false })];
@@ -1146,6 +1146,20 @@ describe('Public Workspace tree controller', () => {
 
     await f.controller.removeWorkspace('node-1', value);
 
+    expect(f.request).not.toHaveBeenCalled();
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled();
+  });
+
+  it('allows Workspace managers to remove without Node registration capability', async () => {
+    const f = fixture();
+    const value = workspace('workspace-1', { manageable: true });
+    f.nodes.value = [node('node-1', { workspaceCreatable: false, manageable: false })];
+    f.workspaces.value = [value];
+    f.tree.cacheWorkspaces('node-1', [value]);
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    );
+    await f.controller.removeWorkspace('node-1', value);
     expect(f.request).toHaveBeenCalledWith('/api/workspaces/workspace-1?nodeId=node-1', {
       method: 'DELETE'
     });

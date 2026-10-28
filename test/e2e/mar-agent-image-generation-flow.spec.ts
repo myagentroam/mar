@@ -37,11 +37,13 @@ for (const provider of ['CODEX', 'BYTED_ARK'] as const) {
       `${requiredEnvironment('MAR_TEST_RUN_ID')}-image-generation`
     );
     await createPlaywrightTestDatabase(testDatabase);
-    const app = createServerApp({
-      databaseUrl: testDatabase.databaseUrl,
-      dataDirectory: join(directory, 'server-data'),
-      secureCookies: false
-    });
+    const app = (
+      await createServerApp({
+        databaseUrl: testDatabase.databaseUrl,
+        dataDirectory: join(directory, 'server-data'),
+        secureCookies: false
+      })
+    ).app;
     const originalFetch = globalThis.fetch;
     const imageRequests: CapturedImageRequest[] = [];
     let connector: NodeConnector | undefined;
@@ -509,7 +511,7 @@ async function prepareAdminAuthentication(databaseUrl: string): Promise<void> {
   }
 }
 
-async function adminHeaders(app: ReturnType<typeof createServerApp>) {
+async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['app']) {
   const login = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -527,7 +529,7 @@ async function adminHeaders(app: ReturnType<typeof createServerApp>) {
 }
 
 async function createWorkspace(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   headers: Record<string, string>,
   nodeId: string,
   workspacePath: string
@@ -543,7 +545,7 @@ async function createWorkspace(
 }
 
 async function waitForConnectedNode(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   displayName: string
 ): Promise<string> {
@@ -572,7 +574,7 @@ async function waitForConnectedNode(
 }
 
 async function expectRunReleased(
-  app: ReturnType<typeof createServerApp>,
+  app: Awaited<ReturnType<typeof createServerApp>>['app'],
   cookieHeader: string,
   nodeId: string,
   runId: string

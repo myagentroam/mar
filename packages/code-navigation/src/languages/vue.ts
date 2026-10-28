@@ -87,6 +87,7 @@ function styleBlockLanguage(
 export const vueFileSpecifierParser: FileSpecifierParser = { find };
 
 export const vueNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: false,
   id: 'vue',
   parser: vueFileSpecifierParser,
   suffixes: ['.vue']

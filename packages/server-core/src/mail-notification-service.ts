@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import type { MailNotificationRequest } from '@myagentroam/protocol';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import { MailSmtpService, validMailAddress } from './mail-smtp-service.js';
 import { MailTemplateService } from './mail-template-service.js';
 
@@ -10,19 +11,17 @@ export class MailNotificationService {
   constructor(
     private readonly database: {
       readonly raw: Pool;
-      userCanRequestNode(
-        userId: number,
-        nodeId: string,
-        operation: string,
-        data: unknown,
-        workspaceId?: string
-      ): Promise<boolean>;
     },
+    private readonly authorize: NodeRequestAuthorization,
     private readonly smtp: MailSmtpService,
     private readonly templates: MailTemplateService
   ) {}
 
-  async send(nodeId: string, request: MailNotificationRequest): Promise<void> {
+  async send(
+    nodeId: string,
+    request: MailNotificationRequest,
+    isCurrentConnection: () => boolean
+  ): Promise<void> {
     if (request.recipientEmail !== undefined && !validMailAddress(request.recipientEmail))
       throw new Error('MAIL_INPUT_INVALID');
     if (
@@ -31,16 +30,18 @@ export class MailNotificationService {
     )
       throw new Error('MAIL_INPUT_INVALID');
     const requestedTitle = request.title?.trim() ?? '';
-    if (
-      !(await this.database.userCanRequestNode(
+    const authorized = async () => {
+      if (!isCurrentConnection()) return false;
+      const allowed = await this.authorize(
         request.userId,
         nodeId,
         'session.message',
         { workspaceId: request.workspaceId, sessionId: request.sessionId },
         request.workspaceId
-      ))
-    )
-      throw new Error('MAIL_ACCESS_DENIED');
+      );
+      return allowed && isCurrentConnection();
+    };
+    if (!(await authorized())) throw new Error('MAIL_ACCESS_DENIED');
     const connection = await this.database.raw.getConnection();
     const sourceKey = createHash('sha256')
       .update(JSON.stringify([nodeId, request.executionId, request.callId]))
@@ -135,7 +136,7 @@ export class MailNotificationService {
       connection.release();
     }
     if (duplicate) return;
-    await this.smtp.send({ to: recipientEmail!, ...rendered! });
+    await this.smtp.send({ to: recipientEmail!, ...rendered! }, authorized);
     await this.database.raw.execute(
       "UPDATE mail_deliveries SET status='SENT' WHERE source_key=? AND status='UNKNOWN'",
       [sourceKey]

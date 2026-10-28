@@ -13,7 +13,6 @@ import {
 import { isAllowedOrigin } from './auth.js';
 import { protectedAdmin, validCsrf, type SessionLookup } from './session.js';
 import { sendError } from './http-errors.js';
-import { compareStableVersions } from './node-upgrade-service.js';
 import type { WorkspaceNodeControl } from './workspace-route-contracts.js';
 import type { MarAgentModelService } from './mar-agent-model-service.js';
 import type { MarAgentRuntimeModelService } from './mar-agent-runtime-model-service.js';
@@ -63,8 +62,7 @@ export function registerPromptCompletionRoutes(input: {
         return false;
       if (trigger === 'AUTO' && capabilities.data.promptCompletion.automaticTriggers !== true)
         return false;
-      const comparison = compareStableVersions(capabilities.data.nodeAppVersion ?? '', '0.10.21');
-      return comparison !== undefined && comparison >= 0;
+      return true;
     },
     authorize: async (actor, nodeId, target) => {
       const revalidate = async () => {

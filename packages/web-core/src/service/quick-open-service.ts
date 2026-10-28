@@ -163,7 +163,6 @@ interface QuickOpenQueryOptions {
   readonly workspaceId: () => string | undefined;
   readonly filesReady: () => boolean;
   readonly symbolsReady: () => boolean;
-  readonly nonblockingFiles: () => boolean;
   readonly nodes: () => readonly NodeSummary[];
   readonly workspaceTabs: () => readonly WorkspaceTab[];
   readonly origin: () => string;
@@ -330,7 +329,7 @@ export function createQuickOpenQueryService(options: QuickOpenQueryOptions) {
       nodeId: value.nodeId,
       q: location?.path ?? value.query
     });
-    if (options.nonblockingFiles()) parameters.set('waitForIndex', 'false');
+    parameters.set('waitForIndex', 'false');
     try {
       for (let attempt = 0; current(value); attempt += 1) {
         const result = await options.http.request<{ files: FileSearchResult }>(

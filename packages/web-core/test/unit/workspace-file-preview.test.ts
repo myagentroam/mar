@@ -589,7 +589,7 @@ describe('Workspace file preview service', () => {
     const { preview, request } = createHarness({
       request: async () => ({
         file: {
-          ...textFile().file,
+          ...textFile('').file,
           encoding: 'base64',
           content: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]).toString('base64')
         }

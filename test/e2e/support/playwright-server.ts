@@ -18,21 +18,23 @@ const { createServerApp } = (await import(
 const productUuidPath = process.env['MAR_LICENSE_HOST_PATH'];
 const productUuid =
   productUuidPath === undefined ? undefined : readFileSync(productUuidPath, 'utf8').trim();
-const app = createServerApp({
-  ...(process.env['MAR_WEB_ROOT'] === undefined ? {} : { webRoot: process.env['MAR_WEB_ROOT'] }),
-  ...(process.env['MAR_DATA_DIR'] === undefined
-    ? {}
-    : { dataDirectory: process.env['MAR_DATA_DIR'] }),
-  ...(process.env['MAR_DATABASE_URL'] === undefined
-    ? {}
-    : { databaseUrl: process.env['MAR_DATABASE_URL'] }),
-  ...(process.env['MAR_PUBLIC_ORIGIN'] === undefined
-    ? {}
-    : { publicOrigin: process.env['MAR_PUBLIC_ORIGIN'] }),
-  ...(productUuid === undefined ? {} : { productUuid }),
-  secureCookies: process.env['MAR_SECURE_COOKIES'] !== 'false',
-  logger: true
-});
+const app = (
+  await createServerApp({
+    ...(process.env['MAR_WEB_ROOT'] === undefined ? {} : { webRoot: process.env['MAR_WEB_ROOT'] }),
+    ...(process.env['MAR_DATA_DIR'] === undefined
+      ? {}
+      : { dataDirectory: process.env['MAR_DATA_DIR'] }),
+    ...(process.env['MAR_DATABASE_URL'] === undefined
+      ? {}
+      : { databaseUrl: process.env['MAR_DATABASE_URL'] }),
+    ...(process.env['MAR_PUBLIC_ORIGIN'] === undefined
+      ? {}
+      : { publicOrigin: process.env['MAR_PUBLIC_ORIGIN'] }),
+    ...(productUuid === undefined ? {} : { productUuid }),
+    secureCookies: process.env['MAR_SECURE_COOKIES'] !== 'false',
+    logger: true
+  })
+).app;
 const host = process.env['MAR_SERVER_HOST'] ?? '127.0.0.1';
 const port = Number(process.env['MAR_SERVER_PORT']);
 let shutdown: Promise<void> | undefined;

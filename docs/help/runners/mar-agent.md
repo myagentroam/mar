@@ -1,11 +1,13 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-10-26
+lastUpdated: 2026-10-28
 ---
 
 # 配置和使用 MAR Agent
 
 MAR Agent 是随 Node 内置的编码 Agent，不需要安装外部 Agent CLI。每个用户都可在“管理 → MAR Agent 模型”添加和管理自己的个人模型；组织模型由有权管理员维护和授权。同时满足模型使用权和所绑定凭据作用域的用户即可在新会话中选择 **MAR Agent**。
+
+Server、Web 和 Node 的版本切换及旧 Node 升级限制见[升级 MyAgentRoam](../deployment/upgrade.md)。
 
 ## 配置模型
 
@@ -27,15 +29,15 @@ MAR Agent 不设置单次运行的累计 token 预算或模型往返轮次上限
 
 所有用户可在“我的模型顺序”Tab 按个人习惯调整当前获授权模型在选择列表中的顺序；该操作不会影响其他用户、管理员设置的默认顺序，也不会改变会话标题生成或模板候选。未被个人调整的新模型继续按管理员默认顺序排在后方。系统管理员在“模型”Tab 管理全局默认顺序，列表展示名称、连接类型、模型 ID、可用性、使用范围和测试状态，不展示凭据与 Responses 传输；Codex 传输仍可在模型编辑表单中查看和修改。删除模型不要求先禁用，也不会因当前正在使用而被阻止；已经开始的单次模型网络请求可自然结束，后续再使用该模型会按模型不存在失败。点击“调整排序”后拖动行首手柄，使用“保存排序”一次保存完整顺序并退出排序模式；“取消”会恢复调整前的顺序。
 
-保存后使用“测试”，选择一个在线且版本、动态凭据能力和当前传输均兼容的 Node 执行真实最小请求。测试不会创建 Workspace Session 或 Run。测试成功或失败后弹窗都会保留，展示结果、错误码、HTTP 状态、消息、Server 请求 ID；如果 Node 提供上游明细，还会展示上游请求 ID、Content-Type、`Retry-After` 和可选择复制的纯文本响应正文。正文有安全长度上限，截断时会显示提示，HTML 不会执行或渲染。旧 Node 可能只返回基础结果字段；再次测试或改选模型、Node 会清除旧结果。失败测试仍按原规则显示错误通知，但诊断明细保留在弹窗中。列表和测试结果不会回显 API Key 或 OAuth Token；编辑时内联 Key 或已有 Codex 凭据留空表示保留原值。模型配置仍只由系统管理员管理；Codex 凭据则按凭据作用域由对应用户或管理员管理。
+保存后使用“测试”，选择一个在线且版本、动态凭据能力和当前传输均兼容的 Node 执行真实最小请求。测试不会创建 Workspace Session 或 Run。测试成功或失败后弹窗都会保留，展示结果、错误码、HTTP 状态、消息、Server 请求 ID；如果 Node 提供上游明细，还会展示上游请求 ID、Content-Type、`Retry-After` 和可选择复制的纯文本响应正文。正文有安全长度上限，截断时会显示提示，HTML 不会执行或渲染。再次测试或改选模型、Node 会清除旧结果。失败测试仍按原规则显示错误通知，但诊断明细保留在弹窗中。列表和测试结果不会回显 API Key 或 OAuth Token；编辑时内联 Key 或已有 Codex 凭据留空表示保留原值。模型配置仍只由系统管理员管理；Codex 凭据则按凭据作用域由对应用户或管理员管理。
 
-Codex (legacy) 和 ChatGPT 模型均提供 **速度 → 默认 / Fast / Ultrafast**。配置按 Responses 标准 `service_tier` 参数保存，适用于 HTTP 与 WebSocket 请求。存量 Fast 设置保留为 Fast，其余存量模型及新导入模型使用默认。可用性及额度消耗或费用由上游模型和账户决定，不支持时不会静默降级。旧 Node 只有声明 Fast 支持时才能执行 Fast；Ultrafast 需要升级 Node。独立 CLI 保留 `--fast-mode`、`--no-fast-mode` 兼容选项。
+Codex (legacy) 和 ChatGPT 模型均提供 **速度 → 默认 / Fast / Ultrafast**。配置按 Responses 标准 `service_tier` 参数保存，适用于 HTTP 与 WebSocket 请求。存量 Fast 设置保留为 Fast，其余存量模型及新导入模型使用默认。可用性及额度消耗或费用由上游模型和账户决定，不支持时不会静默降级。独立 CLI 保留 `--fast-mode`、`--no-fast-mode` 兼容选项。
 
 ## 对话模型与辅助模型
 
 模型表单默认勾选 **对话模型**。只有已启用且勾选此项的模型，才能出现在工作模式或托管对话的 Composer、Subagent 以及模板主模型候选中。取消勾选后，模型仍可用于专用 Compact、会话标题命名和输入预测；这些用途仍需分别配置并满足模型与凭据使用权。对话模型也可用于上述辅助用途，“启用”和“会话标题命名”开关保持独立。
 
-已有模型会保留对话用途，新建及目录导入也默认开启。修改不打断已开始的执行；后续发送、续作或显式选择不再具备对话用途的模型时会拒绝执行，请重新选择可用对话模型。历史记录不会删除。若旧 Node 提示能力版本不支持，请升级 Node 后再使用包含辅助模型的目录。
+已有模型会保留对话用途，新建及目录导入也默认开启。修改不打断已开始的执行；后续发送、续作或显式选择不再具备对话用途的模型时会拒绝执行，请重新选择可用对话模型。历史记录不会删除。
 
 ## 输入预测模型
 
@@ -97,7 +99,7 @@ Token 由 Server 保存并自动刷新，执行 Node 只取得短期访问凭据
 
 ## 会话与权限
 
-支持该功能的 Node（0.10.25 起）提供 **Auto** 和 **完全访问（Full access）**。新建普通工作会话默认 Auto；已有会话保留保存的档位，进入 Goal 不会把 MAR Auto 自动升级为完全访问。独立 SDK/CLI 仍默认 Full access，托管对话保持原有隔离与权限策略。
+Node 提供 **Auto** 和 **完全访问（Full access）**。新建普通工作会话默认 Auto；已有会话保留保存的档位，进入 Goal 不会把 MAR Auto 自动升级为完全访问。独立 SDK/CLI 仍默认 Full access，托管对话保持原有隔离与权限策略。
 
 Auto 由当前模型判断：普通工程操作和已明确授权的任务自动继续；重要风险或授权仍无法判断时 ask；deny 仅用于仍然有效的明确禁止、上级/Host 禁止或已知无法合理限制影响的极端危险。相同任务、目标和影响范围内的授权会继续复用，不因换工具、重试、分轮或子 Agent 反复询问；范围、影响扩大或用户撤回时重新判断。
 
@@ -105,7 +107,7 @@ Code Mode 由模型优先在外层 `code_exec` 整体声明 ask/deny。内部 de
 
 ask 通过 Runner 审批卡在线等待，显示公开原因、命令/参数/代码、工作目录与到期时间。点击允许后执行已捕获的原调用；多个请求分别审批。10 分钟未决定即过期，不执行，也不视为用户拒绝。拒绝、过期和模型 deny 仅使该次调用失败，模型可在剩余授权内继续或自然停止；不能自动重试或绕过用户拒绝。取消后、已决定或过期的卡片不可执行。Goal 与定时任务沿用 Node 现有策略。无在线通道的独立 SDK/CLI 在 ask 时停止；之后的新指令不会重放旧调用。
 
-**Auto 不是操作系统沙箱，也不是独立安全审查器。** Full access 不做 Auto 自评，两种档位都保留 Host 路径与资源校验，工具使用 Node 服务账号的实际权限。请使用低权限专用账号并限制 Workspace 和主机权限。旧 Node 不显示 Auto；若提示不支持，请升级 Node 或明确选择 Full access，不会静默降级。
+**Auto 不是操作系统沙箱，也不是独立安全审查器。** Full access 不做 Auto 自评，两种档位都保留 Host 路径与资源校验，工具使用 Node 服务账号的实际权限。请使用低权限专用账号并限制 Workspace 和主机权限。
 
 原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、Todo、MCP、图片和 subagent。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；子 Agent 不能递归创建其他 Agent。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
 
@@ -168,13 +170,13 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 
 Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启后默认采用 **Code Mode Only**：支持编排的工具（包括单工具操作）默认经 `code_exec` 调用，direct-only 工具及明确支持双边展示的工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
 
-开启 Code Mode 时，`apply_patch` 同时保留直接调用和程序化调用入口，由模型按任务自主选择。其他工具的默认展示策略和原有调用权限不变。
+开启 Code Mode 时，`apply_patch` 和 `exec_wait` 同时保留直接调用和程序化调用入口。`apply_patch` 由模型按任务自主选择；单进程纯等待优先直接调用 `exec_wait`，并行等待或组合处理仍使用 `tools.exec_wait`。不要通过两种入口重复等待同一进程。其他工具的默认展示策略和原有调用权限不变。
 
 每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。用 `out.text(value)` 显式输出文本，用 `out.image(value)` 输出工具返回的图片。文本输出递归将结构化 `image/*` 对象的 `dataBase64` 字符串替换为简短占位摘要，不修改原对象，也不会自动发送像素；图片仍需单独调用 `out.image`。文本优先输出 `result.data` 或 `result.content`，显式传入的普通字符串不做 Base64 解析或筛选；文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 
-`code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用、120 秒。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程用 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `tools.exec_wait` 调用，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic；Only 模式下通过 Code Mode 调用，不作为顶层工具暴露。cell 内等待仍受 cell 总执行期限约束。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
+`code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程用 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `exec_wait` 或 cell 内的 `tools.exec_wait` 控制，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic；Only 模式下 `exec` 仅展示 Code Mode 入口，`exec_wait` 保留双入口。cell 内等待仍遵守工具自身超时及 Host 策略。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
 
-后台 cell 属于 Session 温资源。`code_exec` 首次默认等待 30 秒，`code_exec_wait` 默认等待 10 秒；显式等待值不改变内部工具的等待窗口。`cell.yield_control()` 只结束当前等待并返回已有输出，JS 继续后台执行；也可通过首行 `// @options: {"yieldMs":30000,"maxOutputTokens":10000}` 设置等待窗口和文本预算。返回 `cellId` 后直接调用 `code_exec_wait` 获取增量或终态，`action` 默认 `poll` 等待，传 `action: "cancel"` 才显式终止。当前 Execution 结束或取消不会终止已登记的 cell；后续 Execution 可从保留资源提示接管。Session 资源回收、超时或 Host 退出会终止 cell，进程重启不恢复 JS 执行状态。终态结果仅有界缓存，重复领取带 `cached: true`。
+后台 cell 属于 Session 温资源。`code_exec` 首次默认等待 30 秒，`code_exec_wait` 默认等待 10 秒；显式等待值不改变内部工具的等待窗口。`cell.yield_control()` 只结束当前等待并返回已有输出，JS 继续后台执行；也可通过首行 `// @options: {"yieldMs":30000}` 设置首次等待窗口；输出预算由 Runtime 固定控制。返回 `cellId` 后直接调用 `code_exec_wait` 获取增量或终态，`action` 默认 `poll` 等待，传 `action: "cancel"` 才显式终止。当前 Execution 结束或取消不会终止已登记的 cell；后续 Execution 可从保留资源提示接管。Session 资源回收、超时或 Host 退出会终止 cell，进程重启不恢复 JS 执行状态。终态结果仅有界缓存，重复领取带 `cached: true`。
 
 临时资源句柄带类型前缀：`cellId` 为 `c_` 加 12 位小写十六进制字符，`processId` 为 `p_` 加 12 位小写十六进制字符。请完整原样使用工具返回的 ID，不要截断或互换。cell 仅通过 `code_exec_wait` 接管，进程仅通过 `exec_wait` 控制；传错类型会返回 `MAR_AGENT_RESOURCE_HANDLE_TYPE_MISMATCH` 和对应工具提示，不会自动转调。前缀不代表资源仍存活或有权访问，原有 Session 归属和清理规则不变。
 

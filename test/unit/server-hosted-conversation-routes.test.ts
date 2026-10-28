@@ -37,6 +37,7 @@ describe('Server hosted conversation routes', () => {
     fixture.nodeControl.requestHostedConversationNode.mockImplementation(
       async (nodeId: string, operation: string, data: unknown) => {
         if (operation !== 'conversation.hosted.list') return { run: { id: 'run-1' } };
+        if (nodeId === 'node-old') throw new Error('NODE_UPGRADE_REQUIRED');
         const cursor = (data as { readonly cursor?: string }).cursor;
         if (nodeId === 'node-a' && cursor === undefined)
           return {
@@ -239,7 +240,7 @@ describe('Server hosted conversation routes', () => {
         .filter((call) => call[1] === 'conversation.hosted.list')
         .map((call) => call[0])
         .sort()
-    ).toEqual(['node-failed', 'node-invalid-page', 'node-valid']);
+    ).toEqual(['node-failed', 'node-invalid-page', 'node-old', 'node-valid']);
   });
 
   it('returns an ordinary empty page when no Node is valid or every valid Node fails', async () => {

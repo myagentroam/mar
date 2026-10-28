@@ -33,7 +33,7 @@ export const healthStatusSchema = z.object({
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
 /** The only wire protocol version understood by this build. */
-export const NODE_PROTOCOL_VERSION = 2;
+export const NODE_PROTOCOL_VERSION = 3;
 export const WORKBENCH_PROTOCOL_VERSION = 1;
 
 export const nodePlatformSchema = z.enum(['windows', 'linux', 'macos']);
@@ -59,7 +59,6 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
   .object({
     apiVersion: z.literal(1),
     websocket: z.boolean(),
-    fastMode: z.boolean().optional(),
     serviceTiers: z.array(marAgentResponsesServiceTierSchema).min(1).max(6).optional(),
     namespacedTools: z.boolean().optional(),
     responsesOptionalParameters: z.boolean().optional(),
@@ -875,7 +874,6 @@ const marAgentModelShape = {
   conversationModel: z.boolean().default(true),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
-  fastMode: z.boolean().optional(),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
   hostedWebSearch: z.boolean(),
   responsesTransport: marAgentResponsesTransportSchema.optional(),
@@ -912,8 +910,6 @@ function refineMarAgentModel<T extends z.AnyZodObject>(schema: T) {
       });
     if (value.protocol !== 'OPENAI_RESPONSES' && value.responsesPreviousResponseId)
       context.addIssue({ code: 'custom', message: 'Responses continuation requires Responses' });
-    if (value.protocol !== 'OPENAI_RESPONSES' && value.fastMode === true)
-      context.addIssue({ code: 'custom', message: 'Fast mode requires OpenAI Responses' });
     if (value.protocol !== 'OPENAI_RESPONSES' && value.serviceTier !== undefined)
       context.addIssue({ code: 'custom', message: 'Service tier requires OpenAI Responses' });
   });
@@ -965,7 +961,6 @@ export interface MarAgentModelSummary {
   conversationModel?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
-  fastMode?: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
   hostedWebSearch: boolean;
   responsesTransport?: MarAgentResponsesTransport;

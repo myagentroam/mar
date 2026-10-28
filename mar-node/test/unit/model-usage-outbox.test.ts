@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   MODEL_USAGE_OUTBOX_RETENTION_MS,
+  NODE_PROTOCOL_VERSION,
   type ModelUsageGrant,
   type ModelUsageRecord,
   type NodeEnvelope
@@ -477,7 +478,7 @@ function ack(
   }[]
 ): NodeEnvelope {
   return {
-    version: 2,
+    version: NODE_PROTOCOL_VERSION,
     id: 'usage-ack-1',
     type: 'usage.ack',
     payload: { apiVersion: 1, results }

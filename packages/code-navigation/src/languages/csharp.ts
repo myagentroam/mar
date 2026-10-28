@@ -1,9 +1,5 @@
-import {
-  rangeAtColumn,
-  sourceLineAt,
-  type FileSpecifierParser,
-  type NavigationSyntaxDefinition
-} from '../types.js';
+import { rangeAtColumn, sourceLineAt } from '../source-ranges.js';
+import { type FileSpecifierParser, type NavigationSyntaxDefinition } from '../types.js';
 
 const usingDirective =
   /^\s*(?:global\s+)?using\s+(?:(?:static\s+)|(?:[\p{L}_][\p{L}\p{N}_]*\s*=\s*))?([\p{L}_\p{Nl}][\p{L}\p{Nl}\p{Nd}\p{Pc}\p{Mn}\p{Mc}]*(?:\.[\p{L}_\p{Nl}][\p{L}\p{Nl}\p{Nd}\p{Pc}\p{Mn}\p{Mc}]*)*)\s*;/u;
@@ -28,6 +24,7 @@ function find(source: string, position: number) {
 export const csharpFileSpecifierParser: FileSpecifierParser = { find };
 
 export const csharpNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'csharp',
   parser: csharpFileSpecifierParser,
   suffixes: ['.cs']

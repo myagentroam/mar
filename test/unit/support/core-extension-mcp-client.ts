@@ -3,10 +3,10 @@ import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import type {
-  CoreMcpBackend,
-  CoreOperationContext,
-  CoreMcpToolCall
-} from '../../../mar-agent/src/index.js';
+  ExtensionMcpBackend,
+  ExtensionOperationContext,
+  ExtensionMcpToolCall
+} from '../../../mar-agent/src/extensions.js';
 import {
   MarAgentMcpClientCache,
   type MarAgentMcpClientLease
@@ -38,9 +38,9 @@ export function stdioDefinition(): ResolvedMcpServer {
 export function mcpLeasePort(cwd: () => string) {
   const cache = new MarAgentMcpClientCache();
   const leases: MarAgentMcpClientLease[] = [];
-  const calls: Array<{ input: CoreMcpToolCall; operation: CoreOperationContext }> = [];
+  const calls: Array<{ input: ExtensionMcpToolCall; operation: ExtensionOperationContext }> = [];
   let released = 0;
-  const port: CoreMcpBackend = {
+  const port: ExtensionMcpBackend = {
     async connect(definition, operation) {
       operation.signal.throwIfAborted();
       const lease = await cache.acquire(

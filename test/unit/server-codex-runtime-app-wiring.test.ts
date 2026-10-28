@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServerApp, type ServerApplication } from '../../ee/server/src/app.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import { NodeControl } from '../../ee/server/src/node-control.js';
 import { CodexCredentialService } from '../../ee/server/src/service/codex-credential-service.js';
 import { CODEX_CREDENTIAL_MAINTENANCE_INTERVAL_MS } from '../../packages/server-core/src/codex-credential-service.js';
+import { RuntimeCredentialService } from '../../packages/server-core/src/runtime-credential-service.js';
 import * as sessions from '../../ee/server/src/route/session-run-routes.js';
 import * as runs from '../../ee/server/src/route/run-control-routes.js';
 import * as hosted from '../../ee/server/src/route/hosted-conversation-routes.js';
@@ -32,10 +32,10 @@ const mysql = vi.hoisted(() => {
 });
 vi.mock('../../ee/server/src/mysql/connection.js', () => mysql);
 const runtime = vi.hoisted(() => ({ tickets: [] as unknown[], keyDirectories: [] as string[] }));
-vi.mock('../../ee/server/src/service/mar-agent-runtime-model-service.js', async (original) => {
+vi.mock('../../packages/server-core/src/mar-agent-runtime-model-service.js', async (original) => {
   const module =
     await original<
-      typeof import('../../ee/server/src/service/mar-agent-runtime-model-service.js')
+      typeof import('../../packages/server-core/src/mar-agent-runtime-model-service.js')
     >();
   return {
     ...module,
@@ -47,9 +47,9 @@ vi.mock('../../ee/server/src/service/mar-agent-runtime-model-service.js', async 
     }
   };
 });
-vi.mock('../../ee/server/src/service/runtime-credential-service.js', async (original) => {
+vi.mock('../../packages/server-core/src/runtime-credential-service.js', async (original) => {
   const module =
-    await original<typeof import('../../ee/server/src/service/runtime-credential-service.js')>();
+    await original<typeof import('../../packages/server-core/src/runtime-credential-service.js')>();
   return {
     ...module,
     loadOrCreateRuntimeCredentialHmacKey: (directory: string) => {
@@ -81,7 +81,7 @@ afterEach(async () => {
 
 describe('Server Codex runtime app wiring', () => {
   it('shares one runtime credential chain across Node control and registered Agent routes, and stops maintenance on close', async () => {
-    const attach = vi.spyOn(NodeControl.prototype, 'setRuntimeCredentialService');
+    const activate = vi.spyOn(RuntimeCredentialService.prototype, 'activateNodeConnection');
     const sessionRoutes = vi.spyOn(sessions, 'registerSessionRunRoutes');
     const runRoutes = vi.spyOn(runs, 'registerRunControlRoutes');
     const hostedRoutes = vi.spyOn(hosted, 'registerHostedConversationRoutes');
@@ -90,10 +90,15 @@ describe('Server Codex runtime app wiring', () => {
     const maintain = vi
       .spyOn(CodexCredentialService.prototype, 'maintain')
       .mockResolvedValue({ attempted: 0, deferred: 0, failed: 0 });
-    app = createServerApp({ dataDirectory: directory, productUuid: null });
+    app = (await createServerApp({ dataDirectory: directory, productUuid: null })).app;
     await app.ready();
-    expect(attach).toHaveBeenCalledOnce();
-    expect(runtime.tickets).toEqual([attach.mock.calls[0]![0]]);
+    expect(sessionRoutes).toHaveBeenCalledOnce();
+    const control = sessionRoutes.mock.calls[0]![0].nodeControl as unknown as {
+      onNodeConnected(nodeId: string, replaced: boolean): void;
+    };
+    control.onNodeConnected('test-node', false);
+    expect(activate).toHaveBeenCalledWith('test-node');
+    expect(runtime.tickets).toEqual([activate.mock.contexts[0]]);
     expect(runtime.keyDirectories).toContain(directory);
     expect(sessionRoutes).toHaveBeenCalledOnce();
     expect(runRoutes).toHaveBeenCalledOnce();

@@ -84,6 +84,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -112,6 +113,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -186,6 +188,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -217,6 +220,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -244,6 +248,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -257,14 +262,14 @@ describe('Server MAR Agent model transport test route', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(fixture.database.userCanRequestNode).toHaveBeenCalledWith(
+    expect(fixture.authorizeNodeRequest).toHaveBeenCalledWith(
       1,
       'node-1',
       'mar-agent.model.test',
       {},
       'workspace-1'
     );
-    expect(fixture.database.userCanRequestNode).toHaveBeenCalledWith(
+    expect(fixture.authorizeNodeRequest).toHaveBeenCalledWith(
       1,
       'node-1',
       'mar-agent.model.test',
@@ -286,6 +291,7 @@ describe('Server MAR Agent model transport test route', () => {
     registerMarAgentModelRoutes({
       app,
       database: fixture.database,
+      authorizeNodeRequest: fixture.authorizeNodeRequest,
       models: fixture.models,
       runtimeModels: fixture.runtimeModels,
       nodeControl: fixture.nodeControl
@@ -311,6 +317,15 @@ function routeFixture(
   workspaceIds: readonly string[] = ['workspace-1'],
   allowedWorkspaceIds: readonly string[] = workspaceIds
 ) {
+  const authorizeNodeRequest = vi.fn(
+    async (
+      _userId: number,
+      _nodeId: string,
+      _operation: string,
+      _data: unknown,
+      workspaceId?: string
+    ) => workspaceId !== undefined && allowedWorkspaceIds.includes(workspaceId)
+  );
   const database = {
     findCurrentUserSession: vi.fn(() => ({
       userId: 1,
@@ -333,16 +348,7 @@ function routeFixture(
         }
         throw new Error(`UNEXPECTED_SQL:${sql}`);
       })
-    },
-    userCanRequestNode: vi.fn(
-      async (
-        _userId: number,
-        _nodeId: string,
-        _operation: string,
-        _data: unknown,
-        workspaceId?: string
-      ) => workspaceId !== undefined && allowedWorkspaceIds.includes(workspaceId)
-    )
+    }
   } as unknown as MysqlServerDatabase & {
     findCurrentUserSession: ReturnType<typeof vi.fn>;
   };
@@ -377,7 +383,13 @@ function routeFixture(
   } as unknown as NodeControl & {
     requestNode: ReturnType<typeof vi.fn>;
   };
-  return { database, models, runtimeModels, nodeControl };
+  return {
+    database,
+    authorizeNodeRequest,
+    models,
+    runtimeModels,
+    nodeControl
+  };
 }
 
 function runtimeModel() {

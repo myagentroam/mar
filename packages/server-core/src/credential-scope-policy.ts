@@ -1,9 +1,5 @@
 import type { CodexCredentialOwnership } from '@myagentroam/protocol';
 
-export type CredentialOwnershipReader = (
-  credentialId: string
-) => Promise<CodexCredentialOwnership | undefined>;
-
 export interface CredentialScopePolicy {
   canActorManageOwnership(
     actorUserId: number,

@@ -46,7 +46,8 @@ describe('Server product composition', () => {
 
     registerAuthRoutes({
       app,
-      database: database as unknown as MysqlServerDatabase,
+      store: database,
+      audit: { record: database.audit },
       nodeControl: nodeControlFixture(),
       publicOrigin: undefined,
       secureCookies: false,
@@ -100,7 +101,8 @@ describe('Server product composition', () => {
 
     registerAuthRoutes({
       app,
-      database: database as unknown as MysqlServerDatabase,
+      store: database,
+      audit: { record: database.audit },
       nodeControl: nodeControlFixture(),
       publicOrigin: undefined,
       secureCookies: false,
@@ -237,18 +239,42 @@ function authDatabaseFixture() {
     createUserSession: vi.fn(async () => ({
       sessionId: 'session-member',
       csrfToken: 'csrf-member',
+      expiresAt: 10_000,
       evictedSessionHashes: []
     })),
     findCurrentUserSession: vi.fn((sessionId: string) => sessions[sessionId as 'session-member']),
+    verifyUserPassword: vi.fn(async () => {
+      throw new Error('Unexpected password verification');
+    }),
+    listActiveUserSessions: vi.fn(async () => {
+      throw new Error('Unexpected session listing');
+    }),
+    revokeUserSessionByPublicId: vi.fn(async () => {
+      throw new Error('Unexpected session revocation');
+    }),
+    revokeSession: vi.fn(async () => {
+      throw new Error('Unexpected session revocation');
+    }),
+    rotateCsrfToken: vi.fn(async () => {
+      throw new Error('Unexpected CSRF rotation');
+    }),
+    changePassword: vi.fn(async () => {
+      throw new Error('Unexpected password change');
+    }),
     audit: vi.fn(async () => undefined)
   };
 }
 
-function nodeControlFixture(): NodeControl {
+function nodeControlFixture(): Pick<
+  NodeControl,
+  'closeUserTerminals' | 'closeUserWorkbench' | 'closeAllTerminals' | 'closeAllWorkbench'
+> {
   return {
     closeUserTerminals: vi.fn(),
-    closeUserWorkbench: vi.fn()
-  } as unknown as NodeControl;
+    closeUserWorkbench: vi.fn(),
+    closeAllTerminals: vi.fn(),
+    closeAllWorkbench: vi.fn()
+  };
 }
 
 function mysqlFixture() {

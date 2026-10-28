@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type WebSocket from 'ws';
+import type { NodeCapabilities } from '@myagentroam/protocol';
 import type { NodeConnector } from '../../../src/connector.js';
 
 type CaptureSocket = {
@@ -32,7 +33,8 @@ export function mockedWebSocket(original: typeof WebSocket): typeof WebSocket {
 export function connectTestSocket(connector: NodeConnector, socket: CaptureSocket): void {
   const internals = connector as unknown as {
     config: { serverUrl: string } | undefined;
-    controlChannel: { connect(): void };
+    capabilities: NodeCapabilities;
+    controlChannel: { connect(): void; ready(capabilities: NodeCapabilities): void };
   };
   const config = internals.config;
   if (config === undefined) internals.config = { serverUrl: 'http://127.0.0.1' };
@@ -40,6 +42,7 @@ export function connectTestSocket(connector: NodeConnector, socket: CaptureSocke
   try {
     internals.controlChannel.connect();
     if (nextSocket !== undefined) throw new Error('Test control socket was not connected');
+    internals.controlChannel.ready(internals.capabilities);
   } finally {
     nextSocket = undefined;
     internals.config = config;

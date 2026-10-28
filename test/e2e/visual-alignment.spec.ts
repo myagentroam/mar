@@ -649,6 +649,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           (element as HTMLElement).style.removeProperty('background');
         }
       });
+      const firstNormal = page.getByRole('tab', { name: 'Workspace three', exact: true });
+      await lastPinned.getByRole('button', { name: /Unpin/ }).focus();
+      await page.keyboard.press('Tab');
+      await expect(firstNormal).toBeFocused();
+      await expect(firstNormal).toHaveAttribute('aria-selected', 'false');
+      await expect
+        .poll(async () => {
+          const tabBounds = (await firstNormal.boundingBox())!;
+          const pinnedBounds = (await lastPinned.boundingBox())!;
+          return tabBounds.x - (pinnedBounds.x + pinnedBounds.width);
+        })
+        .toBeGreaterThanOrEqual(3);
+      await page.keyboard.press('Tab');
+      await expect(normal.first().getByRole('button', { name: /Close/ })).toBeFocused();
+      await expect(firstNormal).toHaveAttribute('aria-selected', 'false');
       await list.evaluate((element) => {
         element.scrollLeft = 0;
       });

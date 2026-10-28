@@ -691,11 +691,9 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
-  const filePage = (name: string) =>
-    page.getByRole('dialog').filter({
-      has: page.getByRole('heading', { name, exact: true })
-    });
-  const sourcePreview = filePage('main.ts');
+  const filePage = (path: string) =>
+    page.getByRole('region', { name: `${path} 文件预览`, exact: true });
+  const sourcePreview = filePage('src/main.ts');
   await expect(sourcePreview.getByRole('heading')).toHaveAttribute(
     'aria-description',
     'src/main.ts'
@@ -750,7 +748,7 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
 
   await callSite.click({ position: { x: 16, y: 10 }, modifiers: ['Control'] });
   await navigation.getByRole('option').filter({ hasText: 'src/definition.ts' }).click();
-  const definitionPreview = filePage('definition.ts');
+  const definitionPreview = filePage('src/definition.ts');
   await expect(definitionPreview.locator('.cm-content')).toContainText(
     'export function target() { return 7; }'
   );
@@ -828,7 +826,7 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
   await expect
     .poll(() => requestsForSpecifier('./definition.js'))
     .toHaveLength(relativeRequestBaseline + 1);
-  const relativePreview = filePage('definition.ts');
+  const relativePreview = filePage('src/definition.ts');
   await expect(relativePreview.locator('.cm-content')).toContainText(
     'export function target() { return 7; }'
   );
@@ -842,7 +840,7 @@ test('Code-navigation Nodes show only the Ctrl-hovered symbol with candidate cod
   await expect
     .poll(() => requestsForSpecifier('@myagentroam/web-core/management'))
     .toHaveLength(packageRequestBaseline + 1);
-  const packagePreview = filePage('management.ts');
+  const packagePreview = filePage('packages/web-core/src/management.ts');
   await expect(packagePreview.getByRole('heading')).toHaveAttribute(
     'aria-description',
     'packages/web-core/src/management.ts'

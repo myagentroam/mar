@@ -3,12 +3,21 @@ import type { WebSocket } from 'ws';
 import { describe, expect, it, vi } from 'vitest';
 import { WorkbenchRelayService } from '../../src/workbench-relay-service.js';
 
-function fixture() {
+function fixture(
+  authorizeHostedConversation?: (
+    userId: number,
+    nodeId: string,
+    templateId: string
+  ) => Promise<boolean>
+) {
   const database = {
     userOwnsNode: vi.fn(async () => true),
     userCanRequestNode: vi.fn(async () => true)
   };
-  const relay = new WorkbenchRelayService({ database });
+  const relay = new WorkbenchRelayService({
+    authorizeNodeRequest: database.userCanRequestNode,
+    ...(authorizeHostedConversation === undefined ? {} : { authorizeHostedConversation })
+  });
   const attach = (sessionHash = 'session-one', resume = {}) => {
     const socket = new Socket();
     relay.attach(socket as unknown as WebSocket, { userId: 1, sessionHash });
@@ -198,12 +207,11 @@ describe('public page-level Workbench relay', () => {
   });
 
   it('Hosted Watch uses only its independent template authorization', async () => {
-    const { relay, database, attach } = fixture();
+    const authorize = vi.fn(async () => true);
+    const { relay, database, attach } = fixture(authorize);
     try {
       const socket = attach();
       const id = String(socket.sent[0]!.workbenchConnectionId);
-      const authorize = vi.fn(async () => true);
-      relay.setHostedConversationAuthorization(authorize);
       database.userCanRequestNode.mockResolvedValue(false);
       database.userOwnsNode.mockResolvedValue(false);
       const event = {

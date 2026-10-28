@@ -113,9 +113,10 @@ export const execToolDefinition: ClientToolDefinition = {
 export const execWaitToolDefinition: ClientToolDefinition = {
   name: 'exec_wait',
   allowedCallers: ['direct', 'programmatic'],
+  codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends, then return incremental stdout/stderr. New output does not end the wait. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Supports direct and programmatic calls; in Code Mode use tools.exec_wait. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends, then return incremental stdout/stderr. New output does not end the wait. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Prefer direct calls for a single wait; use tools.exec_wait for composition. Do not duplicate an active wait for the same process. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',

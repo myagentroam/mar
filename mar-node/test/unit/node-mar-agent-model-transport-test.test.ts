@@ -32,7 +32,7 @@ describe('Node MAR Agent model transport test', () => {
       runtimeScopeId: 'scope-1',
       executionId: 'legacy'
     });
-    expect(legacy?.fastMode).toBe(true);
+    expect(legacy).not.toHaveProperty('fastMode');
     await legacy?.credentialProvider?.close();
   });
   it('executes the selected transport through the shared runtime model factory', async () => {

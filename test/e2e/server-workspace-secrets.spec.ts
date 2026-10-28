@@ -7,7 +7,8 @@ import {
 } from '../../packages/server-core/src/mysql-schema.js';
 import { validateMysqlSchema } from '../../packages/server-core/src/mysql-schema-support.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
+import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
+import type { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
 import { ENTERPRISE_MYSQL_MIGRATIONS } from '../../ee/server/src/mysql/enterprise-migrations.js';
 import {
   createPlaywrightTestDatabase,
@@ -89,7 +90,7 @@ async function seedDatabase(pool: Pool | PoolConnection, legacySecret: boolean):
 }
 
 function createPersonalService(pool: Pool): MysqlEnvironmentSecretService {
-  return new MysqlEnvironmentSecretService(
+  return createTestMysqlEnvironmentSecretService(
     new MysqlServerDatabase(pool),
     async (userId, nodeId) => userId === 1 && nodeId === 'personal-node',
     async (userId, nodeId) => userId === 1 && nodeId === 'personal-node',
@@ -107,7 +108,7 @@ function createPersonalService(pool: Pool): MysqlEnvironmentSecretService {
 }
 
 function createEnterpriseService(pool: Pool): MysqlEnvironmentSecretService {
-  return new MysqlEnvironmentSecretService(
+  return createTestMysqlEnvironmentSecretService(
     new MysqlServerDatabase(pool),
     async (userId, nodeId) => userId === 1 && nodeId === 'enterprise-node',
     async (userId, nodeId) => userId === 1 && nodeId === 'enterprise-node',
@@ -337,7 +338,7 @@ test('Personal and enterprise Workspace secrets cover CRUD, isolation, permissio
         (secret) => secret.scope === 'WORKSPACE'
       )
     ).toBe(true);
-    const workspaceListOnlyManager = new MysqlEnvironmentSecretService(
+    const workspaceListOnlyManager = createTestMysqlEnvironmentSecretService(
       new MysqlServerDatabase(pool),
       async () => false,
       async () => false,
@@ -484,7 +485,7 @@ test('Workspace secret transactions create, update, and delete with a single-con
         );
         return userId === 1 && rows.length === 1;
       };
-      const enterprise = new MysqlEnvironmentSecretService(
+      const enterprise = createTestMysqlEnvironmentSecretService(
         new MysqlServerDatabase(pool, undefined, auditPool),
         async (userId, nodeId) => {
           const [rows] = await pool.execute<RowDataPacket[]>('SELECT id FROM nodes WHERE id=?', [
@@ -550,7 +551,7 @@ test('Workspace secret writes reject ownership changes or deletion after authori
       value: 'original-fixture'
     });
     let mode: 'MOVE' | 'DELETE' = 'MOVE';
-    const racingService = new MysqlEnvironmentSecretService(
+    const racingService = createTestMysqlEnvironmentSecretService(
       new MysqlServerDatabase(pool),
       undefined,
       undefined,

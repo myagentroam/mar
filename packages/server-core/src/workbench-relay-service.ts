@@ -1,4 +1,4 @@
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { randomBytes } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
@@ -37,23 +37,12 @@ export interface ShareWorkbenchAccess {
   visitor: SessionShareVisitor;
 }
 
-export type { UserNodeAuthorization } from './node-request-channel.js';
-
 export interface RelayedWorkbenchEvent extends WorkbenchEvent {
   readonly nodeId: string;
 }
 
 export interface WorkbenchRelayOptions {
-  readonly database: {
-    userOwnsNode(userId: number, nodeId: string): boolean | Promise<boolean>;
-    userCanRequestNode?: (
-      userId: number,
-      nodeId: string,
-      operation: string,
-      data: unknown,
-      workspaceId?: string
-    ) => boolean | Promise<boolean>;
-  };
+  readonly authorizeNodeRequest: NodeRequestAuthorization;
   readonly traffic?: {
     record(channel: 'workbench', direction: 'in' | 'out', bytes: number): void;
     backpressure(channel: 'workbench', bytes: number): void;
@@ -99,19 +88,13 @@ export class WorkbenchRelayService {
   private readonly directedTails = new Map<string, Promise<void>>();
   private scheduled = false;
   private readonly listeners = new Set<(event: RelayedWorkbenchEvent) => void>();
-  private authorizeHostedConversation:
+  private readonly authorizeHostedConversation:
     ((userId: number, nodeId: string, templateId: string) => Promise<boolean>) | undefined;
   private directTransferHandler: WorkbenchDirectTransferHandler | undefined;
   private terminalDirectHandler: WorkbenchTerminalDirectHandler | undefined;
 
   constructor(private readonly options: WorkbenchRelayOptions) {
     this.authorizeHostedConversation = options.authorizeHostedConversation;
-  }
-
-  setHostedConversationAuthorization(
-    authorize: (userId: number, nodeId: string, templateId: string) => Promise<boolean>
-  ): void {
-    this.authorizeHostedConversation = authorize;
   }
 
   setDirectTransferHandler(handler: WorkbenchDirectTransferHandler): void {
@@ -226,15 +209,13 @@ export class WorkbenchRelayService {
     const hosted = hostedConversationWatchTarget(message);
     const allowed =
       hosted === undefined
-        ? typeof this.options.database.userCanRequestNode === 'function'
-          ? await this.options.database.userCanRequestNode(
-              connection.user.userId,
-              nodeId,
-              'workbench.event.receive',
-              message,
-              messageWorkspaceId(message)
-            )
-          : await this.options.database.userOwnsNode(connection.user.userId, nodeId)
+        ? await this.options.authorizeNodeRequest(
+            connection.user.userId,
+            nodeId,
+            'workbench.event.receive',
+            message,
+            messageWorkspaceId(message)
+          )
         : hosted === null
           ? false
           : this.authorizeHostedConversation !== undefined &&
@@ -494,16 +475,13 @@ export class WorkbenchRelayService {
       const workspaceId = messageWorkspaceId(message);
       let allowed = false;
       try {
-        allowed =
-          typeof this.options.database.userCanRequestNode === 'function'
-            ? await this.options.database.userCanRequestNode(
-                user.userId,
-                nodeId,
-                messageWorkspaceOperation(message),
-                message,
-                workspaceId
-              )
-            : await this.options.database.userOwnsNode(user.userId, nodeId);
+        allowed = await this.options.authorizeNodeRequest(
+          user.userId,
+          nodeId,
+          messageWorkspaceOperation(message),
+          message,
+          workspaceId
+        );
       } catch {
         // Authorization failures deny this delivery without breaking later broadcasts.
       }

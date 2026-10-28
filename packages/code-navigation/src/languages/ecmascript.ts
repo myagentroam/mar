@@ -41,6 +41,7 @@ function find(line: string, column: number): FileReference | undefined {
 export const ecmascriptFileSpecifierParser: FileSpecifierParser = { find };
 
 export const ecmascriptNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'ecmascript',
   parser: ecmascriptFileSpecifierParser,
   suffixes: ['.js', '.jsx', '.ts', '.tsx', '.mts', '.cts']

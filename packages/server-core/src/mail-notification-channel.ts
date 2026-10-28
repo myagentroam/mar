@@ -35,7 +35,7 @@ export async function resolveMailNotification(input: {
     return;
   }
   try {
-    await input.service.send(input.nodeId, parsed.data);
+    await input.service.send(input.nodeId, parsed.data, input.isCurrentConnection);
     input.respond(
       input.isCurrentConnection() ? { accepted: true } : failure('MAIL_DELIVERY_UNCERTAIN')
     );

@@ -15,6 +15,7 @@ import {
   CodexCredentialService
 } from '../../src/codex-credential-service.js';
 import type { CredentialScopePolicy } from '../../src/credential-scope-policy.js';
+import { CredentialDocumentStore } from '../../src/credential-document-store.js';
 
 const NOW = 1_800_000_000_000;
 const actor = { userId: 1, sessionFingerprint: 'authenticated-session' };
@@ -115,7 +116,9 @@ function fixture(earliestRefreshAt?: number) {
       request: request as typeof fetch,
       now: () => now,
       id: randomUUID,
-      createScopePolicy: () => policy
+      scopePolicy: policy,
+      documentStore: new CredentialDocumentStore({ execute } as unknown as Pool, () => now),
+      chatgptNodeRequest: (...args) => node(...args)
     }
   );
   services.push(service);
@@ -143,7 +146,6 @@ function fixture(earliestRefreshAt?: number) {
       return { acknowledged: true };
     throw new Error('Unexpected Node operation');
   });
-  service.configureChatgptLogin(node);
   async function login(
     ownership: CodexCredentialOwnership = { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
   ) {
@@ -179,6 +181,87 @@ function fixture(earliestRefreshAt?: number) {
 }
 
 describe('Server-managed ChatGPT OAuth credentials', () => {
+  it('does not start a Node login after close while draft authorization is pending', async () => {
+    const f = fixture();
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    vi.spyOn(f.policy, 'assertActorCanSelectOwnership').mockImplementation(async () => {
+      entered();
+      await waiting;
+    });
+    const pending = f.service.startLogin(actor, {
+      type: 'CHATGPT_OAUTH',
+      nodeId: 'local-node',
+      name: 'ChatGPT',
+      ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
+    });
+    await started;
+    await f.service.closeChatgptLogins();
+    release();
+    await expect(pending).rejects.toThrow('CHATGPT_LOGIN_UNAVAILABLE');
+    expect(f.node).not.toHaveBeenCalled();
+  });
+  it('releases shared login capacity when the shorter Node deadline expires', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture();
+      const draft = {
+        type: 'CHATGPT_OAUTH',
+        nodeId: 'local-node',
+        name: 'ChatGPT',
+        ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
+      };
+      for (let i = 0; i < 128; i++) await f.service.startLogin(actor, draft);
+      await expect(f.service.startLogin(actor, draft)).rejects.toThrow(
+        'CODEX_LOGIN_ATTEMPT_LIMIT_REACHED'
+      );
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(f.node.mock.calls.filter((call) => call[2] === 'chatgpt.login.cancel')).toHaveLength(
+        128
+      );
+      await expect(f.service.startLogin(actor, draft)).resolves.toMatchObject({
+        status: 'PENDING'
+      });
+      await f.service.closeChatgptLogins();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('retains a rotated token and a proxy edit when refresh overlaps the edit', async () => {
+    const f = fixture();
+    const { result } = await f.login();
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const original = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async (url, init) => {
+      if (String(url) === CHATGPT_TOKEN_ENDPOINT) {
+        started();
+        await gate;
+      }
+      return original(url, init);
+    });
+    const refreshing = f.service.refresh(1, result.credentialId!);
+    await entered;
+    await f.service.update(1, result.credentialId!, { socks5Url: 'socks5://127.0.0.1:1080' });
+    release();
+    await refreshing;
+    expect(f.document().credentials[0]).toMatchObject({
+      refreshToken: 'rotated-refresh',
+      proxy: 'socks5://127.0.0.1:1080'
+    });
+  });
   it('rechecks name uniqueness at commit across concurrent login attempts', async () => {
     const f = fixture();
     const draft = {
@@ -296,13 +379,13 @@ describe('Server-managed ChatGPT OAuth credentials', () => {
     });
     expect(await f.service.credentialTarget(1, id)).toBe(CHATGPT_RESOURCE);
     await expect(
-      f.service.assertCredentialTarget(1, id, CHATGPT_RESOURCE, false)
+      f.service.assertCredentialTarget(1, id, CHATGPT_RESOURCE)
     ).resolves.toBeUndefined();
     await expect(
       f.service.assertCredentialTarget(1, id, 'https://chatgpt.com/backend-api/codex')
     ).rejects.toThrow('MAR_AGENT_MODEL_CONFIG_INVALID');
     await expect(
-      f.service.assertCredentialTarget(1, id, CHATGPT_RESOURCE, true)
+      f.service.assertStoredCredentialTarget(id, CHATGPT_RESOURCE)
     ).resolves.toBeUndefined();
     expect((await f.service.resolve(id, 'RUNTIME')).headers).toEqual({});
     await expect(f.service.usage(1, id)).rejects.toThrow('CHATGPT_USAGE_UNAVAILABLE');

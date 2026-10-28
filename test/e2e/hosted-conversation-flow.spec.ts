@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createSocket } from 'node:dgram';
+import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import {
@@ -12,7 +14,7 @@ import {
   symlink,
   writeFile
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import mysql from 'mysql2/promise';
@@ -35,7 +37,8 @@ import type {
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { loadPermissionMatrix } from '../../ee/server/src/rbac/permission-matrix.js';
-import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
+import { ResourceGrantService } from '../../ee/server/src/rbac/resource-grant-service.js';
+import { CodexCredentialService } from '../../ee/server/src/service/codex-credential-service.js';
 import {
   createEnterpriseTestServer,
   type EnterpriseTestServer
@@ -47,6 +50,7 @@ import {
   templateDraft
 } from './support/hosted-conversation-flow-fixture.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { isolatedRunnerEnvironment } from '../support/isolate-runner-environment.js';
 
 interface AuthenticatedContext {
   readonly context: APIRequestContext;
@@ -147,6 +151,13 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
         }
       }
     );
+    const udp = createSocket('udp4');
+    await new Promise<void>((resolve, reject) => {
+      udp.once('error', reject);
+      udp.bind(0, '127.0.0.1', resolve);
+    });
+    const udpPort = udp.address().port;
+    await new Promise<void>((resolve) => udp.close(() => resolve()));
     await writeFile(
       configPath,
       `${JSON.stringify(
@@ -155,6 +166,7 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
           allowedRoots: [workspace],
           dataDirectory: nodeData,
           registrationToken: registration.token,
+          directTransfer: { udpPortRangeBegin: udpPort, udpPortRangeEnd: udpPort },
           conversationHosting: {
             enabled: true,
             storeDirectory: 'hosted-conversations',
@@ -215,9 +227,11 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       201
     );
     const modelId = modelResult.model.id;
-    const resources = new ResourceAccessService(
+    const authorization = new AuthorizationService(database, loadPermissionMatrix());
+    const resources = new ResourceGrantService(
       database,
-      new AuthorizationService(database, loadPermissionMatrix())
+      authorization,
+      new CodexCredentialService(database, { authorization })
     );
     await resources.createGrant(adminUserId, 'MODEL', modelId, null, {
       targetType: 'ORGANIZATION',
@@ -940,12 +954,12 @@ function startNodeConnector(configPath: string, hostedImageSeed?: HostedImageSee
       capabilities: {
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.9.26',
+        nodeAppVersion: process.env.MAR_TEST_NODE_VERSION,
         nodeVersion: process.version,
         codex: { available: false },
         claudeCode: { available: false },
         openCode: { available: false },
-        marAgent: { available: true, version: '0.9.26' }
+        marAgent: { available: true, version: process.env.MAR_TEST_NODE_VERSION }
       },
       conversationHostingProbe: async () => ({ available: true, version: '0.11.1' }),
       reconnect: false
@@ -987,7 +1001,12 @@ function startNodeConnector(configPath: string, hostedImageSeed?: HostedImageSee
     ],
     {
       cwd: process.cwd(),
-      env: process.env,
+      env: {
+        ...isolatedRunnerEnvironment(join(dirname(configPath), 'runner-home'), process.env),
+        MAR_TEST_NODE_VERSION: (
+          JSON.parse(readFileSync('mar-node/package.json', 'utf8')) as { version: string }
+        ).version
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     }
   );

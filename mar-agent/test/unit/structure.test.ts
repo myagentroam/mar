@@ -8,6 +8,7 @@ const packageSourceRoot = fileURLToPath(new URL('../../src/', import.meta.url));
 const sourceRoot = packageSourceRoot;
 const contracts = new Set([
   'host/contracts.ts',
+  'process/contracts.ts',
   'runtime/contracts.ts',
   'runtime/events.ts',
   'runtime/execution-handle.ts',
@@ -373,6 +374,7 @@ describe('Agent structure boundaries', () => {
     }
     const neutral = new Set([
       'error.ts',
+      'process/contracts.ts',
       'host/contracts.ts',
       'host/local-process-executor.ts',
       'host/local-shell.ts'

@@ -1,12 +1,14 @@
 import { createServerApp } from '@myagentroam-enterprise/server-implementation';
 import { readLicenseHostUuid } from '@myagentroam-enterprise/server-implementation/license-host';
 import { resolve } from 'node:path';
-const app = createServerApp({
-  webRoot: resolve(process.env['MAR_WEB_ROOT'] ?? resolve(import.meta.dirname, '../web')),
-  productUuid: readLicenseHostUuid(),
-  logger: true,
-  secureCookies: process.env['MAR_SECURE_COOKIES'] !== 'false'
-});
+const app = (
+  await createServerApp({
+    webRoot: resolve(process.env['MAR_WEB_ROOT'] ?? resolve(import.meta.dirname, '../web')),
+    productUuid: readLicenseHostUuid(),
+    logger: true,
+    secureCookies: process.env['MAR_SECURE_COOKIES'] !== 'false'
+  })
+).app;
 const port = Number(process.env['MAR_SERVER_PORT'] ?? 5090);
 const host = process.env['MAR_SERVER_HOST'] ?? '127.0.0.1';
 
@@ -26,6 +28,12 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 try {
   await app.listen({ host, port });
 } catch (error) {
-  await stop();
+  try {
+    await stop();
+  } catch (cleanupError) {
+    throw new AggregateError([error, cleanupError], 'Server startup and cleanup failed', {
+      cause: error
+    });
+  }
   throw error;
 }

@@ -1,3 +1,4 @@
+import { testNodeBrokerServices } from '../../../../test/support/node-broker-services.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,11 +73,11 @@ describe('Workspace execution boundary across Server and Node', () => {
       }
     };
     const broker = new NodeRequestBroker(
-      {
-        userCanRequestNode: access.canRelay.bind(access),
-        audit: async () => undefined
-      } as never,
-      () => socket as never
+      { audit: async () => undefined },
+      access.canRelay.bind(access),
+      () => socket as never,
+      { allows: () => true, encode: (_socket, envelope) => envelope },
+      testNodeBrokerServices()
     );
     requests = new NodeRequestService({
       nodeId: () => 'node-boundary',
@@ -105,6 +106,7 @@ describe('Workspace execution boundary across Server and Node', () => {
       expect(await access.canUseWorkspace(7, context.nodeId, workspaceB.id)).toBe(false);
       const input = {
         runner: 'codex',
+        model: 'test-model',
         content: 'Run the fixture',
         cwd: b,
         clientMessageId: 'foreign-cwd'

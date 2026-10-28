@@ -11,9 +11,124 @@ import { MarAgentModelService } from '../../ee/server/src/service/mar-agent-mode
 
 function database(responses: unknown[] = []) {
   const settings = new Map<string, string>();
+  let candidateRows: readonly Record<string, unknown>[] | undefined;
   const execute = vi.fn(async (...args: unknown[]) => {
     const sql = String(args[0]);
     const values = Array.isArray(args[1]) ? args[1] : [];
+    if (sql.startsWith('SELECT id,owner_type,owner_user_id,created_by FROM mar_agent_models')) {
+      const response = responses.shift() ?? [candidateRows ?? [], []];
+      if (
+        Array.isArray(response) &&
+        Array.isArray(response[0]) &&
+        response[0].every((row: unknown) => typeof row === 'object' && row !== null)
+      ) {
+        const [rows, metadata] = response as [readonly Record<string, unknown>[], unknown];
+        candidateRows = rows.filter(
+          (row) =>
+            (!sql.includes('enabled=1') ||
+              row['enabled'] === undefined ||
+              Boolean(row['enabled'])) &&
+            (!sql.includes('conversation_model=1') ||
+              row['conversation_model'] === undefined ||
+              Boolean(row['conversation_model']))
+        );
+        return [
+          candidateRows.map((row) =>
+            'owner_type' in row
+              ? {
+                  id: row['id'],
+                  owner_type: row['owner_type'],
+                  owner_user_id: row['owner_user_id'],
+                  created_by: row['created_by']
+                }
+              : {
+                  id: row['id'],
+                  owner_type: 'PERSONAL',
+                  owner_user_id: 7,
+                  created_by: row['created_by'] ?? 7
+                }
+          ),
+          metadata
+        ];
+      }
+      return response;
+    }
+    if (sql.includes('LEFT JOIN system_settings model_settings')) {
+      const queued = responses[0];
+      const queuedHasModelRows =
+        Array.isArray(queued) &&
+        Array.isArray(queued[0]) &&
+        queued[0].some(
+          (row: unknown) =>
+            typeof row === 'object' && row !== null && 'id' in row && 'protocol' in row
+        );
+      const response = queuedHasModelRows
+        ? responses.shift()
+        : candidateRows === undefined
+          ? (responses.shift() ?? [[], []])
+          : [candidateRows, []];
+      if (
+        Array.isArray(response) &&
+        Array.isArray(response[0]) &&
+        response[0].every((row: unknown) => typeof row === 'object' && row !== null)
+      ) {
+        const [allRows, metadata] = response as [readonly Record<string, unknown>[], unknown];
+        const idList = sql.match(/\bmodel\.id\s+IN\s*\(([^)]*)\)/iu)?.[1];
+        const ids =
+          idList === undefined ? [] : values.slice(0, (idList.match(/\?/gu) ?? []).length);
+        const selectedRows =
+          ids.length > 0
+            ? allRows.filter((row) => ids.includes(String(row['id'])))
+            : /\bWHERE\s+model\.id\s*=\s*\?/iu.test(sql)
+              ? allRows.filter((row) => String(row['id']) === String(values[0]))
+              : allRows;
+        const rows = selectedRows.filter(
+          (row) =>
+            (!sql.includes('model.enabled=1') ||
+              row['enabled'] === undefined ||
+              Boolean(row['enabled'])) &&
+            (!sql.includes('model.conversation_model=1') ||
+              row['conversation_model'] === undefined ||
+              Boolean(row['conversation_model']))
+        );
+        for (const row of rows) {
+          if (typeof row['id'] !== 'string' || typeof row['protocol'] !== 'string') continue;
+          const key = `mar_agent_model_config:${row['id']}`;
+          if (settings.has(key)) continue;
+          const configured = Object.hasOwn(row, 'modelSettings')
+            ? row['modelSettings']
+            : row['model_settings'];
+          if (configured === null) continue;
+          const value =
+            configured ??
+            (row['protocol'] === 'ANTHROPIC_MESSAGES'
+              ? { version: 1 }
+              : { version: 1, hostedWebSearch: false, responsesPreviousResponseId: false });
+          settings.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+        }
+        return [
+          rows.map((row) => {
+            const key = `mar_agent_model_config:${String(row['id'])}`;
+            const databaseRow = Object.fromEntries(
+              Object.entries(row).filter(
+                ([name]) => name !== 'modelSettings' && name !== 'model_settings'
+              )
+            );
+            const joinedRow = { ...databaseRow, model_settings: settings.get(key) ?? null };
+            return 'owner_type' in joinedRow
+              ? joinedRow
+              : {
+                  ...joinedRow,
+                  owner_type: 'PERSONAL',
+                  owner_user_id: 7,
+                  owner_organization_id: null
+                };
+          }),
+          metadata
+        ];
+      }
+      return response;
+    }
     if (sql.includes('system_settings')) {
       if (sql.startsWith('SELECT'))
         return [
@@ -34,16 +149,21 @@ function database(responses: unknown[] = []) {
     ) {
       const [rows, metadata] = response as [readonly Record<string, unknown>[], unknown];
       return [
-        rows.map((row) =>
-          'owner_type' in row
-            ? row
+        rows.map((row) => {
+          const databaseRow = Object.fromEntries(
+            Object.entries(row).filter(
+              ([key]) => key !== 'modelSettings' && key !== 'model_settings'
+            )
+          );
+          return 'owner_type' in databaseRow
+            ? databaseRow
             : {
-                ...row,
+                ...databaseRow,
                 owner_type: 'PERSONAL',
                 owner_user_id: 7,
                 owner_organization_id: null
-              }
-        ),
+              };
+        }),
         metadata
       ];
     }
@@ -80,6 +200,18 @@ function database(responses: unknown[] = []) {
     connection: typeof connection;
   };
 }
+function modelSettingsDocument(
+  execute: { mock: { calls: readonly (readonly unknown[])[] } },
+  modelId: string
+): unknown {
+  const write = execute.mock.calls.find(
+    ([sql, parameters]) =>
+      String(sql).startsWith('INSERT INTO system_settings') &&
+      Array.isArray(parameters) &&
+      parameters[0] === `mar_agent_model_config:${modelId}`
+  );
+  return write === undefined ? undefined : JSON.parse(String((write[1] as unknown[])[1]));
+}
 const input = {
   name: 'Coding',
   protocol: 'ANTHROPIC_MESSAGES',
@@ -96,6 +228,37 @@ const input = {
   enabled: true,
   sortOrder: 0
 };
+function modelServiceRow(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    name: `Model ${id}`,
+    protocol: 'ANTHROPIC_MESSAGES',
+    base_url: input.baseUrl,
+    credential: JSON.stringify({ type: 'INLINE_API_KEY', value: `${id}-secret` }),
+    model_id: `upstream-${id}`,
+    context_window_tokens: 128_000,
+    max_output_tokens: 8_192,
+    input_capabilities: '["TEXT"]',
+    output_capabilities: '["TEXT"]',
+    reasoning_efforts: '[]',
+    default_reasoning_effort: 'medium',
+    conversation_model: 1,
+    title_generation: 0,
+    code_mode: 0,
+    enabled: 1,
+    sort_order: 0,
+    last_tested_at: null,
+    last_test_status: 'UNVERIFIED',
+    last_test_code: null,
+    owner_type: 'PERSONAL',
+    owner_user_id: 7,
+    owner_organization_id: null,
+    created_by: 7,
+    public_access: 0,
+    modelSettings: { version: 1 },
+    ...overrides
+  };
+}
 function importedCodexModelId(
   credentialId: string,
   upstreamModelId: string,
@@ -123,7 +286,7 @@ function importedCodexModelId(
 function managementAccess() {
   return {
     canUseModel: vi.fn(async () => true),
-    canManageModel: vi.fn(async () => true),
+    canManageModel: vi.fn(async (_userId: number, _modelId: string) => true),
     assertOwnershipSelection: vi.fn(async () => undefined)
   };
 }
@@ -154,7 +317,6 @@ describe('MAR Agent model service', () => {
               default_reasoning_effort: 'medium',
               title_generation: 1,
               code_mode: 1,
-              hosted_web_search: 0,
               enabled: 1,
               sort_order: 8,
               last_tested_at: null,
@@ -352,14 +514,17 @@ describe('MAR Agent model service', () => {
     expect(scopes.assertCredentialTarget).toHaveBeenCalledWith(
       7,
       'team-credential',
-      source.baseUrl,
-      false
+      source.baseUrl
     );
-    expect(db.raw.execute.mock.calls[0]?.[1]).toContain(JSON.stringify(credential));
+    const insert = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).startsWith('INSERT INTO mar_agent_models')
+    );
+    expect(insert?.[1]).toContain(JSON.stringify(credential));
+    const callsBeforeInvalidDuplicate = db.raw.execute.mock.calls.length;
     await expect(service.duplicate(7, source.id, { ...configuration })).rejects.toThrow(
       'MAR_AGENT_MODEL_CONFIG_INVALID'
     );
-    expect(db.raw.execute).toHaveBeenCalledTimes(4);
+    expect(db.raw.execute.mock.calls).toHaveLength(callsBeforeInvalidDuplicate);
   });
 
   it.each(
@@ -380,23 +545,34 @@ describe('MAR Agent model service', () => {
     async ({ hostedWebSearch, responsesTransport, responsesPreviousResponseId }) => {
       const row = {
         ...Object.fromEntries(
-          Object.entries(input).map(([key, value]) => [
-            key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
-            Array.isArray(value) ? JSON.stringify(value) : value
-          ])
+          Object.entries(input)
+            .filter(([key]) => key !== 'apiKey' && key !== 'hostedWebSearch')
+            .map(([key, value]) => [
+              key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
+              Array.isArray(value) ? JSON.stringify(value) : value
+            ])
         ),
         id: 'grok-id',
         protocol: 'OPENAI_RESPONSES',
         base_url: 'https://cli-chat-proxy.grok.com/v1',
         credential: JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'grok-credential' }),
-        hosted_web_search: Number(!hostedWebSearch),
-        responses_transport: JSON.stringify(responsesTransport),
-        responses_previous_response_id: 0
+        modelSettings: {
+          version: 1,
+          hostedWebSearch: !hostedWebSearch,
+          serviceTier: 'default',
+          responsesTransport,
+          responsesPreviousResponseId: false
+        }
       };
       const updatedRow = {
         ...row,
-        hosted_web_search: Number(hostedWebSearch),
-        responses_previous_response_id: Number(responsesPreviousResponseId)
+        modelSettings: {
+          version: 1,
+          hostedWebSearch,
+          serviceTier: 'default',
+          responsesTransport,
+          responsesPreviousResponseId
+        }
       };
       const db = database([
         [[row], []],
@@ -415,11 +591,13 @@ describe('MAR Agent model service', () => {
         hostedWebSearch,
         responsesPreviousResponseId
       });
-      const update = db.raw.execute.mock.calls.find(([sql]) =>
-        String(sql).startsWith('UPDATE mar_agent_models SET name=')
-      );
-      expect((update?.[1] as unknown[])?.[17]).toBe(hostedWebSearch);
-      expect((update?.[1] as unknown[])?.[19]).toBe(responsesPreviousResponseId);
+      expect(modelSettingsDocument(db.raw.execute, 'grok-id')).toEqual({
+        version: 1,
+        hostedWebSearch,
+        serviceTier: 'default',
+        responsesTransport,
+        responsesPreviousResponseId
+      });
       expect(await service.stored('grok-id')).toMatchObject({
         hostedWebSearch,
         responsesTransport,
@@ -467,17 +645,17 @@ describe('MAR Agent model service', () => {
     async ({ baseUrl, httpVersion }) => {
       const row = {
         ...Object.fromEntries(
-          Object.entries(input).map(([key, value]) => [
-            key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
-            Array.isArray(value) ? JSON.stringify(value) : value
-          ])
+          Object.entries(input)
+            .filter(([key]) => key !== 'apiKey' && key !== 'hostedWebSearch')
+            .map(([key, value]) => [
+              key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
+              Array.isArray(value) ? JSON.stringify(value) : value
+            ])
         ),
         id: 'http-model',
         protocol: 'OPENAI_RESPONSES',
         base_url: baseUrl,
-        credential: JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'credential-1' }),
-        responses_transport: JSON.stringify({ transport: 'HTTP', httpVersion }),
-        responses_previous_response_id: 1
+        credential: JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'credential-1' })
       };
       const db = database([
         [{ affectedRows: 1 }, []],
@@ -510,8 +688,14 @@ describe('MAR Agent model service', () => {
       const insert = db.raw.execute.mock.calls.find(([sql]) =>
         String(sql).startsWith('INSERT INTO mar_agent_models')
       )!;
-      expect((insert[1] as unknown[])[19]).toBe(JSON.stringify({ transport: 'HTTP', httpVersion }));
-      expect((insert[1] as unknown[])[20]).toBe(true);
+      expect(modelSettingsDocument(db.raw.execute, 'http-model')).toEqual({
+        version: 1,
+        hostedWebSearch: false,
+        responsesTransport: { transport: 'HTTP', httpVersion },
+        responsesPreviousResponseId: true
+      });
+      expect(String(insert[0])).not.toContain('responses_transport');
+      expect(String(insert[0])).not.toContain('responses_previous_response_id');
       expect(String(insert[0]).match(/\?/gu)).toHaveLength((insert[1] as unknown[]).length);
     }
   );
@@ -535,9 +719,6 @@ describe('MAR Agent model service', () => {
             title_generation: 0,
             code_mode: 0,
             high_density_compaction: 1,
-            hosted_web_search: 0,
-            responses_transport: null,
-            responses_previous_response_id: 0,
             enabled: 1,
             sort_order: 0,
             last_tested_at: null,
@@ -554,7 +735,10 @@ describe('MAR Agent model service', () => {
     const summaries = await service.list();
     expect(summaries).toEqual([expect.objectContaining({ id: 'coding-id' })]);
     expect(summaries[0]).not.toHaveProperty('highDensityCompaction');
-    expect(String(db.raw.execute.mock.calls[0]?.[0])).not.toContain('high_density_compaction');
+    const modelQuery = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).includes('FROM mar_agent_models')
+    );
+    expect(String(modelQuery?.[0])).not.toContain('high_density_compaction');
   });
 
   it('creates an independent connection and never returns its key', async () => {
@@ -575,7 +759,6 @@ describe('MAR Agent model service', () => {
             reasoning_efforts: '[]',
             default_reasoning_effort: 'medium',
             conversation_model: 0,
-            hosted_web_search: 1,
             enabled: 1,
             sort_order: 0,
             last_tested_at: null,
@@ -602,18 +785,61 @@ describe('MAR Agent model service', () => {
       ownership: { ownerType: 'PERSONAL', ownerUserId: 7 },
       defaultReasoningEffort: 'medium'
     });
-    expect((db.raw.execute.mock.calls[0]?.[1] as unknown[])[13]).toBe(false);
-    expect(String(db.raw.execute.mock.calls[0]?.[0])).toContain('default_reasoning_effort');
-    expect(db.raw.execute.mock.calls[0]?.[1]).toContain('medium');
-    expect(db.raw.execute.mock.calls[0]?.[1]).toContain('PERSONAL');
-    expect(db.raw.execute.mock.calls[0]?.[1]).toContain(7);
+    const insert = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).startsWith('INSERT INTO mar_agent_models')
+    )!;
+    expect((insert[1] as unknown[])[13]).toBe(false);
+    expect(String(insert[0])).toContain('default_reasoning_effort');
+    expect(insert[1]).toContain('medium');
+    expect(insert[1]).toContain('PERSONAL');
+    expect(insert[1]).toContain(7);
     expect(JSON.stringify(result)).not.toContain('secret');
   });
 
   it('generates a compact model configuration ID by default', async () => {
     let generatedId = '';
+    const settings = new Map<string, string>();
     const execute = vi.fn(async (sql: unknown, parameters?: readonly unknown[]) => {
-      if (String(sql).startsWith('INSERT INTO mar_agent_models')) {
+      const statement = String(sql);
+      const values = Array.isArray(parameters) ? parameters : [];
+      if (statement.includes('LEFT JOIN system_settings model_settings'))
+        return [
+          [
+            {
+              id: generatedId,
+              name: 'Coding',
+              protocol: 'ANTHROPIC_MESSAGES',
+              base_url: 'https://gateway.example.test',
+              model_id: 'coding',
+              context_window_tokens: 200000,
+              max_output_tokens: 16384,
+              input_capabilities: '["TEXT","IMAGE"]',
+              output_capabilities: '["TEXT"]',
+              reasoning_efforts: '[]',
+              default_reasoning_effort: 'medium',
+              enabled: 1,
+              sort_order: 0,
+              last_tested_at: null,
+              last_test_status: 'UNVERIFIED',
+              last_test_code: null,
+              public_access: 0,
+              model_settings: settings.get(`mar_agent_model_config:${generatedId}`) ?? null
+            }
+          ],
+          []
+        ] as never;
+      if (statement.includes('system_settings')) {
+        if (statement.startsWith('SELECT'))
+          return [
+            [...settings]
+              .filter(([key]) => values.includes(key))
+              .map(([setting_key, setting_value]) => ({ setting_key, setting_value })),
+            []
+          ] as never;
+        if (statement.startsWith('INSERT')) settings.set(String(values[0]), String(values[1]));
+        return [{ affectedRows: 1 }, []] as never;
+      }
+      if (statement.startsWith('INSERT INTO mar_agent_models')) {
         generatedId = String(parameters?.[0]);
         return [{ affectedRows: 1 }, []] as never;
       }
@@ -631,7 +857,6 @@ describe('MAR Agent model service', () => {
             output_capabilities: '["TEXT"]',
             reasoning_efforts: '[]',
             default_reasoning_effort: 'medium',
-            hosted_web_search: 0,
             enabled: 1,
             sort_order: 0,
             last_tested_at: null,
@@ -693,8 +918,18 @@ describe('MAR Agent model service', () => {
     ).rejects.toThrow('MAR_AGENT_MODEL_CONFIG_INVALID');
   });
 
-  it('rejects missing or unmanageable Codex credential references before model persistence', async () => {
+  it('rejects the retired fastMode input before writing', async () => {
     const db = database();
+    const service = new MarAgentModelService(db);
+    await expect(service.create(7, { ...input, fastMode: true })).rejects.toThrow(
+      'MAR_AGENT_MODEL_CONFIG_INVALID'
+    );
+    expect(db.raw.execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing or unmanageable Codex credential references before model persistence', async () => {
+    const responses: unknown[] = [];
+    const db = database(responses);
     const credentials = {
       assertModelCredentialBinding: vi
         .fn()
@@ -741,21 +976,20 @@ describe('MAR Agent model service', () => {
       input_capabilities: '["TEXT"]',
       output_capabilities: '["TEXT"]',
       reasoning_efforts: '["high"]',
-      hosted_web_search: 1,
-      responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-      responses_previous_response_id: 1,
+      modelSettings: {
+        version: 1,
+        hostedWebSearch: true,
+        serviceTier: 'default',
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true
+      },
       enabled: 1,
       sort_order: 0,
       owner_type: 'PERSONAL',
       owner_user_id: 7,
       owner_organization_id: null
     };
-    db.raw.execute
-      .mockResolvedValueOnce([[stored], []])
-      .mockResolvedValueOnce([[], []])
-      .mockResolvedValueOnce([[stored], []])
-      .mockResolvedValueOnce([[], []])
-      .mockResolvedValueOnce([[{ sort_order: 0 }], []]);
+    responses.push([[stored], []], [[stored], []], [[{ sort_order: 0 }], []]);
     await expect(
       service.update(7, 'codex-id', {
         credential: { type: 'CREDENTIAL_REF', credentialId: 'credential-private' }
@@ -843,10 +1077,13 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
-        responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-        responses_previous_response_id: 1,
-        service_tier: 'auto',
+        modelSettings: {
+          version: 1,
+          hostedWebSearch: false,
+          serviceTier: 'auto',
+          responsesTransport: { transport: 'WEBSOCKET' },
+          responsesPreviousResponseId: true
+        },
         enabled: 1,
         sort_order: 0,
         last_tested_at: null,
@@ -872,31 +1109,32 @@ describe('MAR Agent model service', () => {
           credential: { type: 'INLINE_API_KEY', value: 'secret' },
           responsesTransport: { transport: 'WEBSOCKET' },
           responsesPreviousResponseId: true,
-          serviceTier: 'auto',
-          fastMode: true
+          serviceTier: 'auto'
         })
       ).resolves.toMatchObject({
         responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true,
+        serviceTier: 'auto'
+      });
+      const createInsert = createDatabase.raw.execute.mock.calls.find(([sql]) =>
+        String(sql).startsWith('INSERT INTO mar_agent_models')
+      )!;
+      expect(modelSettingsDocument(createDatabase.raw.execute, 'responses-id')).toEqual({
+        version: 1,
+        hostedWebSearch: false,
+        serviceTier: 'auto',
+        responsesTransport: { transport: 'WEBSOCKET' },
         responsesPreviousResponseId: true
       });
-      expect((createDatabase.raw.execute.mock.calls[0]?.[1] as unknown[] | undefined)?.[19]).toBe(
-        JSON.stringify({ transport: 'WEBSOCKET' })
-      );
-      expect((createDatabase.raw.execute.mock.calls[0]?.[1] as unknown[])?.[16]).toBe(false);
-      expect((createDatabase.raw.execute.mock.calls[0]?.[1] as unknown[])?.[17]).toBe('auto');
-      expect((createDatabase.raw.execute.mock.calls[0]?.[1] as unknown[])?.[20]).toBe(true);
+      expect(String(createInsert[0])).not.toContain('service_tier');
+      expect(String(createInsert[0])).not.toContain('responses_transport');
 
       const updateDatabase = database([
         [[row], []],
         [[row], []],
         [[{ sort_order: 0 }], []],
         [{ affectedRows: 1 }, []],
-        [
-          [
-            { ...row, responses_transport: JSON.stringify({ transport: 'HTTP', httpVersion: '2' }) }
-          ],
-          []
-        ]
+        [[row], []]
       ]);
       const updateService = new MarAgentModelService(
         updateDatabase,
@@ -908,43 +1146,24 @@ describe('MAR Agent model service', () => {
       await expect(
         updateService.update(7, 'responses-id', {
           responsesTransport: { transport: 'HTTP', httpVersion: '2' },
-          fastMode: true
+          serviceTier: 'auto'
         })
       ).resolves.toMatchObject({
         responsesTransport: { transport: 'HTTP', httpVersion: '2' },
         responsesPreviousResponseId: true
       });
-      expect(
-        (
-          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
-            String(sql).startsWith('UPDATE mar_agent_models')
-          )?.[1] as unknown[] | undefined
-        )?.[18]
-      ).toBe(JSON.stringify({ transport: 'HTTP', httpVersion: '2' }));
-      expect(
-        (
-          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
-            String(sql).startsWith('UPDATE mar_agent_models')
-          )?.[1] as unknown[]
-        )?.[15]
-      ).toBe(false);
-      expect(
-        (
-          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
-            String(sql).startsWith('UPDATE mar_agent_models')
-          )?.[1] as unknown[]
-        )?.[19]
-      ).toBe(true);
-      expect(String(createDatabase.raw.execute.mock.calls[0]?.[0])).not.toContain(
-        'responses_encoding'
-      );
-      expect(
-        String(
-          updateDatabase.raw.execute.mock.calls.find(([sql]) =>
-            String(sql).startsWith('UPDATE mar_agent_models')
-          )?.[0]
-        )
-      ).not.toContain('responses_encoding');
+      const update = updateDatabase.raw.execute.mock.calls.find(([sql]) =>
+        String(sql).startsWith('UPDATE mar_agent_models')
+      )!;
+      expect(modelSettingsDocument(updateDatabase.raw.execute, 'responses-id')).toEqual({
+        version: 1,
+        hostedWebSearch: false,
+        serviceTier: 'auto',
+        responsesTransport: { transport: 'HTTP', httpVersion: '2' },
+        responsesPreviousResponseId: true
+      });
+      expect(String(createInsert[0])).not.toContain('responses_encoding');
+      expect(String(update[0])).not.toContain('responses_encoding');
     }
   );
 
@@ -964,10 +1183,14 @@ describe('MAR Agent model service', () => {
       input_capabilities: '["TEXT"]',
       output_capabilities: '["TEXT"]',
       reasoning_efforts: '["high"]',
-      hosted_web_search: 1,
       conversation_model: 0,
-      responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-      responses_previous_response_id: 1,
+      modelSettings: {
+        version: 1,
+        hostedWebSearch: true,
+        serviceTier: 'default',
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true
+      },
       enabled: 1,
       sort_order: 0,
       last_tested_at: null,
@@ -978,9 +1201,7 @@ describe('MAR Agent model service', () => {
     const updatedRow = {
       ...storedRow,
       base_url: 'https://api.openai.com/v1',
-      credential: JSON.stringify({ type: 'INLINE_API_KEY', value: 'secret' }),
-      responses_transport: storedRow.responses_transport,
-      responses_previous_response_id: 1
+      credential: JSON.stringify({ type: 'INLINE_API_KEY', value: 'secret' })
     };
     const db = database([
       [[storedRow], []],
@@ -1001,20 +1222,13 @@ describe('MAR Agent model service', () => {
       credentialType: 'INLINE_API_KEY'
     });
 
-    expect(
-      (
-        db.raw.execute.mock.calls.find(([sql]) =>
-          String(sql).startsWith('UPDATE mar_agent_models')
-        )?.[1] as unknown[] | undefined
-      )?.[18]
-    ).toBe(JSON.stringify({ transport: 'WEBSOCKET' }));
-    expect(
-      (
-        db.raw.execute.mock.calls.find(([sql]) =>
-          String(sql).startsWith('UPDATE mar_agent_models')
-        )?.[1] as unknown[]
-      )?.[19]
-    ).toBe(true);
+    expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
+      version: 1,
+      hostedWebSearch: true,
+      serviceTier: 'default',
+      responsesTransport: { transport: 'WEBSOCKET' },
+      responsesPreviousResponseId: true
+    });
     expect(
       (
         db.raw.execute.mock.calls.find(([sql]) =>
@@ -1044,9 +1258,12 @@ describe('MAR Agent model service', () => {
       input_capabilities: '["TEXT"]',
       output_capabilities: '["TEXT"]',
       reasoning_efforts: '[]',
-      hosted_web_search: 0,
-      responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-      responses_previous_response_id: 0,
+      modelSettings: {
+        version: 1,
+        hostedWebSearch: false,
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: false
+      },
       enabled: 1,
       sort_order: 0,
       last_tested_at: null,
@@ -1078,9 +1295,6 @@ describe('MAR Agent model service', () => {
       output_capabilities: '["TEXT"]',
       reasoning_efforts: '["low","high"]',
       default_reasoning_effort: 'medium',
-      hosted_web_search: 0,
-      responses_transport: null,
-      responses_previous_response_id: 0,
       enabled: 1,
       sort_order: 0,
       last_tested_at: null,
@@ -1105,10 +1319,12 @@ describe('MAR Agent model service', () => {
             {
               id: 'coding-id',
               ...Object.fromEntries(
-                Object.entries(input).map(([key, value]) => [
-                  key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
-                  Array.isArray(value) ? JSON.stringify(value) : value
-                ])
+                Object.entries(input)
+                  .filter(([key]) => key !== 'apiKey' && key !== 'hostedWebSearch')
+                  .map(([key, value]) => [
+                    key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`),
+                    Array.isArray(value) ? JSON.stringify(value) : value
+                  ])
               ),
               api_key: 'secret'
             }
@@ -1138,8 +1354,6 @@ describe('MAR Agent model service', () => {
               type: 'CREDENTIAL_REF',
               credentialId: 'credential-1'
             }),
-            responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-            fast_mode: 1,
             model_id: 'gpt-codex',
             context_window_tokens: 200000,
             max_output_tokens: 32000,
@@ -1147,8 +1361,6 @@ describe('MAR Agent model service', () => {
             output_capabilities: '["TEXT"]',
             reasoning_efforts: '["low","high"]',
             default_reasoning_effort: 'high',
-            hosted_web_search: 1,
-            responses_previous_response_id: 1,
             enabled: 1,
             sort_order: 0,
             last_tested_at: null,
@@ -1182,18 +1394,24 @@ describe('MAR Agent model service', () => {
       defaultReasoningEffort: 'high',
       hostedWebSearch: true,
       responsesTransport: { transport: 'WEBSOCKET' },
-      fastMode: true,
+      serviceTier: 'priority',
       responsesPreviousResponseId: true,
       enabled: true,
       sortOrder: 0
     });
 
-    const [sql, params] = db.raw.execute.mock.calls[0]!;
+    const insert = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).startsWith('INSERT INTO mar_agent_models')
+    )!;
+    const [sql, params] = insert;
     expect(String(sql)).not.toContain('responses_encoding');
     expect(params).not.toContain('STANDARD');
-    expect(String(sql)).toContain('fast_mode');
     expect(String(sql)).toContain('credential');
-    expect(String(sql)).toContain('responses_transport');
+    expect(String(sql)).not.toContain('fast_mode');
+    expect(String(sql)).not.toContain('service_tier');
+    expect(String(sql)).not.toContain('hosted_web_search');
+    expect(String(sql)).not.toContain('responses_transport');
+    expect(String(sql)).not.toContain('responses_previous_response_id');
     expect(String(sql)).not.toContain('api_key');
     expect(params).toContain(
       JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'credential-1' })
@@ -1203,7 +1421,16 @@ describe('MAR Agent model service', () => {
       credentialType: 'CREDENTIAL_REF',
       credentialConfigured: true,
       responsesTransport: { transport: 'WEBSOCKET' },
-      fastMode: true
+      serviceTier: 'priority',
+      hostedWebSearch: true,
+      responsesPreviousResponseId: true
+    });
+    expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
+      version: 1,
+      hostedWebSearch: true,
+      serviceTier: 'priority',
+      responsesTransport: { transport: 'WEBSOCKET' },
+      responsesPreviousResponseId: true
     });
     expect(result).not.toHaveProperty('responsesEncoding');
     expect(JSON.stringify(result)).not.toContain('credential-1');
@@ -1223,15 +1450,12 @@ describe('MAR Agent model service', () => {
                 type: 'CREDENTIAL_REF',
                 credentialId: 'credential-1'
               }),
-              responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
               model_id: 'gpt-codex',
               context_window_tokens: 200000,
               max_output_tokens: 16384,
               input_capabilities: '["TEXT"]',
               output_capabilities: '["TEXT"]',
               reasoning_efforts: '["high"]',
-              hosted_web_search: 1,
-              responses_previous_response_id: 1,
               enabled: 1
             }
           ],
@@ -1241,6 +1465,220 @@ describe('MAR Agent model service', () => {
     );
 
     await expect(service.stored('codex-id')).rejects.toThrow('MAR_AGENT_MODEL_CONFIG_INVALID');
+  });
+
+  it('ignores missing settings for unauthorized models but fails closed for authorized models', async () => {
+    const authorizedRow = {
+      id: 'authorized-model',
+      name: 'Authorized',
+      protocol: 'OPENAI_RESPONSES',
+      base_url: 'https://api.example.test/v1',
+      credential: JSON.stringify({ type: 'INLINE_API_KEY', value: 'secret' }),
+      model_id: 'authorized',
+      context_window_tokens: 128_000,
+      max_output_tokens: 8_192,
+      input_capabilities: '["TEXT"]',
+      output_capabilities: '["TEXT"]',
+      reasoning_efforts: '["medium"]',
+      default_reasoning_effort: 'medium',
+      enabled: 1,
+      sort_order: 0,
+      modelSettings: {
+        version: 1,
+        hostedWebSearch: false,
+        responsesPreviousResponseId: false
+      }
+    };
+    const unauthorizedRow = {
+      ...authorizedRow,
+      id: 'unauthorized-model',
+      name: 'Unauthorized',
+      modelSettings: null
+    };
+    const db = database([[[authorizedRow, unauthorizedRow], []]]);
+    const access = {
+      ...managementAccess(),
+      canUseModel: vi.fn(async (_userId: number, modelId: string) => modelId === 'authorized-model')
+    };
+    const service = new MarAgentModelService(db, Date.now, undefined, access);
+
+    await expect(service.storedConfigurationsForUser(8)).resolves.toEqual([
+      expect.objectContaining({ id: 'authorized-model', modelId: 'authorized' })
+    ]);
+    expect(access.canUseModel).toHaveBeenCalledWith(8, 'unauthorized-model');
+    const settingsJoin = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    );
+    expect(settingsJoin?.[1]).toEqual(['authorized-model']);
+    expect(
+      db.raw.execute.mock.calls.some(
+        ([sql]) =>
+          String(sql).startsWith('SELECT id,owner_type,owner_user_id,created_by') &&
+          String(sql).includes('system_settings')
+      )
+    ).toBe(false);
+
+    const missingAuthorizedDb = database([[[{ ...authorizedRow, modelSettings: null }], []]]);
+    const authorizedAccess = {
+      ...managementAccess(),
+      canUseModel: vi.fn(async () => true)
+    };
+    const missingAuthorizedService = new MarAgentModelService(
+      missingAuthorizedDb,
+      Date.now,
+      undefined,
+      authorizedAccess
+    );
+    await expect(missingAuthorizedService.storedConfigurationsForUser(8)).rejects.toThrow(
+      'MAR_AGENT_MODEL_CONFIG_INVALID'
+    );
+  });
+
+  it('joins model settings only for models the user can manage', async () => {
+    const managedRow = modelServiceRow('managed-model');
+    const inaccessibleRow = modelServiceRow('inaccessible-model', {
+      owner_user_id: 99,
+      created_by: 99,
+      modelSettings: { version: 2 }
+    });
+    const db = database([[[managedRow, inaccessibleRow], []]]);
+    const access = managementAccess();
+    access.canManageModel.mockImplementation(
+      async (_userId, modelId) => modelId === 'managed-model'
+    );
+    const service = new MarAgentModelService(db, Date.now, undefined, access);
+
+    await expect(service.listManagedForUser(8)).resolves.toEqual([
+      expect.objectContaining({ id: 'managed-model' })
+    ]);
+    expect(access.canManageModel).toHaveBeenCalledWith(8, 'inaccessible-model');
+    const settingsJoin = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    );
+    expect(settingsJoin?.[1]).toEqual(['managed-model']);
+  });
+
+  it('does not join settings when the user has no authorized model IDs', async () => {
+    const inaccessibleRow = modelServiceRow('inaccessible-model', {
+      owner_user_id: 99,
+      created_by: 99,
+      modelSettings: { version: 2 }
+    });
+    const listDb = database([[[inaccessibleRow], []]]);
+    const listAccess = managementAccess();
+    listAccess.canUseModel.mockResolvedValue(false);
+    await expect(
+      new MarAgentModelService(listDb, Date.now, undefined, listAccess).listForUser(8)
+    ).resolves.toEqual([]);
+    expect(
+      listDb.raw.execute.mock.calls.some(([sql]) =>
+        String(sql).includes('LEFT JOIN system_settings model_settings')
+      )
+    ).toBe(false);
+
+    const managedDb = database([[[inaccessibleRow], []]]);
+    const managedAccess = managementAccess();
+    managedAccess.canManageModel.mockResolvedValue(false);
+    await expect(
+      new MarAgentModelService(managedDb, Date.now, undefined, managedAccess).listManagedForUser(8)
+    ).resolves.toEqual([]);
+    expect(
+      managedDb.raw.execute.mock.calls.some(([sql]) =>
+        String(sql).includes('LEFT JOIN system_settings model_settings')
+      )
+    ).toBe(false);
+
+    const storedDb = database([[[inaccessibleRow], []]]);
+    const storedAccess = managementAccess();
+    storedAccess.canUseModel.mockResolvedValue(false);
+    await expect(
+      new MarAgentModelService(
+        storedDb,
+        Date.now,
+        undefined,
+        storedAccess
+      ).storedConfigurationsForUser(8)
+    ).resolves.toEqual([]);
+    expect(
+      storedDb.raw.execute.mock.calls.some(([sql]) =>
+        String(sql).includes('LEFT JOIN system_settings model_settings')
+      )
+    ).toBe(false);
+  });
+
+  it('creates by model ID when an inaccessible model has an invalid settings document', async () => {
+    const modelId = 'created-model';
+    const createdRow = modelServiceRow(modelId, {
+      name: input.name,
+      model_id: input.modelId,
+      credential: JSON.stringify({ type: 'INLINE_API_KEY', value: 'secret' })
+    });
+    const inaccessibleRow = modelServiceRow('inaccessible-model', {
+      owner_user_id: 99,
+      created_by: 99,
+      modelSettings: { version: 2 }
+    });
+    const db = database([
+      [{ affectedRows: 1 }, []],
+      [[createdRow, inaccessibleRow], []]
+    ]);
+    const service = new MarAgentModelService(db, Date.now, () => modelId, managementAccess());
+
+    await expect(service.create(7, input)).resolves.toMatchObject({
+      id: modelId,
+      name: input.name
+    });
+    expect(db.connection.commit).toHaveBeenCalledOnce();
+    const settingsJoins = db.raw.execute.mock.calls.filter(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    );
+    expect(settingsJoins.map(([, parameters]) => parameters)).toEqual([[modelId]]);
+  });
+
+  it('updates by model ID when another model has an invalid settings document', async () => {
+    const modelId = 'managed-model';
+    const managedRow = modelServiceRow(modelId);
+    const inaccessibleRow = modelServiceRow('inaccessible-model', {
+      owner_user_id: 99,
+      created_by: 99,
+      modelSettings: { version: 2 }
+    });
+    const db = database([
+      [[managedRow, inaccessibleRow], []],
+      [[managedRow, inaccessibleRow], []],
+      [[{ sort_order: 0 }], []],
+      [{ affectedRows: 1 }, []],
+      [[{ ...managedRow, name: 'Updated model' }, inaccessibleRow], []]
+    ]);
+    const service = new MarAgentModelService(db, Date.now, undefined, managementAccess());
+
+    await expect(service.update(7, modelId, { name: 'Updated model' })).resolves.toMatchObject({
+      id: modelId,
+      name: 'Updated model'
+    });
+    const settingsJoins = db.raw.execute.mock.calls.filter(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    );
+    expect(settingsJoins.map(([, parameters]) => parameters)).toEqual([
+      [modelId],
+      [modelId],
+      [modelId]
+    ]);
+  });
+
+  it('fails closed when the updated model settings document is invalid', async () => {
+    const db = database([
+      [[modelServiceRow('broken-model', { modelSettings: { version: 2 } })], []]
+    ]);
+    const service = new MarAgentModelService(db, Date.now, undefined, managementAccess());
+
+    await expect(service.update(7, 'broken-model', { name: 'Should not persist' })).rejects.toThrow(
+      'MAR_AGENT_MODEL_CONFIG_INVALID'
+    );
+    expect(db.connection.beginTransaction).not.toHaveBeenCalled();
+    expect(
+      db.raw.execute.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE mar_agent_models'))
+    ).toBe(false);
   });
 
   it('filters summaries and runtime configurations through model resource access', async () => {
@@ -1257,7 +1695,6 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 0,
         last_tested_at: null,
@@ -1277,7 +1714,6 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 1,
         last_tested_at: null,
@@ -1297,7 +1733,6 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
         enabled: 0,
         sort_order: 2,
         last_tested_at: null,
@@ -1310,16 +1745,12 @@ describe('MAR Agent model service', () => {
       ...managementAccess(),
       canUseModel: vi.fn(async (_userId: number, modelId: string) => modelId === 'coding-id')
     };
-    const service = new MarAgentModelService(
-      database([
-        [rows, []],
-        [[], []],
-        [rows.filter((row) => row.enabled === 1), []]
-      ]),
-      Date.now,
-      undefined,
-      access
-    );
+    const db = database([
+      [rows, []],
+      [[], []],
+      [rows.filter((row) => row.enabled === 1), []]
+    ]);
+    const service = new MarAgentModelService(db, Date.now, undefined, access);
 
     await expect(service.listForUser(8)).resolves.toEqual([
       expect.objectContaining({ id: 'coding-id', access: 'PUBLIC' })
@@ -1329,6 +1760,41 @@ describe('MAR Agent model service', () => {
     ]);
     expect(access.canUseModel).toHaveBeenCalledWith(8, 'review-id');
     expect(access.canUseModel).not.toHaveBeenCalledWith(8, 'disabled-id');
+    const settingsJoins = db.raw.execute.mock.calls.filter(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    );
+    expect(settingsJoins.map(([, parameters]) => parameters)).toEqual([
+      ['coding-id'],
+      ['coding-id']
+    ]);
+  });
+
+  it('rechecks enabled and conversation facts after authorization before loading settings', async () => {
+    const rows = [
+      modelServiceRow('visible', { enabled: 1, conversation_model: 1 }),
+      modelServiceRow('changed', { enabled: 1, conversation_model: 1 }),
+      modelServiceRow('non-conversation', { enabled: 1, conversation_model: 0 })
+    ];
+    const finalRows = rows.map((row) =>
+      row.id === 'changed' ? { ...row, conversation_model: 0 } : row
+    );
+    const access = managementAccess();
+    const db = database([
+      [rows, []],
+      [finalRows, []],
+      [[], []]
+    ]);
+    const service = new MarAgentModelService(db, Date.now, undefined, access);
+
+    await expect(service.listForUser(7)).resolves.toEqual([
+      expect.objectContaining({ id: 'visible' })
+    ]);
+    expect(access.canUseModel).not.toHaveBeenCalledWith(7, 'non-conversation');
+    const [join] = db.raw.execute.mock.calls.find(([sql]) =>
+      String(sql).includes('LEFT JOIN system_settings model_settings')
+    )!;
+    expect(join).toContain('model.enabled=1');
+    expect(join).toContain('model.conversation_model=1');
   });
 
   it('applies a user model order only to that user’s visible model directory', async () => {
@@ -1344,7 +1810,6 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 0,
         last_tested_at: null,
@@ -1363,7 +1828,6 @@ describe('MAR Agent model service', () => {
         input_capabilities: '["TEXT"]',
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 1,
         last_tested_at: null,
@@ -1408,7 +1872,6 @@ describe('MAR Agent model service', () => {
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '["high"]',
         default_reasoning_effort: 'high',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 0,
         last_tested_at: null,
@@ -1428,7 +1891,6 @@ describe('MAR Agent model service', () => {
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '["high"]',
         default_reasoning_effort: 'high',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 1,
         last_tested_at: null,
@@ -1448,7 +1910,6 @@ describe('MAR Agent model service', () => {
         output_capabilities: '["TEXT"]',
         reasoning_efforts: '[]',
         default_reasoning_effort: 'medium',
-        hosted_web_search: 0,
         enabled: 1,
         sort_order: 2,
         last_tested_at: null,
@@ -1587,7 +2048,6 @@ describe('MAR Agent model service', () => {
             input_capabilities: '["TEXT"]',
             output_capabilities: '["TEXT"]',
             reasoning_efforts: '[]',
-            hosted_web_search: 0,
             enabled: 1,
             last_tested_at: null,
             last_test_status: 'UNVERIFIED',
@@ -1884,27 +2344,53 @@ describe('MAR Agent model service', () => {
           modelId: expect.stringMatching(/^model-/u)
         })
       ]);
-      expect(execute.mock.calls[1]?.[1]).toContain(
+      const inserts = execute.mock.calls.filter(([sql]) =>
+        String(sql).startsWith('INSERT INTO mar_agent_models')
+      );
+      expect(inserts).toHaveLength(4);
+      const modelInsert = (upstreamModelId: string) =>
+        inserts.find(([, parameters]) => parameters?.[5] === upstreamModelId)!;
+      const firstInsert = modelInsert('gpt-codex');
+      const firstParams = firstInsert[1]!;
+      expect(firstParams).toContain(
         JSON.stringify({ type: 'CREDENTIAL_REF', credentialId: 'credential-1' })
       );
-      expect(String(execute.mock.calls[1]?.[0])).toContain('default_reasoning_effort');
-      expect(String(execute.mock.calls[1]?.[0])).not.toContain('responses_encoding');
+      expect(String(firstInsert[0])).toContain('default_reasoning_effort');
+      expect(String(firstInsert[0])).not.toContain('responses_encoding');
       expect(
         execute.mock.calls.filter(([sql]) => String(sql).startsWith('UPDATE mar_agent_models'))
       ).toHaveLength(0);
-      expect(execute.mock.calls[1]?.[1]).toContain('high');
-      expect(execute.mock.calls[1]?.[1]?.[6]).toBe(expectedContext);
-      expect(execute.mock.calls[1]?.[1]?.[7]).toBe(32_000);
-      expect(execute.mock.calls[2]?.[1]?.[6]).toBe(120_000);
-      expect(execute.mock.calls[2]?.[1]?.[7]).toBe(16_000);
-      expect(execute.mock.calls[1]?.[1]?.[12]).toBe(false);
-      expect(execute.mock.calls[1]?.[1]?.[13]).toBe(false);
-      expect(execute.mock.calls[1]?.[1]?.[14]).toBe('default');
-      expect(execute.mock.calls[1]?.[1]?.[16]).toBe(JSON.stringify({ transport: 'WEBSOCKET' }));
-      expect(execute.mock.calls[1]?.[1]?.[17]).toBe(true);
-      expect(execute.mock.calls[3]?.[1]?.[10]).toBe(JSON.stringify([]));
-      expect(execute.mock.calls[3]?.[1]?.[11]).toBe('medium');
-      expect(execute.mock.calls[4]?.[1]?.[7]).toBe(7_999);
+      expect(firstParams[10]).toBe(JSON.stringify(['low', 'high']));
+      expect(firstParams[11]).toBe('high');
+      expect(firstParams[6]).toBe(expectedContext);
+      expect(firstParams[7]).toBe(32_000);
+      expect(firstParams[12]).toBe(false);
+      expect(firstParams[13]).toBe(true);
+      expect(modelSettingsDocument(execute, String(firstParams[0]))).toEqual({
+        version: 1,
+        hostedWebSearch: true,
+        serviceTier: 'default',
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true
+      });
+
+      const miniParams = modelInsert('gpt-codex-mini')[1]!;
+      expect(miniParams[6]).toBe(120_000);
+      expect(miniParams[7]).toBe(16_000);
+      expect(miniParams[12]).toBe(false);
+      expect(miniParams[13]).toBe(false);
+      expect(modelSettingsDocument(execute, String(miniParams[0]))).toEqual({
+        version: 1,
+        hostedWebSearch: false,
+        serviceTier: 'default',
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true
+      });
+
+      const unsupportedParams = modelInsert('unsupported-reasoning')[1]!;
+      expect(unsupportedParams[10]).toBe(JSON.stringify([]));
+      expect(unsupportedParams[11]).toBe('medium');
+      expect(modelInsert('small-context')[1]?.[7]).toBe(7_999);
       expect(connection.commit).toHaveBeenCalledOnce();
       expect(connection.rollback).not.toHaveBeenCalled();
       expect(connection.release).toHaveBeenCalledOnce();
@@ -1932,9 +2418,6 @@ describe('MAR Agent model service', () => {
       output_capabilities: JSON.stringify(['TEXT']),
       reasoning_efforts: JSON.stringify(['high']),
       default_reasoning_effort: 'high',
-      hosted_web_search: 1,
-      responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-      responses_previous_response_id: 1,
       enabled: 1,
       sort_order: 0
     };
@@ -2035,10 +2518,13 @@ describe('MAR Agent model service', () => {
       default_reasoning_effort: 'high',
       code_mode: 1,
       high_density_compaction: 1,
-      fast_mode: 1,
-      hosted_web_search: 1,
-      responses_transport: JSON.stringify({ transport: 'WEBSOCKET' }),
-      responses_previous_response_id: 1,
+      modelSettings: {
+        version: 1,
+        hostedWebSearch: true,
+        serviceTier: 'priority',
+        responsesTransport: { transport: 'WEBSOCKET' },
+        responsesPreviousResponseId: true
+      },
       enabled: 1,
       sort_order: 3
     };
@@ -2049,7 +2535,7 @@ describe('MAR Agent model service', () => {
       if (String(sql).includes('SELECT sort_order FROM mar_agent_models'))
         return [storedOrders, []] as never;
       if (String(sql).includes('INSERT INTO mar_agent_models'))
-        storedOrders.push({ sort_order: Number(parameters?.[19]) });
+        storedOrders.push({ sort_order: Number(parameters?.[14]) });
       return [{ affectedRows: 1 }, []] as never;
     });
     const connection = {
@@ -2112,21 +2598,42 @@ describe('MAR Agent model service', () => {
       String(sql).includes('INSERT INTO mar_agent_models')
     );
     expect(inserts).toHaveLength(2);
-    expect(inserts.map((insert) => insert[1]?.[19])).toEqual([4, 5]);
+    expect(inserts.map((insert) => insert[1]?.[14])).toEqual([4, 5]);
     for (const insert of inserts) {
       expect(insert[1]?.[3]).toBe(baseUrl);
-      expect(insert[1]?.[13]).toBe(false);
-      expect(insert[1]?.[14]).toBe('default');
+      expect(insert[1]?.[4]).toBe(JSON.stringify({ type: 'CREDENTIAL_REF', credentialId }));
+      expect(insert[1]?.[12]).toBe(false);
+      expect(insert[1]?.[13]).toBe(true);
+      const expectedTransport =
+        baseUrl === 'https://cli-chat-proxy.grok.com/v1'
+          ? { transport: 'HTTP', httpVersion: '1.1' }
+          : { transport: 'WEBSOCKET' };
+      const expectedPreviousResponseId = baseUrl !== 'https://cli-chat-proxy.grok.com/v1';
+      expect(modelSettingsDocument(execute, String(insert[1]?.[0]))).toEqual({
+        version: 1,
+        hostedWebSearch: true,
+        serviceTier: 'default',
+        responsesTransport: expectedTransport,
+        responsesPreviousResponseId: expectedPreviousResponseId
+      });
       if (baseUrl === 'https://cli-chat-proxy.grok.com/v1') {
-        expect(insert[1]?.[15]).toBe(true);
-        expect(insert[1]?.[16]).toBe(JSON.stringify({ transport: 'HTTP', httpVersion: '1.1' }));
-        expect(insert[1]?.[17]).toBe(false);
+        expect(modelSettingsDocument(execute, String(insert[1]?.[0]))).toMatchObject({
+          hostedWebSearch: true,
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false
+        });
       }
     }
     expect(
       execute.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE mar_agent_models'))
     ).toBe(false);
-    expect(existing.fast_mode).toBe(1);
+    expect(
+      execute.mock.calls.some(
+        ([sql, parameters]) =>
+          String(sql).startsWith('INSERT INTO system_settings') &&
+          parameters?.[0] === `mar_agent_model_config:${existing.id}`
+      )
+    ).toBe(false);
     expect(execute.mock.calls.some(([sql]) => String(sql).includes('resource_grants'))).toBe(false);
     expect(connection.commit).toHaveBeenCalledTimes(2);
   });
@@ -2192,7 +2699,6 @@ describe('MAR Agent model service', () => {
               input_capabilities: '["TEXT"]',
               output_capabilities: '["TEXT"]',
               reasoning_efforts: '[]',
-              hosted_web_search: 0,
               enabled: 1,
               last_tested_at: null,
               last_test_status: 'UNVERIFIED',
@@ -2210,7 +2716,6 @@ describe('MAR Agent model service', () => {
               input_capabilities: '["TEXT"]',
               output_capabilities: '["TEXT"]',
               reasoning_efforts: '[]',
-              hosted_web_search: 0,
               enabled: 1,
               last_tested_at: null,
               last_test_status: 'UNVERIFIED',

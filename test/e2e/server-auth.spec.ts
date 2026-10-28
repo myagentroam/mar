@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, request as playwrightRequest, test } from '@playwright/test';
 import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp } from '../support/create-test-server-app.js';
 import { openServerDatabase } from '../../ee/server/src/database.js';
 import { createMysqlPool } from '../../ee/server/src/mysql/connection.js';
 import {
@@ -55,7 +56,7 @@ test('Internal marctl removes deployment keys during MySQL upgrade and rejects e
   const target = resolvePlaywrightTestDatabase(`${runId}-marctl-migration`);
   await createPlaywrightTestDatabase(target);
   let directory: string | undefined;
-  let app: ReturnType<typeof createServerApp> | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   const pool = createMysqlPool({ url: target.databaseUrl });
   try {
     directory = await mkdtemp(join(tmpdir(), 'marctl-migration-e2e-'));
@@ -90,7 +91,7 @@ test('Internal marctl removes deployment keys during MySQL upgrade and rejects e
       [hash]
     );
     // Resume the real v14/v6 history only after the retired key and fixed admin exist.
-    app = createServerApp(options);
+    app = (await createServerApp(options)).app;
     await app.ready();
     await pool.execute('UPDATE users SET must_change_password=FALSE WHERE id=1');
     const headers = { authorization: `Bearer ${legacyKey}` };
@@ -101,7 +102,7 @@ test('Internal marctl removes deployment keys during MySQL upgrade and rejects e
     );
     expect(rows).toEqual([]);
     await app.close();
-    app = createServerApp(options);
+    app = (await createServerApp(options)).app;
     await app.ready();
     expect((await app.inject({ url: '/api/marctl/nodes', headers })).statusCode).toBe(401);
     const historicalLogin = await app.inject({
@@ -130,18 +131,20 @@ test('The product stack covers authentication, License activation, and enterpris
   const target = resolvePlaywrightTestDatabase(`${runId}-product-composition`);
   await createPlaywrightTestDatabase(target);
   let directory: string | undefined;
-  let app: ReturnType<typeof createServerApp> | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   const previousKey = process.env['MAR_LICENSE_PUBLIC_KEY'];
   try {
     directory = await mkdtemp(join(tmpdir(), 'product-composition-e2e-'));
     process.env['MAR_LICENSE_PUBLIC_KEY'] = getPlaywrightTestLicensePublicKey();
-    app = createServerApp({
-      databaseUrl: target.databaseUrl,
-      dataDirectory: directory,
-      productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID,
-      secureCookies: false,
-      logger: false
-    });
+    app = (
+      await createServerApp({
+        databaseUrl: target.databaseUrl,
+        dataDirectory: directory,
+        productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID,
+        secureCookies: false,
+        logger: false
+      })
+    ).app;
     await app.ready();
     expect((await app.inject({ method: 'GET', url: '/api/license' })).statusCode).toBe(401);
     const retiredLogin = await app.inject({
@@ -257,17 +260,19 @@ test('Fixed admin profile editing preserves recovery protection and rejects orga
   const pool = createMysqlPool({ url: target.databaseUrl });
   const previousKey = process.env['MAR_LICENSE_PUBLIC_KEY'];
   let directory: string | undefined;
-  let app: ReturnType<typeof createServerApp> | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   try {
     directory = await mkdtemp(join(tmpdir(), 'fixed-admin-profile-e2e-'));
     process.env['MAR_LICENSE_PUBLIC_KEY'] = getPlaywrightTestLicensePublicKey();
-    app = createServerApp({
-      databaseUrl: target.databaseUrl,
-      dataDirectory: directory,
-      productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID,
-      secureCookies: false,
-      logger: false
-    });
+    app = (
+      await createServerApp({
+        databaseUrl: target.databaseUrl,
+        dataDirectory: directory,
+        productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID,
+        secureCookies: false,
+        logger: false
+      })
+    ).app;
     await app.ready();
     const login = await app.inject({
       method: 'POST',
@@ -516,7 +521,7 @@ async function withServer(
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-server-e2e-'));
   const databasePath = join(directory, 'server.sqlite');
-  const app = createServerApp({
+  const app = createTestServerApp({
     databasePath,
     // Local Playwright HTTP tests explicitly allow non-Secure cookies; production defaults remain Secure.
     secureCookies: false

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'mysql2/promise';
-import { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
+import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
 import { readVisibleCatalog } from '../../ee/server/src/rbac/catalog-list-query.js';
-import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
+import { ResourceManagementDirectory } from '../../ee/server/src/rbac/resource-management-directory.js';
 import { ManagementQueryError } from '../../packages/server-core/src/management-pagination.js';
 
 type FakeRow = Record<string, unknown>;
@@ -60,7 +60,7 @@ describe('management list domain queries', () => {
         return { allowed: false };
       })
     };
-    const service = new ResourceAccessService({ raw: pool } as never, authorization as never);
+    const service = new ResourceManagementDirectory({ raw: pool } as never, authorization as never);
 
     const result = await service.listManagedResourcePage(
       8,
@@ -128,7 +128,7 @@ describe('management list domain queries', () => {
       expect(userId).toBe(11);
       return [3, 4];
     });
-    const service = new MysqlEnvironmentSecretService(
+    const service = createTestMysqlEnvironmentSecretService(
       { raw: pool } as never,
       async () => false,
       async () => false,

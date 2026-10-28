@@ -5,7 +5,7 @@ import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.j
 import type { NodeControl } from '../../ee/server/src/node-control.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { AuditService } from '../../ee/server/src/audit/audit-service.js';
-import { sharedConversationFailureResult } from '../../ee/server/src/audit/shared-conversation-audit.js';
+import { sharedConversationFailureResult } from '../../packages/server-core/src/conversation-audit.js';
 import { registerAuditRoutes } from '../../ee/server/src/route/audit-routes.js';
 import { registerRunControlRoutes } from '../../ee/server/src/route/run-control-routes.js';
 import { registerSessionRunRoutes } from '../../ee/server/src/route/session-run-routes.js';
@@ -278,6 +278,7 @@ describe('Server shared conversation audit', () => {
       publicOrigin: undefined
     });
     registerRunControlRoutes({
+      authorizeNodeRequest: async () => true,
       app,
       database,
       nodeControl,
@@ -455,6 +456,7 @@ describe('Server shared conversation audit', () => {
     } as unknown as MysqlServerDatabase;
     const app = Fastify();
     registerRunControlRoutes({
+      authorizeNodeRequest: async () => true,
       app,
       database,
       nodeControl: {

@@ -9,6 +9,11 @@ import {
 } from '@myagentroam/protocol';
 import type { NodeIdentityStore } from './node-identity.js';
 import { safePublicError } from './http-errors.js';
+import {
+  legacyNodeUpgradeEnvelope,
+  parseLegacyNodeUpgradeEnvelope
+} from './legacy-node-upgrade-wire.js';
+import { compareStableVersions, MIN_NODE_BUSINESS_VERSION } from './node-version.js';
 const NODE_HEARTBEAT_TIMEOUT_MS = 45_000;
 const NODE_HEARTBEAT_SWEEP_MS = 15_000;
 
@@ -19,7 +24,12 @@ export class NodeIdentityControl {
   private readonly attached = new Set<WebSocket>();
   private closed = false;
   private readonly authenticating = new Map<WebSocket, string>();
+  private readonly identityWrites = new Map<string, Promise<void>>();
+  private readonly controlMessages = new Set<Promise<void>>();
   private readonly handshakes = new WeakSet<WebSocket>();
+  private readonly wireVersions = new WeakMap<WebSocket, 2 | 3>();
+  private readonly businessAdmission = new WeakSet<WebSocket>();
+  private readonly revokedBusinessAdmission = new WeakSet<WebSocket>();
   private readonly heartbeatSweep: NodeJS.Timeout;
   constructor(
     private readonly identityStore: NodeIdentityStore,
@@ -38,6 +48,9 @@ export class NodeIdentityControl {
   protected onNodeDisconnected(nodeId: string): void {
     void nodeId;
   }
+  protected onBusinessAdmissionRevoked(nodeId: string): void {
+    void nodeId;
+  }
   protected sendStaleConnectionError(socket: WebSocket, envelope: NodeEnvelope): void {
     this.sendError(socket, 'NODE_UNAUTHENTICATED', envelope.id);
   }
@@ -50,6 +63,23 @@ export class NodeIdentityControl {
     void socket;
     void envelope;
     return false;
+  }
+  private async serializeIdentity<T>(nodeId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.identityWrites.get(nodeId);
+    const current = previous === undefined ? work() : previous.then(work);
+    const settled = current.then(
+      () => undefined,
+      () => undefined
+    );
+    this.identityWrites.set(nodeId, settled);
+    void settled.then(() => {
+      if (this.identityWrites.get(nodeId) === settled) this.identityWrites.delete(nodeId);
+    });
+    return current;
+  }
+
+  protected async drainControlMessages(): Promise<void> {
+    await Promise.all(this.controlMessages);
   }
   private disconnect(nodeId: string): void {
     const connected = this.sockets.delete(nodeId);
@@ -69,9 +99,31 @@ export class NodeIdentityControl {
     this.closed = true;
     clearInterval(this.heartbeatSweep);
     const sockets = new Set([...this.attached, ...this.sockets.values()]);
-    for (const nodeId of [...this.sockets.keys()]) this.disconnect(nodeId);
+    const errors: unknown[] = [];
+    for (const nodeId of [...this.sockets.keys()]) {
+      try {
+        this.disconnect(nodeId);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
     this.attached.clear();
-    for (const socket of sockets) socket.close(1001, 'SERVER_SHUTDOWN');
+    for (const socket of sockets) {
+      try {
+        socket.close(1001, 'SERVER_SHUTDOWN');
+      } catch (error) {
+        errors.push(error);
+        try {
+          socket.terminate();
+        } catch (terminateError) {
+          errors.push(terminateError);
+          this.attached.add(socket);
+        }
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
+      throw new AggregateError(errors, 'Failed to close Node connections', { cause: errors[0] });
   }
   attach(socket: WebSocket): void {
     if (this.closed) {
@@ -83,7 +135,7 @@ export class NodeIdentityControl {
     socket.on('message', (raw) => {
       const serialized = raw.toString();
       this.recordTraffic?.('in', Buffer.byteLength(serialized));
-      void this.handleMessage(
+      const handling = this.handleMessage(
         socket,
         serialized,
         (value) => {
@@ -93,6 +145,15 @@ export class NodeIdentityControl {
       ).catch((error: unknown) => {
         this.sendFailure(socket, error);
       });
+      // Observe every admitted handler, including reverse requests that can refresh
+      // credentials or perform authorization reads after the socket is closed.
+      // Tracking does not serialize independent messages or their responses.
+      const settled = handling.then(
+        () => undefined,
+        () => undefined
+      );
+      this.controlMessages.add(settled);
+      void settled.then(() => this.controlMessages.delete(settled));
     });
     socket.on('error', () => socket.terminate());
     socket.on('close', () => {
@@ -105,13 +166,30 @@ export class NodeIdentityControl {
     return this.sockets.has(nodeId);
   }
 
+  isNodeUpgradeOnly(nodeId: string): boolean {
+    const socket = this.sockets.get(nodeId);
+    return socket !== undefined && !this.businessAdmission.has(socket);
+  }
+
   nodeCapabilities(nodeId: string): NodeCapabilities | undefined {
-    return this.capabilities.get(nodeId);
+    const socket = this.sockets.get(nodeId);
+    return socket !== undefined && this.businessAdmission.has(socket)
+      ? this.capabilities.get(nodeId)
+      : undefined;
+  }
+
+  protected allowsNodeBusiness(socket: WebSocket): boolean {
+    return this.businessAdmission.has(socket);
+  }
+
+  protected nodeWireVersion(socket: WebSocket): 2 | 3 | undefined {
+    return this.wireVersions.get(socket);
   }
 
   sendAuthenticatedNode(nodeId: string, type: string, payload: unknown): boolean {
     const socket = this.sockets.get(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN) return false;
+    if (!this.businessAdmission.has(socket)) return false;
     this.send(socket, type, payload);
     return true;
   }
@@ -133,16 +211,23 @@ export class NodeIdentityControl {
     let envelope: NodeEnvelope;
     try {
       const parsed: unknown = JSON.parse(raw);
+      const version =
+        typeof parsed === 'object' && parsed !== null && 'version' in parsed
+          ? (parsed as { version?: unknown }).version
+          : undefined;
+      const previousVersion = this.wireVersions.get(socket);
       if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        !('version' in parsed) ||
-        (parsed as { version?: unknown }).version !== NODE_PROTOCOL_VERSION
+        (version !== 2 && version !== NODE_PROTOCOL_VERSION) ||
+        (previousVersion !== undefined && previousVersion !== version)
       ) {
         this.sendError(socket, 'PROTOCOL_VERSION_UNSUPPORTED');
         return;
       }
-      envelope = nodeEnvelopeSchema.parse(parsed);
+      this.wireVersions.set(socket, version as 2 | 3);
+      envelope =
+        version === 2
+          ? { ...parseLegacyNodeUpgradeEnvelope(parsed), version: NODE_PROTOCOL_VERSION }
+          : nodeEnvelopeSchema.parse(parsed);
     } catch {
       this.sendError(socket, 'MESSAGE_INVALID');
       return;
@@ -157,6 +242,10 @@ export class NodeIdentityControl {
         }
         this.handshakes.add(socket);
         try {
+          if (this.wireVersions.get(socket) === 2 && envelope.type === 'register') {
+            this.sendError(socket, 'PROTOCOL_VERSION_UNSUPPORTED', envelope.id);
+            return;
+          }
           const identity =
             envelope.type === 'register'
               ? await this.register(socket, envelope)
@@ -176,22 +265,66 @@ export class NodeIdentityControl {
         return;
       }
       if (envelope.type === 'heartbeat') {
-        if (this.sockets.get(currentNodeId) === socket)
+        await this.serializeIdentity(currentNodeId, async () => {
+          if (this.closed || this.sockets.get(currentNodeId) !== socket) return;
           this.lastHeartbeatAt.set(currentNodeId, Date.now());
-        await this.identityStore.updateNodeHeartbeat(currentNodeId);
-        this.send(socket, 'ack', { type: 'heartbeat' }, envelope.id);
+          await this.identityStore.updateNodeHeartbeat(currentNodeId);
+          if (this.sockets.get(currentNodeId) === socket)
+            this.send(socket, 'ack', { type: 'heartbeat' }, envelope.id);
+        });
         return;
       }
       if (envelope.type === 'capabilities') {
-        const capabilities = this.parseCapabilities(socket, envelope);
-        if (capabilities !== undefined) {
-          this.capabilities.set(currentNodeId, capabilities);
-          await this.identityStore.updateNodeHeartbeat(
-            currentNodeId,
-            toStoredCapabilities(capabilities)
-          );
-          this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
-        }
+        await this.serializeIdentity(currentNodeId, async () => {
+          if (this.closed || this.sockets.get(currentNodeId) !== socket) return;
+          if (this.wireVersions.get(socket) === 2) {
+            const capabilities = envelope.payload as {
+              readonly metadata?: Record<string, unknown>;
+              readonly platform?: string;
+              readonly architecture?: string;
+              readonly nodeAppVersion?: string;
+              readonly nodeVersion?: string;
+            };
+            await this.identityStore.updateNodeHeartbeat(currentNodeId, {
+              metadata: JSON.stringify({
+                ...capabilities.metadata,
+                ...capabilities,
+                metadata: undefined
+              })
+            });
+            if (this.sockets.get(currentNodeId) === socket) {
+              this.capabilities.delete(currentNodeId);
+              this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
+            }
+            return;
+          }
+          const capabilities = this.parseCapabilities(socket, envelope);
+          if (capabilities !== undefined) {
+            const admitted = this.businessAdmission.has(socket);
+            this.setBusinessAdmission(socket, capabilities.nodeAppVersion);
+            if (admitted && !this.businessAdmission.has(socket)) {
+              this.revokedBusinessAdmission.add(socket);
+              this.onBusinessAdmissionRevoked(currentNodeId);
+            } else if (
+              !admitted &&
+              this.businessAdmission.has(socket) &&
+              this.revokedBusinessAdmission.delete(socket)
+            ) {
+              this.onNodeConnected(currentNodeId, false);
+            }
+            this.capabilities.set(currentNodeId, capabilities);
+            await this.identityStore.updateNodeHeartbeat(
+              currentNodeId,
+              toStoredCapabilities(capabilities)
+            );
+            if (this.sockets.get(currentNodeId) === socket)
+              this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
+          }
+        });
+        return;
+      }
+      if (!this.businessAdmission.has(socket) && envelope.type !== 'node.response') {
+        this.sendError(socket, 'NODE_UPGRADE_REQUIRED', envelope.id);
         return;
       }
       if (await this.handleAuthenticatedMessage(currentNodeId, socket, envelope)) return;
@@ -216,6 +349,11 @@ export class NodeIdentityControl {
     }
     const capabilities = this.parseCapabilities(socket, envelope, payload.capabilities);
     if (capabilities === undefined) return undefined;
+    this.setBusinessAdmission(socket, capabilities.nodeAppVersion);
+    if (!this.businessAdmission.has(socket)) {
+      this.sendError(socket, 'NODE_UPGRADE_REQUIRED', envelope.id);
+      return undefined;
+    }
     const result = await this.identityStore.registerNode(
       payload.registrationToken,
       toStoredCapabilities(capabilities),
@@ -248,37 +386,45 @@ export class NodeIdentityControl {
       this.sendError(socket, 'MESSAGE_INVALID', envelope.id);
       return undefined;
     }
-    this.authenticating.set(socket, payload.nodeId);
+    const nodeId = payload.nodeId;
+    const credential = payload.credential;
+    this.authenticating.set(socket, nodeId);
     try {
-      const node = await this.identityStore.authenticateNode(payload.nodeId, payload.credential);
-      if (node === undefined) {
-        this.sendError(socket, 'NODE_UNAUTHENTICATED', envelope.id);
-        return undefined;
-      }
-      if (node.disabled) {
-        this.sendError(socket, 'NODE_DISABLED', envelope.id);
-        return undefined;
-      }
-      if (this.closed || socket.readyState !== socket.OPEN) return undefined;
-      await this.identityStore.updateNodeHeartbeat(node.id);
-      if (this.closed || socket.readyState !== socket.OPEN) return undefined;
-      const previous = this.sockets.get(node.id);
-      this.sockets.set(node.id, socket);
-      this.lastHeartbeatAt.set(node.id, Date.now());
-      const capabilities = storedCapabilities(node.metadata);
-      if (capabilities === undefined) this.capabilities.delete(node.id);
-      else this.capabilities.set(node.id, capabilities);
+      return await this.serializeIdentity(nodeId, async () => {
+        if (this.closed || socket.readyState !== socket.OPEN) return undefined;
+        const node = await this.identityStore.authenticateNode(nodeId, credential);
+        if (node === undefined) {
+          this.sendError(socket, 'NODE_UNAUTHENTICATED', envelope.id);
+          return undefined;
+        }
+        if (node.disabled) {
+          this.sendError(socket, 'NODE_DISABLED', envelope.id);
+          return undefined;
+        }
+        if (this.closed || socket.readyState !== socket.OPEN) return undefined;
+        await this.identityStore.updateNodeHeartbeat(node.id);
+        if (this.closed || socket.readyState !== socket.OPEN) return undefined;
+        const previous = this.sockets.get(node.id);
+        this.sockets.set(node.id, socket);
+        this.lastHeartbeatAt.set(node.id, Date.now());
+        const capabilities = storedCapabilities(node.metadata);
+        if (capabilities === undefined) this.capabilities.delete(node.id);
+        else this.capabilities.set(node.id, capabilities);
+        // Persisted capabilities describe the previous connection, not this binary.
+        // Admit business only after this connection reports its own version.
+        this.businessAdmission.delete(socket);
 
-      const replaced = previous !== undefined && previous !== socket;
-      if (replaced) previous.close(4000, 'NODE_CONNECTION_REPLACED');
-      this.send(
-        socket,
-        'authenticated',
-        { nodeId: node.id, ...this.connectionFeatures() },
-        envelope.id
-      );
-      this.onNodeConnected(node.id, replaced);
-      return node.id;
+        const replaced = previous !== undefined && previous !== socket;
+        if (replaced) previous.close(4000, 'NODE_CONNECTION_REPLACED');
+        this.send(
+          socket,
+          'authenticated',
+          { nodeId: node.id, ...this.connectionFeatures() },
+          envelope.id
+        );
+        this.onNodeConnected(node.id, replaced);
+        return node.id;
+      });
     } finally {
       this.authenticating.delete(socket);
     }
@@ -297,10 +443,24 @@ export class NodeIdentityControl {
     return parsed.data;
   }
 
+  private setBusinessAdmission(socket: WebSocket, version: string | undefined): void {
+    const comparison = compareStableVersions(version ?? '', MIN_NODE_BUSINESS_VERSION);
+    if (
+      this.wireVersions.get(socket) === NODE_PROTOCOL_VERSION &&
+      comparison !== undefined &&
+      comparison >= 0
+    )
+      this.businessAdmission.add(socket);
+    else this.businessAdmission.delete(socket);
+  }
+
   protected send(socket: WebSocket, type: string, payload: unknown, replyTo?: string): void {
     if (socket.readyState === socket.OPEN) {
+      const options = replyTo === undefined ? {} : { replyTo };
       const serialized = JSON.stringify(
-        createEnvelope(type, payload, { ...(replyTo === undefined ? {} : { replyTo }) })
+        this.wireVersions.get(socket) === 2
+          ? legacyNodeUpgradeEnvelope(type, payload, options)
+          : createEnvelope(type, payload, options)
       );
       this.recordTraffic?.('out', Buffer.byteLength(serialized));
       socket.send(serialized);

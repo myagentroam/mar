@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseIdentityReader } from './database-identity.js';
-import type { MysqlMigration } from './mysql-migrations.js';
+import type { MysqlMigration } from './mysql-migration-contracts.js';
 
 export type MysqlSchema = Readonly<Record<string, string>>;
 

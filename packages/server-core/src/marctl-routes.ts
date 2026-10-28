@@ -7,7 +7,7 @@ const TERMINAL_COMMAND_MAX_BYTES = 64 * 1024;
 import { databaseError as defaultDatabaseError } from './domain-errors.js';
 import { publicNode } from './node-projection.js';
 import { MarctlUserCredentials } from './marctl-user-credentials.js';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import {
   registerMarctlSessionRoutes,
   type MarctlSessionDependencies

@@ -1,4 +1,4 @@
-import type { MysqlMigrationConnection } from '@myagentroam/server-core/mysql-migrations';
+import type { MysqlMigrationConnection } from '@myagentroam/server-core/mysql-migration-contracts';
 
 /** Shared by the startup migration and fixed-admin initialization on an empty database. */
 export async function initializeRootIdentity(

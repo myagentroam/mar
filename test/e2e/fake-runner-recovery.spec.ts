@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import type { CodexAppServerClient } from '../../mar-node/src/codex-app-server.js';
 import { FakeRunner, type FakeRunnerStep } from '../../mar-node/src/fake-runner.js';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
 const executeFile = promisify(execFile);

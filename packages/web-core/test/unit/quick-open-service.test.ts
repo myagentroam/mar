@@ -31,7 +31,6 @@ function fixture(initialTab: QuickOpenTab = 'SYMBOL', deadlineMs = 30_000) {
     workspaceId: () => 'workspace',
     filesReady: () => true,
     symbolsReady: () => true,
-    nonblockingFiles: () => true,
     nodes: () => [],
     workspaceTabs: () => [],
     origin: () => 'http://localhost',

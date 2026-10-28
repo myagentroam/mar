@@ -1,10 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { expect, request as playwrightRequest, test } from '@playwright/test';
 import mysql from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { prepareMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
-import { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
+import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { createEnterpriseTestServer } from './support/enterprise-test-server.js';
+import { ResourceManagementDirectory } from '../../ee/server/src/rbac/resource-management-directory.js';
+import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
 import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-service.js';
 import { McpService } from '../../ee/server/src/mcp/mcp-service.js';
 import { ConversationTemplateService } from '../../packages/server-core/src/conversation-template-service.js';
@@ -14,6 +16,50 @@ import {
   dropPlaywrightTestDatabase,
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
+
+test('production composition registers management and Node registration routes with current policy', async () => {
+  const server = await createEnterpriseTestServer('management-composition');
+  const client = await playwrightRequest.newContext({ baseURL: server.baseURL });
+  try {
+    const login = await client.post('/api/auth/login', {
+      data: { username: 'admin', password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(login.status()).toBe(200);
+    const { csrfToken } = (await login.json()) as { csrfToken: string };
+    const changed = await client.post('/api/auth/change-password', {
+      headers: { 'x-csrf-token': csrfToken },
+      data: { currentPassword: INITIAL_ADMIN_PASSWORD, password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(changed.status()).toBe(200);
+    const changedCsrf = ((await changed.json()) as { csrfToken: string }).csrfToken;
+    const users = await client.get('/api/management/users');
+    expect(users.status()).toBe(200);
+    expect((await users.json()).users).toEqual(
+      expect.arrayContaining([expect.objectContaining({ username: 'admin' })])
+    );
+    const token = await client.post('/api/node-registration-tokens', {
+      headers: { 'x-csrf-token': changedCsrf },
+      data: { displayName: 'Test Node' }
+    });
+    expect(token.status()).toBe(200);
+    expect((await token.json()).token).toEqual(expect.any(String));
+    const foreignOwner = await client.post('/api/node-registration-tokens', {
+      headers: { 'x-csrf-token': changedCsrf },
+      data: {
+        displayName: 'Foreign owner',
+        ownership: { ownerType: 'PERSONAL', ownerUserId: 2 }
+      }
+    });
+    expect(foreignOwner.status()).toBe(403);
+    expect((await foreignOwner.json()).error.code).toBe('PERSONAL_RESOURCE_FORBIDDEN');
+  } finally {
+    try {
+      await client.dispose();
+    } finally {
+      await server.close();
+    }
+  }
+});
 
 test('Management lists use real SQL authorization, complete reads, global filters and 20/20/5 pages', async () => {
   test.setTimeout(90_000);
@@ -38,10 +84,13 @@ test('Management lists use real SQL authorization, complete reads, global filter
         allowed: context?.ownerType === 'PERSONAL'
       })
     } as unknown as AuthorizationProvider;
-    const resources = new ResourceAccessService(database, authorization);
-    const secrets = new MysqlEnvironmentSecretService(database, undefined, undefined, async () => [
-      2
-    ]);
+    const resources = new ResourceManagementDirectory(database, authorization);
+    const secrets = createTestMysqlEnvironmentSecretService(
+      database,
+      undefined,
+      undefined,
+      async () => [2]
+    );
     const skills = new SkillFavoriteService(
       database,
       authorization,

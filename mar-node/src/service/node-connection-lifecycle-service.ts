@@ -50,6 +50,7 @@ export class NodeConnectionLifecycleService {
   async register(nodeId: string, credential: string): Promise<void> {
     const config = this.options.config();
     if (config === undefined) return;
+    const connection = this.options.control.connection();
     const registered: NodeConfig = {
       serverUrl: config.serverUrl,
       allowedRoots: config.allowedRoots,
@@ -65,12 +66,12 @@ export class NodeConnectionLifecycleService {
     this.options.setConfig(registered);
     await saveNodeConfig(registered, this.options.configPath);
     await this.options.onRegistered?.();
-    this.connected();
+    if (connection !== undefined) this.connected(connection);
   }
 
-  connected(): void {
+  connected(connection?: object): void {
+    if (!this.options.control.ready(this.options.capabilities(), connection)) return;
     if (this.heartbeat !== undefined) clearInterval(this.heartbeat);
-    this.options.control.send('capabilities', this.options.capabilities());
     this.options.terminal.connect();
     this.options.control.send('heartbeat', {});
     this.options.onConnected?.();

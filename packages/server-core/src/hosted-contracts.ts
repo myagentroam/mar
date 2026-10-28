@@ -1,5 +1,5 @@
 import type { Pool, PoolConnection } from 'mysql2/promise';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 export interface TemplateAuditEvent {
   eventType: string;
   actorUserId: number;
@@ -18,6 +18,12 @@ export interface TemplateStore {
   ): Promise<void>;
 }
 export interface TemplateResourcePolicy {
+  assertCanManageConversationTemplate(
+    userId: number,
+    nodeId: string,
+    workspaceId: string,
+    connection: PoolConnection
+  ): Promise<void>;
   assertCanHostConversationTemplate(nodeId: string): Promise<void>;
   assertCanUseWorkspace(userId: number, nodeId: string, workspaceId: string): Promise<unknown>;
   canUseTemplate(userId: number, templateId: string): Promise<boolean>;

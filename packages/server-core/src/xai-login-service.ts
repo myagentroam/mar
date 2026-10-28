@@ -1,16 +1,9 @@
-import type { CodexCredentialOwnership, CodexLoginAttempt } from '@myagentroam/protocol';
+import type { CodexLoginAttempt } from '@myagentroam/protocol';
 import { XaiOAuthError, XaiOAuthProvider, type XaiTokens } from './xai-oauth-provider.js';
-
-interface Actor {
-  readonly userId: number;
-  readonly sessionFingerprint: string;
-}
-export interface XaiLoginDraft {
-  readonly name: string;
-  readonly ownership: CodexCredentialOwnership;
-  readonly socks5Url?: string | undefined;
-  readonly targetCredentialId?: string | undefined;
-}
+import type {
+  CredentialLoginActor as Actor,
+  CredentialLoginDraft as XaiLoginDraft
+} from './credential-login-contracts.js';
 interface Attempt {
   readonly id: string;
   readonly actor: Actor;
@@ -62,7 +55,8 @@ export class XaiLoginService {
   async start(
     actor: Actor,
     draft: XaiLoginDraft,
-    targetRevision?: number
+    targetRevision: number | undefined,
+    registered: () => void
   ): Promise<CodexLoginAttempt> {
     if (this.#closed) throw new XaiOAuthError('XAI_LOGIN_FAILED');
     const device = await this.provider.start(draft.socks5Url);
@@ -87,6 +81,7 @@ export class XaiLoginService {
       secret: { deviceCode: device.device_code, draft, targetRevision }
     };
     this.#attempts.set(id, attempt);
+    registered();
     return this.pending(attempt);
   }
 

@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-28
 ---
 
 # Messages and Composer
@@ -56,9 +56,9 @@ Each request generates a fresh prediction, rather than reusing the previous sugg
 
 Nodes supporting this context extension can use files and diffs viewed on this page within the last three minutes, plus known Goal, pending/waiting work, and queue state. Node rechecks file access and versions; unverifiable content is omitted, and diffs contribute browsing metadata only. Viewing a resource does not authorize changes. Running tasks favor intervention suggestions; completed tasks favor next steps. Unknown state is never treated as completed.
 
-Automatic abstention or failure silently returns to the idle state without an empty-result notice, notification, or automatic retry. Manual generation retains explicit feedback; if an older Node unexpectedly returns an empty result, “No suitable prediction right now” appears briefly.
+Automatic abstention or failure silently returns to the idle state without an empty-result notice, notification, or automatic retry. Manual generation retains explicit feedback; if a Node unexpectedly returns an empty result, “No suitable prediction right now” appears briefly.
 
-If unavailable, check personal preferences, Node version (at least 0.10.21) and capability, model/credential access, and resource permissions. See [MAR Agent](../runners/mar-agent.md) for configuration and access details.
+If unavailable, check personal preferences, Node compatibility and capability, model/credential access, and resource permissions. See [MAR Agent](../runners/mar-agent.md) for configuration and access details.
 
 ## Goals
 
@@ -98,3 +98,7 @@ Regular queued messages do not run between Goal continuation turns, during conti
 
 Completion, three consecutive successful turns without tool activity, or final blocking exits the mode. Automatic no-progress completion stops continuation but does not prove the objective was achieved; check the Agent's results. In regular Workspaces, MAR Agent Goals can resume through an [orderly shutdown handoff](sessions.md#automatic-continuation-after-orderly-shutdown), preserving the objective, timing, and turn count. This does not cover other Agents, hosted conversations, or unexpected exits. Closing the page, removing an objective, or seeing an idle state after restart does not prove that the task completed.
 After a successful Remove or Stop run, the UI shows the Node-confirmed status, wall-clock time through the action, and number of turns started. Neither action starts another Agent to produce a summary. A pending Goal without an objective has no elapsed time to report.
+
+## Steer on mobile
+
+Slide up from Send and release inside the Composer to submit. New and idle conversations send normally; while a run is active, the hint changes to **Release to steer** and releasing steers with the message. Only moving above the Composer switches to **Release to cancel**; move back inside to restore sending. The cancellation boundary follows the actual Composer height rather than a fixed swipe distance. Tapping, holding without sliding up, or returning to the starting position retains ordinary sending and queueing during a run. Nothing is submitted before release, and touching Send does not move focus away from the editor. Cancelling, switching Workspaces or sessions, or losing permission to send preserves the draft. Steering uses the same delivery intent as desktop `Ctrl+Enter` and does not guarantee interruption-free delivery for every Agent. You can also queue the message normally and use its **Steer** action in the queue.

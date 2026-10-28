@@ -7,6 +7,7 @@ import {
   type NotificationChannelsResult
 } from '@myagentroam/protocol';
 import type { NotificationStore } from './notification-contracts.js';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import type { MailNotificationService } from './mail-notification-service.js';
 import type { WorkbenchNotificationService } from './workbench-notification-service.js';
 import { withMysqlTransaction } from './mysql-reference-store.js';
@@ -53,6 +54,7 @@ export class NotificationChannelService {
   constructor(
     private readonly input: {
       readonly database: NotificationStore;
+      readonly authorize: NodeRequestAuthorization;
       readonly notifications: Pick<WorkbenchNotificationService, 'consume' | 'bySource'>;
       readonly mail: Pick<MailNotificationService, 'send'>;
       readonly dispatcher?: Pick<WebPushDispatcher, 'dispatch'>;
@@ -68,15 +70,17 @@ export class NotificationChannelService {
     const parsed = notificationChannelsRequestSchema.safeParse(value);
     if (!parsed.success) throw new Error('NOTIFICATION_INPUT_INVALID');
     const request = parsed.data;
-    const authorized = async () =>
-      isCurrent() &&
-      (await this.input.database.userCanRequestNode(
+    const authorized = async () => {
+      if (!isCurrent()) return false;
+      const allowed = await this.input.authorize(
         request.userId,
         nodeId,
         'session.message',
         { workspaceId: request.workspaceId, sessionId: request.sessionId },
         request.workspaceId
-      ));
+      );
+      return allowed && isCurrent();
+    };
     if (!(await authorized())) throw new Error('NOTIFICATION_ACCESS_DENIED');
     const key = digest(['notification-v1', nodeId, request.executionId, request.callId]);
     // Metadata timestamps are not model input; channel ordering is semantically irrelevant.
@@ -120,20 +124,24 @@ export class NotificationChannelService {
     if (request.channels.includes('email')) {
       try {
         if (!(await authorized())) throw new Error('MAIL_ACCESS_DENIED');
-        await this.input.mail.send(nodeId, {
-          executionId: request.executionId,
-          sessionId: request.sessionId,
-          workspaceId: request.workspaceId,
-          userId: request.userId,
-          source: request.source,
-          callId: request.callId,
-          ...(request.recipientEmail === undefined
-            ? {}
-            : { recipientEmail: request.recipientEmail }),
-          message: request.message,
-          ...(request.title === undefined ? {} : { title: request.title }),
-          templateId: request.templateId ?? ''
-        });
+        await this.input.mail.send(
+          nodeId,
+          {
+            executionId: request.executionId,
+            sessionId: request.sessionId,
+            workspaceId: request.workspaceId,
+            userId: request.userId,
+            source: request.source,
+            callId: request.callId,
+            ...(request.recipientEmail === undefined
+              ? {}
+              : { recipientEmail: request.recipientEmail }),
+            message: request.message,
+            ...(request.title === undefined ? {} : { title: request.title }),
+            templateId: request.templateId ?? ''
+          },
+          isCurrent
+        );
         current = { ...current, email: { status: 'accepted' } };
       } catch (error) {
         const code =

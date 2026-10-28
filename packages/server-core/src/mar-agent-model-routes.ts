@@ -6,6 +6,7 @@ import {
 } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import type { SessionLookup } from './session.js';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import type { Pool } from 'mysql2/promise';
 import type { SessionRunNodeControl } from './session-run-contracts.js';
 import type { MarAgentModelService } from './mar-agent-model-service.js';
@@ -19,19 +20,13 @@ import { requestUserNode } from './workspace-http-support.js';
 import { errorResponseOptions, safePublicError, sendError } from './http-errors.js';
 type ModelRouteStore = SessionLookup & {
   readonly raw: Pool;
-  userCanRequestNode(
-    userId: number,
-    nodeId: string,
-    operation: string,
-    data: unknown,
-    workspaceId?: string
-  ): Promise<boolean>;
 };
 
 export function registerMarAgentModelRoutes(input: {
   app: FastifyInstance;
   databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
   database: ModelRouteStore;
+  authorizeNodeRequest: NodeRequestAuthorization;
   models: MarAgentModelService;
   runtimeModels: Pick<MarAgentRuntimeModelService, 'prepareTest'>;
   imageGeneration?: Pick<ImageGenerationConfigurationService, 'get' | 'update'>;
@@ -205,7 +200,12 @@ export function registerMarAgentModelRoutes(input: {
       if (nodeId === undefined) return sendError(reply, 400, 'MAR_AGENT_MODEL_TEST_INPUT_INVALID');
       try {
         await models.assertCanManage(actor.userId, request.params.modelId);
-        const workspaceId = await modelTestWorkspace(database, actor.userId, nodeId);
+        const workspaceId = await modelTestWorkspace(
+          database,
+          input.authorizeNodeRequest,
+          actor.userId,
+          nodeId
+        );
         const prepared = await runtimeModels.prepareTest({
           userId: actor.userId,
           nodeId,
@@ -252,6 +252,7 @@ function modelTestNodeId(raw: unknown): string | undefined {
 
 async function modelTestWorkspace(
   database: ModelRouteStore,
+  authorizeNodeRequest: NodeRequestAuthorization,
   actorUserId: number,
   nodeId: string
 ): Promise<string> {
@@ -264,13 +265,7 @@ async function modelTestWorkspace(
     if (
       typeof workspaceId === 'string' &&
       workspaceId.length > 0 &&
-      (await database.userCanRequestNode(
-        actorUserId,
-        nodeId,
-        'mar-agent.model.test',
-        {},
-        workspaceId
-      ))
+      (await authorizeNodeRequest(actorUserId, nodeId, 'mar-agent.model.test', {}, workspaceId))
     )
       return workspaceId;
   }

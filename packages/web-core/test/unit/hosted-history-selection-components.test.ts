@@ -127,6 +127,9 @@ async function fixture(hasUnread = false) {
     routeTarget: undefined,
     hasUnreadConversation: () => hasUnread
   });
+  const historyList = view.findAll('div').find((node) => node.props['class'] === 'history-list');
+  if (historyList === undefined) throw new Error('Expected the rendered history list');
+  Object.assign(historyList, { removeEventListener() {} });
   await flushComponent();
   const row = (title: string) =>
     view

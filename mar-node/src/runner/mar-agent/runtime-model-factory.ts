@@ -127,9 +127,6 @@ export class MarAgentRuntimeModelFactory {
           ...(configuration.serviceTier === undefined
             ? {}
             : { serviceTier: configuration.serviceTier }),
-          ...(configuration.serviceTier === undefined && configuration.fastMode === true
-            ? { fastMode: true }
-            : {}),
           hostedWebSearch: configuration.hostedWebSearch,
           useResourceUrl: configuration.useResourceUrl,
           ...(imageGeneration === undefined ? {} : { imageGeneration }),

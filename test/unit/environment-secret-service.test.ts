@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openServerDatabase } from '../../ee/server/src/database.js';
 import { EnvironmentSecretService } from '../../ee/server/src/service/environment-secret-service.js';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
 const temporaryDirectories: string[] = [];

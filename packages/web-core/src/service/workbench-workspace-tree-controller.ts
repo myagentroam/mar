@@ -379,7 +379,7 @@ export function createWorkbenchWorkspaceTreeController(
   }
 
   async function removeWorkspace(nodeId: string, workspace: Workspace): Promise<void> {
-    if (!canOrganizeWorkspaceGroups(nodeId)) return;
+    if (workspace.manageable !== true) return;
     try {
       await ElMessageBox.confirm(
         translate(

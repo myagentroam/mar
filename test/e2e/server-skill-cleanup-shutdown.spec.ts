@@ -42,27 +42,38 @@ test('Server close drains the running Skill cleanup before releasing its real My
     const intervals = mock.method(globalThis, 'setInterval');
     const cleanup = mock.method(SkillFavoriteService.prototype, 'cleanupCache');
     directory = await mkdtemp(join(tmpdir(), 'mar-skill-cleanup-shutdown-'));
-    app = createServerApp({
-      databaseUrl: database.databaseUrl,
-      dataDirectory: directory,
-      productUuid: null
-    });
+    app = (
+      await createServerApp({
+        databaseUrl: database.databaseUrl,
+        dataDirectory: directory,
+        productUuid: null
+      })
+    ).app;
     await app.listen({ host: '127.0.0.1', port: 0 });
     expect(cleanup.mock.callCount()).toBe(1);
-    const tick = intervals.mock.calls.at(-1)!.arguments[0] as () => void;
+    const skillTimer = intervals.mock.calls
+      .filter((call) => call.arguments[1] === 3_600_000)
+      .at(-1);
+    expect(skillTimer).toBeDefined();
+    const tick = skillTimer!.arguments[0] as () => void;
     const raw = pool!;
-    const execute = raw.execute.bind(raw);
-    mock.method(raw, 'execute', async (...args: Parameters<Pool['execute']>) => {
-      const result = await execute(...args);
-      const sql = typeof args[0] === 'string' ? args[0] : args[0].sql;
-      if (sql.includes('SELECT cache_key,MIN(unreferenced_at)')) {
-        events.push('cleanup-query');
-        entered = true;
-        // Pause after the real query, before filesystem work and the following SQL.
-        await gate;
-      }
-      if (sql.includes("SET cache_state='TRASHED'")) events.push('later-sql');
-      return result;
+    const getConnection = raw.getConnection.bind(raw);
+    mock.method(raw, 'getConnection', async () => {
+      const connection = await getConnection();
+      const execute = connection.execute.bind(connection);
+      mock.method(connection, 'execute', async (...args: Parameters<Pool['execute']>) => {
+        const result = await execute(...args);
+        const sql = typeof args[0] === 'string' ? args[0] : args[0].sql;
+        if (sql.includes('SELECT COUNT(*) AS versions,MIN(unreferenced_at)')) {
+          events.push('cleanup-query');
+          entered = true;
+          // Pause after the real query, before filesystem work and the following SQL.
+          await gate;
+        }
+        if (sql.includes("SET cache_state='TRASHED'")) events.push('later-sql');
+        return result;
+      });
+      return connection;
     });
     const end = raw.end.bind(raw);
     const poolEnd = mock.method(raw, 'end', async () => {

@@ -51,7 +51,10 @@ function fixture() {
     bySource: vi.fn(async () => notification)
   };
   const mail = {
-    send: vi.fn(async (_nodeId: string, _request: MailNotificationRequest) => undefined)
+    send: vi.fn(
+      async (_nodeId: string, _request: MailNotificationRequest, _isCurrent: () => boolean) =>
+        undefined
+    )
   };
   const dispatcher = {
     dispatch: vi.fn(async () => ({
@@ -63,6 +66,7 @@ function fixture() {
   };
   const service = new NotificationChannelService({
     database: database as never,
+    authorize: database.userCanRequestNode,
     notifications: notifications as never,
     mail,
     dispatcher,
@@ -96,6 +100,27 @@ function fixture() {
 }
 
 describe('explicit notification channels', () => {
+  it('passes the connection guard to email after channel admission', async () => {
+    const f = fixture();
+    let resume!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => (resume = resolve));
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const deliver = vi.fn();
+    f.mail.send.mockImplementationOnce(async (_node, _request, isCurrent) => {
+      entered();
+      await gate;
+      if (!isCurrent()) throw new Error('MAIL_ACCESS_DENIED');
+      deliver();
+    });
+    const sending = f.send({ ...f.request, channels: ['email'] });
+    await started;
+    f.state.current = false;
+    resume();
+    expect((await sending).email).toMatchObject({ status: 'failed' });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it('defaults only to Push and reports aggregated multi-client acceptance after persistence', async () => {
     const f = fixture();
     const result = await f.send();
@@ -130,7 +155,8 @@ describe('explicit notification channels', () => {
     expect(f.notifications.consume).not.toHaveBeenCalled();
     expect(f.mail.send).toHaveBeenCalledWith(
       'node-1',
-      expect.objectContaining({ recipientEmail: 'other@example.test', templateId: '' })
+      expect.objectContaining({ recipientEmail: 'other@example.test', templateId: '' }),
+      expect.any(Function)
     );
   });
 
@@ -142,7 +168,11 @@ describe('explicit notification channels', () => {
       const request = { ...f.request, channels };
       const result = await f.send(request);
       expect(result.email).toEqual({ status: 'accepted' });
-      expect(f.mail.send).toHaveBeenCalledWith('node-1', expect.objectContaining({ userId: 1 }));
+      expect(f.mail.send).toHaveBeenCalledWith(
+        'node-1',
+        expect.objectContaining({ userId: 1 }),
+        expect.any(Function)
+      );
       expect(f.mail.send.mock.calls[0]![1]).not.toHaveProperty('recipientEmail');
       expect(await f.send(request)).toEqual(result);
       expect(f.mail.send).toHaveBeenCalledOnce();

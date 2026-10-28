@@ -1,3 +1,4 @@
+import type { MysqlMigrationConnection } from './mysql-migration-contracts.js';
 import {
   MODEL_USAGE_MIGRATION,
   MODEL_USAGE_CURRENT_SQL,
@@ -33,6 +34,7 @@ import {
 } from './mysql-schema-support.js';
 import { mailTemplatesZhCN } from './i18n/mail-templates.zh-CN.js';
 import { mailTemplatesEnUS } from './i18n/mail-templates.en-US.js';
+import { MODEL_SETTINGS_MIGRATION } from './model-settings-migration.js';
 
 // Core v9 freezes the complete common installation schema. New changes must use Core v10+.
 export const CORE_MYSQL_BASELINE_VERSION = 9;
@@ -174,6 +176,10 @@ const CORE_MYSQL_SCHEMA_V19: MysqlSchema = {
 
 export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   ...CORE_MYSQL_SCHEMA_V19,
+  system_settings: CORE_MYSQL_SCHEMA_V19['system_settings']!.replace(
+    '`setting_key` varchar(128)',
+    '`setting_key` varchar(191)'
+  ),
   workbench_notifications: CORE_MYSQL_SCHEMA_V19['workbench_notifications']!.replace(
     "enum('run','approval','plan','user-input','schedule')",
     AGENT_NOTIFICATION_KIND
@@ -190,7 +196,15 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   mar_agent_models: CORE_MYSQL_SCHEMA_V19['mar_agent_models']!.replace(
     "  `title_generation` tinyint(1) NOT NULL DEFAULT '0',",
     "  `conversation_model` tinyint(1) NOT NULL DEFAULT '1',\n  `title_generation` tinyint(1) NOT NULL DEFAULT '0',"
-  ),
+  )
+    .split('\n')
+    .filter(
+      (line) =>
+        !/^  `(fast_mode|service_tier|hosted_web_search|responses_transport|responses_previous_response_id)` /u.test(
+          line
+        )
+    )
+    .join('\n'),
   model_usage_records: MODEL_USAGE_CURRENT_SQL,
   ...MYSQL_PROMPT_COMPLETION_SCHEMA,
   ...MYSQL_WEB_PUSH_SCHEMA,
@@ -198,13 +212,13 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
 });
 
 export async function validateCoreMysqlBaseline(
-  connection: import('./mysql-migrations.js').MysqlMigrationConnection
+  connection: MysqlMigrationConnection
 ): Promise<void> {
   await validateMysqlSchema(connection, CORE_MYSQL_SCHEMA_V9);
 }
 
 export async function validateCoreMysqlDatabase(
-  connection: import('./mysql-migrations.js').MysqlMigrationConnection
+  connection: MysqlMigrationConnection
 ): Promise<void> {
   await validateMysqlSchema(connection, CORE_MYSQL_SCHEMA);
   await validateMysqlReferences(connection, CORE_MYSQL_SCHEMA_V19);
@@ -213,7 +227,7 @@ export async function validateCoreMysqlDatabase(
 }
 
 export async function validateMysqlSessionShareReferences(
-  connection: Pick<import('./mysql-migrations.js').MysqlMigrationConnection, 'query'>
+  connection: Pick<MysqlMigrationConnection, 'query'>
 ): Promise<void> {
   const [shareOrphans] = await connection.query(`SELECT 1 AS orphan FROM session_shares share_record
     LEFT JOIN users owner ON owner.id=share_record.user_id
@@ -340,10 +354,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 14,
     name: 'credential_ownership_v3',
     checksum: createHash('sha256').update('credential_ownership_v3:personal-owner-1').digest('hex'),
-    up: async (
-      connection: import('./mysql-migrations.js').MysqlMigrationConnection,
-      edition?: 'personal' | 'enterprise'
-    ) => {
+    up: async (connection: MysqlMigrationConnection, edition?: 'personal' | 'enterprise') => {
       if (edition !== 'personal') return;
       const [rows] = (await connection.execute(
         "SELECT setting_value FROM system_settings WHERE setting_key='mar_agent_credentials' FOR UPDATE"
@@ -366,7 +377,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 15,
     name: 'marctl_management_key',
     checksum: createHash('sha256').update(MARCTL_MANAGEMENT_KEY_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         const [rows] = (await connection.execute(
@@ -385,7 +396,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 16,
     name: 'remove_responses_encoding',
     checksum: createHash('sha256').update(RESPONSES_ENCODING_DROP_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mar_agent_models' AND COLUMN_NAME='responses_encoding'"
       )) as [readonly Record<string, unknown>[], unknown];
@@ -396,7 +407,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 17,
     name: 'workspace_environment_secrets',
     checksum: createHash('sha256').update(WORKSPACE_SECRET_MIGRATION_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='environment_secrets' AND COLUMN_NAME='workspace_id'"
       )) as [readonly Record<string, unknown>[], unknown];
@@ -410,7 +421,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     checksum: createHash('sha256')
       .update(JSON.stringify(['explicit_mysql_references:v1', CORE_MYSQL_SCHEMA_V17]))
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await removeMysqlForeignKeys(connection, CORE_MYSQL_SCHEMA_V17);
     }
   },
@@ -418,7 +429,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 19,
     name: 'remove_high_density_compaction',
     checksum: createHash('sha256').update(HIGH_DENSITY_COMPACTION_DROP_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mar_agent_models' AND COLUMN_NAME='high_density_compaction'"
       )) as [readonly Record<string, unknown>[], unknown];
@@ -430,7 +441,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 21,
     name: 'xai_subscription_inference_endpoint',
     checksum: createHash('sha256').update(XAI_SUBSCRIPTION_ENDPOINT_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         await connection.execute(XAI_SUBSCRIPTION_ENDPOINT_SQL);
@@ -445,7 +456,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 22,
     name: 'responses_websocket_only_continuation',
     checksum: createHash('sha256').update(RESPONSES_HTTP_CONTINUATION_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         await connection.execute(RESPONSES_HTTP_CONTINUATION_SQL);
@@ -460,7 +471,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 23,
     name: 'xai_subscription_proxy_endpoint',
     checksum: createHash('sha256').update(XAI_SUBSCRIPTION_PROXY_ENDPOINT_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         await connection.execute(XAI_SUBSCRIPTION_PROXY_ENDPOINT_SQL);
@@ -477,7 +488,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     checksum: createHash('sha256')
       .update(JSON.stringify(MYSQL_PROMPT_COMPLETION_SCHEMA))
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       for (const [name, sql] of Object.entries(MYSQL_PROMPT_COMPLETION_SCHEMA)) {
         await connection.query(sql.replace(/^CREATE TABLE /u, 'CREATE TABLE IF NOT EXISTS '));
         await validateMysqlSchema(connection, { [name]: sql });
@@ -488,7 +499,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 25,
     name: 'conversation_model_usage',
     checksum: createHash('sha256').update(CONVERSATION_MODEL_SQL).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mar_agent_models' AND COLUMN_NAME='conversation_model'"
       )) as [readonly Record<string, unknown>[], unknown];
@@ -503,7 +514,7 @@ export const CORE_MYSQL_MIGRATIONS = [
         "DELETE FROM system_settings WHERE setting_key IN ('marctl_management_key','marmgr_management_key')"
       )
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         await connection.execute(
@@ -520,7 +531,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 27,
     name: 'web_push_clients',
     checksum: createHash('sha256').update(JSON.stringify(MYSQL_WEB_PUSH_SCHEMA)).digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       for (const [name, sql] of Object.entries(MYSQL_WEB_PUSH_SCHEMA)) {
         await connection.query(sql.replace(/^CREATE TABLE /u, 'CREATE TABLE IF NOT EXISTS '));
         await validateMysqlSchema(connection, { [name]: sql });
@@ -534,7 +545,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     checksum: createHash('sha256')
       .update(JSON.stringify(MYSQL_SESSION_SHARES_SCHEMA))
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       for (const [name, sql] of Object.entries(MYSQL_SESSION_SHARES_SCHEMA)) {
         await connection.query(sql.replace(/^CREATE TABLE /u, 'CREATE TABLE IF NOT EXISTS '));
         await validateMysqlSchema(connection, { [name]: sql });
@@ -549,7 +560,7 @@ export const CORE_MYSQL_MIGRATIONS = [
         'ALTER TABLE session_shares ADD COLUMN encrypted_password varchar(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL AFTER password_hash'
       )
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='session_shares' AND COLUMN_NAME='encrypted_password'"
       )) as [readonly Record<string, unknown>[], unknown];
@@ -565,7 +576,7 @@ export const CORE_MYSQL_MIGRATIONS = [
     version: 32,
     name: 'mobile_only_web_push_clients',
     checksum: createHash('sha256').update('DELETE FROM web_push_clients').digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       await connection.query('START TRANSACTION');
       try {
         await connection.execute('DELETE FROM web_push_clients');
@@ -584,7 +595,7 @@ export const CORE_MYSQL_MIGRATIONS = [
         "ALTER TABLE workbench_notifications ADD COLUMN session_group enum('MAIN','CHILD') DEFAULT NULL"
       )
       .digest('hex'),
-    up: async (connection: import('./mysql-migrations.js').MysqlMigrationConnection) => {
+    up: async (connection: MysqlMigrationConnection) => {
       const [rows] = (await connection.execute(
         "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='workbench_notifications' AND COLUMN_NAME='session_group'"
       )) as [readonly unknown[], unknown];
@@ -596,5 +607,6 @@ export const CORE_MYSQL_MIGRATIONS = [
         workbench_notifications: CORE_MYSQL_SCHEMA['workbench_notifications']!
       });
     }
-  }
+  },
+  MODEL_SETTINGS_MIGRATION
 ] as const;

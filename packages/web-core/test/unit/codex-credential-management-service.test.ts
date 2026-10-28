@@ -765,8 +765,7 @@ describe('Web Codex credential management service', () => {
     const old = node('old', 'unknown', true, {
       apiVersion: 1,
       websocket: true,
-      httpVersions: ['1.1'],
-      fastMode: true
+      httpVersions: ['1.1']
     });
     const modern = node('modern', 'unknown', true, {
       apiVersion: 1,
@@ -801,7 +800,7 @@ describe('Web Codex credential management service', () => {
       )
     ).toBe(true);
     expect(modelSupportsNodeTransport(old, undefined, 'default')).toBe(true);
-    expect(modelSupportsNodeTransport(old, undefined, 'priority')).toBe(true);
+    expect(modelSupportsNodeTransport(old, undefined, 'priority')).toBe(false);
     expect(modelSupportsNodeTransport(old, undefined, 'ultrafast')).toBe(false);
     expect(modelSupportsNodeTransport(modern, { transport: 'WEBSOCKET' }, 'ultrafast')).toBe(true);
     expect(

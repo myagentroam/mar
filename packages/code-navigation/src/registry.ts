@@ -16,7 +16,7 @@ import { rustNavigationSyntaxDefinition } from './languages/rust.js';
 import { sassNavigationSyntaxDefinition } from './languages/sass.js';
 import { scssNavigationSyntaxDefinition } from './languages/scss.js';
 import { vueNavigationSyntaxDefinition } from './languages/vue.js';
-import type { NavigationLanguageId, NavigationSyntaxDefinition } from './types.js';
+import type { NavigationSyntaxDefinition } from './types.js';
 
 const languages: readonly NavigationSyntaxDefinition[] = [
   cssNavigationSyntaxDefinition,
@@ -38,20 +38,6 @@ const languages: readonly NavigationSyntaxDefinition[] = [
   rustNavigationSyntaxDefinition,
   vueNavigationSyntaxDefinition
 ];
-
-const hyphenSeparatorLanguages = new Set<NavigationLanguageId>([
-  'ecmascript',
-  'go',
-  'jvm',
-  'csharp',
-  'python',
-  'c',
-  'cpp',
-  'objective-c',
-  'objective-cpp',
-  'c-family',
-  'rust'
-]);
 
 export function navigationLanguageForPath(
   path: string,
@@ -100,6 +86,5 @@ export function isNavigationSymbol(path: string, value: string): boolean {
 }
 
 export function hyphenSeparatesNavigationSymbol(path: string): boolean {
-  const language = navigationLanguageForPath(path);
-  return language !== undefined && hyphenSeparatorLanguages.has(language.id);
+  return navigationLanguageForPath(path)?.hyphenSeparatesSymbol ?? false;
 }

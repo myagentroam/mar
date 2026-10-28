@@ -48,13 +48,13 @@ function fixture(role: Role = 'admin') {
   };
   registerMarAgentModelRoutes({
     app,
+    authorizeNodeRequest: async () => true,
     databaseError: (reply, error) =>
       reply
         .status(error instanceof Error && error.message.startsWith('MAR_AGENT_') ? 400 : 500)
         .send({ code: error instanceof Error ? error.message : 'INTERNAL_ERROR' }),
     database: {
       findCurrentUserSession: (token: string) => sessions[token],
-      userCanRequestNode: async () => true,
       raw: { execute } as unknown as Pool
     },
     models: {

@@ -6,7 +6,7 @@ import {
 } from '@myagentroam/protocol';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { AuthorizationProvider } from '../product/product-policy.js';
-import type { GrantTarget } from '../rbac/resource-access-service.js';
+import type { GrantTarget } from '../rbac/resource-grant-contracts.js';
 
 type CredentialOwnershipReader = (
   credentialId: string

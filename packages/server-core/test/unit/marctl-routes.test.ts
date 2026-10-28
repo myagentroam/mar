@@ -156,7 +156,7 @@ describe('marctl execution-context authorization', () => {
     }
     const app = Fastify();
     const relay = new WorkbenchRelayService({
-      database: { userOwnsNode: async () => true }
+      authorizeNodeRequest: async () => true
     });
     const marctl = registerMarctlRoutes({
       app,

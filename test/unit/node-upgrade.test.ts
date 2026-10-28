@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   NodeUpgradeService,
-  compareStableVersions,
   npmViewInvocation,
   supportsSupervisedUpgrade
-} from '../../ee/server/src/service/node-upgrade-service.js';
+} from '../../packages/server-core/src/node-upgrade-service.js';
+import { compareStableVersions } from '../../packages/server-core/src/node-version.js';
 import { NodeUpgradeCoordinator } from '../../mar-node/src/service/node-upgrade-coordinator.js';
 
 const temporaryDirectories: string[] = [];
@@ -20,61 +20,61 @@ afterEach(async () => {
 
 describe('Controlled Node upgrade version detection', () => {
   it('Only older Supervisor-capable Nodes can upgrade to the latest npm stable version not exceeding Server', async () => {
-    const lookup = vi.fn().mockResolvedValue(['0.9.1']);
-    const service = new NodeUpgradeService('0.9.2', lookup);
-    await expect(service.availability('0.9.0', true)).resolves.toEqual({
+    const lookup = vi.fn().mockResolvedValue(['0.19.1']);
+    const service = new NodeUpgradeService('0.19.2', lookup);
+    await expect(service.availability('0.19.0', true)).resolves.toEqual({
       state: 'AVAILABLE',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
-    await expect(service.availability('0.9.1', true)).resolves.toEqual({
+    await expect(service.availability('0.19.1', true)).resolves.toEqual({
       state: 'CURRENT',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
-    await expect(service.availability('0.9.2', true)).resolves.toEqual({
+    await expect(service.availability('0.19.2', true)).resolves.toEqual({
       state: 'CURRENT',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
-    await expect(service.availability('0.9.3', true)).resolves.toEqual({
+    await expect(service.availability('0.19.3', true)).resolves.toEqual({
       state: 'CURRENT',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
     await expect(service.availability('0.1.5', true)).resolves.toEqual({
       state: 'NODE_UNSUPPORTED',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(lookup).toHaveBeenCalledWith('@myagentroam/node');
   });
 
   it('The target falls back below Server when its exact version is unpublished', async () => {
-    const lookup = vi.fn().mockResolvedValue(['0.9.3', '0.9.1']);
-    const service = new NodeUpgradeService('0.9.2', lookup);
-    await expect(service.availability('0.9.0', true)).resolves.toEqual({
+    const lookup = vi.fn().mockResolvedValue(['0.19.3', '0.19.1']);
+    const service = new NodeUpgradeService('0.19.2', lookup);
+    await expect(service.availability('0.19.0', true)).resolves.toEqual({
       state: 'AVAILABLE',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
-    await expect(service.availability('0.9.2', true)).resolves.toEqual({
+    await expect(service.availability('0.19.2', true)).resolves.toEqual({
       state: 'CURRENT',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
     expect(lookup.mock.calls).toEqual([['@myagentroam/node']]);
   });
 
   it('does not query npm when the Server version is invalid', async () => {
-    const lookup = vi.fn().mockResolvedValue(['0.9.3']);
+    const lookup = vi.fn().mockResolvedValue(['0.19.3']);
     const service = new NodeUpgradeService('enterprise-development', lookup);
-    await expect(service.availability('0.9.1', true)).resolves.toEqual({
+    await expect(service.availability('0.19.1', true)).resolves.toEqual({
       state: 'PACKAGE_UNAVAILABLE',
-      targetVersion: '0.9.1'
+      targetVersion: '0.19.1'
     });
     expect(lookup).not.toHaveBeenCalled();
   });
 
   it('Matching program versions without Supervisor support cannot receive upgrade requests', async () => {
-    const service = new NodeUpgradeService('0.1.7', vi.fn().mockResolvedValue(['0.1.7']));
+    const service = new NodeUpgradeService('0.11.38', vi.fn().mockResolvedValue(['0.11.38']));
     await expect(service.availability('0.1.6')).resolves.toEqual({
       state: 'NODE_UNSUPPORTED',
-      targetVersion: '0.1.7'
+      targetVersion: '0.11.38'
     });
   });
 

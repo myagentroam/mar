@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../packages/protocol/src/index.js';
 
 import { ServerDatabase } from '../../ee/server/src/database.js';
-import { NodeControl } from '../../ee/server/src/node-control.js';
+import { createTestNodeControl, testNodeConsumers } from '../support/create-test-node-control.js';
 
-import { WorkbenchRelayService } from '../../ee/server/src/service/workbench-relay-service.js';
+import { WorkbenchRelayService } from '../../packages/server-core/src/workbench-relay-service.js';
 
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
@@ -12,25 +12,25 @@ describe('Node controlled relay contract', () => {
   it('clears offline recent sessions after previously admitted projections finish', async () => {
     const database = new ServerDatabase(':memory:');
     const nodeId = registerOwnedNode(database);
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const active = new Set<string>();
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    control.setNotificationHandler(async () => {
+    testNodeConsumers(control).notification = async () => {
       await pending;
       return true;
-    });
-    control.setRecentRunHandler(
-      async () => {
-        active.add('session-1');
-        return true;
-      },
-      async () => {
-        active.clear();
-      }
-    );
+    };
+    testNodeConsumers(control).recentRuns = async () => {
+      active.add('session-1');
+      return true;
+    };
+    testNodeConsumers(control).recentRunDisconnected = async () => {
+      active.clear();
+    };
     const internals = control as unknown as {
       sockets: Map<string, unknown>;
       handleAuthenticatedMessage(
@@ -70,7 +70,9 @@ describe('Node controlled relay contract', () => {
   it('Global Workbench frames relay by Node sequence and repeated resume does not replay events', async () => {
     const database = new ServerDatabase(':memory:');
     const nodeId = registerOwnedNode(database);
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const browserSent: unknown[] = [];
     const browserHandlers = new Map<string, (value: Buffer | string) => void>();
     const browser = {
@@ -139,7 +141,7 @@ describe('Node controlled relay contract', () => {
     );
 
     const notification = vi.fn(async () => true);
-    control.setNotificationHandler(notification);
+    testNodeConsumers(control).notification = notification;
     const browserCount = browserSent.length;
     (
       control as unknown as {
@@ -205,7 +207,7 @@ describe('Node controlled relay contract', () => {
     expect(browserSent).toHaveLength(browserCount);
 
     const hostedActivity = vi.fn(async () => true);
-    control.setHostedConversationActivityHandler(hostedActivity);
+    testNodeConsumers(control).hostedConversationActivity = hostedActivity;
     (
       control as unknown as {
         recordWorkbenchEvent(
@@ -249,7 +251,9 @@ describe('Node controlled relay contract', () => {
 
   it('Workbench limits count logical connections during the grace period and permit replacement of the same connection', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sockets: Array<{
       sent: Array<Record<string, unknown>>;
       close: ReturnType<typeof vi.fn>;
@@ -311,7 +315,9 @@ describe('Node controlled relay contract', () => {
 
   it('One Workbench WebSocket cannot create duplicate logical connections', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sent: Array<Record<string, unknown>> = [];
     const close = vi.fn();
     const handlers = new Map<string, (value: Buffer | string) => void>();
@@ -344,7 +350,9 @@ describe('Node controlled relay contract', () => {
 
   it('Ready Workbench WebSockets echo application-level ping', async () => {
     const database = new ServerDatabase(':memory:');
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sent: Array<Record<string, unknown>> = [];
     const close = vi.fn();
     const handlers = new Map<string, (value: Buffer | string) => void>();
@@ -381,7 +389,9 @@ describe('Node controlled relay contract', () => {
     const database = new ServerDatabase(':memory:');
     const firstNodeId = registerOwnedNode(database);
     const secondNodeId = registerOwnedNode(database);
-    const control = new NodeControl(database);
+    const control = createTestNodeControl(database, (userId, nodeId) =>
+      database.userOwnsNode(userId, nodeId)
+    );
     const sent: string[] = [];
     let browserMessage: ((value: string, isBinary?: boolean) => void) | undefined;
     const browser = {
@@ -430,7 +440,7 @@ describe('Node controlled relay contract', () => {
           })
       )
     };
-    const relay = new WorkbenchRelayService({ database: database as never });
+    const relay = new WorkbenchRelayService({ authorizeNodeRequest: database.userCanRequestNode });
     const sent: number[] = [];
     const directed: number[] = [];
     let connectionId: string | undefined;

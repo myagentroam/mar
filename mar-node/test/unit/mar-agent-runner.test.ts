@@ -1797,7 +1797,7 @@ describe('MAR Agent Node Runner', () => {
     };
     runner.configureModels([
       { ...model, futureDisplayHint: 'preview' },
-      { ...model, id: 'invalid', fastMode: 'yes' },
+      { ...model, id: 'invalid', serviceTier: 'invalid' },
       { ...model, id: 'sensitive', credential: { type: 'INLINE_API_KEY', value: 'secret' } }
     ]);
 

@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-26
+lastUpdated: 2026-10-28
 ---
 
 # Start a Conversation from a Template
@@ -23,7 +23,7 @@ While the conversation is idle, select its template name in the Composer, choose
 
 The current model is retained when the target allows it; otherwise the target's allowed default is selected. Insufficient storage quota, no available model, or a definitive request failure leaves the original binding unchanged. Switching is unavailable during a run, sending, uploading, rollback, or another conflicting write. After saving, wait for realtime updates to become ready. If the response is interrupted, wait for the page to confirm the binding instead of submitting again.
 
-Only templates on the same Node can be selected; the conversation is not moved to another host. Switching does not change the recent-template preference for new conversations. Older Nodes show the template name without a switch menu and must be upgraded. Automatic version upgrades within the same template still happen at new-run boundaries; choosing the current template does not force an upgrade.
+Only templates on the same Node can be selected; the conversation is not moved to another host. Switching does not change the recent-template preference for new conversations. Automatic version upgrades within the same template still happen at new-run boundaries; choosing the current template does not force an upgrade.
 
 ## Use the three-pane workspace
 
@@ -45,7 +45,9 @@ Mobile does not show the global **Expand/Fold** control or three tabs. Select **
 2. Choose a concrete model configuration currently available to your account within the template's allowed upstream-model range. If the current configuration disappears, Node first falls back to an available configuration for the template default, then to the first available model in template order. The operation fails when no model intersects. If an update fails, the page keeps the configuration confirmed by the Node.
 3. Use the paperclip to add attachments. A message can contain up to 32 attachments. Each file must finish uploading to the current conversation before it can be sent. Dropping local files into the main conversation input first asks you to confirm the upload; choosing files with the paperclip and pasting from the clipboard start uploading directly.
 4. Retry or remove a failed attachment from its attachment row. A retry creates a new upload request instead of reusing a cancelled temporary upload. Files with the same name are saved with an incrementing suffix before the extension, for example `image.png` and `image (1).png`; the attachment row shows the final name assigned by the Node.
-5. While a task is in progress, you can still edit the Composer and use **Stop**. With the Composer focused, press `Esc` to stop the current task; no second stop request is sent while it is stopping or a message is sending. On a host that supports it, `Ctrl+Enter` on desktop adds the current message with priority. When MAR Agent can accept it natively, the message appears immediately and takes effect after the complete response and tool batch without interrupting generation. Managed waits may return early without stopping background tasks; other tools still finish normally. If the target is not ready or you explicitly change settings such as the model, the original stop-then-send flow applies. Its body is marked as additional information received while working; when idle it sends normally. The wrapper is hidden from the conversation. Ordinary Enter does not queue a hosted-conversation message. On older hosts, on mobile, or while a task is stopping, select **Stop** and wait for it to finish before sending. Direct uploads and deletion in **Related files** are not disabled as a group by an active task.
+5. While a task is in progress, you can still edit the Composer and use **Stop**. With the Composer focused, press `Esc` to stop the current task; no second stop request is sent while it is stopping or a message is sending. On a host that supports it, `Ctrl+Enter` on desktop steers with the current message. When MAR Agent can accept it natively, the message appears immediately and takes effect after the complete response and tool batch without interrupting generation. Managed waits may return early without stopping background tasks; other tools still finish normally. If the target is not ready or you explicitly change settings such as the model, the original stop-then-send flow applies. Its body is marked as additional information received while working; when idle it sends normally. The wrapper is hidden from the conversation. Ordinary Enter does not queue a hosted-conversation message. On mobile, the **Steer** button appears beside **Stop** when the editor has content. Tap it to steer, or slide up and release inside the Composer. Move above its top edge to cancel, and move back inside to restore steering. Cancellation preserves the draft. Hosted conversations do not queue ordinary messages. While a task is stopping, wait for it to finish before sending. Direct uploads and deletion in **Related files** are not disabled as a group by an active task.
+
+New and idle conversations on mobile also support sliding up from **Send** and releasing inside the Composer to send normally. Only moving above its top edge cancels; move back inside to restore sending. Tapping or holding without sliding up keeps the existing button action. Nothing is submitted while holding. Cancellation preserves the draft, and touching the button does not move focus away from the editor.
 
 After an explicit request error, correct the input and retry. If the network disconnects while the result is unknown, the page keeps the same send intent to avoid duplicate execution.
 
@@ -57,7 +59,7 @@ A steer message added during a run has its own rollback boundary. Rolling it bac
 
 When the hosting Node supports hosted-conversation Rollback, a **Rollback conversation** action appears beside terminal user messages. Hosted conversations do not provide a Rewind branch action. After confirmation, the system permanently deletes that user message and all later history in the current conversation's original Session, then restores the message text to the composer so you can edit and send it again.
 
-Rollback does not modify or delete `inbox/`, `output/`, or any item in **Related files**, and it does not create a new conversation or Session. Rollback is unavailable while a Run is starting, active, or settling. Unsupported Node versions do not show the action; if the boundary changed or the request failed, the page keeps the existing history and draft and shows the actual error.
+Rollback does not modify or delete `inbox/`, `output/`, or any item in **Related files**, and it does not create a new conversation or Session. Rollback is unavailable while a Run is starting, active, or settling. If the boundary changed or the request failed, the page keeps the existing history and draft and shows the actual error.
 
 ## Manage related files
 

@@ -6,7 +6,11 @@ import {
   navigationLanguages,
   navigationSymbolAt
 } from '../../src/index.js';
-import { supportsSymbolNavigationPath } from '../../src/symbol-navigation.js';
+import {
+  supportsSymbolNavigationPath,
+  symbolNavigationLanguageForPath,
+  symbolNavigationLanguages
+} from '../../src/symbol-navigation.js';
 
 describe('shared code-navigation language registry', () => {
   it.each([
@@ -51,6 +55,20 @@ describe('shared code-navigation language registry', () => {
     expect(supportsSymbolNavigationPath('src/App.tsx')).toBe(false);
     expect(supportsSymbolNavigationPath('src/main.mts')).toBe(false);
     expect(supportsSymbolNavigationPath('src/main.cts')).toBe(false);
+  });
+
+  it('matches Ctags basenames consistently across separators and preserves map order', () => {
+    for (const path of ['src/Makefile', 'src\\Makefile', 'src/mixed\\Makefile']) {
+      expect(symbolNavigationLanguageForPath(path)?.id).toBe('Make');
+      expect(supportsSymbolNavigationPath(path)).toBe(true);
+    }
+    expect(symbolNavigationLanguageForPath('src\\build.xml')?.id).toBe('Ant');
+    expect(symbolNavigationLanguageForPath('src/file.29K')?.id).toBe('Asm');
+    expect(symbolNavigationLanguageForPath('src/[unknown]')?.id).toBeUndefined();
+    expect(supportsSymbolNavigationPath('src\\unknown.extension')).toBe(false);
+    const abc = symbolNavigationLanguages().find((language) => language.id === 'Abc');
+    expect(abc?.fileNamePatterns).toEqual(['*.abc', '*.abc']);
+    expect(symbolNavigationLanguageForPath('notes.ABC')?.id).toBe('Abc');
   });
 
   it.each([
@@ -517,5 +535,29 @@ describe('shared code-navigation language registry', () => {
     });
     expect(isNavigationSymbol('styles/theme.scss', '--main-color')).toBe(true);
     expect(isNavigationSymbol('src/main.ts', 'left-right')).toBe(false);
+  });
+
+  it.each([
+    ['file.css', 'left-right'],
+    ['file.js', 'right'],
+    ['file.go', 'right'],
+    ['file.html', 'left-right'],
+    ['file.java', 'right'],
+    ['file.cs', 'right'],
+    ['file.less', 'left-right'],
+    ['file.md', 'left-right'],
+    ['file.py', 'right'],
+    ['file.sass', 'left-right'],
+    ['file.scss', 'left-right'],
+    ['file.c', 'right'],
+    ['file.cpp', 'right'],
+    ['file.mm', 'right'],
+    ['file.h', 'right'],
+    ['file.m', 'right'],
+    ['file.rs', 'right'],
+    ['file.vue', 'left-right'],
+    ['file.unknown', 'left-right']
+  ])('applies the symbol policy for %s', (path, value) => {
+    expect(navigationSymbolAt(path, 'left-right', 7)?.value).toBe(value);
   });
 });

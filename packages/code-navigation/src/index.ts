@@ -7,7 +7,6 @@ export {
   navigationSymbolAt
 } from './registry.js';
 export {
-  rangeAtColumn,
   type FileReference,
   type FileReferenceKind,
   type FileSpecifierParser,
@@ -15,3 +14,4 @@ export {
   type NavigationLanguageId,
   type NavigationSyntaxDefinition
 } from './types.js';
+export { rangeAtColumn } from './source-ranges.js';

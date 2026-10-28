@@ -10,9 +10,9 @@ describe('public Terminal relay', () => {
       database: {
         authenticateNode: async () => {
           throw new Error('STORAGE_UNAVAILABLE');
-        },
-        userOwnsNode: async () => false
+        }
       },
+      authorizeNodeRequest: async () => false,
       requestNode: vi.fn()
     });
     const socket = new RelaySocket();
@@ -34,9 +34,9 @@ describe('public Terminal relay', () => {
         authenticateNode: () =>
           new Promise((done) => {
             resolve = done;
-          }),
-        userOwnsNode: async () => true
+          })
       },
+      authorizeNodeRequest: async () => true,
       requestNode: vi.fn()
     });
     const socket = new RelaySocket();
@@ -63,7 +63,11 @@ describe('public Terminal relay', () => {
       authenticateNode: vi.fn(async () => ({ id: 'node-1', disabled: false })),
       userOwnsNode: vi.fn(async () => true)
     };
-    const relay = new TerminalRelayService({ database, requestNode });
+    const relay = new TerminalRelayService({
+      database,
+      authorizeNodeRequest: database.userOwnsNode,
+      requestNode
+    });
     const node = new RelaySocket();
     const browser = new RelaySocket();
     try {
@@ -120,9 +124,9 @@ describe('public Terminal relay', () => {
   it('preserves a deterministic Node attach failure for the browser before closing the relay', async () => {
     const relay = new TerminalRelayService({
       database: {
-        authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-        userOwnsNode: async () => true
+        authenticateNode: async () => ({ id: 'node-1', disabled: false })
       },
+      authorizeNodeRequest: async () => true,
       requestNode: async () => {
         throw new Error('TERMINAL_CLOSED');
       }
@@ -160,9 +164,9 @@ describe('public Terminal relay', () => {
     }));
     const relay = new TerminalRelayService({
       database: {
-        authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-        userOwnsNode: async () => true
+        authenticateNode: async () => ({ id: 'node-1', disabled: false })
       },
+      authorizeNodeRequest: async () => true,
       requestNode
     });
     const node = new RelaySocket();
@@ -206,9 +210,9 @@ describe('public Terminal relay', () => {
   it('cleans a deferred ticket and activation listener when the preconnection closes', async () => {
     const relay = new TerminalRelayService({
       database: {
-        authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-        userOwnsNode: async () => true
+        authenticateNode: async () => ({ id: 'node-1', disabled: false })
       },
+      authorizeNodeRequest: async () => true,
       requestNode: vi.fn()
     });
     const node = new RelaySocket();
@@ -238,9 +242,9 @@ describe('public Terminal relay', () => {
   it('bounds deferred preconnections with the existing per-session relay limit', async () => {
     const relay = new TerminalRelayService({
       database: {
-        authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-        userOwnsNode: async () => true
+        authenticateNode: async () => ({ id: 'node-1', disabled: false })
       },
+      authorizeNodeRequest: async () => true,
       requestNode: vi.fn()
     });
     const node = new RelaySocket();
@@ -270,9 +274,9 @@ describe('public Terminal relay', () => {
     async (code) => {
       const relay = new TerminalRelayService({
         database: {
-          authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-          userOwnsNode: async () => true
+          authenticateNode: async () => ({ id: 'node-1', disabled: false })
         },
+        authorizeNodeRequest: async () => true,
         requestNode: async (_id, _operation, data) => {
           const terminalId = (data as { terminalId: string }).terminalId;
           return {
@@ -549,9 +553,9 @@ describe('public Terminal relay', () => {
     const requestNode = vi.fn();
     const relay = new TerminalRelayService({
       database: {
-        authenticateNode: async () => undefined,
-        userOwnsNode: async () => false
+        authenticateNode: async () => undefined
       },
+      authorizeNodeRequest: async () => false,
       requestNode
     });
     try {
@@ -576,9 +580,9 @@ describe('public Terminal relay', () => {
 async function frameFixture(frames: readonly TerminalDataFrame[]) {
   const relay = new TerminalRelayService({
     database: {
-      authenticateNode: async () => ({ id: 'node-1', disabled: false }),
-      userOwnsNode: async () => true
+      authenticateNode: async () => ({ id: 'node-1', disabled: false })
     },
+    authorizeNodeRequest: async () => true,
     requestNode: async () => ({
       attachment: {
         terminalId: 'terminal-1',

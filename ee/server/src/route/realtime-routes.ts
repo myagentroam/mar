@@ -6,15 +6,14 @@ import {
 } from '@myagentroam/server-core/workbench-route';
 import websocket from '@fastify/websocket';
 import type { FastifyInstance } from 'fastify';
-import type { openServerDatabase } from '../database.js';
-import type { MysqlServerDatabase } from '../mysql/server-database.js';
+import type { SessionLookup } from '@myagentroam/server-core/session';
 import type { NodeControl } from '../node-control.js';
 import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
 
 export function registerRealtimeRoutes(input: {
   readonly app: FastifyInstance;
-  readonly database: ReturnType<typeof openServerDatabase> | MysqlServerDatabase;
+  readonly database: SessionLookup;
   readonly nodeControl: NodeControl;
   readonly publicOrigin: string | undefined;
   readonly sessionShares?: SessionShares;

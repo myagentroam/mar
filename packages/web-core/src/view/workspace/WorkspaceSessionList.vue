@@ -53,7 +53,6 @@ const props = defineProps<{
   readonly skillSupported: boolean;
   readonly mcpSupported: boolean;
   readonly cleanupSessionsSupported: boolean;
-  readonly sessionPromptSupported?: boolean;
   readonly searchSupported: boolean;
   readonly searchQuery: string;
   readonly searching: boolean;
@@ -171,7 +170,7 @@ watch(
   }
 );
 watch(
-  () => [props.nodeId, props.workspaceId, props.sessionPromptSupported],
+  () => [props.nodeId, props.workspaceId],
   () => {
     promptSession.value = undefined;
   }
@@ -632,10 +631,7 @@ function submitSessionSearch(): void {
                   <MarIcon name="chevron-up" />{{ translate('sessionGroups.move') }}
                 </el-dropdown-item>
                 <el-dropdown-item
-                  v-if="
-                    props.sessionPromptSupported &&
-                    session.runtime?.capabilities?.includes('session.prompt')
-                  "
+                  v-if="session.runtime?.capabilities?.includes('session.prompt')"
                   @click="promptSession = session"
                   ><MarIcon name="document" />{{
                     translate('generated.sessionPrompt.title')

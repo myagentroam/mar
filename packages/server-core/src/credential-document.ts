@@ -108,6 +108,13 @@ const legacyDocumentSchema = z
   .superRefine(validateDocument);
 export type CredentialRecord = z.infer<typeof credentialRecordSchema>;
 export type CredentialDocument = z.infer<typeof credentialDocumentSchema>;
+export interface CredentialDocumentAccess {
+  read(): Promise<CredentialDocument>;
+  mutate<T>(
+    mutate: (document: CredentialDocument) => T | Promise<T>,
+    validateCommit?: () => void
+  ): Promise<T>;
+}
 
 export function credentialOwnershipKey(ownership: CodexCredentialOwnership): string {
   return ownership.ownerType === 'PERSONAL'

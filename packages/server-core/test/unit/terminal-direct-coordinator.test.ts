@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalDirectNodeCommand, TerminalDirectServerMessage } from '@myagentroam/protocol';
 import { TerminalDirectCoordinator } from '../../src/terminal-direct-coordinator.js';
-import { NodeRequestError } from '../../src/node-request-channel.js';
+import { NodeRequestError } from '../../src/node-request-error.js';
 
 const identity = { userId: 7, sessionHash: 'session-7', workbenchConnectionId: 'page-12345678' };
 const request = {

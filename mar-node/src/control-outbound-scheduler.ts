@@ -59,6 +59,10 @@ export class ControlOutboundScheduler {
     this.schedule();
   }
 
+  resume(): void {
+    this.schedule();
+  }
+
   reset(): void {
     this.high.length = 0;
     this.normal.length = 0;

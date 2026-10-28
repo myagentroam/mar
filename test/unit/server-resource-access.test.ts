@@ -6,14 +6,19 @@ import {
   type ServerWorkbenchCapabilities
 } from '../../packages/protocol/src/index.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
-import { MysqlEnvironmentSecretService } from '../../ee/server/src/mysql/environment-secret-service.js';
+import { createTestMysqlEnvironmentSecretService } from '../support/mysql-environment-secret-service.js';
 import type { NodeControl } from '../../ee/server/src/node-control.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
+import { ResourceMutationService } from '../../ee/server/src/rbac/resource-mutation-service.js';
+import { ResourceManagementDirectory } from '../../ee/server/src/rbac/resource-management-directory.js';
+import { ResourceGrantService } from '../../ee/server/src/rbac/resource-grant-service.js';
 import { registerNodeRoutes } from '../../ee/server/src/route/node-routes.js';
 import type { EnvironmentSecretService } from '../../ee/server/src/service/environment-secret-service.js';
-import type { NodeUpgradeService } from '../../ee/server/src/service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '../../packages/server-core/src/node-upgrade-service.js';
 import { domainErrorStatus } from '../../packages/server-core/src/domain-errors.js';
+
+const unrestrictedCredentialScope = { assertModelGrantWithinScope: async () => undefined };
 
 describe('Server Node/Workspace ownership and grants', () => {
   it.each(['NODE', 'WORKSPACE'] as const)(
@@ -69,7 +74,7 @@ describe('Server Node/Workspace ownership and grants', () => {
         rollback: vi.fn(async () => undefined),
         release: vi.fn()
       };
-      const service = new MysqlEnvironmentSecretService(
+      const service = createTestMysqlEnvironmentSecretService(
         {
           raw: { execute, getConnection: async () => connection },
           audit
@@ -122,7 +127,11 @@ describe('Server Node/Workspace ownership and grants', () => {
       fixture.node = { owner_type: 'ORGANIZATION', owner_organization_id: 4, owner_user_id: null };
       fixture.model.name = 'Team model';
       fixture.imageModel.name = 'Team image model';
-      const service = new ResourceAccessService(fixture.database, fixture.authorization);
+      const grants = new ResourceGrantService(
+        fixture.database,
+        fixture.authorization,
+        unrestrictedCredentialScope
+      );
       const resourceId =
         type === 'MODEL' ? 'model-1' : type === 'IMAGE_MODEL' ? 'image-model-1' : 'template-1';
       const name =
@@ -131,7 +140,7 @@ describe('Server Node/Workspace ownership and grants', () => {
           : type === 'IMAGE_MODEL'
             ? 'Team image model'
             : 'Team template';
-      await service.createGrant(
+      await grants.createGrant(
         1,
         type,
         resourceId,
@@ -158,7 +167,7 @@ describe('Server Node/Workspace ownership and grants', () => {
         target_user_id: type === 'TEMPLATE' ? null : 8,
         target_organization_id: type === 'TEMPLATE' ? 4 : null
       };
-      await service.removeGrant(1, 'grant-1');
+      await grants.removeGrant(1, 'grant-1');
       expect(fixture.audit).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'resource.grant.revoked',
@@ -166,6 +175,24 @@ describe('Server Node/Workspace ownership and grants', () => {
           organizationId: 4
         })
       );
+      if (type === 'TEMPLATE') {
+        const events = fixture.audit.mock.calls.map(
+          ([event]) =>
+            event as {
+              eventType: string;
+              metadata: string;
+            }
+        );
+        for (const eventType of ['resource.grant.created', 'resource.grant.revoked']) {
+          const event = events.find((candidate) => candidate.eventType === eventType);
+          expect(event).toBeDefined();
+          expect(JSON.parse(event!.metadata)).toMatchObject({
+            nodeId: 'source-node',
+            workspaceId: 'source-workspace',
+            nodeName: 'Source Node'
+          });
+        }
+      }
     }
   );
 
@@ -214,6 +241,12 @@ describe('Server Node/Workspace ownership and grants', () => {
   it('limits template access grants to organizations inside the hosting Node subtree', async () => {
     const fixture = resourceFixture();
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope,
+      () => 2_000
+    );
     fixture.node = {
       owner_type: 'ORGANIZATION',
       owner_user_id: null,
@@ -239,7 +272,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       organizationId: 1
     }));
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, {
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 4
       })
@@ -249,18 +282,18 @@ describe('Server Node/Workspace ownership and grants', () => {
       expect.arrayContaining(['TEMPLATE', null, null, null, 'template-1', 'ORGANIZATION', null, 4])
     );
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, {
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, {
         targetType: 'USER',
         targetUserId: 8
       })
     ).rejects.toThrow('CONVERSATION_TEMPLATE_GRANT_SCOPE_INVALID');
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, { targetType: 'ENTERPRISE' } as never)
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, { targetType: 'ENTERPRISE' } as never)
     ).rejects.toThrow('CONVERSATION_TEMPLATE_GRANT_SCOPE_INVALID');
 
     fixture.placementAllowed = false;
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, {
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -273,7 +306,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       owner_organization_id: 1
     };
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, {
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -283,7 +316,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       role: 'ORG_ADMIN' as const,
       organizationId: 2
     }));
-    await expect(service.listGrants(2, 'TEMPLATE', 'template-1', null)).rejects.toThrow(
+    await expect(grants.listGrants(2, 'TEMPLATE', 'template-1', null)).rejects.toThrow(
       'TEMPLATE_RESOURCE_ADMIN_REQUIRED'
     );
   });
@@ -293,13 +326,18 @@ describe('Server Node/Workspace ownership and grants', () => {
     fixture.node = { owner_type: 'PERSONAL', owner_user_id: 1, owner_organization_id: null };
     fixture.templateGranted = true;
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
 
     await expect(service.assertCanHostConversationTemplate('node-1')).rejects.toThrow(
       'CONVERSATION_TEMPLATE_HOST_NODE_INVALID'
     );
     await expect(service.canUseTemplate(8, 'template-1')).resolves.toBe(false);
     await expect(
-      service.createGrant(1, 'TEMPLATE', 'template-1', null, {
+      grants.createGrant(1, 'TEMPLATE', 'template-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -308,7 +346,11 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('returns protocol-complete grant DTOs for templates and scoped workspaces', async () => {
     const fixture = resourceFixture();
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
     fixture.listedGrants = [
       {
         id: 'grant-template',
@@ -322,7 +364,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     ];
 
     expect(
-      (await service.listGrants(1, 'TEMPLATE', 'template-1', null)).map((grant) =>
+      (await grants.listGrants(1, 'TEMPLATE', 'template-1', null)).map((grant) =>
         resourceGrantSchema.parse(grant)
       )
     ).toEqual([
@@ -356,7 +398,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     ];
 
     expect(
-      (await service.listGrants(1, 'WORKSPACE', 'node-1', 'workspace-1')).map((grant) =>
+      (await grants.listGrants(1, 'WORKSPACE', 'node-1', 'workspace-1')).map((grant) =>
         resourceGrantSchema.parse(grant)
       )
     ).toEqual([
@@ -377,6 +419,12 @@ describe('Server Node/Workspace ownership and grants', () => {
   it('separates model management from organization and root use grants', async () => {
     const fixture = resourceFixture();
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope,
+      () => 2_000
+    );
     fixture.authorization.actorContext = vi.fn(async () => ({
       role: 'MEMBER' as const,
       organizationId: 4
@@ -394,7 +442,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     fixture.modelGranted = true;
     await expect(service.canUseModel(1, 'model-1')).resolves.toBe(true);
     await expect(
-      service.createGrant(1, 'MODEL', 'model-1', null, {
+      grants.createGrant(1, 'MODEL', 'model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -410,7 +458,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     }));
     fixture.modelManageAllowed = false;
     await expect(
-      service.createGrant(2, 'MODEL', 'model-1', null, {
+      grants.createGrant(2, 'MODEL', 'model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 4
       })
@@ -420,6 +468,11 @@ describe('Server Node/Workspace ownership and grants', () => {
   it('applies the same ownership and grant rules to image models', async () => {
     const fixture = resourceFixture();
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
     fixture.authorization.actorContext = vi.fn(async () => ({
       role: 'MEMBER' as const,
       organizationId: 4
@@ -434,7 +487,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       organizationId: 1
     }));
     await expect(
-      service.createGrant(1, 'IMAGE_MODEL', 'image-model-1', null, {
+      grants.createGrant(1, 'IMAGE_MODEL', 'image-model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 4
       })
@@ -455,7 +508,7 @@ describe('Server Node/Workspace ownership and grants', () => {
         created_at: 2_000
       }
     ];
-    await expect(service.listGrants(1, 'IMAGE_MODEL', 'image-model-1', null)).resolves.toEqual([
+    await expect(grants.listGrants(1, 'IMAGE_MODEL', 'image-model-1', null)).resolves.toEqual([
       expect.objectContaining({
         resourceType: 'IMAGE_MODEL',
         imageModelId: 'image-model-1',
@@ -469,7 +522,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       owner_organization_id: null
     };
     await expect(
-      service.createGrant(1, 'IMAGE_MODEL', 'image-model-1', null, {
+      grants.createGrant(1, 'IMAGE_MODEL', 'image-model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -502,10 +555,14 @@ describe('Server Node/Workspace ownership and grants', () => {
   it('rejects a model grant targeting an organization that does not exist', async () => {
     const fixture = resourceFixture();
     fixture.organizationExists = false;
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
 
     await expect(
-      service.createGrant(1, 'MODEL', 'model-1', null, {
+      grants.createGrant(1, 'MODEL', 'model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 404
       })
@@ -524,15 +581,15 @@ describe('Server Node/Workspace ownership and grants', () => {
       }),
       canUserUseModelCredential: vi.fn(async () => true)
     };
-    const service = new ResourceAccessService(
+    const grants = new ResourceGrantService(
       fixture.database,
       fixture.authorization,
-      () => 2_000,
-      credentialScopes
+      credentialScopes,
+      () => 2_000
     );
 
     await expect(
-      service.createGrant(1, 'MODEL', 'model-1', null, {
+      grants.createGrant(1, 'MODEL', 'model-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -591,15 +648,19 @@ describe('Server Node/Workspace ownership and grants', () => {
       role: 'ORG_ADMIN' as const,
       organizationId: 2
     }));
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
 
     await expect(
-      service.createGrant(2, 'MODEL', 'missing-model', null, {
+      grants.createGrant(2, 'MODEL', 'missing-model', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
     ).rejects.toThrow('RESOURCE_NOT_FOUND');
-    await expect(service.listGrants(2, 'MODEL', 'missing-model', null)).rejects.toThrow(
+    await expect(grants.listGrants(2, 'MODEL', 'missing-model', null)).rejects.toThrow(
       'RESOURCE_NOT_FOUND'
     );
     expect(fixture.database.raw.execute).not.toHaveBeenCalledWith(
@@ -623,9 +684,13 @@ describe('Server Node/Workspace ownership and grants', () => {
       role: 'ORG_ADMIN' as const,
       organizationId: 2
     }));
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
 
-    await expect(service.removeGrant(2, 'grant-model')).rejects.toThrow('RESOURCE_NOT_FOUND');
+    await expect(grants.removeGrant(2, 'grant-model')).rejects.toThrow('RESOURCE_NOT_FOUND');
     expect(fixture.database.raw.execute).toHaveBeenCalledWith(
       expect.stringContaining('FROM mar_agent_models WHERE id=?'),
       ['missing-model']
@@ -637,13 +702,13 @@ describe('Server Node/Workspace ownership and grants', () => {
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
     fixture.node = { owner_type: 'PERSONAL', owner_user_id: 1, owner_organization_id: null };
     await expect(
-      service.registerWorkspace(1, 'node-1', 'workspace-1', {
+      mutationFor(fixture, service).registerWorkspace(1, 'node-1', 'workspace-1', {
         ownerType: 'PERSONAL',
         ownerUserId: 1
       })
     ).resolves.toBeUndefined();
     await expect(
-      service.registerWorkspace(2, 'node-1', 'workspace-2', {
+      mutationFor(fixture, service).registerWorkspace(2, 'node-1', 'workspace-2', {
         ownerType: 'PERSONAL',
         ownerUserId: 2
       })
@@ -652,14 +717,14 @@ describe('Server Node/Workspace ownership and grants', () => {
     fixture.node = { owner_type: 'ORGANIZATION', owner_user_id: null, owner_organization_id: 2 };
     fixture.placementAllowed = true;
     await expect(
-      service.registerWorkspace(1, 'node-1', 'workspace-3', {
+      mutationFor(fixture, service).registerWorkspace(1, 'node-1', 'workspace-3', {
         ownerType: 'ORGANIZATION',
         ownerOrganizationId: 4
       })
     ).resolves.toBeUndefined();
     fixture.placementAllowed = false;
     await expect(
-      service.registerWorkspace(1, 'node-1', 'workspace-4', {
+      mutationFor(fixture, service).registerWorkspace(1, 'node-1', 'workspace-4', {
         ownerType: 'ORGANIZATION',
         ownerOrganizationId: 5
       })
@@ -668,7 +733,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     fixture.placementAllowed = true;
     fixture.tombstoned = true;
     await expect(
-      service.registerWorkspace(1, 'node-1', 'workspace-deleted', {
+      mutationFor(fixture, service).registerWorkspace(1, 'node-1', 'workspace-deleted', {
         ownerType: 'ORGANIZATION',
         ownerOrganizationId: 4
       })
@@ -698,7 +763,12 @@ describe('Server Node/Workspace ownership and grants', () => {
     await expect(service.canManageNode(8, 'node-1')).resolves.toBe(false);
     await expect(service.canManageNodeSecrets(8, 'node-1')).resolves.toBe(true);
     await expect(
-      service.registerWorkspace(8, 'node-1', 'workspace-direct-grant', ownership)
+      mutationFor(fixture, service).registerWorkspace(
+        8,
+        'node-1',
+        'workspace-direct-grant',
+        ownership
+      )
     ).resolves.toBeUndefined();
     expect(fixture.connection.execute).toHaveBeenCalledWith(
       expect.stringContaining('LIMIT 1 FOR SHARE'),
@@ -729,12 +799,40 @@ describe('Server Node/Workspace ownership and grants', () => {
 
     fixture.directNodeGranted = false;
     await expect(
-      service.registerWorkspace(8, 'node-1', 'workspace-after-revoke', ownership)
+      mutationFor(fixture, service).registerWorkspace(
+        8,
+        'node-1',
+        'workspace-after-revoke',
+        ownership
+      )
     ).rejects.toThrow('RBAC_DENIED');
     expect(fixture.connection.execute).not.toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO workspaces'),
       expect.any(Array)
     );
+  });
+
+  it('rejects registration when Node management is revoked after preflight and before the transaction', async () => {
+    const fixture = resourceFixture();
+    fixture.node = { owner_type: 'ORGANIZATION', owner_user_id: null, owner_organization_id: 2 };
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    vi.mocked(fixture.authorization.authorize).mockImplementation(async () => ({
+      allowed: fixture.modelManageAllowed
+    }));
+    fixture.connection.beginTransaction.mockImplementation(async () => {
+      fixture.modelManageAllowed = false;
+    });
+    await expect(
+      mutationFor(fixture, service).registerWorkspace(8, 'node-1', 'late-workspace', {
+        ownerType: 'ORGANIZATION',
+        ownerOrganizationId: 2
+      })
+    ).rejects.toThrow('WORKSPACE_NODE_OWNERSHIP_INCOMPATIBLE');
+    expect(fixture.connection.execute).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO workspaces'),
+      expect.anything()
+    );
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
   });
 
   it('does not treat a non-user Node grant as a secret-management grant', async () => {
@@ -757,7 +855,7 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('uses Node access rather than Node ownership when resolving Node secrets', async () => {
     let directlyGranted = true;
-    const service = new MysqlEnvironmentSecretService(
+    const service = createTestMysqlEnvironmentSecretService(
       {
         listNodes: vi.fn(async () => [
           { id: 'node-1', metadata: JSON.stringify({ nodeAppVersion: '0.1.4' }) }
@@ -788,6 +886,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       }))
     } as unknown as MysqlServerDatabase;
     const nodeControl = {
+      isNodeUpgradeOnly: vi.fn(() => false),
       listNodes: vi.fn(async () => [
         {
           id: 'node-1',
@@ -818,7 +917,12 @@ describe('Server Node/Workspace ownership and grants', () => {
       publicOrigin: undefined,
       capabilities: {} as ServerWorkbenchCapabilities,
       secrets: {} as EnvironmentSecretService,
-      resources
+      resources,
+      mutations: {
+        changeNodeOwnership: vi.fn(async () => {
+          throw new Error('UNEXPECTED_MUTATION');
+        })
+      }
     });
 
     const response = await app.inject({
@@ -851,12 +955,17 @@ describe('Server Node/Workspace ownership and grants', () => {
     const canManageWorkspace = vi.spyOn(service, 'canManageWorkspace').mockResolvedValue(false);
 
     await expect(
-      service.updateWorkspaceGroupName(8, 'node-1', 'workspace-1', ' Engineering ')
+      mutationFor(fixture, service).updateWorkspaceGroupName(
+        8,
+        'node-1',
+        'workspace-1',
+        ' Engineering '
+      )
     ).resolves.toBeUndefined();
 
-    expect(canRegisterWorkspace).toHaveBeenCalledWith(8, 'node-1');
+    expect(canRegisterWorkspace).toHaveBeenCalledWith(8, 'node-1', fixture.connection);
     expect(canManageWorkspace).not.toHaveBeenCalled();
-    expect(fixture.database.raw.execute).toHaveBeenCalledWith(
+    expect(fixture.connection.execute).toHaveBeenCalledWith(
       'UPDATE workspaces SET group_name=? WHERE workspace_id=? AND node_id=?',
       ['Engineering', 'workspace-1', 'node-1']
     );
@@ -868,15 +977,20 @@ describe('Server Node/Workspace ownership and grants', () => {
     vi.spyOn(service, 'canRegisterWorkspace').mockResolvedValue(false);
 
     await expect(
-      service.updateWorkspaceGroupName(8, 'node-1', 'workspace-1', 'Engineering')
+      mutationFor(fixture, service).updateWorkspaceGroupName(
+        8,
+        'node-1',
+        'workspace-1',
+        'Engineering'
+      )
     ).rejects.toThrow('WORKSPACE_FORBIDDEN');
-    expect(fixture.database.raw.execute).not.toHaveBeenCalledWith(
+    expect(fixture.connection.execute).not.toHaveBeenCalledWith(
       'UPDATE workspaces SET group_name=? WHERE workspace_id=? AND node_id=?',
       expect.anything()
     );
   });
 
-  it('authorizes Workspace removal and relay through the registration permission', async () => {
+  it('authorizes Workspace removal and relay only through ownership management', async () => {
     const fixture = resourceFixture();
     fixture.workspace = {
       owner_type: 'ORGANIZATION',
@@ -884,31 +998,54 @@ describe('Server Node/Workspace ownership and grants', () => {
       owner_organization_id: 2
     };
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
-    const canRegisterWorkspace = vi.spyOn(service, 'canRegisterWorkspace').mockResolvedValue(true);
-    const canManageWorkspace = vi.spyOn(service, 'canManageWorkspace').mockResolvedValue(false);
-
+    const canRegisterWorkspace = vi.spyOn(service, 'canRegisterWorkspace').mockResolvedValue(false);
     await expect(
       service.assertCanUnregisterWorkspace(8, 'node-1', 'workspace-1')
     ).resolves.toBeUndefined();
     await expect(
       service.canRelay(8, 'node-1', 'workspace.remove', {}, 'workspace-1')
     ).resolves.toBe(true);
-
-    expect(canRegisterWorkspace).toHaveBeenCalledWith(8, 'node-1');
-    expect(canManageWorkspace).not.toHaveBeenCalled();
+    expect(canRegisterWorkspace).not.toHaveBeenCalled();
+    expect(fixture.authorization.authorize).toHaveBeenCalledWith(
+      8,
+      'RESOURCE_MANAGE',
+      {
+        ownerType: 'ORGANIZATION',
+        organizationId: 2
+      },
+      undefined
+    );
   });
 
-  it('rejects Workspace removal when node registration is not allowed', async () => {
+  it('does not turn a direct Node grant into Workspace deletion authority', async () => {
     const fixture = resourceFixture();
+    fixture.node = fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
+    fixture.directNodeGranted = true;
+    fixture.modelManageAllowed = false;
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
-    vi.spyOn(service, 'canRegisterWorkspace').mockResolvedValue(false);
-
+    await expect(service.canRegisterWorkspace(8, 'node-1')).resolves.toBe(true);
     await expect(service.assertCanUnregisterWorkspace(8, 'node-1', 'workspace-1')).rejects.toThrow(
       'WORKSPACE_FORBIDDEN'
     );
     await expect(
       service.canRelay(8, 'node-1', 'workspace.remove', {}, 'workspace-1')
     ).resolves.toBe(false);
+    await expect(
+      mutationFor(fixture, service).unregisterWorkspace(8, 'node-1', 'workspace-1')
+    ).rejects.toThrow('WORKSPACE_FORBIDDEN');
+    expect(fixture.connection.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does not let an administrator remove another user personal Workspace', async () => {
+    const fixture = resourceFixture();
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    await expect(service.assertCanUnregisterWorkspace(8, 'node-1', 'workspace-1')).rejects.toThrow(
+      'WORKSPACE_FORBIDDEN'
+    );
   });
 
   it('rejects Workspace removal when a conversation template still references it', async () => {
@@ -936,13 +1073,18 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('rechecks a template reference under locks before deleting a Workspace', async () => {
     const fixture = resourceFixture();
+    fixture.node = fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
-    vi.spyOn(service, 'assertCanUnregisterWorkspace').mockResolvedValue(undefined);
+    vi.spyOn(service, 'assertCanUnregisterWorkspace').mockResolvedValueOnce(undefined);
     fixture.workspaceReferencedByTemplate = true;
 
-    await expect(service.unregisterWorkspace(8, 'node-1', 'workspace-1')).rejects.toThrow(
-      'WORKSPACE_CONVERSATION_TEMPLATE_REFERENCE_EXISTS'
-    );
+    await expect(
+      mutationFor(fixture, service).unregisterWorkspace(8, 'node-1', 'workspace-1')
+    ).rejects.toThrow('WORKSPACE_CONVERSATION_TEMPLATE_REFERENCE_EXISTS');
 
     expect(fixture.connection.execute).toHaveBeenCalledWith(
       expect.stringContaining('WHERE workspace_id=? AND node_id=? FOR UPDATE'),
@@ -960,10 +1102,17 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('cleans Workspace secrets and grants in the deletion transaction', async () => {
     const fixture = resourceFixture();
+    fixture.node = fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
-    vi.spyOn(service, 'assertCanUnregisterWorkspace').mockResolvedValue(undefined);
+    vi.spyOn(service, 'assertCanUnregisterWorkspace').mockResolvedValueOnce(undefined);
 
-    await expect(service.unregisterWorkspace(8, 'node-1', 'workspace-1')).resolves.toBeUndefined();
+    await expect(
+      mutationFor(fixture, service).unregisterWorkspace(8, 'node-1', 'workspace-1')
+    ).resolves.toBeUndefined();
 
     expect(fixture.connection.execute).toHaveBeenCalledWith(
       "DELETE FROM environment_secrets WHERE scope='WORKSPACE' AND node_id=? AND workspace_id=?",
@@ -974,6 +1123,88 @@ describe('Server Node/Workspace ownership and grants', () => {
       ['node-1', 'workspace-1']
     );
     expect(fixture.connection.commit).toHaveBeenCalledOnce();
+  });
+
+  it('does not delete a Workspace when management is revoked after preflight', async () => {
+    const fixture = resourceFixture();
+    fixture.node = fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    fixture.connection.beginTransaction.mockImplementation(async () => {
+      fixture.modelManageAllowed = false;
+    });
+    await expect(
+      mutationFor(fixture, service).unregisterWorkspace(8, 'node-1', 'workspace-1')
+    ).rejects.toThrow('WORKSPACE_FORBIDDEN');
+    expect(fixture.authorization.authorize).toHaveBeenLastCalledWith(
+      8,
+      'RESOURCE_MANAGE',
+      {
+        ownerType: 'ORGANIZATION',
+        organizationId: 2
+      },
+      fixture.connection
+    );
+    expect(
+      fixture.connection.execute.mock.calls.some(([sql]) => /^(DELETE|INSERT|UPDATE) /u.test(sql))
+    ).toBe(false);
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.connection.commit).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'MEMBER', 'ORG_ADMIN'] as const)(
+    'rejects template writes for a disabled or non-admin actor (%s) in the transaction',
+    async (role) => {
+      const fixture = resourceFixture();
+      vi.spyOn(fixture.authorization, 'actorContext').mockResolvedValue(
+        role === undefined ? undefined : { role, organizationId: 2 }
+      );
+      const service = new ResourceAccessService(fixture.database, fixture.authorization);
+      await expect(
+        service.assertCanManageConversationTemplate(
+          8,
+          'node-1',
+          'workspace-1',
+          fixture.connection as unknown as PoolConnection
+        )
+      ).rejects.toThrow('ADMIN_REQUIRED');
+      expect(fixture.authorization.actorContext).toHaveBeenCalledWith(8, fixture.connection);
+      expect(fixture.connection.execute).not.toHaveBeenCalled();
+    }
+  );
+
+  it('locks and rechecks the current template source under the same transaction', async () => {
+    const fixture = resourceFixture();
+    fixture.node = fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    await service.assertCanManageConversationTemplate(
+      8,
+      'node-1',
+      'workspace-1',
+      fixture.connection as unknown as PoolConnection
+    );
+    expect(fixture.authorization.actorContext).toHaveBeenCalledWith(8, fixture.connection);
+    expect(fixture.authorization.authorize).toHaveBeenCalledWith(
+      8,
+      'RESOURCE_USE',
+      { ownerType: 'ORGANIZATION', organizationId: 2 },
+      fixture.connection
+    );
+    expect(fixture.connection.execute).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE id=? FOR SHARE'),
+      ['node-1']
+    );
+    expect(fixture.connection.execute).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE workspace_id=? AND node_id=? FOR UPDATE'),
+      ['workspace-1', 'node-1']
+    );
   });
 
   it('exposes ownership and resource cleanup hooks for Core composition', async () => {
@@ -1031,7 +1262,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     };
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
 
-    await service.changeNodeOwnership(1, 'node-1', {
+    await mutationFor(fixture, service).changeNodeOwnership(1, 'node-1', {
       ownerType: 'ORGANIZATION',
       ownerOrganizationId: 4
     });
@@ -1070,7 +1301,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
 
     await expect(
-      service.changeNodeOwnership(1, 'node-1', {
+      mutationFor(fixture, service).changeNodeOwnership(1, 'node-1', {
         ownerType: 'ORGANIZATION',
         ownerOrganizationId: 4
       })
@@ -1096,12 +1327,17 @@ describe('Server Node/Workspace ownership and grants', () => {
       allowed: context?.organizationId === 2
     }));
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const grants = new ResourceGrantService(
+      fixture.database,
+      fixture.authorization,
+      unrestrictedCredentialScope
+    );
     await expect(service.canUseWorkspace(8, 'node-1', 'workspace-1')).resolves.toBe(true);
 
     fixture.node = { owner_type: 'PERSONAL', owner_user_id: 8, owner_organization_id: null };
     await expect(service.canUseNode(8, 'node-1')).resolves.toBe(true);
     await expect(
-      service.createGrant(8, 'NODE', 'node-1', null, {
+      grants.createGrant(8, 'NODE', 'node-1', null, {
         targetType: 'ORGANIZATION',
         targetOrganizationId: 1
       })
@@ -1141,8 +1377,8 @@ describe('Server Node/Workspace ownership and grants', () => {
       role: 'ORG_ADMIN' as const,
       organizationId: 2
     }));
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
-    await expect(service.listManagedResources(8)).resolves.toEqual({
+    const directory = new ResourceManagementDirectory(fixture.database, fixture.authorization);
+    await expect(directory.listManagedResources(8)).resolves.toEqual({
       nodes: [
         {
           id: 'node-1',
@@ -1166,9 +1402,12 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('ADMIN visibility of all Nodes does not extend to Workspace lists', async () => {
     const fixture = resourceFixture();
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const directory = new ResourceManagementDirectory(fixture.database, fixture.authorization);
 
-    await service.listManagedResources(8, true);
+    await new ResourceManagementDirectory(
+      fixture.database,
+      fixture.authorization
+    ).listManagedResources(8, true);
 
     expect(fixture.database.raw.query).toHaveBeenNthCalledWith(
       1,
@@ -1208,9 +1447,9 @@ describe('Server Node/Workspace ownership and grants', () => {
         owner_username: 'member-a'
       }
     ];
-    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const directory = new ResourceManagementDirectory(fixture.database, fixture.authorization);
 
-    await expect(service.listManagedResources(8, true)).resolves.toMatchObject({
+    await expect(directory.listManagedResources(8, true)).resolves.toMatchObject({
       nodes: [{ ownerUsername: 'member-a' }],
       workspaces: [{ ownerUsername: 'member-a' }]
     });
@@ -1281,15 +1520,82 @@ describe('Server Node/Workspace ownership and grants', () => {
     };
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
     await expect(
-      service.renameWorkspace(8, 'node-1', 'workspace-1', '平台工作区')
+      mutationFor(fixture, service).updateWorkspace(8, 'node-1', 'workspace-1', {
+        displayName: '平台工作区'
+      })
     ).resolves.toBeUndefined();
-    expect(fixture.database.raw.execute).toHaveBeenCalledWith(
+    expect(fixture.connection.execute).toHaveBeenCalledWith(
       'UPDATE workspaces SET display_name=? WHERE workspace_id=? AND node_id=?',
       ['平台工作区', 'workspace-1', 'node-1']
     );
   });
 
-  it('does not start a management transaction when a node-authorized group write fails', async () => {
+  it('rejects Workspace rename when management authorization is revoked before the transaction check', async () => {
+    const fixture = resourceFixture();
+    fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
+    fixture.modelManageAllowed = false;
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    await expect(
+      mutationFor(fixture, service).updateWorkspace(8, 'node-1', 'workspace-1', {
+        displayName: 'New'
+      })
+    ).rejects.toThrow('RBAC_DENIED');
+    expect(fixture.authorization.authorize).toHaveBeenCalledWith(
+      8,
+      'RESOURCE_MANAGE',
+      { ownerType: 'ORGANIZATION', organizationId: 2 },
+      fixture.connection
+    );
+    expect(fixture.connection.execute).not.toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE workspaces'),
+      expect.anything()
+    );
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+  });
+
+  it('checks target ownership on the active Workspace update transaction before mutation', async () => {
+    const fixture = resourceFixture();
+    fixture.workspace = {
+      owner_type: 'ORGANIZATION',
+      owner_user_id: null,
+      owner_organization_id: 2
+    };
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    const selection = vi
+      .spyOn(service, 'assertOwnershipSelection')
+      .mockRejectedValue(new Error('RBAC_DENIED'));
+    const ownership = { ownerType: 'ORGANIZATION', ownerOrganizationId: 4 } as const;
+
+    await expect(
+      mutationFor(fixture, service).updateWorkspace(8, 'node-1', 'workspace-1', { ownership })
+    ).rejects.toThrow('RBAC_DENIED');
+    expect(selection).toHaveBeenCalledWith(8, ownership, fixture.connection);
+    const statements = fixture.connection.execute.mock.calls.map(([sql]) => String(sql));
+    const nodeLock = statements.findIndex(
+      (sql) => sql.includes('FROM nodes') && sql.includes('FOR UPDATE')
+    );
+    const workspaceLock = statements.findIndex(
+      (sql) => sql.includes('FROM workspaces') && sql.includes('FOR UPDATE')
+    );
+    const rootLock = statements.findIndex(
+      (sql) => sql.includes('FROM organizations') && sql.includes('FOR UPDATE')
+    );
+    expect(rootLock).toBeGreaterThanOrEqual(0);
+    expect(nodeLock).toBeGreaterThan(rootLock);
+    expect(workspaceLock).toBeGreaterThan(nodeLock);
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.connection.commit).not.toHaveBeenCalled();
+    expect(fixture.connection.execute).not.toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE workspaces SET owner_organization_id'),
+      expect.anything()
+    );
+  });
+
+  it('rolls back a node-authorized group write when it fails', async () => {
     const fixture = resourceFixture();
     fixture.workspace = {
       owner_type: 'ORGANIZATION',
@@ -1302,18 +1608,23 @@ describe('Server Node/Workspace ownership and grants', () => {
     vi.spyOn(service, 'canRegisterWorkspace').mockResolvedValue(true);
 
     await expect(
-      service.updateWorkspaceGroupName(8, 'node-1', 'workspace-1', 'Engineering')
+      mutationFor(fixture, service).updateWorkspaceGroupName(
+        8,
+        'node-1',
+        'workspace-1',
+        'Engineering'
+      )
     ).rejects.toThrow('WORKSPACE_GROUP_WRITE_FAILED');
 
-    expect(fixture.connection.beginTransaction).not.toHaveBeenCalled();
+    expect(fixture.connection.beginTransaction).toHaveBeenCalledOnce();
     expect(fixture.connection.commit).not.toHaveBeenCalled();
-    expect(fixture.connection.rollback).not.toHaveBeenCalled();
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
   });
 
   it('writes a display name when backfilling a legacy Node Workspace', async () => {
     const fixture = resourceFixture();
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
-    await service.projectNodeWorkspaces(1, 'node-1', [
+    await mutationFor(fixture, service).backfillNodeWorkspaces('node-1', [
       { id: 'workspace-1', path: '/srv/projects/demo' }
     ]);
     expect(fixture.connection.execute).toHaveBeenCalledWith(
@@ -1328,7 +1639,7 @@ describe('Server Node/Workspace ownership and grants', () => {
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
 
     await expect(
-      service.projectNodeWorkspaces(1, 'node-1', [{ id: 'workspace-1' }])
+      mutationFor(fixture, service).backfillNodeWorkspaces('node-1', [{ id: 'workspace-1' }])
     ).rejects.toThrow('NODE_NOT_FOUND');
     expect(fixture.connection.execute).not.toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO workspaces'),
@@ -1345,7 +1656,9 @@ describe('Server Node/Workspace ownership and grants', () => {
     };
     const service = new ResourceAccessService(fixture.database, fixture.authorization);
 
-    await service.projectNodeWorkspaces(1, 'node-1', [{ id: 'workspace-locked' }]);
+    await mutationFor(fixture, service).backfillNodeWorkspaces('node-1', [
+      { id: 'workspace-locked' }
+    ]);
     expect(fixture.connection.execute).toHaveBeenCalledWith(
       expect.stringContaining('(workspace_id,display_name,node_id'),
       [
@@ -1360,6 +1673,10 @@ describe('Server Node/Workspace ownership and grants', () => {
     );
   });
 });
+
+function mutationFor(fixture: ReturnType<typeof resourceFixture>, policy: ResourceAccessService) {
+  return new ResourceMutationService(fixture.database, fixture.authorization, policy, () => 2_000);
+}
 
 function resourceFixture() {
   const fixture: {
@@ -1419,6 +1736,8 @@ function resourceFixture() {
     rollback: vi.fn(async () => undefined),
     release: vi.fn(),
     execute: vi.fn(async (sql: string, params?: readonly unknown[]) => {
+      if (fixture.failWorkspaceGroupUpdate && sql.startsWith('UPDATE workspaces SET group_name'))
+        throw new Error('WORKSPACE_GROUP_WRITE_FAILED');
       if (
         sql.includes("grant_record.resource_type='NODE'") &&
         sql.includes("grant_record.target_type='USER'") &&
@@ -1527,7 +1846,12 @@ function resourceFixture() {
                   {
                     ...fixture.node,
                     ...(sql.includes('template.name AS display_name')
-                      ? { display_name: 'Team template' }
+                      ? {
+                          display_name: 'Team template',
+                          nodeId: 'source-node',
+                          workspaceId: 'source-workspace',
+                          nodeName: 'Source Node'
+                        }
                       : {})
                   }
                 ]

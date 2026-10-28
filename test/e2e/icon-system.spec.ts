@@ -51,7 +51,7 @@ for (const dpr of [1, 2, 3]) {
             });
             expect(rotation.count).toBe(1);
             for (const axis of [0, 1]) {
-              expect(rotation.origin[axis]).toBeCloseTo(rotation.size[axis] / 2, 1);
+              expect(rotation.origin[axis]).toBeCloseTo(rotation.size[axis]! / 2, 1);
             }
             const star = await graphic.evaluate((element) => {
               const svg = element as SVGSVGElement;
@@ -156,7 +156,7 @@ for (const theme of ['dark', 'light']) {
             return { x: box.x, width: box.width, font: getComputedStyle(cell).fontFamily };
           });
           const graphic = row.querySelector('svg[data-mar-icon="undo"]')!.getBoundingClientRect();
-          const state = cells[1].getBoundingClientRect();
+          const state = cells[1]!.getBoundingClientRect();
           return { status, gap: graphic.left - state.right };
         })
       );
@@ -165,8 +165,8 @@ for (const theme of ['dark', 'light']) {
         expect(column.gap).toBeLessThanOrEqual(6.5);
         for (const [index, cell] of column.status.entries()) {
           expect(cell.font).toMatch(/monospace/);
-          expect(cell.width).toBeCloseTo(columns[0].status[0].width, 1);
-          expect(cell.x).toBeCloseTo(columns[0].status[index].x, 1);
+          expect(cell.width).toBeCloseTo(columns[0]!.status[0]!.width, 1);
+          expect(cell.x).toBeCloseTo(columns[0]!.status[index]!.x, 1);
         }
       }
       await restore.focus();
@@ -328,11 +328,11 @@ for (const dpr of [1, 2, 3]) {
               expect(dot.y).toBe(12);
               expect(dot.fill).toBe(dot.color);
             }
-            expect(dots[0].diameter).toBe(dots[1].diameter);
-            expect(dots[1].diameter).toBe(dots[2].diameter);
-            expect(dots[1].x).toBe(12);
-            expect(dots[1].x - dots[0].x).toBe(dots[2].x - dots[1].x);
-            expect(dots[1].x - dots[0].x - dots[0].diameter * 24).toBeGreaterThan(2);
+            expect(dots[0]!.diameter).toBe(dots[1]!.diameter);
+            expect(dots[1]!.diameter).toBe(dots[2]!.diameter);
+            expect(dots[1]!.x).toBe(12);
+            expect(dots[1]!.x - dots[0]!.x).toBe(dots[2]!.x - dots[1]!.x);
+            expect(dots[1]!.x - dots[0]!.x - dots[0]!.diameter * 24).toBeGreaterThan(2);
           }
           const before = await trigger.boundingBox();
           await trigger.focus();
@@ -518,8 +518,8 @@ for (const theme of ['dark', 'light']) {
       const plane = await send.locator('[data-mar-icon="send"]').evaluate((element) => {
         const svg = element as SVGSVGElement;
         const paths = svg.querySelectorAll('path');
-        const outline = paths[0];
-        const crease = paths[paths.length - 1];
+        const outline = paths[0]!;
+        const crease = paths[paths.length - 1]!;
         const start = crease.getPointAtLength(0);
         const end = crease.getPointAtLength(crease.getTotalLength());
         const nose = outline.getPointAtLength(0);
@@ -1426,8 +1426,8 @@ for (const theme of ['dark', 'light'])
         })
       );
       expect(stars).toHaveLength(2);
-      expect(stars[0].width).toBeGreaterThan(stars[1].width);
-      expect(stars[0].height).toBeGreaterThan(stars[1].height);
+      expect(stars[0]!.width).toBeGreaterThan(stars[1]!.width);
+      expect(stars[0]!.height).toBeGreaterThan(stars[1]!.height);
       const administration = page.locator('.icon-review-grid [data-mar-icon="administration"]');
       await expect(administration).toBeVisible();
       await expect(administration).toHaveAttribute('fill', 'none');
@@ -1438,8 +1438,8 @@ for (const theme of ['dark', 'light'])
         }))
       );
       expect(controls).toHaveLength(2);
-      expect(controls[0].x).toBeLessThan(controls[1].x);
-      expect(controls[0].y).toBeLessThan(controls[1].y);
+      expect(controls[0]!.x).toBeLessThan(controls[1]!.x);
+      expect(controls[0]!.y).toBeLessThan(controls[1]!.y);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(page.locator('.icon-review-grid [data-mar-icon="loading-action"]')).toHaveCSS(
         'animation-name',

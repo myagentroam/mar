@@ -7,6 +7,7 @@ const objectiveCSyntax =
 export const objectiveCFileSpecifierParser = createCPreprocessorFileSpecifierParser('objective-c');
 
 export const objectiveCNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'objective-c',
   parser: objectiveCFileSpecifierParser,
   suffixes: ['.m', '.h'],

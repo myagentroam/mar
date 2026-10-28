@@ -120,7 +120,7 @@ test('Personal usage index migration preserves boundary totals and covers metada
         mode,
         record.purpose,
         modelKey,
-        record.modelName,
+        record.modelName!,
         record.startedAt,
         endedAt ?? null,
         receivedAt,

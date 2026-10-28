@@ -1,27 +1,33 @@
 import { managementPageQuery } from '@myagentroam/server-core/management-pagination';
-import type { NodeUpgradeService } from '../service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import type { FastifyInstance } from 'fastify';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { NodeControl } from '../node-control.js';
-import type { GrantTarget, ResourceAccessService } from '../rbac/resource-access-service.js';
+import type { ResourceManagementDirectory } from '../rbac/resource-management-directory.js';
+import type { ResourceGrantService } from '../rbac/resource-grant-service.js';
+import type { GrantTarget } from '../rbac/resource-grant-contracts.js';
 import { databaseError, protectedAdmin, sendError, validCsrf } from '../util/http-request.js';
 
 export function registerResourceGrantRoutes(input: {
   readonly app: FastifyInstance;
   readonly database: MysqlServerDatabase;
-  readonly resources: ResourceAccessService;
+  readonly directory: Pick<
+    ResourceManagementDirectory,
+    'listManagedResources' | 'listManagedResourcePage'
+  >;
+  readonly grants: ResourceGrantService;
   readonly nodeControl: NodeControl;
-  readonly nodeUpgrades: NodeUpgradeService;
+  readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
   readonly publicOrigin: string | undefined;
 }): void {
-  const { app, database, resources, nodeControl, nodeUpgrades, publicOrigin } = input;
+  const { app, database, directory, grants, nodeControl, nodeUpgrades, publicOrigin } = input;
   app.get<{ Querystring: Record<string, unknown> }>('/api/resources', async (request, reply) => {
     const actor = protectedAdmin(database, request, reply);
     if (actor === undefined) return;
     try {
       if (managementPageQuery(request.query) !== undefined) {
-        const overview = await resources.listManagedResourcePage(
+        const overview = await directory.listManagedResourcePage(
           actor.userId,
           request.query,
           nodeControl.connectedNodeIds()
@@ -33,13 +39,14 @@ export function registerResourceGrantRoutes(input: {
               ...node,
               upgradeAvailability: await nodeUpgrades.availability(
                 node.nodeAppVersion,
-                node.metadata?.['supervisedUpgrade'] === true
+                node.metadata?.['supervisedUpgrade'] === true,
+                nodeControl.isNodeUpgradeOnly(node.id)
               )
             }))
           )
         });
       }
-      const overview = await resources.listManagedResources(
+      const overview = await directory.listManagedResources(
         actor.userId,
         request.query.management === 'all'
       );
@@ -70,7 +77,7 @@ export function registerResourceGrantRoutes(input: {
     if (resource === undefined) return sendError(reply, 400, 'RESOURCE_INPUT_INVALID');
     try {
       return reply.send({
-        grants: await resources.listGrants(
+        grants: await grants.listGrants(
           actor.userId,
           resource.resourceType,
           resource.resourceId,
@@ -105,7 +112,7 @@ export function registerResourceGrantRoutes(input: {
     )
       return sendError(reply, 400, 'RESOURCE_GRANT_INPUT_INVALID');
     try {
-      const id = await resources.createGrant(
+      const id = await grants.createGrant(
         actor.userId,
         resource.resourceType,
         resource.resourceId,
@@ -123,7 +130,7 @@ export function registerResourceGrantRoutes(input: {
       const actor = writableActor(database, request, reply, publicOrigin);
       if (actor === undefined) return;
       try {
-        const resourceType = await resources.removeGrant(actor.userId, request.params.grantId);
+        const resourceType = await grants.removeGrant(actor.userId, request.params.grantId);
         if (resourceType !== 'MODEL' && resourceType !== 'TEMPLATE')
           await nodeControl.revalidateTerminalAuthorizations();
         return reply.code(204).send();

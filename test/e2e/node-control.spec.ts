@@ -2,14 +2,16 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
+import mysql from 'mysql2/promise';
 import {
   createEnvelope,
   nodeEnvelopeSchema,
   type NodeEnvelope
 } from '../../packages/protocol/src/index.js';
-import { createServerApp } from '../../ee/server/src/app.js';
-import { NodeUpgradeService } from '../../ee/server/src/service/node-upgrade-service.js';
+import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
+import { NodeUpgradeService } from '../../packages/server-core/src/node-upgrade-service.js';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { createEnterpriseTestServer } from './support/enterprise-test-server.js';
 import { createPlaywrightTestLicenseDocument } from './support/playwright-test-license.js';
@@ -73,6 +75,25 @@ test('Workspace-only grants retain canonical ID-only relay access through cleanu
       201
     );
     const member = await login('scope-member', memberRecord.temporaryPassword);
+    await api(
+      member,
+      'POST',
+      '/api/node-registration-tokens',
+      {
+        displayName: 'Unauthorized organization Node',
+        ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 }
+      },
+      403
+    );
+    const verification = await mysql.createConnection(server.databaseUrl);
+    try {
+      const [tokens] = await verification.query<mysql.RowDataPacket[]>(
+        'SELECT COUNT(*) AS count FROM node_registration_tokens'
+      );
+      expect(Number(tokens[0]?.['count'])).toBe(0);
+    } finally {
+      await verification.end();
+    }
     const registration = await api<{ token: string }>(
       admin,
       'POST',
@@ -93,6 +114,7 @@ test('Workspace-only grants retain canonical ID-only relay access through cleanu
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: process.version,
+            nodeAppVersion: nodePackage.version,
             codex: { available: false },
             claudeCode: { available: false }
           }

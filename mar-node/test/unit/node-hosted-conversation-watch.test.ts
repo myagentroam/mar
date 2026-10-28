@@ -443,10 +443,10 @@ describe('Node hosted conversation watch', () => {
         templateId: template.id,
         __requestUserId: 7,
         __template: template,
-        __marAgentModels: [model, modelTwo]
+        __marAgentModels: [{ ...model, serviceTier: 'priority' }, modelTwo]
       })
     ).resolves.toMatchObject({
-      models: [{ id: 'model-1' }, { id: 'model-2' }],
+      models: [{ id: 'model-1', serviceTier: 'priority' }, { id: 'model-2' }],
       defaultModelId: 'model-1'
     });
     await expect(

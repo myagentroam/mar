@@ -4,6 +4,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -19,7 +20,6 @@ import type {
   createHostedConversationEntryService
 } from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
-import { supportsNodeFeature } from '../../util/node-features.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
@@ -136,10 +136,7 @@ const inputHasContent = computed(
     attachments.value.some((attachment) => attachment.status === 'PENDING')
 );
 const canReplaceCurrent = computed(
-  () =>
-    !props.mobileViewport &&
-    activeRun.value !== undefined &&
-    activeRun.value.status !== 'CANCELLING'
+  () => activeRun.value !== undefined && activeRun.value.status !== 'CANCELLING'
 );
 const canStopCurrent = computed(
   () =>
@@ -212,11 +209,6 @@ const draftTemplateLabel = computed(
   () =>
     draftTemplates.value.find((template) => template.id === draftTemplateId.value)?.name ??
     translate('hostedConversations.templatePlaceholder')
-);
-const templateSwitchSupported = computed(
-  () =>
-    !props.draft &&
-    supportsNodeFeature(snapshot.value?.nodeAppVersion ?? '', 'HOSTED_CONVERSATION_TEMPLATE_SWITCH')
 );
 const templateSelectionDisabled = computed(() =>
   props.draft
@@ -723,7 +715,10 @@ onBeforeUnmount(() => {
     </template>
 
     <template #toolbar>
-      <div class="hosted-composer-toolbar">
+      <div
+        class="hosted-composer-toolbar"
+        :class="{ 'has-mobile-send': mobileViewport && canReplaceCurrent && inputHasContent }"
+      >
         <input
           ref="fileInput"
           class="hosted-file-input"
@@ -742,7 +737,7 @@ onBeforeUnmount(() => {
           <MarIcon name="attachment" />
         </button>
         <el-dropdown
-          v-if="(draft && !snapshot) || templateSwitchSupported"
+          v-if="!draft || !snapshot"
           class="hosted-template-menu hosted-model-menu"
           :disabled="templateSelectionDisabled"
           trigger="click"
@@ -835,8 +830,20 @@ onBeforeUnmount(() => {
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
-        <span v-if="canReplaceCurrent" class="hosted-replace-hint" role="status">
-          {{ translate('hostedConversations.replaceCurrentHint') }}
+        <span
+          v-if="canReplaceCurrent || (mobileViewport && inputHasContent)"
+          class="hosted-replace-hint"
+          role="status"
+        >
+          {{
+            translate(
+              mobileViewport
+                ? canReplaceCurrent
+                  ? 'composerSend.holdHint'
+                  : 'composerSend.holdSendHint'
+                : 'hostedConversations.replaceCurrentHint'
+            )
+          }}
         </span>
         <span v-if="submitting" class="composer-submitting" role="status">{{
           translate('workbench.sending')
@@ -852,10 +859,9 @@ onBeforeUnmount(() => {
         >
           <i aria-hidden="true" />
         </button>
-        <button
-          v-else
+        <ComposerSendButton
+          v-if="!activeRun || (mobileViewport && canReplaceCurrent && inputHasContent)"
           class="hosted-send-button"
-          type="submit"
           :disabled="
             composerReadonly ||
             pendingAttachments ||
@@ -864,10 +870,20 @@ onBeforeUnmount(() => {
             configurationUpdating ||
             modelUnavailable
           "
-          :aria-label="translate('hostedConversations.send')"
-        >
-          <MarIcon name="send" />
-        </button>
+          :mobile-viewport="mobileViewport"
+          :can-steer="canReplaceCurrent"
+          :context-key="`${selectedSubmissionContext ?? draftTemplateId}:${activeRun?.id ?? ''}`"
+          :submitting="submitting"
+          :label="
+            translate(
+              mobileViewport && canReplaceCurrent
+                ? 'composerSend.steer'
+                : 'hostedConversations.send'
+            )
+          "
+          @send="send(mobileViewport && canReplaceCurrent ? 'REPLACE_CURRENT' : undefined)"
+          @steer="send('REPLACE_CURRENT')"
+        />
       </div>
     </template>
   </ConversationComposer>
@@ -1110,6 +1126,14 @@ onBeforeUnmount(() => {
   .hosted-composer-toolbar {
     display: grid;
     grid-template-columns: 34px minmax(72px, 0.9fr) minmax(0, 1.1fr) 34px;
+  }
+
+  .hosted-composer-toolbar.has-mobile-send {
+    grid-template-columns: 34px minmax(72px, 0.9fr) minmax(0, 1.1fr) 34px 34px;
+  }
+
+  .has-mobile-send .hosted-send-button {
+    grid-column: 5;
   }
 
   .hosted-model-unavailable,

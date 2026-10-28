@@ -16,7 +16,7 @@ import { registerSessionRunRoutes } from '../../ee/server/src/route/session-run-
 import type { EnvironmentSecretService } from '../../ee/server/src/service/environment-secret-service.js';
 import type { MarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
 import type { MarAgentRuntimeModelService } from '../../ee/server/src/service/mar-agent-runtime-model-service.js';
-import type { NodeUpgradeService } from '../../ee/server/src/service/node-upgrade-service.js';
+import type { NodeUpgradeService } from '../../packages/server-core/src/node-upgrade-service.js';
 
 const csrfToken = 'csrf-token';
 const headers = {
@@ -36,6 +36,21 @@ describe('Server MAR Agent model authorization routes', () => {
       publicOrigin: undefined,
       capabilities: {} as ServerWorkbenchCapabilities,
       secrets: fixture.secrets,
+      resources: {
+        canAccessNodeContainer: vi.fn(async () => false),
+        nodeOwnership: vi.fn(async () => ({ ownerType: 'PERSONAL' as const, ownerUserId: 8 })),
+        canManageNode: vi.fn(async () => false),
+        canRegisterWorkspace: vi.fn(async () => false),
+        canManageNodeSecrets: vi.fn(async () => false),
+        assertCanManageNode: vi.fn(async () => {
+          throw new Error('NODE_ACCESS_DENIED');
+        })
+      },
+      mutations: {
+        changeNodeOwnership: vi.fn(async () => {
+          throw new Error('NODE_ACCESS_DENIED');
+        })
+      },
       marAgentModels: fixture.models
     });
 
@@ -184,6 +199,7 @@ describe('Server MAR Agent model authorization routes', () => {
       publicOrigin: undefined
     });
     registerRunControlRoutes({
+      authorizeNodeRequest: async () => true,
       app,
       database: fixture.database,
       nodeControl: fixture.nodeControl,
@@ -283,6 +299,7 @@ describe('Server MAR Agent model authorization routes', () => {
       publicOrigin: undefined
     });
     registerRunControlRoutes({
+      authorizeNodeRequest: async () => true,
       app,
       database: fixture.database,
       nodeControl: fixture.nodeControl,
@@ -350,6 +367,7 @@ describe('Server MAR Agent model authorization routes', () => {
     const fixture = routeFixture();
     const app = Fastify();
     registerRunControlRoutes({
+      authorizeNodeRequest: async () => true,
       app,
       database: fixture.database,
       nodeControl: fixture.nodeControl,
@@ -378,7 +396,15 @@ describe('Server MAR Agent model authorization routes', () => {
     registerResourceGrantRoutes({
       app,
       database: fixture.database,
-      resources,
+      directory: {
+        listManagedResources: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        },
+        listManagedResourcePage: async () => {
+          throw new Error('UNEXPECTED_DIRECTORY_QUERY');
+        }
+      },
+      grants: resources as never,
       nodeControl: fixture.nodeControl,
       nodeUpgrades: {} as NodeUpgradeService,
       publicOrigin: undefined

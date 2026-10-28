@@ -5,7 +5,7 @@ import { isAllowedOrigin } from './auth.js';
 import { sendError } from './http-errors.js';
 import { databaseError } from './domain-errors.js';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
-import type { UserNodeAuthorization } from './node-request-channel.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import type {
   PersonalInstructionReader,
   ProcessSecretResolver,

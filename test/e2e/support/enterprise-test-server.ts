@@ -28,13 +28,15 @@ export async function createEnterpriseTestServer(label: string): Promise<Enterpr
 
   const previousPublicKey = process.env['MAR_LICENSE_PUBLIC_KEY'];
   process.env['MAR_LICENSE_PUBLIC_KEY'] = getPlaywrightTestLicensePublicKey();
-  const app = createServerApp({
-    databaseUrl: target.databaseUrl,
-    dataDirectory,
-    secureCookies: false,
-    logger: false,
-    productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID
-  });
+  const app = (
+    await createServerApp({
+      databaseUrl: target.databaseUrl,
+      dataDirectory,
+      secureCookies: false,
+      logger: false,
+      productUuid: PLAYWRIGHT_LICENSE_PRODUCT_UUID
+    })
+  ).app;
   if (previousPublicKey === undefined) delete process.env['MAR_LICENSE_PUBLIC_KEY'];
   else process.env['MAR_LICENSE_PUBLIC_KEY'] = previousPublicKey;
 

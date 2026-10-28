@@ -75,6 +75,7 @@ export const commonMessages = {
     shortcutGroups: personalSettingsEnUS.shortcutGroups,
     keyboardShortcuts: personalSettingsEnUS.keyboardShortcuts,
     composer: composerEnUS.composer,
+    composerSend: composerEnUS.composerSend,
     workspaceTabs: workbenchShellEnUS.workspaceTabs,
     settings: { ...fileNavigationEnUS.settings, ...personalSettingsEnUS.settings },
     workspaceDisplayFilter: {
@@ -197,6 +198,7 @@ export const commonMessages = {
     shortcutGroups: personalSettingsZhCN.shortcutGroups,
     keyboardShortcuts: personalSettingsZhCN.keyboardShortcuts,
     composer: composerZhCN.composer,
+    composerSend: composerZhCN.composerSend,
     workspaceTabs: workbenchShellZhCN.workspaceTabs,
     settings: { ...fileNavigationZhCN.settings, ...personalSettingsZhCN.settings },
     workspaceDisplayFilter: {

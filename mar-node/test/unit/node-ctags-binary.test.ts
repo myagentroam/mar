@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { symbolNavigationLanguages } from '../../../packages/code-navigation/src/symbol-navigation-registry.js';
+import { symbolNavigationLanguages } from '@myagentroam/code-navigation/symbol-navigation';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   BUNDLED_CTAGS_VERSION,

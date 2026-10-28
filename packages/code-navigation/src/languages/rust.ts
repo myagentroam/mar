@@ -1,9 +1,5 @@
-import {
-  rangeAtColumn,
-  sourceLineAt,
-  type FileSpecifierParser,
-  type NavigationSyntaxDefinition
-} from '../types.js';
+import { rangeAtColumn, sourceLineAt } from '../source-ranges.js';
+import { type FileSpecifierParser, type NavigationSyntaxDefinition } from '../types.js';
 
 function find(source: string, position: number) {
   const line = sourceLineAt(source, position);
@@ -29,6 +25,7 @@ function find(source: string, position: number) {
 export const rustFileSpecifierParser: FileSpecifierParser = { find };
 
 export const rustNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'rust',
   parser: rustFileSpecifierParser,
   suffixes: ['.rs']

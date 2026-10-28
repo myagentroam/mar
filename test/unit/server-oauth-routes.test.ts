@@ -6,6 +6,48 @@ import type { OAuthService } from '../../ee/server/src/oauth/oauth-service.js';
 import { registerOAuthRoutes } from '../../ee/server/src/route/oauth-routes.js';
 
 describe('Server OAuth routes', () => {
+  it('still installs the OAuth login session when audit persistence fails', async () => {
+    const app = Fastify();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const audit = vi.fn(async () => {
+      throw new Error('audit failed');
+    });
+    const createUserSession = vi.fn(async () => ({
+      sessionId: 'session-id',
+      csrfToken: 'csrf',
+      evictedSessionHashes: []
+    }));
+    registerOAuthRoutes({
+      app,
+      database: { audit, createUserSession } as unknown as MysqlServerDatabase,
+      oauth: {
+        callback: vi.fn(async () => ({ userId: 2, flowType: 'LOGIN' as const }))
+      } as unknown as OAuthService,
+      nodeControl: {
+        closeUserTerminals: vi.fn(),
+        closeUserWorkbench: vi.fn()
+      } as unknown as NodeControl,
+      publicOrigin: 'https://mar.example',
+      secureCookies: true
+    });
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/oauth/feishu/callback?state=state&code=code',
+        headers: { cookie: 'mar_oauth_flow_feishu=flow' }
+      });
+      expect(response.statusCode).toBe(302);
+      expect(response.headers.location).toBe('/console');
+      expect(String(response.headers['set-cookie'])).toContain('mar_user_session=session-id');
+      expect(createUserSession).toHaveBeenCalledOnce();
+      expect(audit).toHaveBeenCalledOnce();
+      expect(warning).toHaveBeenCalledWith('AUDIT_WRITE_FAILED');
+    } finally {
+      warning.mockRestore();
+      await app.close();
+    }
+  });
+
   it('derives provider-specific login and callback URLs', async () => {
     const app = Fastify();
     const oauth = {

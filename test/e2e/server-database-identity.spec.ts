@@ -139,7 +139,24 @@ test('Organization deletion waits for referencing transactions, rejects new-memb
     await pool.query(`INSERT INTO skill_favorites
       (id,source_id,scope,owner_organization_id,owner_user_id,repository_url,repository_identity,skill_path,normalized_name,current_version_id,created_by_user_id,created_at,updated_at,owner_key)
       VALUES ('org-favorite','org-source','ORGANIZATION',2,NULL,'https://example.invalid/repo','example/repo','skill','skill',NULL,1,1,1,'ORGANIZATION:2:')`);
+    await pool.query(`INSERT INTO mar_agent_models
+      (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,
+       input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at)
+      VALUES ('org-model','Org model','org model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT('type','INLINE_API_KEY','value','fixture-key'),'test',1000,100,
+       JSON_ARRAY('TEXT'),JSON_ARRAY('TEXT'),JSON_ARRAY('medium'),'medium','ORGANIZATION',NULL,2,1,1,1),
+       ('unrelated-model','Other model','other model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT('type','INLINE_API_KEY','value','fixture-key'),'test',1000,100,
+       JSON_ARRAY('TEXT'),JSON_ARRAY('TEXT'),JSON_ARRAY('medium'),'medium','PERSONAL',1,NULL,1,1,1)`);
+    await pool.query(`INSERT INTO system_settings(setting_key,setting_value,updated_at) VALUES
+      ('mar_agent_model_config:org-model',JSON_OBJECT('version',1,'hostedWebSearch',FALSE,'responsesPreviousResponseId',FALSE),1),
+      ('mar_agent_resource_input:model:org-model',JSON_OBJECT('useResourceUrl',TRUE),1),
+      ('mar_agent_model_config:unrelated-model',JSON_OBJECT('version',1,'hostedWebSearch',FALSE,'responsesPreviousResponseId',FALSE),1)`);
     await service.remove(1, 2);
+    const [settingsAfterOrganizationDeletion] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT setting_key FROM system_settings WHERE setting_key IN ('mar_agent_model_config:org-model','mar_agent_resource_input:model:org-model','mar_agent_model_config:unrelated-model') ORDER BY setting_key"
+    );
+    expect(settingsAfterOrganizationDeletion).toEqual([
+      { setting_key: 'mar_agent_model_config:unrelated-model' }
+    ]);
     await validateEnterpriseMysqlDatabase(pool);
     for (const table of ['environment_secrets', 'skill_favorites', 'skill_sources']) {
       const column = table === 'environment_secrets' ? 'organization_id' : 'owner_organization_id';
@@ -174,12 +191,27 @@ test('Core v19 removes the dense column, resumes after an interrupted DDL, and p
       (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,
        input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,high_density_compaction,
        owner_type,owner_user_id,created_by,created_at,updated_at)
-      VALUES ('preserved-model','Preserved model','preserved model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT(),
+      VALUES ('preserved-model','Preserved model','preserved model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT('type','INLINE_API_KEY','value','fixture-key'),
        'test',1000,100,JSON_ARRAY('TEXT'),JSON_ARRAY('TEXT'),JSON_ARRAY('medium'),'medium',1,'PERSONAL',77,77,1,1)`);
     const [before] = await pool.query<mysql.RowDataPacket[]>('SELECT * FROM mar_agent_models');
-    const { high_density_compaction: removed, ...preserved } = before[0]!;
+    const {
+      high_density_compaction: removed,
+      fast_mode: oldFastMode,
+      service_tier: oldServiceTier,
+      hosted_web_search: oldHostedWebSearch,
+      responses_transport: oldTransport,
+      responses_previous_response_id: oldPreviousResponseId,
+      ...preserved
+    } = before[0]!;
     const upgraded = { ...preserved, conversation_model: 1 };
     expect(removed).toBe(1);
+    expect([
+      oldFastMode,
+      oldServiceTier,
+      oldHostedWebSearch,
+      oldTransport,
+      oldPreviousResponseId
+    ]).toEqual([0, null, 0, null, 0]);
     const [history] = await pool.query(
       "SELECT * FROM schema_migrations WHERE namespace='core' ORDER BY version"
     );
@@ -222,6 +254,16 @@ test('Core v19 removes the dense column, resumes after an interrupted DDL, and p
       'SELECT * FROM mar_agent_models'
     );
     expect(personalModels.map((row) => ({ ...row }))).toEqual([upgraded]);
+    const [settingsRows] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT setting_value FROM system_settings WHERE setting_key='mar_agent_model_config:preserved-model'"
+    );
+    expect(settingsRows).toHaveLength(1);
+    const settingValue: unknown = settingsRows[0]!['setting_value'];
+    expect(typeof settingValue === 'string' ? JSON.parse(settingValue) : settingValue).toEqual({
+      version: 1,
+      hostedWebSearch: false,
+      responsesPreviousResponseId: false
+    });
     await prepareMysqlDatabase(pool);
     await prepareMysqlDatabase(pool);
     const [enterpriseModels] = await pool.query<mysql.RowDataPacket[]>(
@@ -378,7 +420,7 @@ test('Removing MySQL foreign keys preserves data and history, and a partial DDL 
     await pool.query(`INSERT INTO mar_agent_models
       (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,
        input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,owner_type,owner_user_id,created_by,created_at,updated_at)
-      VALUES ('personal-model','Retained model','retained model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT(),'test',1000,100,
+      VALUES ('personal-model','Retained model','retained model','OPENAI_RESPONSES','https://example.invalid',JSON_OBJECT('type','INLINE_API_KEY','value','fixture-key'),'test',1000,100,
        JSON_ARRAY('TEXT'),JSON_ARRAY('TEXT'),JSON_ARRAY('medium'),'medium','PERSONAL',77,77,1,1)`);
     await pool.query(
       "INSERT INTO mar_agent_image_models(id,name,normalized_name,owner_type,owner_user_id,provider,config,created_by,created_at,updated_at) VALUES ('personal-image','Retained image','retained image','PERSONAL',77,'CODEX',JSON_OBJECT(),77,1,1)"
@@ -471,7 +513,15 @@ test('Removing MySQL foreign keys preserves data and history, and a partial DDL 
     await expect(database.deleteNode(node!.nodeId)).rejects.toThrow('NODE_IN_USE');
     await expect(database.deleteUser(77)).rejects.toThrow('USER_IN_USE');
     await pool.query("DELETE FROM conversation_templates WHERE id='protected-template'");
+    const [settingsBeforeDeletion] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT setting_key FROM system_settings WHERE setting_key='mar_agent_model_config:personal-model'"
+    );
+    expect(settingsBeforeDeletion).toHaveLength(1);
     await database.deleteUser(77);
+    const [settingsAfterDeletion] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT setting_key FROM system_settings WHERE setting_key='mar_agent_model_config:personal-model'"
+    );
+    expect(settingsAfterDeletion).toEqual([]);
     for (const [table, column, id] of [
       ['mar_agent_models', 'id', 'personal-model'],
       ['mar_agent_image_models', 'id', 'personal-image'],

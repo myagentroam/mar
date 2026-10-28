@@ -1,14 +1,14 @@
 import type { ModelUsageGrants } from '@myagentroam/server-core/model-usage-grant';
-import { emitAudit, safeAuditMetadata } from '@myagentroam/server-core/audit';
+import { emitAudit, safeAuditMetadata, type AuditObserver } from '@myagentroam/server-core/audit';
 import { randomUUID } from 'node:crypto';
 import { NodeRequestChannel } from '@myagentroam/server-core/node-request-channel';
 import type { GitExecutionForwarding } from '@myagentroam/server-core/git-execution-forwarding';
-export { NodeRequestError } from '@myagentroam/server-core/node-request-channel';
 import type { WebSocket } from 'ws';
 import { workbenchNodeOperationSchema, type NodeEnvelope } from '@myagentroam/protocol';
-import type { ServerDatabase } from '../database.js';
-import type { MysqlServerDatabase } from '../mysql/server-database.js';
-import type { UserNodeAuthorization } from './workbench-relay-service.js';
+import type {
+  NodeRequestAuthorization,
+  UserNodeAuthorization
+} from '@myagentroam/server-core/node-access-contracts';
 import type { ServerTrafficMetrics } from './server-traffic-metrics.js';
 import {
   NodeResourceScopeIndex,
@@ -114,28 +114,30 @@ interface RelayAuditContext {
 }
 
 export class NodeRequestBroker {
-  private usageGrants: ModelUsageGrants | undefined;
-  setModelUsageGrants(grants: ModelUsageGrants): void {
-    this.usageGrants = grants;
-  }
   private readonly channel: NodeRequestChannel;
   private readonly scopes = new NodeResourceScopeIndex();
   private readonly auditContexts = new RelayAuditContextCache();
   private closed = false;
-  private gitForwarding: GitExecutionForwarding | undefined;
-
-  setGitForwarding(service: GitExecutionForwarding): void {
-    this.gitForwarding = service;
-  }
-
   constructor(
-    private readonly database: ServerDatabase | MysqlServerDatabase,
+    private readonly audits: AuditObserver,
+    private readonly authorize: NodeRequestAuthorization,
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
+    private readonly connectionPolicy: {
+      readonly allows: (socket: WebSocket, operation: string) => boolean;
+      readonly encode: (socket: WebSocket, envelope: NodeEnvelope) => unknown;
+    },
+    private readonly services: {
+      readonly usageGrants: Pick<ModelUsageGrants, 'issue'>;
+      readonly gitForwarding: Pick<GitExecutionForwarding, 'prepare'>;
+    },
     log: (event: string, fields: Record<string, unknown>) => void = () => undefined,
     traffic?: ServerTrafficMetrics
   ) {
-    this.channel = new NodeRequestChannel(socketFor, log, (bytes) =>
-      traffic?.record('node', 'out', bytes)
+    this.channel = new NodeRequestChannel(
+      socketFor,
+      log,
+      (bytes) => traffic?.record('node', 'out', bytes),
+      connectionPolicy.encode
     );
   }
 
@@ -146,6 +148,9 @@ export class NodeRequestBroker {
     user: UserNodeAuthorization,
     timeoutMs = 15_000
   ): Promise<unknown> {
+    const socket = this.socketFor(nodeId);
+    if (socket !== undefined && !this.connectionPolicy.allows(socket, operation))
+      return Promise.reject(new Error('NODE_UPGRADE_REQUIRED'));
     if (
       !FIXED_ADMIN_NODE_OPERATIONS.has(operation) &&
       !workbenchNodeOperationSchema.safeParse(operation).success
@@ -179,10 +184,7 @@ export class NodeRequestBroker {
       user.workspaceId
     );
     if (conflict) return this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId);
-    const ownership =
-      'userCanRequestNode' in this.database
-        ? this.database.userCanRequestNode(user.userId, nodeId, operation, data, workspaceId)
-        : this.database.userOwnsNode(user.userId, nodeId);
+    const ownership = this.authorize(user.userId, nodeId, operation, data, workspaceId);
     if (ownership instanceof Promise)
       return ownership.then((allowed) =>
         allowed
@@ -246,10 +248,14 @@ export class NodeRequestBroker {
     timeoutMs: number,
     connection: WebSocket | undefined
   ): Promise<unknown> {
-    const prepared =
-      this.gitForwarding === undefined
-        ? data
-        : await this.gitForwarding.prepare(nodeId, operation, data, user.userId);
+    if (connection !== undefined && !this.connectionPolicy.allows(connection, operation))
+      throw new Error('NODE_UPGRADE_REQUIRED');
+    const prepared = await this.services.gitForwarding.prepare(
+      nodeId,
+      operation,
+      data,
+      user.userId
+    );
     let context = auditContext(nodeId, data, workspaceId);
     const audit = this.auditContexts.context(nodeId, context.agentSessionId, context.runId);
     if (audit.sessionId) context = { ...context, agentSessionId: audit.sessionId };
@@ -280,6 +286,8 @@ export class NodeRequestBroker {
       this.auditRelay(operation, 'failed', randomUUID(), user.userId, context, code, metadata);
       throw new Error(code);
     }
+    if (!this.connectionPolicy.allows(connection, operation))
+      throw new Error('NODE_UPGRADE_REQUIRED');
     const observation = observesRelayResources(operation) ? this.scopes.begin(nodeId) : undefined;
     try {
       const result = await this.channel.request(
@@ -288,23 +296,21 @@ export class NodeRequestBroker {
         prepared,
         {
           ...user,
-          usageGrant:
-            this.usageGrants !== undefined &&
-            [
-              'session.message',
-              'session.channel.message',
-              'session.start',
-              'session.command.execute',
-              'runner.command.execute',
-              'conversation.hosted.message',
-              'prompt-completion.generate'
-            ].includes(operation)
-              ? this.usageGrants.issue(
-                  nodeId,
-                  user.userId,
-                  operation.startsWith('conversation.hosted.') ? 'conversation' : 'work'
-                )
-              : undefined
+          usageGrant: [
+            'session.message',
+            'session.channel.message',
+            'session.start',
+            'session.command.execute',
+            'runner.command.execute',
+            'conversation.hosted.message',
+            'prompt-completion.generate'
+          ].includes(operation)
+            ? this.services.usageGrants.issue(
+                nodeId,
+                user.userId,
+                operation.startsWith('conversation.hosted.') ? 'conversation' : 'work'
+              )
+            : undefined
         },
         timeoutMs,
         (phase, id, errorCode) =>
@@ -361,7 +367,7 @@ export class NodeRequestBroker {
     metadata?: string
   ): void {
     if (!auditedRelayOperation(operation) || phase === 'requested') return;
-    emitAudit(this.database, {
+    emitAudit(this.audits, {
       eventType: operation,
       actorUserId,
       result:

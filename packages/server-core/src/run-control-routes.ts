@@ -4,6 +4,7 @@ import { protectedAdmin, validCsrf } from './session.js';
 import { sendError, safeErrorCode } from './http-errors.js';
 import { requestUserNode } from './workspace-http-support.js';
 import { SessionInputService } from './session-input-service.js';
+import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import {
   recordSharedConversationAudit,
   sharedConversationFailureResult,
@@ -30,6 +31,7 @@ export function registerRunControlRoutes(input: {
   readonly app: FastifyInstance;
   readonly databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
   readonly database: SessionRunStore;
+  readonly authorizeNodeRequest: NodeRequestAuthorization;
   readonly nodeControl: SessionRunNodeControl;
   readonly secrets: ProcessSecretResolver;
   readonly userCredentials?: MarctlUserCredentials;
@@ -514,15 +516,12 @@ export function registerRunControlRoutes(input: {
         etag !== undefined &&
         request.headers['if-none-match']?.split(',').some((value) => value.trim() === etag)
       ) {
-        const allowed =
-          typeof database.userCanRequestNode === 'function'
-            ? await database.userCanRequestNode(
-                admin.userId,
-                request.query.nodeId,
-                'run.image.read',
-                requestData
-              )
-            : await database.userOwnsNode(admin.userId, request.query.nodeId);
+        const allowed = await input.authorizeNodeRequest(
+          admin.userId,
+          request.query.nodeId,
+          'run.image.read',
+          requestData
+        );
         if (!allowed) throw new Error('NODE_ACCESS_DENIED');
         return reply
           .header('cache-control', 'private, max-age=3600, must-revalidate')

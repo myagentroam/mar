@@ -12,7 +12,6 @@ const runtimeCredentialCapability = (): NonNullable<
 > => ({
   apiVersion: 1,
   websocket: true,
-  fastMode: true,
   serviceTiers: ['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast'],
   namespacedTools: true,
   responsesOptionalParameters: true,

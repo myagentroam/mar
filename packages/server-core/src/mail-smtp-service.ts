@@ -138,7 +138,7 @@ export class MailSmtpService {
     );
   }
 
-  async send(mail: OutgoingMail): Promise<void> {
+  async send(mail: OutgoingMail, authorize?: () => Promise<boolean>): Promise<void> {
     if (
       !validMailAddress(mail.to) ||
       mail.subject.length === 0 ||
@@ -151,6 +151,7 @@ export class MailSmtpService {
       throw new Error('MAIL_INPUT_INVALID');
     const stored = await this.stored();
     if (stored === undefined) throw new Error('MAIL_NOT_CONFIGURED');
+    if (authorize !== undefined && !(await authorize())) throw new Error('MAIL_ACCESS_DENIED');
     try {
       await this.deliver(
         {

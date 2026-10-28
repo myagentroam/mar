@@ -1,9 +1,5 @@
-import {
-  rangeAtColumn,
-  sourceLineAt,
-  type FileSpecifierParser,
-  type NavigationLanguageId
-} from '../types.js';
+import { rangeAtColumn, sourceLineAt } from '../source-ranges.js';
+import { type FileSpecifierParser, type NavigationLanguageId } from '../types.js';
 
 export function createCPreprocessorFileSpecifierParser(
   languageId: Extract<

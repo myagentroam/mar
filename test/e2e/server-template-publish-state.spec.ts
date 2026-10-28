@@ -4,6 +4,8 @@ import mysql, { type PoolConnection, type RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { prepareMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
+import { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
+import { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
 import { ConversationTemplateService } from '../../packages/server-core/src/conversation-template-service.js';
 import type { TemplateStore } from '../../packages/server-core/src/hosted-contracts.js';
 import type { ConversationTemplatePublishJob } from '../../packages/protocol/src/index.js';
@@ -150,6 +152,116 @@ async function withDatabase(run: (database: MysqlServerDatabase) => Promise<void
 
 function service(store: TemplateStore) {
   return new ConversationTemplateService(store, {} as never, {} as never);
+}
+
+for (const operation of ['create', 'update', 'publish'] as const) {
+  test(`Template ${operation} rejects admin revocation between preflight and transaction admission`, async () => {
+    test.setTimeout(60_000);
+    await withDatabase(async (database) => {
+      const resources = new ResourceAccessService(database, new AuthorizationService(database));
+      const models = {
+        listTemplateOptionsForNode: async () => [{ modelId: 'coding', name: 'Coding' }]
+      };
+      const input = {
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        name: 'Admission',
+        description: 'Fixture',
+        allowedModels: [{ modelId: 'coding', name: 'Coding' }],
+        defaultModelId: 'coding',
+        mcpIds: [],
+        networkMode: 'NONE',
+        quotas: { maxStorageBytes: 100_000_000, maxUploadBytes: 10_000_000 }
+      };
+      const inspect = async () => ({
+        valid: true,
+        code: null,
+        message: 'Valid fixture.',
+        checkedAt: 2000,
+        mcpServers: []
+      });
+      const seed = new ConversationTemplateService(
+        database,
+        resources,
+        models,
+        () => 2000,
+        () => 'admission-template'
+      );
+      await seed.create(1, input, inspect);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const store = observedStore(database, {
+        before: async (_connection, sql) => {
+          if (sql.startsWith('SELECT id FROM users')) {
+            entered.resolve();
+            await release.promise;
+          }
+        }
+      });
+      const templates = new ConversationTemplateService(
+        store,
+        resources,
+        models,
+        () => 2100,
+        () => 'rejected-template'
+      );
+      let dispatched = false;
+      const dispatch = async () => {
+        dispatched = true;
+        throw new Error('UNEXPECTED_DISPATCH');
+      };
+      const work =
+        operation === 'create'
+          ? templates.create(1, { ...input, name: 'Rejected' }, inspect)
+          : operation === 'update'
+            ? templates.update(
+                1,
+                'admission-template',
+                { ...input, name: 'Rejected', draftRevision: 1 },
+                inspect
+              )
+            : templates.publish(
+                1,
+                'admission-template',
+                {
+                  templateId: 'admission-template',
+                  draftRevision: 1,
+                  requestId: 'rejected-request'
+                },
+                dispatch
+              );
+      const settled = work.then(
+        () => undefined,
+        (error: unknown) => error
+      );
+      try {
+        await Promise.race([
+          entered.promise,
+          settled.then(() => {
+            throw new Error('ADMISSION_GATE_NOT_REACHED');
+          })
+        ]);
+        await database.raw.execute('UPDATE users SET enabled=FALSE WHERE id=1');
+      } finally {
+        release.resolve();
+      }
+      expect(await settled).toMatchObject({ message: 'ADMIN_REQUIRED' });
+      const [rows] = await database.raw.query<RowDataPacket[]>(
+        "SELECT id,name,draft_revision FROM conversation_templates WHERE id IN ('admission-template','rejected-template')"
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        id: 'admission-template',
+        name: 'Admission',
+        draft_revision: 1
+      });
+      const [jobs] = await database.raw.query<RowDataPacket[]>(
+        "SELECT id FROM conversation_template_publish_jobs WHERE id='rejected-request'"
+      );
+      expect(jobs).toHaveLength(0);
+      expect(dispatched).toBe(false);
+    });
+  });
 }
 
 async function state(database: MysqlServerDatabase) {
