@@ -96,9 +96,8 @@ for (const [width, theme, locale] of [
         const result = {
           brand: color('--mar-color-brand'),
           panel: color('--mar-bg-panel'),
-          border: color('--mar-border-medium'),
-          track: color('--mar-bg-subtle'),
-          inactive: color('--mar-bg-tab-inactive'),
+          border: color('--mar-border-default'),
+          track: color('--mar-fill-muted'),
           hover: color('--mar-fill-row-hover'),
           link: color('--mar-control-link-text'),
           success: color('--mar-color-success-text')
@@ -124,22 +123,27 @@ for (const [width, theme, locale] of [
       const selectedBackground = await tabs.nth(0).evaluate((element) => {
         const style = getComputedStyle(element);
         const probe = document.createElement('span');
-        probe.style.background = 'var(--mar-fill-selection)';
+        probe.style.background =
+          'color-mix(in oklab, var(--mar-fill-selection) 73%, var(--mar-text-primary))';
         element.append(probe);
         const expected = getComputedStyle(probe).backgroundColor;
         probe.remove();
         return { actual: style.backgroundColor, expected };
       });
       expect(selectedBackground.actual).toBe(selectedBackground.expected);
-      await expect(tabs.nth(1)).toHaveCSS('background-color', palette.inactive);
-      expect(palette.inactive).not.toBe(palette.panel);
-      expect(palette.inactive).not.toBe(selectedBackground.expected);
+      await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      expect(palette.track).not.toBe(palette.panel);
+      expect(palette.track).not.toBe(selectedBackground.expected);
       await tabs.nth(1).hover();
       await expect(tabs.nth(1)).toHaveCSS('background-color', palette.hover);
       await page.mouse.move(0, 0);
       await expect(tabs.nth(1)).toHaveCSS('box-shadow', 'none');
       await expect(chats.getByRole('tablist')).toHaveCSS('background-color', palette.track);
-      await expect(tabs.nth(0)).toHaveCSS('box-shadow', `${palette.border} 0px 0px 0px 1px inset`);
+      await expect(chats.getByRole('tablist')).toHaveCSS(
+        'box-shadow',
+        `${palette.border} 0px 0px 0px 1px inset`
+      );
+      await expect(tabs.nth(0)).toHaveCSS('box-shadow', 'none');
       expect(selectedBackground.actual).not.toBe(palette.panel);
       await tabs.nth(0).hover();
       await expect(tabs.nth(0)).toHaveCSS('background-color', selectedBackground.expected);
@@ -199,16 +203,17 @@ for (const [width, theme, locale] of [
               (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
             const style = getComputedStyle(element);
             const fill = luminance(style.backgroundColor);
+            const selectedStyle = getComputedStyle(element.closest('button')!);
+            const selectedFill = luminance(selectedStyle.backgroundColor);
             return {
               text: ratio(fill, luminance(style.color)),
-              surface: ratio(
-                fill,
-                luminance(getComputedStyle(element.closest('button')!).backgroundColor)
-              )
+              surface: ratio(fill, selectedFill),
+              selectedText: ratio(selectedFill, luminance(selectedStyle.color))
             };
           });
           expect(contrast.text).toBeGreaterThanOrEqual(4.5);
           expect(contrast.surface).toBeGreaterThan(1.25);
+          expect(contrast.selectedText).toBeGreaterThanOrEqual(4.5);
         }
         const countBounds = (await badge.boundingBox())!;
         const unreadBounds = (await unread.boundingBox())!;
@@ -255,8 +260,8 @@ for (const [width, theme, locale] of [
       await expect(tabs.nth(1)).toBeFocused();
       await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
       await expect(tabs.nth(1)).toHaveCSS('background-color', selectedBackground.expected);
-      await expect(tabs.nth(1)).toHaveCSS('box-shadow', `${palette.border} 0px 0px 0px 1px inset`);
-      await expect(tabs.nth(0)).toHaveCSS('background-color', palette.inactive);
+      await expect(tabs.nth(1)).toHaveCSS('box-shadow', 'none');
+      await expect(tabs.nth(0)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(tabs.nth(0)).toHaveCSS('box-shadow', 'none');
       await expect(chats.locator('.session-link')).toHaveCount(1);
       await chats.locator('.session-link').click();
@@ -280,7 +285,15 @@ for (const [width, theme, locale] of [
       await expect(chats.locator('.session-link')).toHaveCount(2);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
-      await expect(recent.getByRole('tab').nth(1)).toHaveCSS('background-color', palette.inactive);
+      await expect(recent.getByRole('tab').nth(1)).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)'
+      );
+      await expect(recent.getByRole('tablist')).toHaveCSS('background-color', palette.track);
+      await expect(recent.getByRole('tablist')).toHaveCSS(
+        'box-shadow',
+        `${palette.border} 0px 0px 0px 1px inset`
+      );
       await expect(page.locator('.recent-sessions-badge .session-state-count')).toHaveCSS(
         'background-color',
         palette.brand
@@ -290,6 +303,7 @@ for (const [width, theme, locale] of [
         'background-color',
         selectedBackground.expected
       );
+      await expect(recent.getByRole('tab').nth(0)).toHaveCSS('box-shadow', 'none');
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
       await expect(recent.locator('.recent-sessions-list > li').first()).toContainText(
         locale === 'zh-CN' ? '未读' : 'Unread'
@@ -300,7 +314,10 @@ for (const [width, theme, locale] of [
         'background-color',
         selectedBackground.expected
       );
-      await expect(recent.getByRole('tab').nth(0)).toHaveCSS('background-color', palette.inactive);
+      await expect(recent.getByRole('tab').nth(0)).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)'
+      );
       await expect(recent.locator('.recent-sessions-list > li')).toHaveCount(102);
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
       await expect(

@@ -11,6 +11,12 @@ const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
 const menuAction = ref('');
 const activeTab = ref('settings');
+const configurationScope = ref('node');
+const scopeOptions = [
+  { label: 'Node', value: 'node' },
+  { label: 'Workspace', value: 'workspace' },
+  { label: 'Unavailable', value: 'unavailable', disabled: true }
+];
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {
   throw new Error('This visual fixture does not persist prompts');
@@ -117,6 +123,19 @@ function saveFeedbackDialog(): void {
       </el-tab-pane>
     </el-tabs>
   </section>
+  <section class="segmented-surface-fixture" aria-label="Segmented state samples">
+    <el-segmented
+      v-model="configurationScope"
+      aria-label="Configuration scope"
+      :options="scopeOptions"
+    />
+    <el-segmented
+      model-value="node"
+      aria-label="Disabled configuration scope"
+      :options="scopeOptions"
+      disabled
+    />
+  </section>
   <section aria-label="Dropdown state samples">
     <el-dropdown trigger="click" @command="menuAction = $event">
       <button type="button" class="utility-control">Sample menu</button>
@@ -211,6 +230,11 @@ function saveFeedbackDialog(): void {
 </template>
 
 <style scoped>
+.segmented-surface-fixture {
+  background: var(--mar-bg-panel);
+  padding: 0.75rem;
+}
+
 .conversation-typography-fixture {
   margin-top: 1rem;
   background: var(--mar-conversation-canvas);

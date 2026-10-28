@@ -40,6 +40,7 @@ for (const scheme of ['Light', 'Dark']) {
               '--mar-text-secondary': '#b6c3af',
               '--mar-text-faint': '#8293a4',
               '--mar-bg-tab-inactive': '#1a2530',
+              '--mar-bg-subtle': '#26303d',
               '--mar-fill-row-hover': '#334455',
               '--mar-fill-selection': '#445566'
             }))
@@ -55,7 +56,7 @@ for (const scheme of ['Light', 'Dark']) {
           const colors = {
             normal: color('--mar-text-secondary'),
             active: color('--mar-text-primary'),
-            inactive: color('--mar-bg-tab-inactive'),
+            inactive: color('--mar-bg-subtle'),
             selected: color('--mar-fill-selection'),
             hover: color('--mar-fill-row-hover'),
             disabled: color('--mar-text-faint'),
@@ -71,6 +72,54 @@ for (const scheme of ['Light', 'Dark']) {
         await expect(settings).toHaveCSS('background-color', palette.selected);
         await expect(permissions).toHaveCSS('color', palette.normal);
         await expect(permissions).toHaveCSS('background-color', palette.inactive);
+        for (const tab of [settings, permissions]) {
+          const corners = await tab.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return {
+              topLeft: style.borderTopLeftRadius,
+              topRight: style.borderTopRightRadius,
+              bottomLeft: style.borderBottomLeftRadius,
+              bottomRight: style.borderBottomRightRadius
+            };
+          });
+          expect(Number.parseFloat(corners.topLeft)).toBeGreaterThan(0);
+          expect(corners.topRight).toBe(corners.topLeft);
+          expect(corners.bottomLeft).toBe('0px');
+          expect(corners.bottomRight).toBe('0px');
+        }
+        const strip = samples.locator('.el-tabs__nav-wrap');
+        const stripBounds = (await strip.boundingBox())!;
+        const selectedBounds = (await settings.boundingBox())!;
+        const unselectedBounds = (await permissions.boundingBox())!;
+        const stripImage = await strip.screenshot({ scale: 'css' });
+        const baseline = await strip.evaluate(
+          async (element, { png, positions }) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${png}`;
+            await image.decode();
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const context = canvas.getContext('2d')!;
+            context.drawImage(image, 0, 0);
+            const actual = positions.map((x) =>
+              [3, 2, 1].map((offset) => [
+                ...context.getImageData(x, image.height - offset, 1, 1).data
+              ])
+            );
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = getComputedStyle(element, '::after').backgroundColor;
+            context.fillRect(0, 0, 1, 1);
+            return { actual, expected: [...context.getImageData(0, 0, 1, 1).data] };
+          },
+          {
+            png: stripImage.toString('base64'),
+            positions: [selectedBounds, unselectedBounds].map((bounds) =>
+              Math.floor(bounds.x + bounds.width / 2 - stripBounds.x)
+            )
+          }
+        );
+        for (const pixels of baseline.actual) expect(pixels).toContainEqual(baseline.expected);
         await expect(samples.locator('.el-tabs__active-bar')).toBeHidden();
         await permissions.hover();
         await expect(permissions).toHaveCSS('color', palette.active);
