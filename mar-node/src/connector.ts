@@ -138,6 +138,7 @@ import {
 import { ConversationHostingLifecycleService } from './service/conversation-hosting-lifecycle-service.js';
 import { ConversationHostingEnablementService } from './service/conversation-hosting-enablement-service.js';
 import { ComputerUseEnablementService } from './service/computer-use-enablement-service.js';
+import { NodeConfigMutations } from './service/node-config-mutations.js';
 import { safeErrorCode } from './util/safe-error.js';
 import { RuntimeCredentialControlService } from './service/runtime-credential-control-service.js';
 import { MarAgentRuntimeModelFactory } from './runner/mar-agent/runtime-model-factory.js';
@@ -320,6 +321,7 @@ export class NodeConnector {
   private readonly marAgentRunController: MarAgentManagedRunController;
   private readonly computerUseProvider: PyAutoGuiComputerUseProvider;
   private readonly computerUseEnablement: ComputerUseEnablementService;
+  private readonly configMutations = new NodeConfigMutations();
   private readonly managedComputerUseRuntime: ManagedComputerUseRuntime;
   private readonly openCodeRunController: OpenCodeManagedRunController;
   private readonly claudeRunController: ClaudeManagedRunController<RunnerImageAttachment>;
@@ -673,6 +675,7 @@ export class NodeConnector {
       this.configPath
     );
     this.computerUseEnablement = new ComputerUseEnablementService({
+      mutations: this.configMutations,
       config: () => this.config,
       setConfig: (config) => (this.config = config),
       configPath: this.configPath,
@@ -1399,7 +1402,7 @@ export class NodeConnector {
     this.controlMessages = new NodeControlMessageService({
       config: () => this.config,
       register: async (nodeId, credential, payload) => {
-        await this.connectionLifecycle.register(nodeId, credential);
+        await this.configMutations.run(() => this.connectionLifecycle.register(nodeId, credential));
         this.mailNotificationControl.setFeatures(payload);
         this.usageOutbox?.connected(payload);
         for (const change of this.pendingSessionGroups.values())
@@ -1735,6 +1738,7 @@ export class NodeConnector {
     this.operationRouter.registerAll(this.chatgptLogins.operations());
     this.operationRouter.registerAll(
       new ConversationHostingEnablementService({
+        mutations: this.configMutations,
         config: () => this.config,
         setConfig: (config) => (this.config = config),
         configPath: this.configPath,

@@ -8,8 +8,10 @@ import {
 import { saveNodeConfig, type NodeConfig } from '../config.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import { nodeOperationData } from '../connection/node-operation-data.js';
+import type { NodeConfigMutations } from './node-config-mutations.js';
 
 interface ConversationHostingEnablementServiceOptions {
+  readonly mutations: NodeConfigMutations;
   readonly config: () => NodeConfig | undefined;
   readonly setConfig: (config: NodeConfig) => void;
   readonly configPath: string | undefined;
@@ -26,8 +28,8 @@ export class ConversationHostingEnablementService {
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
     return {
-      'conversation.hosting.enable': (data) => this.enable(data),
-      'conversation.hosting.disable': (data) => this.disable(data)
+      'conversation.hosting.enable': (data) => this.options.mutations.run(() => this.enable(data)),
+      'conversation.hosting.disable': (data) => this.options.mutations.run(() => this.disable(data))
     };
   }
 

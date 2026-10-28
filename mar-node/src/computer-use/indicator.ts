@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { terminateProcessTree } from '../../process-tree.js';
+import { terminateProcessTree } from '../process-tree.js';
+import { ComputerUseError } from './contracts.js';
 
 const START_TIMEOUT_MS = 5_000;
 const STOP_TIMEOUT_MS = 2_000;
@@ -11,13 +12,16 @@ const STOP_TIMEOUT_MS = 2_000;
 /** A non-activating, pointer-transparent primary-display control marker. */
 export class ComputerUseControlIndicator {
   #closed = false;
+  #closePromise: Promise<void> | undefined;
   #lostError: Error | undefined;
+  readonly #exited: Promise<void>;
   readonly lost: Promise<Error>;
 
   private constructor(
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly directory: string
   ) {
+    this.#exited = new Promise((resolveExit) => child.once('close', () => resolveExit()));
     this.lost = new Promise<Error>((resolveLost) => {
       child.once('exit', (code, signal) => {
         if (this.#closed) return;
@@ -32,27 +36,62 @@ export class ComputerUseControlIndicator {
   static async show(runtimeExecutable: string): Promise<ComputerUseControlIndicator> {
     const directory = await mkdtemp(resolve(tmpdir(), 'mar-computer-use-indicator-'));
     const script = resolve(directory, 'indicator.py');
-    await writeFile(script, PYTHON_INDICATOR_SOURCE, { encoding: 'utf8', mode: 0o600 });
-    const child = spawn(runtimeExecutable, ['-u', script], {
-      cwd: directory,
-      env: indicatorEnvironment(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      detached: process.platform !== 'win32'
-    });
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      await writeFile(script, PYTHON_INDICATOR_SOURCE, { encoding: 'utf8', mode: 0o600 });
+      child = spawn(runtimeExecutable, ['-u', script], {
+        cwd: directory,
+        env: indicatorEnvironment(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: process.platform !== 'win32'
+      });
+    } catch (error) {
+      try {
+        await rm(directory, { recursive: true, force: true });
+      } catch (cleanup) {
+        throw new ComputerUseError(
+          'COMPUTER_CLEANUP_FAILED',
+          'Computer Use indicator startup cleanup failed.',
+          {
+            cause: new AggregateError([error, cleanup])
+          }
+        );
+      }
+      throw error;
+    }
     const indicator = new ComputerUseControlIndicator(child, directory);
     try {
       await waitUntilVisible(child);
       return indicator;
     } catch (error) {
-      await indicator.close();
+      try {
+        await indicator.close();
+      } catch (cleanup) {
+        throw new ComputerUseError(
+          'COMPUTER_CLEANUP_FAILED',
+          'Computer Use indicator startup and cleanup failed.',
+          { cause: new AggregateError([error, cleanup]) }
+        );
+      }
       throw error;
     }
   }
 
-  async close(): Promise<void> {
-    if (this.#closed) return;
+  close(): Promise<void> {
+    if (this.#closePromise !== undefined) return this.#closePromise;
     this.#closed = true;
+    this.#closePromise = this.#close().catch((error: unknown) => {
+      throw new ComputerUseError(
+        'COMPUTER_CLEANUP_FAILED',
+        'Computer Use indicator cleanup failed.',
+        { cause: error }
+      );
+    });
+    return this.#closePromise;
+  }
+
+  async #close(): Promise<void> {
     this.child.stdin.end();
     if (this.child.exitCode === null && this.child.signalCode === null) {
       await terminateProcessTree(this.child).catch(() => {
@@ -62,16 +101,30 @@ export class ComputerUseControlIndicator {
           // The process may have exited between the status check and termination.
         }
       });
-      if (!(await waitForExit(this.child, STOP_TIMEOUT_MS))) {
-        try {
-          this.child.kill('SIGKILL');
-        } catch {
-          // The process may have exited before the fallback signal.
-        }
-        await waitForExit(this.child, STOP_TIMEOUT_MS);
-      }
     }
-    await rm(this.directory, { recursive: true, force: true }).catch(() => undefined);
+    if (!(await this.#waitForClose(STOP_TIMEOUT_MS))) {
+      try {
+        this.child.kill('SIGKILL');
+      } catch {
+        // The process may have exited before the fallback signal.
+      }
+      if (!(await this.#waitForClose(STOP_TIMEOUT_MS)))
+        throw new ComputerUseError(
+          'COMPUTER_CLEANUP_FAILED',
+          'Computer Use indicator did not exit.'
+        );
+    }
+    await rm(this.directory, { recursive: true, force: true });
+  }
+
+  #waitForClose(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolveWait) => {
+      const timer = setTimeout(() => resolveWait(false), timeoutMs);
+      void this.#exited.then(() => {
+        clearTimeout(timer);
+        resolveWait(true);
+      });
+    });
   }
 
   assertActive(): void {
@@ -79,24 +132,6 @@ export class ComputerUseControlIndicator {
     if (this.child.exitCode !== null || this.child.signalCode !== null)
       throw new Error('Computer Use control indicator is no longer active.');
   }
-}
-
-async function waitForExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number
-): Promise<boolean> {
-  if (child.exitCode !== null || child.signalCode !== null) return true;
-  return await new Promise<boolean>((resolveExit) => {
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    const exit = () => finish(true);
-    const finish = (exited: boolean) => {
-      clearTimeout(timer);
-      child.off('exit', exit);
-      resolveExit(exited);
-    };
-    child.once('exit', exit);
-    if (child.exitCode !== null || child.signalCode !== null) finish(true);
-  });
 }
 
 async function waitUntilVisible(child: ChildProcessWithoutNullStreams): Promise<void> {

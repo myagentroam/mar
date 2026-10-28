@@ -123,7 +123,10 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
 });
 
 it('provides desktop guidance from the Node host with its real tool dependency', async () => {
-  expect(computerUseHostSkill.requiredTools).toEqual(['mcp__mar_computer__exec']);
+  expect(computerUseHostSkill.requiredTools).toEqual([
+    'mcp__mar_computer__exec',
+    'mcp__mar_computer__wait'
+  ]);
   const content = await computerUseHostSkill.load();
   for (const instruction of [
     '## Operating the desktop',
@@ -137,6 +140,13 @@ it('provides desktop guidance from the Node host with its real tool dependency',
     'exact locations, identifiers, and interaction instructions',
     'expected initialization or modal flow',
     'batch safe repetitive interactions',
+    'small test stroke',
+    'mcp__mar_computer__wait',
+    'STOPPING',
+    'wait timeout or interrupted wait does not stop the task',
+    'complete strokes or bounded batches',
+    'restore those settings in a finally block',
+    'do not operate the same desktop',
     'Do not issue sleep-only calls',
     'resumed transparently for a later Run',
     'Always obtain a fresh observation after a Run boundary'

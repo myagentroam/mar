@@ -1,4 +1,4 @@
-import { MarctlError } from './config.mjs';
+import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;

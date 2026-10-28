@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { DirectFallbackError, DirectUnsafeError, openDirectTerminal } from '../../src/direct.mjs';
+import { openDirectTerminal } from '../../src/direct.mjs';
+import { DirectFallbackError, DirectUnsafeError } from '../../src/direct-errors.mjs';
 import { runTerminalSession } from '../../src/terminal.mjs';
 
 const FINGERPRINT = `sha-256 ${Array.from({ length: 32 }, () => 'AA').join(':')}`;
@@ -164,6 +165,9 @@ function createDirectFixture({
   attach = true,
   answerFingerprint = FINGERPRINT,
   handoffFrames = [],
+  terminalError,
+  transportError,
+  unrelatedTransportError = false,
   peer = new FakePeer()
 } = {}) {
   peer.attachTerminal = attach;
@@ -178,6 +182,33 @@ function createDirectFixture({
         )
       );
     } else if (message.type === 'direct.prepare') {
+      if (unrelatedTransportError) {
+        queueMicrotask(() =>
+          control.emit(
+            'message',
+            JSON.stringify({
+              type: 'direct.error',
+              requestId: 'another-request',
+              code: 'DIRECT_TRANSFER_NOT_AUTHORIZED'
+            }),
+            false
+          )
+        );
+      }
+      if (transportError) {
+        queueMicrotask(() =>
+          control.emit(
+            'message',
+            JSON.stringify({
+              type: 'direct.error',
+              requestId: message.requestId,
+              code: transportError
+            }),
+            false
+          )
+        );
+        return;
+      }
       queueMicrotask(() =>
         control.emit(
           'message',
@@ -216,6 +247,19 @@ function createDirectFixture({
       );
     } else if (message.type === 'terminal.direct.prepare') {
       queueMicrotask(() => {
+        if (terminalError) {
+          control.emit(
+            'message',
+            JSON.stringify({
+              type: 'terminal.direct.error',
+              requestId: message.requestId,
+              code: terminalError,
+              message: 'Terminal request failed.'
+            }),
+            false
+          );
+          return;
+        }
         control.emit(
           'message',
           JSON.stringify({
@@ -271,6 +315,219 @@ function createDirectFixture({
     }
   };
 }
+
+for (const [timing, code, errorName] of [
+  ['before-prepared', 'DIRECT_SESSION_LIMIT_REACHED', 'DirectRejectedError'],
+  ['after-prepared', 'DIRECT_NODE_GENERATION_MISMATCH', 'DirectRejectedError'],
+  ['peer-created', 'DIRECT_TRANSFER_SESSION_CONFLICT', 'DirectRejectedError'],
+  ['peer-created-then-fails', 'DIRECT_TRANSFER_SESSION_CONFLICT', 'DirectRejectedError'],
+  ['before-prepared', 'DIRECT_TRANSFER_UNAVAILABLE', 'DirectFallbackError'],
+  ['unrelated', undefined, undefined]
+]) {
+  test(`classifies early Node transport failure: ${timing} ${code ?? 'other session'}`, async () => {
+    const fixture = createDirectFixture();
+    const emit = (message) => fixture.control.emit('message', JSON.stringify(message), false);
+    const fail = () => emit({ type: 'direct.error', directSessionId: 'transport-1', code });
+    const send = fixture.control.onSend;
+    fixture.control.onSend = (message) => {
+      if (message.type !== 'direct.prepare') return send(message);
+      queueMicrotask(() => {
+        emit({
+          type: 'direct.error',
+          directSessionId: 'other-session',
+          code: 'DIRECT_SESSION_LIMIT_REACHED'
+        });
+        if (timing === 'before-prepared') fail();
+        emit({
+          type: 'direct.prepared',
+          requestId: message.requestId,
+          directSessionId: 'transport-1',
+          purpose: 'TRANSPORT'
+        });
+        if (timing === 'after-prepared') fail();
+      });
+    };
+    let prepared = false;
+    let rejected;
+    const pending = openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => {
+        if (timing.startsWith('peer-created')) fail();
+        if (timing === 'peer-created-then-fails') throw new Error('Native initialization failed.');
+        return fixture.peer;
+      },
+      onRejected: (error) => {
+        rejected = error;
+      },
+      onPrepared: () => {
+        prepared = true;
+      },
+      timeoutMs: 150
+    });
+    if (timing === 'unrelated') {
+      (await pending).close();
+      return;
+    }
+    await assert.rejects(pending, (error) => error.code === code && error.name === errorName);
+    assert.equal(rejected?.code, errorName === 'DirectRejectedError' ? code : undefined);
+    assert.equal(
+      prepared,
+      false,
+      'a known rejection must not release the relay preparation barrier'
+    );
+    assert.equal(fixture.peer.channels.length, 0);
+    assert.equal(fixture.control.closed, true);
+  });
+}
+
+test('matches transport prepare rejection by request ID without waiting for timeout', async () => {
+  const fixture = createDirectFixture({ transportError: 'DIRECT_TRANSFER_NOT_AUTHORIZED' });
+  await assert.rejects(
+    openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => fixture.peer,
+      timeoutMs: 150
+    }),
+    (error) =>
+      error.code === 'DIRECT_TRANSFER_NOT_AUTHORIZED' && error.name === 'DirectRejectedError'
+  );
+});
+
+test('a transport error for a different request does not reject the connection', async () => {
+  const fixture = createDirectFixture({ unrelatedTransportError: true });
+  const transport = await openDirectTerminal({
+    client: fixture.client,
+    WebSocketClass: FakeSocket,
+    nodeId: 'node-1',
+    terminalId: 'terminal-1',
+    peerConnectionFactory: () => fixture.peer,
+    timeoutMs: 500
+  });
+  transport.close();
+});
+
+test('a transient transport prepare error remains eligible for fallback', async () => {
+  const fixture = createDirectFixture({ transportError: 'DIRECT_TRANSFER_UNAVAILABLE' });
+  await assert.rejects(
+    openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => fixture.peer,
+      timeoutMs: 500
+    }),
+    (error) => error instanceof DirectFallbackError && error.code === 'DIRECT_TRANSFER_UNAVAILABLE'
+  );
+});
+
+test('preserves a transport rejection received during the preparation barrier', async () => {
+  const fixture = createDirectFixture();
+  await assert.rejects(
+    openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => fixture.peer,
+      timeoutMs: 150,
+      onPrepared: async () => {
+        fixture.control.emit(
+          'message',
+          JSON.stringify({
+            type: 'direct.error',
+            directSessionId: 'transport-1',
+            code: 'DIRECT_TRANSFER_NOT_AUTHORIZED'
+          }),
+          false
+        );
+        await new Promise(() => {});
+      }
+    }),
+    (error) =>
+      error.code === 'DIRECT_TRANSFER_NOT_AUTHORIZED' && error.name === 'DirectRejectedError'
+  );
+  assert.equal(fixture.peer.channels.length, 0);
+});
+
+test('does not send OPEN when cancelled during the handoff', async () => {
+  const fixture = createDirectFixture();
+  const controller = new AbortController();
+  await assert.rejects(
+    openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => fixture.peer,
+      timeoutMs: 150,
+      signal: controller.signal,
+      beforeOpen: async () => controller.abort('SIGINT')
+    })
+  );
+  assert.equal(
+    fixture.peer.channels.flatMap((channel) => channel.sent).some((frame) => frame.type === 'OPEN'),
+    false
+  );
+});
+
+for (const code of [
+  'TERMINAL_NOT_AUTHORIZED',
+  'TERMINAL_DIRECT_LEASE_EXPIRED',
+  'TERMINAL_NOT_FOUND',
+  'TERMINAL_CLOSED',
+  'TERMINAL_ATTACH_CONFLICT'
+]) {
+  test(`rejects ${code} from direct prepare without relay fallback`, async () => {
+    const fixture = createDirectFixture({ terminalError: code });
+    let relayCalls = 0;
+    const client = {
+      ...fixture.client,
+      async createTerminal() {
+        return 'terminal-1';
+      },
+      async deleteTerminal() {},
+      async createAttachTicket() {
+        relayCalls++;
+        return 'ticket';
+      }
+    };
+    await assert.rejects(
+      runTerminalSession({
+        client,
+        WebSocketClass: FakeSocket,
+        nodeId: 'node-1',
+        command: 'echo test',
+        connectionTimeoutMs: 500,
+        openDirectTerminal: (options) =>
+          openDirectTerminal({ ...options, peerConnectionFactory: () => fixture.peer })
+      }),
+      (error) => error.code === code
+    );
+    assert.equal(relayCalls, 0);
+  });
+}
+
+test('allows relay fallback when direct prepare reports a transient transport failure', async () => {
+  const fixture = createDirectFixture({ terminalError: 'TERMINAL_DIRECT_UNAVAILABLE' });
+  await assert.rejects(
+    openDirectTerminal({
+      client: fixture.client,
+      WebSocketClass: FakeSocket,
+      nodeId: 'node-1',
+      terminalId: 'terminal-1',
+      peerConnectionFactory: () => fixture.peer,
+      timeoutMs: 500
+    }),
+    (error) => error instanceof DirectFallbackError && error.code === 'TERMINAL_DIRECT_UNAVAILABLE'
+  );
+});
 
 class FakeStdout extends EventEmitter {
   constructor() {

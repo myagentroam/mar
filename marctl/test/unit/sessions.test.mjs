@@ -4,8 +4,8 @@ import { once } from 'node:events';
 import WebSocket, { WebSocketServer } from 'ws';
 import test from 'node:test';
 import { main, parseArgs } from '../../src/cli.mjs';
-import { waitForSessionRun } from '../../src/sessions.mjs';
-import { MarctlError } from '../../src/config.mjs';
+import { waitForSessionRun } from '../../src/session-wait.mjs';
+import { MarctlError } from '../../src/errors.mjs';
 import { MarctlClient } from '../../src/client.mjs';
 import { mkdtemp, rm, writeFile, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1312,9 +1312,17 @@ test('keeps structured authorization failures and reports unknown mutation outco
   assert.ok(!output.includes('Private task input'));
   assert.ok(!output.includes(env.MAR_CTL_USER_TOKEN));
   for (const args of [
+    ['start', '--runner', 'mar-agent', '-m', 'task'],
+    ['config', 's', '--model', 'model'],
+    ['rename', 's', '--title', 'title'],
     ['prompt', 'set', 's', '-m', 'new instructions'],
     ['prompt', 'clear', 's'],
-    ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve']
+    ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
+    ['schedule', 'create', 's', '--cron', '* * * * *', '-m', 'task'],
+    ['schedule', 'update', 's', '--expected-revision', '1', '--cron', '* * * * *'],
+    ['stop', 's'],
+    ['goal', 'set', 's', '-m', 'goal'],
+    ['goal', 'clear', 's']
   ]) {
     let mutationCalls = 0;
     let mutationOutput = '';

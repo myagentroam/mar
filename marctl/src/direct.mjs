@@ -1,26 +1,17 @@
+import {
+  DirectFallbackError,
+  DirectUnsafeError,
+  DirectRejectedError,
+  directControlError
+} from './direct-errors.mjs';
 import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
+import { LiveControl, cancelSession, withTimeout, isRecord } from './direct-control.mjs';
+import { DirectTerminalTransport } from './direct-transport.mjs';
 
 export const DIRECT_PREPARE_TIMEOUT_MS = 5000;
 export const DIRECT_SETUP_TIMEOUT_MS = 15000;
 export const DIRECT_ICE_TIMEOUT_MS = 3000;
 export const DIRECT_HEARTBEAT_MS = 10000;
-
-export class DirectFallbackError extends Error {
-  constructor(code = 'DIRECT_UNAVAILABLE') {
-    super(code);
-    this.name = 'DirectFallbackError';
-    this.code = code;
-  }
-}
-
-export class DirectUnsafeError extends Error {
-  constructor(code = 'DIRECT_CANCEL_UNCONFIRMED') {
-    super(code);
-    this.name = 'DirectUnsafeError';
-    this.code = code;
-  }
-}
 
 export async function openDirectTerminal(options) {
   const {
@@ -36,6 +27,7 @@ export async function openDirectTerminal(options) {
     onIceConnected,
     onTransportReady,
     beforeOpen,
+    onRejected,
     cleanupNative: cleanupNativeImpl,
     signal
   } = options;
@@ -55,6 +47,7 @@ export async function openDirectTerminal(options) {
   let unsafeFallback = false;
   let transportControlCleanup;
   let transportNegotiationActive = true;
+  let preparationError;
   let cleanupNative = cleanupNativeImpl;
   try {
     manifest ??= await client.getTerminalManifest(nodeId);
@@ -67,33 +60,79 @@ export async function openDirectTerminal(options) {
       throw new DirectFallbackError('DIRECT_UNSUPPORTED');
 
     live = new LiveControl(client.openWorkbenchWebSocket(WebSocketClass), timeoutMs);
-    await live.openAndResume();
+    await withTimeout(live.openAndResume(), timeoutMs, 'DIRECT_CONTROL_TIMEOUT', signal);
 
-    const transportPrepared = await live.request(
-      {
-        type: 'direct.prepare',
-        requestId: requestId(),
-        nodeId,
-        nodeGeneration: manifest.nodeGeneration,
-        purpose: 'TRANSPORT'
-      },
-      (message, request) =>
-        message.type === 'direct.prepared' &&
-        message.requestId === request.requestId &&
-        message.purpose === 'TRANSPORT',
-      'DIRECT_TRANSPORT_PREPARE_FAILED'
+    let dispatchControl;
+    let rejectPreparation;
+    const earlyTransportErrors = new Map();
+    const preparationFailure = new Promise((_, reject) => {
+      rejectPreparation = reject;
+    });
+    void preparationFailure.catch(() => undefined);
+    const failPreparation = (error) => {
+      preparationError ??= error;
+      rejectPreparation(preparationError);
+    };
+    // Node errors carry a session ID, not necessarily the browser's request ID.
+    // Listen before prepare and native initialization, then correlate with prepared.
+    transportControlCleanup = live.onControl((message) => {
+      if (dispatchControl) dispatchControl(message);
+      else if (
+        (message.type === 'direct.error' || message.type === 'direct.closed') &&
+        typeof message.directSessionId === 'string'
+      ) {
+        const error = directControlError(message.code);
+        if (transportSessionId === undefined) {
+          if (earlyTransportErrors.size >= 16 && !earlyTransportErrors.has(message.directSessionId))
+            failPreparation(new DirectRejectedError('DIRECT_CONTROL_MESSAGE_LIMIT'));
+          else if (!earlyTransportErrors.has(message.directSessionId))
+            earlyTransportErrors.set(message.directSessionId, error);
+        } else if (message.directSessionId === transportSessionId) failPreparation(error);
+      }
+    });
+    const transportPrepared = await withTimeout(
+      Promise.race([
+        live.request(
+          {
+            type: 'direct.prepare',
+            requestId: requestId(),
+            nodeId,
+            nodeGeneration: manifest.nodeGeneration,
+            purpose: 'TRANSPORT'
+          },
+          (message, request) =>
+            message.type === 'direct.prepared' &&
+            message.requestId === request.requestId &&
+            message.purpose === 'TRANSPORT',
+          'DIRECT_TRANSPORT_PREPARE_FAILED'
+        ),
+        preparationFailure
+      ]),
+      timeoutMs,
+      'DIRECT_TRANSPORT_PREPARE_FAILED',
+      signal
     );
     transportSessionId = transportPrepared.directSessionId;
+    const earlyError = earlyTransportErrors.get(transportSessionId);
+    earlyTransportErrors.clear();
+    if (earlyError) throw earlyError;
 
     const native =
       peerConnectionFactory === undefined ? await import('node-datachannel') : undefined;
     cleanupNative ??= native?.cleanup;
+    if (preparationError) throw preparationError;
     const createPeer =
       peerConnectionFactory ?? ((name, options) => new native.PeerConnection(name, options));
     peer = createPeer(`marctl-${transportSessionId}`, { iceServers: [] });
+    if (preparationError) throw preparationError;
 
     // Start negotiation only after both paths finish their control-plane preparation.
-    if (onPrepared) await onPrepared();
+    await withTimeout(
+      Promise.race([preparationFailure, onPrepared?.()]),
+      timeoutMs,
+      'DIRECT_SETUP_TIMEOUT',
+      signal
+    );
     if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
 
     const transportReady = new Promise((resolve, reject) => {
@@ -111,7 +150,7 @@ export async function openDirectTerminal(options) {
       const maybeReady = () => {
         if (connected && serverOpened) finish();
       };
-      transportControlCleanup = live.onControl((message) => {
+      dispatchControl = (message) => {
         if (!transportNegotiationActive || settled) return;
         if (message.type === 'direct.signal' && message.directSessionId === transportSessionId) {
           try {
@@ -134,8 +173,8 @@ export async function openDirectTerminal(options) {
           (message.type === 'direct.error' || message.type === 'direct.closed') &&
           message.directSessionId === transportSessionId
         )
-          finish(new DirectFallbackError(message.code));
-      });
+          finish(directControlError(message.code));
+      };
       peer.onLocalDescription((sdp, type) => {
         if (!transportNegotiationActive || settled) return;
         if (String(type).toLowerCase() !== 'offer') return;
@@ -224,23 +263,28 @@ export async function openDirectTerminal(options) {
     bootstrapChannel?.close?.();
     if (onTransportReady) await onTransportReady();
 
-    const terminalPrepared = await live.request(
-      {
-        type: 'terminal.direct.prepare',
-        requestId: requestId(),
-        nodeId,
-        nodeGeneration: manifest.nodeGeneration,
-        transportSessionId,
-        terminalId,
-        afterSequence,
-        readonly: false
-      },
-      (message, request) =>
-        message.type === 'terminal.direct.prepared' &&
-        message.requestId === request.requestId &&
-        typeof message.directSessionId === 'string' &&
-        typeof message.grant === 'string',
-      'TERMINAL_DIRECT_PREPARE_FAILED'
+    const terminalPrepared = await withTimeout(
+      live.request(
+        {
+          type: 'terminal.direct.prepare',
+          requestId: requestId(),
+          nodeId,
+          nodeGeneration: manifest.nodeGeneration,
+          transportSessionId,
+          terminalId,
+          afterSequence,
+          readonly: false
+        },
+        (message, request) =>
+          message.type === 'terminal.direct.prepared' &&
+          message.requestId === request.requestId &&
+          typeof message.directSessionId === 'string' &&
+          typeof message.grant === 'string',
+        'TERMINAL_DIRECT_PREPARE_FAILED'
+      ),
+      timeoutMs,
+      'TERMINAL_DIRECT_PREPARE_FAILED',
+      signal
     );
     terminalSessionId = terminalPrepared.directSessionId;
     terminalChannel = peer.createDataChannel(`mar-terminal-${terminalSessionId}`, {
@@ -258,16 +302,20 @@ export async function openDirectTerminal(options) {
       cleanupNative
     });
     if (beforeOpen) await beforeOpen();
+    if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
     await withTimeout(
       transport.waitForAttachment(terminalPrepared.grant),
       timeoutMs,
-      'TERMINAL_DIRECT_TIMEOUT'
+      'TERMINAL_DIRECT_TIMEOUT',
+      signal
     );
     return transport;
   } catch (error) {
+    error = preparationError ?? error;
     transportControlCleanup?.();
     transportControlCleanup = undefined;
     unsafeFallback = transport?.openSent === true;
+    if (error instanceof DirectRejectedError) onRejected?.(error);
     if (transport !== undefined) {
       await transport.cancelAndDispose().catch(() => undefined);
       transport.dispose({ skipCancel: true });
@@ -285,455 +333,15 @@ export async function openDirectTerminal(options) {
     live?.close();
     if (transport === undefined) peer?.close?.();
     if (transport === undefined) cleanupNative?.();
+    if (error instanceof DirectRejectedError) throw error;
     if (unsafeFallback) throw new DirectUnsafeError('DIRECT_OPEN_CANCEL_UNCONFIRMED');
     if (error instanceof DirectFallbackError || error instanceof DirectUnsafeError) throw error;
     throw new DirectFallbackError(errorCode(error));
   }
 }
 
-class LiveControl {
-  #socket;
-  #timeoutMs;
-  #ready = false;
-  #closed = false;
-  #waiters = new Set();
-  #listeners = new Set();
-  #onMessage;
-  #onError;
-  #onClose;
-
-  constructor(socket, timeoutMs) {
-    this.#socket = socket;
-    this.#timeoutMs = timeoutMs;
-    this.#onMessage = (raw, isBinary) => {
-      if (isBinary) return;
-      let message;
-      try {
-        message = JSON.parse(rawToString(raw));
-      } catch {
-        return;
-      }
-      if (!isRecord(message) || typeof message.type !== 'string') return;
-      for (const listener of this.#listeners) listener(message);
-      for (const waiter of [...this.#waiters]) {
-        if (!waiter.predicate(message, waiter.request)) continue;
-        this.#waiters.delete(waiter);
-        clearTimeout(waiter.timer);
-        waiter.resolve(message);
-      }
-    };
-    this.#onError = () => this.#fail(new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE'));
-    this.#onClose = () => this.#fail(new DirectFallbackError('DIRECT_CONTROL_CLOSED'));
-    socket.on?.('message', this.#onMessage);
-    socket.on?.('error', this.#onError);
-    socket.on?.('close', this.#onClose);
-  }
-
-  async openAndResume() {
-    await this.#waitForSocket('open', 'DIRECT_CONTROL_TIMEOUT');
-    const ready = this.waitFor(
-      (message) =>
-        message.type === 'workbench.ready' && typeof message.workbenchConnectionId === 'string',
-      undefined,
-      'DIRECT_RESUME_TIMEOUT'
-    );
-    if (!this.send({ type: 'resume' })) {
-      ready.catch(() => undefined);
-      throw new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE');
-    }
-    await ready;
-    this.#ready = true;
-  }
-
-  request(message, predicate, fallbackCode) {
-    if (!this.#ready) throw new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE');
-    const response = this.waitFor(predicate, message, fallbackCode);
-    if (!this.send(message)) {
-      response.catch(() => undefined);
-      throw new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE');
-    }
-    return response;
-  }
-
-  waitFor(predicate, request, fallbackCode, timeoutMs = this.#timeoutMs) {
-    return new Promise((resolve, reject) => {
-      if (this.#closed) {
-        reject(new DirectFallbackError('DIRECT_CONTROL_CLOSED'));
-        return;
-      }
-      const waiter = {
-        predicate,
-        request,
-        resolve,
-        reject,
-        timer: setTimeout(() => {
-          this.#waiters.delete(waiter);
-          reject(new DirectFallbackError(fallbackCode ?? 'DIRECT_SETUP_TIMEOUT'));
-        }, timeoutMs)
-      };
-      this.#waiters.add(waiter);
-    });
-  }
-
-  onControl(listener) {
-    if (this.#closed) return () => {};
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  }
-
-  send(message) {
-    if (this.#closed || (this.#socket.readyState !== undefined && this.#socket.readyState !== 1))
-      return false;
-    try {
-      this.#socket.send(JSON.stringify(message));
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  close() {
-    if (this.#closed) return;
-    this.#closed = true;
-    this.#fail(new DirectFallbackError('DIRECT_CONTROL_CLOSED'));
-    this.#listeners.clear();
-    this.#socket.removeListener?.('message', this.#onMessage);
-    this.#socket.removeListener?.('error', this.#onError);
-    this.#socket.removeListener?.('close', this.#onClose);
-    try {
-      this.#socket.close();
-    } catch {
-      // The control socket is already closed.
-    }
-  }
-
-  #waitForSocket(event, code) {
-    if (this.#socket.readyState === 1) {
-      return Promise.resolve();
-    }
-    return new Promise((resolve, reject) => {
-      const onEvent = () => {
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new DirectFallbackError(code));
-      };
-      const onClose = () => {
-        cleanup();
-        reject(new DirectFallbackError(code));
-      };
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new DirectFallbackError(code));
-      }, this.#timeoutMs);
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.#socket.removeListener?.(event, onEvent);
-        this.#socket.removeListener?.('error', onError);
-        this.#socket.removeListener?.('close', onClose);
-      };
-      this.#socket.once?.(event, onEvent);
-      this.#socket.once?.('error', onError);
-      this.#socket.once?.('close', onClose);
-    });
-  }
-
-  #fail(error) {
-    if (this.#closed && this.#waiters.size === 0) return;
-    for (const waiter of [...this.#waiters]) {
-      this.#waiters.delete(waiter);
-      clearTimeout(waiter.timer);
-      waiter.reject(error);
-    }
-  }
-}
-
-class DirectTerminalTransport extends EventEmitter {
-  #channel;
-  #live;
-  #peer;
-  #transportSessionId;
-  #terminalSessionId;
-  #terminalId;
-  #cleanupNative;
-  #heartbeatTimer;
-  #unsubscribeLive;
-  #closed = false;
-  #attached = false;
-  #active = false;
-  #pendingEvents = [];
-  #attachmentResolve;
-  #attachmentReject;
-  #openSent = false;
-  #cancelSent = false;
-
-  constructor({
-    channel,
-    live,
-    peer,
-    transportSessionId,
-    terminalSessionId,
-    terminalId,
-    heartbeatMs,
-    cleanupNative
-  }) {
-    super();
-    this.#channel = channel;
-    this.#live = live;
-    this.#peer = peer;
-    this.#transportSessionId = transportSessionId;
-    this.#terminalSessionId = terminalSessionId;
-    this.#terminalId = terminalId;
-    this.#cleanupNative = cleanupNative;
-    this.#channel.onMessage?.((raw) => this.#handleMessage(raw));
-    this.#channel.onClosed?.(() => this.#fail('TERMINAL_DIRECT_CLOSED'));
-    this.#channel.onError?.(() => this.#fail('TERMINAL_CONNECTION_FAILED'));
-    this.#unsubscribeLive = this.#live.onControl((message) => this.#handleControl(message));
-    this.#heartbeatTimer = setInterval(() => {
-      if (
-        !this.#live.send({
-          type: 'direct.heartbeat',
-          directSessionId: this.#transportSessionId
-        }) ||
-        !this.#live.send({
-          type: 'terminal.direct.heartbeat',
-          directSessionId: this.#terminalSessionId
-        })
-      )
-        this.#fail('TERMINAL_CONNECTION_LOST');
-    }, heartbeatMs);
-    this.#heartbeatTimer.unref?.();
-  }
-
-  get openSent() {
-    return this.#openSent;
-  }
-
-  activate() {
-    if (this.#active) return;
-    this.#active = true;
-    const pendingEvents = this.#pendingEvents;
-    this.#pendingEvents = [];
-    for (const { type, args } of pendingEvents) this.#emit(type, ...args);
-  }
-
-  waitForAttachment(grant) {
-    return new Promise((resolve, reject) => {
-      if (this.#closed) {
-        reject(new DirectFallbackError('TERMINAL_DIRECT_CLOSED'));
-        return;
-      }
-      this.#attachmentResolve = resolve;
-      this.#attachmentReject = reject;
-      let opened = false;
-      const onOpen = () => {
-        if (opened || this.#closed) return;
-        opened = true;
-        try {
-          this.#openSent = true;
-          if (
-            !this.#channel.sendMessage(
-              JSON.stringify({
-                type: 'OPEN',
-                directSessionId: this.#terminalSessionId,
-                grant
-              })
-            )
-          )
-            throw new Error('TERMINAL_ATTACH_FAILED');
-        } catch {
-          this.#fail('TERMINAL_ATTACH_FAILED');
-        }
-      };
-      this.#channel.onOpen?.(onOpen);
-      if (this.#channel.isOpen?.() === true) onOpen();
-    });
-  }
-
-  send(frame) {
-    if (this.#closed || this.#channel.isOpen?.() !== true)
-      throw new Error('TERMINAL_CONNECTION_LOST');
-    const value = typeof frame === 'string' ? frame : JSON.stringify(frame);
-    if (!this.#channel.sendMessage(value)) throw new Error('TERMINAL_INPUT_FAILED');
-  }
-
-  close() {
-    this.dispose();
-  }
-
-  dispose({ skipCancel = false } = {}) {
-    if (this.#closed) return;
-    this.#closed = true;
-    clearInterval(this.#heartbeatTimer);
-    if (!skipCancel) this.#sendCancel();
-    this.#attachmentReject?.(new DirectFallbackError('TERMINAL_DIRECT_CLOSED'));
-    this.#attachmentResolve = undefined;
-    this.#attachmentReject = undefined;
-    this.#unsubscribeLive?.();
-    this.#unsubscribeLive = undefined;
-    this.#channel.close?.();
-    this.#peer.close?.();
-    this.#live.close();
-    this.#cleanupNative?.();
-    this.#emit('close');
-  }
-
-  async cancelAndDispose() {
-    const terminalClosed = this.#live.waitFor(
-      (message) =>
-        message.type === 'terminal.direct.closed' &&
-        message.directSessionId === this.#terminalSessionId,
-      undefined,
-      'DIRECT_CANCEL_TIMEOUT',
-      1000
-    );
-    const transportClosed = this.#live.waitFor(
-      (message) =>
-        message.type === 'direct.closed' && message.directSessionId === this.#transportSessionId,
-      undefined,
-      'DIRECT_CANCEL_TIMEOUT',
-      1000
-    );
-    this.#sendCancel();
-    await Promise.allSettled([terminalClosed, transportClosed]);
-    this.dispose({ skipCancel: true });
-  }
-
-  #handleMessage(raw) {
-    if (this.#closed) return;
-    if (!this.#attached) {
-      let frame;
-      try {
-        frame = JSON.parse(rawToString(raw));
-      } catch {
-        this.#fail('TERMINAL_FRAME_INVALID');
-        return;
-      }
-      if (
-        !isRecord(frame) ||
-        frame.type !== 'ATTACHED' ||
-        frame.terminalId !== this.#terminalId ||
-        !Number.isSafeInteger(frame.afterSequence) ||
-        frame.afterSequence < 0
-      ) {
-        this.#fail('TERMINAL_ATTACH_FAILED');
-        return;
-      }
-      this.#attached = true;
-      this.#attachmentResolve?.();
-      this.#attachmentResolve = undefined;
-      this.#attachmentReject = undefined;
-      return;
-    }
-    this.#emit(
-      'message',
-      raw,
-      typeof raw === 'string'
-        ? false
-        : Buffer.isBuffer(raw) || raw instanceof ArrayBuffer || ArrayBuffer.isView(raw)
-    );
-  }
-
-  #handleControl(message) {
-    if (message.type === 'terminal.direct.error' || message.type === 'terminal.direct.closed') {
-      if (!this.#attached) this.#fail(message.code);
-      else this.#fail(message.code);
-    }
-    if (message.type === 'direct.closed' || message.type === 'direct.error')
-      this.#fail(message.code);
-  }
-
-  #fail(code) {
-    if (this.#closed) return;
-    const error = new Error(code);
-    if (!this.#attached) this.#attachmentReject?.(new DirectFallbackError(code));
-    this.#attachmentResolve = undefined;
-    this.#attachmentReject = undefined;
-    this.#emit('error', error);
-    this.dispose();
-  }
-
-  #emit(type, ...args) {
-    if (!this.#active) {
-      this.#pendingEvents.push({ type, args });
-      return;
-    }
-    if (type !== 'error' || this.listenerCount('error') > 0) this.emit(type, ...args);
-  }
-
-  #sendCancel() {
-    if (this.#cancelSent) return;
-    this.#cancelSent = true;
-    this.#live.send({
-      type: 'terminal.direct.cancel',
-      directSessionId: this.#terminalSessionId
-    });
-    this.#live.send({
-      type: 'direct.cancel',
-      directSessionId: this.#transportSessionId,
-      reason: 'CLI_CLOSED'
-    });
-  }
-}
-
-async function cancelSession(live, type, directSessionId) {
-  if (live === undefined) return;
-  const closed = live.waitFor(
-    (message) =>
-      message.type === `${type.replace('.cancel', '.closed')}` &&
-      message.directSessionId === directSessionId,
-    undefined,
-    'DIRECT_CANCEL_TIMEOUT',
-    1000
-  );
-  live.send({
-    type,
-    directSessionId,
-    ...(type === 'direct.cancel' ? { reason: 'CLI_FALLBACK' } : {})
-  });
-  await closed.catch(() => undefined);
-}
-
-function withTimeout(promise, timeoutMs, code, signal) {
-  let timer;
-  let onAbort;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new DirectFallbackError(code)), timeoutMs);
-    }),
-    ...(signal
-      ? [
-          new Promise((_, reject) => {
-            onAbort = () => reject(new DirectFallbackError('DIRECT_RACE_CANCELLED'));
-            if (signal.aborted) onAbort();
-            else signal.addEventListener('abort', onAbort, { once: true });
-          })
-        ]
-      : [])
-  ]).finally(() => {
-    clearTimeout(timer);
-    if (onAbort) signal.removeEventListener('abort', onAbort);
-  });
-}
-
 function requestId() {
   return randomUUID().replaceAll('-', '');
-}
-
-function rawToString(raw) {
-  if (typeof raw === 'string') return raw;
-  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
-  if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString('utf8');
-  if (ArrayBuffer.isView(raw))
-    return Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength).toString('utf8');
-  return String(raw);
-}
-
-function isRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function localOfferSignal(sdp) {

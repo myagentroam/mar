@@ -1,10 +1,26 @@
 import { readFile } from 'node:fs/promises';
 import { MarctlClient } from './client.mjs';
-import { MarctlError, loadConfig } from './config.mjs';
+import { loadConfig } from './config.mjs';
+import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 import { runTerminalSession } from './terminal.mjs';
 import { runScp } from './scp.mjs';
-import { parseSessionArgs, runSessionCommand, sessionExitCode } from './sessions.mjs';
+import { parseSessionArgs } from './session-args.mjs';
+import { runSessionCommand, sessionExitCode } from './sessions.mjs';
+
+async function withCommandSignals(run) {
+  const controller = new AbortController();
+  const onSigint = () => controller.abort('SIGINT');
+  const onSigterm = () => controller.abort('SIGTERM');
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
+  try {
+    return await run(controller.signal);
+  } finally {
+    process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
+  }
+}
 
 export async function main(
   argv = process.argv.slice(2),
@@ -60,42 +76,51 @@ export async function main(
       return 0;
     }
     if (args.command === 'sessions') {
-      const result = await runSessionCommand({
-        args,
-        client: marctlClient,
-        env,
-        stdin,
-        WebSocketClass,
-        translate
-      });
+      const execute = (signal) =>
+        runSessionCommand({
+          args,
+          client: marctlClient,
+          env,
+          stdin,
+          WebSocketClass,
+          translate,
+          signal
+        });
+      const result = args.action === 'wait' ? await withCommandSignals(execute) : await execute();
       writeLine(stdout, JSON.stringify(result, null, args.json ? undefined : 2));
       return 0;
     }
     if (args.command === 'scp') {
       const socketClass = WebSocketClass ?? (await import('ws')).default;
-      return await runScp({
-        source: args.source,
-        destination: args.destination,
-        preserve: args.preserve,
-        client: marctlClient,
-        WebSocketClass: socketClass,
-        resolveNodeId: (reference) => resolveNodeId(marctlClient, reference, translate),
-        translate
-      });
+      return await withCommandSignals((signal) =>
+        runScp({
+          source: args.source,
+          destination: args.destination,
+          preserve: args.preserve,
+          client: marctlClient,
+          WebSocketClass: socketClass,
+          resolveNodeId: (reference) => resolveNodeId(marctlClient, reference, translate),
+          translate,
+          signal
+        })
+      );
     }
 
     const nodeId = await resolveNodeId(marctlClient, args.nodeId, translate);
     const socketClass = WebSocketClass ?? (await import('ws')).default;
-    return await runTerminalSession({
-      client: marctlClient,
-      WebSocketClass: socketClass,
-      nodeId,
-      command: args.remoteCommand,
-      raceConnections: true,
-      stdout,
-      stderr,
-      translate
-    });
+    return await withCommandSignals((signal) =>
+      runTerminalSession({
+        client: marctlClient,
+        WebSocketClass: socketClass,
+        nodeId,
+        command: args.remoteCommand,
+        raceConnections: true,
+        stdout,
+        stderr,
+        translate,
+        signal
+      })
+    );
   } catch (error) {
     if (argv[0] === 'sessions') {
       const failure = {

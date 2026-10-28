@@ -1,16 +1,6 @@
 import { createTranslator } from './i18n/index.mjs';
 
-export class MarctlError extends Error {
-  constructor(message, options = {}) {
-    super(message, options);
-    this.name = 'MarctlError';
-    this.code = options.code;
-    this.requestId = options.requestId;
-    this.upstreamRequestId = options.upstreamRequestId;
-    this.details = options.details;
-    this.statusCode = options.statusCode;
-  }
-}
+import { MarctlError } from './errors.mjs';
 
 export async function loadConfig({ env = process.env, translate = createTranslator(env) } = {}) {
   const serverUrl = nonEmptyString(env.MAR_CTL_SERVER_URL);

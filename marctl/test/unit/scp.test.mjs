@@ -19,7 +19,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { resolveNodeId } from '../../src/cli.mjs';
-import { runScp, parseScpEndpoint, scpSourceBasename } from '../../src/scp.mjs';
+import { runScp } from '../../src/scp.mjs';
+import { parseScpEndpoint, scpSourceBasename } from '../../src/scp-endpoint.mjs';
 import { createTranslator } from '../../src/i18n/index.mjs';
 
 const translate = createTranslator();
@@ -64,10 +65,11 @@ function fakeNodeClient({
       const child = spawn(
         process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh',
         process.platform === 'win32'
-          ? ['/d', '/s', '/c', this.terminal.command]
+          ? ['/d', '/s', '/c', `"${this.terminal.command}"`]
           : ['-c', this.terminal.command],
         {
-          stdio: ['pipe', 'pipe', 'pipe']
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsVerbatimArguments: process.platform === 'win32'
         }
       );
       this.terminal.child = child;
@@ -576,39 +578,97 @@ test('rejects a legacy Server response before attaching or starting a PTY comman
   }
 });
 
-test('interrupts a copy, closes its terminal and removes signal listeners', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-interrupt-'));
-  const signals = new EventEmitter();
-  const client = fakeNodeClient({ onCreate: () => signals.emit('SIGINT') });
-  try {
-    const source = path.join(dir, 'source');
-    await writeFile(source, 'test');
-    await assert.rejects(
-      runScp({
-        source,
-        destination: `linux://${path.join(dir, 'destination')}`,
-        client,
-        WebSocketClass: class {},
-        resolveNodeId: async (host) => host,
-        translate,
-        signals
-      }),
-      /interrupted/
-    );
-    assert.equal(client.deleted, 1);
-    assert.equal(signals.listenerCount('SIGINT'), 0);
-    assert.equal(signals.listenerCount('SIGTERM'), 0);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+test('cancels Node resolution promptly and ignores its late result', async () => {
+  const signals = new AbortController();
+  let releaseResolution;
+  let markResolutionStarted;
+  let workerStarts = 0;
+  const resolutionStarted = new Promise((resolve) => {
+    markResolutionStarted = resolve;
+  });
+  const client = {
+    async getTerminalManifest() {
+      workerStarts += 1;
+      return { binaryTerminal: true };
+    },
+    async createTerminal() {
+      workerStarts += 1;
+      return { terminalId: 'terminal-1', binary: true };
+    },
+    async deleteTerminal() {}
+  };
+  const copying = runScp({
+    source: 'linux:///remote/source',
+    destination: '/tmp/marctl-scp-destination',
+    client,
+    WebSocketClass: class {},
+    resolveNodeId: () => {
+      markResolutionStarted();
+      return new Promise((resolve) => {
+        releaseResolution = resolve;
+      });
+    },
+    translate,
+    signal: signals.signal
+  }).then(
+    (value) => ({ kind: 'fulfilled', value }),
+    (error) => ({ kind: 'rejected', error })
+  );
+
+  await resolutionStarted;
+  signals.abort('SIGINT');
+  let timer;
+  const prompt = await Promise.race([
+    copying,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(undefined), 100);
+    })
+  ]);
+  clearTimeout(timer);
+  releaseResolution('node-linux');
+
+  const late = await copying;
+  assert.equal(late.kind, 'rejected');
+  assert.equal(workerStarts, 0);
+  assert.equal(prompt?.kind, 'rejected', 'cancellation should settle before Node resolution');
 });
+
+for (const remoteSide of ['source', 'target'])
+  test(`interrupts remote ${remoteSide} preparation before the worker starts`, async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-interrupt-'));
+    const signals = new AbortController();
+    const client = fakeNodeClient({ onCreate: () => signals.abort('SIGINT') });
+    try {
+      const source = path.join(dir, 'source');
+      const destination = path.join(dir, 'destination');
+      await writeFile(source, 'test');
+      await writeFile(destination, 'previous');
+      await assert.rejects(
+        runScp({
+          source: remoteSide === 'source' ? `linux://${source}` : source,
+          destination: remoteSide === 'target' ? `linux://${destination}` : destination,
+          client,
+          WebSocketClass: class {},
+          resolveNodeId: async (host) => host,
+          translate,
+          signal: signals.signal
+        }),
+        /interrupted/
+      );
+      assert.equal(client.deleted, 1);
+      assert.equal(client.started, 0);
+      assert.equal(await readFile(destination, 'utf8'), 'previous');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
 test(
   'interrupts a copy even while its actual relay write is blocked',
   { timeout: 5_000 },
   async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-write-interrupt-'));
-    const signals = new EventEmitter();
+    const signals = new AbortController();
     let releaseWrite;
     let notifyBlocked;
     const blocked = new Promise((resolve) => {
@@ -633,20 +693,18 @@ test(
         WebSocketClass: class {},
         resolveNodeId: async (host) => host,
         translate,
-        signals
+        signal: signals.signal
       });
       let failure;
       const settled = copying.catch((error) => {
         failure = error;
       });
       await blocked;
-      signals.emit('SIGINT');
+      signals.abort('SIGINT');
       await new Promise((resolve) => setTimeout(resolve, 50));
       assert.match(failure?.message ?? '', /interrupted/);
       await settled;
       assert.equal(client.deleted, 1);
-      assert.equal(signals.listenerCount('SIGINT'), 0);
-      assert.equal(signals.listenerCount('SIGTERM'), 0);
     } finally {
       releaseWrite?.();
       await copying?.catch(() => {});
@@ -696,6 +754,34 @@ test(
       assert.equal(client.deleted, 1);
     } finally {
       releaseWrite?.();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+);
+
+test(
+  'does not retry or roll back a published file when its final acknowledgement is lost',
+  { timeout: 5000 },
+  async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-published-'));
+    const client = fakeNodeClient({
+      onOutput(bytes, deliver, socket) {
+        if (bytes.length === 1 && bytes[0] === 2) {
+          socket.readyState = 3;
+          socket.emit('close');
+        } else deliver();
+      }
+    });
+    try {
+      const source = path.join(dir, 'source');
+      const target = path.join(dir, 'target');
+      await writeFile(source, 'new payload');
+      await writeFile(target, 'original');
+      await assert.rejects(copy(client, source, `linux://${target}`), /connection was lost/);
+      assert.equal((await readFile(target)).toString(), 'new payload');
+      assert.equal(client.started, 1);
+      assert.equal(client.deleted, 1);
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }

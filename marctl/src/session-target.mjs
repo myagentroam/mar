@@ -1,0 +1,25 @@
+// Scope is a command property, independent of input or the remote session state.
+export const sessionTarget = Object.freeze({
+  current: 'workspace',
+  list: 'workspace',
+  start: 'workspace',
+  'schedule.list': 'workspace',
+  show: 'current',
+  config: 'current',
+  history: 'current',
+  graph: 'current',
+  rename: 'current',
+  'prompt.get': 'current',
+  'prompt.set': 'current',
+  'prompt.clear': 'current',
+  'schedule.get': 'current',
+  'schedule.create': 'current',
+  'schedule.update': 'current',
+  send: 'explicit',
+  stop: 'explicit',
+  wait: 'explicit',
+  'approval.decide': 'explicit',
+  'goal.get': 'explicit',
+  'goal.set': 'explicit',
+  'goal.clear': 'explicit'
+});

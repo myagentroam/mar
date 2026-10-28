@@ -1,13 +1,15 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ComputerUseDesktopLeaseService,
   PyAutoGuiComputerUseProvider,
-  computerUseToolDefinition,
-  probeComputerUse
+  computerUseToolDefinition
 } from '../../src/runner/mar-agent/computer-use.js';
+import { ComputerUseDesktopLeaseService } from '../../src/computer-use/session.js';
+import { probeComputerUse } from '../../src/computer-use/probe.js';
+import { ComputerUseControlIndicator } from '../../src/computer-use/indicator.js';
+import { PythonWorker } from '../../src/computer-use/worker.js';
 
 import {
   createFakeComputerRuntime,
@@ -35,6 +37,57 @@ async function fakeRuntime(options: DesktopFixtureOptions = {}): Promise<string>
 }
 
 describe('Computer Use core', () => {
+  it('closes the worker when startup ownership handoff fails', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    let worker: PythonWorker | undefined;
+    let close: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await expect(
+        PythonWorker.start(runtimeExecutable, (started) => {
+          worker = started;
+          close = vi.spyOn(started, 'close');
+          throw new Error('handoff failed');
+        })
+      ).rejects.toThrow('handoff failed');
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      await worker?.close();
+    }
+  });
+
+  it('retains indicator startup and cleanup failures in a stable cleanup error', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-indicator-failure-test-'));
+    roots.push(root);
+    const marker = join(root, 'indicator-directory');
+    const executable = join(root, 'indicator-start-failure');
+    await writeFile(
+      executable,
+      `#!/bin/sh\ndir=$(dirname "$2")\nprintf '%s' "$dir" > ${JSON.stringify(marker)}\nchmod 500 "$dir"\nexit 7\n`,
+      { mode: 0o700 }
+    );
+    try {
+      let failure: unknown;
+      try {
+        await ComputerUseControlIndicator.show(executable);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+      const cause = (failure as Error).cause as AggregateError;
+      expect(cause).toBeInstanceOf(AggregateError);
+      expect(cause.errors[0]).toEqual(
+        expect.objectContaining({ message: expect.stringContaining('exited during startup') })
+      );
+      expect(cause.errors[1]).toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+    } finally {
+      const directory = await readFile(marker, 'utf8').catch(() => '');
+      if (directory.startsWith(join(tmpdir(), 'mar-computer-use-indicator-'))) {
+        await chmod(directory, 0o700);
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
   it.each(['xclip', 'xsel'] as const)(
     'does not consume a one-shot clipboard selection while probing %s',
     async (clipboardBackend) => {
@@ -305,6 +358,34 @@ describe('Computer Use core', () => {
     await provider.dispose();
   });
 
+  it('ignores non-object JSON lines from the worker without crashing the Node', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const provider = new PyAutoGuiComputerUseProvider({ enabled: true, runtimeExecutable });
+    const binding = (await provider.bind({
+      runId: 'invalid-lines',
+      sessionId: 'invalid-lines',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    }))!;
+    try {
+      const result = await binding.call(
+        {
+          callId: 'invalid-lines',
+          name: 'mcp__mar_computer__exec',
+          arguments: {
+            code: 'import sys; sys.__stdout__.write("null\\n0\\n\\\"text\\\"\\n[]\\n"); sys.__stdout__.flush(); log("ok")'
+          }
+        },
+        new AbortController().signal
+      );
+      expect(result.data).toMatchObject({ outcome: 'SUCCEEDED', logs: ['ok'] });
+    } finally {
+      await binding.close();
+      await provider.dispose();
+    }
+  });
+
   it('shows the control indicator around execution and fails before desktop code without it', async () => {
     const runtimeExecutable = await fakeRuntime();
     const close = vi.fn(async () => undefined);
@@ -358,6 +439,315 @@ describe('Computer Use core', () => {
     ).rejects.toMatchObject({ code: 'COMPUTER_CONTROL_INDICATOR_UNAVAILABLE' });
     await unavailableBinding!.close();
     await unavailable.dispose();
+  });
+
+  it('keeps the lease until a closing binding finishes indicator preparation and cleanup', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const lease = new ComputerUseDesktopLeaseService();
+    let releaseIndicator!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      releaseIndicator = resolve;
+    });
+    const closeIndicator = vi.fn(async () => undefined);
+    const showControlIndicator = vi.fn(async () => {
+      await ready;
+      return { close: closeIndicator };
+    });
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      { lease, showControlIndicator }
+    );
+    const binding = await provider.bind({
+      runId: 'run-pending-indicator',
+      sessionId: 'session-pending-indicator',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    });
+    const call = binding!.call(
+      {
+        callId: 'pending',
+        name: 'mcp__mar_computer__exec',
+        arguments: { code: 'log("must not run")' }
+      },
+      new AbortController().signal
+    );
+    const outcome = call.then(
+      () => 'resolved',
+      () => 'rejected'
+    );
+    await vi.waitFor(() => expect(showControlIndicator).toHaveBeenCalledOnce());
+    let firstFinished = false;
+    let secondFinished = false;
+    const first = binding!.close().then(() => {
+      firstFinished = true;
+    });
+    const second = binding!.close().then(() => {
+      secondFinished = true;
+    });
+    try {
+      await Promise.resolve();
+      expect(firstFinished).toBe(false);
+      expect(secondFinished).toBe(false);
+      expect(lease.holder()?.runId).toBe('run-pending-indicator');
+    } finally {
+      releaseIndicator();
+      await Promise.allSettled([first, second, outcome]);
+      await provider.dispose();
+    }
+    expect(await outcome).toBe('rejected');
+    expect(closeIndicator).toHaveBeenCalledOnce();
+    expect(lease.holder()).toBeUndefined();
+  });
+
+  it('retains the lease and reports cleanup failure rather than permitting a new binding', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const lease = new ComputerUseDesktopLeaseService();
+    const controller = new AbortController();
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      {
+        lease,
+        showControlIndicator: async () => {
+          controller.abort();
+          return {
+            close: async () => {
+              throw new Error('cleanup failed');
+            }
+          };
+        }
+      }
+    );
+    const input = {
+      runId: 'cleanup-failure',
+      sessionId: 'cleanup-failure-session',
+      mode: 'run' as const,
+      enabled: true,
+      modelSupportsImages: true
+    };
+    const binding = (await provider.bind(input))!;
+    await expect(
+      binding.call(
+        { callId: 'cleanup-failure', name: 'mcp__mar_computer__exec', arguments: { code: 'pass' } },
+        controller.signal
+      )
+    ).rejects.toMatchObject({
+      code: 'COMPUTER_UNAVAILABLE',
+      message: expect.stringContaining('cleanup failed')
+    });
+    await expect(
+      binding.call(
+        { callId: 'after-failure', name: 'mcp__mar_computer__exec', arguments: { code: 'pass' } },
+        new AbortController().signal
+      )
+    ).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+    await expect(binding.close()).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+    await expect(provider.reset()).rejects.toThrow('Computer Use cleanup failed');
+    expect(lease.holder()?.runId).toBe('cleanup-failure');
+    await expect(provider.bind({ ...input, runId: 'next' })).rejects.toMatchObject({
+      code: 'COMPUTER_UNAVAILABLE'
+    });
+    await expect(provider.dispose()).rejects.toThrow('Computer Use cleanup failed');
+  });
+
+  it('retains successful execution when indicator cleanup fails and blocks the desktop', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const lease = new ComputerUseDesktopLeaseService();
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      {
+        lease,
+        showControlIndicator: async () => ({
+          close: async () => {
+            throw new Error('cleanup');
+          }
+        })
+      }
+    );
+    const binding = await provider.bind({
+      runId: 'success-cleanup',
+      sessionId: 'success-cleanup',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    });
+    try {
+      const result = await binding!.call(
+        {
+          callId: 'success-cleanup',
+          name: 'mcp__mar_computer__exec',
+          arguments: { code: 'log("completed")' }
+        },
+        new AbortController().signal
+      );
+      expect(result.data).toMatchObject({ outcome: 'SUCCEEDED', observationId: '' });
+      expect(result.content).toContain('cleanup failed');
+      await expect(binding!.close()).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+      expect(lease.holder()?.runId).toBe('success-cleanup');
+    } finally {
+      await expect(provider.reset()).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+    }
+  });
+
+  it('retains unknown outcome when post-send worker cleanup fails', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const wrapper = await readFile(runtimeExecutable, 'utf8');
+    await writeFile(
+      runtimeExecutable,
+      wrapper.replace('#!/bin/sh\n', '#!/bin/sh\nif [ "$1" = "-c" ]; then exit 7; fi\n')
+    );
+    const directoryFile = join(dirname(runtimeExecutable), 'worker-directory');
+    const lease = new ComputerUseDesktopLeaseService();
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      {
+        lease,
+        probe: async () => ({
+          available: true,
+          platform: 'linux',
+          backend: 'PYAUTOGUI',
+          runtimeExecutable,
+          reasonCode: null,
+          supportsScreenshot: true,
+          supportsInput: true,
+          supportsUnicodePaste: true,
+          supportsPrimaryDisplay: true
+        }),
+        showControlIndicator: async () => ({ close: async () => undefined })
+      }
+    );
+    const binding = await provider.bind({
+      runId: 'worker-cleanup',
+      sessionId: 'worker-cleanup',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    });
+    try {
+      const code = `import os\nopen(${JSON.stringify(directoryFile)}, 'w').write(os.getcwd())\nraise RuntimeError('action failed')`;
+      const result = await binding!.call(
+        { callId: 'worker-cleanup', name: 'mcp__mar_computer__exec', arguments: { code } },
+        new AbortController().signal
+      );
+      expect(result.data).toMatchObject({ outcome: 'OUTCOME_UNKNOWN', observationId: '' });
+      expect(result.content).toContain('action failed');
+      expect(result.content).toContain('cleanup failed');
+      await expect(binding!.close()).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+      expect(lease.holder()?.runId).toBe('worker-cleanup');
+    } finally {
+      try {
+        await expect(provider.reset()).rejects.toMatchObject({ code: 'COMPUTER_CLEANUP_FAILED' });
+      } finally {
+        const directory = await readFile(directoryFile, 'utf8').catch(() => '');
+        if (directory.startsWith(join(tmpdir(), 'mar-computer-use-')))
+          await rm(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('handles worker spawn failure without losing cleanup ownership', async () => {
+    const runtimeExecutable = join(
+      tmpdir(),
+      `missing-computer-runtime-${Date.now()}-${Math.random()}`
+    );
+    const lease = new ComputerUseDesktopLeaseService();
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      {
+        lease,
+        probe: async () => ({
+          available: true,
+          platform: 'linux',
+          backend: 'PYAUTOGUI',
+          runtimeExecutable,
+          supportsScreenshot: true,
+          supportsInput: true,
+          supportsUnicodePaste: true,
+          supportsPrimaryDisplay: true,
+          reasonCode: null
+        }),
+        showControlIndicator: async () => ({ close: async () => undefined })
+      }
+    );
+    const binding = (await provider.bind({
+      runId: 'spawn-failure',
+      sessionId: 'spawn-failure',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    }))!;
+    try {
+      await expect(
+        binding.call(
+          { callId: 'spawn', name: 'mcp__mar_computer__exec', arguments: { code: 'pass' } },
+          new AbortController().signal
+        )
+      ).rejects.toMatchObject({ code: 'COMPUTER_WORKER_START_FAILED' });
+    } finally {
+      await binding.close();
+      await provider.dispose();
+    }
+    expect(lease.holder()).toBeUndefined();
+  });
+
+  it('holds the desktop lease until the terminated worker actually exits', async () => {
+    const runtimeExecutable = await fakeRuntime();
+    const root = dirname(runtimeExecutable);
+    const started = join(root, 'worker-started');
+    const stopping = join(root, 'worker-stopping');
+    const release = join(root, 'worker-release');
+    const lease = new ComputerUseDesktopLeaseService();
+    const provider = new PyAutoGuiComputerUseProvider(
+      { enabled: true, runtimeExecutable },
+      { lease, showControlIndicator: async () => ({ close: async () => undefined }) }
+    );
+    const binding = await provider.bind({
+      runId: 'run-worker-exit',
+      sessionId: 'session-worker-exit',
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true
+    });
+    const code = [
+      'import signal, pathlib, time',
+      `started = pathlib.Path(${JSON.stringify(started)})`,
+      `stopping = pathlib.Path(${JSON.stringify(stopping)})`,
+      `release = pathlib.Path(${JSON.stringify(release)})`,
+      'def stop_handler(*args):',
+      '    stopping.write_text("stopping")',
+      '    while not release.exists(): time.sleep(0.01)',
+      '    raise SystemExit()',
+      'signal.signal(signal.SIGTERM, stop_handler)',
+      'started.write_text("started")',
+      'time.sleep(30)'
+    ].join('\n');
+    const call = binding!.call(
+      { callId: 'pending-worker', name: 'mcp__mar_computer__exec', arguments: { code } },
+      new AbortController().signal
+    );
+    const outcome = call.then(
+      () => undefined,
+      () => undefined
+    );
+    let closed = false;
+    try {
+      await vi.waitFor(async () => expect(await readFile(started, 'utf8')).toBe('started'));
+      const closing = binding!.close().then(() => {
+        closed = true;
+      });
+      await vi.waitFor(async () => expect(await readFile(stopping, 'utf8')).toBe('stopping'));
+      await Promise.race([closing, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+      expect(closed).toBe(false);
+      expect(lease.holder()?.runId).toBe('run-worker-exit');
+      await writeFile(release, 'release');
+      await closing;
+      expect(lease.holder()).toBeUndefined();
+    } finally {
+      await writeFile(release, 'release');
+      await outcome;
+      await binding!.close();
+      await provider.dispose();
+    }
   });
 
   it('stops an active desktop script when the control indicator is lost', async () => {
@@ -577,6 +967,16 @@ describe('Computer Use core', () => {
       enabled: true,
       modelSupportsImages: true
     });
+    await expect(
+      first!.call(
+        {
+          callId: 'closed-binding',
+          name: 'mcp__mar_computer__exec',
+          arguments: { code: 'counter = 999' }
+        },
+        new AbortController().signal
+      )
+    ).rejects.toMatchObject({ code: 'COMPUTER_UNAVAILABLE' });
     await expect(
       resumed!.call(
         {

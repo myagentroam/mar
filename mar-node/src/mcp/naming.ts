@@ -16,7 +16,7 @@ export const NODE_MCP = {
     name: 'mar_notification',
     tools: { send: 'send_notification', email: 'send_email_notification' }
   },
-  computer: { name: 'mar_computer', tools: { exec: 'exec' } },
+  computer: { name: 'mar_computer', tools: { exec: 'exec', wait: 'wait' } },
   channel: { name: 'mar_channel', tools: { reply: 'reply' } }
 } as const;
 
@@ -27,6 +27,11 @@ export const NODE_COMPUTER_TOOL_NAME = [
   'mcp',
   NODE_MCP.computer.name,
   NODE_MCP.computer.tools.exec
+].join('__');
+export const NODE_COMPUTER_WAIT_TOOL_NAME = [
+  'mcp',
+  NODE_MCP.computer.name,
+  NODE_MCP.computer.tools.wait
 ].join('__');
 const reservedNames = new Set<string>(Object.values(NODE_MCP).map(({ name }) => name));
 
