@@ -279,15 +279,15 @@ export function aggregateConversationDisplayItems(
     const item = 'items' in entry ? entry.items[0]! : entry.item;
     if (item.processGroup?.id !== groupId) anchors.clear();
     groupId = item.processGroup?.id;
-    // Independent tool rows do not split other categories in the same process.
+    // Independent tool rows and task lists do not split categories in the same process.
     if (
       groupId &&
       ((entry.type === 'subagent_group' &&
         !stringField(conversationPayload(item.payload) ?? {}, 'subagentId')) ||
         (entry.type === 'item' &&
-          item.kind === 'tool_call' &&
           item.permissionStop === undefined &&
-          toolPresentation(item.payload) !== undefined))
+          (item.kind === 'todo_list' ||
+            (item.kind === 'tool_call' && toolPresentation(item.payload) !== undefined))))
     ) {
       result.push(entry);
       continue;

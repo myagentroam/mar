@@ -2,8 +2,131 @@ import { describe, expect, it } from 'vitest';
 import { conversationItemSchema } from '@myagentroam/protocol';
 import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
+import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 describe('MAR Agent live tool output projection', () => {
+  it.each([
+    [undefined, 'tool.completed', undefined],
+    ['poll', 'tool.completed', undefined],
+    ['write', 'tool.completed', undefined],
+    ['cancel', 'tool.completed', undefined],
+    ['poll', 'tool.failed', 'PROCESS_NOT_FOUND'],
+    ['poll', 'tool.failed', 'MAR_AGENT_CANCELLED']
+  ])('projects unlinked exec_wait as a command (%s, %s, %s)', (action, terminalType, code) => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const input = { processId: 'untracked-process', yieldMs: 1000, ...(action ? { action } : {}) };
+    const events = [
+      toolEvent({ type: 'tool.started', toolName: 'exec_wait', callId: 'wait', input }),
+      toolEvent({
+        type: terminalType,
+        toolName: 'exec_wait',
+        callId: 'wait',
+        ...(terminalType === 'tool.completed'
+          ? {
+              summary: 'Command completed.',
+              data: {
+                status: 'completed',
+                processId: input.processId,
+                stdout: 'verified',
+                exitCode: 0
+              }
+            }
+          : { code, message: 'Wait failed.' })
+      })
+    ];
+    const items = events.flatMap((event) => normalizer.normalize(event));
+    const status =
+      terminalType === 'tool.completed'
+        ? 'COMPLETED'
+        : code === 'MAR_AGENT_CANCELLED'
+          ? 'CANCELLED'
+          : 'FAILED';
+    expect(items).toMatchObject([
+      {
+        itemId: 'mar-agent-tool:wait',
+        kind: 'command_execution',
+        status: 'IN_PROGRESS',
+        payload: {
+          command: 'exec_wait',
+          outputPreview: expect.stringContaining(`Action: ${action ?? 'poll'}`)
+        }
+      },
+      { itemId: 'mar-agent-tool:wait', kind: 'command_execution', status }
+    ]);
+    expect(items[1]!.payload.outputPreview).toContain(input.processId);
+    expect(items[1]!.payload.outputPreview).toContain(
+      terminalType === 'tool.completed' ? 'verified' : code!
+    );
+    expectValidConversationItems(items);
+
+    const history = projectMarAgentHistory(
+      { id: 'session-1' } as NodeAgentSession,
+      events.map((event) => ({ kind: 'event' as const, sequence: event.sequence, event }))
+    );
+    expect(history.flatMap((turn) => turn.items)).toMatchObject([
+      { id: 'mar-agent-tool:wait', kind: 'command_execution', status, payload: items[1]!.payload }
+    ]);
+  });
+
+  it('updates unlinked exec_wait progress and replaces it with the formal result', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const started = toolEvent({
+      type: 'tool.started',
+      toolName: 'exec_wait',
+      callId: 'unlinked-wait',
+      input: { processId: 'process-1', action: 'poll' }
+    });
+    normalizer.normalize(started);
+    const output = (text: string, processId = 'process-1') =>
+      toolOutput('unlinked-wait', text, processId, undefined, 'exec_wait');
+    const first = normalizer.normalize(output('first snapshot'));
+    const second = normalizer.normalize(output('latest snapshot'));
+    expect(second).toMatchObject([
+      {
+        itemId: 'mar-agent-tool:unlinked-wait',
+        kind: 'command_execution',
+        status: 'IN_PROGRESS',
+        payload: { command: 'exec_wait', outputPreview: expect.stringContaining('latest snapshot') }
+      }
+    ]);
+    expect(second[0]!.payload.outputPreview).not.toContain('first snapshot');
+    expect(normalizer.normalize(output('wrong process', 'process-2'))).toEqual([]);
+    expect(
+      normalizer.normalize({ ...output('wrong execution'), executionId: 'execution-2' })
+    ).toEqual([]);
+    expect(normalizer.normalize({ ...output('wrong turn'), turnId: 'turn-2' })).toEqual([]);
+    const completed = toolEvent({
+      type: 'tool.completed',
+      toolName: 'exec_wait',
+      callId: 'unlinked-wait',
+      data: { status: 'completed', processId: 'process-1', stdout: 'formal output', exitCode: 0 }
+    });
+    const final = normalizer.normalize(completed);
+    expect(final).toMatchObject([
+      {
+        itemId: 'mar-agent-tool:unlinked-wait',
+        kind: 'command_execution',
+        status: 'COMPLETED',
+        payload: { outputPreview: expect.stringContaining('formal output') }
+      }
+    ]);
+    expect(final[0]!.payload.outputPreview).not.toContain('latest snapshot');
+    expect(normalizer.normalize(output('late output'))).toEqual([]);
+    expectValidConversationItems([...first, ...second, ...final]);
+    const history = projectMarAgentHistory(
+      { id: 'session-1' } as NodeAgentSession,
+      [started, completed].map((event) => ({
+        kind: 'event' as const,
+        sequence: event.sequence,
+        event
+      }))
+    );
+    expect(history.flatMap((turn) => turn.items)).toMatchObject([
+      { id: final[0]!.itemId, status: 'COMPLETED', payload: final[0]!.payload }
+    ]);
+  });
+
   it('replaces repeated Direct snapshots and converges to the formal exec result once', () => {
     const normalizer = new MarAgentConversationNormalizer();
     const started = toolEvent({

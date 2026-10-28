@@ -967,6 +967,42 @@ describe('Conversation Show Aggregation', () => {
     ]);
   });
 
+  it.each([
+    ['reasoning', 'reasoning', { sections: [{ text: 'Inspect fixtures' }] }],
+    ['command', 'command_execution', { command: 'verify' }],
+    ['tool', 'tool_call', { toolName: 'inspect' }],
+    ['read', 'tool_call', { toolPresentation: { kind: 'READ', paths: ['src/main.ts'] } }],
+    ['subagent', 'tool_call', { subagentOperation: 'STATUS', subagentId: 'child-1' }],
+    ['file change', 'file_change', { changes: [{ path: 'src/main.ts', change: 'MODIFIED' }] }]
+  ])('keeps %s aggregation across an in-process task list', (_category, kind, payload) => {
+    const processGroup = { id: 'process-todo' };
+    const before = item('before', kind, payload, 'COMPLETED', processGroup);
+    const tasks = item(
+      'tasks',
+      'todo_list',
+      { items: [{ text: 'Verify fixtures', status: 'IN_PROGRESS' }] },
+      'COMPLETED',
+      processGroup
+    );
+    const after = item('after', kind, payload, 'IN_PROGRESS', processGroup);
+    const initial = conversationDisplayItems([before, tasks]);
+    const appended = conversationDisplayItems([before, tasks, after]);
+
+    expect(initial.map((entry) => entry.id)).toEqual(['before', 'tasks']);
+    expect(appended.map((entry) => entry.id)).toEqual(['tasks', 'before']);
+    expect(appended[0]).toEqual({ type: 'item', id: 'tasks', item: tasks });
+    expect(appended[1]).toMatchObject({ id: initial[0]!.id, items: [before, after] });
+
+    const { processGroup: _processGroup, ...unassignedTasks } = tasks;
+    expect(
+      conversationDisplayItems([before, unassignedTasks, after]).map((entry) => entry.id)
+    ).toEqual(['before', 'tasks', 'after']);
+    const nextProcess = { ...after, processGroup: { id: 'next-process' } };
+    expect(conversationDisplayItems([before, tasks, nextProcess]).map((entry) => entry.id)).toEqual(
+      ['before', 'tasks', 'after']
+    );
+  });
+
   it('moves an interleaved group to its latest record without moving on content or status updates', () => {
     const processGroup = { id: 'process-order' } as const;
     const records = [

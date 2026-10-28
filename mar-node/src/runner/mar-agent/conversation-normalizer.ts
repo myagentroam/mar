@@ -474,12 +474,26 @@ export class MarAgentConversationNormalizer {
       !state.active ||
       state.toolName !== toolName ||
       state.executionId !== executionId ||
-      (state.turnId !== undefined && turnId !== undefined && state.turnId !== turnId) ||
-      state.commandOrigin === undefined
+      (state.turnId !== undefined && turnId !== undefined && state.turnId !== turnId)
     )
       return [];
     const input = record(state.input);
     if (typeof input?.processId === 'string' && input.processId !== output.processId) return [];
+
+    if (state.commandOrigin === undefined) {
+      if (toolName !== 'exec_wait') return [];
+      return [
+        genericToolItem(
+          state.itemId,
+          toolName,
+          'IN_PROGRESS',
+          state.input,
+          snapshot.outputPreview,
+          null,
+          snapshot.truncated
+        )
+      ];
+    }
 
     const command = this.#commands.get(state.commandOrigin);
     if (command === undefined || command.status !== 'IN_PROGRESS') return [];
@@ -1221,7 +1235,7 @@ function genericToolItem(
       'Code execution'
     );
   }
-  if (toolName === 'code_exec_wait') {
+  if (toolName === 'code_exec_wait' || toolName === 'exec_wait') {
     const inputRecord = record(input);
     const action = typeof inputRecord?.action === 'string' ? inputRecord.action : 'poll';
     const inputSummary = compactRunnerValue(input, 10_000);
@@ -1254,7 +1268,7 @@ function genericToolItem(
           resultSummary.length > 10_000
       },
       status,
-      'Code execution wait'
+      toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait'
     );
   }
   const subagent = marAgentSubagentProjection(
