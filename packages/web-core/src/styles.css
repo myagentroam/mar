@@ -738,6 +738,45 @@ html.console-ui :where(input, textarea)::placeholder {
   opacity: 1;
 }
 
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__nav {
+  gap: 0.25rem;
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs > .el-tabs__header .el-tabs__item:nth-child(n) {
+  padding-inline: var(--mar-compact-option-padding-inline);
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item {
+  border-radius: var(--mar-radius-selection);
+  background-color: var(--mar-bg-tab-inactive);
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:not(.is-disabled):hover {
+  background-color: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-active:not(.is-disabled) {
+  background-color: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-disabled {
+  color: var(--mar-text-faint);
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__active-bar {
+  display: none;
+}
+
 :where(html.console-ui, .theme-preview) .el-dropdown-menu {
   --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
   --el-dropdown-menuItem-hover-color: var(--mar-text-primary);

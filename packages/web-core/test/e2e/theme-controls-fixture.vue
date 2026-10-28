@@ -10,6 +10,7 @@ const value = ref('');
 const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
 const menuAction = ref('');
+const activeTab = ref('settings');
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {
   throw new Error('This visual fixture does not persist prompts');
@@ -105,6 +106,16 @@ function saveFeedbackDialog(): void {
     <el-select v-model="selection" aria-label="Disabled select" disabled>
       <el-option label="One" value="one" />
     </el-select>
+  </section>
+  <section aria-label="Tabs state samples">
+    <el-tabs v-model="activeTab">
+      <el-tab-pane label="Settings" name="settings">Settings content</el-tab-pane>
+      <el-tab-pane label="Permissions" name="permissions">Permissions content</el-tab-pane>
+      <el-tab-pane label="Unavailable" name="unavailable" disabled />
+      <el-tab-pane label="Long configuration tab name" name="configuration">
+        Configuration content
+      </el-tab-pane>
+    </el-tabs>
   </section>
   <section aria-label="Dropdown state samples">
     <el-dropdown trigger="click" @command="menuAction = $event">
