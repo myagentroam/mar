@@ -68,10 +68,11 @@ function updateTabLayout(): void {
     const normal = element.querySelector<HTMLElement>('.workspace-tab:not(.pinned)');
     const style = getComputedStyle(element);
     const gap = Number.parseFloat(style.columnGap) || 0;
-    width = Number.parseFloat(style.paddingLeft) || 0;
+    const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+    width = paddingLeft;
     for (const pinned of element.querySelectorAll<HTMLElement>('.workspace-tab.pinned')) {
       if (pinned.dataset.tabId === undefined) continue;
-      offsets[pinned.dataset.tabId] = width;
+      offsets[pinned.dataset.tabId] = width - paddingLeft;
       width += pinned.getBoundingClientRect().width + gap;
     }
     const normalMinimum =
@@ -102,8 +103,7 @@ function observeTabList(): void {
   for (const tab of element.querySelectorAll('.workspace-tab')) resizeObserver.observe(tab);
 }
 
-function scrollActiveTabIntoView(): void {
-  const id = props.activeTabId;
+function scrollTabIntoView(id: string | undefined): void {
   const element =
     id === undefined
       ? undefined
@@ -114,11 +114,26 @@ function scrollActiveTabIntoView(): void {
   const bounds = element.getBoundingClientRect();
   const viewport = list.getBoundingClientRect();
   const style = getComputedStyle(list);
-  const left = viewport.left + (pinnedWidth.value || Number.parseFloat(style.paddingLeft) || 0);
+  const pinned = list.querySelectorAll<HTMLElement>('.workspace-tab.sticky-pinned');
+  const lastPinned = pinned.item(pinned.length - 1);
+  const left = lastPinned
+    ? lastPinned.getBoundingClientRect().right + (Number.parseFloat(style.columnGap) || 0)
+    : viewport.left + (Number.parseFloat(style.paddingLeft) || 0);
   const right = viewport.right - (Number.parseFloat(style.paddingRight) || 0);
   const delta =
     bounds.left < left ? bounds.left - left : bounds.right > right ? bounds.right - right : 0;
   if (delta !== 0) list.scrollBy({ left: delta, behavior: 'smooth' });
+}
+
+function scrollActiveTabIntoView(): void {
+  scrollTabIntoView(props.activeTabId);
+}
+
+function revealFocusedTab(event: FocusEvent, tabId: string): void {
+  const tab = event.currentTarget as HTMLElement;
+  requestAnimationFrame(() => {
+    if (tab.isConnected && tab.contains(document.activeElement)) scrollTabIntoView(tabId);
+  });
 }
 
 function scrollTabs(direction: -1 | 1): void {
@@ -343,6 +358,7 @@ function activate(tab: WorkspaceTab): void {
         @pointerup="handlePointerUp"
         @pointercancel="handlePointerCancel"
         @contextmenu="openContextMenu($event, tab)"
+        @focusin="revealFocusedTab($event, tab.id)"
       >
         <button
           v-tooltip="tab.label"
