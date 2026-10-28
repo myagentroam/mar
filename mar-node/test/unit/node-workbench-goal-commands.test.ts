@@ -2067,9 +2067,11 @@ describe('Node Workbench Manifest and command control', () => {
       await vi.advanceTimersByTimeAsync(45_000);
       expect(failedAttempts).toBe(4);
       expect(internals.goalRuntime.get(session.id)?.status).toBe('blocked');
-      expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([]);
+      await vi.waitFor(() =>
+        expect(internals.runtime.sessionQueue(session.id).itemIds).toEqual([])
+      );
     } finally {
-      connector.stop();
+      await connector.stop();
       vi.useRealTimers();
     }
   });

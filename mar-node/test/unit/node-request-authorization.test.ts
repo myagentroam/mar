@@ -30,6 +30,10 @@ describe('Node request authorization', () => {
       sent.push(JSON.parse(raw.toString()) as { type: string; payload: unknown; replyTo?: string });
     });
     try {
+      socket.send(JSON.stringify(createEnvelope('authenticated', { nodeId: 'node-a' })));
+      await vi.waitFor(() =>
+        expect(sent).toContainEqual(expect.objectContaining({ type: 'capabilities' }))
+      );
       const unauthorized = createEnvelope('node.request', {
         operation: 'workspace.list',
         data: {}

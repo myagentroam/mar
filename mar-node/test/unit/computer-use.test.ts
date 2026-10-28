@@ -465,44 +465,55 @@ describe('Computer Use core', () => {
       enabled: true,
       modelSupportsImages: true
     });
-    await binding!.call(
-      {
-        callId: 'warm-worker',
-        name: 'mcp__mar_computer__exec',
-        arguments: { code: '' }
-      },
-      new AbortController().signal
-    );
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 250);
-    const interrupted = await binding!.call(
-      {
-        callId: 'interrupt',
-        name: 'mcp__mar_computer__exec',
-        arguments: { code: 'time.sleep(10)' }
-      },
-      controller.signal
-    );
-    expect(interrupted.data).toMatchObject({
-      outcome: 'OUTCOME_UNKNOWN',
-      runtimeGeneration: 2
-    });
-    expect(interrupted.content).toContain('do not replay automatically');
+    try {
+      await binding!.call(
+        {
+          callId: 'warm-worker',
+          name: 'mcp__mar_computer__exec',
+          arguments: { code: '' }
+        },
+        new AbortController().signal
+      );
+      const startedPath = join(dirname(runtimeExecutable), 'script-started');
+      const execution = binding!.call(
+        {
+          callId: 'interrupt',
+          name: 'mcp__mar_computer__exec',
+          arguments: {
+            code: `__import__('pathlib').Path(${JSON.stringify(startedPath)}).write_text('started'); time.sleep(10)`
+          }
+        },
+        controller.signal
+      );
+      await vi.waitFor(async () => expect(await readFile(startedPath, 'utf8')).toBe('started'), {
+        timeout: 5000
+      });
+      controller.abort();
+      const interrupted = await execution;
+      expect(interrupted.data).toMatchObject({
+        outcome: 'OUTCOME_UNKNOWN',
+        runtimeGeneration: 2
+      });
+      expect(interrupted.content).toContain('do not replay automatically');
 
-    const recovered = await binding!.call(
-      {
-        callId: 'recover',
-        name: 'mcp__mar_computer__exec',
-        arguments: { code: '' }
-      },
-      new AbortController().signal
-    );
-    expect(recovered.data).toMatchObject({
-      outcome: 'SUCCEEDED',
-      runtimeGeneration: 2
-    });
-    await binding!.close();
-    await provider.dispose();
+      const recovered = await binding!.call(
+        {
+          callId: 'recover',
+          name: 'mcp__mar_computer__exec',
+          arguments: { code: '' }
+        },
+        new AbortController().signal
+      );
+      expect(recovered.data).toMatchObject({
+        outcome: 'SUCCEEDED',
+        runtimeGeneration: 2
+      });
+    } finally {
+      controller.abort();
+      await binding!.close();
+      await provider.dispose();
+    }
   });
 
   it('does not bind for plans, text-only models, or a Run without explicit enablement', async () => {

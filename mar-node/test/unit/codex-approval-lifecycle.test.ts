@@ -114,6 +114,8 @@ async function createFixture() {
     cwd: workspacePath
   });
 
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+
   return {
     connector,
     runtime: internals.runtime,
