@@ -44,8 +44,10 @@ describe('Server License activation service', () => {
     ).toBe(true);
     expect(fixture.commit).toHaveBeenCalledOnce();
     expect(fixture.audit).toHaveBeenCalledWith(
-      expect.anything(),
       expect.objectContaining({ eventType: 'license_activated', actorUserId: 1 })
+    );
+    expect(fixture.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.audit.mock.invocationCallOrder[0]!
     );
   });
 
@@ -60,6 +62,7 @@ describe('Server License activation service', () => {
     );
     expect(fixture.rollback).toHaveBeenCalledOnce();
     expect(fixture.commit).not.toHaveBeenCalled();
+    expect(fixture.audit).not.toHaveBeenCalled();
   });
 
   it('Application codes are fresh and uncacheable and status responses omit host fingerprints', async () => {
@@ -152,7 +155,7 @@ function licenseDatabaseFixture(invalidCount: number) {
   };
   const audit = vi.fn(async () => undefined);
   return {
-    database: { raw, auditWithConnection: audit } as unknown as MysqlServerDatabase,
+    database: { raw, audit } as unknown as MysqlServerDatabase,
     audit,
     sql,
     commit,

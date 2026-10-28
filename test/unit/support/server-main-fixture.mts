@@ -32,12 +32,14 @@ export function createServerApp() {
     process.on(signal, () => process.send?.(signal));
   }
   return {
-    async listen() {
-      process.send?.('ready');
-    },
-    shutdown() {
-      process.send?.('shutdown');
-      return pending;
+    app: {
+      async listen() {
+        process.send?.('ready');
+      },
+      shutdown() {
+        process.send?.('shutdown');
+        return pending;
+      }
     }
   };
 }

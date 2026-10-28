@@ -191,9 +191,8 @@ describe('Server prompt completion settings', () => {
     await app.close();
   });
 
-  it('appends an idempotent Core v24 table migration and validates the installed shape', async () => {
+  it('keeps the Core v24 table migration idempotent and validates the installed shape', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 24);
-    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.version).toBe(24);
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('user_prompt_completion_preferences');
     expect(migration?.name).toBe('user_prompt_completion_preferences');
 
