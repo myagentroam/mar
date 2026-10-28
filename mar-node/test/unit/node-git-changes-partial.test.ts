@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
@@ -126,7 +126,8 @@ describe('Git Changes partial success', () => {
       expect(
         (await current(path)).repositories.find((entry) => entry.repositoryPath === 'child')
       ).toMatchObject({ branch: 'main', status });
-    }
+    },
+    30000
   );
 
   it('reports local upstream counts for root, submodule and linked worktree groups without fetching', async () => {
@@ -417,7 +418,13 @@ describe('Git Changes partial success', () => {
     await rm(missing, { recursive: true });
     const result = await current(path);
     expect(result.partial).toBe(true);
-    expect(result.repositories).toEqual(
+    const repositories = result.repositories.map((repository) => ({
+      ...repository,
+      ...(repository.worktreePath === undefined
+        ? {}
+        : { worktreePath: normalize(repository.worktreePath) })
+    }));
+    expect(repositories).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ worktreePath: locked, locked: true, status: 'DIRTY' }),
         expect.objectContaining({

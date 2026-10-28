@@ -539,6 +539,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 async function initializeRepository(repositoryRoot: string): Promise<void> {
   await mkdir(repositoryRoot, { recursive: true });
   await git(repositoryRoot, ['init', '-b', 'main']);
+  await git(repositoryRoot, ['config', 'core.autocrlf', 'false']);
   await git(repositoryRoot, ['config', 'user.email', 'test@example.invalid']);
   await git(repositoryRoot, ['config', 'user.name', 'Test']);
 }
