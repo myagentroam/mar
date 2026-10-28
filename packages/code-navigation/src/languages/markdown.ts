@@ -147,6 +147,7 @@ function isWithinFencedCode(source: string, position: number): boolean {
 export const markdownFileSpecifierParser: FileSpecifierParser = { find };
 
 export const markdownNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: false,
   id: 'markdown',
   parser: markdownFileSpecifierParser,
   suffixes: ['.md', '.markdown']

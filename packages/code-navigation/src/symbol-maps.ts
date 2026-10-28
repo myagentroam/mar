@@ -4,7 +4,7 @@ import type { SymbolNavigationLanguageDefinition } from './types.js';
  * Fixed source maps generated from `Universal Ctags ab95af1 --list-maps`.
  * This remains pure metadata: Node owns the executable and index lifecycle.
  */
-const languages: readonly SymbolNavigationLanguageDefinition[] = [
+export const symbolNavigationMaps: readonly SymbolNavigationLanguageDefinition[] = [
   { id: 'Abaqus', fileNamePatterns: ['*.inp'] },
   { id: 'Abc', fileNamePatterns: ['*.abc', '*.abc'] },
   { id: 'Ada', fileNamePatterns: ['*.adb', '*.ads', '*.Ada', '*.ada'] },
@@ -257,62 +257,3 @@ const languages: readonly SymbolNavigationLanguageDefinition[] = [
   { id: 'Elm', fileNamePatterns: ['*.elm'] },
   { id: 'TOML', fileNamePatterns: ['*.toml'] }
 ];
-
-let compiled:
-  | readonly {
-      readonly language: SymbolNavigationLanguageDefinition;
-      readonly patterns: readonly RegExp[];
-    }[]
-  | undefined;
-
-export function symbolNavigationLanguageForPath(
-  path: string
-): SymbolNavigationLanguageDefinition | undefined {
-  const name = path.replaceAll('\\', '/').slice(path.lastIndexOf('/') + 1);
-  return compiledLanguages().find((entry) => entry.patterns.some((pattern) => pattern.test(name)))
-    ?.language;
-}
-
-export function supportsSymbolNavigationPath(path: string): boolean {
-  const name = path.replaceAll('\\', '/').slice(path.lastIndexOf('/') + 1);
-  return compiledLanguages().some((entry) => entry.patterns.some((pattern) => pattern.test(name)));
-}
-
-export function symbolNavigationLanguages(): readonly SymbolNavigationLanguageDefinition[] {
-  return languages;
-}
-
-function compiledLanguages(): readonly {
-  readonly language: SymbolNavigationLanguageDefinition;
-  readonly patterns: readonly RegExp[];
-}[] {
-  return (compiled ??= languages.map((language) => ({
-    language,
-    patterns: language.fileNamePatterns.map((pattern) => globPattern(pattern))
-  })));
-}
-
-function globPattern(value: string): RegExp {
-  let expression = '';
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index]!;
-    if (character === '*') {
-      expression += '.*';
-      continue;
-    }
-    if (character === '?') {
-      expression += '.';
-      continue;
-    }
-    if (character === '[') {
-      const close = value.indexOf(']', index + 1);
-      if (close >= 0) {
-        expression += value.slice(index, close + 1);
-        index = close;
-        continue;
-      }
-    }
-    expression += character.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&');
-  }
-  return new RegExp(`^${expression}$`, 'iu');
-}

@@ -4,6 +4,7 @@ import { createCPreprocessorFileSpecifierParser } from './c-preprocessor.js';
 export const cppFileSpecifierParser = createCPreprocessorFileSpecifierParser('cpp');
 
 export const cppNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'cpp',
   parser: cppFileSpecifierParser,
   suffixes: ['.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx'],

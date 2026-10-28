@@ -2,5 +2,5 @@ export {
   supportsSymbolNavigationPath,
   symbolNavigationLanguageForPath,
   symbolNavigationLanguages
-} from './symbol-navigation-registry.js';
+} from './symbol-matcher.js';
 export type { SymbolNavigationLanguageDefinition } from './types.js';

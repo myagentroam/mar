@@ -5,6 +5,7 @@ export const objectiveCppFileSpecifierParser =
   createCPreprocessorFileSpecifierParser('objective-cpp');
 
 export const objectiveCppNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'objective-cpp',
   parser: objectiveCppFileSpecifierParser,
   suffixes: ['.mm', '.h'],

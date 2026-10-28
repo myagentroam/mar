@@ -1,9 +1,5 @@
-import {
-  rangeAtColumn,
-  sourceLineAt,
-  type FileSpecifierParser,
-  type NavigationSyntaxDefinition
-} from '../types.js';
+import { rangeAtColumn, sourceLineAt } from '../source-ranges.js';
+import { type FileSpecifierParser, type NavigationSyntaxDefinition } from '../types.js';
 
 const importPath = /^\s*(?:[._]|[\p{L}_][\p{L}\p{N}_]*)?\s*"([^"\r\n]+)"\s*;?\s*$/u;
 const singleImport = /^\s*import\s+(?:[._]|[\p{L}_][\p{L}\p{N}_]*)?\s*"([^"\r\n]+)"\s*;?\s*$/u;
@@ -42,6 +38,7 @@ function isWithinImportBlock(source: string, lineStart: number): boolean {
 export const goFileSpecifierParser: FileSpecifierParser = { find };
 
 export const goNavigationSyntaxDefinition = {
+  hyphenSeparatesSymbol: true,
   id: 'go',
   parser: goFileSpecifierParser,
   suffixes: ['.go']
