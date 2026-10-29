@@ -8,17 +8,22 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
-import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import {
+  AgentError,
+  SecretValue,
+  type Agent,
+  type AgentModelConfiguration
+} from '../../src/index.js';
 import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
 import { observeModelStreamEvent } from '../../src/model/sse.js';
 import { modelRetryMaxAttempts } from '../../src/model/http.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 import {
   type ModelAdapter,
   type ModelEvent,
   type ModelRequest
 } from '../../src/model/contracts.js';
-import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import { openAgentSessionCatalog } from '../../src/sdk/session-catalog.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { countModelTokens } from '../../src/runtime/token-budget.js';
@@ -523,7 +528,7 @@ class SubagentAdapter implements ModelAdapter {
   constructor(readonly requests: ModelRequest[] = []) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    const child = effectiveInstructions(request).includes('non-recursive subagent');
+    const child = effectiveInstructions(request).includes('delegated subagent');
     const wait = !child && waitForNewChild(request);
     if (wait) {
       yield wait;
@@ -559,7 +564,12 @@ class SubagentAdapter implements ModelAdapter {
           type: 'client_tool.call',
           callId: 'parent-task',
           name: 'agent_start',
-          arguments: { description: 'Inspect input', prompt: 'Read input.txt', role: 'explore' }
+          arguments: {
+            title: 'Inspect input',
+            description: 'Inspect input',
+            prompt: 'Read input.txt',
+            role: 'explore'
+          }
         };
       yield { type: 'completed', reason: 'tool_use' };
       return;
@@ -577,7 +587,7 @@ class SubagentAdapter implements ModelAdapter {
     yield {
       type: 'text.completed',
       itemId: child ? 'child-final' : 'parent-final',
-      text: child ? 'x'.repeat(TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes + 100) : 'parent done'
+      text: child ? 'x'.repeat(16_384 + 100) : 'parent done'
     };
     yield { type: 'completed', reason: 'completed' };
   }
@@ -588,7 +598,7 @@ class EmptyFinalSubagentAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    const child = effectiveInstructions(request).includes('non-recursive subagent');
+    const child = effectiveInstructions(request).includes('delegated subagent');
     const wait = !child && waitForNewChild(request);
     if (wait) {
       yield wait;
@@ -601,7 +611,12 @@ class EmptyFinalSubagentAdapter implements ModelAdapter {
         type: 'client_tool.call',
         callId: 'parent-task',
         name: 'agent_start',
-        arguments: { description: 'Inspect input', prompt: 'Read input.txt', role: 'explore' }
+        arguments: {
+          title: 'Inspect input',
+          description: 'Inspect input',
+          prompt: 'Read input.txt',
+          role: 'explore'
+        }
       };
       yield { type: 'completed', reason: 'tool_use' };
       return;
@@ -638,21 +653,32 @@ class SubagentModelAdapter implements ModelAdapter {
   ) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    const child = effectiveInstructions(request).includes('non-recursive subagent');
+    const child = effectiveInstructions(request).includes('delegated subagent');
     const wait = !child && waitForNewChild(request);
     if (wait) {
       yield wait;
       yield { type: 'completed', reason: 'tool_use' };
       return;
     }
-    const hasToolResult = request.messages.some((message) => message.role === 'tool');
-    if (!child && !hasToolResult) {
+    const lastToolResult = request.messages.findLast((message) => message.role === 'tool');
+    if (!child && !lastToolResult) {
+      yield {
+        type: 'client_tool.call',
+        callId: 'list-models',
+        name: 'agent_list',
+        arguments: { scope: 'profile' }
+      };
+      yield { type: 'completed', reason: 'tool_use' };
+      return;
+    }
+    if (!child && lastToolResult?.name === 'agent_list') {
       const reasoningEffort = this.requestedReasoningEffort?.();
       yield {
         type: 'client_tool.call',
         callId: 'parent-task',
         name: 'agent_start',
         arguments: {
+          title: 'Inspect input',
           description: 'Inspect input',
           prompt: 'Read input.txt',
           role: 'explore',
@@ -3306,7 +3332,7 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('runs a non-recursive explore subagent', async () => {
+  it('runs an explore subagent through the external extension', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-subagent-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -3319,11 +3345,13 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'AGENTS.md'), 'SUBAGENT_SCOPED_RULE\n');
     await writeFile(join(workspace, 'src', 'AGENTS.md'), 'SUBAGENT_NESTED_RULE_NOT_AUTOLOADED\n');
     const requests: ModelRequest[] = [];
-    const agent = await createMarAgent(
+    let agent!: Agent;
+    agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
+        models: [{ ...model, conversationModel: true, subagentModel: true }],
+        extensions: [createSubagentExtension({ agent: () => agent })]
       },
       () => new SubagentAdapter(requests)
     );
@@ -3335,22 +3363,19 @@ describe('agent runtime', () => {
       status: 'completed',
       finalAnswer: 'parent done'
     });
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'subagent.started', description: 'Inspect input' }),
-        expect.objectContaining({ type: 'subagent.completed', status: 'completed' }),
-        expect.objectContaining({
-          type: 'tool.completed',
-          toolName: 'agent_wait',
-          data: expect.objectContaining({
-            description: 'Inspect input',
-            status: 'completed'
-          })
-        })
-      ])
+    const startResult = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'agent_start'
     );
+    const waitResult = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
+    );
+    if (startResult?.type !== 'tool.completed' || waitResult?.type !== 'tool.completed')
+      throw new Error('Missing external subagent start or wait result.');
+    const startedChild = JSON.parse(startResult.summary);
+    expect(startedChild).toMatchObject({ description: 'Inspect input', role: 'explore' });
+    expect(waitResult.summary).toContain('"status":"completed"');
     const childRequest = requests.find((request) =>
-      effectiveInstructions(request).includes('non-recursive subagent')
+      effectiveInstructions(request).includes('delegated subagent')
     );
     const childInstructions = childRequest?.messages[0]?.content;
     const childEnvironment = childRequest?.messages[1];
@@ -3373,7 +3398,7 @@ describe('agent runtime', () => {
     expect(childInstructions).toContain('Project instructions');
     expect(childRequest?.tools.map((tool) => tool.name)).not.toContain('skill');
     const childContinuation = requests.filter((request) =>
-      effectiveInstructions(request).includes('non-recursive subagent')
+      effectiveInstructions(request).includes('delegated subagent')
     )[1];
     expect(childContinuation?.messages.slice(-6).map((message) => message.role)).toEqual([
       'tool_call',
@@ -3395,14 +3420,14 @@ describe('agent runtime', () => {
       ])
     );
     const parentContinuation = requests.filter(
-      (request) => !effectiveInstructions(request).includes('non-recursive subagent')
+      (request) => !effectiveInstructions(request).includes('delegated subagent')
     )[2];
     const taskResult = JSON.parse(
       parentContinuation?.messages.findLast((message) => message.role === 'tool')?.content ?? '{}'
     );
-    expect(Buffer.byteLength(taskResult.summary)).toBeLessThanOrEqual(
-      TOOL_EXECUTION_LIMITS.subagentSummaryMaxBytes
-    );
+    expect(taskResult).toMatchObject({ agentId: startedChild.agentId, status: 'completed' });
+    expect(Buffer.byteLength(taskResult.summary)).toBeLessThanOrEqual(16_384);
+    expect(taskResult.summaryTruncated).toBe(true);
     expect(taskResult).not.toHaveProperty('evidence');
     expect(taskResult.changedFiles).toEqual(['move.txt', 'moved.txt']);
     await agent.dispose();
@@ -3415,11 +3440,7 @@ describe('agent runtime', () => {
             kind: 'event',
             event: expect.objectContaining({
               type: 'tool.completed',
-              toolName: 'agent_wait',
-              data: expect.objectContaining({
-                description: 'Inspect input',
-                status: 'completed'
-              })
+              toolName: 'agent_wait'
             })
           })
         ])
@@ -3436,11 +3457,13 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'subagent content\n');
     const adapter = new EmptyFinalSubagentAdapter();
-    const agent = await createMarAgent(
+    let agent!: Agent;
+    agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
+        models: [{ ...model, conversationModel: true, subagentModel: true }],
+        extensions: [createSubagentExtension({ agent: () => agent })]
       },
       () => adapter
     );
@@ -3453,26 +3476,24 @@ describe('agent runtime', () => {
       status: 'completed',
       finalAnswer: 'parent done'
     });
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'subagent.completed',
-          description: 'Inspect input',
-          status: 'failed',
-          errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-          errorMessage: 'Subagent completed without a final summary.'
-        })
-      ])
+    const waitResult = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
     );
+    if (waitResult?.type !== 'tool.completed')
+      throw new Error('Missing external subagent wait result.');
+    expect(JSON.parse(waitResult.summary)).toMatchObject({
+      status: 'failed',
+      errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
+      errorMessage: 'Subagent completed without a final summary.'
+    });
     const parentContinuation = adapter.requests.filter(
-      (request) => !effectiveInstructions(request).includes('non-recursive subagent')
+      (request) => !effectiveInstructions(request).includes('delegated subagent')
     )[2];
     expect(
       JSON.parse(
         parentContinuation?.messages.findLast((message) => message.role === 'tool')?.content ?? '{}'
       )
     ).toMatchObject({
-      description: 'Inspect input',
       status: 'failed',
       errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
       errorMessage: 'Subagent completed without a final summary.'
@@ -5168,7 +5189,7 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('lists enabled models in the agent_start tool and honors a subagent modelId selection', async () => {
+  it('lists eligible models with agent_list and honors a subagent modelId selection', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-subagent-model-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -5182,14 +5203,18 @@ describe('agent runtime', () => {
       id: 'review',
       name: 'Review Mini',
       modelId: 'review',
+      conversationModel: true,
+      subagentModel: true,
       reasoningEfforts: ['low', 'high'],
       defaultReasoningEffort: 'low'
     };
-    const agent = await createMarAgent(
+    let agent!: Agent;
+    agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model, reviewModel]
+        models: [{ ...model, conversationModel: true, subagentModel: true }, reviewModel],
+        extensions: [createSubagentExtension({ agent: () => agent })]
       },
       (configuration) =>
         new SubagentModelAdapter(
@@ -5213,21 +5238,27 @@ describe('agent runtime', () => {
     expect(parentPrompt).not.toContain('# Subagent Models');
     expect(parentPrompt).not.toContain('https://example.test');
     expect(parentPrompt).not.toContain('apiKey');
-    const agentStart = defaultRequests[0]?.tools.find((tool) => tool.name === 'agent_start');
-    expect(agentStart?.description).toContain('- "coding" ("Coding")');
-    expect(agentStart?.description).toContain(
-      '- "review" ("Review Mini"; reasoning efforts: low, high)'
+    const profile = JSON.parse(
+      defaultRequests[1]?.messages.findLast(
+        (message) => message.role === 'tool' && message.name === 'agent_list'
+      )?.content ?? '{}'
     );
-    expect(agentStart?.description).not.toContain(', default');
+    expect(profile.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'coding' }),
+        expect.objectContaining({ id: 'review' })
+      ])
+    );
+    expect(JSON.stringify(profile)).not.toContain('apiKey');
 
     expect(reviewRequests.length).toBeGreaterThan(0);
     expect(
       reviewRequests.every((request) =>
-        effectiveInstructions(request).includes('non-recursive subagent')
+        effectiveInstructions(request).includes('delegated subagent')
       )
     ).toBe(true);
     expect(reviewRequests.every((request) => request.reasoningEffort === 'low')).toBe(true);
-    expect(reviewRequests[0]?.tools.some((tool) => tool.name === 'agent_start')).toBe(false);
+    expect(reviewRequests[0]?.tools.some((tool) => tool.name === 'agent_start')).toBe(true);
     const taskResult = JSON.parse(
       defaultRequests.at(-1)?.messages.findLast((message) => message.role === 'tool')?.content ??
         '{}'
@@ -5297,8 +5328,8 @@ describe('agent runtime', () => {
         '{}'
     );
     expect(explicitUnsupportedTaskResult).toMatchObject({
-      status: 'failed',
-      errorCode: 'MAR_AGENT_SUBAGENT_REASONING_EFFORT_UNAVAILABLE'
+      error: 'MAR_AGENT_SUBAGENT_REASONING_EFFORT_UNAVAILABLE',
+      message: 'The selected child effort is unavailable.'
     });
     await agent.dispose();
   });

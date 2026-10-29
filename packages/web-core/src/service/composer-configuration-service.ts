@@ -17,7 +17,13 @@ export function createComposerConfigurationService(options: {
   const profile = computed(() =>
     options.profiles.value.find((candidate) => candidate.runner === activeRunner.value)
   );
-  const models = computed(() => profile.value?.models ?? []);
+  const models = computed(() => {
+    const candidates = profile.value?.models ?? [];
+    return activeRunner.value === 'mar-agent' &&
+      options.selectedSession.value?.sessionGroup === 'CHILD'
+      ? candidates.filter((candidate) => candidate.subagentModel === true)
+      : candidates;
+  });
   const selectedModel = computed(() =>
     models.value.find((candidate) => candidate.id === model.value)
   );
@@ -36,9 +42,10 @@ export function createComposerConfigurationService(options: {
   function normalize(): void {
     const current = options.profiles.value.find((candidate) => candidate.runner === runner.value);
     if (current === undefined) return;
-    if (!current.models.some((candidate) => candidate.id === model.value))
-      model.value = current.models[0]?.id ?? '';
-    const selected = current.models.find((candidate) => candidate.id === model.value);
+    const candidates = current.runner === activeRunner.value ? models.value : current.models;
+    if (!candidates.some((candidate) => candidate.id === model.value))
+      model.value = candidates[0]?.id ?? '';
+    const selected = candidates.find((candidate) => candidate.id === model.value);
     if (selected !== undefined) {
       const defaultEffort = defaultEffortForModel(selected);
       const supported =

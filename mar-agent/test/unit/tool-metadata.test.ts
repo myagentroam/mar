@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { structuredToolEventData } from '../../src/tools/output-projection.js';
+
+it('does not infer collaboration events from tool names or arbitrary result objects', () => {
+  for (const name of [
+    'agent_start',
+    'agent_send',
+    'agent_wait',
+    'agent_stop',
+    'agent_message',
+    'agent_cancel'
+  ])
+    expect(
+      structuredToolEventData(name, {
+        agentId: 'child',
+        description: 'task',
+        status: 'completed',
+        privateField: 'not-public'
+      })
+    ).toBeUndefined();
+});
 import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 

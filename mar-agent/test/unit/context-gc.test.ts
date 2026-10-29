@@ -694,7 +694,11 @@ describe('context GC planner', () => {
       content: 'output-'.repeat(3_000)
     });
     for (let rollout = 0; rollout < 6; rollout++) successfulRollout(fixture.add);
-    expect(plan(fixture.values)).toBeUndefined();
+    const replacements = plan(fixture.values)?.draft.replacements ?? [];
+    expect(replacements.some((replacement) => replacement.kind === 'CODE_MODE_OUTPUT')).toBe(false);
+    expect(replacements).toContainEqual(
+      expect.objectContaining({ kind: 'TOOL_OUTPUT', toolName: 'code_mode' })
+    );
   });
 
   it.each([

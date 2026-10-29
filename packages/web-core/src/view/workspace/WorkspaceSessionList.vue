@@ -65,7 +65,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
   activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
-  moveToMain: [session: Session];
+  openTree: [sessionId: string];
   create: [];
   open: [sessionId: string];
   rename: [session: Session];
@@ -624,11 +624,10 @@ function submitSessionSearch(): void {
                   }}</el-dropdown-item
                 >
                 <el-dropdown-item
-                  v-if="sessionGroup && session.sessionGroup === 'CHILD'"
                   :disabled="loading || !nodeReady"
-                  @click="emit('moveToMain', session)"
+                  @click="emit('openTree', session.id)"
                 >
-                  <MarIcon name="chevron-up" />{{ translate('sessionGroups.move') }}
+                  <MarIcon name="collection" />{{ translate('sessionGroups.tree') }}
                 </el-dropdown-item>
                 <el-dropdown-item
                   v-if="session.runtime?.capabilities?.includes('session.prompt')"

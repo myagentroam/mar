@@ -389,6 +389,16 @@ describe('native steer acceptance boundaries', () => {
       prompt: 'earlier pending input',
       clientMessageId: 'idle-recovery'
     });
+    expect(
+      await f.agent.sessionInputReceipt(f.session.id, {
+        clientMessageId: 'idle-recovery',
+        executionId: handle.executionId
+      })
+    ).toMatchObject({
+      status: 'accepted',
+      clientMessageId: 'idle-recovery',
+      executionId: handle.executionId
+    });
     const queued = await context.session!.submit({
       text: 'authorized idle input',
       delivery: 'idle',
@@ -408,6 +418,25 @@ describe('native steer acceptance boundaries', () => {
       'earlier pending input',
       'authorized idle input'
     ]);
+    const receipt = await f.agent.sessionInputReceipt(f.session.id, {
+      clientMessageId: 'idle-recovery',
+      executionId: handle.executionId
+    });
+    expect(receipt).toMatchObject({
+      status: 'applied',
+      clientMessageId: 'idle-recovery',
+      executionId: handle.executionId,
+      appliedExecutionId: expect.any(String),
+      appliedTurnId: expect.any(String)
+    });
+    expect(receipt?.appliedExecutionId).not.toBe(receipt?.executionId);
+    expect(receipt?.appliedTurnId).not.toBe(receipt?.turnId);
+    expect(
+      await f.agent.sessionInputReceipt(f.session.id, {
+        clientMessageId: 'idle-recovery',
+        executionId: 'wrong-execution'
+      })
+    ).toBeUndefined();
   });
 
   it('does not turn accepted guidance into a new idle execution after a model failure', async () => {

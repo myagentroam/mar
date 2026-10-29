@@ -196,7 +196,7 @@ export class MarAgentModelService {
       `SELECT model.id,model.name,model.protocol,model.base_url,model.model_id,
               model.context_window_tokens,model.max_output_tokens,model.input_capabilities,
               model.output_capabilities,model.reasoning_efforts,
-              model.default_reasoning_effort,model.conversation_model,model.title_generation,model.code_mode,
+              model.default_reasoning_effort,model.conversation_model,model.subagent_model,model.title_generation,model.code_mode,
               model.credential,
               model.enabled,model.sort_order,
               model.last_tested_at,model.last_test_status,model.last_test_code,
@@ -250,7 +250,7 @@ export class MarAgentModelService {
     await withMysqlTransaction(this.database.raw, async (connection) => {
       await this.#lockOwnership(connection, ownership, userId);
       await connection.execute(
-        "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,conversation_model,title_generation,code_mode,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
+        "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,conversation_model,subagent_model,title_generation,code_mode,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
         [
           id,
           parsed.name,
@@ -266,6 +266,7 @@ export class MarAgentModelService {
           JSON.stringify(parsed.reasoningEfforts),
           parsed.defaultReasoningEffort,
           parsed.conversationModel,
+          parsed.subagentModel,
           parsed.titleGeneration,
           parsed.codeMode,
           parsed.enabled,
@@ -362,7 +363,7 @@ export class MarAgentModelService {
     await this.#assertTarget(actorUserId, parsed);
     await withMysqlTransaction(this.database.raw, async (connection) => {
       await connection.execute(
-        "UPDATE mar_agent_models SET name=?,normalized_name=?,protocol=?,base_url=?,credential=?,model_id=?,context_window_tokens=?,max_output_tokens=?,input_capabilities=?,output_capabilities=?,reasoning_efforts=?,default_reasoning_effort=?,conversation_model=?,title_generation=?,code_mode=?,enabled=?,sort_order=?,last_test_status='UNVERIFIED',last_test_code=NULL,updated_at=? WHERE id=?",
+        "UPDATE mar_agent_models SET name=?,normalized_name=?,protocol=?,base_url=?,credential=?,model_id=?,context_window_tokens=?,max_output_tokens=?,input_capabilities=?,output_capabilities=?,reasoning_efforts=?,default_reasoning_effort=?,conversation_model=?,subagent_model=?,title_generation=?,code_mode=?,enabled=?,sort_order=?,last_test_status='UNVERIFIED',last_test_code=NULL,updated_at=? WHERE id=?",
         [
           parsed.name,
           normalizeMarAgentModelName(parsed.name),
@@ -377,6 +378,7 @@ export class MarAgentModelService {
           JSON.stringify(parsed.reasoningEfforts),
           parsed.defaultReasoningEffort,
           parsed.conversationModel,
+          parsed.subagentModel,
           parsed.titleGeneration,
           parsed.codeMode,
           parsed.enabled,
@@ -871,6 +873,7 @@ interface ParsedModel {
   reasoningEfforts: string[];
   defaultReasoningEffort: string;
   conversationModel: boolean;
+  subagentModel: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
   serviceTier?: MarAgentModelSummary['serviceTier'];
@@ -906,6 +909,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     reasoningEfforts: record.reasoningEfforts,
     defaultReasoningEffort: record.defaultReasoningEffort,
     conversationModel: record.conversationModel ?? true,
+    subagentModel: record.subagentModel ?? false,
     titleGeneration: record.titleGeneration ?? false,
     codeMode: record.codeMode ?? false,
     metadata: record.metadata,
@@ -983,6 +987,7 @@ function runtimeConfiguration(
       value.reasoningEfforts
     ),
     conversationModel: value.conversationModel,
+    subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
@@ -1020,6 +1025,7 @@ function storedConfiguration(
       value.reasoningEfforts
     ),
     conversationModel: value.conversationModel,
+    subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
@@ -1133,6 +1139,7 @@ function summary(row: RowDataPacket, settings: ModelSettings): MarAgentModelSumm
     ),
     conversationModel:
       row.conversation_model === undefined ? true : Boolean(row.conversation_model),
+    subagentModel: row.subagent_model === undefined ? false : Boolean(row.subagent_model),
     titleGeneration: Boolean(row.title_generation),
     codeMode: Boolean(row.code_mode),
     ...(serviceTier === undefined ? {} : { serviceTier }),

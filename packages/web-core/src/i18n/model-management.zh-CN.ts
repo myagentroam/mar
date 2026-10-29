@@ -118,6 +118,7 @@ export const modelManagementZhCN = {
     defaultReasoningEffortRequired: '请选择默认思考强度。',
     defaultReasoningEffortUnsupported: '默认思考强度必须包含在已选择的支持范围内。',
     conversationModel: '对话模型',
+    subagentModel: '支持 Subagent',
     titleGeneration: '会话标题命名',
     codeMode: 'Code Mode',
     serviceTier: '速度',

@@ -12,9 +12,7 @@ describe('Composer product tags', () => {
     const origin = { sessionId: 'source', name: 'Fixer#42 A & <B>' };
     const tag = serializeComposerTag('mar_session_origin', origin);
     expect(tag).toContain('Fixer#42 A &amp; &lt;B&gt;');
-    expect(tag).toContain(
-      '<instruction>Message from another session, not directly from the user.</instruction>'
-    );
+    expect(tag).toContain('<instruction>Message from a session.</instruction>');
     expect(parseComposerTags(tag)).toEqual([
       { kind: 'mar_session_origin', payload: origin, raw: tag }
     ]);
@@ -29,6 +27,18 @@ describe('Composer product tags', () => {
       kind: 'mar_session_origin',
       payload: {}
     });
+  });
+
+  it.each(['parent', 'other'] as const)('round-trips the admitted %s relationship', (relation) => {
+    const payload = { sessionId: 'source', name: 'Source', relation };
+    const tag = serializeComposerTag('mar_session_origin', payload);
+    expect(tag).toContain(
+      relation === 'parent' ? 'Message from the parent session.' : 'Message from another session.'
+    );
+    expect(parseComposerTags(tag)).toMatchObject([{ kind: 'mar_session_origin', payload }]);
+    expect(() => serializeComposerTag('mar_session_origin', { relation })).toThrow(
+      'COMPOSER_TAG_INVALID'
+    );
   });
 
   it('preserves incomplete and fenced Session origin tags as ordinary text', () => {

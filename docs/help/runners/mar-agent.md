@@ -37,6 +37,8 @@ Codex (legacy) 和 ChatGPT 模型均提供 **速度 → 默认 / Fast / Ultrafas
 
 模型表单默认勾选 **对话模型**。只有已启用且勾选此项的模型，才能出现在工作模式或托管对话的 Composer、Subagent 以及模板主模型候选中。取消勾选后，模型仍可用于专用 Compact、会话标题命名和输入预测；这些用途仍需分别配置并满足模型与凭据使用权。对话模型也可用于上述辅助用途，“启用”和“会话标题命名”开关保持独立。
 
+MAR Agent 子会话的模型还必须勾选 **支持 Subagent**。子会话的模型选择只显示同时满足两种用途且当前可用的模型；没有符合条件的模型时，候选列表为空。主会话的模型选择不受此开关限制。
+
 已有模型会保留对话用途，新建及目录导入也默认开启。修改不打断已开始的执行；后续发送、续作或显式选择不再具备对话用途的模型时会拒绝执行，请重新选择可用对话模型。历史记录不会删除。
 
 ## 输入预测模型
@@ -109,7 +111,7 @@ ask 通过 Runner 审批卡在线等待，显示公开原因、命令/参数/代
 
 **Auto 不是操作系统沙箱，也不是独立安全审查器。** Full access 不做 Auto 自评，两种档位都保留 Host 路径与资源校验，工具使用 Node 服务账号的实际权限。请使用低权限专用账号并限制 Workspace 和主机权限。
 
-原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、Todo、MCP、图片和 subagent。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；子 Agent 不能递归创建其他 Agent。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
+原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、Todo、MCP、图片和 subagent。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；Agent Network 支持根会话、子会话和孙会话三层，不支持第四层。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
 
 MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提供名称和用途摘要；用户请求明确命中某个 Skill 时，再加载该 Skill 的完整工作流和资源目录。无需在请求中写出 Skill 名称。 同名技能按 Workspace、用户、SDK 内置的顺序选择；项目可以定制指导，但不能改变工具参数或主机权限。
 
@@ -121,9 +123,9 @@ MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提
 
 ### 子 Agent 高级控制
 
-默认每个父 Execution 最多通过模型工具新建 16 个子会话；同一父会话最多同时执行 16 个子 Agent 轮次，额外轮次排队并在空位释放后自动启动。
+Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Subagent 扩展保留自己的准入策略。
 
-子 Agent 工具为 `agent_start`、`agent_wait`、`agent_message` 和 `agent_cancel`，控制时使用启动结果中的 `agentId`，它就是子会话 ID。 `agent_start` 在登记子会话和任务后返回身份与状态，不等待任务完成，也不接受 `background` 参数；父 Agent 可继续独立工作，需要子任务结果时通过 `agent_wait` 等待。`agent_message` 默认以 `delivery=append` 追加指导：空闲时开启新一轮，运行时在当前完整模型响应或工具批次结束后消费。显式使用 `delivery=replace` 会立即请求停止当前轮次，待其释放后在同一子会话优先执行新消息，不回滚已完成的改动。返回的 `messageId`、`turnId` 和 `deliveryStatus` 区分消息已接收（accepted）、已写入上下文（applied）、应用前取消（cancelled）或失败（failed）；已应用不代表模型已执行完指导。`agent_wait` 可读取最近投递回执，`waitMs=0` 立即查看状态而不等待。只需停止而不继续时使用 `agent_cancel`，之后仍可向同一 Agent 发消息。重启后未结束的轮次显示为已中断，需要显式发消息继续。Shell 进程由 `exec` 启动，随后通过 `exec_wait` 和 `processId` 等待、写入或取消。不支持旧工具名和 `taskId` 字段。
+协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 必须提供非空标题，登记子会话和首个执行后即返回，不等待完成；手动 marctl 创建时标题可省略。使用结果中的 `agentId` 寻址子会话。`agent_send` 可发送消息、更新 Goal 或对直接子会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照。`agent_stop` 停止指定执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。已接收的输入和实际应用到上下文的输入是不同事实，应用不代表任务已完成。
 
 子 Agent 的未读公开消息与新终态会在父 Agent 下一次正常模型请求前自动送达，包括原生 Extension API 创建的直接子 Agent；父 Agent 无需反复使用 message wait 检查进展。自动送达不唤醒空闲父 Agent，也不延迟正常最终回复；交付所必需的结果仍应在结束前主动汇合，真正阻塞时仍可使用 `agent_wait`。自动送达与模型的显式等待共享已读位置，因此已经送达的正文或终态证据不会在后续等待中重复返回。子 Agent 的内容是待核验的上下文，不是新的用户指令或授权。
 
@@ -166,7 +168,7 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 
 ## Code Mode 工具编排
 
-子 Agent 协作控制工具 `agent_start`、`agent_wait`、`agent_message` 和 `agent_cancel` 固定为 direct-only。即使开启 Code Mode Only，也由模型直接调用，不可在 cell 内通过 `tools.*` 调用；子 Agent 自身仍按所选模型的配置使用 Code Mode。
+六个 Agent 协作工具均支持直接调用和 Code Mode 内的 programmatic 调用。启用 Code Mode Only 后，它们通过 cell 使用，不额外保留双入口展示；子 Agent 自身按所选模型的配置使用 Code Mode。
 
 Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启后默认采用 **Code Mode Only**：支持编排的工具（包括单工具操作）默认经 `code_exec` 调用，direct-only 工具及明确支持双边展示的工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
 
@@ -189,6 +191,8 @@ Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和
 `@myagentroam/agent` 可作为 TypeScript SDK 直接嵌入，也提供唯一命令 `maragent`。CLI 使用当前用户 HOME 下的 MAR 自有模型目录，不读取 Server 模型配置，也不会自动发现 Claude、Codex 或 OpenCode 配置。模型可配置为静态 API Key 或 `CODEX_AUTH_FILE` 凭据来源；仅当用户为当前命令显式传入 `--codex-auth-file PATH` 时，CLI 才只读加载该 Codex ChatGPT OAuth 文件。文件路径和 Token 不会写入模型目录、Session、日志或事件，CLI 也不会刷新或回写该文件。使用 `maragent --help` 查看运行、恢复、会话和模型管理命令。
 
 独立使用时先安装包，再用 `maragent models list` 检查当前账号的本地模型目录；模型登记与运行选项以 `maragent models --help` 和 `maragent --help` 为准。CLI 的命令和 Agent 工具以运行账号权限执行，先选用专用账号和可信工作目录，不要在生产目录试运行。
+
+独立 CLI 默认加载 Subagent 扩展。新模型默认可用于对话，但不自动用于子会话；使用 `maragent models edit <id> --subagent-model` 显式启用，`--no-subagent-model` 关闭。子会话模型必须同时启用 conversation 和 subagent，用途可通过 `models list` 查看，也可在 `models add/edit` 中使用 `--conversation-model` 或 `--no-conversation-model` 设置。
 
 SDK 最小示例使用一个兼容 OpenAI Responses 的端点。先按供应商的真实模型能力调整 URL、模型 ID 和 token 限制；设置 `MODEL_API_KEY`、`MODEL_BASE_URL`、`MODEL_ID`、`AGENT_HOME` 与 `WORKSPACE` 后运行。`session.run` 会发起真实模型请求，也可能执行工具；仅在有权限的隔离环境使用，密钥不要写入源文件或提交。
 

@@ -1,7 +1,56 @@
 import { describe, expect, it } from 'vitest';
+import { ref } from 'vue';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 
 describe('Web Composer Configuration State', () => {
+  it('limits MAR child session models to the Subagent-enabled conversation candidates', () => {
+    const session = ref({
+      id: 'child',
+      workspaceId: 'workspace',
+      runner: 'mar-agent',
+      sessionGroup: 'CHILD'
+    });
+    const profiles = ref([
+      {
+        runner: 'mar-agent',
+        models: [
+          {
+            id: 'conversation',
+            label: 'Conversation',
+            supportedEfforts: ['medium'],
+            subagentModel: false
+          },
+          {
+            id: 'delegation',
+            label: 'Delegation',
+            supportedEfforts: ['medium'],
+            subagentModel: true
+          }
+        ],
+        accessOptions: [],
+        commands: [],
+        capabilities: []
+      }
+    ]);
+    const state = createComposerConfigurationService({
+      selectedSession: session as never,
+      profiles: profiles as never,
+      effortLabel: (value) => value
+    });
+    expect(state.models.value.map((model) => model.id)).toEqual(['delegation']);
+    state.apply({ runner: 'mar-agent', model: 'conversation', effort: 'medium', access: 'auto' });
+    expect(state.model.value).toBe('delegation');
+    profiles.value[0]!.models[1]!.subagentModel = false;
+    expect(state.models.value).toEqual([]);
+    state.normalize();
+    expect(state.model.value).toBe('');
+    session.value.sessionGroup = 'MAIN';
+    expect(state.models.value.map((model) => model.id)).toEqual(['conversation', 'delegation']);
+    session.value.runner = 'codex';
+    profiles.value[0]!.runner = 'codex';
+    session.value.sessionGroup = 'CHILD';
+    expect(state.models.value.map((model) => model.id)).toEqual(['conversation', 'delegation']);
+  });
   it('Prefers MAR Agent for a new session', () => {
     const state = createComposerConfigurationService({
       selectedSession: { value: undefined } as never,

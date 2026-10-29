@@ -48,12 +48,6 @@ export class ExecutionToolSources {
             const context = this.#context(call);
             if (!context) return false;
             if (definition.name === 'skill') return context.skills.size > 0;
-            if (
-              ['agent_start', 'agent_wait', 'agent_message', 'agent_cancel'].includes(
-                definition.name
-              )
-            )
-              return context.subagents !== undefined;
             if (definition.name === 'tool_search')
               return (
                 this.#currentFrame()?.searchMcpTools !== undefined || this.#scope !== undefined

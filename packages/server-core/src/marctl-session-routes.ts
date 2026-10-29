@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { runnerNameSchema } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
-import { sendError } from './http-errors.js';
+import { safeErrorCode, sendError } from './http-errors.js';
 import { databaseError } from './domain-errors.js';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 import type { UserNodeAuthorization } from './node-access-contracts.js';
@@ -13,8 +14,14 @@ import type {
   MarAgentRuntimeModelService
 } from './session-run-contracts.js';
 import { SessionInputService, type SessionExecutionOrigin } from './session-input-service.js';
-import type { ConversationAuditObserver } from './conversation-audit.js';
-import { prepareRunnerProfileContext } from './runner-profile-context.js';
+import {
+  recordSharedConversationAudit,
+  sharedConversationFailureResult,
+  type ConversationAuditObserver
+} from './conversation-audit.js';
+import { nodeModelSummary, prepareRunnerProfileContext } from './runner-profile-context.js';
+import { prepareSessionExecutionContext } from './session-execution-context.js';
+import { runtimeModelPayload } from './run-model-payload.js';
 
 const id = z.string().min(1).max(512);
 const page = {
@@ -40,8 +47,98 @@ const message = {
     .max(5)
     .optional()
 };
+const goal = z
+  .union([
+    z.object({ objective: z.string().trim().min(1).max(20_000) }).strict(),
+    z.object({ clear: z.literal(true) }).strict(),
+    z.null()
+  ])
+  .optional();
+const networkCommand = z.discriminatedUnion('operation', [
+  z
+    .object({
+      operation: z.literal('start'),
+      input: z
+        .object({
+          content: z.string().max(100_000).optional(),
+          attachments: message.attachments,
+          clientMessageId: id.optional(),
+          runner: runnerNameSchema.optional(),
+          model: id.optional(),
+          effort: z.string().max(120).optional(),
+          title: z.string().min(1).max(160).optional(),
+          parentSessionId: id.optional(),
+          goal
+        })
+        .strict()
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('send'),
+      input: z
+        .object({
+          agentId: id,
+          content: z.string().max(100_000).optional(),
+          attachments: message.attachments,
+          clientMessageId: id.optional(),
+          deliveryIntent: z.enum(['SEND', 'QUEUE', 'REPLACE_CURRENT']).optional(),
+          goal
+        })
+        .strict()
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('stop'),
+      input: z.object({ agentId: id, executionId: id }).strict()
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('wait'),
+      input: z
+        .object({
+          agentId: id.optional(),
+          agentIds: z.array(id).min(1).max(8).optional(),
+          mode: z.enum(['any', 'all']).optional(),
+          waitFor: z.enum(['message', 'completion']).optional(),
+          waitMs: z.number().int().min(0).max(300_000).optional()
+        })
+        .strict()
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('list'),
+      input: z
+        .object({
+          scope: z.enum(['workspace', 'children', 'descendants', 'profile']).optional(),
+          agentId: id.optional(),
+          parent: id.optional(),
+          runner: runnerNameSchema.optional(),
+          query: z.string().max(160).optional(),
+          ...page
+        })
+        .strict()
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('view'),
+      input: z
+        .object({
+          agentId: id,
+          includeHistory: z.boolean().optional(),
+          ...page
+        })
+        .strict()
+    })
+    .strict()
+]);
 const commandSchema = z
   .discriminatedUnion('action', [
+    z.object({ action: z.literal('network'), command: networkCommand }).strict(),
     z.object({ action: z.literal('current'), sessionId: id.optional() }).strict(),
     z
       .object({
@@ -190,7 +287,9 @@ export function registerMarctlSessionRoutes(
       nodeId: string,
       operation: string,
       data: Record<string, unknown>,
-      user: UserNodeAuthorization
+      user: UserNodeAuthorization,
+      timeoutMs?: number,
+      signal?: AbortSignal
     ) => Promise<unknown>;
     readonly secrets: ProcessSecretResolver;
     readonly onError?: (reply: FastifyReply, error: unknown) => FastifyReply;
@@ -228,38 +327,342 @@ export function registerMarctlSessionRoutes(
               .join(' ')
               .slice(0, 2000)
           });
-        const { user, scope, scheduled, channel } = authenticated;
+        const { scope, scheduled, channel } = authenticated;
+        const caller = authenticated.source;
+        if (caller.type === 'delegation')
+          return sendError(reply, 403, 'MARCTL_EXECUTION_CREDENTIAL_REQUIRED');
+        const user = {
+          ...authenticated.user,
+          marctlCaller: caller,
+          marctlExpiresAt: authenticated.expiresAt
+        };
         if (scope === undefined) return sendError(reply, 403, 'MARCTL_SESSION_CONTEXT_REQUIRED');
         if (!(await input.authorizedNode(user, scope.nodeId)))
           return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
-        const call = async (operation: string, data: Record<string, unknown> = {}) =>
-          input.requestNode(
-            scope.nodeId,
-            operation,
-            {
-              ...data,
-              workspaceId: scope.workspaceId,
-              ...([
-                'session.cli.context',
-                'session.get',
-                'session.list',
-                'session.graph',
-                'session.runs',
-                'session.goal.get',
-                'session.turns.list',
-                'workspace.queue.get'
-              ].includes(operation)
-                ? { registeredOnly: true }
-                : {})
-            },
-            { ...user, workspaceId: scope.workspaceId }
-          );
+        const call = async (
+          operation: string,
+          data: Record<string, unknown> = {},
+          timeoutMs?: number,
+          signal?: AbortSignal,
+          marctlExecutionResources?: Readonly<Record<string, unknown>>
+        ) => {
+          const nodeData = {
+            ...data,
+            workspaceId: scope.workspaceId,
+            ...([
+              'session.cli.context',
+              'session.get',
+              'session.list',
+              'session.graph',
+              'session.runs',
+              'session.goal.get',
+              'session.turns.list',
+              'workspace.queue.get'
+            ].includes(operation)
+              ? { registeredOnly: true }
+              : {})
+          };
+          const authorization = {
+            ...user,
+            workspaceId: scope.workspaceId,
+            ...(marctlExecutionResources === undefined ? {} : { marctlExecutionResources })
+          };
+          return timeoutMs === undefined
+            ? input.requestNode(scope.nodeId, operation, nodeData, authorization)
+            : signal === undefined
+              ? input.requestNode(scope.nodeId, operation, nodeData, authorization, timeoutMs)
+              : input.requestNode(
+                  scope.nodeId,
+                  operation,
+                  nodeData,
+                  authorization,
+                  timeoutMs,
+                  signal
+                );
+        };
         const body = command.data;
+        // Execution credentials may not use the retired collaboration paths: those paths
+        // predate relationship authorization. Route Goal mutations through the same Node
+        // use case as the six public operations; a Run ID is not an Execution ID, so an
+        // old stop request must use the current endpoint rather than guessing a target.
+        if (
+          caller.type === 'execution' &&
+          (body.action === 'goal.clear' || body.action === 'goal.set')
+        )
+          return reply.send(
+            await call('agent.network', {
+              action: 'send',
+              input: {
+                agentId: body.sessionId,
+                goal: body.action === 'goal.clear' ? { clear: true } : { objective: body.content }
+              }
+            })
+          );
+        if (caller.type === 'execution' && ['start', 'send', 'stop'].includes(body.action))
+          return sendError(reply, 409, 'MARCTL_AGENT_NETWORK_REQUIRED');
+        if (body.action === 'network') {
+          const { operation, input: arguments_ } = body.command;
+          const networkInput: Record<string, unknown> = { ...arguments_ };
+          if (
+            (operation === 'start' || operation === 'send') &&
+            networkInput.clientMessageId === undefined
+          )
+            networkInput.clientMessageId = randomUUID();
+          const resources: Record<string, unknown> = {};
+          let executionResources: Record<string, unknown> | undefined;
+          if (caller.type === 'terminal') {
+            const profileContext = await prepareRunnerProfileContext({
+              userId: user.userId,
+              nodeId: scope.nodeId,
+              workspaceId: scope.workspaceId,
+              secrets: input.secrets,
+              ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
+            });
+            Object.assign(resources, profileContext);
+            if (operation === 'start' || operation === 'send') {
+              let runner: unknown = operation === 'start' ? arguments_.runner : undefined;
+              let model: unknown = operation === 'start' ? arguments_.model : undefined;
+              const sessionId =
+                operation === 'send' ? arguments_.agentId : arguments_.parentSessionId;
+              if (sessionId !== undefined) {
+                const session = object(object(await call('session.get', { sessionId })).session);
+                if (session.workspaceId !== scope.workspaceId)
+                  return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+                runner ??= session.runner;
+                if (operation === 'send') model = session.model;
+              }
+              if (operation === 'start' && runner === undefined)
+                return sendError(reply, 400, 'RUNNER_REQUIRED');
+              if (runner === 'mar-agent') {
+                const profiles = object(
+                  await call('runner.profiles.list', {
+                    ...profileContext,
+                    waitForRefresh: true
+                  })
+                );
+                if (typeof model !== 'string') {
+                  const defaults = Array.isArray(profiles.defaults)
+                    ? profiles.defaults.find((value) => isObject(value) && value.runner === runner)
+                    : undefined;
+                  const profile = Array.isArray(profiles.profiles)
+                    ? profiles.profiles.find((value) => isObject(value) && value.runner === runner)
+                    : undefined;
+                  const models =
+                    isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
+                  const preferred = models.find(
+                    (value) => isObject(value) && value.isDefault === true
+                  );
+                  model =
+                    (isObject(defaults) ? defaults.model : undefined) ??
+                    (isObject(preferred) ? preferred.id : undefined);
+                }
+              }
+              if (runner === 'mar-agent' && typeof model !== 'string')
+                return sendError(reply, 400, 'MODEL_ID_REQUIRED');
+              if (operation === 'start' && typeof model === 'string') networkInput.model = model;
+              Object.assign(
+                resources,
+                await prepareSessionExecutionContext({
+                  user: { ...user, scheduled, ...(channel === undefined ? {} : { channel }) },
+                  nodeId: scope.nodeId,
+                  workspaceId: scope.workspaceId,
+                  serverUrl: input.publicOrigin,
+                  credentials: input.credentials,
+                  instructions: input.personalInstructions,
+                  secrets: input.secrets
+                })
+              );
+              if (runner === 'mar-agent' && typeof model === 'string')
+                Object.assign(
+                  resources,
+                  await runtimeModelPayload({
+                    userId: user.userId,
+                    nodeId: scope.nodeId,
+                    workspaceId: scope.workspaceId,
+                    ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
+                    selectedModelId: model,
+                    ...(input.marAgentModels === undefined
+                      ? {}
+                      : { marAgentModels: input.marAgentModels }),
+                    ...(input.marAgentRuntimeModels === undefined
+                      ? {}
+                      : { marAgentRuntimeModels: input.marAgentRuntimeModels })
+                  })
+                );
+            }
+          } else if (
+            operation === 'list' &&
+            arguments_.scope === 'profile' &&
+            arguments_.runner === 'mar-agent'
+          ) {
+            const models = (await input.marAgentModels?.listForUser?.(user.userId)) ?? [];
+            executionResources = { marAgentModels: models.map(nodeModelSummary) };
+          } else if (
+            (operation === 'start' || operation === 'send') &&
+            (operation !== 'start' ||
+              arguments_.parentSessionId === undefined ||
+              arguments_.parentSessionId === caller.sessionId)
+          ) {
+            const sessionId = operation === 'start' ? caller.sessionId : arguments_.agentId;
+            const session = object(object(await call('session.get', { sessionId })).session);
+            if (session.workspaceId !== scope.workspaceId)
+              return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+            // Provision only for the actual parent or direct child. Node remains the
+            // authority for relationship and Run ownership at dispatch.
+            if (operation === 'start' || session.parentSessionId === caller.sessionId) {
+              const runner =
+                operation === 'start' ? (arguments_.runner ?? session.runner) : session.runner;
+              let model: unknown = operation === 'start' ? arguments_.model : session.model;
+              if (runner === 'mar-agent') {
+                const profileContext = await prepareRunnerProfileContext({
+                  userId: user.userId,
+                  nodeId: scope.nodeId,
+                  workspaceId: scope.workspaceId,
+                  secrets: input.secrets,
+                  ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
+                });
+                const profiles = object(
+                  await call('runner.profiles.list', { ...profileContext, waitForRefresh: true })
+                );
+                if (typeof model !== 'string') {
+                  const defaults = Array.isArray(profiles.defaults)
+                    ? profiles.defaults.find((value) => isObject(value) && value.runner === runner)
+                    : undefined;
+                  const profile = Array.isArray(profiles.profiles)
+                    ? profiles.profiles.find((value) => isObject(value) && value.runner === runner)
+                    : undefined;
+                  const models =
+                    isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
+                  const preferred = models.find(
+                    (value) => isObject(value) && value.isDefault === true
+                  );
+                  model =
+                    (isObject(defaults) ? defaults.model : undefined) ??
+                    (isObject(preferred) ? preferred.id : undefined);
+                }
+              }
+              if (runner === 'mar-agent' && typeof model !== 'string')
+                return sendError(reply, 400, 'MODEL_ID_REQUIRED');
+              if (runner === 'mar-agent' && typeof model === 'string') {
+                if (operation === 'start') networkInput.model = model;
+                executionResources = await runtimeModelPayload({
+                  userId: user.userId,
+                  nodeId: scope.nodeId,
+                  workspaceId: scope.workspaceId,
+                  ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
+                  selectedModelId: model,
+                  ...(input.marAgentModels === undefined
+                    ? {}
+                    : { marAgentModels: input.marAgentModels }),
+                  ...(input.marAgentRuntimeModels === undefined
+                    ? {}
+                    : { marAgentRuntimeModels: input.marAgentRuntimeModels })
+                });
+              }
+            }
+          }
+          const messageInput =
+            operation === 'start' || operation === 'send' ? arguments_ : undefined;
+          const hasMessage =
+            messageInput !== undefined &&
+            (!!messageInput.content?.trim() || !!messageInput.attachments?.length);
+          const receipt =
+            operation === 'start'
+              ? { inputMode: 'NEW_SESSION' as const }
+              : operation === 'send'
+                ? {
+                    sessionId: arguments_.agentId,
+                    inputMode: arguments_.deliveryIntent ?? ('SEND' as const)
+                  }
+                : undefined;
+          const controller = operation === 'wait' ? new AbortController() : undefined;
+          const onDisconnect = () => {
+            if (!reply.raw.writableFinished) controller?.abort();
+          };
+          if (controller) {
+            request.raw.once('aborted', onDisconnect);
+            reply.raw.once('close', onDisconnect);
+          }
+          try {
+            const requestedWait = operation === 'wait' ? (arguments_.waitMs ?? 30_000) : undefined;
+            const effectiveWait =
+              requestedWait === undefined || requestedWait === 0
+                ? requestedWait
+                : Math.max(10_000, requestedWait);
+            const timeoutMs = effectiveWait === undefined ? undefined : effectiveWait + 5_000;
+            const result = await call(
+              'agent.network',
+              { action: operation, input: networkInput, ...resources },
+              timeoutMs,
+              controller?.signal,
+              executionResources
+            );
+            if (hasMessage && receipt) {
+              const outer = object(result);
+              const messageResult =
+                operation === 'send' && isObject(outer.message) ? outer.message : undefined;
+              const nested =
+                operation === 'start' && isObject(outer.start)
+                  ? outer.start
+                  : messageResult && isObject(messageResult.result)
+                    ? messageResult.result
+                    : {};
+              const accepted = operation === 'start' || messageResult?.status === 'accepted';
+              await recordSharedConversationAudit({
+                audits: input.audits,
+                eventType: accepted
+                  ? 'shared_conversation_input_accepted'
+                  : 'shared_conversation_input_rejected',
+                actorUserId: user.userId,
+                nodeId: scope.nodeId,
+                workspaceId: scope.workspaceId,
+                clientMessageId: networkInput.clientMessageId as string,
+                ...(accepted
+                  ? { userMessage: messageInput.content ?? '', nodeResult: nested }
+                  : {
+                      errorCode:
+                        typeof messageResult?.code === 'string'
+                          ? messageResult.code
+                          : 'AGENT_SEND_FAILED',
+                      result: 'FAILED' as const
+                    }),
+                fallbackReceipt: {
+                  ...receipt,
+                  ...(operation === 'start' && typeof outer.agentId === 'string'
+                    ? { sessionId: outer.agentId }
+                    : {})
+                }
+              });
+            }
+            return reply.send(result);
+          } catch (error) {
+            if (hasMessage && receipt) {
+              const errorCode = safeErrorCode(error);
+              await recordSharedConversationAudit({
+                audits: input.audits,
+                eventType: 'shared_conversation_input_rejected',
+                actorUserId: user.userId,
+                nodeId: scope.nodeId,
+                workspaceId: scope.workspaceId,
+                clientMessageId: networkInput.clientMessageId as string,
+                errorCode,
+                result: sharedConversationFailureResult(errorCode),
+                fallbackReceipt: receipt
+              });
+            }
+            throw error;
+          } finally {
+            if (controller) {
+              request.raw.removeListener('aborted', onDisconnect);
+              reply.raw.removeListener('close', onDisconnect);
+            }
+          }
+        }
         const context = object(
           await call(
             'session.cli.context',
-            body.action === 'current' && body.sessionId !== undefined
-              ? { sessionId: body.sessionId }
+            body.action === 'current' && caller.type === 'execution'
+              ? { sessionId: caller.sessionId }
               : {}
           )
         );
@@ -469,7 +872,21 @@ export function registerMarctlSessionRoutes(
         }
         if (runner === 'mar-agent' && typeof model !== 'string')
           return sendError(reply, 400, 'MODEL_ID_REQUIRED');
-        const sourceSessionId = 'sourceSessionId' in body ? body.sourceSessionId : undefined;
+        const claimedSource = 'sourceSessionId' in body ? body.sourceSessionId : undefined;
+        if (
+          caller.type === 'execution' &&
+          claimedSource !== undefined &&
+          claimedSource !== caller.sessionId
+        )
+          return sendError(reply, 403, 'MARCTL_EXECUTION_SOURCE_MISMATCH');
+        if (
+          caller.type === 'execution' &&
+          body.action === 'start' &&
+          body.parentSessionId !== undefined &&
+          body.parentSessionId !== caller.sessionId
+        )
+          return sendError(reply, 403, 'MARCTL_EXECUTION_SOURCE_MISMATCH');
+        const sourceSessionId = caller.type === 'execution' ? caller.sessionId : undefined;
         const sourceSession =
           sourceSessionId === undefined
             ? undefined
@@ -504,6 +921,12 @@ export function registerMarctlSessionRoutes(
           user: { ...user, scheduled, ...(channel === undefined ? {} : { channel }) }
         };
         const runtimeModel = runner === 'mar-agent' && typeof model === 'string' ? { model } : {};
+        const parentSessionId =
+          body.action === 'start'
+            ? caller.type === 'execution'
+              ? caller.sessionId
+              : body.parentSessionId
+            : undefined;
         if (body.action === 'start')
           return reply.send(
             await sessionInputs.startSession(
@@ -517,9 +940,7 @@ export function registerMarctlSessionRoutes(
                 ...(typeof model === 'string' ? { model } : {}),
                 ...(body.effort === undefined ? {} : { effort: body.effort }),
                 ...(body.title === undefined ? {} : { customTitle: body.title }),
-                ...(body.parentSessionId === undefined
-                  ? {}
-                  : { parentSessionId: body.parentSessionId })
+                ...(parentSessionId === undefined ? {} : { parentSessionId })
               },
               origin
             )

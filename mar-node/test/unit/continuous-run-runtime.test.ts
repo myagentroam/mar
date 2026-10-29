@@ -5,6 +5,7 @@ import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeMetrics } from '../../src/operational.js';
 import { RunEventService } from '../../src/service/run-event-service.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
+import { resolveMarctlCaller } from '../../src/service/marctl-caller.js';
 import {
   ContinuousRunCoordinator,
   type PreparedExecutionInput
@@ -49,6 +50,187 @@ function fixture(runner: RunnerName = 'codex') {
 }
 
 describe('Node Runtime history boundaries', () => {
+  it('exchanges the Node-held credential for the admitted Execution before process start', async () => {
+    const { runtime, session } = fixture();
+    const parentToken = `marctl_user_${'a'.repeat(43)}`;
+    const executionToken = `marctl_user_${'b'.repeat(43)}`;
+    const mint = vi.fn(async () => executionToken);
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      mintMarctlExecutionCredential: mint,
+      control,
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => []
+    });
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      initiatedByUserId: 7,
+      clientMessageId: 'message',
+      content: 'work'
+    }).run;
+    coordinator.prepare(run.id, {
+      ...prepared(run.id, session.id),
+      secretEnvironment: {
+        MAR_CTL_USER_TOKEN: parentToken,
+        RETAINED_TEST_VALUE: 'ok'
+      }
+    });
+    await coordinator.dispatch(session.id);
+    const executionId = runtime.currentExecutionId(run.id);
+    expect(mint).toHaveBeenCalledOnce();
+    expect(mint).toHaveBeenCalledWith({
+      parentToken,
+      workspaceId: session.workspaceId,
+      sessionId: session.id,
+      executionId,
+      userId: 7
+    });
+    const start = control.mock.calls.find(([action]) => action === 'run.start')?.[1];
+    expect(start?.secretEnvironment).toMatchObject({
+      MAR_CTL_USER_TOKEN: executionToken,
+      RETAINED_TEST_VALUE: 'ok'
+    });
+    expect(JSON.stringify(start)).not.toContain(parentToken);
+    coordinator.clear();
+  });
+
+  it('does not start a process if its Execution changes while the credential is issued', async () => {
+    const { runtime, session } = fixture();
+    const issued = Promise.withResolvers<string>();
+    const mint = vi.fn(() => issued.promise);
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      mintMarctlExecutionCredential: mint,
+      control,
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => []
+    });
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      initiatedByUserId: 7,
+      clientMessageId: 'message',
+      content: 'work'
+    }).run;
+    coordinator.prepare(run.id, {
+      ...prepared(run.id, session.id),
+      secretEnvironment: {
+        MAR_CTL_USER_TOKEN: `marctl_user_${'a'.repeat(43)}`
+      }
+    });
+    const dispatch = coordinator.dispatch(session.id);
+    await vi.waitFor(() => expect(mint).toHaveBeenCalledOnce());
+    runtime.finishRun(run.id, 'INTERRUPTED');
+    issued.resolve(`marctl_user_${'b'.repeat(43)}`);
+    await dispatch;
+    expect(control.mock.calls.some(([action]) => action === 'run.start')).toBe(false);
+    coordinator.clear();
+  });
+
+  it('mints a fresh credential for each continued Execution and rejects the prior caller', async () => {
+    const { runtime, session } = fixture();
+    const parentToken = `marctl_user_${'a'.repeat(43)}`;
+    const tokens = [`marctl_user_${'b'.repeat(43)}`, `marctl_user_${'c'.repeat(43)}`];
+    const mint = vi.fn(
+      async (_input: {
+        parentToken: string;
+        workspaceId: string;
+        sessionId: string;
+        executionId: string;
+        userId: number;
+      }) => tokens[mint.mock.calls.length - 1]!
+    );
+    const control = vi.fn();
+    const coordinator = new ContinuousRunCoordinator({
+      runtime,
+      mintMarctlExecutionCredential: mint,
+      control,
+      executionTerminating: () => undefined,
+      keepRunActive: () => false,
+      emitQueue: vi.fn(),
+      emitConversation: vi.fn(),
+      clearImages: vi.fn(),
+      cleanupAttachments: vi.fn(),
+      migrateAssets: vi.fn(),
+      emitRun: vi.fn(),
+      stopped: () => false,
+      markInterrupted: vi.fn(),
+      mcps: () => []
+    });
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      initiatedByUserId: 7,
+      clientMessageId: 'first',
+      content: 'work'
+    }).run;
+    const environment = { MAR_CTL_USER_TOKEN: parentToken };
+    coordinator.prepare(run.id, {
+      ...prepared(run.id, session.id),
+      secretEnvironment: environment
+    });
+    await coordinator.dispatch(session.id);
+    const first = runtime.currentExecutionId(run.id)!;
+    runtime.appendRunEvent({
+      runId: first,
+      sequence: 1,
+      eventType: 'run.completed',
+      payload: {},
+      status: 'SUCCEEDED'
+    });
+    const item = runtime.createQueueItem({
+      sessionId: session.id,
+      initiatedByUserId: 7,
+      clientMessageId: 'continued',
+      content: 'continue'
+    });
+    coordinator.prepare(item.item.id, {
+      ...prepared(item.item.id, session.id),
+      secretEnvironment: environment
+    });
+    await coordinator.dispatch(session.id);
+    const second = runtime.currentExecutionId(run.id)!;
+    expect(second).not.toBe(first);
+    expect(mint).toHaveBeenCalledTimes(2);
+    expect(mint.mock.calls.map(([input]) => input.executionId)).toEqual([first, second]);
+    const starts = control.mock.calls.filter(([action]) => action === 'run.start');
+    expect(starts.map(([, input]) => input.secretEnvironment.MAR_CTL_USER_TOKEN)).toEqual(tokens);
+    expect(JSON.stringify(starts)).not.toContain(parentToken);
+    const check = (executionId: string) =>
+      resolveMarctlCaller({
+        caller: { type: 'execution', sessionId: session.id, executionId },
+        userId: 7,
+        data: { workspaceId: session.workspaceId },
+        runtime,
+        coordinator
+      });
+    expect(check(first)).toBeUndefined();
+    expect(check(second)).toEqual({
+      type: 'execution',
+      sessionId: session.id,
+      executionId: second
+    });
+    coordinator.clear();
+  });
+
   it('publishes the old terminal Turn before dispatching the next input while a Watch snapshot is pending', async () => {
     const { runtime, session } = fixture();
     const pending = { sessionId: session.id, ready: false, pendingEvents: [] as unknown[] };
@@ -357,6 +539,34 @@ describe('Node Runtime history boundaries', () => {
       sessionId: promoted.id,
       status: 'SUCCEEDED'
     });
+  });
+
+  it('keeps the fixed Execution snapshot available after terminal Run cleanup', () => {
+    const { runtime, session } = fixture();
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'fixed-execution',
+      content: 'work'
+    }).run;
+    const execution = runtime.createExecution(run.id);
+    runtime.appendRunEvent({
+      runId: execution.id,
+      sequence: 1,
+      eventType: 'run.completed',
+      payload: {},
+      status: 'SUCCEEDED'
+    });
+    runtime.finishRun(run.id, 'SUCCEEDED');
+    runtime.removeTerminalRun(run.id);
+    expect(runtime.executionSnapshot(execution.id)).toEqual({
+      executionId: execution.id,
+      runId: run.id,
+      sessionId: session.id,
+      status: 'SUCCEEDED'
+    });
+    expect(runtime.latestSessionExecution(session.id)).toEqual(
+      runtime.executionSnapshot(execution.id)
+    );
   });
 
   it.each(['mar-agent', 'codex', 'claude-code', 'opencode'] as const)(
@@ -2963,6 +3173,39 @@ describe('Node continuous Run lifecycle', () => {
     expect(control).toHaveBeenCalledWith('run.interrupt', { runId: executionId });
   });
 
+  it('does not clear the new Goal when agent stop targets an obsolete execution', () => {
+    const { runtime, session } = fixture();
+    const run = runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'new-task',
+      content: 'new objective'
+    }).run;
+    const execution = runtime.createExecution(run.id);
+    const clearGoal = vi.fn(() => ({ goalExit: { status: 'stopped' } }));
+    const control = vi.fn();
+    const service = new RunWorkbenchService({
+      runtime,
+      readImage: async () => undefined,
+      respondUserInput: vi.fn(),
+      pauseQueue: vi.fn(),
+      runInterrupted: clearGoal,
+      emitRun: vi.fn(),
+      control,
+      markInterrupted: vi.fn()
+    });
+    expect(() =>
+      service.stopAgentExecution({ sessionId: session.id, executionId: 'old-execution' })
+    ).toThrow('RUN_EXECUTION_STALE');
+    expect(clearGoal).not.toHaveBeenCalled();
+    expect(control).not.toHaveBeenCalled();
+    expect(runtime.getRun(run.id)?.status).toBe('STARTING');
+    expect(
+      service.stopAgentExecution({ sessionId: session.id, executionId: execution.id })
+    ).toMatchObject({ goalExit: { status: 'stopped' } });
+    expect(clearGoal).toHaveBeenCalledOnce();
+    expect(control).toHaveBeenCalledWith('run.cancel', { runId: execution.id });
+  });
+
   it('uses the root Run ID to interrupt the Runner after an immediate command creates an item-only Turn', () => {
     const { runtime, session } = fixture();
     const control = vi.fn();
@@ -3174,6 +3417,7 @@ describe('Node continuous Run lifecycle', () => {
       content: 'second message'
     });
     runtime.claimNextQueueItem(session.id);
+    expect(runtime.latestSessionExecution(session.id)).toBeUndefined();
     const current = runtime.createExecution(run.id);
 
     runtime.appendRunEvent({
@@ -3186,6 +3430,16 @@ describe('Node continuous Run lifecycle', () => {
 
     expect(runtime.currentExecutionId(run.id)).toBe(current.id);
     expect(runtime.activeSessionRun(session.id)?.id).toBe(run.id);
+    expect(runtime.latestSessionExecution(session.id)).toMatchObject({
+      executionId: current.id,
+      runId: run.id,
+      status: 'STARTING'
+    });
+    expect(runtime.executionSnapshot(first.id)).toMatchObject({
+      executionId: first.id,
+      runId: run.id,
+      status: 'SUCCEEDED'
+    });
   });
 
   it('projects only a controlled image reference when an active Run claims an image-bearing queue message', () => {
@@ -3520,6 +3774,54 @@ describe('public Run approval decisions', () => {
       expect(() => decide({ ...input, approvalId: pending.id })).toThrow('APPROVAL_NOT_FOUND');
     }
   );
+});
+
+it('resolves only the current owned marctl Execution, rejecting forged and stale callers', () => {
+  const { runtime, session } = fixture();
+  const inputs = new Map<string, ReturnType<typeof prepared>>();
+  const coordinator = {
+    pending: (id: string) => inputs.get(id)
+  } as unknown as ContinuousRunCoordinator<unknown>;
+  const run = runtime.createMessageRun({
+    sessionId: session.id,
+    clientMessageId: 'first',
+    content: 'work',
+    initiatedByUserId: 7
+  }).run;
+  const first = runtime.createExecution(run.id);
+  inputs.set(first.id, prepared(run.id, session.id));
+  const caller = { type: 'execution', sessionId: session.id, executionId: first.id };
+  const check = (value = caller, userId = 7, workspaceId = session.workspaceId) =>
+    resolveMarctlCaller({ caller: value, userId, data: { workspaceId }, runtime, coordinator });
+  expect(check()).toEqual(caller);
+  expect(check(caller, 8)).toBeUndefined();
+  expect(check(caller, 7, 'other-workspace')).toBeUndefined();
+  expect(check({ ...caller, sessionId: 'forged' })).toBeUndefined();
+  runtime.appendRunEvent({
+    runId: first.id,
+    sequence: 1,
+    eventType: 'run.completed',
+    payload: {},
+    status: 'SUCCEEDED'
+  });
+  runtime.createQueueItem({
+    sessionId: session.id,
+    clientMessageId: 'next',
+    content: 'next',
+    initiatedByUserId: 7
+  });
+  runtime.claimNextQueueItem(session.id);
+  const next = runtime.createExecution(run.id);
+  inputs.set(next.id, prepared(run.id, session.id));
+  expect(check()).toBeUndefined();
+  expect(check({ ...caller, executionId: next.id })).toEqual({
+    type: 'execution',
+    sessionId: session.id,
+    executionId: next.id
+  });
+  expect(
+    resolveMarctlCaller({ caller: { type: 'terminal' }, userId: 7, data: {}, runtime, coordinator })
+  ).toEqual({ type: 'terminal' });
 });
 
 function prepared(runId: string, sessionId: string) {

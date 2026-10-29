@@ -90,7 +90,7 @@ describe('execution input commit', () => {
     expect(order).toEqual(['commit', 'record', 'projection']);
   });
 
-  it('acknowledges subagent updates only after append and projection', async () => {
+  it('acknowledges extension context only after append and projection', async () => {
     const error = new Error('append failed');
     const messages: SessionModelMessage[] = [];
     const sources = new WeakMap<SessionModelMessage, SessionRecord>();
@@ -121,19 +121,11 @@ describe('execution input commit', () => {
       startCompact: unused,
       compactContext: unused
     });
-    const subagents = {
-      collectModelUpdates: () => [
-        {
-          snapshot: { agentId: 'child', status: 'completed' as const, description: 'task' },
-          truncated: false,
-          acknowledge
-        }
-      ]
-    };
-    await expect(input.appendSubagentUpdates(subagents)).rejects.toBe(error);
+    const provider = { collect: () => [{ content: 'Child completed.', acknowledge }] };
+    await expect(input.appendExtensionContext(provider)).rejects.toBe(error);
     expect(acknowledge).not.toHaveBeenCalled();
     expect(messages).toHaveLength(0);
-    await input.appendSubagentUpdates(subagents);
+    await input.appendExtensionContext(provider);
     expect(acknowledge).toHaveBeenCalledOnce();
   });
 });

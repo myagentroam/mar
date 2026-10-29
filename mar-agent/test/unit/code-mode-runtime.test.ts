@@ -15,6 +15,7 @@ import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 import { effectiveInstructions } from './support/model-context.js';
 import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -995,10 +996,6 @@ describe('Code Mode SDK and protocol integration', () => {
         expect(await readFile(join(workspace, 'output.txt'), 'utf8')).toBe('done\n');
         for (const request of requests) {
           expect(request.tools.map((tool) => tool.name)).toEqual([
-            'agent_cancel',
-            'agent_message',
-            'agent_start',
-            'agent_wait',
             'apply_patch',
             'code_exec',
             'code_exec_wait',
@@ -1006,7 +1003,7 @@ describe('Code Mode SDK and protocol integration', () => {
             'sleep'
           ]);
           expect(effectiveInstructions(request)).toContain(
-            'Available client tools: agent_cancel, agent_message, agent_start, agent_wait, apply_patch, code_exec, code_exec_wait, exec_wait, sleep.'
+            'Available client tools: apply_patch, code_exec, code_exec_wait, exec_wait, sleep.'
           );
           expect(effectiveInstructions(request)).toContain('Code Mode Only');
           const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(
@@ -1016,7 +1013,7 @@ describe('Code Mode SDK and protocol integration', () => {
           expect(onlyLine).not.toContain('apply_patch');
           expect(onlyLine).not.toContain('exec_wait');
           expect(effectiveInstructions(request)).toContain('Use read to batch');
-          expect(effectiveInstructions(request)).toContain('# Subagents');
+          expect(effectiveInstructions(request)).not.toContain('# Subagents');
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
           expect(description).toContain('"name":"read"');
           expect(description).toContain('"inputSchema"');
@@ -1513,7 +1510,7 @@ describe('Code Mode SDK and protocol integration', () => {
   });
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
-    'keeps %s Subagent controls direct while preserving child Code Mode and native evidence',
+    'preserves %s child Code Mode and private native evidence through the external extension',
     async (protocol) => {
       const { home, workspace } = await fixture();
       const requests: ModelRequest[] = [];
@@ -1530,7 +1527,10 @@ describe('Code Mode SDK and protocol integration', () => {
         configuration: testModel,
         async *start(request): AsyncIterable<ModelEvent> {
           requests.push(request);
-          const child = effectiveInstructions(request).includes('non-recursive subagent');
+          const child = request.messages.some(
+            (message) =>
+              message.role === 'user' && message.content.includes('Read input and patch output.')
+          );
           const results = request.messages.filter((message) => message.role === 'tool');
           if (child && results.length === 0) {
             yield {
@@ -1548,44 +1548,33 @@ describe('Code Mode SDK and protocol integration', () => {
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else if (!child && results.length < 5) {
-            const controls = ['agent_start', 'agent_wait', 'agent_message', 'agent_cancel'];
+            const controls = ['agent_start', 'agent_wait', 'agent_send', 'agent_stop'];
             for (const name of controls) {
               expect(
-                BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === name)?.allowedCallers
-              ).toEqual(['direct']);
-              expect(request.tools.find((tool) => tool.name === name)).toBeDefined();
-              expect(request.tools.find((tool) => tool.name === name)).not.toHaveProperty(
-                'allowedCallers'
-              );
-              expect(
                 request.tools.find((tool) => tool.name === 'code_exec')!.description
-              ).not.toContain(`"${name}"`);
+              ).toContain(`"${name}"`);
             }
-            expect(effectiveInstructions(request)).toContain('never inside code_exec');
-            const name = [
-              'agent_start',
-              'agent_wait',
-              'agent_message',
-              'agent_wait',
-              'agent_cancel'
-            ][results.length]!;
-            const agentId = results.length ? JSON.parse(results[0]!.content).agentId : undefined;
+            const name = ['agent_start', 'agent_wait', 'agent_send', 'agent_wait', 'agent_stop'][
+              results.length
+            ]!;
+            const agentId = results.length ? observedJSON(results[0]!.content).agentId : undefined;
+            const input =
+              name === 'agent_start'
+                ? {
+                    description: 'Read and patch',
+                    title: 'Read and patch',
+                    prompt: 'Read input and patch output.',
+                    role: 'general-purpose'
+                  }
+                : name === 'agent_send'
+                  ? { agentId, content: 'Confirm the completed patch.' }
+                  : { agentId };
             yield {
               type: 'client_tool.call',
-              name,
+              name: 'code_exec',
               callId: `parent-${name}-${results.length}`,
-              inputMode: 'json',
-              arguments:
-                name === 'agent_start'
-                  ? {
-                      description: 'Read and patch',
-                      prompt: 'Read input and patch output.',
-                      role: 'general-purpose',
-                      background: true
-                    }
-                  : name === 'agent_message'
-                    ? { agentId, message: 'Confirm the completed patch.' }
-                    : { agentId }
+              inputMode: 'freeform',
+              arguments: `const result = await tools.${name}(${JSON.stringify(input)}); observe.text(JSON.stringify(result.data));`
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else {
@@ -1598,21 +1587,28 @@ describe('Code Mode SDK and protocol integration', () => {
           }
         }
       };
-      const agent = await createMarAgent(
+      let agent!: Awaited<ReturnType<typeof createMarAgent>>;
+      agent = await createMarAgent(
         {
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [testModel]
+          models: [testModel],
+          extensions: [createSubagentExtension({ agent: () => agent })]
         },
         () => adapter
       );
       try {
+        await agent.reconfigureModels({ models: [{ ...testModel, subagentModel: true }] });
         const session = await agent.createSession({ workspace, title: 'Subagent Code Mode' });
-        expect(await session.run({ prompt: 'Delegate.' }).result()).toMatchObject({
-          status: 'completed'
-        });
+        const parentResult = await session.run({ prompt: 'Delegate.' }).result();
+        expect(parentResult.status, JSON.stringify(parentResult)).toBe('completed');
         const child = requests
-          .filter((r) => effectiveInstructions(r).includes('non-recursive subagent'))
+          .filter((r) =>
+            r.messages.some(
+              (message) =>
+                message.role === 'user' && message.content.includes('Read input and patch output.')
+            )
+          )
           .at(-1)!;
         expect(child.messages).toContainEqual({
           role: 'provider',
@@ -1631,11 +1627,11 @@ describe('Code Mode SDK and protocol integration', () => {
         expect(childCodeModeDescription).toContain('Programmatic tools');
         expect(childCodeModeDescription).toContain('callableNames');
         expect(childCodeModeDescription).not.toContain('ToolResults');
-        expect(child.tools.some((tool) => tool.name.startsWith('agent_'))).toBe(false);
+        expect(childCodeModeDescription).toContain('"agent_start"');
         expect(child.messages).toContainEqual(
           expect.objectContaining({
             role: 'user',
-            content: 'Confirm the completed patch.'
+            content: expect.stringContaining('Confirm the completed patch.')
           })
         );
         const parent = requests.at(-1)!;
@@ -1644,8 +1640,8 @@ describe('Code Mode SDK and protocol integration', () => {
           parent.messages
             .filter((message) => message.role === 'tool')
             .map((message) => message.name)
-        ).toEqual(['agent_start', 'agent_wait', 'agent_message', 'agent_wait', 'agent_cancel']);
-        const task = JSON.parse(
+        ).toEqual(['code_exec', 'code_exec', 'code_exec', 'code_exec', 'code_exec']);
+        const task = observedJSON(
           parent.messages.find((m) => m.role === 'tool' && m.callId === 'parent-agent_wait-1')!
             .content
         );

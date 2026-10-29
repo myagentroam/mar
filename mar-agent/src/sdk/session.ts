@@ -7,7 +7,6 @@ import type { ResolvedModelConfiguration } from './model-runtime.js';
 import { createSessionExecutionFactory } from './session-execution-factory.js';
 import { createSessionExtensionMessages } from './session-extension-messages.js';
 import { createSessionExtensionPrompt } from './session-extension-prompt.js';
-import { createSubagentBackend } from './subagent-backend.js';
 
 import { AgentError } from '../error.js';
 import type { ExtensionManager } from '../extensions/manager.js';
@@ -28,25 +27,12 @@ import { buildSystemPromptSections } from '../prompts/index.js';
 import { childSubagentInstruction } from '../prompts/subagent.js';
 import { DEFAULT_COMPACTION_FOCUS } from '../runtime/compaction/history.js';
 import { restoreEnvironmentState } from '../runtime/context/environment.js';
-import {
-  SubagentSessionController,
-  type SubagentMailboxMessage,
-  type SubagentMessageDelivery,
-  type SubagentTurnHandle
-} from '../subagent/session-controller.js';
 import { allowsDirectTool } from '../tools/callers.js';
-import { createExtensionAgentsBackend } from './extension-agents.js';
 import { createExtensionSessionBackend } from './extension-session.js';
 import { createSessionOpen } from './session-open.js';
 import type { SessionRegistry } from './session-registry.js';
 import { SessionRuntime } from './session-runtime.js';
 import type { CreateAgentOptions, ExecutionMode, AgentSession } from './types.js';
-
-function restoreSubagentOrigin(
-  origin: import('../subagent/session-controller.js').SubagentOrigin
-): ExtensionOperationContext {
-  return { ...(origin.correlation as ExtensionOperationContext), signal: origin.signal };
-}
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
 export function createSessionOpener(services: SessionServices) {
@@ -58,12 +44,7 @@ export function createSessionOpener(services: SessionServices) {
     generation: () => services.modelState().generation,
     createAdapter,
     hasCustomAdapters: services.hasCustomAdapters,
-    openSubagents: (id, workspace) =>
-      SubagentSessionController.open({
-        parentSessionId: id,
-        rootSessionId: id,
-        backend: createSubagentBackend(store, workspace)
-      }),
+    onExecutionRegistered: services.agentResources.onExecutionRegistered,
     assertAdmission: services.assertSessionAdmission,
     epoch: services.openEpoch,
     canPublish: services.canPublishSession,
@@ -221,8 +202,7 @@ export function createSessionOpener(services: SessionServices) {
       refreshSessionAdapters,
       sessionInputs,
       withRecordProjection,
-      appendExtensionMessage,
-      startSubagentTurn: async (id, input) => (await openSession(id)).startSubagentTurn(input)
+      appendExtensionMessage
     });
     sessionRuntime.ensureSessionBackend(() =>
       createExtensionSessionBackend({
@@ -273,81 +253,35 @@ export function createSessionOpener(services: SessionServices) {
         messages: createSessionExtensionMessages({
           sessionId,
           store,
-          agents: () => sessionRuntime.agentsBackend,
           runtime: (id) => sessionRuntimes.get(id),
           models: () => services.modelState()
         }),
-        launch: createExtensionSessionLaunch(sessionSource.type, execution),
+        launch: createExtensionSessionLaunch(execution),
         diagnose: (code, operationId) =>
           services.extensions.session(sessionId)?.diagnose({ code, operationId, sessionId })
       })
     );
-    if (sessionSource.type === 'user')
-      sessionRuntime.ensureAgentsBackend(() =>
-        createExtensionAgentsBackend({
-          existingController: () => sessionRuntime.subagents,
-          controller: async () => {
-            // Access to managed children is not a new Execution admission for their parent.
-            services.assertCanStart();
-            if (sessionRuntime.subagents === undefined) await openSession(sessionId);
-            if (!sessionRuntime.subagents)
-              throw new AgentError(
-                'MAR_AGENT_SUBAGENT_FAILED',
-                'Session task controller is unavailable.'
-              );
-            return sessionRuntime.subagents;
-          },
-          parent: (controller, call) => {
-            const current =
-              call.executionId === undefined
-                ? undefined
-                : controller.parentExecution(call.executionId);
-            if (call.executionId !== undefined && !current)
-              throw new AgentError(
-                'MAR_AGENT_SUBAGENT_FAILED',
-                'Parent Execution source is unavailable.'
-              );
-            const state = services.modelState();
-            const selected = state.models.get(state.defaultModelId)!;
-            return {
-              ...(current ?? {
-                modelId: selected.id,
-                reasoningEffort: selected.defaultReasoningEffort,
-                models: state.models,
-                emitTerminal: async () => {},
-                startTurn: async (turn) => {
-                  const child = await openSession(turn.sessionId);
-                  return child.startSubagentTurn({
-                    prompt: turn.prompt,
-                    modelId: turn.modelId,
-                    reasoningEffort: turn.reasoningEffort,
-                    role: turn.role,
-                    initialMailbox: turn.initialMailbox,
-                    turnId: turn.turnId,
-                    ...(turn.origin === undefined
-                      ? {}
-                      : { origin: restoreSubagentOrigin(turn.origin) }),
-                    ...(turn.delivery === undefined ? {} : { delivery: turn.delivery })
-                  });
-                }
-              }),
-              operationId: call.operationId,
-              origin: { signal: call.signal, correlation: call },
-              signal: call.signal,
-              ...(call.ownerInstanceId === undefined
-                ? {}
-                : { ownerInstanceId: call.ownerInstanceId }),
-              ...(call.extensionId === undefined ? {} : { extensionId: call.extensionId })
-            };
-          }
-        })
-      );
+    const inputSource = () => {
+      const current = services.extensions.operations.current();
+      return current && current.sessionId !== sessionId && current.extensionId
+        ? extensionInputSource(current)
+        : undefined;
+    };
+    const inputOptions = () => {
+      const source = inputSource();
+      return source ? { extensionSource: source } : {};
+    };
     return {
       id: sessionId,
-      run: (input) => execution('run', input),
-      plan: (input) => execution('plan', input),
+      subscribe: (listener) => {
+        services.assertSessionAdmission(sessionId);
+        return sessionRuntime.subscribe(listener);
+      },
+      run: (input) => execution('run', input, input.clientMessageId ? inputOptions() : undefined),
+      plan: (input) => execution('plan', input, input.clientMessageId ? inputOptions() : undefined),
       steer: (input) =>
-        sessionRuntime.execution?.steer?.(input) ?? Promise.resolve({ status: 'notAccepted' }),
+        sessionRuntime.execution?.steer?.(input, inputSource()) ??
+        Promise.resolve({ status: 'notAccepted' }),
       compact: (input = {}) => {
         const requests = sessionRuntime.execution?.compactRequests;
         if (requests) {
@@ -360,30 +294,7 @@ export function createSessionOpener(services: SessionServices) {
         });
       },
       cancel: async (executionId) => sessionRuntime.cancelExecution(executionId),
-      startSubagentTurn: (turn) =>
-        execution(
-          turn.role === 'explore' ? 'plan' : 'run',
-          {
-            prompt: turn.prompt,
-            modelId: turn.modelId,
-            reasoningEffort: turn.reasoningEffort,
-            ...(turn.permissionMode === undefined ? {} : { permissionMode: turn.permissionMode })
-          },
-          {
-            publishHostEvents: false,
-            ...(turn.origin === undefined ? {} : { signal: turn.origin.signal }),
-            inputSource: turn.origin === undefined ? 'parent_agent' : 'extension',
-            ...(turn.origin === undefined
-              ? {}
-              : { extensionSource: extensionInputSource(turn.origin) }),
-            initialMailbox: turn.initialMailbox,
-            turnId: turn.turnId,
-            ...(turn.mcpExecutionScopeId === undefined
-              ? {}
-              : { mcpExecutionScopeId: turn.mcpExecutionScopeId }),
-            ...(turn.delivery ? { delivery: turn.delivery } : {})
-          }
-        )
+      joinExecution: (executionId) => sessionRuntime.joinExecution(executionId)
     };
   };
   return openSession;

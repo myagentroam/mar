@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { AgentError } from '../error.js';
 import type {
   ClientToolDefinition,
@@ -246,10 +247,22 @@ export class ExtensionTools {
           entry.owner.run(
             (signal) =>
               this.callback(
-                Object.freeze({ ...context, signal, ownerInstanceId: entry.owner.instanceId }),
+                Object.freeze({
+                  ...context,
+                  signal,
+                  extensionId: entry.id,
+                  ownerInstanceId: entry.owner.instanceId
+                }),
                 async (context) => {
                   const signal = context.signal;
+                  const approvedArguments =
+                    context.permission === undefined ? undefined : structuredClone(call.arguments);
                   const input = await entry.parse(call.arguments);
+                  const { permission: _permission, ...unapproved } = context;
+                  const parsedContext: ExtensionOperationContext =
+                    context.permission !== undefined && !isDeepStrictEqual(input, approvedArguments)
+                      ? unapproved
+                      : context;
                   signal.throwIfAborted();
                   const controller = new AbortController();
                   const effective = AbortSignal.any([signal, controller.signal]);
@@ -260,7 +273,7 @@ export class ExtensionTools {
                     output = await entry.spec.execute(
                       input,
                       Object.freeze({
-                        ...context,
+                        ...parsedContext,
                         signal: effective,
                         ownerInstanceId: entry.owner.instanceId
                       }),
@@ -279,7 +292,13 @@ export class ExtensionTools {
                             );
                           return lower.invoke(
                             { ...call, arguments: input },
-                            Object.freeze({ ...context, signal: effective })
+                            Object.freeze({
+                              ...(parsedContext.permission !== undefined &&
+                              isDeepStrictEqual(input, approvedArguments)
+                                ? parsedContext
+                                : unapproved),
+                              signal: effective
+                            })
                           );
                         });
                         const settled = result.then(
@@ -411,6 +430,7 @@ function copyDefinition(spec: ClientToolDefinition): ClientToolDefinition {
     ...(spec.nativeType ? { nativeType: spec.nativeType } : {}),
     ...(spec.outputSchema ? { outputSchema: structuredClone(spec.outputSchema) } : {}),
     ...(spec.allowedCallers ? { allowedCallers: [...spec.allowedCallers] } : {}),
+    ...(spec.eventInputFields ? { eventInputFields: [...spec.eventInputFields] } : {}),
     ...(spec.codeModeExposure !== undefined ? { codeModeExposure: spec.codeModeExposure } : {}),
     ...(spec.inputMode ? { inputMode: spec.inputMode } : {}),
     ...(spec.parallelSafety ? { parallelSafety: spec.parallelSafety } : {}),

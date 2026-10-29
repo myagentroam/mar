@@ -290,7 +290,10 @@ export function sessionStoreContract(
         child.id
       );
       expect(await store.sessionTree(root.id)).toEqual(expect.arrayContaining([root.id, child.id]));
-      const maintenance = await store.acquireSessionMaintenance(root.id, 'delete');
+      const maintenance = await store.acquireSessionMaintenance(root.id, 'delete', undefined, [
+        root.id,
+        child.id
+      ]);
       try {
         expect(maintenance.sessionIds).toEqual(expect.arrayContaining([root.id, child.id]));
         await expect(

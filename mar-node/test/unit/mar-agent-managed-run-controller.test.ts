@@ -172,6 +172,8 @@ describe('MAR Agent managed run projection', () => {
       });
       const session = {
         id: 'native-session',
+        subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        joinExecution: () => undefined,
         run: vi.fn(handle),
         steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
         plan: vi.fn(handle),
@@ -182,6 +184,9 @@ describe('MAR Agent managed run projection', () => {
         createSession: vi.fn(async () => session),
         openSession: vi.fn(async () => session),
         listSessions: vi.fn(),
+        sessionHistory: vi.fn(async () => ({ entries: [] })),
+        sessionInputReceipt: vi.fn(async () => undefined),
+        sessionExecutionWasInterrupted: vi.fn(async () => false),
         getSession: vi.fn(async () => ({
           id: 'native-session',
           title: 'New session',
@@ -193,10 +198,12 @@ describe('MAR Agent managed run projection', () => {
         })),
         setSessionTitle: vi.fn(async () => true),
         deleteSession: vi.fn(),
+        deleteSessions: vi.fn(),
         clearSession: vi.fn(),
         setSystemInstruction: vi.fn(),
         reconfigureModels: vi.fn(async () => undefined),
         extensionDiagnostics: () => [],
+        observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
         dispose
       }));
       const controller = new MarAgentManagedRunController(
@@ -324,6 +331,8 @@ describe('MAR Agent managed run projection', () => {
     };
     const session = {
       id: 'native-session',
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      joinExecution: () => undefined,
       run: vi.fn(handle),
       steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
       plan: vi.fn(handle),
@@ -334,6 +343,9 @@ describe('MAR Agent managed run projection', () => {
       createSession: vi.fn(async () => session),
       openSession: vi.fn(async () => session),
       listSessions: vi.fn(),
+      sessionHistory: vi.fn(async () => ({ entries: [] })),
+      sessionInputReceipt: vi.fn(async () => undefined),
+      sessionExecutionWasInterrupted: vi.fn(async () => false),
       getSession: vi.fn(async () => ({
         id: 'native-session',
         title: 'New session',
@@ -345,10 +357,12 @@ describe('MAR Agent managed run projection', () => {
       })),
       setSessionTitle: vi.fn(async () => true),
       deleteSession: vi.fn(),
+      deleteSessions: vi.fn(),
       clearSession: vi.fn(),
       setSystemInstruction: vi.fn(),
       reconfigureModels: vi.fn(async () => undefined),
       extensionDiagnostics: () => [],
+      observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
       dispose
     }));
     let startContinuation: (() => void) | undefined;
@@ -462,6 +476,8 @@ describe('MAR Agent managed run projection', () => {
     const createAgent: CreateAgent = vi.fn(async (options) => {
       const session = {
         id: 'native-session',
+        subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        joinExecution: () => undefined,
         run: vi.fn(() => {
           const executionId = `sdk-execution-${++execution}`;
           executionIds.push(executionId);
@@ -506,6 +522,9 @@ describe('MAR Agent managed run projection', () => {
         createSession: vi.fn(async () => session),
         openSession: vi.fn(async () => session),
         listSessions: vi.fn(),
+        sessionHistory: vi.fn(async () => ({ entries: [] })),
+        sessionInputReceipt: vi.fn(async () => undefined),
+        sessionExecutionWasInterrupted: vi.fn(async () => false),
         getSession: vi.fn(async () => ({
           id: 'native-session',
           title: 'New session',
@@ -517,10 +536,12 @@ describe('MAR Agent managed run projection', () => {
         })),
         setSessionTitle: vi.fn(async () => true),
         deleteSession: vi.fn(),
+        deleteSessions: vi.fn(),
         clearSession: vi.fn(),
         setSystemInstruction: vi.fn(),
         reconfigureModels: vi.fn(async () => undefined),
         extensionDiagnostics: () => [],
+        observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
         dispose
       };
     });
@@ -674,6 +695,8 @@ describe('MAR Agent managed run projection', () => {
     const createAgent: CreateAgent = vi.fn(async (options) => {
       const session = {
         id: 'native-session',
+        subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        joinExecution: () => undefined,
         run: vi.fn(() => {
           const executionId = `sdk-execution-${++execution}`;
           return {
@@ -741,6 +764,9 @@ describe('MAR Agent managed run projection', () => {
         createSession: vi.fn(async () => session),
         openSession: vi.fn(async () => session),
         listSessions: vi.fn(),
+        sessionHistory: vi.fn(async () => ({ entries: [] })),
+        sessionInputReceipt: vi.fn(async () => undefined),
+        sessionExecutionWasInterrupted: vi.fn(async () => false),
         getSession: vi.fn(async () => ({
           id: 'native-session',
           title: 'New session',
@@ -752,10 +778,12 @@ describe('MAR Agent managed run projection', () => {
         })),
         setSessionTitle: vi.fn(async () => true),
         deleteSession: vi.fn(),
+        deleteSessions: vi.fn(),
         clearSession: vi.fn(),
         setSystemInstruction: vi.fn(),
         reconfigureModels: vi.fn(async () => undefined),
         extensionDiagnostics: () => [],
+        observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
         dispose: vi.fn(async () => undefined)
       };
     });
@@ -850,6 +878,8 @@ describe('MAR Agent managed run projection', () => {
     });
     const session = {
       id: 'native-session',
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      joinExecution: () => undefined,
       run: vi.fn(handle),
       steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
       plan: vi.fn(handle),
@@ -860,6 +890,9 @@ describe('MAR Agent managed run projection', () => {
       createSession: vi.fn(async () => session),
       openSession: vi.fn(async () => session),
       listSessions: vi.fn(),
+      sessionHistory: vi.fn(async () => ({ entries: [] })),
+      sessionInputReceipt: vi.fn(async () => undefined),
+      sessionExecutionWasInterrupted: vi.fn(async () => false),
       getSession: vi.fn(async () => ({
         id: 'native-session',
         title: 'New session',
@@ -871,10 +904,12 @@ describe('MAR Agent managed run projection', () => {
       })),
       setSessionTitle: vi.fn(async () => true),
       deleteSession: vi.fn(),
+      deleteSessions: vi.fn(),
       clearSession: vi.fn(),
       setSystemInstruction: vi.fn(),
       reconfigureModels,
       extensionDiagnostics: () => [],
+      observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
       dispose
     }));
     const modelFactory = {
@@ -1007,6 +1042,8 @@ describe('MAR Agent managed run projection', () => {
     });
     const session = {
       id: 'native-session',
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      joinExecution: () => undefined,
       run: vi.fn(handle),
       steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
       plan: vi.fn(handle),
@@ -1020,6 +1057,9 @@ describe('MAR Agent managed run projection', () => {
       createSession: vi.fn(async () => session),
       openSession: vi.fn(async () => session),
       listSessions: vi.fn(),
+      sessionHistory: vi.fn(async () => ({ entries: [] })),
+      sessionInputReceipt: vi.fn(async () => undefined),
+      sessionExecutionWasInterrupted: vi.fn(async () => false),
       getSession: vi.fn(async () => ({
         id: 'native-session',
         title: 'New session',
@@ -1031,10 +1071,12 @@ describe('MAR Agent managed run projection', () => {
       })),
       setSessionTitle: vi.fn(async () => true),
       deleteSession: vi.fn(),
+      deleteSessions: vi.fn(),
       clearSession: vi.fn(),
       setSystemInstruction: vi.fn(),
       reconfigureModels,
       extensionDiagnostics: () => [],
+      observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
       dispose
     }));
     const modelFactory = {
@@ -1172,6 +1214,8 @@ describe('MAR Agent managed run projection', () => {
     });
     const session = {
       id: 'native-session',
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      joinExecution: () => undefined,
       run: vi.fn(handle),
       steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
       plan: vi.fn(handle),
@@ -1182,6 +1226,9 @@ describe('MAR Agent managed run projection', () => {
       createSession: vi.fn(async () => session),
       openSession: vi.fn(async () => session),
       listSessions: vi.fn(),
+      sessionHistory: vi.fn(async () => ({ entries: [] })),
+      sessionInputReceipt: vi.fn(async () => undefined),
+      sessionExecutionWasInterrupted: vi.fn(async () => false),
       getSession: vi.fn(async () => ({
         id: 'native-session',
         title: 'New session',
@@ -1193,10 +1240,12 @@ describe('MAR Agent managed run projection', () => {
       })),
       setSessionTitle: vi.fn(async () => true),
       deleteSession: vi.fn(),
+      deleteSessions: vi.fn(),
       clearSession: vi.fn(),
       setSystemInstruction: vi.fn(),
       reconfigureModels,
       extensionDiagnostics: () => [],
+      observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
       dispose
     }));
     const controller = new MarAgentManagedRunController(
@@ -1337,6 +1386,8 @@ describe('MAR Agent managed run projection', () => {
       });
       const session = {
         id: 'native-session',
+        subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        joinExecution: () => undefined,
         run: vi.fn(handle),
         steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
         plan: vi.fn(handle),
@@ -1349,6 +1400,9 @@ describe('MAR Agent managed run projection', () => {
           createSession: vi.fn(async () => session),
           openSession: vi.fn(async () => session),
           listSessions: vi.fn(),
+          sessionHistory: vi.fn(async () => ({ entries: [] })),
+          sessionInputReceipt: vi.fn(async () => undefined),
+          sessionExecutionWasInterrupted: vi.fn(async () => false),
           getSession: vi.fn(async () => ({
             id: 'native-session',
             title: 'New session',
@@ -1360,10 +1414,12 @@ describe('MAR Agent managed run projection', () => {
           })),
           setSessionTitle: vi.fn(async () => true),
           deleteSession: vi.fn(),
+          deleteSessions: vi.fn(),
           clearSession: vi.fn(),
           setSystemInstruction: vi.fn(),
           reconfigureModels: vi.fn(async () => undefined),
           extensionDiagnostics: () => [],
+          observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
           dispose
         };
       });

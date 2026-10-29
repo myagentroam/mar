@@ -10,7 +10,9 @@ import type { TerminalDirectCoordinator } from '@myagentroam/server-core/termina
 import type { WebSocket } from 'ws';
 import {
   directNodeEventSchema,
+  marctlExecutionCredentialRequestSchema,
   terminalDirectNodeEventSchema,
+  type MarctlExecutionCredentialRequest,
   type NodeCapabilities,
   type NodeEnvelope
 } from '@myagentroam/protocol';
@@ -93,6 +95,10 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
   readonly restartAuthorizer: RestartRunAuthorizer;
+  readonly marctlExecutionCredential: (
+    nodeId: string,
+    request: MarctlExecutionCredentialRequest
+  ) => Promise<string>;
   readonly runtimeCredentials: Pick<
     RuntimeCredentialService,
     'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
@@ -105,6 +111,7 @@ export class NodeControl extends NodeIdentityControl {
   protected override connectionFeatures(): Record<string, unknown> {
     return {
       modelUsage: { apiVersion: 1 },
+      marctlExecutionCredential: { apiVersion: 1 },
       ...(this.consumers.nodeUpgradeProgress === undefined
         ? {}
         : { nodeUpgradeProgress: { apiVersion: 1 } }),
@@ -413,9 +420,10 @@ export class NodeControl extends NodeIdentityControl {
     operation: string,
     data: unknown,
     user: UserNodeAuthorization,
-    timeoutMs?: number
+    timeoutMs?: number,
+    signal?: AbortSignal
   ): Promise<unknown> {
-    return this.requestBroker.request(nodeId, operation, data, user, timeoutMs);
+    return this.requestBroker.request(nodeId, operation, data, user, timeoutMs, signal);
   }
 
   requestHostedConversationNode(
@@ -429,6 +437,20 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   protected override sendStaleConnectionError(socket: WebSocket, envelope: NodeEnvelope): void {
+    if (envelope.type === 'marctl.execution-credential.request') {
+      this.send(
+        socket,
+        'marctl.execution-credential.response',
+        {
+          error: {
+            code: 'MARCTL_EXECUTION_AUTHORIZATION_INVALID',
+            message: 'The Node connection is no longer valid.'
+          }
+        },
+        envelope.id
+      );
+      return;
+    }
     if (envelope.type === 'notification.channels.send') {
       this.send(
         socket,
@@ -484,6 +506,25 @@ export class NodeControl extends NodeIdentityControl {
     socket: WebSocket,
     envelope: NodeEnvelope
   ): Promise<boolean> {
+    if (envelope.type === 'marctl.execution-credential.request') {
+      const request = marctlExecutionCredentialRequestSchema.safeParse(envelope.payload);
+      let payload: unknown = {
+        error: {
+          code: 'MARCTL_EXECUTION_AUTHORIZATION_INVALID',
+          message: 'Execution authorization could not be verified.'
+        }
+      };
+      if (request.success) {
+        try {
+          payload = { token: await this.consumers.marctlExecutionCredential(nodeId, request.data) };
+        } catch {
+          /* Do not disclose credentials or authorization internals. */
+        }
+      }
+      if (this.sockets.get(nodeId) === socket)
+        this.send(socket, 'marctl.execution-credential.response', payload, envelope.id);
+      return true;
+    }
     if (envelope.type === 'node.upgrade.credential.request') {
       const payload = envelope.payload as { attemptId?: unknown } | null;
       let response: unknown = {

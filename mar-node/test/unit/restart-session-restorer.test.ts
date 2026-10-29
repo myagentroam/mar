@@ -24,7 +24,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function fixture() {
+async function fixture(parentSessionId?: string) {
   const directory = await mkdtemp(join(tmpdir(), 'mar-restart-inputs-'));
   const runtime = new NodeRuntimeState(
     () => 'node',
@@ -37,10 +37,21 @@ async function fixture() {
       updatedAt: 1
     })
   );
+  if (parentSessionId)
+    runtime.createAgentSession({
+      workspaceId: 'workspace',
+      runner: 'mar-agent',
+      externalSessionId: parentSessionId,
+      cwd: directory,
+      model: 'model',
+      effort: 'high',
+      access: 'auto'
+    });
   const session = runtime.createAgentSession({
     workspaceId: 'workspace',
     runner: 'mar-agent',
     externalSessionId: 'session',
+    ...(parentSessionId ? { parentSessionId } : {}),
     cwd: directory,
     model: 'model',
     effort: 'high',
@@ -70,13 +81,34 @@ async function fixture() {
     () => true,
     () => directory
   );
+  const runner = new MarAgentRunner(directory);
+  runner.configureModels([
+    {
+      id: 'model',
+      name: 'Model',
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://example.test',
+      modelId: 'model',
+      contextWindowTokens: 200_000,
+      maxOutputTokens: 4096,
+      inputCapabilities: ['TEXT'],
+      outputCapabilities: ['TEXT'],
+      reasoningEfforts: ['high'],
+      hostedWebSearch: false,
+      enabled: true,
+      sortOrder: 0,
+      apiKeyConfigured: true,
+      conversationModel: true,
+      subagentModel: true
+    }
+  ]);
   const messages = new SessionMessageService({
     runtime,
     coordinator,
     commands,
     attachments,
     uploads: {} as never,
-    runners: new RunnerRegistry([new MarAgentRunner(directory)]),
+    runners: new RunnerRegistry([runner]),
     resolve: async () => ({ session: runtime.getAgentSession(session.id)! }),
     workspacePath: () => directory,
     present: (value) => value,
@@ -154,6 +186,22 @@ async function fixture() {
 }
 
 describe('Orderly restart input reconstruction', () => {
+  it('restores a managed child through its own normal handoff without resuming its parent', async () => {
+    const f = await fixture('parent');
+    await f.restorer.restore(f.entry, 'handoff');
+    await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
+    expect(f.control.mock.calls[0]).toMatchObject([
+      'run.start',
+      {
+        sessionId: f.session.id,
+        clientMessageId: 'restart:handoff:session'
+      }
+    ]);
+    expect(f.runtime.getAgentSession(f.session.id)?.parentSessionId).toBe('parent');
+    expect(f.runtime.activeSessionRun('parent')).toBeUndefined();
+    expect(f.authorize).toHaveBeenCalledTimes(1);
+    expect(f.inputState).toHaveBeenCalledTimes(1);
+  });
   it('uses a marked continuation and fresh authorization instead of resending an accepted user input', async () => {
     const f = await fixture();
     f.entry.current!.suppressNotifications = true;

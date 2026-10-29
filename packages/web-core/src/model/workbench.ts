@@ -107,6 +107,7 @@ export interface RunnerProfile {
     readonly supportedEfforts: readonly string[];
     readonly isDefault?: boolean;
     readonly defaultEffort?: string;
+    readonly subagentModel?: boolean;
   }[];
   readonly accessOptions: readonly {
     readonly id: string;

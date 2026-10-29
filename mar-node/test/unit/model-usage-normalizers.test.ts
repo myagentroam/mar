@@ -667,7 +667,11 @@ describe('execution-private attribution to durable outbox', () => {
         agentRole: 'subagent'
       });
       expect(entries[0].record).not.toHaveProperty('executionId');
+      expect(service.grantForRun('run-0', 'root', 1)).toEqual(first);
+      expect(service.grantForRun('run-0', 'root', 2)).toBeUndefined();
+      expect(service.grantForRun('run-0', 'other', 1)).toBeUndefined();
       service.release('run-0');
+      expect(service.grantForRun('run-0', 'root', 1)).toBeUndefined();
       service.record('run-0', fact('ignored'));
       expect(
         database.raw.prepare('SELECT COUNT(*) AS total FROM model_usage_outbox').get()?.total

@@ -285,14 +285,15 @@ describe.runIf(enabled)('Anthropic-compatible Agent E2E', () => {
     expect(plan.events.some((event) => event.type === 'user_input.requested')).toBe(true);
     expect(plan.events.some((event) => event.type === 'user_input.resolved')).toBe(true);
     expect(plan.events.some((event) => event.type === 'plan.completed')).toBe(true);
-    const delegated = await finish(
+    const inspected = await finish(
       session.run({
-        prompt:
-          'Use task with role explore to have a subagent read sample.ts, then summarize its result.'
+        prompt: 'Use read to inspect sample.ts, then summarize its contents.'
       })
     );
-    expect(delegated.result.status).toBe('completed');
-    expect(delegated.events.some((event) => event.type === 'subagent.completed')).toBe(true);
+    expect(inspected.result.status).toBe('completed');
+    expect(
+      inspected.events.some((event) => event.type === 'tool.completed' && event.toolName === 'read')
+    ).toBe(true);
     expect(
       (await finish(session.run({ prompt: 'Remember the codeword ORBIT-731.' }))).result.status
     ).toBe('completed');

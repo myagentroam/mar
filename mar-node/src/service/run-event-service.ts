@@ -37,6 +37,13 @@ export interface RunEventServiceOptions {
     run: import('../runtime-model.js').NodeAgentRun,
     status: RunnerExecutionStatus
   ) => void;
+  readonly observeAgentEvent?: (input: {
+    readonly run: import('../runtime-model.js').NodeAgentRun;
+    readonly executionId: string;
+    readonly eventType: string;
+    readonly payload: unknown;
+    readonly terminalStatus?: RunnerExecutionStatus;
+  }) => void;
 }
 
 export class RunEventService {
@@ -198,6 +205,14 @@ export class RunEventService {
       this.options.executionStarted?.(executionId);
     if (!terminalExecution) this.options.refreshAttachments?.(run.sessionId);
     const publicStatus = terminalExecution ? finalStatus : status;
+    if (recorded !== undefined && targetsCurrentTurn)
+      this.options.observeAgentEvent?.({
+        run,
+        executionId,
+        eventType,
+        payload,
+        ...(terminalExecution && finalStatus !== undefined ? { terminalStatus: finalStatus } : {})
+      });
     const notificationPayload = this.notificationPayload(
       runId,
       eventType,

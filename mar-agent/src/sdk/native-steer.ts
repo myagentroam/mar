@@ -28,15 +28,19 @@ export function createNativeSteer(input: {
   receive(
     content: ExtensionPromptInput,
     clientMessageId: string,
-    call: ExtensionOperationContext
+    call: ExtensionOperationContext,
+    source?: import('../extensions/session-input.js').ExtensionInputSource
   ): Promise<SessionRecord>;
   notify(entry: Extract<SteerResult, { status: 'accepted' }>['entry']): Promise<unknown>;
   diagnose(): void;
   wake(): void;
-}): (request: SteerInput) => Promise<SteerResult> {
+}): (
+  request: SteerInput,
+  source?: import('../extensions/session-input.js').ExtensionInputSource
+) => Promise<SteerResult> {
   const retries = new Map<string, Promise<SteerResult>>();
   let admissionTail: Promise<unknown> = Promise.resolve();
-  return async (request) => {
+  return async (request, source) => {
     if (request.expectedExecutionId !== input.executionId)
       return Promise.resolve({ status: 'notAccepted' });
     const previous = retries.get(request.clientMessageId);
@@ -81,7 +85,7 @@ export function createNativeSteer(input: {
               result.resolve({ status: 'notAccepted' });
               return {};
             }
-            const record = await input.receive(actual, request.clientMessageId, effective);
+            const record = await input.receive(actual, request.clientMessageId, effective, source);
             committed = true;
             entry.nativeSteer!.recordId = record.recordId;
             const payload = record.payload as Record<string, unknown>;

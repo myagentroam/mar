@@ -48,6 +48,24 @@ export class RunWorkbenchService {
     };
   }
 
+  /** Atomically validate the target Execution before invoking the existing stop path. */
+  stopAgentExecution(input: {
+    readonly sessionId: string;
+    readonly executionId: string;
+    readonly requestUserId?: number;
+  }): unknown {
+    const run = this.options.runtime.activeSessionRun(input.sessionId);
+    if (
+      run === undefined ||
+      (this.options.runtime.currentExecutionId(run.id) ?? run.id) !== input.executionId
+    )
+      throw new Error('RUN_EXECUTION_STALE');
+    return this.cancelOrInterrupt('run.cancel', {
+      runId: run.id,
+      ...(input.requestUserId === undefined ? {} : { __requestUserId: input.requestUserId })
+    });
+  }
+
   private async modelResource(input: Record<string, unknown>): Promise<unknown> {
     const parsed = modelResourceReadInputSchema.safeParse(nodeOperationData(input));
     if (!parsed.success) throw new Error('RUN_IMAGE_INVALID');

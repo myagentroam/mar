@@ -60,6 +60,7 @@ import {
   composerMessageSource,
   conversationItemText,
   subagentGroupText,
+  subagentGroupSessionId,
   subagentOperationText,
   conversationErrorCodeVisible,
   conversationErrorPresentation,
@@ -127,6 +128,7 @@ const props = defineProps<{
   readonly nodeReady: boolean;
   readonly synchronized?: boolean;
   readonly toolChangeEnabled?: boolean;
+  readonly sessionNavigationEnabled?: boolean;
   readonly rewindEnabled: boolean;
   readonly rollbackEnabled: boolean;
   readonly captureRenderAnchor: () => () => void;
@@ -147,6 +149,7 @@ function markdownCacheIdentity(
 const emit = defineEmits<{
   openFileChange: [entry: FileChangeEntry];
   initialRendered: [version: number];
+  openSession: [sessionId: string];
   openImage: [attachment: ImageAttachment];
   imageUnavailable: [source: string];
   openFile: [
@@ -734,6 +737,12 @@ function stepDuration(item: ConversationItem): string | undefined {
               v-if="groupedItemDisclosure[`group:${displayItem.id}`]"
               class="conversation-tool-list"
             >
+              <el-button
+                v-if="props.sessionNavigationEnabled && subagentGroupSessionId(displayItem.items)"
+                link
+                @click="emit('openSession', subagentGroupSessionId(displayItem.items)!)"
+                >{{ translate('presentation.openSubagentSession') }}</el-button
+              >
               <details
                 v-for="toolItem in displayItem.items"
                 :key="toolItem.id"

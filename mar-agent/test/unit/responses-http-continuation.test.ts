@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
-import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
 import type { ModelEvent, ModelMessage, ModelTurnSession } from '../../src/model/contracts.js';
 import {
   startResponsesWebSocketServer,
@@ -187,12 +186,8 @@ describe('Responses HTTP continuation', () => {
           new AbortController().signal
         )
       );
-      const update = renderSubagentUpdate({
-        agentId: 'child',
-        description: 'Review',
-        status: 'completed',
-        summary: 'verified'
-      });
+      const update =
+        '<mar_subagent_update>\n{"agentId":"child","executionId":"run","summary":"verified","updates":[]}\n</mar_subagent_update>';
       await collect(
         turn.start(
           {

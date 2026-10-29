@@ -34,6 +34,7 @@ export { createAgent } from './sdk/agent.js';
 export { openAgentSessionCatalog } from './sdk/session-catalog.js';
 export type {
   Agent,
+  AgentLiveSession,
   AgentSession,
   CompactInput,
   CreateAgentOptions,
@@ -49,6 +50,7 @@ export type {
   AgentSessionDeleteResult,
   AgentSessionHistoryEntry,
   AgentSessionHistoryPage,
+  AgentSessionInputReceipt,
   AgentSessionImage,
   AgentSessionPage,
   AgentSessionSummary,

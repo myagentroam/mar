@@ -1,11 +1,19 @@
 import { AgentError } from '../error.js';
 import type { ExtensionResourceScope } from './resources.js';
+import type { ExtensionOperationRunner } from './operation.js';
+
+export interface ExtensionServiceConsumer {
+  readonly run: ExtensionOperationRunner;
+  readonly onDispose: (dispose: () => void | Promise<void>) => void;
+}
 
 export interface ExtensionServiceKey<T> {
   readonly id: string;
   readonly scope: 'agent' | 'session';
   /** Compile-time service contract; never examined at runtime. */
   readonly contract?: (implementation: T) => T;
+  /** Bind a service to the framework-owned consuming Session scope. */
+  readonly bindConsumer?: (implementation: T, consumer: ExtensionServiceConsumer) => T;
 }
 export interface ExtensionServiceRegistry {
   provide<T>(key: ExtensionServiceKey<T>, implementation: T): void;
@@ -16,7 +24,14 @@ export interface ExtensionServiceRegistry {
 
 /** A composition's typed values, not a dynamic IoC container or dependency solver. */
 export class ExtensionServices {
-  readonly #entries = new Map<string, { value: unknown; owner: ExtensionResourceScope }[]>();
+  readonly #entries = new Map<
+    string,
+    {
+      value: unknown;
+      owner: ExtensionResourceScope;
+      bindConsumer?: (value: unknown, consumer: ExtensionServiceConsumer) => unknown;
+    }[]
+  >();
   constructor(
     readonly scope: 'agent' | 'session',
     readonly parent?: ExtensionServices
@@ -24,6 +39,9 @@ export class ExtensionServices {
 
   has(key: { readonly id: string; readonly scope: 'agent' | 'session' }): boolean {
     return this.#find(key) !== undefined;
+  }
+  resolve<T>(key: ExtensionServiceKey<T>): T | undefined {
+    return this.#find(key)?.value as T | undefined;
   }
   hasOwned(
     key: { readonly id: string; readonly scope: 'agent' | 'session' },
@@ -35,7 +53,7 @@ export class ExtensionServices {
     );
   }
 
-  bind(owner: ExtensionResourceScope): ExtensionServiceRegistry {
+  bind(owner: ExtensionResourceScope, run?: ExtensionOperationRunner): ExtensionServiceRegistry {
     const consume = <T>(
       key: ExtensionServiceKey<T>,
       options?: { readonly optional?: boolean }
@@ -46,7 +64,19 @@ export class ExtensionServices {
           'MAR_AGENT_EXTENSION_DEPENDENCY_MISSING',
           'Required service is unavailable.'
         );
-      return entry?.value as T | undefined;
+      if (!entry) return undefined;
+      if (!entry.bindConsumer) return entry.value as T;
+      if (!run)
+        throw new AgentError(
+          'MAR_AGENT_EXTENSION_SERVICE_SCOPE',
+          'Service requires a Session consumer.'
+        );
+      return entry.bindConsumer(entry.value, {
+        run,
+        onDispose: (dispose) => {
+          owner.effect(() => dispose);
+        }
+      }) as T;
     };
     const publish = <T>(key: ExtensionServiceKey<T>, value: T, replace: boolean): void => {
       if (key.scope !== this.scope)
@@ -67,7 +97,17 @@ export class ExtensionServices {
           'MAR_AGENT_EXTENSION_DEPENDENCY_MISSING',
           'Service replacement has no lower provider.'
         );
-      const entry = { value, owner };
+      const binder = key.bindConsumer;
+      const entry = {
+        value,
+        owner,
+        ...(binder
+          ? {
+              bindConsumer: (implementation: unknown, consumer: ExtensionServiceConsumer) =>
+                binder(implementation as T, consumer)
+            }
+          : {})
+      };
       owner.effect(() => () => {
         const index = entries.indexOf(entry);
         if (index !== -1) entries.splice(index, 1);
@@ -91,10 +131,12 @@ export class ExtensionServices {
     };
   }
 
-  #find(key: {
-    readonly id: string;
-    readonly scope: 'agent' | 'session';
-  }): { value: unknown } | undefined {
+  #find(key: { readonly id: string; readonly scope: 'agent' | 'session' }):
+    | {
+        value: unknown;
+        bindConsumer?: (value: unknown, consumer: ExtensionServiceConsumer) => unknown;
+      }
+    | undefined {
     if (key.scope === this.scope) return this.#entries.get(key.id)?.at(-1);
     return this.parent ? this.parent.#find(key) : undefined;
   }

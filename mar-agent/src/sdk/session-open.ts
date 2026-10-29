@@ -1,9 +1,8 @@
 import { AgentError } from '../error.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import type { SessionStore } from '../session/store/contracts.js';
-import type { SubagentSessionController } from '../subagent/session-controller.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
-import { SessionOpenCleanupError, type SessionRegistry } from './session-registry.js';
+import type { SessionRegistry } from './session-registry.js';
 import { SessionRuntime } from './session-runtime.js';
 
 type StoredSession = Awaited<ReturnType<SessionStore['getSession']>>;
@@ -17,7 +16,7 @@ interface SessionOpenPorts<Handle> {
     models: ReadonlyMap<string, ResolvedModelConfiguration>
   ) => ModelAdapter;
   readonly hasCustomAdapters: boolean;
-  readonly openSubagents: (id: string, workspace: string) => Promise<SubagentSessionController>;
+  readonly onExecutionRegistered: (runtime: SessionRuntime) => void;
   readonly assertAdmission: (id: string) => void;
   readonly epoch: (id: string) => number;
   readonly canPublish: (id: string, epoch: number) => boolean;
@@ -45,23 +44,13 @@ export function createSessionOpen<Handle>(ports: SessionOpenPorts<Handle>) {
             stored,
             ports.generation(),
             ports.createAdapter,
-            ports.hasCustomAdapters
+            ports.hasCustomAdapters,
+            ports.onExecutionRegistered
           );
-          try {
-            if (stored.source.type === 'user')
-              await candidate.ensureSubagents(() => ports.openSubagents(id, stored.workspace));
-            ports.createHandle(id, candidate, stored, workspace);
-            if (!publish(candidate))
-              throw new AgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
-            return candidate;
-          } catch (error) {
-            try {
-              await candidate.disposeSubagents();
-            } catch (cleanupError) {
-              throw new SessionOpenCleanupError(cleanupError);
-            }
-            throw error;
-          }
+          ports.createHandle(id, candidate, stored, workspace);
+          if (!publish(candidate))
+            throw new AgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
+          return candidate;
         }
       );
       ports.assertAdmission(id);
@@ -69,11 +58,6 @@ export function createSessionOpen<Handle>(ports: SessionOpenPorts<Handle>) {
       ports.assertAdmission(id);
       if (!ports.canPublish(id, epoch))
         throw new AgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
-      if (stored.source.type === 'user' && runtime.subagents === undefined) {
-        await runtime.ensureSubagents(() => ports.openSubagents(id, stored.workspace));
-        if (!ports.canPublish(id, epoch))
-          throw new AgentError('MAR_AGENT_SESSION_CLOSING', 'Session is closing.');
-      }
       return ports.createHandle(id, runtime, stored, workspace);
     });
   };

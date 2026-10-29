@@ -211,7 +211,7 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
   ]) {
     let output = '';
     assert.equal(
-      await main(['help', 'sessions'], {
+      await main(['help', 'agents'], {
         env: { LC_ALL: locale, MAR_CTL_CONTEXT_REQUIRED: '1' },
         stdout: { write: (value) => (output += value) },
         stderr: { write: (value) => assert.fail(value) }

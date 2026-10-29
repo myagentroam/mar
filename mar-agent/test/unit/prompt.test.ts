@@ -6,10 +6,14 @@ import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
 import { questionToolDefinition } from '../../src/tools/agent/question.js';
 import { skillToolDefinition } from '../../src/tools/agent/skill.js';
 import { readToolDefinition } from '../../src/tools/local/read.js';
-import { agentWaitToolDefinition } from '../../src/tools/agent/agent-wait.js';
 import { todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
 import { buildEnvironmentContext } from '../../src/prompts/core.js';
 import { retainedSessionResourcesSnapshot } from '../../src/prompts/resources.js';
+
+const shortWaitToolFixture = {
+  name: 'short_wait_probe',
+  description: 'Wait values below 10 seconds should use a short poll.'
+} as const;
 
 describe('system prompt', () => {
   it('limits resource wrap-up to pending work needed for the task', () => {
@@ -35,12 +39,12 @@ describe('system prompt', () => {
         processes: [
           { processId: 'cached-process', status: 'completed', cwd: '/workspace', command: 'test' }
         ],
-        subagents: [{ agentId: 'cached-agent', status: 'completed', description: 'Finished task' }]
+        extensions: ['Child Sessions: cached-agent']
       })!;
       expect(snapshot).toContain('cellId: active-cell; status: running');
       expect(snapshot).toContain(`cellId: cached-cell; status: ${status}`);
       expect(snapshot).toContain('processId: cached-process; status: completed');
-      expect(snapshot).toContain('agentId: cached-agent; status: completed');
+      expect(snapshot).toContain('Child Sessions: cached-agent');
       expect(snapshot).toContain('This list is not the tool catalog');
       expect(snapshot.indexOf('This list is not the tool catalog')).toBeLessThan(
         snapshot.indexOf('Code Exec cells:')
@@ -58,19 +62,17 @@ describe('system prompt', () => {
     const snapshot = retainedSessionResourcesSnapshot({
       processes: [{ processId: 'cached-process', status: 'completed', command, cwd }],
       codeCells: [{ cellId: 'cached-cell', status: 'failed', executionId: 'old-execution' }],
-      subagents: [
-        { agentId: 'cached-agent', status: 'completed', description: 'task '.repeat(2_000) }
-      ]
+      extensions: ['Child Sessions: cached-agent']
     })!;
     expect(snapshot).toContain('processId: cached-process; status: completed');
     expect(snapshot).toContain('cellId: cached-cell; status: failed');
-    expect(snapshot).toContain('agentId: cached-agent; status: completed');
+    expect(snapshot).toContain('Child Sessions: cached-agent');
     expect(snapshot).toContain('HEAD-command');
     expect(snapshot).toContain('TAIL-command');
     expect(snapshot).not.toContain(command);
     expect(snapshot).not.toContain(cwd);
     expect(countModelTokens(snapshot)).toBeLessThan(600);
-    expect(retainedSessionResourcesSnapshot({ processes: [], subagents: [] })).toBeUndefined();
+    expect(retainedSessionResourcesSnapshot({ processes: [], extensions: [] })).toBeUndefined();
   });
 
   it('distinguishes direct tools from Code Mode functions without dropping capability guidance', () => {
@@ -86,35 +88,21 @@ describe('system prompt', () => {
         'apply_patch',
         'agent_start',
         'agent_wait',
-        'agent_message',
-        'agent_cancel',
+        'agent_send',
+        'agent_stop',
         'todo_write'
       ],
-      directTools: [
-        'code_exec',
-        'skill',
-        'agent_start',
-        'agent_wait',
-        'agent_message',
-        'agent_cancel'
-      ]
+      directTools: ['code_exec', 'skill', 'agent_start', 'agent_wait', 'agent_send', 'agent_stop']
     });
     expect(prompt).toContain(
-      'Available client tools: code_exec, skill, agent_start, agent_wait, agent_message, agent_cancel.'
+      'Available client tools: code_exec, skill, agent_start, agent_wait, agent_send, agent_stop.'
     );
     expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo_write');
     expect(prompt).toContain('only as tools.NAME inside code_exec');
     expect(prompt).toContain('Use read to batch');
     expect(prompt).toContain('Prefer apply_patch');
     expect(prompt).toContain('call skill before generic tools');
-    expect(prompt).toContain('# Subagents');
-    expect(prompt).toContain('without intervening status checks');
-    expect(prompt).toContain(
-      'Unread child messages and terminal results are supplied before the next model request.'
-    );
-    expect(prompt).toContain(
-      'Call agent_start, agent_wait, agent_message and agent_cancel directly, never inside code_exec'
-    );
+    expect(prompt).not.toContain('# Subagents');
     expect(prompt).toContain('Use Todo only when coordination');
   });
   it('keeps the entire base instruction stable when only environment facts change', () => {
@@ -186,7 +174,7 @@ describe('system prompt', () => {
         'todo_write',
         'agent_start',
         'agent_wait',
-        'agent_cancel'
+        'agent_stop'
       ]
     });
     for (const section of [
@@ -199,7 +187,6 @@ describe('system prompt', () => {
       '# Long-running work and state',
       '# Interaction and evidence',
       '# Safety and highest-risk actions',
-      '# Subagents',
       '# Output and communication style'
     ])
       expect(prompt).toContain(section);
@@ -240,8 +227,6 @@ describe('system prompt', () => {
     expect(normalized).toContain('preconditioned deterministic replacement');
     expect(normalized).toContain('verify the result');
     expect(normalized).toContain('use bounded waits rather than busy polling');
-    expect(normalized).toContain('wait only when the next step needs the result');
-    expect(normalized).toContain('do not poll for reassurance');
     expect(normalized).toContain('prefer apply_patch');
     expect(normalized).toContain('refresh only the affected context before retrying');
     expect(normalized).toContain('use exec for platform-native commands');
@@ -318,8 +303,6 @@ describe('system prompt', () => {
     expect(normalized).toContain('when input is unavailable');
     expect(normalized).toContain('for a requested review');
     expect(normalized).toContain('ordered by severity');
-    expect(normalized).toContain('keep simple or tightly coupled work local');
-    expect(normalized).toContain('do not split work merely to use agents');
     expect(normalized).toContain('write naturally as a concise teammate');
     expect(normalized).toContain("match the user's tone and assumed background");
     expect(normalized).toContain('state the main point early');
@@ -457,7 +440,7 @@ describe('system prompt', () => {
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['read', 'exec', 'apply_patch', 'question', 'agent_wait']
+      tools: ['read', 'exec', 'apply_patch', 'question', shortWaitToolFixture.name]
     });
 
     expect(readToolDefinition.description).toContain('nextOffset');
@@ -468,11 +451,11 @@ describe('system prompt', () => {
     expect(applyPatchToolDefinition.description).not.toContain('Prefer one file per call');
     expect(applyPatchToolDefinition.description).not.toContain('100 files');
     expect(applyPatchToolDefinition.description).not.toContain('4 MiB');
-    expect(agentWaitToolDefinition.description).toContain('values below 10 seconds');
+    expect(shortWaitToolFixture.description).toContain('values below 10 seconds');
     expect(questionToolDefinition.description).toContain('one to three tightly related');
     expect(prompt).not.toContain('nextOffset');
     expect(prompt).not.toContain('MAR_AGENT_PATCH_CONFLICT');
-    expect(prompt).not.toContain('values below 10 seconds');
+    expect(prompt).not.toContain(shortWaitToolFixture.description);
     expect(prompt).not.toContain('one to three tightly related');
   });
 
@@ -508,7 +491,7 @@ describe('system prompt', () => {
       platform: 'win32',
       shell: { name: 'pwsh', path: 'C:\\Program Files\\PowerShell\\pwsh.exe' },
       workspace: 'C:\\second',
-      tools: ['exec', 'agent_start', 'agent_wait', 'agent_cancel'],
+      tools: ['exec', 'agent_start', 'agent_wait', 'agent_stop'],
       extension: 'SECOND_EXTENSION'
     });
     const compact = buildSystemPrompt({
@@ -563,37 +546,36 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('# Compaction contract');
   });
 
-  it('injects Skill and Subagent guidance only when their tools are registered', () => {
+  it('injects Skill guidance without imposing a Core-owned Subagent policy', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['skill', 'agent_start', 'agent_wait', 'agent_cancel']
+      tools: ['skill', 'agent_start', 'agent_wait', 'agent_stop']
     });
     const normalized = prompt.toLowerCase();
 
     expect(normalized).toContain('named or clearly relevant skill');
     expect(normalized).toContain('call skill before generic tools');
-    expect(prompt).toContain('# Subagents');
+    expect(prompt).not.toContain('# Subagents');
     expect(normalized).toContain('agent_wait');
   });
 
-  it('guides independent delegation without surrendering the critical path or duplicating work', () => {
+  it('leaves delegation policy to the installed extension instead of Core', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['agent_start', 'agent_wait', 'agent_message', 'agent_cancel']
+      tools: ['agent_start', 'agent_wait', 'agent_send', 'agent_stop']
     });
 
-    expect(prompt).toContain('independent progress or context savings materially helps');
-    expect(prompt).toContain('Delegate bounded, self-contained tasks');
-    expect(prompt).toContain('Keep simple or tightly coupled work local');
-    expect(prompt).toContain('Do not redo delegated work');
-    expect(prompt).toContain('exclusive write scope or a read-only boundary');
+    expect(prompt).not.toContain('# Subagents');
+    expect(prompt).toContain('agent_start');
+    expect(prompt).toContain('agent_send');
+    expect(prompt).toContain('agent_wait');
+    expect(prompt).toContain('agent_stop');
     expect(prompt).not.toContain('preparatory analysis is not a final review');
     expect(prompt).not.toContain('Revalidate affected findings after later edits');
-    expect(prompt).toContain('independently verify consequential changes and claims');
     expect(prompt).not.toMatch(/(?:at most|maximum|up to) 2|Luna|task DAG/u);
   });
 

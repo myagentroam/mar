@@ -4,6 +4,100 @@ import { describe, expect, it, vi } from 'vitest';
 import { MarctlUserCredentials } from '../../src/marctl-user-credentials.js';
 
 describe('user-scoped marctl authorization', () => {
+  it('derives execution-bound credentials only within the original live user scope', async () => {
+    let now = 1000;
+    let active = true;
+    const execute = vi.fn(async () => [active ? [{ id: 7, username: 'owner' }] : []]);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, () => now);
+    const scope = { nodeId: 'node-one', workspaceId: 'workspace-one' };
+    const authorization = await service.environment(
+      { userId: 7, sessionHash: 'a'.repeat(43), username: 'owner' },
+      'https://server.test',
+      scope,
+      { type: 'delegation' }
+    );
+    const input = {
+      parentToken: authorization.MAR_CTL_USER_TOKEN!,
+      ...scope,
+      userId: 7,
+      sessionId: 'child',
+      executionId: 'execution-one',
+      authorize: vi.fn(async () => true)
+    };
+    const first = await service.deriveExecution(input);
+    const second = await service.deriveExecution({ ...input, executionId: 'execution-two' });
+    expect(first).not.toBe(second);
+    expect(await service.authenticateContext(`Bearer ${first}`)).toMatchObject({
+      scope,
+      user: { userId: 7 },
+      source: { type: 'execution', sessionId: 'child', executionId: 'execution-one' }
+    });
+    expect(await service.authenticateContext(`Bearer ${second}`)).toMatchObject({
+      source: { type: 'execution', executionId: 'execution-two' }
+    });
+    for (const invalid of [
+      { ...input, nodeId: 'other' },
+      { ...input, workspaceId: 'other' },
+      { ...input, userId: 8 },
+      { ...input, parentToken: first },
+      { ...input, authorize: vi.fn(async () => false) }
+    ])
+      await expect(service.deriveExecution(invalid)).rejects.toThrow(
+        'MARCTL_EXECUTION_AUTHORIZATION_INVALID'
+      );
+    active = false;
+    await expect(service.deriveExecution(input)).rejects.toThrow(
+      'MARCTL_EXECUTION_AUTHORIZATION_INVALID'
+    );
+    active = true;
+    now += 24 * 60 * 60 * 1000;
+    expect(await service.authenticateContext(`Bearer ${first}`)).toBeUndefined();
+    await expect(service.deriveExecution(input)).rejects.toThrow(
+      'MARCTL_EXECUTION_AUTHORIZATION_INVALID'
+    );
+  });
+
+  it('distinguishes terminal credentials and rechecks authorization after an asynchronous decision', async () => {
+    let now = 1000;
+    const execute = vi.fn(async () => [[{ id: 7, username: 'owner' }]]);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, () => now);
+    const scope = { nodeId: 'node', workspaceId: 'workspace' };
+    const terminal = await service.environment(
+      { userId: 7, username: 'owner' },
+      'https://server.test',
+      scope
+    );
+    expect(
+      await service.authenticateContext(`Bearer ${terminal.MAR_CTL_USER_TOKEN}`)
+    ).toMatchObject({
+      source: { type: 'terminal' }
+    });
+    const delegation = await service.environment(
+      { userId: 7, username: 'owner' },
+      'https://server.test',
+      scope,
+      { type: 'delegation' }
+    );
+    const input = {
+      parentToken: delegation.MAR_CTL_USER_TOKEN!,
+      ...scope,
+      userId: 7,
+      sessionId: 'child',
+      executionId: 'execution',
+      authorize: async () => {
+        now += 24 * 60 * 60 * 1000;
+        return true;
+      }
+    };
+    await expect(service.deriveExecution(input)).rejects.toThrow(
+      'MARCTL_EXECUTION_AUTHORIZATION_INVALID'
+    );
+    now = 1000;
+    await expect(
+      service.deriveExecution({ ...input, parentToken: terminal.MAR_CTL_USER_TOKEN! })
+    ).rejects.toThrow('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
+  });
+
   it('preserves channel execution authority without fabricating an owner login Session', async () => {
     let enabled = true;
     const execute = vi.fn(async (_sql: string, _parameters: unknown[]) => [

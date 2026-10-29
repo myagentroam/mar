@@ -786,6 +786,30 @@ export function registerSessionRunRoutes(input: {
     }
   });
 
+  app.get<{
+    Params: { sessionId: string };
+    Querystring: { nodeId?: string; workspaceId?: string };
+  }>('/api/agent-sessions/:sessionId/tree', async (request, reply) => {
+    const admin = protectedAdmin(database, request, reply);
+    if (admin === undefined) return;
+    if (!isNonEmptyString(request.query.nodeId)) return sendError(reply, 400, 'NODE_ID_REQUIRED');
+    if (!isNonEmptyString(request.query.workspaceId) || request.query.workspaceId.length > 128)
+      return sendError(reply, 400, 'WORKSPACE_ID_REQUIRED');
+    reply.header('cache-control', 'private, no-store');
+    try {
+      return reply.send(
+        await requestUserNode(nodeControl, admin, request.query.nodeId, 'session.graph', {
+          workspaceId: request.query.workspaceId,
+          sessionId: request.params.sessionId,
+          includeAncestors: true,
+          limit: 100
+        })
+      );
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  });
+
   app.get<{ Params: { sessionId: string }; Querystring: { nodeId?: string } }>(
     '/api/agent-sessions/:sessionId',
     async (request, reply) => {

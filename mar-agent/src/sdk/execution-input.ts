@@ -12,7 +12,7 @@ import {
 } from '../extensions/session-input.js';
 import type { ExtensionPromptInput, ExtensionPromptResult } from '../extensions/prompt-input.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
-import type { SubagentMailboxMessage } from '../subagent/session-controller.js';
+import type { ExtensionSessionContextProvider } from '../extensions/session-context.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import type { SmartCompactionInput } from '../runtime/compaction/smart.js';
 import type { CompactFlight } from '../runtime/compaction/coordinator.js';
@@ -23,8 +23,6 @@ import { extensionInputSource } from './extension-session-launch.js';
 import type { createExecutionModelContext } from './execution-model-context.js';
 import type { InternalExecutionOptions } from './session-execution.js';
 import type { RunInput } from './types.js';
-import { renderSubagentUpdate } from '../subagent/model-update.js';
-import type { SubagentSessionController } from '../subagent/session-controller.js';
 
 /** Owns committed input, mailbox admission and live projection for one Execution. */
 export function createExecutionInput(input: {
@@ -37,7 +35,6 @@ export function createExecutionInput(input: {
   executionId: string;
   turnId: string;
   mode: 'run' | 'plan' | 'compact';
-  source: 'user' | 'subagent';
   controller: AbortController;
   inputs: Pick<SessionInputCoordinator, 'drain' | 'boundarySize'>;
   messages: ModelMessage[];
@@ -80,7 +77,6 @@ export function createExecutionInput(input: {
     startCompact,
     compactContext
   } = input;
-  const sessionSource = { type: input.source };
   const writeInputRecord = async (
     content: ExtensionPromptInput,
     type: 'turn.user' | 'extension.input',
@@ -110,7 +106,6 @@ export function createExecutionInput(input: {
         tokens() === undefined ? undefined : (tokens()! * 100) / model().contextWindowTokens;
       const smartCompaction =
         mode !== 'compact' &&
-        sessionSource.type === 'user' &&
         type === 'turn.user' &&
         metadata.inputSource === undefined &&
         smartPercent !== undefined &&
@@ -167,6 +162,13 @@ export function createExecutionInput(input: {
       projectCommitted(actualContent, record.recordId, inputMetadata);
       for (const text of content.modelContext ?? content.context ?? [])
         messages.push({ role: 'user', content: text, contextKind: 'contextual' });
+      if (metadata.clientMessageId)
+        await store.append(sessionId, {
+          type: 'input.applied',
+          payload: { inputRef: record.recordId },
+          executionId,
+          turnId
+        });
     });
   };
   const appendMailboxMessages = async (restoring = false): Promise<boolean> =>
@@ -200,7 +202,6 @@ export function createExecutionInput(input: {
             const percent =
               tokens() === undefined ? undefined : (tokens()! * 100) / model().contextWindowTokens;
             const eligible =
-              sessionSource.type === 'user' &&
               percent !== undefined &&
               percent >= AGENT_EXECUTION_POLICY.smartCompactionPercent &&
               percent < AGENT_EXECUTION_POLICY.automaticCompactionPercent;
@@ -248,7 +249,6 @@ export function createExecutionInput(input: {
             return outcome;
           });
         }
-        const parent = entry.parentMessage as SubagentMailboxMessage | undefined;
         let outcome: ExtensionSessionActionResult | undefined;
         const content: ExtensionPromptInput = {
           text: request.input.text,
@@ -261,20 +261,14 @@ export function createExecutionInput(input: {
         };
         await writeInputRecord(
           content,
-          parent && !parent.delivery?.origin ? 'turn.user' : 'extension.input',
-          parent && !parent.delivery?.origin
-            ? {
-                inputSource: 'parent_agent',
-                ...(parent.delivery ? { messageId: parent.delivery.messageId } : {})
-              }
-            : {
-                source: extensionInputSource(
-                  call,
-                  request.input.provenance,
-                  request.input.modelAttribution
-                ),
-                ...(parent?.delivery ? { messageId: parent.delivery.messageId } : {})
-              },
+          'extension.input',
+          {
+            source: extensionInputSource(
+              call,
+              request.input.provenance,
+              request.input.modelAttribution
+            )
+          },
           call,
           (recordId) => {
             outcome = { changed: true, executionId, recordId };
@@ -291,7 +285,6 @@ export function createExecutionInput(input: {
                   }
                 : {})
             });
-            parent?.delivery?.applied();
           }
         );
         return outcome!;
@@ -344,7 +337,6 @@ export function createExecutionInput(input: {
         internal.inputSource === 'extension' ? 'extension.input' : 'turn.user',
         {
           ...(internal.extensionSource ? { source: internal.extensionSource } : {}),
-          ...(internal.delivery ? { messageId: internal.delivery.messageId } : {}),
           ...(internal.inputSource === undefined ? {} : { inputSource: internal.inputSource }),
           ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {})
         },
@@ -355,7 +347,6 @@ export function createExecutionInput(input: {
         },
         (actual, _recordId, metadata) => {
           ports.project(actual, metadata);
-          internal.delivery?.applied();
         }
       );
       return {};
@@ -376,7 +367,8 @@ export function createExecutionInput(input: {
   const receiveSteer = (
     content: ExtensionPromptInput,
     clientMessageId: string,
-    call: ExtensionOperationContext
+    call: ExtensionOperationContext,
+    source?: import('../extensions/session-input.js').ExtensionInputSource
   ) =>
     withRecordProjection(async () => {
       call.signal.throwIfAborted();
@@ -404,6 +396,7 @@ export function createExecutionInput(input: {
             ...(content.modelText === undefined ? {} : { modelText: content.modelText }),
             ...(content.context === undefined ? {} : { context: content.context }),
             ...(content.modelContext === undefined ? {} : { modelContext: content.modelContext }),
+            ...(source === undefined ? {} : { source }),
             clientMessageId,
             ...(images.length ? { images } : {})
           },
@@ -415,17 +408,29 @@ export function createExecutionInput(input: {
       pendingInputs.set(record.recordId, record);
       return record;
     });
-  const appendSubagentUpdates = async (
-    subagents: Pick<SubagentSessionController, 'collectModelUpdates'> | undefined
-  ) => {
-    if (!subagents) return;
+  const appendExtensionContext = async (provider: ExtensionSessionContextProvider | undefined) => {
+    if (!provider) return;
     await withRecordProjection(async () => {
       controller.signal.throwIfAborted();
-      for (const update of subagents.collectModelUpdates()) {
+      const proposed = await provider.collect(controller.signal);
+      controller.signal.throwIfAborted();
+      if (!Array.isArray(proposed))
+        throw new AgentError('MAR_AGENT_EXTENSION_CONTEXT_INVALID', 'Invalid context batch.');
+      const batch = proposed.slice(0, 8);
+      for (const item of batch) {
+        if (
+          typeof item?.content !== 'string' ||
+          item.content.length === 0 ||
+          Buffer.byteLength(item.content, 'utf8') > 32_768 ||
+          typeof item.acknowledge !== 'function'
+        )
+          throw new AgentError('MAR_AGENT_EXTENSION_CONTEXT_INVALID', 'Invalid context item.');
+      }
+      for (const item of batch) {
         controller.signal.throwIfAborted();
         const message: ModelMessage = {
           role: 'user',
-          content: renderSubagentUpdate(update.snapshot, update.truncated),
+          content: item.content,
           contextKind: 'contextual'
         };
         const stored = await store.append(
@@ -435,9 +440,9 @@ export function createExecutionInput(input: {
         );
         messages.push(message);
         messageSources.set(message, stored);
-        update.acknowledge();
+        item.acknowledge();
       }
     });
   };
-  return { startInitialInput, receiveSteer, appendSubagentUpdates, appendMailboxMessages };
+  return { startInitialInput, receiveSteer, appendExtensionContext, appendMailboxMessages };
 }

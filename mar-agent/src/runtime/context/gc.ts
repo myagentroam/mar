@@ -53,11 +53,9 @@ import { collectCodeModeCandidates } from './gc-candidates-code.js';
 
 import { collectStageACandidates } from './gc-candidates-read-patch.js';
 
-import { collectSubagentCandidates } from './gc-candidates-subagent.js';
-
 import { collectExecCandidates } from './gc-candidates-exec.js';
 
-import { collectWebCandidates } from './gc-candidates-web.js';
+import { collectToolOutputCandidates, collectWebCandidates } from './gc-candidates-web.js';
 
 export {
   CONTEXT_GC_POLICY,
@@ -209,9 +207,8 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     existingTargets,
     candidateSavings
   );
-  const subagent = collectSubagentCandidates(input, groups, existingTargets, candidateSavings);
-  const deterministicCandidates = [...stageA.eligible, ...subagent.eligible];
-  const deterministicProtectedTokens = stageA.protectedTokens + subagent.protectedTokens;
+  const deterministicCandidates = stageA.eligible;
+  const deterministicProtectedTokens = stageA.protectedTokens;
   const stageAPlan = evaluateCandidateSet(input, existing, deterministicCandidates, {
     stage: 'STAGE_A',
     contextUsageTokens,
@@ -224,11 +221,13 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
     const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
     const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
+    const tools = collectToolOutputCandidates(input, groups, existingTargets, candidateSavings);
     const protectedCandidateTokens =
       deterministicProtectedTokens +
       exec.protectedTokens +
       codeMode.protectedTokens +
-      web.protectedTokens;
+      web.protectedTokens +
+      tools.protectedTokens;
     const stageAPlanWithProtectedCandidates =
       evaluateCandidateSet(input, existing, deterministicCandidates, {
         stage: 'STAGE_A',
@@ -242,7 +241,7 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
       input,
       existing,
       deterministicCandidates,
-      [...exec.eligible, ...codeMode.eligible, ...web.eligible],
+      [...exec.eligible, ...codeMode.eligible, ...web.eligible, ...tools.eligible],
       stageAPlanWithProtectedCandidates,
       {
         contextUsageTokens,
@@ -258,7 +257,8 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     const retryAfterRollouts = Math.min(
       exec.retryAfterRollouts,
       codeMode.retryAfterRollouts,
-      web.retryAfterRollouts
+      web.retryAfterRollouts,
+      tools.retryAfterRollouts
     );
     if (!plan && checkpointEligible) return {};
     return {
@@ -272,15 +272,23 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
   const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
   const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
   const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
+  const tools = collectToolOutputCandidates(input, groups, existingTargets, candidateSavings);
   const protectedCandidateTokens =
     deterministicProtectedTokens +
     exec.protectedTokens +
     codeMode.protectedTokens +
-    web.protectedTokens;
+    web.protectedTokens +
+    tools.protectedTokens;
   const combined = evaluateCandidateSet(
     input,
     existing,
-    [...deterministicCandidates, ...exec.eligible, ...codeMode.eligible, ...web.eligible],
+    [
+      ...deterministicCandidates,
+      ...exec.eligible,
+      ...codeMode.eligible,
+      ...web.eligible,
+      ...tools.eligible
+    ],
     {
       stage: 'STAGE_A_AND_EXEC',
       contextUsageTokens,
@@ -296,10 +304,10 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
   }
   const retryAfterRollouts = Math.min(
     stageA.retryAfterRollouts,
-    subagent.retryAfterRollouts,
     exec.retryAfterRollouts,
     codeMode.retryAfterRollouts,
-    web.retryAfterRollouts
+    web.retryAfterRollouts,
+    tools.retryAfterRollouts
   );
   // A worthwhile mixed set retains every positive protected candidate's retry
   // hint even when the checkpoint interval prevents a durable draft.

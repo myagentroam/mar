@@ -57,6 +57,7 @@ export interface NativeSessionProjectionStore {
     readonly runner: RunnerName;
     readonly externalSessionId: string;
     readonly workspaceId: string;
+    readonly parentSessionId?: string | null;
     readonly customTitle?: string | null;
     readonly runnerTitle?: string | null;
     readonly runnerTitlePending?: boolean;

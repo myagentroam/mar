@@ -5,7 +5,6 @@ import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
 import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import { projectPermissionTool } from '../../src/tools/permissions.js';
-import { agentWaitToolDefinition } from '../../src/tools/agent/agent-wait.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
 
 type WebSocketFixture = Awaited<ReturnType<typeof startResponsesWebSocketServer>>;
@@ -15,6 +14,27 @@ interface HttpFixture {
   readonly baseUrl: string;
   readonly requests: Record<string, unknown>[];
 }
+
+const schemaProbeTool = {
+  name: 'schema_probe',
+  description: 'Inspect optional arrays and enums.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      values: {
+        type: 'array',
+        items: { type: 'string', minLength: 1 },
+        minItems: 1,
+        maxItems: 8,
+        uniqueItems: true
+      },
+      mode: { type: 'string', enum: ['any', 'all'] },
+      phase: { type: 'string', enum: ['ready', 'changed'] }
+    },
+    required: [],
+    additionalProperties: false
+  }
+} as const;
 
 const adapters: OpenAiResponsesAdapter[] = [];
 const webSocketFixtures: WebSocketFixture[] = [];
@@ -32,9 +52,9 @@ afterEach(async () => {
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
   it.each([undefined, 'mar'])(
-    'omits unsupported array uniqueness in direct and deferred tools with namespace=%s',
+    'omits unsupported array uniqueness for direct and deferred generic tools with namespace=%s',
     async (namespace) => {
-      const fixture = await startHttpResponsesServer(completedEvents('wait-schema'));
+      const fixture = await startHttpResponsesServer(completedEvents('schema-probe'));
       httpFixtures.push(fixture);
       const adapter = registerAdapter(
         new OpenAiResponsesAdapter(
@@ -45,31 +65,29 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
           })
         )
       );
-      const original = structuredClone(agentWaitToolDefinition.inputSchema);
-      await collect(
-        adapter.start(toolRequest([agentWaitToolDefinition]), new AbortController().signal)
-      );
+      const original = structuredClone(schemaProbeTool.inputSchema);
+      await collect(adapter.start(toolRequest([schemaProbeTool]), new AbortController().signal));
       const tools = fixture.requests[0]!.tools as Array<Record<string, unknown>>;
       const projected = namespace
         ? (tools[0]!.tools as Array<Record<string, unknown>>)[0]!
         : tools[0]!;
-      expect(projected).toMatchObject({ name: 'agent_wait', strict: true });
+      expect(projected).toMatchObject({ name: 'schema_probe', strict: true });
       const properties = (projected.parameters as { properties: Record<string, unknown> })
         .properties;
-      expect(properties.agentIds).toMatchObject({
+      expect(properties.values).toMatchObject({
         type: ['array', 'null'],
         items: { type: 'string', minLength: 1 },
         minItems: 1,
         maxItems: 8
       });
-      expect(properties.agentIds).not.toHaveProperty('uniqueItems');
+      expect(properties.values).not.toHaveProperty('uniqueItems');
       expect(properties.mode).toMatchObject({
         type: ['string', 'null'],
         enum: ['any', 'all', null]
       });
-      expect(properties.waitFor).toMatchObject({
+      expect(properties.phase).toMatchObject({
         type: ['string', 'null'],
-        enum: ['completion', 'message', null]
+        enum: ['ready', 'changed', null]
       });
       const deferred = openAiInput(
         [
@@ -78,7 +96,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
             role: 'tool',
             content: 'found',
             callId: 'search',
-            toolSearchTools: [agentWaitToolDefinition]
+            toolSearchTools: [schemaProbeTool]
           }
         ],
         undefined,
@@ -89,7 +107,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         type: 'tool_search_output',
         tools: [expect.objectContaining({ strict: true, parameters: projected.parameters })]
       });
-      expect(agentWaitToolDefinition.inputSchema).toEqual(original);
+      expect(schemaProbeTool.inputSchema).toEqual(original);
     }
   );
 
@@ -164,6 +182,82 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     });
     expect(tool.inputSchema).toEqual(original);
   });
+
+  it.each([false, true])(
+    'recursively lowers anyOf branches without wrapping nullable unions (nullable=%s)',
+    async (nullable) => {
+      const fixture = await startHttpResponsesServer(completedEvents('union-schema'));
+      httpFixtures.push(fixture);
+      const adapter = registerAdapter(
+        new OpenAiResponsesAdapter(
+          configuration(fixture.baseUrl, {
+            responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+            responsesPreviousResponseId: false
+          })
+        )
+      );
+      const choice = {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              label: { type: 'string', enum: ['ready', 'done'] },
+              values: { type: 'array', items: { type: 'string' }, uniqueItems: true }
+            },
+            additionalProperties: false
+          },
+          ...(nullable ? [{ type: 'null' }] : [])
+        ]
+      };
+      const tool = {
+        name: 'union_probe',
+        description: 'Inspect nested optional values.',
+        inputSchema: {
+          type: 'object',
+          properties: { choice, requiredChoice: choice },
+          required: ['requiredChoice'],
+          additionalProperties: false
+        }
+      };
+      const original = structuredClone(tool.inputSchema);
+      await collect(adapter.start(toolRequest([tool]), new AbortController().signal));
+      const projected = (
+        fixture.requests[0]!.tools as Array<{
+          strict: boolean;
+          parameters: { properties: Record<string, { anyOf: unknown[] }> };
+        }>
+      )[0]!;
+      expect(projected.strict).toBe(true);
+      const loweredObject = {
+        type: 'object',
+        properties: {
+          label: { type: ['string', 'null'], enum: ['ready', 'done', null] },
+          values: { type: ['array', 'null'], items: { type: 'string' } }
+        },
+        required: ['label', 'values'],
+        additionalProperties: false
+      };
+      expect(projected.parameters.properties.choice).toEqual({
+        anyOf: [loweredObject, { type: 'null' }]
+      });
+      expect(projected.parameters.properties.requiredChoice).toEqual({
+        anyOf: [loweredObject, ...(nullable ? [{ type: 'null' }] : [])]
+      });
+      const deferred = openAiInput(
+        [
+          { role: 'tool_call', content: '', callId: 'search', name: 'tool_search', arguments: {} },
+          { role: 'tool', content: 'found', callId: 'search', toolSearchTools: [tool] }
+        ],
+        undefined,
+        'standard',
+        true
+      );
+      expect(deferred[1]).toMatchObject({
+        tools: [expect.objectContaining({ strict: true, parameters: projected.parameters })]
+      });
+      expect(tool.inputSchema).toEqual(original);
+    }
+  );
 
   it('makes optional Auto permission objects nullable for strict direct and deferred tools', async () => {
     const fixture = await startHttpResponsesServer(completedEvents('auto-permission'));

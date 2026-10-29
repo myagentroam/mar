@@ -181,7 +181,7 @@ export function forkedPayload(
         : {})
     };
   };
-  if (type === 'model.context') return application(payload);
+  if (type === 'model.context' || type === 'input.applied') return application(payload);
   if (type === 'compact.completed') {
     if (payload.inlineMediaState) payload.inlineMediaState = remapWindow(payload.inlineMediaState);
     if (Array.isArray(payload.retainedModelContext))

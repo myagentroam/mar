@@ -5,8 +5,14 @@ import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost } from '../../src/host.js';
-import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import {
+  AgentError,
+  SecretValue,
+  type Agent,
+  type AgentModelConfiguration
+} from '../../src/index.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import {
   type ModelEvent,
@@ -334,17 +340,21 @@ describe('Responses retry boundaries', () => {
     async (persistent) => {
       const { home, directory } = await workspace();
       const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-      const model = configuration('http://localhost:1');
+      const model = {
+        ...configuration('http://localhost:1'),
+        conversationModel: true,
+        subagentModel: true
+      };
       let childRequests = 0;
       const adapter: ModelAdapter = {
         configuration: model,
         async *start(request) {
           if (
-            request.system.includes('non-recursive subagent') ||
+            request.system.includes('delegated subagent') ||
             request.messages.some(
               (message) =>
                 message.contextualBlock?.authority === 'instruction' &&
-                message.content.includes('non-recursive subagent')
+                message.content.includes('delegated subagent')
             )
           ) {
             childRequests++;
@@ -365,6 +375,7 @@ describe('Responses retry boundaries', () => {
               callId: 'task-retry',
               name: 'agent_start',
               arguments: {
+                title: 'Inspect',
                 description: 'Inspect',
                 prompt: 'Inspect only.',
                 role: 'explore'
@@ -384,11 +395,13 @@ describe('Responses retry boundaries', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       };
-      const agent = await createMarAgent(
+      let agent!: Agent;
+      agent = await createMarAgent(
         {
           mode: 'normal',
           host,
-          models: [model]
+          models: [model],
+          extensions: [createSubagentExtension({ agent: () => agent })]
         },
         () => adapter
       );
@@ -399,11 +412,15 @@ describe('Responses retry boundaries', () => {
         });
         expect((await session.run({ prompt: 'Inspect.' }).result()).status).toBe('completed');
         expect(childRequests).toBe(persistent ? 8 : 2);
-        expect(host.events).toContainEqual(
-          expect.objectContaining({
-            type: 'subagent.completed',
-            status: persistent ? 'failed' : 'completed'
-          })
+        const waitResult = host.events.find(
+          (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
+        );
+        if (waitResult?.type !== 'tool.completed')
+          throw new Error('Missing external subagent wait result.');
+        expect(JSON.parse(waitResult.summary)).toMatchObject(
+          persistent
+            ? { status: 'failed', errorCode: 'server_is_overloaded' }
+            : { status: 'completed', summary: 'Recovered child' }
         );
       } finally {
         await agent.dispose();

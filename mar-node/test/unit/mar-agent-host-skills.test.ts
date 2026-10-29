@@ -36,8 +36,8 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   expect(skill.description).toContain('Ordinary local shell work');
   const content = await skill.load();
   for (const term of [
-    'sessions start',
-    'sessions wait',
+    'agents start',
+    'agents wait',
     '24 hours',
     'fixer#<task-id>',
     'reviewer#<task-or-change-id>',
@@ -48,7 +48,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   for (const instruction of [
     'only when the current identity or scope is unknown',
     'known target ID',
-    'sessions config <session-id> --model <id> --effort high --json',
+    'agents config <session-id> --model <id> --effort high --json',
     'may otherwise switch the current execution',
     'Choose exactly one of --steer or --queue, even when idle',
     'Use --queue only for deliberately deferred follow-up work',
@@ -57,16 +57,16 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'Additional context: focus on the resume path.',
     'missing, conflicting, repeated, or obsolete options are rejected locally',
     'when fresh state is needed',
-    'sessions list --limit 10 --json',
+    'agents list --limit 10 --json',
     '--query <title>',
     '--parent <session-id>',
-    'sessions graph <session-id>',
+    'agents graph <session-id>',
     'without scanning Runners',
     'Do not scan the Workspace to prove capacity',
     'Reuse recorded Session/Run IDs and receipts',
     'session.status',
-    'sessions rename <session-id> --title <name>',
-    'sessions schedule list/get/create/update',
+    'agents rename <session-id> --title <name>',
+    'agents schedule list/get/create/update',
     'send/goal/stop/wait/approval always require explicit target IDs',
     'Other-owner edits return a PENDING proposal',
     'session.model',
@@ -92,7 +92,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'Follow the repository workflow for development and review',
     'Prefer --timeout 5m',
     'reuse its process/cell handle',
-    'sessions prompt get/set/clear [session-id]',
+    'agents prompt get/set/clear [session-id]',
     'no queue-item edit/delete/reorder commands'
   ])
     expect(content).toContain(instruction);
@@ -111,7 +111,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   expect(content).not.toContain('urgent corrections');
   expect(content).not.toContain('--steer without interrupting');
   expect(content).not.toContain('not live steering');
-  expect(content).not.toContain('Start with marctl sessions current');
+  expect(content).not.toContain('Start with marctl agents current');
   expect(content).not.toContain('--delivery');
   expect(content).not.toContain('cancel the current Run');
   expect(content).not.toContain('There is no Session custom prompt setting');

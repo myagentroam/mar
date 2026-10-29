@@ -378,19 +378,20 @@ export class JsonlSessionStore implements SessionStore {
   async createSession(input: { title?: string; workspace: string; source?: SessionSource }) {
     this.#assertOpen();
     const source = normalizeSessionSource(input.source);
-    if (source.type !== 'subagent') return this.#createSession(input, source);
+    if (source.parentSessionId === undefined) return this.#createSession(input, source);
+    const parentSessionId = source.parentSessionId;
     // Publish under the parent's existing serial domain so tree admission cannot miss a child.
-    return this.#serializeRecordOperation(source.parentSessionId, async () => {
+    return this.#serializeRecordOperation(parentSessionId, async () => {
       this.#assertOpen();
-      if (this.#shared.writerLeases.get(source.parentSessionId)?.maintenance)
+      if (this.#shared.writerLeases.get(parentSessionId)?.maintenance)
         throw new AgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
-      const release = await this.#acquirePublicationGate(source.parentSessionId, 5000);
+      const release = await this.#acquirePublicationGate(parentSessionId, 5000);
       let failure: unknown;
       try {
-        await this.#recoverPendingTreeDelete(source.parentSessionId);
-        if (this.#shared.writerLeases.get(source.parentSessionId)?.maintenance)
+        await this.#recoverPendingTreeDelete(parentSessionId);
+        if (this.#shared.writerLeases.get(parentSessionId)?.maintenance)
           throw new AgentError('MAR_AGENT_SESSION_LOCKED', 'Session is under maintenance.');
-        await this.getSession(source.parentSessionId);
+        await this.getSession(parentSessionId);
         return await this.#createSession(input, source);
       } catch (error) {
         failure = error;
@@ -1722,14 +1723,30 @@ export class JsonlSessionStore implements SessionStore {
   async acquireSessionMaintenance(
     sessionId: string,
     kind: 'clear' | 'delete',
-    owner?: object
+    owner?: object,
+    members?: readonly string[]
   ): Promise<SessionStoreMaintenance> {
     this.#assertOpen();
+    const ids = members === undefined ? [sessionId] : [...members];
+    if (
+      ids.length === 0 ||
+      !ids.includes(sessionId) ||
+      new Set(ids).size !== ids.length ||
+      (kind === 'clear' && (ids.length !== 1 || ids[0] !== sessionId))
+    )
+      throw new AgentError('MAR_AGENT_SESSION_INVALID', 'Invalid Session maintenance members.');
+    ids.sort();
+    for (const id of ids) this.#sessionRoot(id);
     await this.#recoverPendingTreeDelete(sessionId);
     return acquireTreeMaintenance({
       sessionId,
       kind,
-      tree: () => this.sessionTree(sessionId),
+      tree: async () => {
+        await this.#refreshIndex();
+        if (ids.some((id) => !this.#shared.index.sessions.some((session) => session.id === id)))
+          throw new AgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
+        return ids;
+      },
       acquire: (id, holding, registerGate) =>
         this.#serializeRecordOperation(id, async () => {
           this.#assertOpen();

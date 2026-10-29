@@ -73,6 +73,95 @@ afterEach(() => {
 });
 
 describe('Goal transient orchestration', () => {
+  it('queues an updated Goal behind the active Run without replacing its execution', async () => {
+    const f = fixture();
+    const run = f.runtime.createMessageRun({
+      sessionId: f.session.id,
+      clientMessageId: 'active',
+      content: 'work in progress'
+    }).run;
+    await f.coordinator.start({
+      session: f.session,
+      objective: 'Updated objective',
+      secretEnvironment: {},
+      executionContext: { runner: 'mar-agent' },
+      preserveActiveRun: true
+    });
+    expect(f.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryIntent: 'QUEUE',
+        objective: 'Updated objective'
+      })
+    );
+    expect(f.runtime.activeSessionRun(f.session.id)?.id).toBe(run.id);
+    expect(f.goals.get(f.session.id)?.objective).toBe('Updated objective');
+    f.coordinator.dispose();
+  });
+
+  it('starts a Goal normally when no Run is active', async () => {
+    const f = fixture();
+    await f.coordinator.start({
+      session: f.session,
+      objective: 'Updated objective',
+      secretEnvironment: {},
+      executionContext: { runner: 'mar-agent' },
+      preserveActiveRun: true
+    });
+    expect(f.submit).toHaveBeenCalledWith(expect.objectContaining({ deliveryIntent: 'SEND' }));
+    f.coordinator.dispose();
+  });
+
+  it('submits the initial body once with the new Goal reference', async () => {
+    const f = fixture();
+    await f.coordinator.start({
+      session: f.session,
+      objective: 'New objective',
+      messageContent: 'Once only',
+      clientMessageId: 'network-body',
+      secretEnvironment: {},
+      executionContext: { runner: 'mar-agent' },
+      preserveActiveRun: true
+    });
+    const goal = f.goals.get(f.session.id)!;
+    expect(f.submit).toHaveBeenCalledOnce();
+    expect(f.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'start',
+        messageContent: 'Once only',
+        clientMessageId: 'network-body',
+        deliveryIntent: 'SEND',
+        goal: expect.objectContaining({ id: goal.id, revision: goal.revision })
+      })
+    );
+    f.coordinator.dispose();
+  });
+
+  it('does not implicitly replace an active Run when the Goal includes a body', async () => {
+    const f = fixture();
+    const run = f.runtime.createMessageRun({
+      sessionId: f.session.id,
+      clientMessageId: 'active',
+      content: 'in progress'
+    }).run;
+    await f.coordinator.start({
+      session: f.session,
+      objective: 'New objective',
+      messageContent: 'Queued body',
+      secretEnvironment: {},
+      executionContext: { runner: 'mar-agent' },
+      preserveActiveRun: true
+    });
+    expect(f.submit).toHaveBeenCalledOnce();
+    expect(f.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryIntent: 'QUEUE',
+        messageContent: 'Queued body'
+      })
+    );
+    expect(f.runtime.activeSessionRun(f.session.id)?.id).toBe(run.id);
+    f.coordinator.dispose();
+  });
+
   it('passes the accepted Runner context unchanged into the next Goal execution', async () => {
     const f = fixture();
     await f.coordinator.maintainGoalContinuation(f.input, true);

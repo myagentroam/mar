@@ -1,7 +1,12 @@
 import { expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { marctlDescription, marctlInstructions } from '../../src/marctl-guidance.js';
+import {
+  marctlDescription,
+  marctlInstructions,
+  marctlManagementDescription,
+  marctlManagementInstructions
+} from '../../src/marctl-guidance.js';
 import { withMarctlGuide } from '../../src/mcp/marctl-guide.js';
 import { NODE_MCP } from '../../src/mcp/naming.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
@@ -18,7 +23,7 @@ const environment = {
   MAR_CTL_WORKSPACE_ID: 'workspace'
 };
 
-it('publishes the same lazy guide as the Host Skill through real MCP without credentials', async () => {
+it('publishes paired full MCP and management-only Host guidance without credentials', async () => {
   const [server] = withMarctlGuide([], environment);
   expect(server).toMatchObject({ name: 'mar_cli', origin: 'BUILTIN', lifecycle: 'EXECUTION' });
   expect(server).not.toHaveProperty('environment');
@@ -32,9 +37,11 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
   try {
     await client.connect(transport);
     const skill = marctlHostSkill(environment)!;
-    expect(skill.description).toBe(marctlDescription);
-    expect(skill.description).toContain('prefer --runner mar-agent');
-    expect(skill.description).toContain('user or applicable workflow specifies another Runner');
+    expect(skill.description).toBe(marctlManagementDescription);
+    expect(await skill.load()).toBe(marctlManagementInstructions);
+    expect(await skill.load()).toContain('native agent_* tools');
+    expect(await skill.load()).not.toContain('agents start');
+    expect(await skill.load()).toContain('Acceptance is not completion');
     expect(client.getServerVersion()?.name).toBe('mar_cli');
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(1);
@@ -42,40 +49,31 @@ it('publishes the same lazy guide as the Host Skill through real MCP without cre
     expect(tool.name).toBe('load_guide');
     expect(tool.inputSchema.properties).toEqual({});
     expect(tool.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true });
-    expect(tool.description).toContain(skill.description);
+    expect(tool.description).toContain(marctlDescription);
     expect(tool.description).toContain('native shell tool');
     expect(client.getInstructions()).toBe(tool.description);
     expect(tool.description).not.toContain(marctlInstructions);
     const result = await client.callTool({ name: 'load_guide', arguments: {} });
     expect(result.isError).not.toBe(true);
-    expect(result.content).toEqual([{ type: 'text', text: await skill.load() }]);
+    expect(result.content).toEqual([{ type: 'text', text: marctlInstructions }]);
     for (const guidance of [
-      'preferred delivery for timely cross-Session coordination',
-      'results the recipient is waiting for',
-      'Do not queue a result merely because it is a report',
-      'Use --queue only for deliberately deferred follow-up work',
-      'may otherwise switch the current execution'
+      'agents start',
+      'agents send',
+      'agents wait',
+      'agents stop',
+      'agents list',
+      'agents view',
+      'default Runner is the current Session Runner',
+      '--clear-goal',
+      '--scope profile',
+      'agents start --title <title>',
+      'manual terminal may omit it',
+      'Acceptance is not completion',
+      'inspect history before retrying',
+      'Session IDs and parent relationships do not grant authorization'
     ]) {
       expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(guidance) }]);
     }
-    expect(result.content).toEqual([
-      { type: 'text', text: expect.stringContaining('marctl sessions start --runner mar-agent') }
-    ]);
-    expect(result.content).toEqual([
-      {
-        type: 'text',
-        text: expect.stringContaining('user or applicable workflow specifies another Runner')
-      }
-    ]);
-    expect(result.content).toEqual([
-      { type: 'text', text: expect.stringContaining('not a reason to silently switch') }
-    ]);
-    expect(result.content).toEqual([
-      {
-        type: 'text',
-        text: expect.stringContaining('An omitted model uses the target Runner configuration')
-      }
-    ]);
     expect((await client.callTool({ name: 'load_guide', arguments: {} })).content).toEqual(
       result.content
     );

@@ -7,7 +7,6 @@ import type {
   ExtensionSessionBackend,
   SessionInputCoordinator
 } from '../extensions/session-input.js';
-import type { ExtensionAgentsBackend } from '../extensions/agents.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import type { ModelCredentialProvider } from '../model/configuration.js';
 import type { SessionModelRequest as ModelRequest } from '../session/model-request.js';
@@ -17,10 +16,10 @@ import {
   parsePersistedContextualWorldState,
   type ContextualWorldState
 } from '../runtime/context/world-state.js';
-import type { SubagentSessionController } from '../subagent/session-controller.js';
 import { TodoStore } from '../tools/agent/todo.js';
 import { createSessionToolScheduler } from '../tools/scheduler.js';
 import type { ExecutionResult } from './types.js';
+import type { AgentEvent } from '../runtime/events.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import type { SessionExecution, SessionExecutionContext } from './session-execution.js';
 import { SessionModelAdapters } from './session-model-adapters.js';
@@ -31,15 +30,13 @@ export class SessionRuntime {
   readonly scheduleTool = createSessionToolScheduler();
   readonly #modelAdapters: SessionModelAdapters;
   #contextualWorldState: ContextualWorldState | undefined;
-  #subagents: SubagentSessionController | undefined;
-  #subagentsOpening: Promise<SubagentSessionController> | undefined;
   #inputs: SessionInputCoordinator | undefined;
   #requestSnapshots: ExtensionRequestSnapshots | undefined;
   #recordProjection: Promise<unknown> | undefined;
   #sessionBackend: (ExtensionSessionBackend & { kick(): void }) | undefined;
-  #agentsBackend: ExtensionAgentsBackend | undefined;
   readonly #executions = new Map<string, SessionExecution>();
   #activeExecutionId: string | undefined;
+  readonly #eventObservers = new Set<(event: AgentEvent) => void>();
 
   constructor(
     readonly storedSession: Awaited<ReturnType<SessionStore['getSession']>>,
@@ -48,7 +45,8 @@ export class SessionRuntime {
       modelId: string,
       models: ReadonlyMap<string, ResolvedModelConfiguration>
     ) => ModelAdapter,
-    hasCustomAdapters: boolean
+    hasCustomAdapters: boolean,
+    readonly onExecutionRegistered: (runtime: SessionRuntime) => void = () => {}
   ) {
     this.#modelAdapters = new SessionModelAdapters(generation, createAdapter, hasCustomAdapters);
   }
@@ -97,28 +95,9 @@ export class SessionRuntime {
   getOrCreateInputs(create: () => SessionInputCoordinator): SessionInputCoordinator {
     return (this.#inputs ??= create());
   }
-  disposeSubagents(): Promise<unknown> | undefined {
-    return this.#subagents?.dispose();
-  }
-  get subagents(): SubagentSessionController | undefined {
-    return this.#subagents;
-  }
-  async ensureSubagents(
-    open: () => Promise<SubagentSessionController>
-  ): Promise<SubagentSessionController> {
-    if (this.#subagents) return this.#subagents;
-    const pending = (this.#subagentsOpening ??= open());
-    try {
-      return (this.#subagents = await pending);
-    } finally {
-      if (this.#subagentsOpening === pending) this.#subagentsOpening = undefined;
-    }
-  }
   resetAfterClear(generation: number): void {
     this.#modelAdapters.setGeneration(generation);
     this.#todo = undefined;
-    this.#subagents = undefined;
-    this.#subagentsOpening = undefined;
     this.#contextualWorldState = undefined;
     this.#inputs = undefined;
     this.#requestSnapshots = undefined;
@@ -204,12 +183,6 @@ export class SessionRuntime {
   ensureSessionBackend(create: () => ExtensionSessionBackend & { kick(): void }): void {
     this.#sessionBackend ??= create();
   }
-  get agentsBackend(): ExtensionAgentsBackend | undefined {
-    return this.#agentsBackend;
-  }
-  ensureAgentsBackend(create: () => ExtensionAgentsBackend): void {
-    this.#agentsBackend ??= create();
-  }
 
   get execution(): SessionExecutionContext | undefined {
     return this.#executionContext;
@@ -231,6 +204,35 @@ export class SessionRuntime {
     return this.#activeExecutionId;
   }
 
+  subscribe(listener: (event: AgentEvent) => void) {
+    const observer = (event: AgentEvent) => listener(structuredClone(event));
+    this.#eventObservers.add(observer);
+    const terminal =
+      this.#activeExecutionId === undefined
+        ? undefined
+        : this.#executions.get(this.#activeExecutionId)?.observedTerminal;
+    return {
+      ...(this.#activeExecutionId === undefined
+        ? {}
+        : { activeExecutionId: this.#activeExecutionId }),
+      ...(terminal === undefined ? {} : { terminalEvent: structuredClone(terminal) }),
+      unsubscribe: () => {
+        this.#eventObservers.delete(observer);
+      }
+    };
+  }
+
+  publishEvent(event: AgentEvent): void {
+    for (const listener of [...this.#eventObservers]) {
+      if (!this.#eventObservers.has(listener)) continue;
+      try {
+        listener(event);
+      } catch {
+        /* Observers cannot change the owning Execution. */
+      }
+    }
+  }
+
   assertCanExecute(): void {
     if (this.#activeExecutionId !== undefined)
       throw new AgentError(
@@ -243,6 +245,7 @@ export class SessionRuntime {
     this.assertCanExecute();
     this.#executions.set(execution.executionId, execution);
     this.#activeExecutionId = execution.executionId;
+    this.onExecutionRegistered(this);
   }
 
   deactivateExecution(execution: SessionExecution): void {
@@ -260,6 +263,10 @@ export class SessionRuntime {
 
   cancelExecution(executionId: string): void {
     this.#executions.get(executionId)?.cancel();
+  }
+
+  joinExecution(executionId: string): Promise<ExecutionResult> | undefined {
+    return this.#executions.get(executionId)?.join();
   }
 
   cancelExecutions(): void {

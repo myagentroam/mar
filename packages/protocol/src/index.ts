@@ -19,6 +19,7 @@ export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
 export * from './mail-notification.js';
+export * from './marctl-execution-credential.js';
 export * from './notification-channels.js';
 export * from './web-push.js';
 export * from './workbench-notification.js';
@@ -878,6 +879,7 @@ const marAgentModelShape = {
   reasoningEfforts: z.array(marAgentReasoningEffortSchema).max(6),
   defaultReasoningEffort: marAgentReasoningEffortSchema.optional(),
   conversationModel: z.boolean().default(true),
+  subagentModel: z.boolean().default(false),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
@@ -965,6 +967,7 @@ export interface MarAgentModelSummary {
   reasoningEfforts: MarAgentReasoningEffort[];
   defaultReasoningEffort?: MarAgentReasoningEffort;
   conversationModel?: boolean;
+  subagentModel?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
@@ -1881,7 +1884,8 @@ export const runnerProfileSchema = z.object({
       label: z.string().min(1).max(128),
       supportedEfforts: z.array(z.string().min(1).max(64)).max(32),
       isDefault: z.boolean().optional(),
-      defaultEffort: z.string().min(1).max(64).optional()
+      defaultEffort: z.string().min(1).max(64).optional(),
+      subagentModel: z.boolean().optional()
     })
   ),
   accessOptions: z.array(
@@ -2102,7 +2106,8 @@ const assistantMessageItemSchema = conversationItemBaseSchema.extend({
   payload: z.object({
     text: z.string(),
     format: z.literal('markdown'),
-    model: z.string().max(128).nullable()
+    model: z.string().max(128).nullable(),
+    phase: z.enum(['commentary', 'final_answer']).optional()
   })
 });
 const userMessageItemSchema = conversationItemBaseSchema.extend({
@@ -2293,6 +2298,7 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
     subagentOperation: subagentOperationSchema.optional(),
     subagentWait: z.boolean().optional(),
     subagentId: z.string().min(1).max(128).nullable().optional(),
+    subagentSessionId: z.string().min(1).max(128).optional(),
     subagentModelId: z.string().min(1).max(128).optional(),
     subagentModelName: z.string().min(1).max(128).optional(),
     subagentReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional(),
@@ -3664,6 +3670,7 @@ export const gitHistoryFileSchema = z.object({
 export type GitHistoryFile = z.infer<typeof gitHistoryFileSchema>;
 
 export const workbenchNodeOperationSchema = z.enum([
+  'agent.network',
   'workspace.git.settings.get',
   'workspace.git.settings.update',
   'node.workbench.capabilities',

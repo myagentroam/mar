@@ -128,9 +128,44 @@ async function fixture() {
   return { home, store, root, child, other, sessions: join(home, '.mar/agent/sessions') };
 }
 
+async function deleteMembers(
+  store: JsonlSessionStore,
+  rootId: string,
+  memberIds: readonly string[]
+) {
+  const holding = await store.acquireSessionMaintenance(rootId, 'delete', undefined, memberIds);
+  try {
+    return await store.delete(rootId, holding);
+  } finally {
+    await holding.release();
+  }
+}
+
+it('admits only the explicit set rather than expanding a stored relation', async () => {
+  const { store, root, child, other } = await fixture();
+  const holding = await store.acquireSessionMaintenance(root.id, 'delete', undefined, [
+    root.id,
+    other.id
+  ]);
+  try {
+    expect(new Set(holding.sessionIds)).toEqual(new Set([root.id, other.id]));
+    await store.delete(root.id, holding);
+    await expect(store.getSession(child.id)).resolves.toMatchObject({ id: child.id });
+    await expect(store.getSession(other.id)).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_NOT_FOUND'
+    });
+  } finally {
+    await holding.release();
+    await store.close();
+  }
+});
+
 it('blocks cross-process child publication throughout tree maintenance', async () => {
   const { home, store, root, child, other } = await fixture();
-  const holding = await store.acquireSessionMaintenance(root.id, 'delete');
+  const holding = await store.acquireSessionMaintenance(root.id, 'delete', undefined, [
+    root.id,
+    child.id
+  ]);
   const helper = fileURLToPath(new URL('../support/create-subagent-child.ts', import.meta.url));
   const create = (parent: string, rootId: string) => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', helper, home, parent, rootId], {
@@ -249,7 +284,9 @@ it('excludes another process deleting the parent during child publication', asyn
     expect(child.stderr).toContain('MAR_AGENT_SESSION_LOCKED');
     resume.resolve();
     expect(await outcome).toMatchObject({ value: { id: pending[0] } });
-    expect(await store.delete(parent.id)).toEqual({ deleted: true });
+    expect(await deleteMembers(store, parent.id, [parent.id, pending[0]!])).toEqual({
+      deleted: true
+    });
     const index = JSON.parse(await readFile(join(sessions, 'index.json'), 'utf8'));
     expect(index.sessions).toEqual([]);
     await expect(stat(join(sessions, pending[0]!))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -378,7 +415,7 @@ it('rejects publication if the parent acquires a pending-delete marker after its
 it('deletes the whole tree while preserving unrelated Sessions', async () => {
   const { store, root, child, other, sessions } = await fixture();
   try {
-    expect(await store.delete(root.id)).toEqual({ deleted: true });
+    expect(await deleteMembers(store, root.id, [root.id, child.id])).toEqual({ deleted: true });
     await expect(stat(join(sessions, root.id))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(stat(join(sessions, child.id))).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await store.read(other.id))[0]?.type).toBe('session.created');
@@ -392,7 +429,7 @@ it('restores all tree history if a later content rename fails before index commi
   try {
     const before = await Promise.all([store.read(root.id), store.read(child.id)]);
     fault.stageCountdown = 1;
-    await expect(store.delete(root.id)).rejects.toBe(fault.error);
+    await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
     expect(await store.read(root.id)).toEqual(before[0]);
     expect(await store.read(child.id)).toEqual(before[1]);
     expect((await store.read(other.id))[0]?.type).toBe('session.created');
@@ -411,7 +448,7 @@ it('restores the tree when index replacement fails before commit', async () => {
     const before = await Promise.all([store.read(root.id), store.read(child.id)]);
     fault.indexPath = join(sessions, 'index.json');
     fault.failIndex = true;
-    await expect(store.delete(root.id)).rejects.toBe(fault.error);
+    await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
     expect(await store.read(root.id)).toEqual(before[0]);
     expect(await store.read(child.id)).toEqual(before[1]);
   } finally {
@@ -424,7 +461,7 @@ it('preserves the first staging error and blocks reads if restoring the tree als
   const before = await Promise.all([store.read(root.id), store.read(child.id)]);
   fault.stageCountdown = 1;
   fault.failRestore = true;
-  await expect(store.delete(root.id)).rejects.toBe(fault.error);
+  await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
   await expect(store.read(root.id)).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
   await expect(store.getSession(root.id)).rejects.toMatchObject({
     code: 'MAR_AGENT_SESSION_CORRUPT'
@@ -444,10 +481,13 @@ it('preserves the first staging error and blocks reads if restoring the tree als
 });
 
 it('blocks an existing owner writer after an uncertain tree delete', async () => {
-  const { home, store, root } = await fixture();
+  const { home, store, root, child } = await fixture();
   const owner = {};
   const releaseWriter = await store.acquireSessionLease(root.id, owner);
-  const maintenance = await store.acquireSessionMaintenance(root.id, 'delete', owner);
+  const maintenance = await store.acquireSessionMaintenance(root.id, 'delete', owner, [
+    root.id,
+    child.id
+  ]);
   fault.stageCountdown = 1;
   fault.failRestore = true;
   await expect(store.delete(root.id, maintenance)).rejects.toBe(fault.error);
@@ -767,7 +807,7 @@ it('retains staged data when the index decision cannot be read after a failed re
   fault.indexPath = join(sessions, 'index.json');
   fault.failIndex = true;
   fault.failDecisionRead = true;
-  await expect(store.delete(root.id)).rejects.toBe(fault.error);
+  await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
   await expect(store.read(root.id)).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
   fault.failDecisionRead = false;
   await store.close();
@@ -786,7 +826,7 @@ it('keeps committed deletion blocked and completes cleanup on explicit reopen af
   const { home, store, root, child, other, sessions } = await fixture();
   fault.cleanupPath = join(sessions, child.id);
   fault.failCleanup = true;
-  await expect(store.delete(root.id)).rejects.toBe(fault.error);
+  await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
   await expect(store.read(child.id)).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
   await store.close();
   fault.failCleanup = false;
@@ -810,7 +850,7 @@ it.each(['member', 'journal'] as const)(
     const anchor = join(sessions, '.delete-pending', root.id);
     fault.cleanupPath = kind === 'member' ? join(sessions, '.delete-pending', child.id) : anchor;
     fault.failCleanup = true;
-    await expect(store.delete(root.id)).rejects.toBe(fault.error);
+    await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
     expect(await readFile(anchor, 'utf8')).toContain('"kind":"delete"');
     await store.close();
     fault.failCleanup = false;
@@ -834,7 +874,7 @@ it.skipIf(process.platform === 'win32')(
     fault.indexPath = join(sessions, 'index.json');
     fault.syncRoot = sessions;
     fault.failSync = true;
-    await expect(store.delete(root.id)).rejects.toBe(fault.error);
+    await expect(deleteMembers(store, root.id, [root.id, child.id])).rejects.toBe(fault.error);
     await expect(store.read(root.id)).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
     await store.close();
     fault.failSync = false;

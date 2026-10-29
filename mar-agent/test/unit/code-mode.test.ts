@@ -570,15 +570,14 @@ describe('QuickJS Code Mode', () => {
       'tool_search',
       'question',
       'skill',
-      'sleep',
-      'agent_start',
-      'agent_wait',
-      'agent_message',
-      'agent_cancel'
+      'sleep'
     ]);
+    const legacyControls = new Set(['agent_start', 'agent_wait', 'agent_message', 'agent_cancel']);
     for (const tool of BUILTIN_TOOL_DEFINITIONS)
       expect(tool.allowedCallers, tool.name).toEqual(
-        controls.has(tool.name) ? ['direct'] : ['direct', 'programmatic']
+        controls.has(tool.name) || legacyControls.has(tool.name)
+          ? ['direct']
+          : ['direct', 'programmatic']
       );
 
     const defaultsToDirect = {
@@ -641,10 +640,6 @@ describe('QuickJS Code Mode', () => {
       'code_exec_wait',
       'apply_patch',
       'question',
-      'agent_start',
-      'agent_wait',
-      'agent_message',
-      'agent_cancel',
       'sleep',
       'default_direct'
     ]);
@@ -1234,23 +1229,14 @@ describe('QuickJS Code Mode', () => {
           allowedCallers: ['direct'],
           inputSchema: { type: 'object' }
         },
-        ...[
-          'code_exec',
-          'code_exec_wait',
-          'tool_search',
-          'question',
-          'skill',
-          'sleep',
-          'agent_start',
-          'agent_wait',
-          'agent_message',
-          'agent_cancel'
-        ].map((name) => ({
-          name,
-          description: 'Control tools remain direct-only.',
-          allowedCallers: ['direct', 'programmatic'] as const,
-          inputSchema: { type: 'object' }
-        }))
+        ...['code_exec', 'code_exec_wait', 'tool_search', 'question', 'skill', 'sleep'].map(
+          (name) => ({
+            name,
+            description: 'Control tools remain direct-only.',
+            allowedCallers: ['direct', 'programmatic'] as const,
+            inputSchema: { type: 'object' }
+          })
+        )
       ],
       invoke: async (call) => {
         invoked.push(call.name);

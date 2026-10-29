@@ -75,6 +75,8 @@ async function fixture() {
   };
   const session: AgentSession = {
     id: 'native-session',
+    subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    joinExecution: () => undefined,
     run: vi.fn(handle),
     steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
     plan: vi.fn(handle),
@@ -85,6 +87,9 @@ async function fixture() {
     createSession: vi.fn(async () => session),
     openSession: vi.fn(async () => session),
     listSessions: vi.fn(),
+    sessionHistory: vi.fn(async () => ({ entries: [] })),
+    sessionInputReceipt: vi.fn(async () => undefined),
+    sessionExecutionWasInterrupted: vi.fn(async () => false),
     getSession: vi.fn(async () => ({
       id: session.id,
       title,
@@ -100,9 +105,11 @@ async function fixture() {
     }),
     clearSession: vi.fn(),
     deleteSession: vi.fn(),
+    deleteSessions: vi.fn(),
     setSystemInstruction: vi.fn(),
     reconfigureModels: vi.fn(),
     extensionDiagnostics: () => [],
+    observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
     dispose: vi.fn(async () => undefined)
   };
   const models = [model, { ...model, id: 'title', titleGeneration: true }];

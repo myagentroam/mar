@@ -12,7 +12,6 @@ import type { InternalExecutionHandle, InternalExecutionOptions } from './sessio
 
 /** Adapts committed Extension input to an independently owned Execution. */
 export function createExtensionSessionLaunch(
-  sourceType: 'user' | 'subagent',
   start: (
     mode: ExecutionMode,
     input: RunInput,
@@ -24,11 +23,6 @@ export function createExtensionSessionLaunch(
     request: Exclude<ExtensionSessionRequest, { kind: 'append' }>,
     call: ExtensionOperationContext
   ) => {
-    if (sourceType !== 'user')
-      throw new AgentError(
-        'MAR_AGENT_SESSION_INPUT_UNAVAILABLE',
-        'Idle subagent input must use its task controller.'
-      );
     let resolveInput!: (outcome: ExtensionSessionActionResult) => void;
     let rejectInput!: (error: unknown) => void;
     const inputCommitted = new Promise<ExtensionSessionActionResult>((resolve, reject) => {
@@ -106,6 +100,7 @@ export function extensionInputSource(
 ) {
   return {
     operationId: call.operationId,
+    sessionId: call.sessionId,
     actor: call.actor,
     ...(call.extensionId ? { extensionId: call.extensionId } : {}),
     ...(call.ownerInstanceId ? { ownerInstanceId: call.ownerInstanceId } : {}),

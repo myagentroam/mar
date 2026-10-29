@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentEvent } from '../../src/index.js';
-import type { ExtensionAgentsApi } from '../../src/extensions.js';
+import type { Agent, AgentEvent } from '../../src/index.js';
+import {
+  createSubagentExtension,
+  SUBAGENT_NATIVE_SERVICE,
+  type NativeSubagentClient
+} from '../../extensions/subagent/src/index.js';
 import type { ToolExecutionContext } from '../../src/tools/contracts.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
@@ -20,16 +24,19 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         const entered = Promise.withResolvers<void>();
         const waiting = Promise.withResolvers<void>();
         const release = Promise.withResolvers<void>();
-        let api: ExtensionAgentsApi | undefined;
+        let api: NativeSubagentClient | undefined;
+        let agent!: Agent;
         let parentRound = 0;
         let agentId: string | undefined;
         const f = await fixture(
           [
+            createSubagentExtension({ agent: () => agent }),
             {
               id: 'wait-owner',
               apiVersion: '1.0',
+              serviceDependencies: [{ key: SUBAGENT_NATIVE_SERVICE }],
               attachSession(context) {
-                api ??= context.agents;
+                api ??= context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open();
               }
             }
           ],
@@ -44,6 +51,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
                 : call('read', { reads: [{ path: 'input.txt' }] });
             if (parentRound++ === 0)
               return call('agent_start', {
+                title: 'Retained child',
                 description: 'Retained child',
                 prompt: 'child worker',
                 role: 'explore'
@@ -77,6 +85,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           protocol
         );
         try {
+          agent = f.agent;
+          await agent.reconfigureModels({
+            models: [{ ...f.adapter.configuration, subagentModel: true }]
+          });
           const execution = f.session.run({
             prompt: 'wait for children',
             permissionMode: 'full-access'
@@ -104,15 +116,16 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           const event = events.find(
             (value) => value.type === 'tool.completed' && value.toolName === 'agent_wait'
           );
-          expect(event).toMatchObject({ data: { waitOutcome: 'interrupted', reason: 'steer' } });
+          expect(event?.type).toBe('tool.completed');
+          if (event?.type !== 'tool.completed') throw new Error('Missing wait result');
+          const result = JSON.parse(event.summary);
+          expect(result).toMatchObject({ waitOutcome: 'interrupted', reason: 'steer' });
           if (target === 'single' || target === 'untargeted')
-            expect(event).toMatchObject({ data: { status: 'running', agentId } });
+            expect(result).toMatchObject({ status: 'running', agentId });
           else
-            expect(event).toMatchObject({
-              data: {
-                pendingAgentIds: [agentId],
-                agents: [{ status: 'running', waitOutcome: 'interrupted', reason: 'steer' }]
-              }
+            expect(result).toMatchObject({
+              pendingAgentIds: [agentId],
+              agents: [{ status: 'running', waitOutcome: 'interrupted' }]
             });
           expect(events.some((value) => value.type === 'tool.failed')).toBe(false);
           release.resolve();

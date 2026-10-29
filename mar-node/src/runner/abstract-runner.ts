@@ -118,6 +118,15 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
 
   protected abstract profileForValidation(): RunnerProfile;
 
+  /** Models eligible for a child session, based on this runner's current profile. */
+  childModels(): RunnerProfile['models'] {
+    return this.profileForValidation().models;
+  }
+
+  assertChildModel(modelId: string | null): void {
+    void modelId;
+  }
+
   abstract resumeExternal(
     session: NodeAgentSession,
     context: ExternalResumeContext
@@ -195,6 +204,15 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
   ): Promise<NativeSessionRemovalResult> {
     void [session, nativeSessionId];
     return false;
+  }
+
+  supportsNativeBatchRemoval(): boolean {
+    return false;
+  }
+
+  async removeNativeMembers(sessions: readonly NodeAgentSession[]): Promise<void> {
+    void sessions;
+    throw new Error('NATIVE_BATCH_REMOVE_UNAVAILABLE');
   }
 
   async forkNative(

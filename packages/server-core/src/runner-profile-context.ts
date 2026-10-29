@@ -19,7 +19,7 @@ export async function prepareRunnerProfileContext(input: {
   };
 }
 
-function nodeModelSummary(model: MarAgentModelSummary): MarAgentNodeModelSummary {
+export function nodeModelSummary(model: MarAgentModelSummary): MarAgentNodeModelSummary {
   const summary: Partial<MarAgentModelSummary> = { ...model };
   delete summary.access;
   return summary as MarAgentNodeModelSummary;

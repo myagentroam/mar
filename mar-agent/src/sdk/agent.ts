@@ -20,8 +20,9 @@ import {
 import type { ModelAdapter } from '../model/contracts.js';
 import { OpenAiResponsesAdapter } from '../model/openai-responses.js';
 import { JsonlSessionStore } from '../session/store/jsonl/jsonl-store.js';
+import { createSessionCatalog } from '../session/catalog.js';
 import type { SessionStore } from '../session/store/contracts.js';
-import type { CreateAgentOptions, CreateSessionInput, Agent } from './types.js';
+import type { CreateAgentOptions, CreateSessionInput, Agent, AgentLiveSession } from './types.js';
 
 /** Validate models before Host negotiation and expose only built-in protocol adapters. */
 export async function createAgent(options: CreateAgentOptions): Promise<Agent> {
@@ -52,6 +53,7 @@ export async function createAgentWithAdapter(
   const ownsStore = options.sessionStore === undefined;
   const store: SessionStore =
     options.sessionStore ?? (await JsonlSessionStore.open(description.homeDirectory));
+  const historyCatalog = createSessionCatalog(store, true);
   // The same adapter can be borrowed concurrently by Execution and Extension operations.
   const activeExecutionAdapters = new Map<ModelAdapter, number>();
   const activeAdapterReferences = {
@@ -66,6 +68,22 @@ export async function createAgentWithAdapter(
     }
   };
   const sessionRuntimes = new SessionRegistry<SessionRuntime>();
+  const executionListeners = new Set<Parameters<Agent['observeSessionExecutions']>[0]>();
+  const liveSession = (runtime: SessionRuntime): AgentLiveSession => ({
+    id: runtime.storedSession.id,
+    workspace: runtime.storedSession.workspace,
+    source: structuredClone(runtime.storedSession.source),
+    subscribe: (listener) => runtime.subscribe(listener)
+  });
+  const onExecutionRegistered = (runtime: SessionRuntime): void => {
+    for (const listener of [...executionListeners]) {
+      try {
+        listener(liveSession(runtime));
+      } catch {
+        /* Observers cannot affect execution admission. */
+      }
+    }
+  };
   const sessionWriterOwner = {};
   let disposed = false;
   let disposal: Promise<void> | undefined;
@@ -113,7 +131,6 @@ export async function createAgentWithAdapter(
       'data.checkpoint',
       'data.store',
       'session',
-      'agents',
       'settings',
       ...(options.host.extensionPorts?.environment ? ['environment'] : []),
       ...(options.host.extensionPorts?.files ? ['files'] : []),
@@ -147,7 +164,6 @@ export async function createAgentWithAdapter(
             })
     ),
     sessionBackend: (id) => sessionRuntimes.get(id)?.sessionBackend,
-    agentsBackend: (id) => sessionRuntimes.get(id)?.agentsBackend,
     scheduleTool: (id) => (definition, run) => {
       const schedule = sessionRuntimes.get(id)?.scheduleTool;
       if (!schedule)
@@ -233,7 +249,8 @@ export async function createAgentWithAdapter(
     agentResources: {
       activeExecutionAdapters: activeAdapterReferences,
       sessionRuntimes,
-      sessionWriterOwner
+      sessionWriterOwner,
+      onExecutionRegistered
     },
     hasCustomAdapters: adapterFactory !== undefined,
     modelState: () => ({ models, defaultModelId, generation: modelGeneration }),
@@ -253,11 +270,44 @@ export async function createAgentWithAdapter(
   });
   return {
     extensionDiagnostics: () => extensions.diagnostics(),
+    observeSessionExecutions: (listener) => {
+      assertSessionAdmission();
+      executionListeners.add(listener);
+      const sessions = [...sessionRuntimes.values()]
+        .filter((runtime) => runtime.activeExecutionId !== undefined)
+        .map(liveSession);
+      return {
+        sessions,
+        unsubscribe: () => {
+          executionListeners.delete(listener);
+        }
+      };
+    },
     createSession: async (input: CreateSessionInput) => {
       assertSessionAdmission();
-      return sessionRuntimes.trackOpen(undefined, async () =>
-        openSession((await store.createSession(input)).id, input.workspace)
-      );
+      if (
+        input.source !== undefined &&
+        input.parentSessionId !== undefined &&
+        input.source.parentSessionId !== input.parentSessionId
+      )
+        throw new AgentError(
+          'MAR_AGENT_SESSION_SOURCE_INVALID',
+          'Session source conflicts with its parent.'
+        );
+      return sessionRuntimes.trackOpen(undefined, async () => {
+        const created = await store.createSession({
+          workspace: input.workspace,
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.source !== undefined
+            ? { source: input.source }
+            : input.parentSessionId === undefined
+              ? {}
+              : {
+                  source: { type: 'user', parentSessionId: input.parentSessionId }
+                })
+        });
+        return openSession(created.id, input.workspace);
+      });
     },
     openSession: (id) => openSession(id),
     listSessions: async (input) => {
@@ -267,6 +317,47 @@ export async function createAgentWithAdapter(
     getSession: async (id) => {
       assertSessionAdmission();
       return store.getSession(id);
+    },
+    sessionHistory: async (id, input) => {
+      assertSessionAdmission(id);
+      return historyCatalog.history(id, input);
+    },
+    sessionInputReceipt: async (id, input) => {
+      assertSessionAdmission(id);
+      return historyCatalog.inputReceipt(id, input);
+    },
+    sessionExecutionWasInterrupted: async (id, executionId, input) => {
+      assertSessionAdmission(id);
+      input?.signal?.throwIfAborted();
+      // Maintenance admission excludes every writer without adopting pending resources.
+      const maintenance = await store.acquireSessionMaintenance(id, 'clear', sessionWriterOwner);
+      try {
+        input?.signal?.throwIfAborted();
+        if (sessionRuntimes.get(id)?.activeExecutionId !== undefined) return false;
+        let cursor: string | undefined;
+        do {
+          const page = await historyCatalog.history(id, {
+            limit: 100,
+            ...(cursor === undefined ? {} : { cursor })
+          });
+          input?.signal?.throwIfAborted();
+          const latest = page.entries
+            .flatMap((entry) => (entry.kind === 'event' ? [entry.event] : []))
+            .findLast(
+              (event) =>
+                event.type === 'execution.started' ||
+                event.type === 'execution.completed' ||
+                event.type === 'execution.failed' ||
+                event.type === 'execution.cancelled'
+            );
+          if (latest)
+            return latest.type === 'execution.started' && latest.executionId === executionId;
+          cursor = page.nextCursor;
+        } while (cursor);
+        return false;
+      } finally {
+        await maintenance.release();
+      }
     },
     setSessionTitle: async (id, title, input) => {
       assertSessionAdmission();
@@ -367,9 +458,11 @@ export async function createAgentWithAdapter(
       }
     },
     deleteSession: (id) => maintenanceCoordinator.delete(id),
+    deleteSessions: (ids) => maintenanceCoordinator.deleteMembers(ids),
     dispose: () => {
       if (disposal) return disposal;
       disposed = true;
+      executionListeners.clear();
       for (const runtime of sessionRuntimes.values()) runtime.cancelExecutions();
       // Explicit end observers finish in a separate lifecycle frame before Session retirement.
       const runtimes = [...sessionRuntimes.values()];
@@ -379,7 +472,6 @@ export async function createAgentWithAdapter(
         () => maintenanceCoordinator.join(),
         () => extensions.dispose(),
         ...runtimes.map((runtime) => () => runtime.retireInputs()),
-        ...runtimes.map((runtime) => () => runtime.disposeSubagents()),
         () => Promise.all(runtimes.map((runtime) => runtime.joinExecutions())),
         () => pendingReconfiguration,
         () => SessionRuntime.closeModelAdapters(runtimes),

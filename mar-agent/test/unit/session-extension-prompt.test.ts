@@ -8,7 +8,17 @@ it('filters unavailable tools for the requested model before loading the idle Sk
   const root = await mkdtemp(join(tmpdir(), 'session-prompt-'));
   try {
     const names = ['read', 'question', 'view_image', 'code_exec', 'agent_start'];
-    const bindings = new Map(names.map((name) => [name, { definition: { name } }]));
+    const bindings = new Map(
+      names.map((name) => [
+        name,
+        {
+          definition: {
+            name,
+            ...(name === 'agent_start' ? { agentScope: 'ROOT_ONLY' } : {})
+          }
+        }
+      ])
+    );
     const skills = vi.fn(async () => []);
     const model = { id: 'm', inputCapabilities: [], codeMode: false };
     const prompt = createSessionExtensionPrompt({

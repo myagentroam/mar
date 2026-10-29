@@ -26,6 +26,7 @@ import type {
 } from '../service/run-attachment-service.js';
 import { parseSecretEnvironment } from '../mcp/secret-environment.js';
 import { personalInstructionsForRunner } from '../runner/personal-instructions.js';
+import { checkSessionAdmission } from './operation-admission.js';
 import { safeErrorCode } from '../util/safe-error.js';
 import type { ContinuousRunCoordinator } from '../service/continuous-run-coordinator.js';
 import type { AcceptedMessageSession } from '../service/external-session-resume-service.js';
@@ -131,6 +132,11 @@ export class SessionMessageService {
     readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
     readonly restoreQueued?: boolean;
+    readonly messageContent?: string;
+    readonly clientMessageId?: string;
+    readonly messageOrigin?: unknown;
+    readonly attachments?: readonly unknown[];
+    readonly attachmentIds?: readonly string[];
   }): Promise<unknown> {
     return this.message({
       [INTERNAL_GOAL]: true,
@@ -140,13 +146,18 @@ export class SessionMessageService {
         input.suppressNotifications === true ||
         (input.kind === 'continue' &&
           this.options.runtime.activeSessionRun(input.sessionId)?.suppressNotifications === true),
-      clientMessageId: `goal:${randomUUID()}`,
+      clientMessageId: input.clientMessageId ?? `goal:${randomUUID()}`,
       content:
         input.kind === 'start'
-          ? publicGoalStartText(input.objective ?? '')
+          ? [publicGoalStartText(input.objective ?? ''), input.messageContent]
+              .filter(Boolean)
+              .join('\n')
           : serializeComposerTag('mar_goal_continue', {}),
-      __runnerContent: input.content,
+      __runnerContent: [input.content, input.messageContent].filter(Boolean).join('\n\n'),
       __goalRef: input.goal,
+      ...(input.messageOrigin === undefined ? {} : { __marctlOrigin: input.messageOrigin }),
+      ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+      ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
       ...(input.initiatedByUserId === undefined
         ? {}
         : { __requestUserId: input.initiatedByUserId }),
@@ -191,6 +202,7 @@ export class SessionMessageService {
   }
 
   private async prepareMessage(input: MessageInput): Promise<unknown> {
+    checkSessionAdmission(input);
     if (
       typeof input.sessionId !== 'string' ||
       typeof input.clientMessageId !== 'string' ||
@@ -217,6 +229,7 @@ export class SessionMessageService {
     if (inlineAttachments.length > 0 && attachmentIds.length > 0)
       throw new Error('MESSAGE_ATTACHMENTS_INVALID');
     const accepted = await this.options.resolve(input.sessionId);
+    checkSessionAdmission(input);
     const session = accepted.session;
     if (input.workspaceId !== undefined && session.workspaceId !== input.workspaceId)
       throw new Error('SESSION_NOT_FOUND');
@@ -254,10 +267,16 @@ export class SessionMessageService {
           existing.kind === 'queue' ? existing.item.id : undefined
         )
       };
+    if (session.parentSessionId != null)
+      this.options.runners.require(session.runner).assertChildModel(session.model);
     const executionContext =
       input[RUNNER_EXECUTION_CONTEXT] ??
       this.options.runners.require(session.runner).prepareExecutionContext(input);
-    const sourceContent = withSessionMessageOrigin(content, input.__marctlOrigin);
+    const sourceContent = withSessionMessageOrigin(
+      content,
+      input.__marctlOrigin,
+      session.parentSessionId
+    );
     const goalMessage =
       internalGoal || internalSchedule || internalRestore
         ? undefined
@@ -266,14 +285,15 @@ export class SessionMessageService {
     const runnerContent =
       executionContent === content
         ? sourceContent
-        : withSessionMessageOrigin(executionContent, input.__marctlOrigin);
+        : withSessionMessageOrigin(executionContent, input.__marctlOrigin, session.parentSessionId);
     const publicContent =
       goalMessage?.activated === true
         ? withSessionMessageOrigin(
             [publicGoalStartText(composerVisibleText(content)), composerResourceInputTags(content)]
               .filter(Boolean)
               .join('\n'),
-            input.__marctlOrigin
+            input.__marctlOrigin,
+            session.parentSessionId
           )
         : sourceContent;
     const intent = goalMessage?.activated === true ? 'REPLACE_CURRENT' : requestedIntent;

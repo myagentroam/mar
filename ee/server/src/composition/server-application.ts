@@ -200,6 +200,15 @@ export async function composeServerApplication(
           authorizeBackgroundExecution(nodeId, request, 'SCHEDULE_MODEL_UNAVAILABLE'),
         restartAuthorizer: (nodeId, request) =>
           authorizeBackgroundExecution(nodeId, request, 'RESTART_MODEL_UNAVAILABLE'),
+        marctlExecutionCredential: (nodeId, request) =>
+          userCredentials.deriveExecution({
+            ...request,
+            nodeId,
+            authorize: (userId, targetNode, workspaceId) =>
+              Promise.resolve(
+                authorizeNodeRequest(userId, targetNode, 'session.start', {}, workspaceId)
+              )
+          }),
         notification: (nodeId, payload) => notifications.consume(nodeId, payload),
         runtimeCredentials: {
           activateNodeConnection: (nodeId) => runtimeCredentials.activateNodeConnection(nodeId),
@@ -330,10 +339,15 @@ export async function composeServerApplication(
         secretEnvironment: {
           ...(await environmentSecrets.resolve(request.ownerUserId, nodeId, request.workspaceId)),
           MAR_USERNAME: '',
-          ...(await userCredentials.environment({ userId: request.ownerUserId }, publicOrigin, {
-            nodeId,
-            workspaceId: request.workspaceId
-          }))
+          ...(await userCredentials.environment(
+            { userId: request.ownerUserId },
+            publicOrigin,
+            {
+              nodeId,
+              workspaceId: request.workspaceId
+            },
+            { type: 'delegation' }
+          ))
         },
         personalInstructions: await personalInstructions.get(request.ownerUserId),
         ...modelPayload

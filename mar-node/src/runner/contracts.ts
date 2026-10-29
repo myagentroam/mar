@@ -94,6 +94,7 @@ export interface RunnerDiscoveryContext {
     readonly runner: RunnerName;
     readonly externalSessionId: string;
     readonly cwd: string;
+    readonly parentSessionId?: string;
     readonly title?: string;
     readonly titleOrigin?: 'OFFICIAL' | 'PREVIEW' | 'NATIVE';
     readonly lastActivityAt?: number;

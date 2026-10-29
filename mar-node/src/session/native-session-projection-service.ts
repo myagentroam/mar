@@ -52,8 +52,18 @@ export class NativeSessionProjectionService {
       workspace
     );
     const ordered = deduplicateDirectSessions(sessions);
-    if (!cleanup) this.remember(ordered);
-    return ordered;
+    if (!cleanup) {
+      this.remember(ordered);
+      return ordered.flatMap((session) => {
+        const accepted = this.directNative.get(session.id);
+        return accepted === undefined ? [] : [accepted];
+      });
+    }
+    return ordered.flatMap((session) => {
+      const record = database.getSessionRecord(session.id);
+      if (record === undefined && session.parentSessionId != null) return [];
+      return [{ ...session, parentSessionId: record?.metadata.parentSessionId ?? null }];
+    });
   }
 
   async discoverCodex(workspaceId?: string): Promise<{
@@ -271,7 +281,10 @@ export class NativeSessionProjectionService {
       access: metadata?.access ?? null,
       customTitle: metadata?.customTitle ?? null,
       sessionPrompt: metadata?.sessionPrompt ?? null,
-      parentSessionId: metadata?.parentSessionId ?? null,
+      parentSessionId:
+        metadata === undefined
+          ? (input.parentSessionId ?? null)
+          : (metadata.parentSessionId ?? null),
       runnerTitle,
       pinnedAt: metadata?.pinnedAt ?? null,
       pinOrder: metadata?.pinOrder ?? null,
@@ -291,7 +304,61 @@ export class NativeSessionProjectionService {
 
   remember(sessions: readonly NodeAgentSession[]): void {
     const database = this.options.database();
-    for (const session of sessions) {
+    const candidates = new Map(sessions.map((session) => [session.id, session]));
+    const validParent = (session: NodeAgentSession): boolean => {
+      const visited = new Set([session.id]);
+      let parentId = session.parentSessionId ?? null;
+      let depth = 1;
+      while (parentId !== null) {
+        if (visited.has(parentId) || ++depth > 3) return false;
+        visited.add(parentId);
+        const stored = database?.getSessionRecord(parentId);
+        const candidate = stored === undefined ? candidates.get(parentId) : undefined;
+        if ((stored?.workspaceId ?? candidate?.workspaceId) !== session.workspaceId) return false;
+        parentId =
+          stored === undefined
+            ? (candidate?.parentSessionId ?? null)
+            : (stored.metadata.parentSessionId ?? null);
+      }
+      return true;
+    };
+    const valid = new Map(sessions.map((session) => [session.id, validParent(session)]));
+    const accepted = sessions.flatMap((proposed) => {
+      const metadata =
+        database === undefined || proposed.externalSessionId === null
+          ? undefined
+          : database.getNativeSessionMetadata(
+              proposed.runner,
+              proposed.externalSessionId,
+              proposed.workspaceId
+            );
+      if (
+        metadata === undefined &&
+        proposed.parentSessionId != null &&
+        (database === undefined || !valid.get(proposed.id))
+      )
+        return [];
+      const parentSessionId =
+        metadata !== undefined
+          ? (metadata.parentSessionId ?? null)
+          : database !== undefined && valid.get(proposed.id)
+            ? (proposed.parentSessionId ?? null)
+            : null;
+      return [{ ...proposed, parentSessionId }];
+    });
+    const acceptedById = new Map(accepted.map((session) => [session.id, session]));
+    const ordered: NodeAgentSession[] = [];
+    const visited = new Set<string>();
+    const visit = (session: NodeAgentSession): void => {
+      if (visited.has(session.id)) return;
+      visited.add(session.id);
+      const parent =
+        session.parentSessionId == null ? undefined : acceptedById.get(session.parentSessionId);
+      if (parent !== undefined) visit(parent);
+      ordered.push(session);
+    };
+    for (const session of accepted) visit(session);
+    for (const session of ordered) {
       this.directNative.set(session.id, session);
       if (database === undefined || session.externalSessionId === null) continue;
       const metadata = database.getNativeSessionMetadata(
@@ -308,6 +375,9 @@ export class NativeSessionProjectionService {
           runner: session.runner,
           externalSessionId: session.externalSessionId,
           workspaceId: session.workspaceId,
+          ...(metadata === undefined && session.parentSessionId != null
+            ? { parentSessionId: session.parentSessionId }
+            : {}),
           ...(title === undefined || metadata?.runnerTitlePending ? {} : { runnerTitle: title })
         });
     }
@@ -420,7 +490,6 @@ export class NativeSessionProjectionService {
   }
 
   forget(session: NodeAgentSession, knownNativeIds: ReadonlySet<string>): void {
-    if (session.externalSessionId === null) return;
     const projectionIds = new Set<string>([session.id]);
     const nativeIds = new Set(knownNativeIds);
     const runner = this.options.runners.require(session.runner);

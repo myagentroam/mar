@@ -17,6 +17,31 @@ const base = {
 };
 
 describe('Runner subagent lifecycle tool projection', () => {
+  it('projects only an explicit, identity-matched product Session mapping', () => {
+    for (const [data, expected] of [
+      [{ agentId: 'child', sessionId: 'child' }, undefined],
+      [{ agentId: 'child', productSessionId: 'another' }, undefined],
+      [{ agentId: 'child', productSessionId: 'child' }, 'child']
+    ] as const) {
+      const normalizer = new MarAgentConversationNormalizer();
+      normalizer.normalize({
+        ...base,
+        type: 'tool.started',
+        toolName: 'agent_start',
+        callId: 'call',
+        input: { content: 'task' }
+      });
+      const [item] = normalizer.normalize({
+        ...base,
+        type: 'tool.completed',
+        toolName: 'agent_start',
+        callId: 'call',
+        summary: 'done',
+        data
+      });
+      expect(item?.payload.subagentSessionId).toBe(expected);
+    }
+  });
   it('associates Claude structured results only with an unambiguous root tool result', () => {
     const first = {
       type: 'tool_result',

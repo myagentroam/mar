@@ -3,6 +3,7 @@ import { NODE_SCHEMA_MIGRATION_V18 } from './migrations/v018.js';
 import { NODE_SCHEMA_MIGRATION_V19 } from './migrations/v019.js';
 import { NODE_SCHEMA_MIGRATION_V20 } from './migrations/v020.js';
 import { NODE_SCHEMA_MIGRATION_V21 } from './migrations/v021.js';
+import { NODE_SCHEMA_MIGRATION_V22 } from './migrations/v022.js';
 import { normalizeSessionPrompt } from './runner/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -42,7 +43,8 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
   NODE_SCHEMA_MIGRATION_V18,
   NODE_SCHEMA_MIGRATION_V19,
   NODE_SCHEMA_MIGRATION_V20,
-  NODE_SCHEMA_MIGRATION_V21
+  NODE_SCHEMA_MIGRATION_V21,
+  NODE_SCHEMA_MIGRATION_V22
 ];
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
@@ -421,7 +423,7 @@ export class NodeDatabase {
   ): NativeSessionMetadata | undefined {
     const row = this.raw
       .prepare(
-        'SELECT pin_order, metadata FROM agent_sessions WHERE id = ? AND runner = ? AND workspace_id = ?'
+        'SELECT pin_order, metadata, parent_session_id FROM agent_sessions WHERE id = ? AND runner = ? AND workspace_id = ?'
       )
       .get(externalSessionId, runner, workspaceId) as SqlRow | undefined;
     if (row === undefined) return undefined;
@@ -435,7 +437,7 @@ export class NodeDatabase {
   clearSessionParent(runner: RunnerName, externalSessionId: string, workspaceId: string): void {
     const result = this.raw
       .prepare(
-        "UPDATE agent_sessions SET metadata = json_set(metadata, '$.parentSessionId', NULL) WHERE id = ? AND runner = ? AND workspace_id = ?"
+        'UPDATE agent_sessions SET parent_session_id = NULL WHERE id = ? AND runner = ? AND workspace_id = ?'
       )
       .run(externalSessionId, runner, workspaceId);
     if (result.changes !== 1) throw new Error('SESSION_NOT_FOUND');
@@ -443,7 +445,7 @@ export class NodeDatabase {
 
   saveNativeSessionMetadata(input: {
     readonly parentSessionId?: string | null;
-    // Only for the initial promotion of a newly created Session, never for a resume.
+    // Initial promotion or importing a native creation relationship, never for a resume.
     readonly initializeParent?: boolean;
     readonly runner: RunnerName;
     readonly externalSessionId: string;
@@ -493,7 +495,6 @@ export class NodeDatabase {
         : (current.parentSessionId ?? null);
     const metadata = JSON.stringify({
       version: 1,
-      parentSessionId,
       customTitle,
       sessionPrompt,
       runnerTitle,
@@ -524,12 +525,20 @@ export class NodeDatabase {
           .run(input.workspaceId);
       this.raw
         .prepare(
-          `INSERT INTO agent_sessions (id, workspace_id, runner, pin_order, metadata)
-           VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO agent_sessions (id, workspace_id, runner, pin_order, metadata, parent_session_id)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET workspace_id = excluded.workspace_id,
-             runner = excluded.runner, pin_order = excluded.pin_order, metadata = excluded.metadata`
+             runner = excluded.runner, pin_order = excluded.pin_order, metadata = excluded.metadata,
+             parent_session_id = excluded.parent_session_id`
         )
-        .run(input.externalSessionId, input.workspaceId, input.runner, pinOrder, metadata);
+        .run(
+          input.externalSessionId,
+          input.workspaceId,
+          input.runner,
+          pinOrder,
+          metadata,
+          parentSessionId
+        );
       this.raw.exec('COMMIT');
     } catch (error) {
       this.raw.exec('ROLLBACK');
@@ -559,7 +568,7 @@ export class NodeDatabase {
     return (
       this.raw
         .prepare(
-          'SELECT id, workspace_id, runner, pin_order, metadata FROM agent_sessions WHERE workspace_id = ? ORDER BY pin_order IS NULL, pin_order, id'
+          'SELECT id, workspace_id, runner, pin_order, metadata, parent_session_id FROM agent_sessions WHERE workspace_id = ? ORDER BY pin_order IS NULL, pin_order, id'
         )
         .all(workspaceId) as readonly SqlRow[]
     ).map(sessionRecord);
@@ -570,10 +579,43 @@ export class NodeDatabase {
   ): ReturnType<NodeDatabase['listSessionRecords']>[number] | undefined {
     const row = this.raw
       .prepare(
-        'SELECT id, workspace_id, runner, pin_order, metadata FROM agent_sessions WHERE id = ?'
+        'SELECT id, workspace_id, runner, pin_order, metadata, parent_session_id FROM agent_sessions WHERE id = ?'
       )
       .get(sessionId) as SqlRow | undefined;
     return row === undefined ? undefined : sessionRecord(row);
+  }
+
+  listChildSessionRecords(
+    workspaceId: string,
+    parentSessionId: string
+  ): ReturnType<NodeDatabase['listSessionRecords']> {
+    return (
+      this.raw
+        .prepare(
+          'SELECT id, workspace_id, runner, pin_order, metadata, parent_session_id FROM agent_sessions WHERE workspace_id = ? AND parent_session_id = ? ORDER BY id'
+        )
+        .all(workspaceId, parentSessionId) as readonly SqlRow[]
+    ).map(sessionRecord);
+  }
+
+  /** Resolve the complete registered tree, independently of display pagination. */
+  sessionTreeRecords(
+    workspaceId: string,
+    sessionId: string
+  ): ReturnType<NodeDatabase['listSessionRecords']> {
+    const root = this.getSessionRecord(sessionId);
+    if (root === undefined || root.workspaceId !== workspaceId)
+      throw new Error('SESSION_NOT_FOUND');
+    const records = [root];
+    const seen = new Set([root.id]);
+    for (let index = 0; index < records.length; index++) {
+      for (const child of this.listChildSessionRecords(workspaceId, records[index]!.id)) {
+        if (seen.has(child.id)) throw new Error('SESSION_RELATION_INVALID');
+        seen.add(child.id);
+        records.push(child);
+      }
+    }
+    return records;
   }
 
   movePinnedSession(
@@ -870,7 +912,7 @@ function sessionMetadata(row: SqlRow): Omit<NativeSessionMetadata, 'pinnedAt' | 
     typeof raw[key] === 'string' ? (raw[key] as string) : null;
   return {
     customTitle: value('customTitle'),
-    parentSessionId: value('parentSessionId'),
+    parentSessionId: typeof row['parent_session_id'] === 'string' ? row['parent_session_id'] : null,
     sessionPrompt: value('sessionPrompt'),
     runnerTitle: value('runnerTitle'),
     runnerTitlePending: raw['runnerTitlePending'] === true,

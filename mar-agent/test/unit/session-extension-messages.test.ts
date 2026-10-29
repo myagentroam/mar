@@ -3,11 +3,10 @@ import { createSessionExtensionMessages } from '../../src/sdk/session-extension-
 
 it('routes a child request to its live request snapshot rather than the parent history', async () => {
   const readExecutionState = vi.fn();
-  const inspect = vi.fn(async () => ({ agentId: 'child', modelId: 'm' }));
+  const getSession = vi.fn(async () => ({ id: 'child', source: { parentSessionId: 'parent' } }));
   const messages = createSessionExtensionMessages({
     sessionId: 'parent',
-    store: { readExecutionState },
-    agents: () => ({ inspect }),
+    store: { readExecutionState, getSession },
     runtime: (id: string) =>
       id === 'child'
         ? {
@@ -27,7 +26,7 @@ it('routes a child request to its live request snapshot rather than the parent h
     { agentId: 'child', view: 'request' } as never,
     { signal: new AbortController().signal } as never
   );
-  expect(inspect).toHaveBeenCalled();
+  expect(getSession).toHaveBeenCalledWith('child');
   expect(readExecutionState).not.toHaveBeenCalled();
   expect(JSON.stringify(page)).toContain('child input');
 });

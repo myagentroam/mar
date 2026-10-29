@@ -1,5 +1,7 @@
 export const workspaceZhCN = {
   sessionGroups: {
+    tree: '查看会话树',
+    treeTruncated: '会话树最多显示 100 个会话。',
     label: '会话分组',
     main: '主会话',
     child: '子会话',

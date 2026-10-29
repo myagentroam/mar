@@ -111,6 +111,7 @@ describe('Node session records and external discovery merge', () => {
       const connector = new NodeConnector({ reconnect: false, database });
       const node = connector as unknown as {
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
+        runners: { require(name: string): { configureModels(value: unknown): void } };
       };
       const configuration = { model: 'worker-model', effort: 'low', access: 'full-access' };
       const create = (fields: Record<string, unknown>) =>
@@ -121,6 +122,29 @@ describe('Node session records and external discovery merge', () => {
           ...fields
         });
       try {
+        if (runner === 'mar-agent')
+          node.runners.require('mar-agent').configureModels([
+            {
+              id: 'worker-model',
+              name: 'Worker',
+              protocol: 'OPENAI_RESPONSES',
+              baseUrl: 'https://example.test',
+              modelId: 'worker-model',
+              contextWindowTokens: 128000,
+              maxOutputTokens: 8192,
+              inputCapabilities: ['TEXT'],
+              outputCapabilities: ['TEXT'],
+              enabled: true,
+              conversationModel: true,
+              subagentModel: true,
+              reasoningEfforts: ['low'],
+              defaultReasoningEffort: 'low',
+              titleGeneration: false,
+              codeMode: false,
+              hostedWebSearch: false,
+              sortOrder: 0
+            }
+          ]);
         await expect(create({ ...configuration, __marctlOrigin: {} })).resolves.toMatchObject({
           session: configuration
         });
@@ -262,7 +286,7 @@ describe('Node session records and external discovery merge', () => {
     });
     for (let index = 0; index < 101; index += 1)
       database.saveNativeSessionMetadata({
-        runner: 'codex',
+        runner: index % 2 === 0 ? 'codex' : 'mar-agent',
         externalSessionId: 'child-' + index,
         workspaceId: workspace.id,
         parentSessionId: 'root'
@@ -274,6 +298,7 @@ describe('Node session records and external discovery merge', () => {
       }
     ).executeNodeOperation.bind(connector);
     try {
+      expect(database.sessionTreeRecords(workspace.id, 'root')).toHaveLength(102);
       const graph = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'root'
@@ -281,6 +306,13 @@ describe('Node session records and external discovery merge', () => {
       expect(graph.nodes).toHaveLength(100);
       expect(graph.nodes[0]?.id).toBe('root');
       expect(graph.truncated).toBe(true);
+      const targetTree = (await execute('session.graph', {
+        workspaceId: workspace.id,
+        sessionId: 'child-99',
+        includeAncestors: true
+      })) as { nodes: { id: string }[]; truncated: boolean };
+      expect(targetTree.nodes.map(({ id }) => id)).toContain('child-99');
+      expect(targetTree.truncated).toBe(true);
       const page = (cursor?: string) =>
         execute('session.list', {
           workspaceId: workspace.id,
@@ -316,6 +348,7 @@ describe('Node session records and external discovery merge', () => {
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
         nativeSessionProjectionService: NativeSessionProjectionService;
         sessionIdentityService: { promote(id: string, nativeId: string): void };
+        runners: { require(name: string): { configureModels(value: unknown): void } };
       };
       const execute = node.executeNodeOperation.bind(connector);
       try {
@@ -324,6 +357,43 @@ describe('Node session records and external discovery merge', () => {
           externalSessionId: 'parent',
           workspaceId: workspace.id
         });
+        if (runner === 'mar-agent') {
+          const request = {
+            workspaceId: workspace.id,
+            runner,
+            cwd: root,
+            model: 'test-model',
+            effort: 'high',
+            access: 'auto',
+            parentSessionId: 'parent'
+          };
+          await expect(execute('session.create', request)).rejects.toThrow(
+            'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
+          );
+          expect(database.listSessionRecords(workspace.id)).toHaveLength(1);
+          node.runners.require('mar-agent').configureModels([
+            {
+              id: 'test-model',
+              name: 'Test',
+              protocol: 'OPENAI_RESPONSES',
+              baseUrl: 'https://example.test',
+              modelId: 'test-model',
+              contextWindowTokens: 128000,
+              maxOutputTokens: 8192,
+              inputCapabilities: ['TEXT'],
+              outputCapabilities: ['TEXT'],
+              enabled: true,
+              conversationModel: true,
+              subagentModel: true,
+              reasoningEfforts: ['high'],
+              defaultReasoningEffort: 'high',
+              titleGeneration: false,
+              codeMode: false,
+              hostedWebSearch: false,
+              sortOrder: 0
+            }
+          ]);
+        }
         const { session } = (await execute('session.create', {
           workspaceId: workspace.id,
           runner,
@@ -351,7 +421,9 @@ describe('Node session records and external discovery merge', () => {
         expect(graph).toMatchObject({
           nodes: [{ id: 'parent' }, { id: 'child', parentSessionId: 'parent' }]
         });
-        await execute('session.metadata.update', { sessionId: 'child', clearParent: true });
+        await expect(
+          execute('session.metadata.update', { sessionId: 'child', clearParent: true })
+        ).rejects.toThrow('SESSION_PARENT_IMMUTABLE');
         database.saveNativeSessionMetadata({
           runner,
           externalSessionId: 'child',
@@ -359,7 +431,7 @@ describe('Node session records and external discovery merge', () => {
           parentSessionId: 'parent'
         });
         node.sessionIdentityService.promote('child', 'child');
-        expect(database.getSessionRecord('child')?.metadata.parentSessionId).toBeNull();
+        expect(database.getSessionRecord('child')?.metadata.parentSessionId).toBe('parent');
       } finally {
         await connector.stop();
       }
@@ -409,6 +481,7 @@ describe('Node session records and external discovery merge', () => {
       const grandchild = await create(child.session.id);
       expect(grandchild.session.parentSessionId).toBe('fixer');
       internals.sessionIdentityService.promote(grandchild.session.id, 'reviewer');
+      await expect(create('reviewer')).rejects.toThrow('SESSION_DEPTH_EXCEEDED');
       expect(database.getSessionRecord('fixer')?.metadata.parentSessionId).toBe('coordinator');
       internals.runtime.removeAgentSession('fixer');
       internals.runtime.removeAgentSession('reviewer');
@@ -440,6 +513,12 @@ describe('Node session records and external discovery merge', () => {
       expect(graph.truncated).toBe(false);
       expect(graph.nodes[0]).toHaveProperty('activity', 'IDLE');
       expect(graph.nodes[0]).not.toHaveProperty('sessionPrompt');
+      const fromGrandchild = await execute('session.graph', {
+        workspaceId: workspace.id,
+        sessionId: 'reviewer',
+        includeAncestors: true
+      });
+      expect(fromGrandchild).toEqual(graph);
       const limited = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'coordinator',

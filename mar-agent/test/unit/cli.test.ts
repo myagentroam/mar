@@ -119,6 +119,182 @@ async function responsesServer(requests: unknown[], permission?: 'ask' | 'deny')
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function subagentResponsesServer(requests: unknown[]) {
+  let started = false;
+  let childSeen = false;
+  let pendingParent: (() => void) | undefined;
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => (body += chunk));
+    request.on('end', () => {
+      const input = JSON.parse(body);
+      requests.push(input);
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      const send = (events: unknown[]) =>
+        response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
+      if (!Array.isArray(input.tools) || input.tools.length === 0) {
+        send([
+          { type: 'response.created', response: { id: 'title' } },
+          {
+            type: 'response.output_text.done',
+            item_id: 'title',
+            phase: 'final_answer',
+            text: 'Test'
+          },
+          { type: 'response.completed', response: { id: 'title', status: 'completed' } }
+        ]);
+        return;
+      }
+      if (!started) {
+        started = true;
+        send([
+          { type: 'response.created', response: { id: 'parent-first' } },
+          {
+            type: 'response.output_item.done',
+            item: {
+              type: 'function_call',
+              id: 'child-call-item',
+              call_id: 'child-call',
+              name: 'agent_start',
+              namespace: 'tools',
+              arguments: JSON.stringify({
+                title: 'Inspect',
+                description: 'Inspect',
+                prompt: 'Inspect delegated fixture',
+                role: 'general-purpose'
+              })
+            }
+          },
+          { type: 'response.completed', response: { id: 'parent-first' } }
+        ]);
+        return;
+      }
+      const finish = () =>
+        send([
+          { type: 'response.created', response: { id: `answer-${requests.length}` } },
+          {
+            type: 'response.output_text.done',
+            item_id: 'answer',
+            phase: 'final_answer',
+            text: 'Done'
+          },
+          { type: 'response.completed', response: { status: 'completed' } }
+        ]);
+      if (JSON.stringify(input.input).includes('<mar_session_origin')) {
+        childSeen = true;
+        finish();
+        pendingParent?.();
+      } else if (childSeen) finish();
+      else pendingParent = finish;
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('server unavailable');
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function subagentLifecycleServer(requests: unknown[]) {
+  let parentStep = 0;
+  let childTurns = 0;
+  let pendingParent: (() => void) | undefined;
+  const findAgentId = (value: unknown): string | undefined => {
+    if (typeof value === 'string') {
+      try {
+        return findAgentId(JSON.parse(value));
+      } catch {
+        return undefined;
+      }
+    }
+    if (!value || typeof value !== 'object') return undefined;
+    if ('agentId' in value && typeof value.agentId === 'string') return value.agentId;
+    for (const child of Object.values(value)) {
+      const found = findAgentId(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+    });
+    request.on('end', () => {
+      const input = JSON.parse(body);
+      requests.push(input);
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      const send = (events: unknown[]) =>
+        response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
+      const answer = (text: string) =>
+        send([
+          { type: 'response.created', response: { id: `answer-${requests.length}` } },
+          { type: 'response.output_text.done', item_id: 'answer', phase: 'final_answer', text },
+          { type: 'response.completed', response: { status: 'completed' } }
+        ]);
+      const tool = (name: string, args: unknown) =>
+        send([
+          { type: 'response.created', response: { id: `tool-${requests.length}` } },
+          {
+            type: 'response.output_item.done',
+            item: {
+              type: 'function_call',
+              id: `item-${requests.length}`,
+              call_id: `call-${requests.length}`,
+              name,
+              namespace: 'tools',
+              arguments: JSON.stringify(args)
+            }
+          },
+          { type: 'response.completed', response: { status: 'completed' } }
+        ]);
+      if (!Array.isArray(input.tools) || input.tools.length === 0) return answer('Test');
+      if (JSON.stringify(input.input).includes('<mar_session_origin')) {
+        childTurns += 1;
+        if (childTurns === 1) {
+          answer('Child final result');
+          pendingParent?.();
+          return;
+        }
+        return tool('sleep', { durationMs: 300000 });
+      }
+      const agentId = findAgentId(input.input);
+      switch (parentStep++) {
+        case 0:
+          return tool('agent_start', {
+            title: 'Inspect',
+            description: 'Inspect',
+            prompt: 'First child task',
+            role: 'general-purpose'
+          });
+        case 1:
+          if (childTurns === 0) {
+            pendingParent = () => tool('sleep', { durationMs: 500 });
+            return;
+          }
+          return tool('sleep', { durationMs: 500 });
+        case 2:
+          return tool('agent_wait', { agentId, waitFor: 'completion', waitMs: 30000 });
+        case 3:
+          return tool('agent_send', { agentId, content: 'Continue with a long task' });
+        case 4:
+          return tool('agent_wait', { agentId, waitMs: 0 });
+        case 5:
+          return tool('agent_stop', { agentId });
+        default:
+          return answer('Parent completed');
+      }
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('server unavailable');
+  return `http://127.0.0.1:${address.port}`;
+}
+
 async function modelTestServer(
   requests: unknown[],
   protocol: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES',
@@ -964,6 +1140,179 @@ describe('maragent CLI', () => {
         ])
       })
     );
+  });
+
+  it('assembles the packaged Subagent extension in the actual CLI entry', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-cli-subagent-home-'));
+    homes.push(home);
+    const requests: unknown[] = [];
+    await writeResponsesModel(home, await responsesServer(requests));
+    const result = await executeWithClosedStdin(
+      process.execPath,
+      ['dist/cli/main.js', '--home', home, '--model', 'reasoning', 'run', 'Reply OK.'],
+      process.cwd()
+    );
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(
+      requests.some((request) =>
+        JSON.stringify((request as { tools?: unknown }).tools ?? []).includes('agent_start')
+      )
+    ).toBe(true);
+  });
+
+  it('configures child model use through the CLI and starts a real child Session', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-cli-subagent-model-'));
+    const workspace = await mkdtemp(join(tmpdir(), 'mar-cli-subagent-workspace-'));
+    homes.push(home, workspace);
+    const requests: unknown[] = [];
+    const url = await subagentResponsesServer(requests);
+    await executeWithInput(
+      process.execPath,
+      [
+        'dist/cli/main.js',
+        '--home',
+        home,
+        'models',
+        'add',
+        'coding',
+        '--name',
+        'Coding',
+        '--protocol',
+        'OPENAI_RESPONSES',
+        '--url',
+        url,
+        '--model',
+        'coding-model',
+        '--api-key-stdin'
+      ],
+      'test-key\n',
+      process.cwd()
+    );
+    const catalog = join(home, '.mar', 'agent', 'models.json');
+    expect(JSON.parse(await readFile(catalog, 'utf8')).models[0]).toMatchObject({
+      conversationModel: true,
+      subagentModel: false
+    });
+    await execute(process.execPath, [
+      'dist/cli/main.js',
+      '--home',
+      home,
+      'models',
+      'edit',
+      'coding',
+      '--subagent-model'
+    ]);
+    const listing = await execute(process.execPath, [
+      'dist/cli/main.js',
+      '--home',
+      home,
+      'models',
+      'list'
+    ]);
+    expect(listing.stdout).toContain('conversation=true\tsubagent=true');
+    const run = await execute(
+      process.execPath,
+      [
+        join(process.cwd(), 'dist/cli/main.js'),
+        '--home',
+        home,
+        'run',
+        'Delegate one task',
+        '--format',
+        'stream-json'
+      ],
+      { cwd: workspace, timeout: 10_000 }
+    ).catch((error) => {
+      throw new Error(`CLI failed after ${requests.length} requests: ${String(error.stdout)}`);
+    });
+    const events = run.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool.completed',
+        toolName: 'agent_start',
+        data: expect.objectContaining({ agentId: expect.any(String) })
+      })
+    );
+    expect(
+      requests.some((request) =>
+        JSON.stringify((request as { input?: unknown }).input).includes('Inspect delegated fixture')
+      )
+    ).toBe(true);
+    await execute(process.execPath, [
+      'dist/cli/main.js',
+      '--home',
+      home,
+      'models',
+      'edit',
+      'coding',
+      '--no-subagent-model'
+    ]);
+    expect(JSON.parse(await readFile(catalog, 'utf8')).models[0].subagentModel).toBe(false);
+  });
+
+  it('creates, observes, sends, waits and stops a child through the CLI entry', async () => {
+    const cli = process.env.MAR_CLI_TEST_ENTRY ?? join(process.cwd(), 'dist/cli/main.js');
+    const home = await mkdtemp(join(tmpdir(), 'mar-cli-subagent-lifecycle-'));
+    const workspace = await mkdtemp(join(tmpdir(), 'mar-cli-subagent-lifecycle-workspace-'));
+    homes.push(home, workspace);
+    const requests: unknown[] = [];
+    const url = await subagentLifecycleServer(requests);
+    await executeWithInput(
+      process.execPath,
+      [
+        cli,
+        '--home',
+        home,
+        'models',
+        'add',
+        'coding',
+        '--name',
+        'Coding',
+        '--protocol',
+        'OPENAI_RESPONSES',
+        '--url',
+        url,
+        '--model',
+        'coding-model',
+        '--api-key-stdin'
+      ],
+      'test-key\n',
+      process.cwd()
+    );
+    await execute(process.execPath, [
+      cli,
+      '--home',
+      home,
+      'models',
+      'edit',
+      'coding',
+      '--subagent-model'
+    ]);
+    const run = await execute(
+      process.execPath,
+      [cli, '--home', home, 'run', 'Exercise child lifecycle', '--format', 'stream-json'],
+      { cwd: workspace, timeout: 20000 }
+    );
+    const events = run.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const completed = events.filter((event) => event.type === 'tool.completed');
+    expect(completed.map((event) => event.toolName)).toEqual(
+      expect.arrayContaining(['agent_start', 'agent_send', 'agent_wait', 'agent_stop'])
+    );
+    expect(events.filter((event) => event.type === 'tool.failed')).toEqual([]);
+    expect(requests.some((request) => JSON.stringify(request).includes('Child final result'))).toBe(
+      true
+    );
+    expect(
+      requests.some((request) => JSON.stringify(request).includes('<mar_subagent_update>'))
+    ).toBe(true);
+    const stopped = completed.find((event) => event.toolName === 'agent_stop');
+    expect(JSON.parse(stopped.summary)).toMatchObject({ status: 'cancelled' });
   });
 
   it('rejects a reasoning effort not declared by the selected model', async () => {

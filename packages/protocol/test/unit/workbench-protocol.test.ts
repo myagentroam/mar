@@ -943,6 +943,21 @@ describe('Workbench protocol contracts', () => {
       }
     });
     expect(assistant.payload).not.toHaveProperty('performance');
+    const finalMessage = conversationItemSchema.parse({
+      ...base,
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      payload: { text: 'answer', format: 'markdown', model: null, phase: 'final_answer' }
+    });
+    expect(finalMessage.payload).toMatchObject({ phase: 'final_answer' });
+    expect(
+      conversationItemSchema.safeParse({
+        ...base,
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: { text: 'answer', format: 'markdown', model: null, phase: 'unknown' }
+      }).success
+    ).toBe(false);
     expect(
       conversationItemSchema.safeParse({
         ...base,
@@ -959,6 +974,7 @@ describe('Workbench protocol contracts', () => {
           subagentOperation: 'STATUS',
           subagentWait: true,
           subagentId: 'task-1',
+          subagentSessionId: 'session-1',
           subagentModelId: 'review',
           subagentModelName: 'Review Agent',
           subagentReasoningEffort: 'high',
@@ -972,7 +988,7 @@ describe('Workbench protocol contracts', () => {
           }
         }
       }).data
-    ).toMatchObject({ payload: { subagentWait: true } });
+    ).toMatchObject({ payload: { subagentWait: true, subagentSessionId: 'session-1' } });
     expect(
       conversationItemSchema.safeParse({
         ...base,

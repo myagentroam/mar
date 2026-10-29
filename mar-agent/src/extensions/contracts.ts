@@ -10,17 +10,6 @@ import type {
   ExtensionPromptSectionInput
 } from './prompt-composition.js';
 import type { ExtensionModelsApi } from './models.js';
-import type {
-  ExtensionAgentsApi,
-  ExtensionAgentSpawnInput,
-  ExtensionAgentWaitInput,
-  ExtensionAgentWaitResult,
-  ExtensionAgentMessageInput,
-  ExtensionAgentTarget,
-  ExtensionAgentSnapshot,
-  ExtensionAgentSpawnResult,
-  ExtensionAgentCompletion
-} from './agents.js';
 import type { ExtensionDataApi } from './data.js';
 import type {
   ExtensionMcpApi,
@@ -89,7 +78,6 @@ import type {
   ExtensionToolFailure
 } from './tools.js';
 
-import type { DomainAgentOperations, DomainAgentFacts } from './agents.js';
 import type { DomainCompactOperations, DomainCompactFacts } from './compaction.js';
 import type { DomainEnvironmentOperations, DomainEnvironmentFacts } from './environment.js';
 import type { DomainFileOperations, DomainFileFacts } from './files.js';
@@ -109,7 +97,6 @@ import type { DomainToolOperations, DomainToolFacts } from './tools.js';
 
 export interface ExtensionDomainOperations
   extends
-    DomainAgentOperations,
     DomainCompactOperations,
     DomainEnvironmentOperations,
     DomainFileOperations,
@@ -125,7 +112,6 @@ export interface ExtensionDomainOperations
     DomainToolOperations {}
 export interface ExtensionDomainFacts
   extends
-    DomainAgentFacts,
     DomainCompactFacts,
     DomainEnvironmentFacts,
     DomainFileFacts,
@@ -170,7 +156,6 @@ export interface AgentExtensionContext {
 }
 export interface SessionExtensionContext extends AgentExtensionContext {
   readonly mcp?: ExtensionMcpApi;
-  readonly agents?: ExtensionAgentsApi;
   readonly environment?: ExtensionEnvironmentApi;
   readonly settings?: ExtensionSettingsApi;
   readonly processes?: ExtensionProcessesApi;

@@ -4,6 +4,7 @@ import { publicHostedToolEvents } from '../runtime/event-projection.js';
 import type { SessionStore } from './store/contracts.js';
 import type { SessionListInput, SessionSource } from './types.js';
 import type { AgentSessionRollbackInput } from './rollback.js';
+import { appliedInputRecord } from './deferred-input.js';
 
 const MAX_INPUT_IMAGE_BYTES = 5 * 1024 * 1024;
 const INPUT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -19,6 +20,15 @@ export type AgentSessionHistoryEntry =
 export interface AgentSessionHistoryPage {
   entries: AgentSessionHistoryEntry[];
   nextCursor?: string;
+}
+
+export interface AgentSessionInputReceipt {
+  readonly clientMessageId: string;
+  readonly executionId: string;
+  readonly turnId: string;
+  readonly status: 'accepted' | 'applied';
+  readonly appliedExecutionId?: string;
+  readonly appliedTurnId?: string;
 }
 
 export interface AgentSessionContextUsage {
@@ -50,6 +60,16 @@ export interface AgentSessionCatalog {
     sessionId: string,
     input?: { limit?: number; cursor?: string }
   ): Promise<AgentSessionHistoryPage>;
+  /** Read the specified receipt, or the latest receipt associated with the fixed Execution. */
+  inputReceipt(
+    sessionId: string,
+    input: {
+      clientMessageId?: string;
+      executionId: string;
+      signal?: AbortSignal;
+      source?: { sessionId: string; extensionId: string; actors?: readonly string[] };
+    }
+  ): Promise<AgentSessionInputReceipt | undefined>;
   readImage(
     sessionId: string,
     input: { readonly sequence: number; readonly imageIndex: number }
@@ -70,6 +90,8 @@ export interface AgentSessionCatalog {
   rollback(sessionId: string, input: AgentSessionRollbackInput): Promise<AgentSessionSummary>;
   clear(sessionId: string): Promise<AgentSessionSummary>;
   delete(sessionId: string): Promise<AgentSessionDeleteResult>;
+  /** Delete exactly these members after their owners have released their resources. */
+  deleteMembers(sessionIds: readonly string[]): Promise<AgentSessionDeleteResult>;
   close(): Promise<void>;
 }
 
@@ -91,6 +113,7 @@ export function createSessionCatalog(
     | 'rollbackSession'
     | 'clearSession'
     | 'delete'
+    | 'acquireSessionMaintenance'
     | 'close'
   >,
   borrowed: boolean
@@ -111,6 +134,94 @@ export function createSessionCatalog(
     executionConfiguration: async (sessionId) => {
       assertOpen();
       return store.executionConfiguration(sessionId);
+    },
+    inputReceipt: async (sessionId, input) => {
+      assertOpen();
+      if (
+        (input.clientMessageId !== undefined && !input.clientMessageId.trim()) ||
+        !input.executionId.trim()
+      )
+        throw new AgentError(
+          'MAR_AGENT_SESSION_INPUT_INVALID',
+          'Input receipt identity is invalid.'
+        );
+      const applied = new Map<string, { executionId?: string; turnId?: string }>();
+      let beforeSequence: number | undefined;
+      do {
+        input.signal?.throwIfAborted();
+        const page = await store.readPage(sessionId, {
+          limit: 1000,
+          ...(beforeSequence === undefined ? {} : { beforeSequence })
+        });
+        input.signal?.throwIfAborted();
+        for (const record of [...page.records].reverse()) {
+          if (!isRecord(record.payload)) continue;
+          if (
+            record.type === 'input.applied' &&
+            typeof record.payload.inputRef === 'string' &&
+            !applied.has(record.payload.inputRef)
+          )
+            applied.set(record.payload.inputRef, {
+              ...(record.executionId === undefined ? {} : { executionId: record.executionId }),
+              ...(record.turnId === undefined ? {} : { turnId: record.turnId })
+            });
+          if (
+            record.type === 'model.context' &&
+            isRecord(record.payload.input) &&
+            (input.clientMessageId === undefined ||
+              record.payload.input.clientMessageId === input.clientMessageId)
+          ) {
+            const projected = appliedInputRecord(record);
+            if (projected && !applied.has(projected.recordId))
+              applied.set(projected.recordId, {
+                ...(record.executionId === undefined ? {} : { executionId: record.executionId }),
+                ...(record.turnId === undefined ? {} : { turnId: record.turnId })
+              });
+          }
+          if (
+            record.type !== 'turn.user' ||
+            !record.executionId ||
+            !record.turnId ||
+            typeof record.payload.clientMessageId !== 'string' ||
+            !record.payload.clientMessageId ||
+            (input.clientMessageId !== undefined &&
+              record.payload.clientMessageId !== input.clientMessageId)
+          )
+            continue;
+          if (input.source) {
+            const source = record.payload.source;
+            if (
+              !isRecord(source) ||
+              source.sessionId !== input.source.sessionId ||
+              source.extensionId !== input.source.extensionId ||
+              (input.source.actors && !input.source.actors.includes(String(source.actor)))
+            )
+              continue;
+          }
+          const application = applied.get(record.recordId);
+          if (
+            input.clientMessageId === undefined
+              ? record.executionId !== input.executionId &&
+                application?.executionId !== input.executionId
+              : record.executionId !== input.executionId
+          )
+            continue;
+          return {
+            clientMessageId: record.payload.clientMessageId,
+            executionId: record.executionId,
+            turnId: record.turnId,
+            status: application ? ('applied' as const) : ('accepted' as const),
+            ...{
+              ...(application?.executionId === undefined
+                ? {}
+                : { appliedExecutionId: application.executionId }),
+              ...(application?.turnId === undefined ? {} : { appliedTurnId: application.turnId })
+            }
+          };
+        }
+        beforeSequence = page.previousBeforeSequence;
+      } while (beforeSequence !== undefined);
+      return undefined;
     },
     history: async (sessionId, options = {}) => {
       assertOpen();
@@ -232,6 +343,31 @@ export function createSessionCatalog(
     delete: async (sessionId) => {
       assertOpen();
       return store.delete(sessionId);
+    },
+    deleteMembers: async (sessionIds) => {
+      assertOpen();
+      const ids = [...sessionIds];
+      if (
+        ids.length === 0 ||
+        ids.some((id) => typeof id !== 'string' || id.length === 0) ||
+        new Set(ids).size !== ids.length
+      )
+        throw new AgentError('MAR_AGENT_SESSION_INVALID', 'Invalid Session maintenance members.');
+      ids.sort();
+      const maintenance = await store.acquireSessionMaintenance(ids[0]!, 'delete', undefined, ids);
+      let failed = false;
+      try {
+        return await store.delete(ids[0]!, maintenance);
+      } catch (error) {
+        failed = true;
+        throw error;
+      } finally {
+        try {
+          await maintenance.release();
+        } catch (error) {
+          if (!failed) throw error;
+        }
+      }
     },
     close: () => {
       closure ??= Promise.resolve().then(() => (borrowed ? undefined : store.close()));

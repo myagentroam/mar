@@ -9,6 +9,7 @@ export async function prepareSessionExecutionContext(input: {
     readonly sessionHash?: string;
     readonly scheduled?: boolean;
     readonly channel?: boolean;
+    readonly marctlExpiresAt?: number;
   };
   readonly nodeId: string;
   readonly workspaceId: string | undefined;
@@ -29,7 +30,9 @@ export async function prepareSessionExecutionContext(input: {
           : {
               nodeId: input.nodeId,
               workspaceId: input.workspaceId
-            }
+            },
+        { type: 'delegation' },
+        input.user.marctlExpiresAt
       ))
     },
     ...(input.instructions === undefined

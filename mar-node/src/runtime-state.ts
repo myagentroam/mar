@@ -1082,6 +1082,69 @@ export class NodeRuntimeState {
     return undefined;
   }
 
+  /** Read the identity and status of one Execution without following a later turn. */
+  executionSnapshot(executionId: string):
+    | {
+        readonly executionId: string;
+        readonly runId: string;
+        readonly sessionId: string;
+        readonly status: string;
+      }
+    | undefined {
+    const execution = this.executions.get(executionId);
+    if (execution !== undefined) {
+      const run = this.getRun(execution.runId);
+      return run === undefined
+        ? undefined
+        : {
+            executionId,
+            runId: run.id,
+            sessionId: run.sessionId,
+            status: execution.status
+          };
+    }
+    const retained = this.retainedExecutionTurns.get(executionId);
+    if (retained === undefined) return undefined;
+    const turn = this.turns.get(retained.sessionId)?.find((value) => value.id === retained.turnId);
+    return turn?.runId == null
+      ? undefined
+      : {
+          executionId,
+          runId: turn.runId,
+          sessionId: retained.sessionId,
+          status: turn.status
+        };
+  }
+
+  latestRunExecution(runId: string): ReturnType<NodeRuntimeState['executionSnapshot']> {
+    const turn = this.conversationTurnForRun(runId);
+    if (turn === undefined) return undefined;
+    for (const execution of this.executions.values())
+      if (execution.runId === runId && execution.turnId === turn.id)
+        return this.executionSnapshot(execution.id);
+    for (const [executionId, retained] of this.retainedExecutionTurns)
+      if (retained.sessionId === turn.sessionId && retained.turnId === turn.id)
+        return this.executionSnapshot(executionId);
+    return undefined;
+  }
+
+  /** Resolve the current or most recent retained Execution of a Session. */
+  latestSessionExecution(sessionId: string): ReturnType<NodeRuntimeState['executionSnapshot']> {
+    const active = this.activeSessionRun(sessionId);
+    if (active !== undefined) return this.latestRunExecution(active.id);
+    const turns = this.turns.get(sessionId) ?? [];
+    for (let index = turns.length - 1; index >= 0; index -= 1) {
+      const turn = turns[index]!;
+      const live = [...this.executions.values()].find((value) => value.turnId === turn.id);
+      if (live !== undefined) return this.executionSnapshot(live.id);
+      for (const [executionId, retained] of this.retainedExecutionTurns) {
+        if (retained.sessionId === sessionId && retained.turnId === turn.id)
+          return this.executionSnapshot(executionId);
+      }
+    }
+    return undefined;
+  }
+
   createExecution(runId: string): NodeRunnerExecution {
     const canonicalRunId = this.canonicalRunId(runId);
     const turn = this.currentTurnForRun(canonicalRunId);
@@ -1473,7 +1536,7 @@ export class NodeRuntimeState {
     }
   }
 
-  private assertSessionHistoryMutable(sessionId: string): void {
+  assertSessionHistoryMutable(sessionId: string): void {
     if (this.sessionHistoryMutations.has(sessionId)) throw new Error('SESSION_ACTIVE');
   }
 

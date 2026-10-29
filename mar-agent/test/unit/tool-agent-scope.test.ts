@@ -8,6 +8,8 @@ import { LocalAgentHost } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import { type ModelEvent, type ModelRequest } from '../../src/model/contracts.js';
+import type { Agent } from '../../src/index.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 
 const roots: string[] = [];
 
@@ -39,7 +41,9 @@ describe('tool Agent scope', () => {
       outputCapabilities: ['TEXT'],
       reasoningEfforts: ['low'],
       hostedWebSearch: false,
-      enabled: true
+      enabled: true,
+      conversationModel: true,
+      subagentModel: true
     };
     const host = new LocalAgentHost({
       homeDirectory: home,
@@ -73,17 +77,19 @@ describe('tool Agent scope', () => {
       ],
       callMcp: invokeHidden
     });
-    const agent = await createMarAgent(
+    let agent!: Agent;
+    agent = await createMarAgent(
       {
         mode: 'normal',
         host,
-        models: [model]
+        models: [model],
+        extensions: [createSubagentExtension({ agent: () => agent })]
       },
       (configuration) => ({
         configuration,
         async *start(request): AsyncIterable<ModelEvent> {
           requests.push(request);
-          const child = effectiveInstructions(request).includes('non-recursive subagent');
+          const child = effectiveInstructions(request).includes('delegated subagent');
           if (child) {
             if (childCalls++ === 0) {
               for (const name of ['mcp__root__action', 'host_root_action'])
@@ -118,6 +124,7 @@ describe('tool Agent scope', () => {
               name: 'agent_start',
               arguments: {
                 description: 'Check child tools',
+                title: 'Child tool scope',
                 prompt: 'Inspect available tools.',
                 role: 'explore'
               }
@@ -149,11 +156,11 @@ describe('tool Agent scope', () => {
       });
       const parent = requests.find(
         (request) =>
-          !effectiveInstructions(request).includes('non-recursive subagent') &&
+          !effectiveInstructions(request).includes('delegated subagent') &&
           request.tools.some((tool) => tool.name === 'mcp__root__action')
       );
       const child = requests.find((request) =>
-        effectiveInstructions(request).includes('non-recursive subagent')
+        effectiveInstructions(request).includes('delegated subagent')
       );
       expect(parent).toBeDefined();
       expect(child).toBeDefined();

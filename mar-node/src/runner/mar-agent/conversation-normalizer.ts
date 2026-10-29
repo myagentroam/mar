@@ -216,7 +216,8 @@ export class MarAgentConversationNormalizer {
       const payload = {
         text: event.type === 'message.completed' ? event.text : '',
         format: 'markdown' as const,
-        model: typeof modelName === 'string' ? modelName : null
+        model: typeof modelName === 'string' ? modelName : null,
+        phase: event.phase
       };
       return [
         {
@@ -1690,13 +1691,19 @@ function marAgentSubagentProjection(
         ? outputData.description
         : operation === 'START' && typeof inputData?.description === 'string'
           ? inputData.description
-          : ''),
+          : operation === 'START' && typeof inputData?.title === 'string'
+            ? inputData.title
+            : ''),
     500
   );
   return {
     subagentOperation: operation,
     ...(operation === 'STATUS' ? { subagentWait: inputData?.waitMs !== 0 } : {}),
     subagentId: marAgentAgentId(input) ?? marAgentAgentId(controlOutput) ?? null,
+    ...(typeof outputData?.productSessionId === 'string' &&
+    outputData.productSessionId === marAgentAgentId(controlOutput)
+      ? { subagentSessionId: outputData.productSessionId }
+      : {}),
     ...(title.length === 0 ? {} : { title }),
     ...subagentPayload(details),
     ...(typeof details.latestMessage?.text === 'string'
@@ -1735,8 +1742,8 @@ function marAgentSubagentOperation(
 ): 'START' | 'STATUS' | 'MESSAGE' | 'CANCEL' | undefined {
   if (toolName === 'agent_start') return 'START';
   if (toolName === 'agent_wait') return 'STATUS';
-  if (toolName === 'agent_message') return 'MESSAGE';
-  if (toolName === 'agent_cancel') return 'CANCEL';
+  if (toolName === 'agent_send' || toolName === 'agent_message') return 'MESSAGE';
+  if (toolName === 'agent_stop' || toolName === 'agent_cancel') return 'CANCEL';
   return undefined;
 }
 

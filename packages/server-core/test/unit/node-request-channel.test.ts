@@ -17,6 +17,32 @@ function fixture(version: 2 | 3 = 3) {
 }
 
 describe('common authorized Node request channel', () => {
+  it('cancels a correlated Agent wait on abort without cancelling other operations', async () => {
+    const { channel, socket, request } = fixture();
+    const controller = new AbortController();
+    const pending = channel.request(
+      'node-1',
+      'agent.network',
+      { action: 'wait' },
+      user,
+      35_000,
+      undefined,
+      controller.signal
+    );
+    const original = request();
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'NODE_REQUEST_CANCELLED' });
+    controller.abort();
+    await rejected;
+    const cancellation = JSON.parse(socket.send.mock.calls[1]![0] as string);
+    expect(cancellation).toMatchObject({
+      type: 'node.request.cancel',
+      payload: { requestId: original.id }
+    });
+    controller.abort();
+    expect(socket.send).toHaveBeenCalledTimes(2);
+    channel.close();
+  });
+
   it('distinguishes a correlated Node response from a local transport failure', async () => {
     const { channel, request } = fixture();
     try {

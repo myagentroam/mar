@@ -76,6 +76,7 @@ interface ModelDraft {
   reasoningEfforts: ReasoningEffort[];
   defaultReasoningEffort: ReasoningEffort;
   conversationModel: boolean;
+  subagentModel: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
   serviceTier: NonNullable<MarAgentModelSummary['serviceTier']>;
@@ -526,6 +527,7 @@ function emptyDraft(): ModelDraft {
     reasoningEfforts: [],
     defaultReasoningEffort: 'medium',
     conversationModel: true,
+    subagentModel: false,
     titleGeneration: false,
     codeMode: false,
     serviceTier: 'default',
@@ -725,6 +727,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     reasoningEfforts: [...model.reasoningEfforts],
     defaultReasoningEffort: model.defaultReasoningEffort,
     conversationModel: model.conversationModel ?? true,
+    subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
     serviceTier: model.serviceTier ?? 'default',
@@ -809,6 +812,7 @@ function modelSaveBody(): Record<string, unknown> {
     reasoningEfforts: draft.reasoningEfforts,
     defaultReasoningEffort: draft.defaultReasoningEffort,
     conversationModel: draft.conversationModel,
+    subagentModel: draft.subagentModel,
     titleGeneration: draft.titleGeneration,
     codeMode: draft.codeMode,
     ...(oauth && !grok ? { serviceTier: draft.serviceTier } : {}),
@@ -1558,6 +1562,16 @@ onBeforeUnmount(() => {
               )
             }}</template>
           </el-table-column>
+          <el-table-column
+            prop="subagentModel"
+            :label="translate('marAgentModels.subagentModel')"
+            min-width="150"
+            sortable
+          >
+            <template #default="{ row }">{{
+              translate(row.subagentModel ? 'marAgentModels.yes' : 'marAgentModels.no')
+            }}</template>
+          </el-table-column>
           <slot name="model-access-column" />
           <el-table-column :label="translate('marAgentModels.status')" width="130">
             <template #default="{ row }">
@@ -1963,6 +1977,9 @@ onBeforeUnmount(() => {
           >
           <el-checkbox v-model="draft.conversationModel">{{
             translate('marAgentModels.conversationModel')
+          }}</el-checkbox>
+          <el-checkbox v-model="draft.subagentModel">{{
+            translate('marAgentModels.subagentModel')
           }}</el-checkbox>
           <el-checkbox v-model="draft.titleGeneration">{{
             translate('marAgentModels.titleGeneration')
@@ -2396,6 +2413,9 @@ onBeforeUnmount(() => {
               ? 'marAgentModels.yes'
               : 'marAgentModels.no'
           )
+        }}</el-descriptions-item>
+        <el-descriptions-item :label="translate('marAgentModels.subagentModel')">{{
+          translate(selectedModelDetail.subagentModel ? 'marAgentModels.yes' : 'marAgentModels.no')
         }}</el-descriptions-item>
         <el-descriptions-item :label="translate('marAgentModels.titleGeneration')">{{
           translate(

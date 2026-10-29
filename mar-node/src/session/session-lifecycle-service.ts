@@ -1,5 +1,8 @@
 import type { RunnerDefaultConfiguration } from '@myagentroam/protocol';
-import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
+import {
+  RUNNER_EXECUTION_CONTEXT,
+  type RunnerExecutionContext
+} from '../runner/execution-context.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { NodeAgentSession } from './contracts.js';
 import type { NodeDatabase } from '../database.js';
@@ -15,6 +18,13 @@ import type { SessionIdentityService } from './session-identity-service.js';
 import { ScheduledSessionStore } from '../service/scheduled-session-store.js';
 import { normalizeSessionPrompt } from '../runner/personal-instructions.js';
 import { resolveWorkspaceExecutionDirectory } from '../workspace/path-access.js';
+import { checkSessionAdmission } from './operation-admission.js';
+
+const AGENT_GOAL_START = Symbol('agent-goal-start');
+type AgentGoalStart = (
+  session: NodeAgentSession,
+  executionContext: RunnerExecutionContext
+) => Promise<unknown>;
 
 interface SessionLifecycleServiceOptions {
   readonly database: () => NodeDatabase;
@@ -49,6 +59,11 @@ export class SessionLifecycleService {
     this.starts.clear();
   }
 
+  /** Use the normal Session bootstrap while its Goal owner submits the first message. */
+  startAgentWithGoal(input: Record<string, unknown>, submit: AgentGoalStart): Promise<unknown> {
+    return this.start({ ...input, [AGENT_GOAL_START]: submit });
+  }
+
   private async updateMetadata(input: Record<string, unknown>): Promise<unknown> {
     if (
       input.parentSessionId !== undefined ||
@@ -77,28 +92,7 @@ export class SessionLifecycleService {
       this.options.runtime.getAgentSession(input.sessionId) ??
       (await this.options.projection.createMetadataProjection(input.sessionId));
     if (current === undefined) throw new Error('SESSION_NOT_FOUND');
-    if (input.clearParent === true) {
-      if (current.externalSessionId === null) throw new Error('SESSION_ACTIVATION_REQUIRED');
-      const metadata = this.options
-        .database()
-        .getNativeSessionMetadata(current.runner, current.externalSessionId, current.workspaceId);
-      const parentSessionId =
-        metadata === undefined ? current.parentSessionId : metadata.parentSessionId;
-      if (parentSessionId == null) {
-        const next =
-          current.parentSessionId == null
-            ? current
-            : this.options.runtime.clearSessionParent(current.id);
-        return { session: this.options.present(next) };
-      }
-      this.options
-        .database()
-        .clearSessionParent(current.runner, current.externalSessionId, current.workspaceId);
-      const next = this.options.runtime.clearSessionParent(current.id);
-      this.options.parentCleared?.(next);
-      this.options.emitSession(next);
-      return { session: this.options.present(next) };
-    }
+    if (input.clearParent === true) throw new Error('SESSION_PARENT_IMMUTABLE');
     if (sessionPrompt !== undefined && current.externalSessionId === null)
       throw new Error('SESSION_ACTIVATION_REQUIRED');
     if (input.pinned === false) {
@@ -184,6 +178,7 @@ export class SessionLifecycleService {
     const workspace = database.getWorkspace(input.workspaceId);
     if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND');
     const cwd = await resolveWorkspaceExecutionDirectory(workspace.path, input.cwd);
+    checkSessionAdmission(input);
     if (database.getWorkspace(workspace.id)?.path !== workspace.path)
       throw new Error('WORKSPACE_NOT_FOUND');
     let parentSessionId: string | undefined;
@@ -200,6 +195,23 @@ export class SessionLifecycleService {
         throw new Error('SESSION_NOT_FOUND');
       if (liveParent?.externalSessionId === null) throw new Error('SESSION_ACTIVATION_REQUIRED');
       parentSessionId = liveParent?.externalSessionId ?? parent.id;
+      this.options.runtime.assertSessionHistoryMutable(parent.id);
+      if (parentSessionId !== parent.id)
+        this.options.runtime.assertSessionHistoryMutable(parentSessionId);
+      const visited = new Set<string>();
+      let ancestorId: string | null = parentSessionId;
+      let depth = 0;
+      while (ancestorId !== null) {
+        if (visited.has(ancestorId)) throw new Error('SESSION_RELATION_INVALID');
+        visited.add(ancestorId);
+        const live = this.options.runtime.getAgentSession(ancestorId);
+        const stored = database.getSessionRecord(ancestorId);
+        const ancestorWorkspace = live?.workspaceId ?? stored?.workspaceId;
+        if (ancestorWorkspace !== workspace.id) throw new Error('SESSION_RELATION_INVALID');
+        depth += 1;
+        if (depth >= 3) throw new Error('SESSION_DEPTH_EXCEEDED');
+        ancestorId = live?.parentSessionId ?? stored?.metadata.parentSessionId ?? null;
+      }
     }
     const environment = parseSecretEnvironment(input.secretEnvironment);
     const saved = database.getRunnerDefaults().find((value) => value.runner === runner.name);
@@ -217,6 +229,7 @@ export class SessionLifecycleService {
     };
     if (runner.name === 'mar-agent' && !['auto', 'full-access'].includes(configuration.access))
       throw new Error('SESSION_INVALID');
+    if (parentSessionId !== undefined) runner.assertChildModel(configuration.model);
     const session = this.options.runtime.createAgentSession({
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
       workspaceId: input.workspaceId,
@@ -260,6 +273,8 @@ export class SessionLifecycleService {
       !['auto', 'full-access'].includes(input.access as string)
     )
       throw new Error('SESSION_INVALID');
+    if (current.parentSessionId != null && typeof input.model === 'string')
+      this.options.runners.require(current.runner).assertChildModel(input.model);
     const session = this.options.runtime.updateAgentSessionConfiguration({
       sessionId: current.id,
       ...(typeof input.model === 'string' ? { model: input.model } : {}),
@@ -280,6 +295,7 @@ export class SessionLifecycleService {
   }
 
   private async start(input: Record<string, unknown>): Promise<unknown> {
+    checkSessionAdmission(input);
     const attachments = parseMessageAttachments(input.attachments);
     if (
       typeof input.clientMessageId !== 'string' ||
@@ -346,27 +362,44 @@ export class SessionLifecycleService {
       const interceptedId = this.options.interceptedSessionId(input.clientMessageId as string);
       const messageSessionId = interceptedId ?? bootstrapId;
       if (interceptedId !== undefined) this.options.identity.promote(bootstrapId, interceptedId);
-      const message = (await this.options.execute('session.message', {
-        sessionId: messageSessionId,
-        clientMessageId: input.clientMessageId,
-        content: input.content,
-        ...(input.__marctlOrigin === undefined ? {} : { __marctlOrigin: input.__marctlOrigin }),
-        ...(input.__suppressNotifications === true ? { __suppressNotifications: true } : {}),
-        ...(input.__requestUserId === undefined ? {} : { __requestUserId: input.__requestUserId }),
-        ...(input.__usageGrant === undefined ? {} : { __usageGrant: input.__usageGrant }),
-        ...(input.secretEnvironment === undefined
-          ? {}
-          : { secretEnvironment: input.secretEnvironment }),
-        ...(input.personalInstructions === undefined
-          ? {}
-          : { personalInstructions: input.personalInstructions }),
-        [RUNNER_EXECUTION_CONTEXT]: this.options.runners
-          .require(created.session.runner)
-          .prepareExecutionContext(input),
-        ...(input.computerUse === undefined ? {} : { computerUse: input.computerUse }),
-        ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
-        ...(input.attachments === undefined ? {} : { attachments: input.attachments })
-      })) as {
+      const executionContext = this.options.runners
+        .require(created.session.runner)
+        .prepareExecutionContext(input);
+      const goalStart = (input as Record<PropertyKey, unknown>)[AGENT_GOAL_START] as
+        AgentGoalStart | undefined;
+      const goalSession =
+        goalStart === undefined
+          ? undefined
+          : this.options.runtime.getAgentSession(messageSessionId);
+      if (goalStart !== undefined && goalSession === undefined)
+        throw new Error('SESSION_START_FAILED');
+      const message = (
+        goalStart === undefined
+          ? await this.options.execute('session.message', {
+              sessionId: messageSessionId,
+              clientMessageId: input.clientMessageId,
+              content: input.content,
+              ...(input.__marctlOrigin === undefined
+                ? {}
+                : { __marctlOrigin: input.__marctlOrigin }),
+              ...(input.__suppressNotifications === true ? { __suppressNotifications: true } : {}),
+              ...(input.__requestUserId === undefined
+                ? {}
+                : { __requestUserId: input.__requestUserId }),
+              ...(input.__usageGrant === undefined ? {} : { __usageGrant: input.__usageGrant }),
+              ...(input.secretEnvironment === undefined
+                ? {}
+                : { secretEnvironment: input.secretEnvironment }),
+              ...(input.personalInstructions === undefined
+                ? {}
+                : { personalInstructions: input.personalInstructions }),
+              [RUNNER_EXECUTION_CONTEXT]: executionContext,
+              ...(input.computerUse === undefined ? {} : { computerUse: input.computerUse }),
+              ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
+              ...(input.attachments === undefined ? {} : { attachments: input.attachments })
+            })
+          : await goalStart(goalSession!, executionContext)
+      ) as {
         readonly run: NodeAgentRun;
         readonly delivery: string;
         readonly idempotent: boolean;

@@ -1144,6 +1144,10 @@ export function createWorkbenchPageController<
     await workbenchSessionSelectionService.selectSession(sessionId);
   }
 
+  function openMappedSubagentSession(sessionId: string): Promise<void> {
+    return openNavigatedSession(sessionId, true);
+  }
+
   const {
     workspaceViewCache,
     discardWorkspaceViewCache,
@@ -3621,6 +3625,7 @@ export function createWorkbenchPageController<
     openNodeRegistration,
     openSession,
     openSessionFromList,
+    openMappedSubagentSession,
     openWorkbenchNotification: workbenchNotificationService.openNotification,
     openRecentRun,
     openSessionGroupTarget,

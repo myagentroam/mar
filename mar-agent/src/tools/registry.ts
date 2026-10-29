@@ -1,9 +1,5 @@
 import type { ClientToolDefinition } from './contracts.js';
 
-import { agentCancelToolDefinition, executeAgentCancel } from './agent/agent-cancel.js';
-import { agentMessageToolDefinition, executeAgentMessage } from './agent/agent-message.js';
-import { agentStartToolDefinition, executeAgentStart } from './agent/agent-start.js';
-import { agentWaitToolDefinition, executeAgentWait } from './agent/agent-wait.js';
 import { applyPatchToolDefinition } from './local/apply-patch.js';
 import { codeExecWaitToolDefinition, codeModeToolDefinition } from './code-mode/index.js';
 import type { ToolExecutionResult } from './contracts.js';
@@ -32,10 +28,6 @@ export const BUILTIN_TOOL_DEFINITIONS: readonly ClientToolDefinition[] = [
   questionToolDefinition,
   todoReadToolDefinition,
   todoWriteToolDefinition,
-  agentStartToolDefinition,
-  agentWaitToolDefinition,
-  agentMessageToolDefinition,
-  agentCancelToolDefinition,
   smartCompactToolDefinition,
   sleepToolDefinition
 ];
@@ -56,9 +48,5 @@ export const AGENT_TOOL_HANDLERS: ReadonlyMap<string, RuntimeHandler> = new Map<
   ['tool_search', executeToolSearch],
   ['question', executeQuestion],
   ['todo_read', (_arguments, context) => executeTodoRead(context)],
-  ['todo_write', executeTodoWrite],
-  ['agent_start', executeAgentStart],
-  ['agent_wait', executeAgentWait],
-  ['agent_message', executeAgentMessage],
-  ['agent_cancel', executeAgentCancel]
+  ['todo_write', executeTodoWrite]
 ]);

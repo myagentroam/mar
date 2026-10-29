@@ -56,15 +56,7 @@ export function buildToolGroups(
     const record = sources[index]!;
     for (const entry of message.calls ?? []) {
       if (
-        ![
-          'apply_patch',
-          'exec',
-          'exec_wait',
-          'agent_start',
-          'agent_wait',
-          'agent_message',
-          'agent_cancel'
-        ].includes(entry.toolName) ||
+        !['apply_patch', 'exec', 'exec_wait'].includes(entry.toolName) ||
         (entry.status === 'completed' &&
           message.observations.some(
             (value) => value.type === 'tool_result' && value.source.callId === entry.callId

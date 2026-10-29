@@ -472,7 +472,7 @@ describe('context GC runtime integration', () => {
     }
   });
 
-  it('keeps Context GC disabled for Subagent Sessions', async () => {
+  it('applies ordinary Context GC to child Sessions', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-subagent-disabled-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -489,7 +489,7 @@ describe('context GC runtime integration', () => {
         rootSessionId: parent.id,
         parentExecutionId: 'parent-execution',
         role: 'general-purpose',
-        description: 'Verify disabled GC'
+        description: 'Verify ordinary GC'
       }
     });
     await store.close();
@@ -513,9 +513,11 @@ describe('context GC runtime integration', () => {
     const reopenedStore = await JsonlSessionStore.open(home);
     try {
       const records = await reopenedStore.read(child.id);
-      expect(records.some((record) => record.type === 'context.gc.completed')).toBe(false);
-      expect(adapter.resetCount).toBe(0);
-      expect(JSON.stringify(adapter.requests[4]?.messages)).toContain('old context old context');
+      expect(records.some((record) => record.type === 'context.gc.completed')).toBe(true);
+      expect(adapter.resetCount).toBe(1);
+      expect(JSON.stringify(adapter.requests[4]?.messages)).not.toContain(
+        'old context old context'
+      );
     } finally {
       await reopenedStore.close();
     }

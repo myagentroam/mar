@@ -4,7 +4,6 @@ import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
 import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
 import type { ModelContextualBlock, ModelEvent, ModelMessage } from '../../src/model/contracts.js';
-import { renderSubagentUpdate } from '../../src/subagent/model-update.js';
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 
@@ -102,11 +101,8 @@ describe('contextual model protocol lowering', () => {
       let wire: Record<string, unknown> | undefined;
       const baseUrl = await sseServer(completionEvents(protocol), (body) => (wire = body));
       const model = configuration(protocol, baseUrl);
-      const update = renderSubagentUpdate({
-        agentId: 'child',
-        status: 'running',
-        description: 'review'
-      });
+      const update =
+        '<mar_subagent_update>\n{"agentId":"child","executionId":"run","updates":[]}\n</mar_subagent_update>';
       const thinking = {
         type: 'thinking',
         thinking: 'fixture-private',

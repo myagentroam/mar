@@ -4,9 +4,10 @@ import { sessionTarget } from './session-target.mjs';
 
 const commands = {
   current: [],
-  list: ['cursor', 'limit', 'query', 'parent'],
+  list: ['cursor', 'limit', 'query', 'parent', 'scope', 'agent', 'runner'],
   graph: ['limit'],
   show: [],
+  view: ['cursor', 'limit', 'history'],
   history: ['cursor', 'limit'],
   start: [
     'runner',
@@ -16,7 +17,10 @@ const commands = {
     'message',
     'message-file',
     'image',
-    'client-message-id'
+    'client-message-id',
+    'parent',
+    'goal',
+    'clear-goal'
   ],
   config: ['model', 'effort'],
   rename: ['title'],
@@ -28,12 +32,23 @@ const commands = {
   'schedule.get': [],
   'schedule.create': ['cron', 'message', 'message-file'],
   'schedule.update': ['cron', 'message', 'message-file', 'expected-revision'],
-  send: ['message', 'message-file', 'image', 'steer', 'queue', 'client-message-id'],
-  stop: ['run'],
+  send: [
+    'message',
+    'message-file',
+    'image',
+    'steer',
+    'queue',
+    'client-message-id',
+    'goal',
+    'clear-goal',
+    'approval',
+    'decision'
+  ],
+  stop: ['execution'],
   'goal.get': [],
   'goal.set': ['message', 'message-file'],
   'goal.clear': [],
-  wait: ['run', 'timeout', 'until']
+  wait: ['timeout', 'wait-for', 'mode', 'agent', 'run', 'until']
 };
 const fieldNames = {
   parent: 'parentSessionId',
@@ -43,6 +58,9 @@ const fieldNames = {
   run: 'runId',
   approval: 'approvalId',
   timeout: 'timeoutMs',
+  execution: 'executionId',
+  'wait-for': 'waitFor',
+  'clear-goal': 'clearGoal',
   image: 'images'
 };
 
@@ -65,12 +83,12 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
         (value === '--help' || value === '-h') && !['-m', '--message'].includes(argv[index - 1])
     )
   )
-    return { command: 'sessions', help: true };
+    return { command: 'agents', help: true };
   const input = [...argv];
   let action = input.shift();
   if (['goal', 'schedule', 'prompt', 'approval'].includes(action)) action += '.' + input.shift();
   if (!Object.hasOwn(commands, action)) throw invalid();
-  const args = { command: 'sessions', action };
+  const args = { command: 'agents', action };
   if (sessionTarget[action] !== 'workspace') {
     if (
       (input[0] === undefined || input[0].startsWith('-')) &&
@@ -96,9 +114,21 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       args[key] = true;
       continue;
     }
+    if (
+      (flag === '--clear-goal' && ['start', 'send'].includes(action)) ||
+      (flag === '--history' && action === 'view')
+    ) {
+      const key = flag === '--history' ? 'history' : 'clearGoal';
+      if (Object.hasOwn(args, key)) throw invalid();
+      args[key] = true;
+      continue;
+    }
     const name = flag.startsWith('--') ? flag.slice(2) : '';
     const key = fieldNames[name] ?? name;
-    if (!commands[action].includes(name) || (name !== 'image' && Object.hasOwn(args, key)))
+    if (
+      !commands[action].includes(name) ||
+      (name !== 'image' && !(name === 'agent' && action === 'wait') && Object.hasOwn(args, key))
+    )
       throw invalid();
     const value = input.shift();
     if (
@@ -107,7 +137,10 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       (name !== 'message' && value.startsWith('--'))
     )
       throw invalid();
-    if (name === 'image') {
+    if (name === 'agent' && action === 'wait') {
+      (args.agentIds ??= []).push(value);
+      if (args.agentIds.length > 8) throw invalid();
+    } else if (name === 'image') {
       (args.images ??= []).push(value);
       if (args.images.length > 5) throw invalid();
     } else if (name === 'limit' || name === 'expected-revision') {
@@ -119,31 +152,69 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
         throw invalid();
       args[key] = Number(value);
     } else if (name === 'timeout') {
-      const match = /^([1-9][0-9]*)(ms|s|m)$/u.exec(value);
+      const match = /^(0|[1-9][0-9]*)(ms|s|m)$/u.exec(value);
       const ms = match === null ? 0 : Number(match[1]) * { ms: 1, s: 1000, m: 60000 }[match[2]];
-      if (!Number.isSafeInteger(ms) || ms < 1 || ms > 3600000) throw invalid();
+      if (match === null || !Number.isSafeInteger(ms) || ms > 300000) throw invalid();
       args[key] = ms;
     } else args[key] = value;
   }
-  if (action === 'send' && (args.steer === true) === (args.queue === true))
+  if (action === 'send' && args.steer === true && args.queue === true)
     throw invalid('errors.sessionDeliveryRequired');
+  if (
+    action === 'send' &&
+    ((args.approvalId === undefined) !== (args.decision === undefined) ||
+      (args.decision !== undefined && !['approve', 'reject'].includes(args.decision)))
+  )
+    throw invalid();
+  if (args.goal !== undefined && (args.clearGoal || !args.goal.trim() || args.goal.length > 20000))
+    throw invalid();
   if (args.message !== undefined && args.messageFile !== undefined) throw invalid();
   if (
     ['start', 'send', 'goal.set', 'schedule.create', 'prompt.set'].includes(action) &&
     args.messageFile === undefined &&
     args.message === undefined &&
-    !args.images?.length
+    !args.images?.length &&
+    !(
+      action === 'send' &&
+      (args.goal !== undefined || args.clearGoal || args.approvalId !== undefined)
+    )
   )
     throw invalid();
   if (
     action === 'start' &&
+    args.runner !== undefined &&
     !['mar-agent', 'codex', 'claude-code', 'opencode'].includes(args.runner)
   )
     throw invalid();
-  if (action === 'wait' && (args.runId === undefined || args.timeoutMs === undefined))
+  if (action === 'stop' && !args.executionId) throw invalid();
+  if (action === 'wait' && args.sessionId && args.agentIds?.length) throw invalid();
+  if (
+    args.until !== undefined &&
+    (args.until !== 'approval' ||
+      !args.sessionId ||
+      !args.runId ||
+      !args.timeoutMs ||
+      args.agentIds?.length)
+  )
     throw invalid();
-  if (args.until !== undefined && args.until !== 'approval')
-    throw invalid(undefined, '--until: expected approval.');
+  if (
+    action === 'wait' &&
+    args.runId !== undefined &&
+    (!args.sessionId ||
+      args.timeoutMs === 0 ||
+      args.agentIds?.length ||
+      args.mode !== undefined ||
+      args.waitFor !== undefined)
+  )
+    throw invalid();
+  if (args.waitFor !== undefined && !['message', 'completion'].includes(args.waitFor))
+    throw invalid();
+  if (args.mode !== undefined && !['any', 'all'].includes(args.mode)) throw invalid();
+  if (
+    args.scope !== undefined &&
+    !['children', 'descendants', 'workspace', 'profile'].includes(args.scope)
+  )
+    throw invalid();
   if (
     action === 'approval.decide' &&
     (!args.runId || !args.approvalId || !['approve', 'reject'].includes(args.decision))

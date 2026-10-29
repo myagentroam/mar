@@ -2,6 +2,7 @@ import type { ModelImage } from '../model/image.js';
 import { restoreMessages } from '../runtime/context/restore.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { publicModelUsage } from '../runtime/event-projection.js';
+import { truncateModelText } from '../runtime/token-budget.js';
 import type { PreparedExecutionRound } from '../runtime/execution.js';
 import type {
   SessionModelMessage as ModelMessage,
@@ -40,6 +41,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AgentError, describeAgentError } from '../error.js';
 import { transformCoreModelStream } from '../extensions/model-stream.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
+import { SESSION_CONTEXT_PROVIDER } from '../extensions/session-context.js';
 import { invokeCorePromptSubmission } from '../extensions/prompt-input.js';
 import {
   SessionInputCoordinator,
@@ -69,7 +71,6 @@ import { ContextGcRuntime } from '../runtime/context/gc-runtime.js';
 import { loadAgentInstructions, renderAgentInstructions } from '../runtime/context/instructions.js';
 import { normalizeMessagesForModel } from '../runtime/context/normalize.js';
 import { compactSummaryFromCheckpoint } from '../session/record-projection.js';
-import { type SubagentMailboxMessage } from '../subagent/session-controller.js';
 import type { ToolHost, ToolRuntimeImage } from '../tools/runtime-context.js';
 import { ExecutionToolSources } from './extension-tools.js';
 import {
@@ -81,21 +82,12 @@ import {
 import { SessionRuntime } from './session-runtime.js';
 import type { CreateAgentOptions, ExecutionMode, RunInput } from './types.js';
 
-import type {
-  AgentSessionComposition,
-  InternalAgentSession,
-  SessionServices
-} from './session-composition.js';
+import type { AgentSessionComposition, SessionServices } from './session-composition.js';
 
 type ModelAttemptPurpose = 'EXECUTION' | 'COMPACTION' | 'TITLE' | 'SUBAGENT';
 interface ExhaustedModelAttemptSummary {
   readonly attempts: number;
   readonly retries: number;
-}
-function restoreSubagentOrigin(
-  origin: import('../subagent/session-controller.js').SubagentOrigin
-): ExtensionOperationContext {
-  return { ...(origin.correlation as ExtensionOperationContext), signal: origin.signal };
 }
 
 /** Composes the execution-owned workflow from Session capabilities. */
@@ -149,10 +141,10 @@ export function createSessionExecutionFactory(ports: {
     | 'deactivateExecution'
     | 'joinRecordProjection'
     | 'registerExecution'
+    | 'publishEvent'
     | 'restoreExecutionState'
     | 'scheduleTool'
     | 'sessionBackend'
-    | 'subagents'
     | 'unbindExecutionContext'
     | 'unregisterExecution'
     | 'updateContextualWorldState'
@@ -182,10 +174,6 @@ export function createSessionExecutionFactory(ports: {
     request: Extract<ExtensionSessionRequest, { kind: 'append' }>,
     call: ExtensionOperationContext
   ): Promise<ExtensionSessionActionResult>;
-  startSubagentTurn(
-    id: string,
-    input: Parameters<InternalAgentSession['startSubagentTurn']>[0]
-  ): Promise<ReturnType<InternalAgentSession['startSubagentTurn']>>;
 }) {
   const {
     assertCanStart,
@@ -210,8 +198,7 @@ export function createSessionExecutionFactory(ports: {
     refreshSessionAdapters,
     sessionInputs,
     withRecordProjection,
-    appendExtensionMessage,
-    startSubagentTurn
+    appendExtensionMessage
   } = ports;
   const execution = (
     mode: ExecutionMode,
@@ -283,60 +270,6 @@ export function createSessionExecutionFactory(ports: {
     const manualCompactionId = mode === 'compact' ? randomUUID() : undefined;
     sessionRuntime.registerExecution(executionOwner);
     const inputs = sessionInputs();
-    const acceptParent = (message: SubagentMailboxMessage) => {
-      const origin =
-        message.delivery?.origin === undefined
-          ? undefined
-          : restoreSubagentOrigin(message.delivery.origin);
-      const signal = AbortSignal.any([
-        controller.signal,
-        ...(message.delivery?.signal === undefined ? [] : [message.delivery.signal])
-      ]);
-      if (signal.aborted) {
-        message.delivery?.settled?.('cancelled');
-        return;
-      }
-      const accept = (call: ExtensionOperationContext) => {
-        const entry = inputs.accept(
-          { kind: 'submit', input: { text: message.text } },
-          call,
-          (request, call, leaf) => leaf(request, call),
-          'accepted',
-          message
-        );
-        void entry.terminal.then(() => {
-          if (entry.receipt.status === 'cancelled' || entry.receipt.status === 'failed')
-            message.delivery?.settled?.(entry.receipt.status);
-        });
-      };
-      if (origin) {
-        accept(
-          Object.freeze({
-            ...origin,
-            sessionId,
-            sessionEpoch: extensionManager.session(sessionId)?.epoch ?? 0,
-            signal,
-            executionId,
-            turnId
-          })
-        );
-        return;
-      }
-      extensionManager.operations.enter(
-        {
-          sessionId,
-          sessionEpoch: extensionManager.session(sessionId)?.epoch ?? 0,
-          actor: 'sdk',
-          entry: 'native-api',
-          signal,
-          executionId,
-          turnId
-        },
-        accept
-      );
-    };
-    for (const message of internal.initialMailbox ?? []) acceptParent(message);
-    let acceptsMailbox = sessionSource.type === 'subagent' && mode !== 'compact';
     let acceptsSteer = false;
     let exhaustedModelAttempt: ExhaustedModelAttemptSummary | undefined;
     const eventPorts = {
@@ -358,6 +291,7 @@ export function createSessionExecutionFactory(ports: {
           if (message) messageSources.set(message, stored);
         }
       },
+      observe: (event: import('./types.js').AgentEvent) => sessionRuntime.publishEvent(event),
       ...(internal.publishHostEvents === false
         ? {}
         : { publish: (full: import('./types.js').AgentEvent) => host.emit(full) })
@@ -412,7 +346,6 @@ export function createSessionExecutionFactory(ports: {
     let releaseImageBytes: (() => void) | undefined;
     const contextGc = new ContextGcRuntime();
     let selectedAdapter: ModelAdapter | undefined;
-    const subagents = sessionSource.type === 'user' ? sessionRuntime.subagents : undefined;
     executionOwner.start({
       scope: (run) => withToolPermissions(permissionPolicy, run),
       prepareProgram: async () => {
@@ -495,7 +428,7 @@ export function createSessionExecutionFactory(ports: {
           readonly focus?: string;
           readonly async?: boolean;
         }) => CompactFlight;
-        const { startInitialInput, receiveSteer, appendSubagentUpdates, appendMailboxMessages } =
+        const { startInitialInput, receiveSteer, appendExtensionContext, appendMailboxMessages } =
           createExecutionInput({
             host,
             store,
@@ -503,7 +436,6 @@ export function createSessionExecutionFactory(ports: {
             executionId,
             turnId,
             mode,
-            source: sessionSource.type,
             controller,
             inputs,
             messages,
@@ -581,50 +513,6 @@ export function createSessionExecutionFactory(ports: {
           Math.floor(selectedModel.contextWindowTokens / 8)
         );
         const reasoningEffort = input.reasoningEffort ?? selectedModel.defaultReasoningEffort;
-        if (mode !== 'compact' && subagents)
-          await subagents.beginParentExecution({
-            executionId,
-            modelId: selectedModel.id,
-            reasoningEffort,
-            models: executionModels,
-            emitTerminal: async (task) =>
-              emit({
-                type: 'subagent.completed',
-                agentId: task.agentId,
-                description: task.description,
-                status: task.status,
-                ...(task.permissionStop === undefined
-                  ? {}
-                  : { permissionStop: task.permissionStop }),
-                ...(task.modelId === undefined ? {} : { modelId: task.modelId }),
-                ...(task.modelName === undefined ? {} : { modelName: task.modelName }),
-                ...(task.reasoningEffort === undefined
-                  ? {}
-                  : { reasoningEffort: task.reasoningEffort }),
-                ...(task.latestMessage === undefined ? {} : { latestMessage: task.latestMessage }),
-                ...(task.latestActivity === undefined
-                  ? {}
-                  : { latestActivity: task.latestActivity }),
-                ...(task.errorCode === undefined ? {} : { errorCode: task.errorCode }),
-                ...(task.errorMessage === undefined ? {} : { errorMessage: task.errorMessage })
-              }),
-            startTurn: async (turn) => {
-              return startSubagentTurn(turn.sessionId, {
-                permissionMode: permissionPolicy.mode,
-                prompt: turn.prompt,
-                modelId: turn.modelId,
-                reasoningEffort: turn.reasoningEffort,
-                role: turn.role,
-                initialMailbox: turn.initialMailbox,
-                turnId: turn.turnId,
-                ...(turn.origin === undefined
-                  ? {}
-                  : { origin: restoreSubagentOrigin(turn.origin) }),
-                mcpExecutionScopeId: executionId,
-                ...(turn.delivery ? { delivery: turn.delivery } : {})
-              });
-            }
-          });
         const catalogContext = {
           sessionId,
           executionId,
@@ -783,17 +671,21 @@ export function createSessionExecutionFactory(ports: {
         toolCatalog.refresh();
         const restoreMcpDiscovery = () => toolCatalog.restore();
         const loadRetainedSessionResources = async (): Promise<RetainedSessionResources> => {
-          await subagents?.prepareSessionResources(controller.signal);
           const hostResources = (await host.listSessionResources?.(sessionId)) ?? {
             processes: [] as const
           };
+          const provider = coreExtensions.services.resolve(SESSION_CONTEXT_PROVIDER);
+          const extensions = (await provider?.resources?.(controller.signal)) ?? [];
+          controller.signal.throwIfAborted();
           return {
             ...(hostResources.idleTtlMs === undefined
               ? {}
               : { idleTtlMs: hostResources.idleTtlMs }),
             processes: hostResources.processes,
             ...(hostResources.codeCells ? { codeCells: hostResources.codeCells } : {}),
-            subagents: subagents?.listSessionResources() ?? []
+            extensions: extensions
+              .slice(0, 8)
+              .map((value) => truncateModelText(value, 32768, 'extension resource').content)
           };
         };
         await modelContext.initializeWorldState();
@@ -865,7 +757,6 @@ export function createSessionExecutionFactory(ports: {
           todo,
           waitInterrupt,
           skills: instructionContext?.skills ?? new Map(),
-          subagents,
           coreExtensions,
           operations: extensionManager.operations,
           scheduleTool: sessionRuntime.scheduleTool,
@@ -1045,7 +936,6 @@ export function createSessionExecutionFactory(ports: {
               workspace: logicalWorkspace,
               platform: description.platform
             },
-            child: sessionSource.type === 'subagent',
             start: (value) => startCompact(value),
             wait: (value) => compactContext(value),
             activeProcesses: async () => {
@@ -1163,11 +1053,15 @@ export function createSessionExecutionFactory(ports: {
             },
             PreparedExecutionRound<RoundToolScope>
           >({
-            prepareInputs: (includeSubagentUpdates) =>
+            prepareInputs: (includeSessionContext) =>
               contextCoordinator.prepareInputs({
-                includeSubagentUpdates,
+                includeSessionContext,
                 appendMailbox: appendMailboxMessages,
-                appendSubagentUpdates: () => appendSubagentUpdates(subagents),
+                appendSessionContext: async () => {
+                  await appendExtensionContext(
+                    coreExtensions.services.resolve(SESSION_CONTEXT_PROVIDER)
+                  );
+                },
                 refreshTools: () => {
                   updateMcpRegistry();
                   toolCatalog.refresh();
@@ -1215,10 +1109,7 @@ export function createSessionExecutionFactory(ports: {
             },
             prepareResources: async ({ candidateRequest, request, toolScope }) => {
               resourceInput.observe(candidateRequest.messages);
-              const media =
-                sessionSource.type === 'subagent'
-                  ? undefined
-                  : await resourceInput.gcCandidate(request, candidateRequest.images);
+              const media = await resourceInput.gcCandidate(request, candidateRequest.images);
               if (media?.reason === 'HARD_LIMIT') {
                 const committed = await contextCoordinator.gc(
                   { request, toolScope },
@@ -1272,7 +1163,6 @@ export function createSessionExecutionFactory(ports: {
               hasPending: () => inputs.hasBoundaryPending && !inputs.executing,
               append: appendMailboxMessages,
               close: () => {
-                acceptsMailbox = false;
                 acceptsSteer = false;
               }
             }
@@ -1302,7 +1192,6 @@ export function createSessionExecutionFactory(ports: {
         };
       },
       beforeFailure: async (error) => {
-        acceptsMailbox = false;
         acceptsSteer = false;
         executionOwner.stopSteer();
         await sessionRuntime.joinRecordProjection();
@@ -1317,7 +1206,7 @@ export function createSessionExecutionFactory(ports: {
           exhaustedModelAttempt
         ),
       emit,
-      endParent: () => subagents?.endParentExecution(executionId),
+      endParent: () => {},
       finalize: (failed) =>
         executionOwner.finish({
           failed,
@@ -1326,14 +1215,13 @@ export function createSessionExecutionFactory(ports: {
           releaseImageBytes: () => releaseImageBytes?.(),
           revokeBindings: () => {
             executionOwner.revokeViews(new AgentError('MAR_AGENT_CANCELLED', 'Execution ended.'));
-            acceptsMailbox = false;
           },
           closeToolSources: () => {
             executionToolSources?.close();
             executionOwner.detachToolSources();
           },
           detachAbort: () => internal.signal?.removeEventListener('abort', abortSource),
-          endParent: () => subagents?.endParentExecution(executionId),
+          endParent: () => {},
           deactivate: () => {
             sessionRuntime.unbindExecutionContext(executionContext);
             sessionRuntime.deactivateExecution(executionOwner);
@@ -1345,11 +1233,7 @@ export function createSessionExecutionFactory(ports: {
         sessionRuntime.unregisterExecution(executionOwner);
       }
     });
-    return executionOwner.handle((message, delivery) => {
-      if (!acceptsMailbox || controller.signal.aborted) return false;
-      acceptParent({ text: message, ...(delivery ? { delivery } : {}) });
-      return true;
-    });
+    return executionOwner.handle();
   };
   return execution;
 }

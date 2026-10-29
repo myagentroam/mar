@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { AgentError } from '../error.js';
 import type { ToolCall, ToolExecutionResult } from '../tools/contracts.js';
 import type { ExtensionHooks } from './hooks.js';
@@ -175,20 +176,31 @@ export class ExtensionSessionTools {
   ): Promise<ToolExecutionResult> {
     this.assertLive();
     const permissionPolicy = this.toolRuntime.currentPermissions(context);
+    let approved: ToolCall | undefined;
     if (permissionPolicy?.mode === 'auto') {
       const original = snapshot.get(call.name);
       if (!original)
         throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Tool source is unavailable.');
       this.assertToolAvailable(original, context);
       call = permissionPolicy.prepare(call, context, original.definition);
+      const requestedApproval = call.permission?.action === 'ask';
       call = await permissionPolicy.authorize(call, context);
+      if (requestedApproval) approved = structuredClone(call);
     } else if (call.permission !== undefined && call.permission !== null)
       throw new AgentError(
         'MAR_AGENT_TOOL_INPUT_INVALID',
         'Framework permission metadata requires an Auto execution.'
       );
+    const {
+      permission: _inheritedApproval,
+      permissionMode: _untrustedPermissionMode,
+      ...baseContext
+    } = context;
     const effective = Object.freeze({
-      ...context,
+      ...baseContext,
+      ...(permissionPolicy?.mode === 'auto' || permissionPolicy?.mode === 'full-access'
+        ? { permissionMode: permissionPolicy.mode }
+        : {}),
       ...(call.callId === undefined ? {} : { toolCallId: call.callId })
     });
     return this.operations.continue(effective, () =>
@@ -199,15 +211,27 @@ export class ExtensionSessionTools {
             throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Tool source is unavailable.');
           this.assertToolAvailable(binding, effective);
           permissionPolicy?.assertDispatch();
+          const normalized = this.toolRuntime.normalizeInput(
+            target.arguments,
+            binding.definition.inputSchema
+          );
+          const explicitlyApproved =
+            approved?.name === target.name &&
+            isDeepStrictEqual(
+              normalized,
+              this.toolRuntime.normalizeInput(approved.arguments, binding.definition.inputSchema)
+            );
           return binding.invoke(
             {
               ...target,
-              arguments: this.toolRuntime.normalizeInput(
-                target.arguments,
-                binding.definition.inputSchema
-              )
+              arguments: normalized
             },
-            effective
+            explicitlyApproved
+              ? Object.freeze({
+                  ...effective,
+                  permission: Object.freeze({ decision: 'approved' as const })
+                })
+              : effective
           );
         })
       )

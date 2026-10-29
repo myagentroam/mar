@@ -299,7 +299,7 @@ describe('JSONL session store', () => {
     await reopened.close();
   });
 
-  it('filters user sessions by default and queries persisted subagent relations explicitly', async () => {
+  it('lists all sessions by default and queries persisted relations explicitly', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-session-source-home-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
@@ -341,9 +341,17 @@ describe('JSONL session store', () => {
       }
     });
 
-    await expect(store.list()).resolves.toMatchObject({
+    expect(new Set((await store.list()).sessions.map((session) => session.id))).toEqual(
+      new Set([root.id, child.id, secondChild.id, nested.id])
+    );
+    await expect(store.list({ source: 'user' })).resolves.toMatchObject({
       sessions: [expect.objectContaining({ id: root.id, source: { type: 'user' } })]
     });
+    expect(
+      new Set(
+        (await store.list({ parentSessionId: root.id })).sessions.map((session) => session.id)
+      )
+    ).toEqual(new Set([child.id, secondChild.id]));
     await expect(
       store.list({ source: 'subagent', parentSessionId: root.id })
     ).resolves.toMatchObject({
@@ -392,7 +400,47 @@ describe('JSONL session store', () => {
     await reopened.close();
   });
 
-  it('cascades root deletion through persisted subagent descendants', async () => {
+  it('persists ordinary parent relationships and traverses mixed legacy and ordinary children', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-parent-relation-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const root = await store.createSession({ workspace: home });
+    const child = await store.createSession({
+      workspace: home,
+      source: { type: 'user', parentSessionId: root.id }
+    });
+    const nested = await store.createSession({
+      workspace: home,
+      source: {
+        type: 'subagent',
+        parentSessionId: child.id,
+        rootSessionId: root.id,
+        parentExecutionId: 'execution',
+        role: 'explore',
+        description: 'Legacy child'
+      }
+    });
+    await expect(
+      store.createSession({
+        workspace: home,
+        source: { type: 'user', parentSessionId: '00000000-0000-4000-8000-000000000000' }
+      })
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_NOT_FOUND' });
+    await store.close();
+    const reopened = await JsonlSessionStore.open(home);
+    expect(
+      (await reopened.list({ parentSessionId: root.id })).sessions.map((item) => item.id)
+    ).toEqual([child.id]);
+    expect(new Set(await reopened.sessionTree(root.id))).toEqual(
+      new Set([root.id, child.id, nested.id])
+    );
+    await expect(reopened.getSession(child.id)).resolves.toMatchObject({
+      source: { type: 'user', parentSessionId: root.id }
+    });
+    await reopened.close();
+  });
+
+  it('deletes only the explicitly admitted session members', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-session-tree-delete-home-'));
     homes.push(home);
     const store = await JsonlSessionStore.open(home);
@@ -422,13 +470,40 @@ describe('JSONL session store', () => {
       }
     });
 
-    await expect(store.delete(root.id)).resolves.toEqual({ deleted: true });
+    const maintenance = await store.acquireSessionMaintenance(root.id, 'delete', undefined, [
+      root.id,
+      child.id,
+      nested.id
+    ]);
+    await expect(store.delete(root.id, maintenance)).resolves.toEqual({ deleted: true });
+    await maintenance.release();
     await expect(store.list()).resolves.toEqual({ sessions: [] });
     await expect(store.list({ source: 'subagent', rootSessionId: root.id })).resolves.toEqual({
       sessions: []
     });
     await expect(access(join(home, '.mar', 'agent', 'sessions', child.id))).rejects.toThrow();
     await expect(access(join(home, '.mar', 'agent', 'sessions', nested.id))).rejects.toThrow();
+    await store.close();
+  });
+
+  it('does not infer deletion members from the stored parent snapshot', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-session-delete-member-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const root = await store.createSession({ workspace: home });
+    const child = await store.createSession({
+      workspace: home,
+      source: {
+        type: 'subagent',
+        parentSessionId: root.id,
+        rootSessionId: root.id,
+        parentExecutionId: 'execution',
+        role: 'explore',
+        description: 'Child'
+      }
+    });
+    await expect(store.delete(root.id)).resolves.toEqual({ deleted: true });
+    await expect(store.getSession(child.id)).resolves.toMatchObject({ id: child.id });
     await store.close();
   });
 
@@ -442,6 +517,29 @@ describe('JSONL session store', () => {
     const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     await expect(catalog.delete(session.id)).resolves.toEqual({ deleted: true });
     expect((await catalog.list()).sessions).toEqual([]);
+    await catalog.close();
+  });
+
+  it('deletes only explicitly handed-off catalog members in one operation', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-catalog-members-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const root = await store.createSession({ workspace: home });
+    const child = await store.createSession({
+      workspace: home,
+      source: { type: 'user', parentSessionId: root.id }
+    });
+    const retained = await store.createSession({ workspace: home });
+    await store.close();
+    const catalog = await openAgentSessionCatalog({ homeDirectory: home });
+    await expect(catalog.deleteMembers([])).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_INVALID'
+    });
+    await expect(catalog.deleteMembers([root.id, root.id])).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_INVALID'
+    });
+    await expect(catalog.deleteMembers([child.id, root.id])).resolves.toEqual({ deleted: true });
+    expect((await catalog.list()).sessions.map(({ id }) => id)).toEqual([retained.id]);
     await catalog.close();
   });
 

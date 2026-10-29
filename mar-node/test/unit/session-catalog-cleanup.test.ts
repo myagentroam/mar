@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { JsonlSessionStore } from '../../../mar-agent/src/session/store/index.js';
+import { openAgentSessionCatalog } from '../../../mar-agent/src/index.js';
 import type { NodeAgentSession } from '../../src/database.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { type CodexAppServerClient } from '../../src/runner/codex/codex-app-server.js';
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
@@ -26,7 +32,10 @@ function gate() {
   return { promise, resolve };
 }
 
-function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_MANAGED') {
+function removalFixture(
+  nativeControl: NodeAgentSession['nativeControl'] = 'MAR_MANAGED',
+  removeBatch?: (sessions: readonly NodeAgentSession[]) => Promise<void>
+) {
   const database = new NodeDatabase(':memory:', 'session-remove-admission');
   const workspace = database.saveWorkspace({
     path: '/workspace/remove',
@@ -49,8 +58,10 @@ function removalFixture(nativeControl: NodeAgentSession['nativeControl'] = 'MAR_
   );
   const aliases = new Map<string, string>();
   const runners = {
-    require: () => ({
+    require: (runner: string) => ({
       removeNative,
+      supportsNativeBatchRemoval: () => runner === 'mar-agent' && removeBatch !== undefined,
+      removeNativeMembers: removeBatch,
       nativeAliasesFor: (id: string) =>
         [...aliases].filter(([, managedId]) => managedId === id).map(([nativeId]) => nativeId),
       managedAliasId: (id: string) => aliases.get(id),
@@ -166,6 +177,199 @@ function externalResumeFixture(
     resolve: async () => f.target
   });
 }
+
+describe('Session tree removal', () => {
+  it('passes all MAR descendants to their real Core maintenance owner in one batch', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-node-tree-batch-'));
+    const runner = new MarAgentRunner(home);
+    const batch = vi.spyOn(runner, 'removeNativeMembers');
+    const f = removalFixture('MAR_MANAGED', (sessions) => runner.removeNativeMembers(sessions));
+    try {
+      const store = await JsonlSessionStore.open(home);
+      const child = await store.createSession({ workspace: '/workspace/remove' });
+      const grandchild = await store.createSession({ workspace: '/workspace/remove' });
+      await store.close();
+      f.database.saveNativeSessionMetadata({
+        runner: 'mar-agent',
+        externalSessionId: child.id,
+        workspaceId: f.target.workspaceId,
+        parentSessionId: f.target.id
+      });
+      f.database.saveNativeSessionMetadata({
+        runner: 'mar-agent',
+        externalSessionId: grandchild.id,
+        workspaceId: f.target.workspaceId,
+        parentSessionId: child.id
+      });
+      await expect(f.remove()).resolves.toEqual({ deleted: true });
+      expect(batch).toHaveBeenCalledOnce();
+      expect(batch.mock.calls[0]![0].map(({ id }) => id)).toEqual([grandchild.id, child.id]);
+      const catalog = await openAgentSessionCatalog({ homeDirectory: home });
+      try {
+        expect((await catalog.list({ limit: 20 })).sessions).toEqual([]);
+      } finally {
+        await catalog.close();
+      }
+      expect(f.database.getSessionRecord(child.id)).toBeUndefined();
+      expect(f.database.getSessionRecord(grandchild.id)).toBeUndefined();
+    } finally {
+      f.database.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('retains every relationship when a later Runner batch fails after another owner deleted history', async () => {
+    const batch = vi.fn(async (_sessions: readonly NodeAgentSession[]) => {});
+    batch.mockRejectedValueOnce(new Error('batch failed'));
+    const f = removalFixture('MAR_MANAGED', batch);
+    try {
+      const workspaceId = f.target.workspaceId;
+      f.database.saveNativeSessionMetadata({
+        runner: 'mar-agent',
+        externalSessionId: 'mar-child',
+        workspaceId,
+        parentSessionId: f.target.id
+      });
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'codex-grandchild',
+        workspaceId,
+        parentSessionId: 'mar-child'
+      });
+      await expect(f.remove()).rejects.toThrow('batch failed');
+      expect(f.removeNative.mock.calls.map(([, id]) => id)).toEqual([
+        'codex-grandchild',
+        f.target.id
+      ]);
+      expect(batch).toHaveBeenCalledOnce();
+      expect(batch.mock.calls[0]?.[0].map(({ id }) => id)).toEqual(['mar-child']);
+      for (const id of [f.target.id, 'mar-child', 'codex-grandchild'])
+        expect(f.database.getSessionRecord(id)).toBeDefined();
+      expect(f.database.getSessionRecord('codex-grandchild')?.metadata.parentSessionId).toBe(
+        'mar-child'
+      );
+      f.removeNative.mockResolvedValue('MISSING');
+      await expect(f.remove()).resolves.toEqual({ deleted: true });
+      expect(batch).toHaveBeenCalledTimes(2);
+      for (const id of [f.target.id, 'mar-child', 'codex-grandchild'])
+        expect(f.database.getSessionRecord(id)).toBeUndefined();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('removes every registered descendant, including beyond the display limit, deepest first', async () => {
+    const f = removalFixture();
+    try {
+      for (let index = 0; index < 105; index += 1)
+        f.database.saveNativeSessionMetadata({
+          runner: 'claude-code',
+          workspaceId: f.target.workspaceId,
+          externalSessionId: `child-${index}`,
+          parentSessionId: f.target.id
+        });
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        workspaceId: f.target.workspaceId,
+        externalSessionId: 'grandchild',
+        parentSessionId: 'child-0'
+      });
+      const unrelated = f.database.saveWorkspace({
+        path: '/workspace/unrelated',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        workspaceId: unrelated.id,
+        externalSessionId: 'unrelated',
+        parentSessionId: f.target.id
+      });
+      await expect(f.remove()).resolves.toEqual({ deleted: true });
+      expect(f.removeNative).toHaveBeenCalledTimes(107);
+      const removed = f.removeNative.mock.calls.map(([, id]) => id);
+      expect(removed.indexOf('grandchild')).toBeLessThan(removed.indexOf('child-0'));
+      expect(removed.at(-1)).toBe(f.target.id);
+      expect(f.database.listSessionRecords(f.target.workspaceId)).toEqual([]);
+      expect(f.database.getSessionRecord('unrelated')).toBeDefined();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('rejects the entire tree before deleting any native history when a descendant is active', async () => {
+    const f = removalFixture();
+    try {
+      const child = f.runtime.createAgentSession({
+        workspaceId: f.target.workspaceId,
+        runner: 'codex',
+        cwd: f.target.cwd,
+        externalSessionId: 'active-child',
+        parentSessionId: f.target.id,
+        nativeControl: 'MAR_MANAGED'
+      });
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        workspaceId: child.workspaceId,
+        externalSessionId: child.id,
+        parentSessionId: f.target.id
+      });
+      f.runtime.createMessageRun({
+        sessionId: child.id,
+        clientMessageId: 'active',
+        content: 'running'
+      });
+      await expect(f.remove()).rejects.toThrow('SESSION_ACTIVE');
+      expect(f.removeNative).not.toHaveBeenCalled();
+      expect(f.database.getSessionRecord(f.target.id)).toBeDefined();
+      expect(f.database.getSessionRecord(child.id)).toBeDefined();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('holds every member admission while a native deletion is in progress', async () => {
+    const f = removalFixture();
+    const entered = gate();
+    const release = gate();
+    try {
+      const child = f.runtime.createAgentSession({
+        workspaceId: f.target.workspaceId,
+        runner: 'codex',
+        cwd: f.target.cwd,
+        externalSessionId: 'guarded-child',
+        parentSessionId: f.target.id,
+        nativeControl: 'MAR_MANAGED'
+      });
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        workspaceId: child.workspaceId,
+        externalSessionId: child.id,
+        parentSessionId: f.target.id
+      });
+      f.removeNative.mockImplementationOnce(async () => {
+        entered.resolve();
+        await release.promise;
+        return true;
+      });
+      const deleting = f.remove();
+      await entered.promise;
+      expect(() => f.runtime.assertSessionHistoryMutable(f.target.id)).toThrow('SESSION_ACTIVE');
+      expect(() =>
+        f.runtime.createMessageRun({
+          sessionId: child.id,
+          clientMessageId: 'late',
+          content: 'late'
+        })
+      ).toThrow('SESSION_ACTIVE');
+      release.resolve();
+      await expect(deleting).resolves.toEqual({ deleted: true });
+    } finally {
+      release.resolve();
+      f.database.close();
+    }
+  });
+});
 
 describe('External resume state ownership', () => {
   it('synchronously releases only matching direct and projection state through the resume owner', async () => {
@@ -637,6 +841,91 @@ function session(
 }
 
 describe('SessionCatalogService workspace session cleanup', () => {
+  it('preserves old parents of protected children and of children whose cleanup fails', async () => {
+    const database = new NodeDatabase(':memory:', 'session-cleanup-relations');
+    const workspace = database.saveWorkspace({
+      id: 'workspace',
+      path: '/workspace',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const runtime = new NodeRuntimeState(
+      () => 'node-1',
+      (id) => database.getWorkspace(id)
+    );
+    const old = Date.now() - 3 * DAY_MS;
+    const names = ['active', 'pinned', 'recent', 'failed'];
+    const parents = names.map((name) => session(`parent-${name}`, workspace.id, old));
+    const children = names.map((name) =>
+      session(
+        `child-${name}`,
+        workspace.id,
+        name === 'recent' ? Date.now() : old,
+        name === 'pinned' ? { pinOrder: 0, pinnedAt: 1 } : {}
+      )
+    );
+    for (let i = 0; i < names.length; i += 1) {
+      database.saveNativeSessionMetadata({
+        runner: 'claude-code',
+        externalSessionId: parents[i]!.id,
+        workspaceId: workspace.id
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'claude-code',
+        externalSessionId: children[i]!.id,
+        workspaceId: workspace.id,
+        parentSessionId: parents[i]!.id
+      });
+    }
+    vi.spyOn(runtime, 'listRunsForSession').mockImplementation((id) =>
+      id === 'child-active'
+        ? [{ status: 'RUNNING' } as ReturnType<typeof runtime.listRunsForSession>[number]]
+        : []
+    );
+    const remove = vi.fn(async (_session: NodeAgentSession, id: string) => {
+      if (id === 'child-failed') throw new Error('test deletion failure');
+      return true;
+    });
+    const service = new SessionCatalogService({
+      runnerAvailable: () => true,
+      database: () => database,
+      nodeId: () => 'node-1',
+      runtime,
+      runners: { require: () => ({ removeNative: remove }) } as never,
+      projection: {
+        resolve: async () => undefined,
+        projectionForNative: () => undefined,
+        projectionsForNative: () => new Map()
+      } as never,
+      cachedNative: () => [],
+      cachedWorkspace: async () => [],
+      discoveryPending: () => false,
+      discoverWorkspace: async () => [...parents, ...children],
+      present: (value) => value,
+      nativeIds: (value) => new Set([value.externalSessionId!]),
+      forget: () => undefined,
+      refreshActivity: async () => undefined,
+      externalActivity: () => undefined,
+      isWatching: () => false,
+      invalidateHistory: () => undefined,
+      invalidateWorkspaceSessions: () => undefined,
+      history: async () => ({ turns: [], nextCursor: null }),
+      emitSession: () => undefined
+    });
+    try {
+      const result = await service.operations()['workspace.sessions.cleanup']!({
+        workspaceId: workspace.id,
+        inactiveDays: 1
+      });
+      expect(result).toMatchObject({ deleted: 0, failed: 1 });
+      expect(remove.mock.calls.map(([, id]) => id)).toEqual(['child-failed']);
+      for (const value of [...parents, ...children])
+        expect(database.getSessionRecord(value.id)).toBeDefined();
+    } finally {
+      database.close();
+    }
+  });
+
   it.each(
     [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY].flatMap(
       (unknownActivityAt) => [1, 365].map((inactiveDays) => ({ unknownActivityAt, inactiveDays }))

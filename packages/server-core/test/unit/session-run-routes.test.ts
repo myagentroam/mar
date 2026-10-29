@@ -70,6 +70,31 @@ function fixture(
 }
 
 describe('shared ordinary Session and Run routes', () => {
+  it('relays the session tree with the same workspace authorization context', async () => {
+    const { app, requestNode, headers } = fixture();
+    const tree = { rootSessionId: 'root', nodes: [], truncated: false };
+    requestNode.mockResolvedValueOnce(tree);
+    const response = await app.inject({
+      url: '/api/agent-sessions/child/tree?nodeId=node-one&workspaceId=workspace-one',
+      headers
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(tree);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(requestNode.mock.calls[0]).toContainEqual({
+      sessionId: 'child',
+      workspaceId: 'workspace-one',
+      includeAncestors: true,
+      limit: 100
+    });
+    expect(requestNode.mock.calls[0]).toContainEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace-one',
+        userId: 1
+      })
+    );
+  });
+
   it('relays a terminal idempotent message receipt without replacing its Run identity', async () => {
     const { app, requestNode, headers } = fixture();
     const receipt = {

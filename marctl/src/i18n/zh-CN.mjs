@@ -10,7 +10,7 @@ export default Object.freeze({
   marctl help [子命令]
 
 子命令：
-  sessions 查看和协调当前工作区中的会话。
+  agents   查看和协调当前工作区中的会话。
   nodes    列出有权限的节点及连接状态。
   ssh      打开节点终端或执行远程命令。
   scp      在当前机器与节点之间、节点之间复制普通文件。
@@ -41,122 +41,68 @@ ${configurationHelp}
   快捷命令仅显示对应操作的帮助。用 marctl help <子命令> 查看详细说明。
   远程访问使用授权的 Node Terminal 传输，不是系统 SSH 或 SCP 协议。`,
   commandHelp: Object.freeze({
-    sessions: `{program} — 协调当前 MAR 工作区中的会话
+    agents: `{program} — 协调当前 MAR 工作区中的 Agent
 
 用法：
-  {program} current [--json]
-  {program} list [--query <title>] [--parent <session-id>]
+  {program} start [-m <text> | --message-file <file|->] [--image <path> ...]
+    [--runner <runner>] [--parent <id>] [--model <id>] [--effort <value>]
+    [--title <name>] [--goal <objective> | --clear-goal]
+    [--client-message-id <id>] [--json]
+  {program} send <id> [-m <text> | --message-file <file|->]
+    [--image <path> ...]
+    [--steer | --queue] [--goal <objective> | --clear-goal]
+    [--approval <id> --decision <approve|reject>]
+    [--client-message-id <id>] [--json]
+  {program} wait [<id>] [--agent <id> ...] [--mode any|all]
+    [--wait-for message|completion] [--timeout <duration>] [--json]
+  {program} stop <id> --execution <execution-id> [--json]
+  {program} list [--scope children|descendants|workspace|profile]
+    [--agent <id>]
+    [--runner <runner>] [--query <title>] [--parent <id>]
     [--cursor <cursor>] [--limit <1..100>] [--json]
-  {program} show [<session-id>] [--json]
-  {program} config [<session-id>]
-    [--model <id>] [--effort <value>] [--json]
-  {program} rename [<session-id>] --title <name> [--json]
-  {program} prompt get|clear [<session-id>] [--json]
-  {program} prompt set [<session-id>]
-    (-m <text> | --message-file <file|->) [--json]
+  {program} view [<id>] [--history] [--cursor <cursor>]
+    [--limit <1..100>] [--json]
+
+管理：
+  {program} config [<id>] [--model <id>] [--effort <value>] [--json]
+  {program} rename [<id>] --title <name> [--json]
+  {program} prompt get|clear [<id>] [--json]
+  {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]
   {program} schedule list [--cursor <cursor>] [--limit <1..100>] [--json]
-  {program} schedule get [<session-id>] [--json]
-  {program} schedule create [<session-id>] --cron <cron>
+  {program} schedule get [<id>] [--json]
+  {program} schedule create [<id>] --cron <cron>
     (-m <text> | --message-file <file|->) [--json]
-  {program} schedule update [<session-id>]
-    --expected-revision <revision>
+  {program} schedule update [<id>] --expected-revision <revision>
     [--cron <cron>] [-m <text> | --message-file <file|->] [--json]
-  {program} graph [<session-id>] [--limit <1..100>] [--json]
-  {program} history [<session-id>]
-    [--cursor <cursor>] [--limit <1..100>] [--json]
+  {program} approval decide <id> --run <run-id> --approval <approval-id>
+    --decision <approve|reject> [--json]
+  {program} wait <id> --run <run-id> [--until approval] --timeout <duration>
+  {program} goal get|clear <id> [--json]
+  {program} goal set <id> (-m <text> | --message-file <file|->) [--json]
+  {program} current | show [<id>] | graph [<id>] | history [<id>]
 
-  {program} start --runner <runner>
-    [-m <text> | --message-file <file|->] [--image <path> ...]
-    [--model <id>] [--effort <value>] [--title <name>]
-    [--client-message-id <id>] [--json]
+输入与结果：
+  start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或
+  --parent。profile 显示已配置模型，不代表账号实时可用。start 不等待。
+  send 默认追加；--steer 替换，--queue 排队。--goal 设置或替换目标，
+  --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
+  stop 清除目标会话的 Goal。wait 默认等待直接子会话终态 30 秒，
+  0ms 为快照；正数小于 10 秒按 10 秒等待，最多 5 分钟。等待不会停止任务。
+  可只传图片：最多 5 张，单张 5 MiB、总计 10 MiB。-m 与 --message-file
+  互斥；文件使用 UTF-8，- 从 stdin 读取。list 返回当前身份和分页结果，
+  nextCursor 表示还有后续页面。配置和持久提示从后续执行生效。
+  及时协作优先使用 --steer，包括对方正在等待的结果；Node 可能切换当前执行。
+  仅明确要延后执行的后续工作使用 --queue，它会等待当前执行和前面的队列项；
+  无法等待 Goal 退出的结果应使用 --steer。
 
-  {program} send <session-id>
-    [-m <text> | --message-file <file|->] [--image <path> ...]
-    (--steer | --queue)
-    [--client-message-id <id>] [--json]
+  show --json 包含 session.status、session.model、session.effort、
+  session.title、session.runId、session.recentTools、session.queuedCount 和
+  session.latestMessage。list 返回 latestActivity；wait 可能包含 progress；
+  状态为 RUNNING/IDLE/SLEEPING。历史中 segments[].items[] 的
+  kind === "assistant_message" 包含 payload.text。
 
-  {program} stop <session-id> [--run <run-id>] [--json]
-  {program} goal get|clear <session-id> [--json]
-  {program} goal set <session-id>
-    (-m <text> | --message-file <file|->) [--json]
-  {program} wait <session-id>
-    --run <run-id> --timeout <30s|5m> [--until approval] [--json]
-  {program} approval decide <session-id> --run <run-id>
-    --approval <approval-id> --decision <approve|reject> [--json]
-
-输入：
-  show/config/history/graph/rename、prompt 和 schedule get/create/update
-  可省略 ID，使用当前会话；没有当前会话时请显式指定 ID。
-  send/goal/stop/wait/approval 始终要求显式会话 ID。
-  Runner：mar-agent、codex、claude-code、opencode，操作以实际能力为准。
-  -m / --message 直接传文本，与 --message-file 互斥；
-  文件用 UTF-8，- 从 stdin 读取。
-  start/send 可重复 --image 传 PNG/JPEG/GIF/WebP 图片，也可只发送图片。
-  最多 5 张，单张 5 MiB、合计 10 MiB；goal set 只接受文本。
-  config 至少指定 model 或 effort；未指定字段和权限不变。
-  --effort "" 使用 Runner 默认值，不重启当前执行。
-  prompt 读取、设置或清除持久指令，从后续执行生效。
-
-标题与定时任务：
-  rename 复用现有标题更新，不限制 parent 树、不重启执行。
-  schedule list 读取本地 Workspace 任务，get/create/update 与 MCP 共用任务数据。
-  任务正文最多 20,000 字符；update 至少指定 cron 或正文。
-  修改其他用户的任务会生成 PENDING 提议。
-  更新前读取当前 revision；版本冲突不会自动重试。
-
-读取 JSON：
-  list：id/title/runner/status/runId，以及一条 latestActivity。
-  show：session.status、session.title、session.runId，
-    session.model、session.effort、session.queuedCount，
-    session.latestMessage、session.recentTools（最多三条摘要）。
-    session.pendingApprovals 展示当前审批；pendingApprovalsTruncated 标记
-    摘要未完整列出，完整证据仍查 history。
-  状态为 RUNNING/IDLE/SLEEPING；工具保留原有生命周期。
-  history：segments[].items[] 中按 kind === "assistant_message"
-    筛选，读取 payload.text。
-
-投递与等待：
-  start/send 返回 clientMessageId。
-  send 必须二选一：--steer 或 --queue，空闲时也需指定。
-  及时协作优先使用 --steer：阻塞、决策请求、纠偏
-    和对方正在等待的结果。可用时优先原生投递，
-    否则可能切换当前执行；Node 按实际状态裁决。
-  仅明确要延后执行的后续工作使用 --queue。
-    它不打断活动执行；正常运行时等待当前执行和前面的队列项；
-    有活动 Goal 时可能等待 Goal 退出才处理。
-    当前工作需要及时获知的信息应使用 --steer。
-    新输入自动恢复暂停的 FIFO，不打断活动执行；取消收敛后才恢复。
-  示例：
-    marctl sessions send <session-id> --steer \\
-      -m "Additional context: focus on the resume path." --json
-  排队回执的 runId 可能属于其他活动输入，
-  需按 queueItemId/clientMessageId 与可见历史核对。
-  wait 通过 Watch 等待指定 Run；超时不会停止任务，
-  超时错误可附 progress，表示最后观察到的有界快照。
-  --until approval 在需要审批决定时也提前返回。
-  approval decide 显式批准或拒绝单个请求，沿用实际用户授权；
-    决定被接受不代表任务完成。
-  Run 成功不等于业务完成。Worker 完成不自动唤醒 Coordinator。
-  投递结果未知时先查状态/历史，不盲目重发。
-
-凭据与范围：
-  凭据自签发起 24 小时到期，不自动续签。
-  MAR 绑定当前 Node/Workspace，不提供覆盖范围的参数。
-  列表及 ID 定位只查 Node 已知会话，不扫描 Runner。
-  --query 按展示标题筛选；ID 不存在时可提示近似候选，不自动重试。
-  start 自动记录可用的当前会话为 parent，不提供 parent 覆盖参数。
-  --parent 查直接子会话；graph 查包含根的后代，默认最多 100 个节点，
-  截断时明确标记；创建关系不表示任务依赖。
-
-Worker：
-  按任务需要创建会话，例如 --title "fixer#42 Handle empty totals" 或
-  --title "reviewer#42 Review empty totals"；标题不是寻址身份，
-  保存返回的会话 ID。角色和任务要求放入首条普通消息。
-  会话共享文件与 Git 索引，不自动隔离工作目录或维护池。
-
-退出码：
-  1 失败，2 参数，3 授权，4 不支持，5 超时，6 结果未知，130 取消等待。
-  --json 只输出一个结果或错误对象。`,
+退出码：1 失败，2 参数，3 授权，4 不支持，5 超时，6 结果未知，
+  130 取消等待。--json 输出单个结果或错误对象。`,
     nodes: `{program} — 列出有权限的节点
 
 用法：

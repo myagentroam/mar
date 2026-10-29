@@ -15,6 +15,7 @@ import type {
 } from './contracts.js';
 import {
   boundedModelToolOutput,
+  publicToolEventInput,
   structuredToolArtifacts,
   publicExtensionToolEventData,
   structuredToolEventData,
@@ -133,12 +134,17 @@ export async function executeRoundTools(
     caller: ToolCaller = 'direct',
     parentCallId?: string
   ): Promise<ExecutedToolCall> => {
+    const inputFields = scope.tools.find((tool) => tool.name === call.name)?.eventInputFields;
+    const publicInput =
+      inputFields === undefined
+        ? call.arguments
+        : publicToolEventInput(call.arguments, inputFields);
     await scope.emit({
       type: 'tool.started',
       toolName: call.name,
       callId: call.callId,
       ...(parentCallId === undefined ? {} : { parentCallId }),
-      input: call.arguments
+      input: publicInput
     });
     try {
       if (call.argumentError)
@@ -177,7 +183,13 @@ export async function executeRoundTools(
               ...(publishedImages === undefined ? {} : { images: publishedImages })
             };
       const modelOutput = boundedModelToolOutput(call.name, output.content, output.data);
-      const eventSummary = toolEventSummary(output.content);
+      const eventSummary = toolEventSummary(
+        output.eventSummary === undefined
+          ? output.content
+          : typeof output.eventSummary === 'string'
+            ? output.eventSummary
+            : ''
+      );
       const structuredData =
         call.name === 'exec' || call.name === 'exec_wait'
           ? structuredToolEventData(call.name, output.eventData ?? output.data)

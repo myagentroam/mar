@@ -8,9 +8,21 @@ import { homedir } from 'node:os';
 import { SkillDirectoryService } from './skill-directory-service.js';
 
 /** Keep the admitted source snapshot beside message and Goal markup. */
-export function withSessionMessageOrigin(input: string, origin: unknown): string {
+export function withSessionMessageOrigin(
+  input: string,
+  origin: unknown,
+  parentSessionId?: string | null
+): string {
   if (origin === undefined) return input;
-  const tag = serializeComposerTag('mar_session_origin', sessionMessageOriginSchema.parse(origin));
+  const parsed = sessionMessageOriginSchema.parse(origin);
+  const snapshot =
+    parsed.sessionId === undefined
+      ? parsed
+      : {
+          ...parsed,
+          relation: parsed.sessionId === parentSessionId ? ('parent' as const) : ('other' as const)
+        };
+  const tag = serializeComposerTag('mar_session_origin', snapshot);
   const parts = parseComposerTags(input);
   const first = parts[0];
   const goal =

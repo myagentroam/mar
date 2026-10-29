@@ -64,6 +64,20 @@ const model: AgentModelConfiguration = {
   responsesTransport: { transport: 'HTTP', httpVersion: '1.1' }
 };
 
+it('creates ordinary child sessions through the public API', async () => {
+  const { workspace, host } = await fixture();
+  const agent = await createAgent({ mode: 'normal', host: host(), models: [model] });
+  try {
+    const root = await agent.createSession({ workspace });
+    const child = await agent.createSession({ workspace, parentSessionId: root.id });
+    expect((await agent.listSessions({ parentSessionId: root.id })).sessions).toMatchObject([
+      { id: child.id, source: { type: 'user', parentSessionId: root.id } }
+    ]);
+  } finally {
+    await agent.dispose();
+  }
+});
+
 it('runs and restores through an injected Store without a Host storage capability', async () => {
   const { home, workspace, host } = await fixture();
   const backend = textSessionStore();

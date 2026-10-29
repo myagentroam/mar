@@ -238,6 +238,36 @@ describe('Smart Compaction', () => {
     }
   });
 
+  it('applies the same smart-compaction eligibility to direct user input in a child Session', async () => {
+    const f = await fixture((_request, index) => response('done', index === 1 ? 6000 : 100));
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      const child = await store.createSession({
+        workspace: f.workspace,
+        source: {
+          type: 'subagent',
+          parentSessionId: f.session.id,
+          rootSessionId: f.session.id,
+          parentExecutionId: 'parent',
+          role: 'general-purpose',
+          description: 'child'
+        }
+      });
+      const session = await f.agent.openSession(child.id);
+      await session.run({ prompt: 'Seed' }).result();
+      await session.run({ prompt: 'User continues child' }).result();
+      expect(
+        f.requests[1]!.messages.find((message) =>
+          message.content.startsWith('User continues child')
+        )?.content
+      ).toBe('User continues child\n\n' + marker);
+      const inputs = (await store.read(child.id)).filter((record) => record.type === 'turn.user');
+      expect(inputs[1]!.payload).toMatchObject({ smartCompaction: true });
+    } finally {
+      await store.close();
+    }
+  });
+
   it('does not add a marker retroactively when usage grows within the same input', async () => {
     const f = await fixture((_request, index) =>
       index === 1

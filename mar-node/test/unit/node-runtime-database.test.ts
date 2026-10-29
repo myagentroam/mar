@@ -21,6 +21,47 @@ afterEach(async () => {
 });
 
 describe('Node SQLite session records', () => {
+  it('rolls back the parent column, index and source JSON when v22 fails', () => {
+    const database = new DatabaseSync(':memory:');
+    const earlier = NODE_SCHEMA_MIGRATIONS.filter(({ version }) => version <= 21);
+    migrate(database, earlier);
+    database.exec(
+      "INSERT INTO workspaces (id,path,kind,created_at,updated_at) VALUES ('w','/tmp/w','DIRECTORY',1,1)"
+    );
+    database
+      .prepare(
+        "INSERT INTO agent_sessions (id,workspace_id,runner,pin_order,metadata) VALUES ('child','w','codex',NULL,?)"
+      )
+      .run(JSON.stringify({ version: 1, parentSessionId: 'root' }));
+    const migration = NODE_SCHEMA_MIGRATIONS.find(({ version }) => version === 22)!;
+    expect(() =>
+      migrate(database, [
+        ...earlier,
+        {
+          ...migration,
+          sql: `${migration.sql}\nINSERT INTO nonexistent_v22_test_table VALUES (1);`
+        }
+      ])
+    ).toThrow();
+    expect(database.prepare('PRAGMA table_info(agent_sessions)').all()).not.toContainEqual(
+      expect.objectContaining({ name: 'parent_session_id' })
+    );
+    expect(
+      database
+        .prepare("SELECT name FROM sqlite_master WHERE name='agent_sessions_workspace_parent'")
+        .get()
+    ).toBeUndefined();
+    const row = database.prepare("SELECT metadata FROM agent_sessions WHERE id='child'").get();
+    expect(JSON.parse(String(row?.['metadata']))).toEqual({ version: 1, parentSessionId: 'root' });
+    expect(
+      database.prepare('SELECT max(version) AS version FROM node_schema_migrations').get()
+    ).toMatchObject({ version: 21 });
+    migrate(database, NODE_SCHEMA_MIGRATIONS);
+    expect(
+      database.prepare("SELECT parent_session_id FROM agent_sessions WHERE id='child'").get()
+    ).toMatchObject({ parent_session_id: 'root' });
+    database.close();
+  });
   it('backfills v18 creation parents and preserves relationships across metadata updates and restarts', async () => {
     const { path } = await databasePath('parent-migration');
     const original = new DatabaseSync(path);
@@ -61,6 +102,26 @@ describe('Node SQLite session records', () => {
         parentSessionId: 'parent',
         customTitle: iteration === 0 ? 'linked' : 'Renamed'
       });
+      expect(
+        reopened.listChildSessionRecords(workspace.id, 'parent').map((entry) => entry.id)
+      ).toEqual(['linked']);
+      const stored = reopened.raw
+        .prepare(
+          "SELECT parent_session_id, json_type(metadata, '$.parentSessionId') AS duplicate FROM agent_sessions WHERE id = ?"
+        )
+        .get('linked');
+      expect(stored).toMatchObject({ parent_session_id: 'parent', duplicate: null });
+      expect(
+        reopened.raw
+          .prepare(
+            'EXPLAIN QUERY PLAN SELECT id FROM agent_sessions WHERE workspace_id = ? AND parent_session_id = ?'
+          )
+          .all(workspace.id, 'parent')
+      ).toEqual([
+        expect.objectContaining({
+          detail: expect.stringContaining('agent_sessions_workspace_parent')
+        })
+      ]);
       expect(reopened.raw.prepare('PRAGMA foreign_key_list(agent_sessions)').all()).toEqual([]);
       reopened.saveNativeSessionMetadata({
         runner: 'codex',
@@ -86,7 +147,8 @@ describe('Node SQLite session records', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
-      { version: 21 }
+      { version: 21 },
+      { version: 22 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -176,7 +238,7 @@ describe('Node SQLite session records', () => {
     database.close();
   });
 
-  it('reopens the current v21 database after a Node restart', async () => {
+  it('reopens the current v22 database after a Node restart', async () => {
     const { path } = await databasePath('current-reopen');
     const first = new NodeDatabase(path, 'node-a');
     const workspace = first.saveWorkspace({
@@ -198,7 +260,8 @@ describe('Node SQLite session records', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
-      { version: 21 }
+      { version: 21 },
+      { version: 22 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -246,7 +309,8 @@ describe('Node SQLite session records', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
-      { version: 21 }
+      { version: 21 },
+      { version: 22 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
@@ -262,9 +326,9 @@ describe('Node SQLite session records', () => {
       .get('legacy-thread') as { readonly metadata: string };
     expect(JSON.parse(migratedMetadata.metadata)).toEqual({
       ...legacyMetadata,
-      sessionPrompt: null,
-      parentSessionId: null
+      sessionPrompt: null
     });
+    expect(upgraded.getSessionRecord('legacy-thread')?.metadata.parentSessionId).toBeNull();
     upgraded.close();
 
     const reopened = new NodeDatabase(path, 'node-a');
@@ -296,7 +360,8 @@ describe('Node SQLite session records', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
-      { version: 21 }
+      { version: 21 },
+      { version: 22 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -571,7 +636,8 @@ describe('Node SQLite session records', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
-      { version: 21 }
+      { version: 21 },
+      { version: 22 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -758,7 +824,8 @@ describe('Node SQLite session records', () => {
         { version: 18 },
         { version: 19 },
         { version: 20 },
-        { version: 21 }
+        { version: 21 },
+        { version: 22 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -796,7 +863,8 @@ describe('Node SQLite session records', () => {
         { version: 18 },
         { version: 19 },
         { version: 20 },
-        { version: 21 }
+        { version: 21 },
+        { version: 22 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(

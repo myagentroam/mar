@@ -11,6 +11,8 @@ export interface ClientToolDefinition extends ModelToolDefinition {
   outputSchema?: Record<string, unknown>;
   /** Runtime-only policy. MCP defaults to both callers; other tools default to direct only. */
   allowedCallers?: readonly ToolCaller[];
+  /** Runtime-only allowlist of scalar fields in the public tool.started input. */
+  eventInputFields?: readonly string[];
   /** Runtime-only exposure override; retains both permitted entry points with Code Mode enabled. */
   codeModeExposure?: 'both';
   parallelSafety?: 'safe' | 'serial';
@@ -120,6 +122,8 @@ export interface ToolExecutionResult {
   /** Explicit, bounded public structured projection; never inferred from data. */
   eventData?: Readonly<Record<string, unknown>>;
   data?: unknown;
+  /** Explicit public event summary, separate from model-visible content. */
+  eventSummary?: string;
   /** Runtime-only definitions used to encode a Tool Search output. */
   toolSearchTools?: readonly ClientToolDefinition[];
   truncated?: boolean;

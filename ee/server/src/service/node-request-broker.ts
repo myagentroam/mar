@@ -147,7 +147,8 @@ export class NodeRequestBroker {
     operation: string,
     data: unknown,
     user: UserNodeAuthorization,
-    timeoutMs = 15_000
+    timeoutMs = 15_000,
+    signal?: AbortSignal
   ): Promise<unknown> {
     const socket = this.socketFor(nodeId);
     if (socket !== undefined && !this.connectionPolicy.allows(socket, operation))
@@ -169,7 +170,8 @@ export class NodeRequestBroker {
         user,
         undefined,
         timeoutMs,
-        this.socketFor(nodeId)
+        this.socketFor(nodeId),
+        signal
       );
     if (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
       return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
@@ -177,7 +179,7 @@ export class NodeRequestBroker {
     // Cancellation can only address the authenticated caller's page intent on the Node.
     // It reads no resource and must remain possible after Workspace access is revoked.
     if (operation === 'prompt-completion.cancel')
-      return this.dispatch(nodeId, operation, data, user, undefined, timeoutMs, connection);
+      return this.dispatch(nodeId, operation, data, user, undefined, timeoutMs, connection, signal);
     const { workspaceId, conflict } = this.scopes.resolve(
       nodeId,
       operation,
@@ -189,11 +191,11 @@ export class NodeRequestBroker {
     if (ownership instanceof Promise)
       return ownership.then((allowed) =>
         allowed
-          ? this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection)
+          ? this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection, signal)
           : this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId)
       );
     if (!ownership) return this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId);
-    return this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection);
+    return this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection, signal);
   }
 
   private denyAuthorizedRequest(
@@ -247,7 +249,8 @@ export class NodeRequestBroker {
     user: UserNodeAuthorization,
     workspaceId: string | undefined,
     timeoutMs: number,
-    connection: WebSocket | undefined
+    connection: WebSocket | undefined,
+    signal?: AbortSignal
   ): Promise<unknown> {
     if (connection !== undefined && !this.connectionPolicy.allows(connection, operation))
       throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
@@ -297,25 +300,30 @@ export class NodeRequestBroker {
         prepared,
         {
           ...user,
-          usageGrant: [
-            'session.message',
-            'session.channel.message',
-            'session.start',
-            'session.command.execute',
-            'runner.command.execute',
-            'conversation.hosted.message',
-            'prompt-completion.generate'
-          ].includes(operation)
-            ? this.services.usageGrants.issue(
-                nodeId,
-                user.userId,
-                operation.startsWith('conversation.hosted.') ? 'conversation' : 'work'
-              )
-            : undefined
+          usageGrant:
+            [
+              'session.message',
+              'session.channel.message',
+              'session.start',
+              'session.command.execute',
+              'runner.command.execute',
+              'conversation.hosted.message',
+              'prompt-completion.generate'
+            ].includes(operation) ||
+            (operation === 'agent.network' &&
+              record(data) &&
+              (data.action === 'start' || data.action === 'send'))
+              ? this.services.usageGrants.issue(
+                  nodeId,
+                  user.userId,
+                  operation.startsWith('conversation.hosted.') ? 'conversation' : 'work'
+                )
+              : undefined
         },
         timeoutMs,
         (phase, id, errorCode) =>
-          this.auditRelay(operation, phase, id, user.userId, context, errorCode, metadata)
+          this.auditRelay(operation, phase, id, user.userId, context, errorCode, metadata),
+        signal
       );
       if (
         !this.closed &&

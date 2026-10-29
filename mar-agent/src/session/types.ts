@@ -1,6 +1,6 @@
 /** Public session provenance; storage may persist additional private metadata. */
 export type SessionSource =
-  | { readonly type: 'user' }
+  | { readonly type: 'user'; readonly parentSessionId?: string }
   | {
       readonly type: 'subagent';
       readonly parentSessionId: string;

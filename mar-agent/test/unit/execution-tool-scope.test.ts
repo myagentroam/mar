@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { createExecutionToolScope } from '../../src/sdk/execution-tool-scope.js';
 
-it('captures each round tool binding and restores the parent frame for tool invocation', async () => {
+it('captures each round tool binding and restores the operation frame for tool invocation', async () => {
   const events: string[] = [];
   const tool = { name: 'read', inputSchema: { type: 'object' }, description: 'read' };
   let binding = { definition: tool, source: { kind: 'host' }, version: 1 };
@@ -23,16 +23,9 @@ it('captures each round tool binding and restores the parent frame for tool invo
     todo: {},
     waitInterrupt: undefined,
     skills: new Map(),
-    subagents: {
-      captureParentFrame: () => (run: () => unknown) => {
-        events.push('parent');
-        return run();
-      },
-      captureExecution: () => ({}),
-      modelMessages: () => {}
-    },
     coreExtensions: {
       epoch: 1,
+      services: { resolve: () => undefined },
       agentAction: () => {},
       withTools: (_b, _s, run) => run(),
       invoke,
@@ -80,5 +73,5 @@ it('captures each round tool binding and restores the parent frame for tool invo
     second.toolScope.context,
     'direct'
   );
-  expect(events).toEqual(['frame', 'parent', 'binding:1', 'frame', 'parent', 'binding:2']);
+  expect(events).toEqual(['frame', 'binding:1', 'frame', 'binding:2']);
 });

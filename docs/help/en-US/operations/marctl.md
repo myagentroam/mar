@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Manage Nodes with marctl
@@ -50,23 +50,23 @@ The Server checks the user credential, account, login session (when applicable),
 
 For `show/config/history/graph/rename/prompt` and `schedule get/create/update`, omit the Session ID to use the current execution-context Session. An explicit ID takes precedence. Without a current Session, the command fails rather than guessing a recent one. `send/goal/stop/wait/approval` always require an explicit target ID; `list` and `schedule list` still query the current Workspace.
 
-Use `marctl sessions rename [<session-id>] --title 'fixer#42 Updated title' --json` to rename a Session. The trimmed title must be nonempty and at most 160 characters. There is no parent-tree restriction. Renaming uses the Web title-update flow without starting or interrupting execution. Use `sessions current --json` to read the current title.
+Use `marctl agents rename [<session-id>] --title 'fixer#42 Updated title' --json` to rename a Session. The trimmed title must be nonempty and at most 160 characters. There is no parent-tree restriction. Renaming uses the Web title-update flow without starting or interrupting execution. Use `agents current --json` to read the current title.
 
 Scheduled tasks share data and agent editing rules with the built-in MCP: edits by the saving user apply directly; another user's edits return a `PENDING` proposal for the saving user to confirm, without changing execution identity. Scheduled and manual executions use the same user permissions and task editing rules. Read the current `revision` before passing `--expected-revision`; conflicts and uncertain writes are not retried automatically. MAR Agent hides the duplicate schedule MCP when its built-in marctl skill is available. Other Runners, or executions without that skill, retain the MCP.
 
 ```text
-marctl sessions schedule list --limit 20 --json
-marctl sessions schedule get --json
-marctl sessions schedule create --cron '0 9 * * *' -m 'Check build results' --json
-marctl sessions schedule update --expected-revision 1 --message-file task.txt --json
-marctl sessions schedule get <session-id> --json
+marctl agents schedule list --limit 20 --json
+marctl agents schedule get --json
+marctl agents schedule create --cron '0 9 * * *' -m 'Check build results' --json
+marctl agents schedule update --expected-revision 1 --message-file task.txt --json
+marctl agents schedule get <session-id> --json
 ```
 
 `schedule list` pages through Node SQLite and returns `tasks[]` (including `sessionTitle`) and `nextCursor`, without scanning Runners. Other schedule operations accept an explicit target Session. Creation requires cron and text; updates require at least one. Text uses `-m` / `--message-file` (including stdin), up to 20,000 characters. The Node chooses the time zone. The CLI does not provide task enable/disable, deletion, or proposal approval commands.
 
 For `history --json`, select `kind === "assistant_message"` in `segments[].items[]` and read `payload.text`; compact state fields are described below.
 
-Use `marctl sessions config <session-id> --model <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `sessions start` also accepts `--effort`.
+Use `marctl agents config <session-id> --model <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `agents start` also accepts `--effort`.
 
 Tasks dispatched with `start`, `send`, or `goal set` suppress automatic notifications to avoid repeated pushes from collaborating Sessions. This applies to subsequent task turns and Goal continuation; status and history remain available. Later manual input restores normal notification rules. Explicit notification tools can still send authorized notifications.
 
@@ -87,45 +87,46 @@ The `show` field `pendingApprovals` summarizes pending requests for the active R
 A decision requires explicit Session, public root Run and approval IDs, plus approve/reject. Existing user and operation authorization still applies; collaboration messages do not grant approval authority. A decision receipt confirms acceptance, not task completion; keep observing or wait again. Expired, duplicate and mismatched requests are rejected. Reconcile state/history before retrying an uncertain write; a missing pending request does not mean it was approved.
 
 ```text
-marctl help sessions
-marctl sessions current --json
-marctl sessions list --limit 20 --json
-marctl sessions list --query fixer#42 --json
-marctl sessions list --parent <session-id> --limit 20 --json
-marctl sessions graph <session-id> --limit 100 --json
-marctl sessions start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
-marctl sessions show <session-id> --json
-marctl sessions history <session-id> --limit 10 --json
-marctl sessions send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
-marctl sessions send <session-id> --queue -m 'After the current task, review the final diff.' --json
-marctl sessions send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
-marctl sessions send <session-id> --steer --image first.png --image second.jpg --json
-marctl sessions wait <session-id> --run <run-id> --timeout 30s --json
-marctl sessions prompt get <session-id> --json
-marctl sessions prompt set <session-id> --message-file instructions.txt --json
-marctl sessions prompt clear <session-id> --json
-marctl sessions wait <session-id> --run <run-id> --until approval --timeout 5m --json
-marctl sessions approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
-marctl sessions stop <session-id> --run <run-id> --json
-marctl sessions goal get <session-id> --json
-marctl sessions goal set <session-id> --message-file objective.txt --json
-marctl sessions goal set <session-id> -m 'Finish the review and verify the fix' --json
-marctl sessions goal clear <session-id> --json
+marctl help agents
+marctl agents current --json
+marctl agents list --limit 20 --json
+marctl agents list --query fixer#42 --json
+marctl agents list --parent <session-id> --limit 20 --json
+marctl agents graph <session-id> --limit 100 --json
+marctl agents start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
+marctl agents show <session-id> --json
+marctl agents history <session-id> --limit 10 --json
+marctl agents send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
+marctl agents send <session-id> --queue -m 'After the current task, review the final diff.' --json
+marctl agents send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
+marctl agents send <session-id> --steer --image first.png --image second.jpg --json
+marctl agents wait <session-id> --run <run-id> --timeout 30s --json
+marctl agents prompt get <session-id> --json
+marctl agents prompt set <session-id> --message-file instructions.txt --json
+marctl agents prompt clear <session-id> --json
+marctl agents wait <session-id> --run <run-id> --until approval --timeout 5m --json
+marctl agents approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
+marctl agents wait <session-id> --timeout 0ms --json
+marctl agents stop <session-id> --execution <execution-id> --json
+marctl agents goal get <session-id> --json
+marctl agents goal set <session-id> --message-file objective.txt --json
+marctl agents goal set <session-id> -m 'Finish the review and verify the fix' --json
+marctl agents goal clear <session-id> --json
 ```
 
 For `start`, `send` and `goal set`, use `-m` / `--message` to supply text directly, or `--message-file` to read a UTF-8 file or stdin; the two options are mutually exclusive. `start` and `send` also accept repeated `--image <path>` options, with or without text. Images are read on the CLI host and sent as existing Session image attachments, not remote path references. PNG, JPEG, GIF and WebP are supported, up to 5 images, 5 MiB each and 10 MiB total. Actual image capabilities still depend on the target Runner and model. `goal set` accepts text only and rejects the reserved objective `--clear`; use `goal clear` to clear the Goal.
 
 `start` creates a Session at the Workspace root and submits its first message; it supports `mar-agent`, `codex`, `claude-code`, and `opencode`, subject to actual Runner capabilities. Omit `--model` to use the target Runner configuration, not the Coordinator's model. Creating a Session does not overwrite the default model, reasoning effort, or access saved for the Web Composer, with or without a parent Session; explicit configuration applies only to the new Session. `--message-file -` reads UTF-8 stdin. Record the returned native Session ID; titles are not unique routing identities.
 
-When an Agent runs `start`, the CLI automatically supplies its current Session as the creation source. The Node checks the same Workspace and stores the canonical ID as `parentSessionId`; without a source it remains null. There is no parent override or editing command. `list --parent <session-id>` pages through direct children, and `graph <session-id>` returns creation descendants including the root. Graph defaults to at most 100 nodes; `--limit` accepts 1..100. Results contain `rootSessionId`, `nodes`, and `truncated`, using only Node-known Sessions without scanning Runners. Parent means creation source, not authorization, current coordinator, or task dependency. Sending messages and taking over work do not change it; deleting a parent does not delete children, and old relationships are not inferred.
+When an Agent runs `start`, Node validates the creation source using its trusted Execution credential. Terminal users can specify a valid parent with `--parent`; Node checks the Workspace and stores the canonical `parentSessionId`. Without a parent it remains null, and it cannot be edited afterward. `list --parent <session-id>` pages through direct children, and `graph <session-id>` returns creation descendants including the root. Graph defaults to at most 100 nodes; `--limit` accepts 1..100. Results contain `rootSessionId`, `nodes`, and `truncated`, using only Node-known Sessions without scanning Runners. Parent means creation source, not authorization, current coordinator, or task dependency. Sending messages and taking over work do not change it. Deleting a parent deletes its descendants under Node's tree rules; old relationships are not inferred from messages or titles.
 
 Create workers as tasks need them, using `fixer#<task-id> <description>` or `reviewer#<task-or-change-id> <description>`. There is no fixed worker count, role registry, or worker pool. Put role, scope, and acceptance criteria in the first ordinary message, or use `prompt` for persistent instructions. Each Runner loads guidance through the entry described above; a target Session does not need to load the guide to receive collaboration messages.
 
-`send` requires exactly one of `--steer` or `--queue`, even when idle; missing, conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context and, when MAR Agent can accept it natively, echoes it immediately. Managed waits may return early without stopping background tasks; other tools still finish normally. Other cases may switch the current execution; Node decides delivery from actual state. Prefer `--steer` for timely coordination: blockers, decision requests, corrections, and results the recipient is waiting for. Do not queue a result merely because it is a report; omit routine progress chatter. Use `--queue` only for deliberately deferred follow-up work that should run after the current execution. `--queue` does not interrupt active execution; during normal active work it waits for that execution and earlier queued work. Use `--steer` for information needed during current work. New input resumes a paused queue with ordinary send admission after cancellation settles, while later explicit stops still apply. An active Goal can delay it until the Goal exits. Start/send generate a `clientMessageId`, or accept `--client-message-id`. `delivery` is `ACCEPTED` for accepted priority context, `QUEUED` for queued input, or `STARTED` when startup has begun. Receipts do not distinguish native steering from internal execution replacement, and do not confirm model processing or business completion. A queued receipt's `runId` may belong to another active input: correlate `queueItemId`/`clientMessageId` with history. Follow history's `nextCursor` only when needed.
+`send` uses ordinary delivery by default; you can choose either `--steer` or `--queue`. Conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context; managed waits may return early without stopping background tasks, while other cases may switch the current execution. Node decides delivery from actual state. Prefer `--steer` for timely coordination and use `--queue` only for deliberately deferred follow-up work. Queued messages are handled in order, and later explicit stops still apply. An active Goal can delay queued input until it exits. Start/send generate a `clientMessageId`, or accept `--client-message-id`. Message receipts report acceptance and delivery under `message.status` and `message.result`; they do not confirm model processing or business completion. Correlate queued `queueItemId`/`clientMessageId` with history.
 
-The first message from `start` and messages from `send` inside an Agent Session are labeled `From {name}` in history and the queue, using the name captured at send time. The tooltip identifies the source as a Session and shows its ID. Web-share visitor messages use the same `From {name}` title, with a tooltip identifying a Web share; ordinary user messages and original author messages on shared pages keep their existing titles. Without a current Session, such as in a Workbench terminal, the UI shows `From marctl` without extra tooltip details. The internal origin marker is not shown in the message text.
+The first message from `start` and messages from `send` inside an Agent Session are labeled `From {name}` in history and the queue, using the name captured at send time. The tooltip identifies the source as a Session and shows its ID. Web-share visitor messages use the same `From {name}` title, with a tooltip identifying a Web share; ordinary user messages and original author messages on shared pages keep their existing titles. Direct terminal user input does not impersonate a Session source. The internal origin marker is not shown in the message text.
 
-A timeout error may include `progress` (`status`, `runId`, `latestMessage`, `recentTools`, `observedAt`), the last bounded snapshot received for that Run, not an extra query or proof of completion. With no observation, it is omitted. `wait` uses the existing Watch for the exact Run and releases observation on exit; timeout or cancellation does not stop the task. Recently completed Runs remain observable in a bounded in-process summary; an evicted Run or Node restart produces an explicit missing-Run error, not assumed success. A successful Run still requires checking artifacts and tests. `stop --run` targets that Run only, never a later Run. Goal operations reuse existing Session semantics. A Coordinator can start from an ordinary message or schedule without a Goal. Worker completion **does not automatically wake** it: wait/read actively, or reconcile on the next authorized input or scheduled trigger.
+Without `--run`, `wait` defaults to direct-child completion and 30 seconds; `--timeout 0ms` reads a snapshot. Use the snapshot's `executionId` with `stop --execution`: a stale identity cannot stop a later execution, and stop also clears the corresponding Goal. `wait --run` uses the existing Watch for that Run or an approval and releases observation on exit; a timeout error may include the last bounded `progress`, omitted if none was observed. Neither kind of wait stops the task on timeout or cancellation. A successful Run still requires checking artifacts and tests; a child terminal state does not wake the parent's sleep, so wait or read actively.
 
 Sessions share files and the Git index, without automatic worktree isolation or a Git workflow. Commits, pushes, PRs, merges, and external messages still need applicable user authorization. If a mutation outcome is unknown, preserve its correlation ID and inspect state/history before retrying; do not blindly resend. In-memory receipt/Run recovery is not guaranteed across restarts.
 

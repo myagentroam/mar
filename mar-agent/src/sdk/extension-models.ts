@@ -43,6 +43,9 @@ export function createExtensionModels(
             maxOutputTokens: model.maxOutputTokens,
             inputCapabilities: Object.freeze([...model.inputCapabilities]),
             reasoningEfforts: Object.freeze([...model.reasoningEfforts]),
+            defaultReasoningEffort: model.defaultReasoningEffort,
+            conversationModel: model.conversationModel !== false,
+            subagentModel: model.subagentModel === true,
             isDefault: model.id === defaultModelId
           })
         )

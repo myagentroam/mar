@@ -5,8 +5,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost } from '../../src/host.js';
-import { SecretValue, type AgentEvent, type AgentModelConfiguration } from '../../src/index.js';
-import { type ExtensionAgentsApi } from '../../src/extensions.js';
+import {
+  SecretValue,
+  type Agent,
+  type AgentEvent,
+  type AgentModelConfiguration
+} from '../../src/index.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
@@ -14,6 +19,11 @@ import {
   type ModelRequest
 } from '../../src/model/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import {
+  createSubagentExtension,
+  SUBAGENT_NATIVE_SERVICE,
+  type NativeSubagentClient
+} from '../../extensions/subagent/src/index.js';
 
 const homes: string[] = [];
 afterEach(async () =>
@@ -44,6 +54,34 @@ async function fixture(name: string) {
   await mkdir(workspace);
   await writeFile(join(workspace, 'input.txt'), 'content\n');
   return { home, workspace };
+}
+
+async function subagentFixture(
+  home: string,
+  workspace: string,
+  adapter: ModelAdapter,
+  getAdapter: () => ModelAdapter = () => adapter
+) {
+  let agent!: Agent;
+  const clients = new Map<string, NativeSubagentClient>();
+  const consumer: AgentExtension = {
+    id: 'execution-usage-consumer',
+    apiVersion: '1.0',
+    serviceDependencies: [{ key: SUBAGENT_NATIVE_SERVICE }],
+    attachSession(context) {
+      clients.set(context.sessionId, context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open());
+    }
+  };
+  agent = await createMarAgent(
+    {
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace }),
+      models: [{ ...adapter.configuration, subagentModel: true }],
+      extensions: [createSubagentExtension({ agent: () => agent }), consumer]
+    },
+    () => getAdapter()
+  );
+  return { agent, clients };
 }
 
 class LongExecutionAdapter implements ModelAdapter {
@@ -188,9 +226,9 @@ class SubagentBudgetAdapter implements ModelAdapter {
 
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    if (effectiveInstructions(request).includes('non-recursive subagent')) {
+    if (effectiveInstructions(request).includes('delegated subagent')) {
       const promptIndex = request.messages.findLastIndex(
-        (message) => message.role === 'user' && message.content.startsWith('Inspect input.txt')
+        (message) => message.role === 'user' && message.content.includes('Inspect input.txt')
       );
       if (!request.messages.slice(promptIndex + 1).some((message) => message.role === 'tool')) {
         yield {
@@ -208,10 +246,20 @@ class SubagentBudgetAdapter implements ModelAdapter {
       yield { type: 'completed', reason: 'completed' };
       return;
     }
+    const latestPrompt = request.messages.findLast(
+      (message) => message.role === 'user' && message.contextKind === undefined
+    )?.content;
+    if (latestPrompt === 'initialize') {
+      yield { type: 'text.completed', itemId: 'parent-initialized', text: 'parent initialized' };
+      yield { type: 'usage', usage: { outputTokens: 90 } };
+      yield { type: 'completed', reason: 'completed' };
+      return;
+    }
     const promptIndex = request.messages.findLastIndex(
       (message) =>
         message.role === 'user' && ['delegate', 'continue child'].includes(message.content)
     );
+    const currentPrompt = request.messages[promptIndex]?.content;
     const toolResults = request.messages
       .slice(promptIndex + 1)
       .filter((message) => message.role === 'tool');
@@ -219,10 +267,10 @@ class SubagentBudgetAdapter implements ModelAdapter {
       yield {
         type: 'client_tool.call',
         callId: toolResults.length === 0 ? 'continue-child' : 'wait-child',
-        name: toolResults.length === 0 ? 'agent_message' : 'agent_wait',
+        name: toolResults.length === 0 ? 'agent_send' : 'agent_wait',
         arguments:
           toolResults.length === 0
-            ? { agentId: this.childSessionId, message: 'Inspect input.txt again' }
+            ? { agentId: this.childSessionId, content: 'Inspect input.txt again' }
             : { agentId: this.childSessionId, waitMs: 10_000 }
       };
       if (toolResults.length === 0) yield { type: 'usage', usage: { outputTokens: 80 } };
@@ -246,6 +294,7 @@ class SubagentBudgetAdapter implements ModelAdapter {
       callId: 'parent-task',
       name: 'agent_start',
       arguments: {
+        title: 'Inspect input',
         description: 'Inspect input',
         prompt: 'Inspect input.txt',
         role: this.role
@@ -280,10 +329,10 @@ class DetachedBackgroundSubagentBudgetAdapter implements ModelAdapter {
 
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    const child = effectiveInstructions(request).includes('non-recursive subagent');
+    const child = effectiveInstructions(request).includes('delegated subagent');
     if (child) {
       const childRequests = this.requests.filter((item) =>
-        effectiveInstructions(item).includes('non-recursive subagent')
+        effectiveInstructions(item).includes('delegated subagent')
       );
       if (childRequests.length === 1) {
         this.#resolveChildFirstRequest();
@@ -318,6 +367,7 @@ class DetachedBackgroundSubagentBudgetAdapter implements ModelAdapter {
         callId: 'background-parent-task',
         name: 'agent_start',
         arguments: {
+          title: 'Inspect input in background',
           description: 'Inspect input in background',
           prompt: 'Inspect input.txt after the parent completes.',
           role: 'general-purpose'
@@ -554,14 +604,7 @@ describe('Execution usage without token limits', () => {
     async (role) => {
       const { home, workspace } = await fixture('subagent');
       const adapter = new SubagentBudgetAdapter(role);
-      const agent = await createMarAgent(
-        {
-          mode: 'normal',
-          host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [model]
-        },
-        () => adapter
-      );
+      const { agent, clients } = await subagentFixture(home, workspace, adapter);
       const session = await agent.createSession({ workspace, title: 'Subagent budget' });
       const handle = session.run({
         prompt: 'delegate'
@@ -574,32 +617,43 @@ describe('Execution usage without token limits', () => {
         finalAnswer: 'parent staged result'
       });
       const childRequests = adapter.requests.filter((request) =>
-        effectiveInstructions(request).includes('non-recursive subagent')
+        effectiveInstructions(request).includes('delegated subagent')
       );
       const parentRequests = adapter.requests.filter(
-        (request) => !effectiveInstructions(request).includes('non-recursive subagent')
+        (request) => !effectiveInstructions(request).includes('delegated subagent')
       );
       expect(childRequests).toHaveLength(2);
       expect(parentRequests).toHaveLength(3);
+      expect(parentRequests[0]!.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining([
+          'agent_start',
+          'agent_send',
+          'agent_wait',
+          'agent_stop',
+          'agent_list',
+          'agent_view'
+        ])
+      );
       expect(events).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            type: 'subagent.completed',
-            status: 'completed'
-          }),
+          expect.objectContaining({ type: 'tool.completed', toolName: 'agent_start' }),
+          expect.objectContaining({ type: 'tool.completed', toolName: 'agent_wait' }),
           expect.objectContaining({ type: 'tool.completed', callId: 'parent-task' })
         ])
       );
-      const childEvent = events.find((event) => event.type === 'subagent.completed');
-      if (childEvent?.type !== 'subagent.completed') throw new Error('Missing child completion');
-      adapter.childSessionId = childEvent.agentId;
+      const client = clients.get(session.id);
+      if (!client) throw new Error('Missing native subagent consumer');
+      const children = await client.list();
+      expect(children).toHaveLength(1);
+      const childId = children[0]!.agentId;
+      adapter.childSessionId = childId;
 
       await expect(session.run({ prompt: 'continue child' }).result()).resolves.toMatchObject({
         status: 'completed',
         finalAnswer: 'parent staged result'
       });
       const allChildRequests = adapter.requests.filter((request) =>
-        effectiveInstructions(request).includes('non-recursive subagent')
+        effectiveInstructions(request).includes('delegated subagent')
       );
       expect(allChildRequests).toHaveLength(4);
       for (const request of allChildRequests) {
@@ -608,13 +662,13 @@ describe('Execution usage without token limits', () => {
       }
       expect(
         adapter.requests
-          .filter((request) => !effectiveInstructions(request).includes('non-recursive subagent'))
+          .filter((request) => !effectiveInstructions(request).includes('delegated subagent'))
           .some((request) => JSON.stringify(request.messages).includes('execution_guidance'))
       ).toBe(false);
 
       const store = await JsonlSessionStore.open(home);
       try {
-        const records = await store.read(childEvent.agentId);
+        const records = await store.read(childId);
         expect(records.filter((record) => record.type === 'usage.updated')).toHaveLength(4);
         expect(records.filter((record) => record.type === 'execution.completed')).toHaveLength(2);
         expect(records.filter((record) => record.type === 'execution.failed')).toHaveLength(0);
@@ -627,51 +681,26 @@ describe('Execution usage without token limits', () => {
 
   it('does not budget native Extension child turns or follow-up messages', async () => {
     const { home, workspace } = await fixture('native-subagent');
-    const childAdapter = new SubagentBudgetAdapter('general-purpose');
-    let api: ExtensionAgentsApi | undefined;
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        extensions: [
-          {
-            id: 'native-budget-regression',
-            apiVersion: '1.0',
-            attachSession: (context) => {
-              if (context.agents) api = context.agents;
-            }
-          }
-        ]
-      },
-      () => ({
-        configuration: model,
-        async *start(request) {
-          if (effectiveInstructions(request).includes('non-recursive subagent')) {
-            yield* childAdapter.start(request);
-            return;
-          }
-          yield { type: 'text.completed', itemId: 'parent-final', text: 'parent done' };
-          yield { type: 'usage', usage: { outputTokens: 90 } };
-          yield { type: 'completed', reason: 'completed' };
-        }
-      })
-    );
+    const adapter = new SubagentBudgetAdapter('general-purpose');
+    const { agent, clients } = await subagentFixture(home, workspace, adapter);
     try {
       const session = await agent.createSession({ workspace, title: 'Native child budget' });
       await expect(session.run({ prompt: 'initialize' }).result()).resolves.toMatchObject({
         status: 'completed'
       });
-      if (!api) throw new Error('Missing native Agent API');
+      const api = clients.get(session.id);
+      if (!api) throw new Error('Missing native subagent consumer');
       const child = await api.spawn({ prompt: 'Inspect input.txt', waitFor: 'completion' });
-      if (!('agentId' in child)) throw new Error('Missing native child');
       expect(child).toMatchObject({ status: 'completed', summary: 'child done' });
       await api.message({ agentId: child.agentId, message: 'Inspect input.txt again' });
       await expect(api.wait({ agentId: child.agentId, untilSettled: true })).resolves.toMatchObject(
         { status: 'completed', summary: 'child done' }
       );
-      expect(childAdapter.requests).toHaveLength(4);
-      for (const request of childAdapter.requests)
+      const childRequests = adapter.requests.filter((request) =>
+        effectiveInstructions(request).includes('delegated subagent')
+      );
+      expect(childRequests).toHaveLength(4);
+      for (const request of childRequests)
         expect(JSON.stringify(request.messages)).not.toContain('execution_guidance');
       const store = await JsonlSessionStore.open(home);
       try {
@@ -679,6 +708,11 @@ describe('Execution usage without token limits', () => {
         expect(records.filter((record) => record.type === 'usage.updated')).toHaveLength(4);
         expect(records.filter((record) => record.type === 'execution.completed')).toHaveLength(2);
         expect(records.filter((record) => record.type === 'execution.failed')).toHaveLength(0);
+        const parentRecords = await store.read(session.id);
+        expect(parentRecords.filter((record) => record.type === 'usage.updated')).toHaveLength(1);
+        expect(
+          parentRecords.filter((record) => record.type === 'execution.completed')
+        ).toHaveLength(1);
       } finally {
         await store.close();
       }
@@ -690,28 +724,30 @@ describe('Execution usage without token limits', () => {
   it('does not budget reopened child runs or automatic and manual Compact', async () => {
     const { home, workspace } = await fixture('subagent-compact');
     let adapter: ModelAdapter = new SubagentBudgetAdapter('general-purpose');
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
+    const { agent, clients } = await subagentFixture(home, workspace, adapter, () => adapter);
     try {
       const parent = await agent.createSession({ workspace, title: 'Child compact budget' });
       const handle = parent.run({ prompt: 'delegate' });
       const events: AgentEvent[] = [];
       for await (const event of handle) events.push(event);
       expect(await handle.result()).toMatchObject({ status: 'completed' });
-      const childEvent = events.find((event) => event.type === 'subagent.completed');
-      if (childEvent?.type !== 'subagent.completed') throw new Error('Missing child completion');
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'tool.completed', toolName: 'agent_start' }),
+          expect.objectContaining({ type: 'tool.completed', toolName: 'agent_wait' })
+        ])
+      );
+      const parentClient = clients.get(parent.id);
+      if (!parentClient) throw new Error('Missing native subagent consumer');
+      const children = await parentClient.list();
+      expect(children).toHaveLength(1);
+      const childId = children[0]!.agentId;
 
       const compactModel = { ...model, contextWindowTokens: 9_000, maxOutputTokens: 1_000 };
       const compactAdapter = new CompactBudgetAdapter(compactModel, 10_000);
       adapter = compactAdapter;
-      agent.reconfigureModels({ models: [compactModel] });
-      const child = await agent.openSession(childEvent.agentId);
+      await agent.reconfigureModels({ models: [{ ...compactModel, subagentModel: true }] });
+      const child = await agent.openSession(childId);
       const childEvents: AgentEvent[] = [];
       const seed = child.run({ prompt: 'seed' });
       for await (const event of seed) childEvents.push(event);
@@ -744,26 +780,10 @@ describe('Execution usage without token limits', () => {
     async (parentOutputTokens) => {
       const { home, workspace } = await fixture('background-subagent-detached');
       const adapter = new DetachedBackgroundSubagentBudgetAdapter(parentOutputTokens);
-      let api: ExtensionAgentsApi | undefined;
-      const agent = await createMarAgent(
-        {
-          mode: 'normal',
-          host: new LocalAgentHost({ homeDirectory: home, workspace }),
-          models: [model],
-          extensions: [
-            {
-              id: 'background-budget-regression',
-              apiVersion: '1.0',
-              attachSession: (context) => {
-                if (context.agents) api = context.agents;
-              }
-            }
-          ]
-        },
-        () => adapter
-      );
+      const { agent, clients } = await subagentFixture(home, workspace, adapter);
       try {
-        const handle = (await agent.createSession({ workspace, title: 'Background budget' })).run({
+        const session = await agent.createSession({ workspace, title: 'Background budget' });
+        const handle = session.run({
           prompt: 'delegate in background'
         });
         await adapter.childFirstRequest;
@@ -774,15 +794,16 @@ describe('Execution usage without token limits', () => {
 
         adapter.releaseChild();
         await adapter.childSecondRequest;
-        if (!api) throw new Error('Missing native Agent API');
-        const children = await api.list();
+        const client = clients.get(session.id);
+        if (!client) throw new Error('Missing native subagent consumer');
+        const children = await client.list();
         expect(children).toHaveLength(1);
         await expect(
-          api.wait({ agentId: children[0]!.agentId, untilSettled: true })
+          client.wait({ agentId: children[0]!.agentId, untilSettled: true })
         ).resolves.toMatchObject({ status: 'completed', summary: 'background child done' });
 
         const childRequests = adapter.requests.filter((request) =>
-          effectiveInstructions(request).includes('non-recursive subagent')
+          effectiveInstructions(request).includes('delegated subagent')
         );
         expect(childRequests).toHaveLength(2);
         expect(childRequests[0]!.system).not.toContain('rollout budget');

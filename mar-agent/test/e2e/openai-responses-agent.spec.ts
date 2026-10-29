@@ -354,13 +354,13 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
     }
   }, 180_000);
 
-  it('completes real parent and child tool work without cumulative token finalization', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'mar-agent-responses-subagent-stage-'));
+  it('completes staged tool work across sessions without cumulative token finalization', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-agent-responses-sessions-stage-'));
     directories.push(root);
     const home = join(root, 'home');
     const workspace = join(root, 'workspace');
     await mkdir(workspace, { recursive: true });
-    await writeFile(join(workspace, 'marker.txt'), 'SUBAGENT_STAGE_OK\n');
+    await writeFile(join(workspace, 'marker.txt'), 'SESSION_STAGE_OK\n');
     const model = await loadModel();
     const requests: ModelRequest[] = [];
     const adapter = captureRequests(model, requests);
@@ -374,47 +374,35 @@ describe.runIf(enabled)('OpenAI Responses Agent E2E', () => {
       () => adapter
     );
     try {
-      const session = await agent.createSession({
-        workspace,
-        title: 'Subagent staged completion'
-      });
-      const execution = await finish(
-        session.run({
-          prompt:
-            'Use agent_start with role explore and a prompt asking the subagent to read marker.txt and report its exact content. Do not read the file yourself. Use agent_wait to wait for completion, then provide the verified marker and a concise summary.',
-          modelId: model.id,
-          reasoningEffort: 'low'
-        })
-      );
-
-      expect(execution.result, execution.result.errorCode).toMatchObject({
-        status: 'completed'
-      });
-      const childRequests = requests.filter((request) =>
-        JSON.stringify(request.messages).includes('You are a non-recursive subagent.')
-      );
-      const parentRequests = requests.filter(
-        (request) => !JSON.stringify(request.messages).includes('You are a non-recursive subagent.')
-      );
-      expect(childRequests.length).toBeGreaterThanOrEqual(2);
-      expect(parentRequests.length).toBeGreaterThanOrEqual(2);
-      for (const group of [parentRequests, childRequests]) {
-        expect(group[0]?.tools.length).toBeGreaterThan(0);
-        for (const request of group) {
+      for (const title of ['First staged session', 'Second staged session']) {
+        const session = await agent.createSession({ workspace, title });
+        const firstRequest = requests.length;
+        const execution = await finish(
+          session.run({
+            prompt:
+              'Use read only for marker.txt, then report its exact content and a concise summary.',
+            modelId: model.id,
+            reasoningEffort: 'low'
+          })
+        );
+        expect(execution.result, execution.result.errorCode).toMatchObject({ status: 'completed' });
+        const sessionRequests = requests.slice(firstRequest);
+        expect(sessionRequests.length).toBeGreaterThanOrEqual(2);
+        expect(sessionRequests[0]?.tools.length).toBeGreaterThan(0);
+        for (const request of sessionRequests) {
           expect(JSON.stringify(request.messages)).not.toContain('execution_guidance');
-          expect(request.tools).toEqual(group[0]?.tools);
+          expect(request.tools).toEqual(sessionRequests[0]?.tools);
           expect(request.allowTools).toBeUndefined();
         }
+        expect(execution.result.finalAnswer).toContain('SESSION_STAGE_OK');
+        expect(execution.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'tool.completed', toolName: 'read' })
+          ])
+        );
+        expect(execution.result.finalAnswer.trim().length).toBeGreaterThan(0);
+        expect(visibleText(execution.events)).not.toMatch(internalGuidancePattern);
       }
-      expect(execution.result.finalAnswer).toContain('SUBAGENT_STAGE_OK');
-      expect(execution.events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: 'subagent.completed', status: 'completed' }),
-          expect.objectContaining({ type: 'tool.completed', toolName: 'agent_start' })
-        ])
-      );
-      expect(execution.result.finalAnswer.trim().length).toBeGreaterThan(0);
-      expect(visibleText(execution.events)).not.toMatch(internalGuidancePattern);
     } finally {
       await agent.dispose();
     }
