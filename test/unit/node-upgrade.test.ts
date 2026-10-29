@@ -70,11 +70,11 @@ describe('Controlled Node upgrade version detection', () => {
     expect(lookup).not.toHaveBeenCalled();
   });
 
-  it('Matching program versions without Supervisor support cannot receive upgrade requests', async () => {
-    const service = new NodeUpgradeService('0.11.38', vi.fn().mockResolvedValue(['0.11.38']));
+  it('Older Nodes without Supervisor support cannot receive upgrade requests', async () => {
+    const service = new NodeUpgradeService('0.11.39', vi.fn().mockResolvedValue(['0.11.39']));
     await expect(service.availability('0.1.6')).resolves.toEqual({
       state: 'NODE_UNSUPPORTED',
-      targetVersion: '0.11.38'
+      targetVersion: '0.11.39'
     });
   });
 

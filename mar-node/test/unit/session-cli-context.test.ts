@@ -217,6 +217,7 @@ it('preserves an explicitly requested CLI title across native promotion and auto
     runners: {
       product: () => ({
         name: 'codex',
+        prepareExecutionContext: () => undefined,
         defaultConfiguration: () => ({
           runner: 'codex',
           model: 'target-default',

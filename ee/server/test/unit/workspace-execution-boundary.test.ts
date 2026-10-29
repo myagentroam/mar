@@ -76,7 +76,7 @@ describe('Workspace execution boundary across Server and Node', () => {
       { audit: async () => undefined },
       access.canRelay.bind(access),
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     requests = new NodeRequestService({

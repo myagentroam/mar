@@ -542,7 +542,7 @@ describe('Server MAR Agent runtime credential service', () => {
         capabilities: {
           platform: 'linux',
           architecture: 'x64',
-          nodeAppVersion: '0.11.38',
+          nodeAppVersion: '0.11.39',
           nodeVersion: 'v24.15.0',
           codex: { available: true },
           claudeCode: { available: true },
@@ -568,7 +568,7 @@ describe('Server MAR Agent runtime credential service', () => {
       createEnvelope('capabilities', {
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.39',
         nodeVersion: 'v24.15.0',
         codex: { available: true },
         claudeCode: { available: true },

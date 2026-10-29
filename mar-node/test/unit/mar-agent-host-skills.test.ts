@@ -27,10 +27,10 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   }
   const skill = marctlHostSkill(environment)!;
   expect(skill.requiredTools).toEqual(['exec']);
-  expect(skill.description).toContain('model and effort configuration');
-  expect(skill.description).toContain('persistent prompts, schedules');
-  expect(skill.description).toContain('authorized Node discovery');
-  expect(skill.description).toContain('remote commands, and file transfer');
+  expect(skill.description).toContain('model, effort, title, persistent prompts, and schedules');
+  expect(skill.description).toContain('discover authorized MAR Nodes');
+  expect(skill.description).toContain('execute commands or transfer files on those Nodes');
+  expect(skill.description).toContain('native agent_* tools');
   const content = await skill.load();
   for (const term of [
     '## MAR Workspace management',

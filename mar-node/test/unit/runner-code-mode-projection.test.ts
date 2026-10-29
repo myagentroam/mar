@@ -507,7 +507,16 @@ describe('Code Mode conversation projection', () => {
           kind: 'command_execution',
           status: 'IN_PROGRESS',
           payload: expect.objectContaining({
-            command: `${toolName} (poll)`,
+            command: '',
+            toolPresentation: expect.objectContaining({
+              kind: 'EXECUTION',
+              execution: expect.objectContaining({
+                kind: 'CONTROL',
+                toolName,
+                action: 'poll',
+                targetId: 'cell-1'
+              })
+            }),
             outputPreview: expect.stringContaining(inputSummary)
           })
         })
@@ -525,7 +534,16 @@ describe('Code Mode conversation projection', () => {
           kind: 'command_execution',
           status: 'COMPLETED',
           payload: expect.objectContaining({
-            command: `${toolName} (poll)`,
+            command: '',
+            toolPresentation: expect.objectContaining({
+              kind: 'EXECUTION',
+              execution: expect.objectContaining({
+                kind: 'CONTROL',
+                toolName,
+                action: 'poll',
+                targetId: 'cell-1'
+              })
+            }),
             outputPreview: expect.stringContaining(inputSummary)
           })
         })
