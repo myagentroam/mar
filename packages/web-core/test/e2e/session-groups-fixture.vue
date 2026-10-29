@@ -14,6 +14,7 @@ import { translate } from '../../src/service/locale-preference-service.js';
 const mobile = matchMedia('(max-width: 767px)').matches;
 const group = ref<SessionGroup>('MAIN');
 const selected = ref('main');
+const treeSession = ref('');
 const sessions = ref<Session[]>([
   {
     id: 'main',
@@ -166,6 +167,7 @@ const props = {
         @select-group="group = $event"
         @activate-group-marker="activateMarker"
         @open="selected = $event"
+        @open-tree="treeSession = $event"
         @move-to-main="move"
       />
     </aside>
@@ -199,6 +201,7 @@ const props = {
       />
       <p>{{ selected }}</p>
       <p>{{ translate('sessionGroups.main') }}</p>
+      <output data-testid="opened-tree-session">{{ treeSession }}</output>
     </section>
     <div class="recent-host">
       <WorkbenchRecentSessions

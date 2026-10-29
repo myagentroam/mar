@@ -61,6 +61,12 @@ describe('shared MAR icons', () => {
     expect(iconShapes.administration).not.toEqual(iconShapes.adjustments);
   });
 
+  it('distinguishes the session hierarchy from collections and copying', () => {
+    expect(iconShapes['session-tree']).toEqual(expect.any(String));
+    expect(iconShapes['session-tree']).not.toEqual(iconShapes.collection);
+    expect(iconShapes['session-tree']).not.toEqual(iconShapes.copy);
+  });
+
   it('keeps a disconnected Node distinct from connection actions', async () => {
     expect(iconShapes['connection-off']).toEqual(expect.any(String));
     expect(iconShapes['connection-off']).not.toEqual(iconShapes.connection);

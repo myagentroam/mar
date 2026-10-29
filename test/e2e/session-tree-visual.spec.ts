@@ -3,7 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
-  fixture = await startCustomThemeFixture('test/e2e/support/session-tree.html');
+  fixture = await startCustomThemeFixture('test/e2e/support/session-*.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
@@ -18,6 +18,16 @@ for (const width of [390, 1280]) {
       const trigger = page.getByRole('button', {
         name: locale === 'en-US' ? 'View session tree' : '查看会话树'
       });
+      const treeIcon = trigger.locator('[data-mar-icon="session-tree"]');
+      await expect(treeIcon).toBeVisible();
+      await expect(trigger.locator('svg')).toHaveCount(1);
+      await expect(treeIcon).toHaveAttribute('aria-hidden', 'true');
+      await expect(treeIcon).toHaveCSS('animation-name', 'none');
+      await expect(treeIcon).toHaveCSS(
+        'stroke',
+        await trigger.evaluate((el) => getComputedStyle(el).color)
+      );
+      await trigger.screenshot({ path: testInfo.outputPath(`tree-trigger-${width}-${theme}.png`) });
       await expect(trigger).toHaveCSS('border-top-width', '0px');
       await trigger.hover();
       await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -100,4 +110,26 @@ for (const width of [390, 1280]) {
       await expect(page.getByTestId('selected')).toHaveText('parent');
     });
   }
+}
+
+for (const [width, theme] of [
+  [390, 'daylight'],
+  [1280, 'vscode-dark-2026']
+] as const) {
+  test(`session tree menu icon at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}session-groups.html?theme=${theme}&locale=en-US`);
+    const chats = page.locator('.conversation-sidebar');
+    await chats.getByRole('tab').nth(1).click();
+    await chats.locator('.session-link').hover();
+    await chats.locator('.session-more-button').click();
+    const treeItem = page.getByRole('menuitem', { name: 'View session tree', exact: true });
+    await expect(treeItem.locator('[data-mar-icon="session-tree"]')).toBeVisible();
+    await expect(treeItem.locator('[data-mar-icon="collection"]')).toHaveCount(0);
+    await treeItem.screenshot({ path: testInfo.outputPath('session-tree-menu.png') });
+    await treeItem.click();
+    await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+    await expect(treeItem).not.toBeVisible();
+  });
 }

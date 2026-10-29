@@ -627,7 +627,7 @@ function submitSessionSearch(): void {
                   :disabled="loading || !nodeReady"
                   @click="emit('openTree', session.id)"
                 >
-                  <MarIcon name="collection" />{{ translate('sessionGroups.tree') }}
+                  <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
                 </el-dropdown-item>
                 <el-dropdown-item
                   v-if="session.runtime?.capabilities?.includes('session.prompt')"
