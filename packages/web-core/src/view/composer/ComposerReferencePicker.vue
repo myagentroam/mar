@@ -2,10 +2,7 @@
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { computed, nextTick, ref, watch } from 'vue';
-import type {
-  ComposerReferenceCandidate,
-  ComposerReferenceFilter
-} from '../../service/composer-reference-service.js';
+import type { ComposerReferenceCandidate } from '../../service/composer-reference-service.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import { sessionTitle } from '../../util/session-presentation.js';
 import { runnerLabel } from '../../util/runner-presentation.js';
@@ -21,7 +18,6 @@ const props = withDefaults(
     readonly sessionEnabled?: boolean;
     readonly sessionReady?: boolean;
     readonly fileReady?: boolean;
-    readonly filter?: ComposerReferenceFilter;
     readonly sessionOnly?: boolean;
     readonly sessionLoading?: boolean;
     readonly fileError?: boolean;
@@ -34,7 +30,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   activate: [index: number];
   select: [entry: ComposerReferenceCandidate];
-  filter: [filter: ComposerReferenceFilter];
 }>();
 const picker = ref<HTMLElement>();
 const pickerLabel = computed(() =>
@@ -71,31 +66,10 @@ watch(
     class="command-picker file-reference-picker"
     :aria-label="pickerLabel"
   >
-    <div
-      v-if="sessionEnabled"
-      class="reference-filters"
-      role="group"
-      :aria-label="translate('composerReference.filter')"
-    >
-      <button
-        v-for="kind in ['all', 'file', 'session'] as const"
-        :key="kind"
-        type="button"
-        :disabled="sessionOnly && kind !== 'session'"
-        :aria-pressed="(filter ?? 'all') === kind"
-        @mousedown.prevent
-        @click="emit('filter', kind)"
-      >
-        {{ translate(`composerReference.${kind}`) }}
-      </button>
-    </div>
     <div role="listbox" :aria-label="pickerLabel">
-      <template v-for="kind in ['file', 'session'] as const" :key="kind">
+      <template v-for="kind in ['session', 'file'] as const" :key="kind">
         <template
-          v-if="
-            (kind === 'file' && filter !== 'session') ||
-            (kind === 'session' && sessionEnabled && filter !== 'file')
-          "
+          v-if="(kind === 'file' && !sessionOnly) || (kind === 'session' && sessionEnabled)"
         >
           <p v-if="sessionEnabled" class="source-heading">
             {{ translate(`composerReference.${kind}`) }}
@@ -128,11 +102,11 @@ watch(
             v-tooltip="
               candidate.type === 'file'
                 ? candidate.entry.path
-                : `${sessionTitle(candidate.session)} · ${runnerLabel(candidate.session.runner)} · ${candidate.session.id}`
+                : `${sessionTitle(candidate.session)} · ${runnerLabel(candidate.session.runner)}${candidate.session.lastActivityAt ? ` · ${formatDateTime(candidate.session.lastActivityAt)}` : ''}`
             "
             type="button"
             role="option"
-            :class="{ active: index === activeIndex }"
+            :class="{ active: index === activeIndex, 'session-candidate': kind === 'session' }"
             :aria-selected="index === activeIndex"
             @mouseenter="emit('activate', index)"
             @mousedown.prevent
@@ -148,18 +122,17 @@ watch(
               candidate.type === 'file' ? candidate.entry.name : sessionTitle(candidate.session)
             }}</span>
             <code v-if="candidate.type === 'file'">{{ candidate.entry.path }}</code>
-            <code v-else
+            <span v-else class="candidate-meta"
               >{{ runnerLabel(candidate.session.runner)
               }}<template v-if="candidate.session.lastActivityAt">
                 · {{ formatDateTime(candidate.session.lastActivityAt) }}</template
-              ></code
+              ></span
             >
             <span v-if="candidate.type === 'file'" class="entry-kind">{{
               candidate.entry.kind === 'DIRECTORY'
                 ? translate('generated.composerFileReferencePicker.folder')
                 : translate('generated.composerFileReferencePicker.file')
             }}</span>
-            <span v-else class="entry-kind">{{ candidate.session.id.slice(0, 8) }}</span>
           </button>
           <p
             v-if="
@@ -226,8 +199,13 @@ watch(
 }
 
 .command-picker [role='option'] {
+  align-items: center;
   box-sizing: border-box;
   width: 100%;
+}
+
+.command-picker [role='option'].session-candidate {
+  grid-template-columns: 1rem minmax(0, 1fr) fit-content(50%);
 }
 
 .command-picker button:hover {
@@ -244,26 +222,6 @@ watch(
   outline-offset: -2px;
 }
 
-.reference-filters {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.35rem;
-}
-.reference-filters button {
-  display: block;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  padding: 0.25rem 0.55rem;
-}
-.reference-filters button[aria-pressed='true'] {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-.reference-filters button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .command-picker p {
   margin: 0;
   color: var(--mar-text-tertiary);
@@ -272,6 +230,7 @@ watch(
 }
 
 .file-reference-picker button code,
+.file-reference-picker button .candidate-meta,
 .file-reference-picker button .candidate-name {
   min-width: 0;
   overflow: hidden;
@@ -279,9 +238,14 @@ watch(
   white-space: nowrap;
 }
 
-.file-reference-picker button code {
+.file-reference-picker button code,
+.file-reference-picker button .candidate-meta {
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+}
+
+.candidate-meta {
+  text-align: right;
 }
 
 .entry-kind {

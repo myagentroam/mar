@@ -144,7 +144,6 @@ function updateInput(value: string) {
           :session-enabled="true"
           :session-ready="nodeReady"
           :file-ready="filesReady"
-          :filter="references.filter.value"
           :session-only="references.match.value?.sessionOnly"
           :session-loading="references.sessionLoading.value"
           :file-error="references.fileError.value"
@@ -153,7 +152,6 @@ function updateInput(value: string) {
           :session-more="references.sessionMore.value"
           @activate="references.activeIndex.value = $event"
           @select="interactions.selectReference"
-          @filter="references.setFilter"
         />
         <ComposerCommandPicker
           :open="runner.commandPickerOpen.value"

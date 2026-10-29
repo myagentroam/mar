@@ -91,9 +91,9 @@ describe('Composer reference sources', () => {
     expect(service.selectCandidate(candidate, () => true)).toBe(false);
   });
 
-  it('keeps a manually selected source while the same query is extended', async () => {
+  it('keeps explicit session queries session-only while typing without a source filter', async () => {
     vi.useFakeTimers();
-    const input = ref('@fo');
+    const input = ref('@session fo');
     const request = vi.fn(async (path: string) =>
       path.startsWith('/api/agent-sessions?')
         ? { sessions: [], nextCursor: null }
@@ -106,18 +106,55 @@ describe('Composer reference sources', () => {
       request: request as never,
       sessions: { ready: () => true, currentSessionId: ref('current') }
     });
-    service.update(3);
-    service.setFilter('session');
-    await vi.advanceTimersByTimeAsync(120);
-    request.mockClear();
-    input.value = '@foo';
-    service.update(4);
+    service.update(input.value.length);
     service.scheduleSearch();
     await vi.advanceTimersByTimeAsync(120);
-    expect(service.filter.value).toBe('session');
+    request.mockClear();
+    input.value = '@session foo';
+    service.update(input.value.length);
+    service.scheduleSearch();
+    await vi.advanceTimersByTimeAsync(120);
+    expect(service.match.value?.sessionOnly).toBe(true);
     expect(request).toHaveBeenCalledOnce();
     expect(request.mock.calls[0]![0]).toContain('/api/agent-sessions?');
   });
+
+  it.each([false, true])(
+    'prioritizes late session matches without stealing an explicit file selection: selected=%s',
+    async (selected) => {
+      vi.useFakeTimers();
+      const sessions = deferred<unknown>();
+      const service = createComposerReferenceService(ref('@alpha'), {
+        nodeId: ref('node'),
+        workspaceId: ref('workspace'),
+        ready: () => true,
+        sessions: { ready: () => true, currentSessionId: ref('current') },
+        request: ((path: string) =>
+          path.includes('/files/search')
+            ? Promise.resolve({
+                files: { entries: [{ path: 'alpha', name: 'alpha', kind: 'FILE' }] }
+              })
+            : sessions.promise) as never
+      });
+      service.update(6);
+      service.scheduleSearch();
+      await vi.advanceTimersByTimeAsync(120);
+      expect(service.candidates.value.map((entry) => entry.key)).toEqual(['file:alpha']);
+      if (selected) service.activeIndex.value = 0;
+      sessions.resolve({
+        sessions: [{ id: 'one', runner: 'codex', customTitle: 'Alpha session' }],
+        nextCursor: null
+      });
+      await vi.waitFor(() => expect(service.candidates.value).toHaveLength(2));
+      expect(service.candidates.value.map((entry) => entry.key)).toEqual([
+        'session:one',
+        'file:alpha'
+      ]);
+      expect(service.candidates.value[service.activeIndex.value]!.key).toBe(
+        selected ? 'file:alpha' : 'session:one'
+      );
+    }
+  );
 
   it('preserves the selected session when the file source arrives later', async () => {
     vi.useFakeTimers();
@@ -147,7 +184,7 @@ describe('Composer reference sources', () => {
       files: { entries: [{ path: 'alpha', name: 'alpha', kind: 'FILE' }], nextCursor: null }
     });
     await vi.waitFor(() => expect(service.candidates.value).toHaveLength(3));
-    expect(service.activeIndex.value).toBe(2);
+    expect(service.activeIndex.value).toBe(1);
     expect(service.candidates.value[service.activeIndex.value]!.key).toBe('session:two');
   });
 

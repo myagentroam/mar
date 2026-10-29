@@ -1,8 +1,6 @@
 export const composerZhCN = {
   composerReference: {
     picker: '引用文件或会话',
-    filter: '引用类型',
-    all: '全部',
     file: '文件',
     session: '会话',
     fileUnavailable: '文件搜索不可用。',

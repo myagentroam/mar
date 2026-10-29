@@ -653,7 +653,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :session-enabled="true"
                     :session-ready="page.referenceSessionAvailable()"
                     :file-ready="page.filesReady"
-                    :filter="page.referenceFilter"
                     :session-only="page.activeReferenceMatch?.sessionOnly ?? false"
                     :session-loading="page.referenceSessionLoading"
                     :file-error="page.referenceFileError"
@@ -662,7 +661,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :session-more="page.referenceSessionMore"
                     @activate="page.activeFileReferenceIndex = $event"
                     @select="page.selectReference"
-                    @filter="page.setReferenceFilter"
                   />
                 </template>
               </ConversationComposer>

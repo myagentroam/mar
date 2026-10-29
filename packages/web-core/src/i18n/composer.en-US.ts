@@ -1,8 +1,6 @@
 export const composerEnUS = {
   composerReference: {
     picker: 'Reference files or sessions',
-    filter: 'Reference type',
-    all: 'All',
     file: 'Files',
     session: 'Sessions',
     fileUnavailable: 'File search is unavailable.',

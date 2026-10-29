@@ -5,7 +5,6 @@ import { sessionTitle } from '../util/session-presentation.js';
 import { composerReferenceAtCursor } from '../util/composer-reference-query.js';
 import { normalizeComposerReferences, type FileReferenceEntry } from './file-reference-service.js';
 
-export type ComposerReferenceFilter = 'all' | 'file' | 'session';
 export type ComposerReferenceCandidate =
   | { readonly type: 'file'; readonly key: string; readonly entry: FileReferenceEntry }
   | { readonly type: 'session'; readonly key: string; readonly session: Session };
@@ -32,8 +31,15 @@ export function createComposerReferenceService(
   const cursor = ref(input.value.length);
   const entries = ref<readonly FileReferenceEntry[]>([]);
   const sessions = ref<readonly Session[]>([]);
-  const filter = ref<ComposerReferenceFilter>('all');
-  const activeIndex = ref(0);
+  const selectedIndex = ref(0);
+  let selectionMoved = false;
+  const activeIndex = computed({
+    get: () => selectedIndex.value,
+    set: (index: number) => {
+      selectedIndex.value = index;
+      selectionMoved = true;
+    }
+  });
   const loading = ref(false);
   const sessionLoading = ref(false);
   const fileError = ref(false);
@@ -44,20 +50,16 @@ export function createComposerReferenceService(
     composerReferenceAtCursor(input.value, cursor.value, searchOptions?.sessions !== undefined)
   );
   const candidates = computed<readonly ComposerReferenceCandidate[]>(() => [
-    ...(filter.value === 'session'
-      ? []
-      : entries.value.map((entry) => ({
-          type: 'file' as const,
-          key: `file:${entry.path}`,
-          entry
-        }))),
-    ...(filter.value === 'file'
-      ? []
-      : sessions.value.map((session) => ({
-          type: 'session' as const,
-          key: `session:${session.id}`,
-          session
-        })))
+    ...sessions.value.map((session) => ({
+      type: 'session' as const,
+      key: `session:${session.id}`,
+      session
+    })),
+    ...entries.value.map((entry) => ({
+      type: 'file' as const,
+      key: `file:${entry.path}`,
+      entry
+    }))
   ]);
   let pickerQuery: string | undefined;
   let pickerStart: number | undefined;
@@ -74,15 +76,12 @@ export function createComposerReferenceService(
     sessionError.value = false;
     fileMore.value = false;
     sessionMore.value = false;
-    activeIndex.value = 0;
+    selectedIndex.value = 0;
+    selectionMoved = false;
   }
 
   function update(nextCursor = input.value.length): void {
     cursor.value = nextCursor;
-    const newContext =
-      !open.value ||
-      match.value?.start !== pickerStart ||
-      match.value?.sessionOnly !== pickerSessionOnly;
     if (
       match.value?.query !== pickerQuery ||
       match.value?.start !== pickerStart ||
@@ -90,7 +89,6 @@ export function createComposerReferenceService(
     ) {
       cancelSearch();
       clearResults();
-      if (newContext) filter.value = match.value?.sessionOnly ? 'session' : 'all';
     }
     open.value = match.value !== undefined;
     pickerQuery = match.value?.query;
@@ -124,8 +122,8 @@ export function createComposerReferenceService(
     const nodeId = searchOptions?.nodeId.value;
     const workspaceId = searchOptions?.workspaceId.value;
     const searchFiles =
-      searchOptions?.ready() === true && filter.value !== 'session' && !!currentMatch?.query;
-    const searchSessions = searchOptions?.sessions?.ready() === true && filter.value !== 'file';
+      searchOptions?.ready() === true && !currentMatch?.sessionOnly && !!currentMatch?.query;
+    const searchSessions = searchOptions?.sessions?.ready() === true;
     if (
       searchOptions === undefined ||
       !open.value ||
@@ -142,7 +140,7 @@ export function createComposerReferenceService(
       nodeId,
       workspaceId,
       currentMatch.query,
-      filter.value,
+      currentMatch.sessionOnly,
       searchFiles,
       searchSessions
     ]);
@@ -213,10 +211,10 @@ export function createComposerReferenceService(
   }
 
   function retainSelection(update: () => void): void {
-    const key = candidates.value[activeIndex.value]?.key;
+    const key = selectionMoved ? candidates.value[selectedIndex.value]?.key : undefined;
     update();
     const index = candidates.value.findIndex((candidate) => candidate.key === key);
-    activeIndex.value = index < 0 ? 0 : index;
+    selectedIndex.value = index < 0 ? 0 : index;
   }
 
   async function searchSessionSource(
@@ -257,15 +255,6 @@ export function createComposerReferenceService(
     } finally {
       if (generation === searchGeneration) sessionLoading.value = false;
     }
-  }
-
-  function setFilter(next: ComposerReferenceFilter): void {
-    if (match.value?.sessionOnly && next !== 'session') return;
-    if (filter.value === next) return;
-    filter.value = next;
-    cancelSearch();
-    clearResults();
-    scheduleSearch();
   }
 
   function selectCandidate(
@@ -314,7 +303,6 @@ export function createComposerReferenceService(
     entries,
     sessions,
     candidates,
-    filter,
     activeIndex,
     loading,
     sessionLoading,
@@ -333,7 +321,6 @@ export function createComposerReferenceService(
     update,
     close,
     selectCandidate,
-    setFilter,
     sessionAvailable: () => searchOptions?.sessions?.ready() === true,
     scheduleSearch,
     cancelSearch

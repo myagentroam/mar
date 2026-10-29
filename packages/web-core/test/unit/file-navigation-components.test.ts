@@ -395,6 +395,38 @@ describe('public file navigation components', () => {
       expect(empty).not.toMatch(/generated\.|composerFileReferencePicker\./u);
     });
 
+    it('renders session matches first without tabs or session IDs', async () => {
+      const html = await render(ComposerReferencePicker, {
+        open: true,
+        candidates: [
+          {
+            type: 'session',
+            key: 'session:hidden-session-id',
+            session: {
+              id: 'hidden-session-id',
+              customTitle: 'Session name',
+              runner: 'mar-agent',
+              lastActivityAt: 1700000000000
+            }
+          },
+          {
+            type: 'file',
+            key: 'file:guide.md',
+            entry: { path: 'guide.md', name: 'guide.md', kind: 'FILE' }
+          }
+        ],
+        activeIndex: 0,
+        loading: false,
+        query: 'guide',
+        sessionEnabled: true
+      });
+      expect(html).not.toContain('reference-filters');
+      expect(html).not.toContain('hidden-session-id');
+      expect(html).toContain('candidate-meta');
+      expect(html).toContain('MAR Agent');
+      expect(html.indexOf('Session name')).toBeLessThan(html.indexOf('guide.md'));
+    });
+
     it('preserves file-only reference feedback in the shared conversation', async () => {
       const source = readFileSync(
         new URL('../../src/view/conversation/SessionShareConversation.vue', import.meta.url),

@@ -30,10 +30,11 @@ test('mixed results render once and session insertion is one undoable edit', asy
   await placeCursor(page, 10);
   const options = page.locator('.file-reference-picker [role=option]');
   await expect(options).toHaveCount(2);
-  await expect(options.nth(0)).toContainText('alpha.ts');
-  await expect(options.nth(1)).toContainText('Alpha session');
+  await expect(options.nth(0)).toContainText('Alpha session');
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(options.nth(1)).toContainText('alpha.ts');
   const before = await page.evaluate(() => (window as any).__referenceHarness.updates);
-  await options.nth(1).click();
+  await options.nth(0).click();
   await expect(editor).toHaveValue('before <mar-session: Alpha session> after');
   expect(await page.evaluate(() => (window as any).__referenceHarness.updates)).toBe(before + 1);
   await editor.press('Control+z');
@@ -47,7 +48,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await placeCursor(page, 10);
   const files = page.locator('.file-reference-picker [role=option]');
   await expect(files).toHaveCount(2);
-  await files.first().click();
+  await files.filter({ hasText: 'alpha.ts' }).click();
   await expect(editor).toHaveValue('before  after');
   await expect(page.locator('.composer-file-reference-state')).toContainText('alpha.ts');
   await editor.press('Control+z');
@@ -61,19 +62,22 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await expect(editor).toHaveValue('before #reviewSuffix after');
 });
 
-test('filter persists while typing; desktop empty picker does not send', async ({ page }) => {
+test('session-only queries need no tabs and desktop empty picker does not send', async ({
+  page
+}) => {
   await page.goto(`${fixture.url}/composer-reference-browser.html`);
   const editor = page.locator('textarea.composer-input');
   await editor.fill('@al');
   await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Sessions', exact: true }).click();
-  await expect(editor).toBeFocused();
+  await expect(page.locator('.reference-filters')).toHaveCount(0);
+  await editor.press('Enter');
+  await expect(editor).toHaveValue('<mar-session: Alpha session> ');
+  await editor.press('Control+z');
+  await expect(editor).toHaveValue('@al');
+  await editor.fill('@session al');
+  await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(1);
   await editor.press('End');
   await page.keyboard.type('p');
-  await expect(page.getByRole('button', { name: 'Sessions', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
   await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(1);
   const calls = await page.evaluate(() => (window as any).__referenceHarness.calls as string[]);
   expect(calls.at(-1)).toContain('/api/agent-sessions?');
@@ -107,19 +111,21 @@ test('an insertion cancels the old prediction and composition cannot select', as
   await editor.evaluate((element) =>
     element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
   );
-  await options.last().click();
+  await options.filter({ hasText: 'Alpha session' }).click();
   await expect(editor).toHaveValue('@al');
   await expect(options).toHaveCount(2);
   await editor.evaluate((element) =>
     element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
   );
-  await options.last().click();
+  await options.filter({ hasText: 'Alpha session' }).click();
   await expect(editor).toHaveValue('<mar-session: Alpha session> ');
   expect(await page.evaluate(() => (window as any).__referenceHarness.aborted)).toBe(1);
 });
 
 for (const [theme, width] of [
   ['daylight', 1280],
+  ['vscode-dark-2026', 1280],
+  ['daylight', 390],
   ['vscode-dark-2026', 390]
 ] as const) {
   test(`candidate groups remain readable in ${theme} at ${width}px`, async ({ page }, testInfo) => {
@@ -143,6 +149,27 @@ for (const [theme, width] of [
     await page.locator('textarea.composer-input').fill('@alpha');
     const picker = page.locator('.file-reference-picker');
     await expect(picker.locator('[role=option]')).toHaveCount(2);
+    await expect(picker.locator('.reference-filters')).toHaveCount(0);
+    const session = picker.locator('[role=option]').first();
+    await expect(session).toContainText('Alpha session');
+    await expect(session.locator('.entry-kind')).toHaveCount(0);
+    const alignment = await session.evaluate((element) => {
+      const parts = [
+        element.querySelector('.mar-icon')!,
+        element.querySelector('.candidate-name')!,
+        element.querySelector('.candidate-meta')!
+      ];
+      const centers = parts.map((part) => {
+        const box = part.getBoundingClientRect();
+        return (box.top + box.bottom) / 2;
+      });
+      return {
+        spread: Math.max(...centers) - Math.min(...centers),
+        sameFont: getComputedStyle(parts[1]!).fontFamily === getComputedStyle(parts[2]!).fontFamily
+      };
+    });
+    expect(alignment.spread).toBeLessThanOrEqual(1);
+    expect(alignment.sameFont).toBe(true);
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme;
     }, theme);
@@ -176,8 +203,7 @@ test('long mixed candidate names stay bounded at mobile width', async ({ page },
   expect(await names.nth(1).evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
     true
   );
-  await expect(picker.locator('[role=option]').last().locator('.entry-kind')).toHaveText(
-    'other-12'
-  );
+  await expect(picker.locator('.session-candidate .entry-kind')).toHaveCount(0);
+  await expect(picker).not.toContainText('other-12');
   await page.screenshot({ path: testInfo.outputPath('composer-reference-mobile-long-dark.png') });
 });
