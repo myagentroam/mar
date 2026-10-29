@@ -112,6 +112,35 @@ for (const width of [390, 1280]) {
   }
 }
 
+for (const theme of ['dark', 'daylight']) {
+  test(`root-only session tree in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 850 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}session-tree.html?theme=${theme}&locale=zh-CN&rootOnly=1`);
+    await page.getByRole('button', { name: '查看会话树' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.session-tree-node')).toHaveCount(1);
+    await expect(dialog.locator('.session-tree-origin')).toBeVisible();
+    await expect(dialog.locator('.session-tree-origin-stem')).toHaveCount(0);
+    await expect(dialog.locator('.session-tree-branch')).toHaveCount(0);
+    await expect(dialog.locator('.session-tree')).toHaveCSS('min-height', '0px');
+    await expect(dialog.locator('.el-loading-mask')).toBeHidden();
+    const root = dialog.getByRole('button', { name: 'forge#maintainer' });
+    await expect(root).toHaveAttribute('aria-current', 'true');
+    await expect(root).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await page.mouse.move(0, 0);
+    await root.evaluate((element) => (element as HTMLElement).blur());
+    await page.screenshot({
+      path: testInfo.outputPath(`root-${theme}.png`),
+      fullPage: true,
+      animations: 'disabled'
+    });
+    await root.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('selected')).toHaveText('parent');
+  });
+}
+
 for (const [width, theme] of [
   [390, 'daylight'],
   [1280, 'vscode-dark-2026']

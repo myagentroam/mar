@@ -11,6 +11,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
 const query = new URLSearchParams(location.search);
+const rootOnly = query.get('rootOnly') === '1';
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
 const open = ref(false);
@@ -43,7 +44,7 @@ createTooltipApp({
             modelValue: true,
             nodeId: 'node',
             workspaceId: 'workspace',
-            sessionId: 'child',
+            sessionId: rootOnly ? 'parent' : 'child',
             request: async <T>() =>
               ({
                 rootSessionId: 'parent',
@@ -52,7 +53,9 @@ createTooltipApp({
                   {
                     id: 'parent',
                     parentSessionId: null,
-                    title: '图片上传报错: MAR_AGENT_HOST_LIMIT_EXCEEDED',
+                    title: rootOnly
+                      ? 'forge#maintainer'
+                      : '图片上传报错: MAR_AGENT_HOST_LIMIT_EXCEEDED',
                     runner: 'mar-agent'
                   },
                   { id: 'child', parentSessionId: 'parent', title, runner: 'mar-agent' },
@@ -70,7 +73,7 @@ createTooltipApp({
                       .trim(),
                     runner: 'codex'
                   }
-                ]
+                ].filter((node) => !rootOnly || node.id === 'parent')
               }) as T,
             onClose: () => {
               open.value = false;
