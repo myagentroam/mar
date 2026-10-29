@@ -66,6 +66,32 @@ for (const width of [390, 1280]) {
       );
       expect(ancestorLine!.x).toBe(childLine!.x);
       expect(Math.abs(childLine!.y + childLine!.height - ancestorLine!.y)).toBeLessThan(1);
+      const connectorEdges = await treeRows.evaluateAll((elements) => {
+        const stem = elements[0]!.querySelector('.session-tree-origin-stem')!;
+        const child = elements[1]!.querySelector('.session-tree-branch')!;
+        const ancestor = elements[2]!.querySelector('.session-tree-branch')!;
+        const grandchild = elements[2]!.querySelectorAll('.session-tree-branch')[1]!;
+        const last = elements[3]!.querySelector('.session-tree-branch')!;
+        const branchX = (element: Element) => element.getBoundingClientRect().left;
+        const elbowX = (element: Element) =>
+          branchX(element) +
+          parseFloat(getComputedStyle(element).borderLeftWidth) +
+          parseFloat(getComputedStyle(element, '::before').left);
+        return {
+          root: branchX(stem),
+          continuing: branchX(child),
+          continuingElbow: elbowX(child),
+          ancestor: branchX(ancestor),
+          grandchild: branchX(grandchild),
+          grandchildElbow: elbowX(grandchild),
+          lastElbow: elbowX(last)
+        };
+      });
+      expect(connectorEdges.continuing).toBeCloseTo(connectorEdges.root, 1);
+      expect(connectorEdges.continuingElbow).toBeCloseTo(connectorEdges.continuing, 1);
+      expect(connectorEdges.ancestor).toBeCloseTo(connectorEdges.continuing, 1);
+      expect(connectorEdges.grandchildElbow).toBeCloseTo(connectorEdges.grandchild, 1);
+      expect(connectorEdges.lastElbow).toBeCloseTo(connectorEdges.continuing, 1);
       const ending = await lastBranch.evaluate((element) => {
         const style = getComputedStyle(element, '::before');
         return {

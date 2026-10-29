@@ -206,11 +206,14 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-branch.is-leaf::before {
   content: '';
   position: absolute;
-  inset-inline-start: -1px;
+  inset-inline-start: 0;
   top: 0;
   height: 50%;
   width: 100%;
   border-inline-start: 1px solid var(--mar-border-medium);
   border-bottom: 1px solid var(--mar-border-medium);
+}
+.session-tree-branch.is-continuing.is-leaf::before {
+  inset-inline-start: -1px;
 }
 </style>
