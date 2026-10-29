@@ -21,7 +21,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@myagentroam/agent": "0.11.40"
+    "@myagentroam/agent": "workspace:*"
   },
   "devDependencies": {
     "@myagentroam/agent": "workspace:*",
