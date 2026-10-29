@@ -1,7 +1,7 @@
 const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
 /** Current Node business baseline; recheck against the actual delivery artifact at freeze. */
-export const MIN_NODE_BUSINESS_VERSION = '0.11.38';
+export const MIN_NODE_BUSINESS_VERSION = '0.11.39';
 
 export function compareStableVersions(left: string, right: string): number | undefined {
   const leftMatch = STABLE_VERSION.exec(left);

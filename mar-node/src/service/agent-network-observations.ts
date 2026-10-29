@@ -87,6 +87,10 @@ export interface AgentObservationSnapshot {
 /** Volatile, session-owned delivery of live direct-child observations. */
 export class AgentNetworkObservations {
   readonly #parents = new Map<string, ParentObservations>();
+  readonly #waiters = new Map<
+    ParentObservations,
+    readonly { agentId: string; runId: string; executionId: string | undefined }[]
+  >();
 
   attach(parentId: string): ParentObservations {
     if (this.#parents.has(parentId)) throw new Error('AGENT_NETWORK_PARENT_ALREADY_ATTACHED');
@@ -112,7 +116,16 @@ export class AgentNetworkObservations {
     this.#parents.get(input.parentId)?.publish(input);
   }
 
-  /** Direct children are automatic; other Sessions are watched only when explicitly targeted. */
+  /** Call-local observations never enter a Session's automatic context or wake channel. */
+  watchExecutions(
+    targets: readonly { agentId: string; runId: string; executionId: string | undefined }[]
+  ): ParentObservations {
+    const observations = new ParentObservations(() => this.#waiters.delete(observations));
+    this.#waiters.set(observations, targets);
+    return observations;
+  }
+
+  /** Only direct children are automatic; other targets reach active, execution-scoped waits. */
   publishChild(
     input: {
       readonly parentId?: string | null;
@@ -121,8 +134,17 @@ export class AgentNetworkObservations {
       readonly executionId: string;
     } & AgentObservation
   ): void {
-    for (const [parentId, parent] of this.#parents) {
-      if (parentId === input.parentId || parent.observes(input.childId)) parent.publish(input);
+    if (input.parentId != null) this.#parents.get(input.parentId)?.publish(input);
+    for (const [waiter, targets] of this.#waiters) {
+      if (
+        targets.some(
+          (target) =>
+            target.agentId === input.childId &&
+            target.runId === input.runId &&
+            target.executionId === input.executionId
+        )
+      )
+        waiter.publish(input);
     }
   }
 
@@ -141,19 +163,10 @@ export class ParentObservations implements ExtensionSessionContextProvider {
   readonly #results = new Map<string, ResultProjection>();
   readonly #listeners = new Set<(snapshot?: AgentObservationSnapshot) => void>();
   readonly #wakeListeners = new Set<() => void>();
-  readonly #targets = new Set<string>();
   #revision = 0;
   #closed = false;
 
   constructor(private readonly detach: () => void) {}
-
-  observe(childId: string): void {
-    if (!this.#closed) this.#targets.add(childId);
-  }
-
-  observes(childId: string): boolean {
-    return this.#targets.has(childId);
-  }
 
   readonly wake = {
     pending: (): boolean =>
@@ -378,7 +391,6 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     this.#results.clear();
     this.#listeners.clear();
     this.#wakeListeners.clear();
-    this.#targets.clear();
     this.detach();
   }
 }

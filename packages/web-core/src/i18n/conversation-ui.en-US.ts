@@ -61,6 +61,9 @@ export const conversationUiEnUS = {
   },
   toolPresentation: {
     detail: {
+      tool: 'Tool',
+      action: 'Action',
+      target: 'Target',
       copy: 'Copy public record',
       stderr: 'stderr',
       copied: 'Copied',

@@ -68,8 +68,7 @@ const model = {
   reasoningEfforts: ['low', 'high'],
   hostedWebSearch: false,
   enabled: true,
-  sortOrder: 0,
-  apiKeyConfigured: true
+  sortOrder: 0
 } as const;
 
 const templateSummary = {

@@ -3,7 +3,7 @@ import { ServerDatabase } from '../../ee/server/src/database.js';
 import { createTestNodeControl } from '../support/create-test-node-control.js';
 
 describe('upgrade-only Node connection admission', () => {
-  it.each([2, 3] as const)(
+  it.each([3] as const)(
     'authorizes, correlates and cancels an upgrade on wire v%i without admitting business',
     async (version) => {
       const database = new ServerDatabase(':memory:');
@@ -63,7 +63,7 @@ describe('upgrade-only Node connection admission', () => {
         const upgrade = control.requestNode(
           identity.nodeId,
           'node.upgrade.request',
-          { targetVersion: '0.11.38' },
+          { targetVersion: '0.11.39' },
           user
         );
         await vi.waitFor(() =>

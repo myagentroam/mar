@@ -114,37 +114,37 @@ describe('Node session records and external discovery merge', () => {
         runners: { require(name: string): { configureModels(value: unknown): void } };
       };
       const configuration = { model: 'worker-model', effort: 'low', access: 'full-access' };
+      const marAgentModels: unknown[] = [];
       const create = (fields: Record<string, unknown>) =>
         node.executeNodeOperation('session.create', {
           workspaceId: workspace.id,
           runner,
           cwd: root,
+          marAgentModels,
           ...fields
         });
       try {
         if (runner === 'mar-agent')
-          node.runners.require('mar-agent').configureModels([
-            {
-              id: 'worker-model',
-              name: 'Worker',
-              protocol: 'OPENAI_RESPONSES',
-              baseUrl: 'https://example.test',
-              modelId: 'worker-model',
-              contextWindowTokens: 128000,
-              maxOutputTokens: 8192,
-              inputCapabilities: ['TEXT'],
-              outputCapabilities: ['TEXT'],
-              enabled: true,
-              conversationModel: true,
-              subagentModel: true,
-              reasoningEfforts: ['low'],
-              defaultReasoningEffort: 'low',
-              titleGeneration: false,
-              codeMode: false,
-              hostedWebSearch: false,
-              sortOrder: 0
-            }
-          ]);
+          marAgentModels.push({
+            id: 'worker-model',
+            name: 'Worker',
+            protocol: 'OPENAI_RESPONSES',
+            baseUrl: 'https://example.test',
+            modelId: 'worker-model',
+            contextWindowTokens: 128000,
+            maxOutputTokens: 8192,
+            inputCapabilities: ['TEXT'],
+            outputCapabilities: ['TEXT'],
+            enabled: true,
+            conversationModel: true,
+            subagentModel: true,
+            reasoningEfforts: ['low'],
+            defaultReasoningEffort: 'low',
+            titleGeneration: false,
+            codeMode: false,
+            hostedWebSearch: false,
+            sortOrder: 0
+          });
         await expect(create({ ...configuration, __marctlOrigin: {} })).resolves.toMatchObject({
           session: configuration
         });
@@ -351,6 +351,7 @@ describe('Node session records and external discovery merge', () => {
         runners: { require(name: string): { configureModels(value: unknown): void } };
       };
       const execute = node.executeNodeOperation.bind(connector);
+      const marAgentModels: unknown[] = [];
       try {
         database.saveNativeSessionMetadata({
           runner,
@@ -371,28 +372,26 @@ describe('Node session records and external discovery merge', () => {
             'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
           );
           expect(database.listSessionRecords(workspace.id)).toHaveLength(1);
-          node.runners.require('mar-agent').configureModels([
-            {
-              id: 'test-model',
-              name: 'Test',
-              protocol: 'OPENAI_RESPONSES',
-              baseUrl: 'https://example.test',
-              modelId: 'test-model',
-              contextWindowTokens: 128000,
-              maxOutputTokens: 8192,
-              inputCapabilities: ['TEXT'],
-              outputCapabilities: ['TEXT'],
-              enabled: true,
-              conversationModel: true,
-              subagentModel: true,
-              reasoningEfforts: ['high'],
-              defaultReasoningEffort: 'high',
-              titleGeneration: false,
-              codeMode: false,
-              hostedWebSearch: false,
-              sortOrder: 0
-            }
-          ]);
+          marAgentModels.push({
+            id: 'test-model',
+            name: 'Test',
+            protocol: 'OPENAI_RESPONSES',
+            baseUrl: 'https://example.test',
+            modelId: 'test-model',
+            contextWindowTokens: 128000,
+            maxOutputTokens: 8192,
+            inputCapabilities: ['TEXT'],
+            outputCapabilities: ['TEXT'],
+            enabled: true,
+            conversationModel: true,
+            subagentModel: true,
+            reasoningEfforts: ['high'],
+            defaultReasoningEffort: 'high',
+            titleGeneration: false,
+            codeMode: false,
+            hostedWebSearch: false,
+            sortOrder: 0
+          });
         }
         const { session } = (await execute('session.create', {
           workspaceId: workspace.id,
@@ -401,6 +400,7 @@ describe('Node session records and external discovery merge', () => {
           model: 'test-model',
           effort: 'high',
           access: runner === 'mar-agent' ? 'auto' : 'read-only',
+          marAgentModels,
           parentSessionId: 'parent'
         })) as { session: NodeAgentSession };
         node.nativeSessionProjectionService.remember([

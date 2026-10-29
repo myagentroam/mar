@@ -78,7 +78,7 @@ describe('Conversation model purpose', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...baseModel,
-        apiKey: 'test-key',
+        credential: { type: 'INLINE_API_KEY', value: 'test-key' },
         subagentModel: 'true'
       }).success
     ).toBe(false);
@@ -142,7 +142,7 @@ describe('Conversation model purpose', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...baseModel,
-        apiKey: 'test-key',
+        credential: { type: 'INLINE_API_KEY', value: 'test-key' },
         conversationModel: 'false'
       }).success
     ).toBe(false);
@@ -155,7 +155,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     (httpVersion) => {
       const model = {
         ...baseModel,
-        apiKey: 'test-only',
+        credential: { type: 'INLINE_API_KEY', value: 'test-only' },
         responsesTransport: { transport: 'HTTP', httpVersion },
         responsesPreviousResponseId: true
       };
@@ -202,7 +202,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({
         ...baseModel,
-        apiKey: 'test',
+        credential: { type: 'INLINE_API_KEY', value: 'test' },
         responsesOptionalParameters: parameters
       }).responsesOptionalParameters
     ).toEqual(parameters);
@@ -267,7 +267,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
       expect(
         marAgentRuntimeModelConfigurationSchema.parse({
           ...baseModel,
-          apiKey: 'test-key',
+          credential: { type: 'INLINE_API_KEY', value: 'test-key' },
           responsesEncoding
         })
       ).not.toHaveProperty('responsesEncoding');
@@ -307,7 +307,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
       marAgentRuntimeModelConfigurationSchema.parse({
         ...baseModel,
         codeMode: true,
-        apiKey: 'static-key'
+        credential: { type: 'INLINE_API_KEY', value: 'static-key' }
       }).codeMode
     ).toBe(true);
   });
@@ -325,7 +325,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
       marAgentRuntimeModelConfigurationSchema.parse({
         ...baseModel,
         highDensityCompaction: true,
-        apiKey: 'static-key'
+        credential: { type: 'INLINE_API_KEY', value: 'static-key' }
       })
     ).not.toHaveProperty('highDensityCompaction');
   });
@@ -334,7 +334,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({
         ...baseModel,
-        apiKey: 'static-key',
+        credential: { type: 'INLINE_API_KEY', value: 'static-key' },
         responsesConfigurationUpdates: false
       }).responsesConfigurationUpdates
     ).toBe(false);
@@ -350,7 +350,11 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(marAgentModelSummarySchema.parse(legacy)).not.toHaveProperty('fastMode');
     expect(marAgentModelSummarySchema.safeParse({ ...legacy, fastMode: true }).success).toBe(false);
     expect(
-      marAgentRuntimeModelConfigurationSchema.parse({ ...baseModel, apiKey: 'key', fastMode: true })
+      marAgentRuntimeModelConfigurationSchema.parse({
+        ...baseModel,
+        credential: { type: 'INLINE_API_KEY', value: 'key' },
+        fastMode: true
+      })
     ).not.toHaveProperty('fastMode');
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({
@@ -359,7 +363,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
         hostedWebSearch: false,
         responsesTransport: undefined,
         responsesPreviousResponseId: false,
-        apiKey: 'key',
+        credential: { type: 'INLINE_API_KEY', value: 'key' },
         fastMode: true
       })
     ).not.toHaveProperty('fastMode');
@@ -368,8 +372,11 @@ describe('MAR Agent dynamic credential shared protocol', () => {
   it('preserves standard Responses service tiers and rejects invalid or non-Responses tiers', () => {
     for (const serviceTier of ['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']) {
       expect(
-        marAgentRuntimeModelConfigurationSchema.parse({ ...baseModel, apiKey: 'key', serviceTier })
-          .serviceTier
+        marAgentRuntimeModelConfigurationSchema.parse({
+          ...baseModel,
+          credential: { type: 'INLINE_API_KEY', value: 'key' },
+          serviceTier
+        }).serviceTier
       ).toBe(serviceTier);
       expect(
         marAgentModelSummarySchema.parse({
@@ -383,7 +390,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...baseModel,
-        apiKey: 'key',
+        credential: { type: 'INLINE_API_KEY', value: 'key' },
         serviceTier: 'invalid'
       }).success
     ).toBe(false);
@@ -394,7 +401,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
         hostedWebSearch: false,
         responsesTransport: undefined,
         responsesPreviousResponseId: false,
-        apiKey: 'key',
+        credential: { type: 'INLINE_API_KEY', value: 'key' },
         serviceTier: 'default'
       }).success
     ).toBe(false);
@@ -409,10 +416,14 @@ describe('MAR Agent dynamic credential shared protocol', () => {
   });
 
   it('drops future runtime model fields but still validates known fields and credentials', () => {
-    const runtime = { ...baseModel, apiKey: 'key', futureOption: { enabled: true } };
+    const runtime = {
+      ...baseModel,
+      credential: { type: 'INLINE_API_KEY', value: 'key' },
+      futureOption: { enabled: true }
+    };
     const parsed = marAgentRuntimeModelConfigurationSchema.parse(runtime);
     expect(parsed).not.toHaveProperty('futureOption');
-    expect(parsed.apiKey).toBe('key');
+    expect(parsed.credential).toEqual({ type: 'INLINE_API_KEY', value: 'key' });
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...runtime,
@@ -433,7 +444,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
   ])('projects future Responses options for %j', (responsesTransport) => {
     const parsed = marAgentRuntimeModelConfigurationSchema.parse({
       ...baseModel,
-      apiKey: 'key',
+      credential: { type: 'INLINE_API_KEY', value: 'key' },
       responsesTransport,
       responsesOptionalParameters: {
         reasoningEffort: true,
@@ -470,19 +481,14 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...baseModel,
-        apiKey: 'key',
+        credential: { type: 'INLINE_API_KEY', value: 'key' },
         ...override
       }).success
     ).toBe(false);
   });
 
-  it('keeps runtime configuration compatible with legacy static keys and strict inline or ticket credentials', () => {
-    expect(
-      marAgentRuntimeModelConfigurationSchema.parse({
-        ...baseModel,
-        apiKey: 'legacy-static-key'
-      })
-    ).toMatchObject({ apiKey: 'legacy-static-key' });
+  it('requires structured inline or ticket credentials', () => {
+    expect(marAgentRuntimeModelConfigurationSchema.safeParse(baseModel).success).toBe(false);
 
     expect(
       marAgentRuntimeModelConfigurationSchema.parse({
@@ -505,8 +511,7 @@ describe('MAR Agent dynamic credential shared protocol', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...baseModel,
-        apiKey: 'legacy-static-key',
-        credential: { type: 'INLINE_API_KEY', value: 'static-key' }
+        credential: { type: 'INLINE_API_KEY', value: '' }
       }).success
     ).toBe(false);
   });

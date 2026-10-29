@@ -32,7 +32,7 @@ export interface ToolImageStore extends ResourceStore {
 export type ToolRuntimeEvent =
   | {
       type: 'tool.output';
-      toolName: 'exec' | 'exec_wait';
+      toolName: 'exec' | 'exec_wait' | 'code_exec_wait';
       callId: string;
       parentCallId?: string;
       output: import('./contracts.js').ExecOutputSnapshot;

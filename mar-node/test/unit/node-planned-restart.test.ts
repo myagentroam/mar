@@ -94,7 +94,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
         name: 'Restart model',
         protocol: 'ANTHROPIC_MESSAGES',
         baseUrl,
-        apiKey: 'synthetic-key',
+        credential: { type: 'INLINE_API_KEY', value: 'synthetic-key' },
         modelId: 'fake',
         contextWindowTokens: 100_000,
         maxOutputTokens: 1000,

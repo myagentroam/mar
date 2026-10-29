@@ -4,14 +4,9 @@ import { createEnvelope } from '@myagentroam/protocol';
 import { NodeRequestChannel } from '../../src/node-request-channel.js';
 
 const user = { userId: 1, sessionHash: 'session-hash' };
-function fixture(version: 2 | 3 = 3) {
+function fixture() {
   const socket = { readyState: 1, OPEN: 1, send: vi.fn() };
-  const channel = new NodeRequestChannel(
-    () => socket as unknown as WebSocket,
-    undefined,
-    undefined,
-    (_socket, envelope) => ({ ...envelope, version })
-  );
+  const channel = new NodeRequestChannel(() => socket as unknown as WebSocket);
   const request = () => JSON.parse(socket.send.mock.calls[0]![0] as string);
   return { channel, socket, request };
 }
@@ -136,15 +131,15 @@ describe('common authorized Node request channel', () => {
     }
   });
 
-  it.each([2, 3] as const)(
+  it.each([3] as const)(
     'sends supervised upgrades over the v%i Node control envelope',
     async (version) => {
-      const { channel, request } = fixture(version);
+      const { channel, request } = fixture();
       try {
         const result = channel.request(
           'node-1',
           'node.upgrade.request',
-          { targetVersion: '0.9.122' },
+          { targetVersion: '0.11.39' },
           user
         );
         const frame = request();
@@ -153,7 +148,7 @@ describe('common authorized Node request channel', () => {
           type: 'node.request',
           payload: {
             operation: 'node.upgrade.request',
-            data: { targetVersion: '0.9.122' },
+            data: { targetVersion: '0.11.39' },
             userAuthorization: { ...user, nodeId: 'node-1', operation: 'node.upgrade.request' }
           }
         });

@@ -40,6 +40,7 @@ export interface ToolExecutionContext {
   modelId?: string;
   recentImages?: readonly { readonly mimeType: string; readonly data: Buffer }[];
   codeMode?: {
+    subscribeToolOutput?(listener: (output: ExecOutputSnapshot) => void): () => void;
     retainSession?(): Promise<() => Promise<void>>;
     onSettled?(result: CodeCellEventData): Promise<void>;
     supportsImages?: boolean;
@@ -101,6 +102,8 @@ export interface AgentToolImageArtifact {
 export type AgentToolArtifact = AgentToolImageArtifact;
 export interface ExecOutputSnapshot {
   processId: string;
+  /** Omitted for legacy snapshot sources; delta is a real decoded process chunk. */
+  mode?: 'delta' | 'snapshot';
   stdout: string;
   stderr: string;
   truncated: boolean;
@@ -113,6 +116,14 @@ export interface ExecDisplayOutput {
   stderr: string;
   stdoutDroppedBytes: number;
   stderrDroppedBytes: number;
+}
+
+/** Bounded original input for public presentation, never added to model results. */
+export interface ExecutionSource {
+  kind: 'SHELL' | 'CODE';
+  text: string;
+  cwd?: string;
+  truncated: boolean;
 }
 
 export interface ToolExecutionResult {
@@ -133,6 +144,7 @@ export interface ToolExecutionResult {
   resultExtensions?: readonly import('./result-extension-contract.js').ToolResultExtension[];
 }
 export interface CodeCellEventData {
+  executionSource?: ExecutionSource;
   permissionStop?: import('./permission-contract.js').PermissionStop;
   calls?: readonly import('../session/code-observation-contract.js').CodeToolCallRecord[];
   cellId: string;
@@ -141,10 +153,13 @@ export interface CodeCellEventData {
   reason?: 'steer';
   cached?: boolean;
   truncated?: boolean;
+  /** Public output projection discarded older text; not inferred from source truncation. */
+  outputHeadTruncated?: boolean;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
   error?: { code: string; message: string };
 }
 export interface ExecResult {
+  executionSource?: ExecutionSource;
   status: 'running' | 'completed' | 'cancelled';
   waitOutcome?: import('./wait.js').ToolWaitOutcome;
   reason?: 'steer';

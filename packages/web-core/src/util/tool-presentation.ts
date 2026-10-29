@@ -1,5 +1,6 @@
 import type { ToolPresentation } from '@myagentroam/protocol';
 import { translate } from '../service/locale-preference-service.js';
+import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
 import { formatDateTime } from './time-presentation.js';
 
 export function toolPresentation(
@@ -122,49 +123,63 @@ export function toolPresentationSources(payload: unknown) {
   });
 }
 
+export function toolOutputDetail(
+  payload: Record<string, unknown>,
+  label: string = conversationUiEnUS.presentation.output
+): string {
+  const output =
+    payload.output && typeof payload.output === 'object'
+      ? (payload.output as Record<string, unknown>)
+      : undefined;
+  const text =
+    typeof output?.text === 'string'
+      ? output.text
+      : typeof payload.outputSummary === 'string'
+        ? payload.outputSummary
+        : '';
+  return [
+    text ? `${label}:\n${text}` : '',
+    output?.truncated === true ? translate('toolPresentation.detail.truncated') : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function toolPresentationDetails(payload: unknown): string {
   const value = toolPresentation(payload);
   if (!value) return '';
   const raw = payload as Record<string, unknown>;
-  const line = (key: string, text: unknown): string =>
-    typeof text === 'string' && text.length ? `${translate(key)}: ${text}` : '';
-  const details = [line('toolPresentation.tool', raw.toolName)];
+  const line = (label: string, text: unknown): string =>
+    typeof text === 'string' && text.length ? `${label}: ${text}` : '';
+  const labels = conversationUiEnUS.toolPresentation;
+  const details = [line(labels.tool, raw.toolName)];
   if (value.kind === 'WEB_FETCH')
     details.push(
-      line('toolPresentation.requestUrl', value.requestUrl),
-      line('toolPresentation.finalUrl', value.url),
-      line('toolPresentation.mode', value.mode),
-      line('toolPresentation.httpStatus', value.status?.toString()),
-      line('toolPresentation.contentType', value.contentType)
+      line(labels.requestUrl, value.requestUrl),
+      line(labels.finalUrl, value.url),
+      line(labels.mode, value.mode),
+      line(labels.httpStatus, value.status?.toString()),
+      line(labels.contentType, value.contentType)
     );
   if (value.kind === 'SKILL')
-    details.push(
-      line('toolPresentation.description', value.description),
-      line('toolPresentation.source', value.source)
-    );
+    details.push(line(labels.description, value.description), line(labels.source, value.source));
   if (value.kind === 'SLEEP')
     details.push(
       line(
-        'toolPresentation.requestedDuration',
+        labels.requestedDuration,
         value.durationMs === undefined ? undefined : durationLabel(value.durationMs)
       ),
       line(
-        'toolPresentation.elapsedDuration',
+        labels.elapsedDuration,
         value.elapsedMs === undefined ? undefined : durationLabel(value.elapsedMs)
       ),
       line(
-        'toolPresentation.wakeReason',
+        labels.wakeReason,
         value.wakeReason ? translate(`toolPresentation.wake.${value.wakeReason}`) : undefined
       )
     );
-  details.push(line('presentation.input', raw.inputSummary));
-  if (
-    value.kind === 'READ' ||
-    value.kind === 'SKILL' ||
-    value.kind === 'WEB_FETCH' ||
-    raw.errorCode
-  )
-    details.push(line('presentation.output', raw.outputSummary));
-  details.push(line('presentation.error', raw.errorCode));
+  details.push(line(conversationUiEnUS.presentation.input, raw.inputSummary));
+  details.push(toolOutputDetail(raw));
+  details.push(line(conversationUiEnUS.presentation.error, raw.errorCode));
   return details.filter(Boolean).join(String.fromCharCode(10));
 }

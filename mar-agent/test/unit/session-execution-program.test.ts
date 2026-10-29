@@ -22,6 +22,64 @@ function owner(kind: 'run' | 'compact') {
 }
 
 describe('execution program ownership', () => {
+  it.each([false, true])(
+    'resynchronizes without buffering idle frames (source truncated: %s)',
+    async (sourceTruncated) => {
+      const execution = owner('run');
+      const iterator = execution.events[Symbol.asyncIterator]();
+      const ports = { persist: async () => {} };
+      const output = (stdout: string, display: string) => ({
+        type: 'tool.output' as const,
+        toolName: 'exec' as const,
+        callId: 'call',
+        output: {
+          processId: 'p',
+          mode: 'delta' as const,
+          stdout,
+          stderr: '',
+          truncated: false,
+          displayOutput: {
+            stdout: display,
+            stderr: '',
+            stdoutDroppedBytes: 0,
+            stderrDroppedBytes: 0
+          }
+        }
+      });
+      const first = iterator.next();
+      await execution.emit(output('a', 'a'), ports);
+      expect((await first).value).toMatchObject({ output: { mode: 'delta', stdout: 'a' } });
+      await execution.emit(output('b', 'ab'), ports);
+      expect(execution.events.bufferedSize).toBe(0);
+      const resumed = iterator.next();
+      const recovered = output('c', 'abc');
+      await execution.emit(
+        {
+          ...recovered,
+          output: {
+            ...recovered.output,
+            mode: sourceTruncated ? 'snapshot' : 'delta',
+            stdout: sourceTruncated ? 'abc' : 'c',
+            truncated: sourceTruncated
+          }
+        },
+        ports
+      );
+      expect((await resumed).value).toMatchObject({
+        output: {
+          mode: 'snapshot',
+          stdout: 'abc',
+          stderr: '',
+          truncated: sourceTruncated,
+          displayOutput: { stdout: 'abc' }
+        }
+      });
+      const next = iterator.next();
+      await execution.emit(output('d', 'abcd'), ports);
+      expect((await next).value).toMatchObject({ output: { mode: 'delta', stdout: 'd' } });
+      execution.events.close();
+    }
+  );
   it.each(['completed', 'failed', 'cancelled'] as const)(
     'settles the result without publishing an unpersisted terminal (%s)',
     async (mode) => {

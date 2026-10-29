@@ -37,6 +37,33 @@ async function fixture() {
 }
 
 describe('Code Exec retained cells', () => {
+  it('keeps a bounded source on failed cells and cached cancellation without exposing it to the model', async () => {
+    const host = await fixture();
+    const source = `//${'x'.repeat(10_020)}\nthrow new Error('fixture failure');`;
+    const failure = await host
+      .executeTool({ name: 'code_exec', arguments: source }, context())
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: 'MAR_AGENT_CODE_FAILED',
+      result: {
+        eventData: {
+          executionSource: { kind: 'CODE', text: source.slice(0, 10_000), truncated: true }
+        }
+      }
+    });
+    const result = (failure as { result: ToolExecutionResult }).result;
+    expect(result.data).not.toHaveProperty('executionSource');
+    expect(result.content).not.toContain('executionSource');
+    const replay = await host.executeTool(
+      { name: 'code_exec_wait', arguments: { cellId: data(result).cellId, action: 'cancel' } },
+      { ...context(), executionId: 'later' }
+    );
+    expect(replay.eventData).toMatchObject({
+      executionSource: { kind: 'CODE', text: source.slice(0, 10_000), truncated: true }
+    });
+    expect(replay.data).not.toHaveProperty('executionSource');
+    expect(replay.content).not.toContain('executionSource');
+  });
   it('uses typed short handles and rejects cross-type controls without touching either resource', async () => {
     const host = await fixture();
     const ctx = context();
@@ -83,6 +110,13 @@ describe('Code Exec retained cells', () => {
     const later = { ...ctx, executionId: 'later' };
     const replay = await host.executeTool({ name: 'code_exec_wait', arguments: { cellId } }, later);
     expect(replay.data).toMatchObject({ cellId, status: 'completed', cached: true });
+    expect(replay.eventData).toMatchObject({
+      executionSource: { kind: 'CODE', text: 'observe.text("retained cell");', truncated: false }
+    });
+    expect(replay.data).not.toHaveProperty('executionSource');
+    expect(structuredToolEventData('code_exec_wait', replay.eventData)).toMatchObject({
+      executionSource: { kind: 'CODE', text: 'observe.text("retained cell");' }
+    });
     expect(replay.observations).toEqual(cell.observations);
     expect(
       (await host.executeTool({ name: 'exec_wait', arguments: { processId, yieldMs: 0 } }, later))

@@ -128,6 +128,8 @@ The first message from `start` and messages from `send` inside an Agent Session 
 
 Without `--run`, `wait` defaults to direct-child completion and 30 seconds; `--timeout 0ms` reads a snapshot. Use the snapshot's `executionId` with `stop --execution`: a stale identity cannot stop a later execution, and stop also clears the corresponding Goal. `wait --run` uses the existing Watch for that Run or an approval and releases observation on exit; a timeout error may include the last bounded `progress`, omitted if none was observed. Neither kind of wait stops the task on timeout or cancellation. A successful Run still requires checking artifacts and tests; a child terminal state does not wake the parent's sleep, so wait or read actively.
 
+Only direct-child public updates are collected automatically by the parent. Sending to another Session does not subscribe to it; an explicit wait listens only for that call, not for later updates.
+
 Sessions share files and the Git index, without automatic worktree isolation or a Git workflow. Commits, pushes, PRs, merges, and external messages still need applicable user authorization. If a mutation outcome is unknown, preserve its correlation ID and inspect state/history before retrying; do not blindly resend. In-memory receipt/Run recovery is not guaranteed across restarts.
 
 `--json` emits one result/error object with stable English keys and codes. Exit codes: 1 failure, 2 invalid input, 3 authorization, 4 unsupported capability, 5 timeout, 6 unknown outcome, 130 cancelled waiting.

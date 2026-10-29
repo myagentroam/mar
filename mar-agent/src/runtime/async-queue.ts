@@ -8,7 +8,9 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
   #discarded = false;
   /** Best-effort live values are delivered only to an actively waiting consumer. */
   pushIfWaiting(value: T) {
-    if (this.#waiterOffset < this.#waiters.length) this.push(value);
+    if (this.#waiterOffset >= this.#waiters.length || this.#closed || this.#discarded) return false;
+    this.push(value);
+    return true;
   }
   push(value: T) {
     if (this.#closed || this.#discarded) return;

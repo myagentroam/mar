@@ -53,6 +53,7 @@ interface AgentNetworkServiceOptions {
     operation: 'send' | 'goal' | 'stop' | 'wait'
   ) => Promise<void>;
   readonly children: (actor: AgentNetworkActor) => Promise<readonly NodeAgentSession[]>;
+  /** Ensure the caller's automatic channel exists, only for a verified direct child. */
   readonly observe: (actor: AgentNetworkActor, session: NodeAgentSession) => void;
   readonly isUpward: (actor: AgentNetworkActor, session: NodeAgentSession) => Promise<boolean>;
   readonly reportUpward: (
@@ -211,7 +212,8 @@ export class AgentNetworkService {
       signal
     );
     try {
-      this.options.observe(actor, created.session);
+      if (created.session.parentSessionId === actor.sessionId)
+        this.options.observe(actor, created.session);
       return { agentId: created.session.id, start: created.result };
     } catch (error) {
       return {
@@ -299,7 +301,7 @@ export class AgentNetworkService {
       return { agentId: session.id, message: { status: 'accepted', result } };
     }
     signal?.throwIfAborted();
-    this.options.observe(actor, session);
+    if (session.parentSessionId === actor.sessionId) this.options.observe(actor, session);
     const approvalResult =
       input.approval === undefined
         ? undefined
@@ -498,20 +500,44 @@ export class AgentNetworkService {
     }
     if (!targets.length) throw new Error('AGENT_EXECUTION_NOT_FOUND');
     const selected = new Set(targets.map((target) => target.agentId));
+    const directChildren = new Set<string>();
     for (const session of sessions)
-      if (selected.has(session.id)) this.options.observe(actor, session);
-    const observations = this.options.observations.get(actor.observationId ?? actor.sessionId);
-    if (!observations) throw new Error('AGENT_OBSERVATION_UNAVAILABLE');
-    return waitForAgentTargets({
-      targets,
-      observations,
-      single: input.agentIds === undefined,
-      waitMs: input.waitMs ?? 30_000,
-      ...(input.mode === undefined ? {} : { mode: input.mode }),
-      ...(input.waitFor === undefined ? {} : { waitFor: input.waitFor }),
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-      ...(input.interrupt === undefined ? {} : { interrupt: input.interrupt })
-    });
+      if (selected.has(session.id) && session.parentSessionId === actor.sessionId) {
+        this.options.observe(actor, session);
+        directChildren.add(session.id);
+      }
+    const parent = this.options.observations.get(actor.observationId ?? actor.sessionId);
+    if (directChildren.size && !parent) throw new Error('AGENT_OBSERVATION_UNAVAILABLE');
+    const otherTargets = targets.filter((target) => !directChildren.has(target.agentId));
+    const temporary =
+      otherTargets.length && input.waitMs !== 0
+        ? this.options.observations.watchExecutions(otherTargets)
+        : undefined;
+    try {
+      return await waitForAgentTargets({
+        targets,
+        observations: {
+          capture: (id, executionId) =>
+            (directChildren.has(id) ? parent : temporary)?.capture(id, executionId),
+          subscribe: (listener) => {
+            const unsubscribeParent = directChildren.size ? parent?.subscribe(listener) : undefined;
+            const unsubscribeTemporary = temporary?.subscribe(listener);
+            return () => {
+              unsubscribeParent?.();
+              unsubscribeTemporary?.();
+            };
+          }
+        },
+        single: input.agentIds === undefined,
+        waitMs: input.waitMs ?? 30_000,
+        ...(input.mode === undefined ? {} : { mode: input.mode }),
+        ...(input.waitFor === undefined ? {} : { waitFor: input.waitFor }),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...(input.interrupt === undefined ? {} : { interrupt: input.interrupt })
+      });
+    } finally {
+      temporary?.close();
+    }
   }
 }
 

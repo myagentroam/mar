@@ -73,7 +73,6 @@ function inlineResponsesModel() {
     enabled: true,
     sortOrder: 0,
     access: 'RESTRICTED',
-    apiKeyConfigured: true,
     credentialType: 'INLINE_API_KEY',
     credentialConfigured: true,
     lastTestedAt: null,

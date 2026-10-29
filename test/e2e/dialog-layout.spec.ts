@@ -93,6 +93,28 @@ async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
 
+test('Dialog and MessageBox titles use the panel title size', async ({ page }) => {
+  for (const [viewport, theme] of [
+    [viewports[0]!, 'daylight'],
+    [viewports[1]!, 'vscode-dark-2026']
+  ] as const) {
+    await page.setViewportSize(viewport);
+    for (const kind of ['short', 'message']) {
+      await visit(page, kind, theme);
+      await page.getByRole('button', { name: 'Open content' }).click();
+      const title = page.locator('.el-dialog__title:visible, .el-message-box__title:visible');
+      await expect(title).toBeVisible();
+      const sizes = await title.evaluate((element) => ({
+        actual: getComputedStyle(element).fontSize,
+        expected: getComputedStyle(document.documentElement)
+          .getPropertyValue('--mar-font-size-title')
+          .trim()
+      }));
+      expect(sizes.actual).toBe(sizes.expected);
+    }
+  }
+});
+
 for (const locale of ['en-US', 'zh-CN']) {
   for (const viewport of [viewports[0]!, viewports[1]!]) {
     test(`Workspace cleanup displays partial counts without a timeout error: ${locale} ${viewport.width}`, async ({

@@ -61,7 +61,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'secret',
+      credential: { type: 'INLINE_API_KEY', value: 'secret' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -229,7 +229,7 @@ describe('MAR Agent managed run projection', () => {
         name: 'Coding',
         protocol: 'ANTHROPIC_MESSAGES',
         baseUrl: 'https://example.test',
-        apiKey: 'secret',
+        credential: { type: 'INLINE_API_KEY', value: 'secret' },
         modelId: 'coding',
         contextWindowTokens: 200_000,
         maxOutputTokens: 4096,
@@ -390,7 +390,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'secret',
+      credential: { type: 'INLINE_API_KEY', value: 'secret' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -568,7 +568,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'secret',
+      credential: { type: 'INLINE_API_KEY', value: 'secret' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -810,7 +810,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'secret',
+      credential: { type: 'INLINE_API_KEY', value: 'secret' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -1175,7 +1175,7 @@ describe('MAR Agent managed run projection', () => {
           name: 'Vision',
           protocol: 'ANTHROPIC_MESSAGES',
           baseUrl: 'https://example.test',
-          apiKey: 'secret',
+          credential: { type: 'INLINE_API_KEY', value: 'secret' },
           modelId: 'vision',
           contextWindowTokens: 200_000,
           maxOutputTokens: 4096,
@@ -1271,7 +1271,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'secret',
+      credential: { type: 'INLINE_API_KEY', value: 'secret' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -1463,7 +1463,7 @@ describe('MAR Agent managed run projection', () => {
         name: 'Coding',
         protocol: 'ANTHROPIC_MESSAGES',
         baseUrl: 'https://example.test',
-        apiKey: 'secret',
+        credential: { type: 'INLINE_API_KEY', value: 'secret' },
         modelId: 'coding',
         contextWindowTokens: 200_000,
         maxOutputTokens: 4096,
@@ -1558,6 +1558,7 @@ describe('MAR Agent managed run projection', () => {
       data: {
         status: 'completed',
         processId: 'process-1',
+        executionSource: { kind: 'SHELL', text: 'pnpm test', cwd: '/workspace' },
         stdout: 'ok',
         stderr: '',
         exitCode: 0,
@@ -1585,14 +1586,44 @@ describe('MAR Agent managed run projection', () => {
         itemId: 'mar-agent-tool:poll-call',
         kind: 'command_execution',
         status: 'IN_PROGRESS',
-        payload: expect.objectContaining({ command: 'exec_wait' })
+        payload: expect.objectContaining({
+          command: '',
+          toolPresentation: expect.objectContaining({
+            kind: 'EXECUTION',
+            execution: expect.objectContaining({
+              kind: 'CONTROL',
+              toolName: 'exec_wait',
+              action: 'poll',
+              targetId: 'process-1'
+            })
+          })
+        })
       })
     ]);
+    expect(pollStarted[0]?.payload).not.toHaveProperty('toolPresentation.execution.source');
     expect(completed[0]).toMatchObject({
       itemId: 'mar-agent-tool:poll-call',
       kind: 'command_execution',
       status: 'COMPLETED',
-      payload: { command: 'exec_wait', outputPreview: 'ok', exitCode: 0 }
+      payload: {
+        command: '',
+        outputPreview: 'ok',
+        exitCode: 0,
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: {
+            kind: 'CONTROL',
+            toolName: 'exec_wait',
+            action: 'poll',
+            targetId: 'process-1',
+            source: { kind: 'SHELL', text: 'pnpm test', cwd: '/workspace' },
+            output: [
+              { channel: 'STDOUT', text: 'ok' },
+              { channel: 'STDERR', text: '' }
+            ]
+          }
+        }
+      }
     });
     const replayStarted = normalizer.normalize({
       ...base,

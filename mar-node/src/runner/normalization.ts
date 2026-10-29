@@ -2,6 +2,18 @@ export function compactRunnerText(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 1))}…`;
 }
 
+export function publicOutputSnapshot(
+  value: unknown,
+  truncated = false
+): { text: string; truncated: boolean } {
+  const text =
+    typeof value === 'string' ? value : compactRunnerValue(value, Number.MAX_SAFE_INTEGER).text;
+  let bounded = text.slice(-10_000);
+  const first = bounded.charCodeAt(0);
+  if (text.length > 10_000 && first >= 0xdc00 && first <= 0xdfff) bounded = bounded.slice(1);
+  return { text: bounded, truncated: truncated || text.length > 10_000 };
+}
+
 export function compactRunnerValue(
   value: unknown,
   limit: number

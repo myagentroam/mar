@@ -89,7 +89,7 @@ describe('MAR native steer integration', () => {
       name: 'Test',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'test',
+      credential: { type: 'INLINE_API_KEY', value: 'test' },
       modelId: 'test',
       contextWindowTokens: 10000,
       maxOutputTokens: 1000,

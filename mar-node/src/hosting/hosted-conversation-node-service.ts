@@ -1356,8 +1356,7 @@ function modelSummary(
       : { responsesTransport: model.responsesTransport }),
     responsesPreviousResponseId: model.responsesPreviousResponseId,
     enabled: model.enabled,
-    sortOrder: index,
-    apiKeyConfigured: true
+    sortOrder: index
   };
 }
 

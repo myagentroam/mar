@@ -87,6 +87,9 @@ onBeforeUnmount(() => controller.abort());
     <div v-loading="loading" class="session-tree" :aria-busy="loading">
       <ul v-if="result" class="session-tree-list">
         <li v-for="row in rows" :key="row.node.id" class="session-tree-row">
+          <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
+            <span v-if="rows.length > 1" class="session-tree-origin-stem" />
+          </span>
           <span
             v-for="(continues, level) in row.branches"
             :key="level"
@@ -98,7 +101,7 @@ onBeforeUnmount(() => controller.abort());
           <button
             type="button"
             class="session-tree-node"
-            :style="{ marginInlineStart: `${row.branches.length * 1.25}rem` }"
+            :style="{ marginInlineStart: `${(row.branches.length + 1) * 1.25}rem` }"
             :aria-current="row.node.id === sessionId ? 'true' : undefined"
             :aria-label="row.node.title"
             @click="emit('open', row.node.id)"
@@ -115,7 +118,7 @@ onBeforeUnmount(() => controller.abort());
 </template>
 
 <style scoped>
-.session-tree {
+.session-tree[aria-busy='true'] {
   min-height: 4rem;
 }
 .session-tree-list {
@@ -166,11 +169,35 @@ onBeforeUnmount(() => controller.abort());
   position: relative;
   display: flex;
 }
+.session-tree-origin {
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  top: 0;
+  bottom: 0;
+  width: 0.5rem;
+  pointer-events: none;
+}
+.session-tree-origin::before {
+  content: '';
+  position: absolute;
+  top: calc(50% - 0.5rem);
+  height: 0.5rem;
+  width: 100%;
+  border-inline-start: 1px solid var(--mar-border-medium);
+  border-bottom: 1px solid var(--mar-border-medium);
+  border-end-start-radius: 0.25rem;
+}
+.session-tree-origin-stem {
+  position: absolute;
+  top: 50%;
+  bottom: 0;
+  border-inline-start: 1px solid var(--mar-border-medium);
+}
 .session-tree-branch {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 0.5rem;
+  width: 1.75rem;
   pointer-events: none;
 }
 .session-tree-branch.is-continuing {
@@ -179,11 +206,14 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-branch.is-leaf::before {
   content: '';
   position: absolute;
-  inset-inline-start: -1px;
+  inset-inline-start: 0;
   top: 0;
   height: 50%;
   width: 100%;
   border-inline-start: 1px solid var(--mar-border-medium);
   border-bottom: 1px solid var(--mar-border-medium);
+}
+.session-tree-branch.is-continuing.is-leaf::before {
+  inset-inline-start: -1px;
 }
 </style>

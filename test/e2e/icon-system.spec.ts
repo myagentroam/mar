@@ -938,10 +938,10 @@ for (const { theme, locale } of [
   { theme: 'dark', locale: 'zh-CN' },
   { theme: 'light', locale: 'en-US' }
 ]) {
-  test(`Recent-session unread badges do not move or cover navigation icons: ${theme} ${locale}`, async ({
-    page
-  }, testInfo) => {
-    for (const width of [320, 390, 430, 1024, 1280]) {
+  for (const width of [320, 390, 430, 1024, 1280]) {
+    test(`Recent-session unread badges do not move or cover navigation icons: ${theme} ${locale} ${width}`, async ({
+      page
+    }, testInfo) => {
       const mobile = width < 768;
       await page.setViewportSize({ width, height: 900 });
       const url = `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=${locale}${mobile ? '&mobile=1' : ''}`;
@@ -963,7 +963,6 @@ for (const { theme, locale } of [
       if (!mobile) {
         await expect(unread).toHaveText(locale === 'zh-CN' ? '未读' : 'Unread');
         await expect(unread).toHaveCSS('border-left-width', '0px');
-        await expect(badge).toHaveCSS('right', '0px');
       }
       const notificationBadge = page.locator('.workbench-notification-badge');
       await expect(notificationBadge).toHaveCSS('border-top-width', '0px');
@@ -1020,7 +1019,11 @@ for (const { theme, locale } of [
           locale === 'zh-CN' ? '未读' : 'Unread'
         );
       }
-    }
+    });
+  }
+  test(`Mobile recent-session unread-only and single-count badges: ${theme} ${locale}`, async ({
+    page
+  }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(
       `${fixture.url}icon-system.html?navigation=1&mobile=1&count=1&unread=1&theme=${theme}&locale=${locale}`
@@ -1063,6 +1066,136 @@ for (const { theme, locale } of [
     await expect(badge).toHaveCount(0);
   });
 }
+
+for (const theme of ['dark', 'light']) {
+  for (const count of [0, 1, 99, 120]) {
+    test(`Desktop recent-session badge shows full English unread: ${theme}, ${count}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await page.goto(
+        `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=en-US&count=${count}&unread=1`
+      );
+      const badge = page.locator('.recent-sessions-trigger .recent-sessions-badge');
+      const unread = badge.locator('.session-state-unread');
+      await expect(unread).toHaveText('Unread');
+      const geometry = await unread.evaluate((element) => {
+        const navElement = element.closest('nav')!;
+        const nav = navElement.getBoundingClientRect();
+        const rect = element.getBoundingClientRect();
+        return {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          left: rect.left,
+          right: rect.right,
+          navLeft: nav.left,
+          navRight: nav.right,
+          navScrollWidth: navElement.scrollWidth,
+          navClientWidth: navElement.clientWidth
+        };
+      });
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+      expect(geometry.navScrollWidth).toBeLessThanOrEqual(geometry.navClientWidth);
+      expect(geometry.left).toBeGreaterThanOrEqual(geometry.navLeft);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.navRight);
+      const rail = (await page.locator('.activity-rail').boundingBox())!;
+      const icon = (await page
+        .locator('.recent-sessions-trigger [data-mar-icon="recent-sessions"]')
+        .boundingBox())!;
+      expect(Math.abs(icon.x + icon.width / 2 - rail.x - rail.width / 2)).toBeLessThanOrEqual(1);
+      const workspaceIcon = (await page
+        .locator('.nav-menu-button [data-mar-icon="workspace"]')
+        .boundingBox())!;
+      expect(
+        Math.abs(workspaceIcon.x + workspaceIcon.width / 2 - rail.x - rail.width / 2)
+      ).toBeLessThanOrEqual(1);
+      if (count) {
+        const number = badge.locator('.session-state-count');
+        await expect(number).toHaveText(count > 99 ? '99+' : String(count));
+        const numberBounds = (await number.boundingBox())!;
+        const unreadBounds = (await unread.boundingBox())!;
+        expect(Math.abs(numberBounds.y - unreadBounds.y)).toBeLessThan(1);
+      }
+      if (count === 1)
+        await page.locator('.activity-rail').screenshot({ path: testInfo.outputPath('rail.png') });
+    });
+  }
+}
+
+test('Narrow desktop sidebar width includes the activity rail', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto(`${fixture.url}icon-system.html?navigation=1&locale=en-US&count=99&unread=1`);
+  const unread = page.locator('.recent-sessions-trigger .session-state-unread');
+  await expect(unread).toHaveText('Unread');
+  const widths = await unread.evaluate((element) => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    const probe = document.createElement('div');
+    probe.style.width = 'var(--mar-workbench-sidebar-total-width)';
+    root.append(probe);
+    const total = probe.getBoundingClientRect().width;
+    probe.remove();
+    return {
+      total,
+      rail: Number.parseFloat(style.getPropertyValue('--mar-activity-rail-width')),
+      sidebar: Number.parseFloat(style.getPropertyValue('--mar-workbench-sidebar-width')),
+      unreadWidth: element.clientWidth,
+      unreadContentWidth: element.scrollWidth
+    };
+  });
+  expect(widths.total).toBe(widths.rail + widths.sidebar);
+  expect(widths.rail).toBe(52);
+  expect(widths.unreadContentWidth).toBeLessThanOrEqual(widths.unreadWidth);
+});
+
+test('Desktop badge overflow does not intercept adjacent content and navigation can scroll', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 800, height: 320 });
+  await page.goto(`${fixture.url}icon-system.html?navigation=1&locale=en-US&count=99&unread=1`);
+  const nav = page.locator('.activity-rail nav');
+  const badge = page.locator('.recent-sessions-trigger .recent-sessions-badge');
+  await expect(badge).toBeVisible();
+  const railBounds = (await page.locator('.activity-rail').boundingBox())!;
+  const workspaceIcon = (await page
+    .locator('.nav-menu-button [data-mar-icon="workspace"]')
+    .boundingBox())!;
+  expect(
+    Math.abs(workspaceIcon.x + workspaceIcon.width / 2 - railBounds.x - railBounds.width / 2)
+  ).toBeLessThanOrEqual(1);
+  const point = await badge.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const rail = element.closest('.activity-rail')!.getBoundingClientRect();
+    const target = document.createElement('button');
+    target.id = 'badge-adjacent-target';
+    Object.assign(target.style, {
+      position: 'fixed',
+      left: `${rail.right}px`,
+      top: `${rect.top}px`,
+      width: '18px',
+      height: `${rect.height}px`
+    });
+    document.body.append(target);
+    return { x: rail.right + 5, y: rect.top + rect.height / 2 };
+  });
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, point)).toBe(
+    'badge-adjacent-target'
+  );
+  await page.mouse.move(
+    workspaceIcon.x + workspaceIcon.width / 2,
+    workspaceIcon.y + workspaceIcon.height / 2
+  );
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => nav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const scroll = await nav.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    height: element.clientHeight,
+    scrollWidth: element.scrollWidth,
+    width: element.clientWidth
+  }));
+  expect(scroll.scrollHeight).toBeGreaterThan(scroll.height);
+  expect(scroll.scrollWidth).toBeLessThanOrEqual(scroll.width);
+});
 
 test('Conversation disclosure arrows share MAR geometry and retain nested keyboard toggles', async ({
   page

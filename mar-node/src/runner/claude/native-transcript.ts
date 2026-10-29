@@ -423,7 +423,8 @@ export const claudeNativeTranscriptAdapter: NativeTranscriptAdapter = {
           entry.failed,
           entry.inputTruncated || entry.outputTruncated,
           titles,
-          claudeNativeToolResultMetadata(entry.subagentResult)
+          claudeNativeToolResultMetadata(entry.subagentResult),
+          entry.outputTruncated
         ),
       userInputQuestions: (entry) =>
         entry.toolName === 'AskUserQuestion' && isPlainRecord(entry.input)

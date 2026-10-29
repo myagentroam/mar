@@ -56,7 +56,6 @@ export interface NodeControlStore extends NodeIdentityStore, AuditObserver {
 export interface NodeBrokerTransport {
   socketFor(nodeId: string): WebSocket | undefined;
   allows(socket: WebSocket, operation: string): boolean;
-  encode(socket: WebSocket, envelope: NodeEnvelope): unknown;
 }
 
 export interface NodeControlTransport extends NodeBrokerTransport {
@@ -143,8 +142,6 @@ export class NodeControl extends NodeIdentityControl {
           this.allowsNodeBusiness(socket) ||
           operation === 'node.upgrade.request' ||
           operation === 'node.upgrade.cancel',
-        encode: (socket, envelope) =>
-          this.nodeWireVersion(socket) === 2 ? { ...envelope, version: 2 } : envelope,
         capabilities: (nodeId) => this.nodeCapabilities(nodeId),
         request: (nodeId, operation, data, user) => this.requestNode(nodeId, operation, data, user),
         sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),

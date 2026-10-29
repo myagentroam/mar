@@ -317,8 +317,7 @@ const snapshot = {
       hostedWebSearch: false,
       responsesPreviousResponseId: false,
       enabled: true,
-      sortOrder: 0,
-      apiKeyConfigured: true
+      sortOrder: 0
     }
   ],
   error: null,

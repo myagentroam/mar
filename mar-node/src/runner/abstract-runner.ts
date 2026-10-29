@@ -85,7 +85,8 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
 
   abstract defaultConfiguration(
     workspace?: NodeWorkspace,
-    environment?: Readonly<Record<string, string>>
+    environment?: Readonly<Record<string, string>>,
+    executionContext?: RunnerExecutionContext
   ): RunnerDefaultConfiguration;
 
   goalAccess(currentAccess: string | null): {
@@ -123,8 +124,8 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
     return this.profileForValidation().models;
   }
 
-  assertChildModel(modelId: string | null): void {
-    void modelId;
+  assertChildModel(modelId: string | null, executionContext: RunnerExecutionContext): void {
+    void [modelId, executionContext];
   }
 
   abstract resumeExternal(

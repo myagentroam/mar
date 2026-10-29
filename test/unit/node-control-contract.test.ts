@@ -127,7 +127,7 @@ describe('Node controlled relay contract', () => {
       await receive('capabilities', {
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.39',
         nodeVersion: 'v24',
         codex: { available: false },
         claudeCode: { available: false }
@@ -207,7 +207,7 @@ describe('Node controlled relay contract', () => {
         database as never,
         database.userCanRequestNode,
         () => socket as never,
-        { allows: () => true, encode: (_socket, envelope) => envelope },
+        { allows: () => true },
         testNodeBrokerServices()
       );
       try {
@@ -565,7 +565,7 @@ describe('Node controlled relay contract', () => {
           capabilities: {
             platform: 'linux',
             architecture: 'x64',
-            nodeAppVersion: '0.11.38',
+            nodeAppVersion: '0.11.39',
             nodeVersion: 'v24.15.0',
             codex: { available: true },
             claudeCode: { available: true },
@@ -657,7 +657,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
 
@@ -707,7 +707,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     const user = { userId: 7, sessionHash: 'session-hash' };
@@ -856,7 +856,7 @@ describe('Node controlled relay contract', () => {
       database,
       (userId, nodeId) => database.userOwnsNode(userId, nodeId),
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     await expect(
@@ -886,7 +886,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices(),
       log
     );
@@ -945,7 +945,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     const user = { userId: 2, sessionHash: 'session', workspaceId: 'workspace-a' };
@@ -997,7 +997,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     const pending = broker.request(
@@ -1042,7 +1042,7 @@ describe('Node controlled relay contract', () => {
         database as never,
         database.userCanRequestNode,
         () => socket as never,
-        { allows: () => true, encode: (_socket, envelope) => envelope },
+        { allows: () => true },
         testNodeBrokerServices()
       );
       const pending = broker.request(
@@ -1087,7 +1087,7 @@ describe('Node controlled relay contract', () => {
       { audit } as never,
       async () => true,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     const user = { userId: 2, sessionHash: 'session', workspaceId: 'workspace-a' };
@@ -1199,7 +1199,7 @@ describe('Node controlled relay contract', () => {
       database as never,
       database.userCanRequestNode,
       () => socket as never,
-      { allows: () => true, encode: (_socket, envelope) => envelope },
+      { allows: () => true },
       testNodeBrokerServices()
     );
     const pending = broker.request(
@@ -1438,7 +1438,7 @@ describe('Node controlled relay contract', () => {
       metadata: JSON.stringify({
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.39',
         nodeVersion: 'v24',
         codex: { available: false },
         claudeCode: { available: false }
@@ -1489,7 +1489,7 @@ describe('Node controlled relay contract', () => {
         createEnvelope('capabilities', {
           platform: 'linux',
           architecture: 'x64',
-          nodeAppVersion: '0.11.38',
+          nodeAppVersion: '0.11.39',
           nodeVersion: 'v24',
           codex: { available: false },
           claudeCode: { available: false }

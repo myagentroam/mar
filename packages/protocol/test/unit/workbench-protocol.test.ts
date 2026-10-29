@@ -97,7 +97,6 @@ describe('Workbench protocol contracts', () => {
         command: 'source',
         cwd: null,
         outputPreview: '',
-        outputRef: null,
         exitCode: null,
         durationMs: null,
         truncated: false
@@ -132,7 +131,6 @@ describe('Workbench protocol contracts', () => {
         command: 'echo',
         cwd: null,
         outputPreview: '',
-        outputRef: null,
         exitCode: null,
         durationMs: null,
         truncated: false,
@@ -418,8 +416,7 @@ describe('Workbench protocol contracts', () => {
       hostedWebSearch: true,
       enabled: true,
       sortOrder: 0,
-      access: 'PUBLIC',
-      apiKeyConfigured: true
+      access: 'PUBLIC'
     };
     expect(marAgentModelSummarySchema.safeParse(summary).success).toBe(true);
     expect(
@@ -451,13 +448,10 @@ describe('Workbench protocol contracts', () => {
     expect(marAgentModelSummarySchema.safeParse({ ...summary, apiKey: 'secret' }).success).toBe(
       false
     );
-    const { apiKeyConfigured, sortOrder, access, ...runtime } = summary;
-    expect(apiKeyConfigured).toBe(true);
+    const { sortOrder, access, ...runtime } = summary;
     expect(sortOrder).toBe(0);
     expect(access).toBe('PUBLIC');
-    expect(
-      marAgentNodeModelSummarySchema.safeParse({ ...runtime, apiKeyConfigured, sortOrder }).success
-    ).toBe(true);
+    expect(marAgentNodeModelSummarySchema.safeParse({ ...runtime, sortOrder }).success).toBe(true);
     expect(marAgentNodeModelSummarySchema.safeParse(summary).success).toBe(false);
     expect(
       marAgentNodeModelSummarySchema.parse({
@@ -485,13 +479,13 @@ describe('Workbench protocol contracts', () => {
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...runtime,
-        apiKey: 'secret'
+        credential: { type: 'INLINE_API_KEY', value: 'secret' }
       }).success
     ).toBe(true);
     expect(
       marAgentRuntimeModelConfigurationSchema.safeParse({
         ...runtime,
-        apiKey: 'secret',
+        credential: { type: 'INLINE_API_KEY', value: 'secret' },
         inputCapabilities: ['IMAGE']
       }).success
     ).toBe(false);

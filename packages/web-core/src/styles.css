@@ -453,11 +453,16 @@ html.console-ui
 }
 
 html.console-ui .el-message-box {
+  --el-messagebox-font-size: var(--mar-font-size-title);
   display: inline-flex;
   flex-direction: column;
   max-height: calc(
     100dvh - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px))
   );
+}
+
+html.console-ui .el-dialog {
+  --el-dialog-title-font-size: var(--mar-font-size-title);
 }
 
 html.console-ui .el-message-box > :is(.el-message-box__header, .el-message-box__btns) {
@@ -602,7 +607,7 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-primary-control-size: 30px;
     --mar-utility-control-size: 31px;
     --mar-compact-row-size: 27px;
-    --mar-session-row-min-height: 34px;
+    --mar-session-row-min-height: 30px;
     --mar-session-row-padding-block: 0.2rem;
     --mar-brand-logo-size: 35px;
     --mar-rail-item-height: 51px;
@@ -610,7 +615,9 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --sidebar-header-height: var(--mar-workbench-header-height);
     --mar-activity-rail-width: 52px;
     --mar-workbench-sidebar-width: 244px;
-    --mar-workbench-sidebar-total-width: 296px;
+    --mar-workbench-sidebar-total-width: calc(
+      var(--mar-activity-rail-width) + var(--mar-workbench-sidebar-width)
+    );
     --mar-workbench-header-height: 44px;
     --mar-session-sidebar-width: 262px;
     --mar-inspector-min-width: 275px;
@@ -626,7 +633,6 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
 @media (min-width: 768px) and (max-width: 860px) {
   html.console-ui {
     --mar-workbench-sidebar-width: 220px;
-    --mar-workbench-sidebar-total-width: 272px;
   }
 }
 
@@ -1344,12 +1350,11 @@ pre {
 
 .conversation-detail-body {
   min-width: 0;
-  padding: 0.625rem var(--conversation-detail-end, 0.75rem) 0.625rem
-    var(--conversation-detail-start, calc(1em + 0.5rem));
+  padding: 0.625rem var(--conversation-detail-end, 0.75rem) 0.625rem 0.75rem;
   border: 0;
-  border-radius: var(--mar-radius-control);
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-code);
-  color: var(--mar-text-secondary);
+  color: var(--mar-conversation-text);
   font-size: var(--mar-font-size-body);
   font-weight: 400;
   line-height: 1.65;

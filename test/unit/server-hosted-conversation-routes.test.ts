@@ -431,8 +431,7 @@ describe('Server hosted conversation routes', () => {
       responsesPreviousResponseId: false,
       subagentModel: false,
       enabled: true,
-      sortOrder: 0,
-      apiKeyConfigured: true
+      sortOrder: 0
     };
     fixture.nodeControl.requestHostedConversationNode.mockResolvedValueOnce({
       models: [optionModel],
@@ -1855,7 +1854,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   name: 'Model One',
   protocol: 'OPENAI_RESPONSES',
   baseUrl: 'https://models.example.test/v1',
-  apiKey: 'secret',
+  credential: { type: 'INLINE_API_KEY', value: 'secret' },
   modelId: 'model-one',
   contextWindowTokens: 100_000,
   maxOutputTokens: 4096,

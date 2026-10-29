@@ -2,6 +2,7 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ref as reactiveRef } from 'vue';
 import { createWorkbenchComposerController } from '../../src/service/workbench-composer-controller.js';
+import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 import type {
   RunnerDefaultConfiguration,
   RunnerProfile,
@@ -467,6 +468,126 @@ describe('Workbench Composer Controller', () => {
       await vi.waitFor(() => expect(sessions.value).toEqual([updated]));
     }
   );
+
+  it.each([
+    { name: 'the old model loses Subagent usage', retained: true, eligible: true },
+    { name: 'the old model is removed', retained: false, eligible: true },
+    { name: 'no eligible child models remain', retained: false, eligible: false }
+  ])('uses the Composer child candidates for repair when $name', async ({ retained, eligible }) => {
+    const stale: Session = {
+      id: 'child',
+      workspaceId: 'workspace-a',
+      runner: 'mar-agent',
+      sessionGroup: 'CHILD',
+      model: 'revoked-model',
+      effort: 'high',
+      access: 'auto'
+    };
+    const selectedSession = reactiveRef<Session | undefined>(stale);
+    const sessions = reactiveRef<Session[]>([stale]);
+    const profiles = reactiveRef<readonly RunnerProfile[]>([]);
+    const profile: RunnerProfile = {
+      runner: 'mar-agent',
+      models: [
+        { id: 'parent-only', label: 'Parent', supportedEfforts: ['high'], subagentModel: false },
+        ...(retained
+          ? [
+              {
+                id: 'revoked-model',
+                label: 'Revoked',
+                supportedEfforts: ['high'],
+                subagentModel: false
+              }
+            ]
+          : []),
+        ...(eligible
+          ? [
+              {
+                id: 'child-allowed',
+                label: 'Child',
+                supportedEfforts: ['low'],
+                defaultEffort: 'low',
+                subagentModel: true
+              }
+            ]
+          : [])
+      ],
+      accessOptions: [{ id: 'auto', label: 'Auto' }],
+      commands: [],
+      capabilities: ['turn.start']
+    };
+    const state = createComposerConfigurationService({
+      selectedSession,
+      profiles,
+      effortLabel: String
+    });
+    const updated = { ...stale, model: 'child-allowed', effort: 'low' };
+    const request = vi.fn(async () => ({ session: updated }));
+    const save = vi.fn();
+    const controller = createWorkbenchComposerController({
+      workspaceTarget: workspaceTargetRef(reactiveRef<string | undefined>('node-a')),
+      selectedSession,
+      sessions,
+      profiles,
+      draftOpen: reactiveRef(false),
+      loading: reactiveRef(false),
+      runner: state.runner,
+      model: state.model,
+      effort: state.effort,
+      access: state.access,
+      setModel: state.selectModel,
+      setEffort: state.selectEffort,
+      setAccess: state.selectAccess,
+      clearModelEffortSelection: state.clearModelEffortSelection,
+      codexFastEnabled: reactiveRef(false),
+      profileService: {
+        load: async () => {
+          profiles.value = [profile];
+          return { profiles: profiles.value, defaultsChanged: false };
+        },
+        defaultFor: () => ({
+          runner: 'mar-agent',
+          model: 'parent-only',
+          effort: 'high',
+          access: 'auto'
+        }),
+        save
+      },
+      normalize: state.normalize,
+      apply: state.apply,
+      ensureDraftSupported: vi.fn(),
+      clearRunnerCommand: vi.fn(),
+      request: request as never,
+      sessionPathId: String,
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    controller.applyConfiguration(stale);
+    await controller.loadProfiles('node-a');
+    expect(save).not.toHaveBeenCalled();
+    if (eligible) {
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith('/api/agent-sessions/child/config', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nodeId: 'node-a',
+          workspaceId: 'workspace-a',
+          model: 'child-allowed',
+          effort: 'low',
+          access: 'auto'
+        })
+      });
+      expect(sessions.value).toEqual([updated]);
+      expect(state.model.value).toBe('child-allowed');
+      expect(state.modelEffortLabel.value).toBe('Child low');
+    } else {
+      expect(request).not.toHaveBeenCalled();
+      expect(sessions.value).toEqual([stale]);
+      expect(state.models.value).toEqual([]);
+      expect(state.model.value).toBe('');
+      expect(state.modelEffortLabel.value).toBe('revoked-model high');
+    }
+  });
 
   it('does not repair a MAR Agent model from a provisional session summary before authoritative details arrive', async () => {
     const provisionalSession: Session = {

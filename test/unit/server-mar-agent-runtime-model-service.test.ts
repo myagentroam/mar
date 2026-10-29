@@ -250,7 +250,7 @@ describe('Server MAR Agent runtime model service', () => {
       }
     });
     expect(result.models.find((entry) => entry.id === 'static-model')).toMatchObject({
-      apiKey: 'static-secret'
+      credential: { type: 'INLINE_API_KEY', value: 'static-secret' }
     });
     const primaryTicket = result.models.find((entry) => entry.id === 'codex-primary')!.credential;
     const reviewTicket = result.models.find((entry) => entry.id === 'codex-review')!.credential;
@@ -472,7 +472,7 @@ describe('Server MAR Agent runtime model service', () => {
       runtimeScopeId: 'scope-static-test',
       model: expect.objectContaining({
         id: 'static-model',
-        apiKey: 'static-secret'
+        credential: { type: 'INLINE_API_KEY', value: 'static-secret' }
       })
     });
     expect(issue).not.toHaveBeenCalled();

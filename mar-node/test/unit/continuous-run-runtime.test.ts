@@ -482,12 +482,13 @@ describe('Node Runtime history boundaries', () => {
       cwd: session.cwd
     });
     expect(runtime.conversationTurnForRun(run.id)).toBeUndefined();
-    runtime.recordCommandExecution({
+    const command = runtime.recordCommandExecution({
       sessionId: session.id,
       command: 'pwd',
       cwd: session.cwd,
       outputPreview: session.cwd
     });
+    expect(command.items[0]?.payload).not.toHaveProperty('outputRef');
     expect(runtime.conversationTurnForRun(run.id)).toBeUndefined();
 
     runtime.appendRunEvent({

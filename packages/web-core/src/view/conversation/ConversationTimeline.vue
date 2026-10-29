@@ -649,6 +649,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             v-if="displayItem.text"
             :open="reasoningDisclosure[displayItem.id]"
             @toggle="updateReasoningDisclosure(displayItem.id, $event)"
+            @vue:unmounted="delete reasoningDisclosure[displayItem.id]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -721,6 +722,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-record-group"
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[`group:${displayItem.id}`]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -748,6 +750,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 class="conversation-tool-detail"
                 :open="groupedItemDisclosure[toolItem.id] === true"
                 @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
+                @vue:unmounted="delete groupedItemDisclosure[toolItem.id]"
               >
                 <summary class="mar-disclosure-summary">
                   <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -779,6 +782,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             :data-tool-presentation="displayItem.type === 'read_group' ? 'READ' : undefined"
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[`group:${displayItem.id}`]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -815,6 +819,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               :data-read-path="entry.path"
               :open="groupedItemDisclosure[entry.id] === true"
               @toggle="updateGroupedItemDisclosure(entry.id, $event)"
+              @vue:unmounted="delete groupedItemDisclosure[entry.id]"
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -845,6 +850,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             class="conversation-record-group"
             :open="groupedItemDisclosure[`group:${displayItem.id}`] === true"
             @toggle="updateGroupedItemDisclosure(`group:${displayItem.id}`, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[`group:${displayItem.id}`]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -864,6 +870,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               class="conversation-command-detail"
               :open="groupedItemDisclosure[commandItem.id] === true"
               @toggle="updateGroupedItemDisclosure(commandItem.id, $event)"
+              @vue:unmounted="delete groupedItemDisclosure[commandItem.id]"
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -896,6 +903,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             v-if="conversationFileChangeEntries(displayItem.items).length > 0"
             class="conversation-file-change-details"
             @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[displayItem.id]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -1775,7 +1783,9 @@ function stepDuration(item: ConversationItem): string | undefined {
   box-sizing: border-box;
 }
 
-.conversation-item:has(> details.conversation-tool-presentation) > details > :not(summary),
+.conversation-item:has(> details.conversation-tool-presentation)
+  > details
+  > :not(summary):not(.conversation-detail-body),
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -1784,7 +1794,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     .file-change-group
   )
   > details
-  > :not(summary):not(details) {
+  > :not(summary):not(details):not(.conversation-detail-body) {
   margin: 0 var(--conversation-item-inset) 8px;
 }
 
@@ -1949,6 +1959,9 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item .conversation-detail-body {
   margin: 0.5rem var(--conversation-item-inset);
+  margin-inline-start: calc(
+    var(--conversation-item-inset) + var(--conversation-detail-start, calc(1em + 0.5rem)) - 0.75rem
+  );
 }
 
 .conversation-item .conversation-detail-body > .conversation-detail-text {

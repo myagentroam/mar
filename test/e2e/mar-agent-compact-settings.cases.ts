@@ -85,7 +85,6 @@ function model(
     access: 'RESTRICTED',
     credentialType: 'INLINE_API_KEY',
     credentialConfigured: true,
-    apiKeyConfigured: true,
     lastTestedAt: null,
     lastTestStatus: 'UNVERIFIED',
     lastTestCode: null,

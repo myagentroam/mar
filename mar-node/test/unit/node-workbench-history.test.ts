@@ -1366,7 +1366,6 @@ describe('Node Workbench history projection and pagination', () => {
         command: 'git status --short',
         cwd: workspace.path,
         outputPreview: 'command output',
-        outputRef: null,
         exitCode: 0,
         durationMs: 1,
         truncated: false

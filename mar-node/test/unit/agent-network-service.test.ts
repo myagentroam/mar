@@ -1,14 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
 import { AgentNetworkService } from '../../src/service/agent-network-service.js';
 import { invokeAgentNetwork } from '../../src/service/agent-network-invoke.js';
 import type { ExtensionOperationContext } from '@myagentroam/agent/extensions';
 
-function fixture() {
+function fixture(parentSessionId: string | null = 'parent') {
   const observations = new AgentNetworkObservations();
   const parent = observations.attach('parent');
-  const target = { id: 'child', workspaceId: 'workspace' } as NodeAgentSession;
+  const target = {
+    id: 'child',
+    workspaceId: 'workspace',
+    parentSessionId
+  } as NodeAgentSession;
   let goal: unknown = { objective: 'old' };
   const setGoal = vi.fn(async (_actor, _session, change) => {
     goal = change.kind === 'clear' ? undefined : { objective: change.objective };
@@ -26,7 +30,9 @@ function fixture() {
   });
   const resolveTarget = vi.fn(async (_actor, _id: string) => target);
   const children = vi.fn(async () => [target]);
-  const observe = vi.fn();
+  const observe = vi.fn(() => {
+    if (!observations.get('parent')) observations.attach('parent');
+  });
   const freezeExecution = vi.fn((session: NodeAgentSession) => ({
     agentId: session.id,
     runId: 'run',
@@ -69,6 +75,8 @@ function fixture() {
   return {
     actor,
     service,
+    observations,
+    target,
     parent,
     publish,
     setGoal,
@@ -85,7 +93,198 @@ function fixture() {
   };
 }
 
+afterEach(() => vi.useRealTimers());
+
 describe('Agent Network send and stop', () => {
+  it.each(['message', 'goal', 'failed message'])(
+    'does not subscribe to a non-child after sending %s',
+    async (operation) => {
+      const f = fixture('other-parent');
+      if (operation === 'failed message')
+        f.message.mockRejectedValueOnce(new Error('DELIVERY_FAILED'));
+      await f.service.send(f.actor, {
+        agentId: f.target.id,
+        ...(operation === 'goal' ? { goal: { clear: true } } : { content: 'work' })
+      });
+      expect(f.observe).not.toHaveBeenCalled();
+      f.observations.publishChild({
+        parentId: 'other-parent',
+        childId: f.target.id,
+        runId: 'run',
+        executionId: 'execution',
+        kind: 'message',
+        value: 'peer update'
+      });
+      expect(await f.parent.collect(new AbortController().signal)).toEqual([]);
+      expect(f.parent.wake.pending()).toBe(false);
+    }
+  );
+
+  it.each(['send', 'wait'] as const)(
+    'repairs a missing direct-parent observation channel through %s',
+    async (operation) => {
+      const f = fixture();
+      f.parent.close();
+      if (operation === 'send')
+        await f.service.send(f.actor, { agentId: f.target.id, content: 'continue' });
+      else await f.service.wait(f.actor, { agentId: f.target.id, waitMs: 0 });
+      f.observations.publishChild({
+        parentId: f.actor.sessionId,
+        childId: f.target.id,
+        runId: 'run',
+        executionId: 'execution',
+        kind: 'message',
+        value: 'child update'
+      });
+      const repaired = f.observations.get(f.actor.sessionId)!;
+      expect((await repaired.collect(new AbortController().signal))[0]?.content).toContain(
+        'child update'
+      );
+      repaired.close();
+    }
+  );
+
+  it('does not subscribe to a non-child for a zero-duration snapshot', async () => {
+    const f = fixture(null);
+    const watch = vi.spyOn(f.observations, 'watchExecutions');
+    expect(await f.service.wait(f.actor, { agentId: f.target.id, waitMs: 0 })).toMatchObject({
+      waitOutcome: 'snapshot',
+      status: 'RUNNING'
+    });
+    expect(f.observe).not.toHaveBeenCalled();
+    expect(watch).not.toHaveBeenCalled();
+  });
+
+  it.each(['message', 'completion', 'timeout', 'cancel', 'interrupt', 'failure'] as const)(
+    'releases a non-child wait on %s without automatic context or wake delivery',
+    async (outcome) => {
+      vi.useFakeTimers();
+      const f = fixture('other-parent');
+      // A horizontal wait must also work without a Session-level observation channel.
+      f.parent.close();
+      const watch = vi.spyOn(f.observations, 'watchExecutions');
+      let status = 'RUNNING';
+      let failure = false;
+      let interrupted = false;
+      let interrupt = () => {};
+      f.freezeExecution.mockReturnValue({
+        agentId: f.target.id,
+        runId: 'run',
+        executionId: 'execution',
+        read: () => {
+          if (failure) throw new Error('READ_FAILED');
+          return { status };
+        }
+      });
+      const abort = new AbortController();
+      const waiting = f.service.wait(f.actor, {
+        agentId: f.target.id,
+        waitFor: outcome === 'message' ? 'message' : 'completion',
+        waitMs: 10_000,
+        signal: abort.signal,
+        interrupt: {
+          pending: () => interrupted,
+          subscribe: (listener) => {
+            interrupt = listener;
+            return () => {
+              interrupt = () => {};
+            };
+          }
+        }
+      });
+      // Handle rejections before advancing the fake clock.
+      const result = waiting.then(
+        (value) => ({ value }),
+        (error: Error) => ({ error })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(watch).toHaveBeenCalledOnce();
+      const temporary = watch.mock.results[0]!.value;
+      const publish = (kind: 'message' | 'terminal', value: string, executionId = 'execution') =>
+        f.observations.publishChild({
+          parentId: 'other-parent',
+          childId: f.target.id,
+          runId: 'run',
+          executionId,
+          kind,
+          value
+        });
+      publish('message', 'different execution', 'next-execution');
+      expect(temporary.capture(f.target.id)).toBeUndefined();
+      publish('message', 'progress');
+      expect(f.observations.get(f.actor.sessionId)).toBeUndefined();
+      expect(f.parent.wake.pending()).toBe(false);
+      expect(await f.parent.collect(abort.signal)).toEqual([]);
+      if (outcome === 'completion') {
+        status = 'SUCCEEDED';
+        publish('terminal', status);
+      } else if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+      else if (outcome === 'cancel') abort.abort(new Error('CANCELLED'));
+      else if (outcome === 'interrupt') {
+        interrupted = true;
+        interrupt();
+      } else if (outcome === 'failure') {
+        failure = true;
+        await vi.advanceTimersByTimeAsync(10_000);
+      }
+      const settled = await result;
+      if (outcome === 'cancel' || outcome === 'failure')
+        expect(settled).toMatchObject({
+          error: { message: outcome === 'cancel' ? 'CANCELLED' : 'READ_FAILED' }
+        });
+      else
+        expect(settled).toMatchObject({
+          value: {
+            waitOutcome: outcome === 'interrupt' ? 'interrupted' : outcome,
+            updates: expect.arrayContaining([expect.objectContaining({ value: 'progress' })])
+          }
+        });
+      const deliveredAfterClose = vi.spyOn(temporary, 'publish');
+      publish('message', 'after wait');
+      expect(deliveredAfterClose).not.toHaveBeenCalled();
+      expect(temporary.capture(f.target.id)).toBeUndefined();
+      expect(f.observe).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps concurrent mixed waits independent while only direct children enter automatic context', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const peer = { ...f.target, id: 'peer', parentSessionId: null };
+    f.resolveTarget.mockImplementation(async (_actor, id) => (id === 'peer' ? peer : f.target));
+    const watch = vi.spyOn(f.observations, 'watchExecutions');
+    const mixed = f.service.wait(f.actor, {
+      agentIds: [f.target.id, peer.id],
+      mode: 'all',
+      waitFor: 'message'
+    });
+    const single = f.service.wait(f.actor, { agentId: peer.id, waitFor: 'message' });
+    await vi.advanceTimersByTimeAsync(0);
+    f.observations.publishChild({
+      childId: peer.id,
+      runId: 'run',
+      executionId: 'execution',
+      kind: 'message',
+      value: 'peer reply'
+    });
+    expect(await single).toMatchObject({ agentId: peer.id, waitOutcome: 'message' });
+    expect(await f.parent.collect(new AbortController().signal)).toEqual([]);
+    f.publish('child reply');
+    expect(await mixed).toMatchObject({
+      waitOutcome: 'message',
+      agents: [
+        { agentId: f.target.id, updates: [{ value: 'child reply' }] },
+        { agentId: peer.id, updates: [{ value: 'peer reply' }] }
+      ]
+    });
+    expect(watch).toHaveBeenCalledTimes(2);
+    expect(f.parent.capture(peer.id)).toBeUndefined();
+    f.publish('later child reply');
+    expect((await f.parent.collect(new AbortController().signal))[0]?.content).toContain(
+      'later child reply'
+    );
+  });
+
   it('rejects missing or blank execution titles before admission while terminal titles remain optional', async () => {
     const f = fixture();
     const executionActor = { ...f.actor, executionId: 'execution' };
@@ -451,6 +650,7 @@ describe('Agent Network send and stop', () => {
           ({
             id: `child-${index}`,
             workspaceId: 'workspace',
+            parentSessionId: 'parent',
             createdAt: index
           }) as NodeAgentSession
       )

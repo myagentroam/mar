@@ -442,8 +442,7 @@ function routeFixture() {
     responsesPreviousResponseId: coding.responsesPreviousResponseId,
     enabled: coding.enabled,
     sortOrder: 0,
-    access: 'PUBLIC',
-    apiKeyConfigured: true
+    access: 'PUBLIC'
   };
   const database = {
     findCurrentUserSession: vi.fn(() => ({
@@ -484,7 +483,7 @@ function runtimeModel(id: string): MarAgentRuntimeModelConfiguration {
     name: id,
     protocol: 'OPENAI_RESPONSES',
     baseUrl: 'https://models.example.test',
-    apiKey: `${id}-secret`,
+    credential: { type: 'INLINE_API_KEY', value: `${id}-secret` },
     modelId: id,
     contextWindowTokens: 128_000,
     maxOutputTokens: 8_192,

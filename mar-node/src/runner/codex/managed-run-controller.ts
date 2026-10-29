@@ -10,7 +10,7 @@ import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
 import type { CodexComposerInput, CodexRunConfiguration } from './codex-app-server.js';
 import type { RunnerExecutionStatus } from '../contracts.js';
 import { extractId } from './conversation-parser.js';
-import { publicOutputSnapshot } from '../execution-presentation.js';
+import { publicOutputSnapshot } from '../normalization.js';
 import { normalizeCodexApproval } from './tool-normalizer.js';
 import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';

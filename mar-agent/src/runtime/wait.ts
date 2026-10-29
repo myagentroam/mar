@@ -59,9 +59,14 @@ export function waitForToolCondition(input: {
       else reject(error);
     };
     const check = () => {
-      if (input.signal?.aborted) abort();
-      else if (input.ready()) finish('ready');
-      else if (input.interrupt?.pending()) finish('interrupted');
+      if (settled) return;
+      try {
+        if (input.signal?.aborted) abort();
+        else if (input.ready()) finish('ready');
+        else if (input.interrupt?.pending()) finish('interrupted');
+      } catch (error) {
+        finish('interrupted', error);
+      }
     };
     const abort = () =>
       finish(

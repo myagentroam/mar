@@ -159,7 +159,8 @@ import type {
 } from '../../runtime-model.js';
 import { parseCodexComposerImageMarkers } from './composer-image-markers.js';
 import { normalizeCodexTool } from './tool-normalizer.js';
-import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
+import { shellExecution } from '../execution-presentation.js';
+import { publicOutputSnapshot } from '../normalization.js';
 import { publicGoalHistoryText } from '../../service/goal-runtime.js';
 const MAX_COMPOSER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
@@ -682,6 +683,7 @@ export function mergeCodexCustomToolItems(
           resultPayload.outputPreview ??
           resultPayload.outputSummary ??
           invocationPayload.outputPreview,
+        ...(resultPayload.output === undefined ? {} : { output: resultPayload.output }),
         exitCode: resultPayload.exitCode ?? invocationPayload.exitCode,
         durationMs: resultPayload.durationMs ?? invocationPayload.durationMs,
         truncated: invocationPayload.truncated === true || resultPayload.truncated === true,
@@ -699,6 +701,7 @@ export function mergeCodexCustomToolItems(
     payload: {
       ...invocationPayload,
       outputSummary: resultPayload.outputSummary ?? invocationPayload.outputSummary,
+      ...(resultPayload.output === undefined ? {} : { output: resultPayload.output }),
       errorCode: resultPayload.errorCode ?? invocationPayload.errorCode,
       truncated: invocationPayload.truncated === true || resultPayload.truncated === true,
       ...(resultPayload.attachments === undefined ? {} : { attachments: resultPayload.attachments })
@@ -874,7 +877,6 @@ export function codexOfficialItem(
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
         outputPreview: publicOutputSnapshot(output).text,
-        outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -917,6 +919,7 @@ export function codexOfficialItem(
         toolName: typeof value.tool === 'string' ? value.tool : '',
         inputSummary: codexCompactJson(value.arguments),
         outputSummary: codexCompactJson(value.result),
+        ...(value.result == null ? {} : { output: publicOutputSnapshot(value.result) }),
         ...(value.error === undefined ? {} : { errorCode: codexCompactJson(value.error) })
       }
     };
@@ -965,12 +968,17 @@ export function codexOfficialItem(
         : typeof value.name === 'string'
           ? value.name
           : 'tool';
+    const outputValue = value.contentItems ?? value.output;
+    const output =
+      outputValue == null ? undefined : publicOutputSnapshot(codexToolOutput(outputValue));
     const normalized = normalizeCodexTool({
       name,
       namespace: typeof value.namespace === 'string' ? value.namespace : 'codex',
       rawInput: value.arguments ?? value.input,
       inputSummary: codexCompactJson(value.arguments ?? value.input),
-      outputSummary: codexToolOutputSummary(value.contentItems ?? value.output),
+      outputSummary: output?.text ?? null,
+      outputTruncated: output?.truncated ?? false,
+      truncated: output?.truncated ?? false,
       outputOnly:
         value.type === 'custom_tool_call_output' ||
         value.type === 'function_call_output' ||
@@ -1072,7 +1080,6 @@ export function codexLiveConversationItem(
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
         outputPreview: publicOutputSnapshot(output).text,
-        outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -1114,6 +1121,7 @@ export function codexLiveConversationItem(
         title: compactRunnerText(`${server}.${tool}`, 500),
         inputSummary: input.text || null,
         outputSummary: output.text || null,
+        ...(value.result == null ? {} : { output: publicOutputSnapshot(value.result) }),
         progressLabel: null,
         errorCode: error.text || null,
         truncated: input.truncated || output.truncated || error.truncated
@@ -1195,7 +1203,9 @@ export function codexLiveConversationItem(
           ? value.name
           : 'tool';
     const input = compactRunnerValue(value.arguments ?? value.input, 10_000);
-    const output = compactRunnerValue(codexToolOutput(value.contentItems ?? value.output), 10_000);
+    const outputValue = value.contentItems ?? value.output;
+    const output =
+      outputValue == null ? undefined : publicOutputSnapshot(codexToolOutput(outputValue));
     const outputOnly =
       value.type === 'custom_tool_call_output' ||
       value.type === 'function_call_output' ||
@@ -1206,8 +1216,9 @@ export function codexLiveConversationItem(
       namespace: typeof value.namespace === 'string' ? value.namespace : 'codex',
       rawInput: value.arguments ?? value.input,
       inputSummary: input.text || null,
-      outputSummary: output.text || null,
-      truncated: input.truncated || output.truncated,
+      outputSummary: output?.text ?? null,
+      truncated: input.truncated || output?.truncated === true,
+      outputTruncated: output?.truncated ?? false,
       outputOnly,
       attachments: imageAttachments
     });
@@ -1253,8 +1264,7 @@ function normalizeCodexFileChanges(
         path,
         change,
         additions: nonnegativeIntegerOrNull(value.additions),
-        deletions: nonnegativeIntegerOrNull(value.deletions),
-        diffAvailable: value.diffAvailable === true
+        deletions: nonnegativeIntegerOrNull(value.deletions)
       }
     ];
   });

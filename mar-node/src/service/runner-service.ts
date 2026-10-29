@@ -1,4 +1,8 @@
-import { runnerDefaultConfigurationSchema, type NodeCapabilities } from '@myagentroam/protocol';
+import {
+  runnerDefaultConfigurationSchema,
+  type NodeCapabilities,
+  type RunnerProfile
+} from '@myagentroam/protocol';
 import type { NodeDatabase } from '../database.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
@@ -67,12 +71,19 @@ export class RunnerService {
       readonly waitForRefresh?: unknown;
     };
     const marAgent = this.runners.optional('mar-agent');
+    let marAgentProfile: RunnerProfile | undefined;
     if (
       marAgent !== undefined &&
       'configureModels' in marAgent &&
       typeof marAgent.configureModels === 'function'
     )
-      marAgent.configureModels(input.marAgentModels);
+      marAgentProfile = marAgent.configureModels(input.marAgentModels) as RunnerProfile;
+    // Capture the request's display catalog before any asynchronous Runner refresh.
+    // This cache is not used for model admission.
+    const requestProfiles = (profiles: ReturnType<RunnerService['profiles']>) =>
+      profiles.map((profile) =>
+        profile.runner === 'mar-agent' && marAgentProfile !== undefined ? marAgentProfile : profile
+      );
     const environment = parseSecretEnvironment(input.secretEnvironment);
     const defaults = this.database()
       .getRunnerDefaults()
@@ -94,12 +105,12 @@ export class RunnerService {
     if (cacheOnly) {
       void refresh.catch(() => undefined);
       return {
-        profiles: this.profiles(environment),
+        profiles: requestProfiles(this.profiles(environment)),
         defaults
       };
     }
     return {
-      profiles: await refresh,
+      profiles: requestProfiles(await refresh),
       defaults
     };
   }

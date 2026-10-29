@@ -150,6 +150,7 @@ export class SessionExecution {
   private terminalAdmitted = false;
   private releaseLease: (() => Promise<void>) | undefined;
   private eventSequence = 0;
+  private readonly missedOutput = new Set<string>();
   private persistedTerminal = false;
   private completionAdmitted = false;
   private appendedMessages: { readonly recordId: string; readonly message: SessionModelMessage }[] =
@@ -358,8 +359,31 @@ export class SessionExecution {
         full.type === 'execution.cancelled'
       )
         this.#observedTerminal = structuredClone(full);
-      if (full.type === 'tool.output') this.events.pushIfWaiting(full);
-      else this.events.push(full);
+      if (full.type === 'tool.output') {
+        const missed = this.missedOutput.has(full.callId);
+        const deliver =
+          missed && full.output.displayOutput
+            ? {
+                ...full,
+                output: {
+                  ...full.output,
+                  mode: 'snapshot' as const,
+                  stdout: full.output.displayOutput.stdout,
+                  stderr: full.output.displayOutput.stderr,
+                  truncated:
+                    full.output.truncated ||
+                    full.output.displayOutput.stdoutDroppedBytes > 0 ||
+                    full.output.displayOutput.stderrDroppedBytes > 0
+                }
+              }
+            : full;
+        if (this.events.pushIfWaiting(deliver)) this.missedOutput.delete(full.callId);
+        else this.missedOutput.add(full.callId);
+      } else {
+        if (full.type === 'tool.completed' || full.type === 'tool.failed')
+          this.missedOutput.delete(full.callId);
+        this.events.push(full);
+      }
       ports.observe?.(full);
       this.compactRequests.publish(full);
       try {

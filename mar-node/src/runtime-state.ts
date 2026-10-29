@@ -1289,7 +1289,6 @@ export class NodeRuntimeState {
         command: input.command,
         cwd: input.cwd,
         outputPreview: input.outputPreview.slice(0, 10_000),
-        outputRef: null,
         exitCode: input.failed ? 1 : 0,
         durationMs: 0,
         truncated: false

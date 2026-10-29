@@ -215,7 +215,8 @@ export class SessionLifecycleService {
     }
     const environment = parseSecretEnvironment(input.secretEnvironment);
     const saved = database.getRunnerDefaults().find((value) => value.runner === runner.name);
-    const fallback = runner.defaultConfiguration(workspace, environment);
+    const executionContext = runner.prepareExecutionContext(input);
+    const fallback = runner.defaultConfiguration(workspace, environment, executionContext);
     const configuration: RunnerDefaultConfiguration = {
       runner: runner.name,
       model: typeof input.model === 'string' ? input.model : (saved?.model ?? fallback.model),
@@ -229,7 +230,8 @@ export class SessionLifecycleService {
     };
     if (runner.name === 'mar-agent' && !['auto', 'full-access'].includes(configuration.access))
       throw new Error('SESSION_INVALID');
-    if (parentSessionId !== undefined) runner.assertChildModel(configuration.model);
+    if (parentSessionId !== undefined)
+      runner.assertChildModel(configuration.model, executionContext);
     const session = this.options.runtime.createAgentSession({
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
       workspaceId: input.workspaceId,
@@ -273,8 +275,10 @@ export class SessionLifecycleService {
       !['auto', 'full-access'].includes(input.access as string)
     )
       throw new Error('SESSION_INVALID');
-    if (current.parentSessionId != null && typeof input.model === 'string')
-      this.options.runners.require(current.runner).assertChildModel(input.model);
+    if (current.parentSessionId != null && typeof input.model === 'string') {
+      const runner = this.options.runners.require(current.runner);
+      runner.assertChildModel(input.model, runner.prepareExecutionContext(input));
+    }
     const session = this.options.runtime.updateAgentSessionConfiguration({
       sessionId: current.id,
       ...(typeof input.model === 'string' ? { model: input.model } : {}),

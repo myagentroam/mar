@@ -258,22 +258,14 @@ function runTime(run: RecentRun): string {
 .recent-sessions-badge {
   position: absolute;
   top: calc(50% - 15px);
-  right: 0;
-  max-width: calc(100% + 2px);
+  right: -12px;
   pointer-events: none;
 }
 .recent-sessions-count-only {
   right: 4px;
-  max-width: calc(100% - 4px);
 }
 .recent-sessions-badge :deep(.session-state-count) {
   flex: none;
-}
-.recent-sessions-badge :deep(.session-state-unread) {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .mobile-mode {
   width: 36px;

@@ -9,6 +9,45 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('specialized tool details replace live output with the authoritative result', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1`);
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const read = page.locator('[data-tool-presentation="READ"]');
+  await read.locator(':scope > summary').click();
+  await read.locator('.conversation-tool-detail > summary').click();
+  for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
+    await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
+  const child = page.locator('.subagent-group');
+  await child.locator('.conversation-record-group > summary').click();
+  await child.locator('.conversation-tool-detail > summary').click();
+  const bodies = [
+    read.locator('.conversation-detail-text'),
+    page.locator('[data-tool-presentation="WEB_SEARCH"] .conversation-detail-text'),
+    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text'),
+    child.locator('.conversation-detail-text')
+  ];
+  await page.getByTestId('stream-details').click();
+  for (const body of bodies) {
+    await expect.poll(() => body.textContent()).toContain(':\n  live output\n\n  next line\n');
+    await expect(body).not.toContainText('Truncated');
+  }
+  await page.getByTestId('finish-details').click();
+  for (const body of bodies) {
+    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\nTruncated');
+    await expect(body).not.toContainText('live output');
+    await expect(body).not.toContainText('export const result');
+    await expect(body).not.toContainText('The requested page content.');
+    await expect(body).not.toContainText('Message delivered.');
+  }
+  await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'href',
+    'https://example.com/docs'
+  );
+});
+
 for (const width of [1280, 390]) {
   test(`execution details, copy and terminal replacement at ${width}px`, async ({
     browser
@@ -22,6 +61,7 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}conversation-tool-detail.html`);
       const exec = page.getByTestId('exec');
       await exec.locator('summary').click();
+      await expect(exec.locator('pre')).toHaveText(/^Tool: exec\nCommand: printf test[\s\S]*/);
       await expect(exec).toContainText('visible stdout');
       await expect(exec).toContainText('visible stderr');
       await expect(exec).not.toContainText('combined should not replace streams');
@@ -52,10 +92,13 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
       await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
+      await expect(page.getByTestId('wait').locator('pre')).toHaveText(
+        /^Tool: exec_wait\nCommand: pnpm test --filter fixture\nAction: poll\nTarget: p_fixture[\s\S]*/
+      );
       await page.getByTestId('declined').locator('summary').click();
       await expect(page.getByTestId('declined')).toContainText('Declined');
       await expect(page.getByTestId('declined')).not.toContainText(
@@ -106,7 +149,7 @@ for (const width of [1280, 390]) {
         await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
         await expect(detail.locator('pre')).toContainText('Code: observe.result(await tools.exec(');
         await expect(detail.locator('pre')).toContainText(
-          'Status: Completed\nOutput: visible stdout\nstderr: visible stderr'
+          'Output:\nvisible stdout\nstderr:\nvisible stderr'
         );
         await expect(detail).not.toContainText('Working directory:');
         await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -153,11 +196,17 @@ for (const width of [1280, 390]) {
         const reasoning = page.locator('.reasoning-group');
         await reasoning.locator('summary').click();
         const thinking = reasoning.locator('.conversation-detail-text');
+        const thinkingBounds = await thinking.boundingBox();
+        const reasoningTitleBounds = await reasoning.locator('summary strong').boundingBox();
+        expect(Math.abs(thinkingBounds!.x - reasoningTitleBounds!.x)).toBeLessThan(3);
         const thinkingStyle = await thinking.evaluate((element) => ({
           fontSize: getComputedStyle(element).fontSize,
           lineHeight: getComputedStyle(element).lineHeight,
+          color: getComputedStyle(element).color,
+          expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
           background: getComputedStyle(element.parentElement!).backgroundColor
         }));
+        expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
         const read = page.locator('[data-tool-presentation="READ"]');
         await read.locator(':scope > summary').click();
         await read.locator('.conversation-tool-detail > summary').click();
@@ -170,12 +219,30 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
+          const spacing = await surface.evaluate((element) => {
+            const text = element.querySelector(':scope > .conversation-detail-text')!;
+            const heading = element.parentElement!.querySelector(':scope > summary')!;
+            const title = heading.querySelector(
+              ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
+            )!;
+            return {
+              inset: text.getBoundingClientRect().left - element.getBoundingClientRect().left,
+              expectedInset: parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75,
+              titleOffset: text.getBoundingClientRect().left - title.getBoundingClientRect().left
+            };
+          });
+          expect(Math.abs(spacing.inset - spacing.expectedInset)).toBeLessThan(1);
+          expect(Math.abs(spacing.titleOffset)).toBeLessThan(3);
           await expect(surface).toHaveCSS('background-color', thinkingStyle.background);
+          const radius = await surface.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
+          );
+          await expect(surface).toHaveCSS('border-radius', radius);
           await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
             'font-size',
             thinkingStyle.fontSize

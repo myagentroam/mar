@@ -4,6 +4,7 @@ import { nextTick, watch, type Ref } from 'vue';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
 import { defaultEffortForModel } from './runner-profile-service.js';
+import { runnerModelCandidates } from '../util/runner-presentation.js';
 
 interface RunnerProfileDomain {
   load(
@@ -176,13 +177,10 @@ export function createWorkbenchComposerController(options: {
     )
       return;
     const profile = options.profiles.value.find((candidate) => candidate.runner === session.runner);
-    if (
-      profile === undefined ||
-      profile.models.length === 0 ||
-      profile.models.some((candidate) => candidate.id === session.model)
-    )
+    const candidates = runnerModelCandidates(profile, session);
+    if (candidates.length === 0 || candidates.some((candidate) => candidate.id === session.model))
       return;
-    const firstModel = profile.models[0]!;
+    const firstModel = candidates[0]!;
     options.setModel(firstModel.id, defaultEffortForModel(firstModel));
     repairingSessionId = session.id;
     try {

@@ -185,26 +185,22 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'en_US.UTF-8',
       [
-        'Prefer --steer for timely coordination',
-        'results the recipient is waiting for',
-        'Use --queue only for deliberately deferred follow-up work',
-        'switch the current execution',
-        'waits for that execution and earlier queued work',
-        'Use --steer instead',
-        'Goal exits',
+        'Prefer --steer for timely communication or course correction',
+        'Use --queue only for deliberately deferred input',
+        'current work and earlier queued inputs finish',
+        'not consumed until that Goal exits',
+        'Acceptance does not guarantee immediate processing',
         'RUNNING/IDLE/SLEEPING'
       ]
     ],
     [
       'zh_CN.UTF-8',
       [
-        '及时协作优先使用 --steer',
-        '对方正在等待的结果',
-        '仅明确要延后执行的后续工作使用 --queue',
-        '切换当前执行',
-        '等待当前执行和前面的队列项',
-        '应使用 --steer',
-        'Goal 退出',
+        '即时沟通或纠偏优先使用 --steer',
+        '仅明确要延后处理的输入使用 --queue',
+        '当前工作及前面的队列项结束后才消费',
+        '必须等到该 Goal 退出才消费',
+        '已接收不保证立即处理',
         'RUNNING/IDLE/SLEEPING'
       ]
     ]

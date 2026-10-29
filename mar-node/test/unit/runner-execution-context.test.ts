@@ -16,7 +16,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   name: 'Coding',
   protocol: 'ANTHROPIC_MESSAGES',
   baseUrl: 'https://example.test',
-  apiKey: 'synthetic-key',
+  credential: { type: 'INLINE_API_KEY', value: 'synthetic-key' },
   modelId: 'coding',
   contextWindowTokens: 200_000,
   maxOutputTokens: 4096,

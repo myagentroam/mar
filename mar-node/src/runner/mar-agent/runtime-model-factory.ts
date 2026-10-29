@@ -146,9 +146,8 @@ export class MarAgentRuntimeModelFactory {
             : { responsesConfigurationUpdates: configuration.responsesConfigurationUpdates }),
           enabled: configuration.enabled
         };
-        const { apiKey, credential } = configuration;
-        if (apiKey !== undefined) return { ...model, apiKey: new SecretValue(apiKey) };
-        if (credential?.type === 'INLINE_API_KEY')
+        const { credential } = configuration;
+        if (credential.type === 'INLINE_API_KEY')
           return {
             ...model,
             apiKey: new SecretValue(credential.value)

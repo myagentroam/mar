@@ -5,7 +5,7 @@ export type { ExecResult } from '../contracts.js';
 
 /** Share the model-facing body across direct calls and original Code Mode observations. */
 export function formatExecResult(result: ExecResult): ToolExecutionResult {
-  const { displayOutput, ...modelResult } = result;
+  const { displayOutput, executionSource, ...modelResult } = result;
   const visible: Partial<ExecResult> = { ...modelResult };
   if (result.stderr === '') delete visible.stderr;
   if (!result.truncated) {
@@ -19,8 +19,10 @@ export function formatExecResult(result: ExecResult): ToolExecutionResult {
   if (result.cached === false) delete visible.cached;
   return {
     content: JSON.stringify(visible),
-    data: displayOutput === undefined ? result : modelResult,
-    ...(displayOutput === undefined ? {} : { eventData: { ...modelResult, displayOutput } }),
+    data: executionSource === undefined && displayOutput === undefined ? result : modelResult,
+    ...(displayOutput === undefined && executionSource === undefined
+      ? {}
+      : { eventData: { ...modelResult, displayOutput, executionSource } }),
     truncated: result.truncated
   };
 }

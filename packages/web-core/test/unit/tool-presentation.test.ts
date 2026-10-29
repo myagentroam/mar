@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
+import { mergeConversationPayload } from '../../src/util/conversation-history.js';
 import {
   conversationDisplayItems,
+  conversationItemDetail,
   conversationItemLabel,
   conversationItemText
 } from '../../src/util/conversation-presentation.js';
@@ -25,6 +27,48 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
+    'uses authoritative output across snapshots and terminal replacement for %s',
+    (kind) => {
+      localePreferenceService().setLocale('en-US');
+      const base = {
+        ...payload({ kind }),
+        ...(kind === 'SUBAGENT' ? { subagentOperation: 'STATUS', subagentId: 'child' } : {})
+      };
+      const label = kind === 'SUBAGENT' ? 'Result' : 'Output';
+      const detail = (output?: { text: string; truncated: boolean }) =>
+        conversationItemDetail('tool_call', { ...base, ...(output ? { output } : {}) });
+      expect(detail()).toContain(`${label}:\nOriginal output`);
+      let current = mergeConversationPayload(
+        base,
+        { output: { text: '  live\n', truncated: false } },
+        'output'
+      );
+      current = mergeConversationPayload(
+        current,
+        { output: { text: '\nnext\n', truncated: false } },
+        'output'
+      );
+      const live = conversationItemDetail('tool_call', current);
+      expect(live).toContain(`${label}:\n  live\n\nnext\n`);
+      expect(live).not.toContain('Original output');
+      expect(live).not.toContain('Truncated');
+      current = mergeConversationPayload(
+        current,
+        { output: { text: '  final tail\n', truncated: true } },
+        undefined
+      );
+      const terminal = conversationItemDetail('tool_call', current);
+      expect(terminal).toContain(`${label}:\n  final tail\n\nTruncated`);
+      expect(terminal).not.toContain('live');
+      expect(terminal).not.toContain('Original output');
+      const empty = detail({ text: '', truncated: false });
+      expect(empty).not.toContain(`${label}:`);
+      expect(empty).not.toContain('Original output');
+      expect(detail({ text: '', truncated: true })).toContain('Truncated');
+    }
+  );
+
   it.each(['zh-CN', 'en-US'] as const)(
     'preserves tool output without interpreting truncation markers or adding notices in %s',
     (locale) => {
@@ -40,8 +84,7 @@ describe('independent tool presentation', () => {
           const original = Object.freeze({ ...payload({ kind }), outputSummary: output });
           const detail = toolPresentationDetails({ ...original, truncated: true });
           expect(detail).toBe(toolPresentationDetails(original));
-          if (kind === 'READ' || kind === 'SKILL' || kind === 'WEB_FETCH')
-            expect(detail).toContain(output);
+          expect(detail).toContain(output);
         }
       }
     }
@@ -109,8 +152,8 @@ describe('independent tool presentation', () => {
     ).toBe('tool_group');
   });
   it.each([
-    ['zh-CN', '读取文件', '工具: native-tool\n输入: Original input\n输出: Original output'],
-    ['en-US', 'Read', 'Tool: native-tool\nInput: Original input\nOutput: Original output']
+    ['zh-CN', '读取文件', 'Tool: native-tool\nInput: Original input\nOutput:\nOriginal output'],
+    ['en-US', 'Read', 'Tool: native-tool\nInput: Original input\nOutput:\nOriginal output']
   ] as const)('localizes Read while preserving raw details in %s', (locale, title, details) => {
     localePreferenceService().setLocale(locale);
     const read = payload({ kind: 'READ', paths: ['src/example.ts'] });
@@ -235,7 +278,7 @@ describe('independent tool presentation', () => {
     expect(sources[1]?.href).toBeUndefined();
     localePreferenceService().setLocale('en-US');
     expect(toolPresentationDetails(payload({ kind: 'SKILL', name: 'skill' }))).toContain(
-      'Output: Original output'
+      'Output:\nOriginal output'
     );
     expect(
       toolPresentationDetails(

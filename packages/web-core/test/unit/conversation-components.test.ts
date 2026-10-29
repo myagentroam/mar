@@ -52,30 +52,125 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
 
 const originalLocale = localePreferenceService().locale.value;
 
-it.each([
-  ['en-US', 'Declined'],
-  ['zh-CN', '已拒绝']
-] as const)('localizes declined execution details in %s', async (locale, expected) => {
-  localePreferenceService().setLocale(locale);
+it('marks a truncated wait source independently from a head-truncated output tail', async () => {
+  localePreferenceService().setLocale('en-US');
   try {
-    const item = {
-      ...conversationItem('declined', 'command_execution', {
-        command: 'run',
-        cwd: null,
-        outputPreview: '',
-        exitCode: null,
-        truncated: false,
-        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
-      }),
-      status: 'DECLINED' as const
-    };
+    const item = conversationItem('wait', 'command_execution', {
+      command: '',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CONTROL',
+          toolName: 'exec_wait',
+          source: { kind: 'SHELL', text: 'partial command', truncated: true },
+          output: [{ channel: 'STDOUT', text: 'output tail' }],
+          truncation: { output: 'HEAD' }
+        }
+      }
+    });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain(expected);
-    expect(html).not.toContain('toolPresentation.detail.DECLINED');
+    expect(html).toContain('Command: partial command\nTruncated');
+    expect(html).toContain('Output:\n… Truncated\noutput tail');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
 });
+
+it.each(['SHELL', 'CODE'] as const)(
+  'shows the original Tool first and the %s wait source separately',
+  async (kind) => {
+    const toolName = kind === 'SHELL' ? 'exec_wait' : 'code_exec_wait';
+    const label = kind === 'SHELL' ? 'Command' : 'Code';
+    const item = conversationItem('wait', 'command_execution', {
+      command: '',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CONTROL',
+          toolName,
+          action: 'poll',
+          targetId: 'target-1',
+          source: { kind, text: 'original input', truncated: false },
+          output: [{ channel: 'TEXT', text: 'result' }]
+        }
+      }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(
+      `Tool: ${toolName}\n${label}: original input\nAction: poll\nTarget: target-1`
+    );
+    expect(html).not.toContain(`Command: ${toolName}`);
+  }
+);
+
+it('places a known head truncation before retained output without guessing source truncation', async () => {
+  for (const [truncation, expected] of [
+    [{ output: 'HEAD' }, 'Output:\n… Truncated\nretained output'],
+    [{ output: 'SOURCE' }, 'Output:\nretained output\nTruncated']
+  ] as const) {
+    localePreferenceService().setLocale('en-US');
+    const item = conversationItem('output', 'command_execution', {
+      command: 'run',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'SHELL',
+          output: [{ channel: 'COMBINED', text: 'retained output' }],
+          truncation
+        }
+      }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(expected);
+  }
+  localePreferenceService().setLocale(originalLocale);
+});
+
+it('preserves newlines and whitespace in execution output after the English label', async () => {
+  localePreferenceService().setLocale('zh-CN');
+  try {
+    const item = conversationItem('output', 'command_execution', {
+      command: 'run',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CODE',
+          output: [{ channel: 'TEXT', text: 'first\n  indented\n\nlast' }]
+        }
+      }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain('Code: run\nOutput:\nfirst\n  indented\n\nlast');
+  } finally {
+    localePreferenceService().setLocale(originalLocale);
+  }
+});
+
+it.each(['en-US', 'zh-CN'] as const)(
+  'keeps execution detail fields in English in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      const item = {
+        ...conversationItem('declined', 'command_execution', {
+          command: 'run',
+          cwd: null,
+          outputPreview: '',
+          exitCode: null,
+          truncated: false,
+          toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
+        }),
+        status: 'DECLINED' as const
+      };
+      const html = await render(ConversationToolDetail, { item });
+      expect(html).toContain('Command: run');
+      expect(html).not.toContain('Status:');
+      expect(html).not.toContain('状态：');
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
 
 // The custom host renderer has no CSS engine; browser tests cover transition timing.
 vi.mock('vue', async (importOriginal) => {

@@ -107,8 +107,9 @@ function openSessionTree(sessionId: string): void {
 }
 
 function openSessionFromTree(sessionId: string): void {
+  const target = treeTarget.value;
   treeTarget.value = undefined;
-  void props.page.openSessionFromList(sessionId);
+  if (target) void props.page.openSessionGroupTarget({ ...target, sessionId });
 }
 const hostedConversationHeader = computed(() => {
   const workspace = props.page.hostedConversationWorkspace;

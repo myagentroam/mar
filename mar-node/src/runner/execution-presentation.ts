@@ -10,13 +10,6 @@ function tail(text: string, limit: number): string {
   return first >= 0xdc00 && first <= 0xdfff ? result.slice(1) : result;
 }
 
-export function publicOutputSnapshot(
-  text: string,
-  truncated = false
-): { text: string; truncated: boolean } {
-  return { text: tail(text, 10_000), truncated: truncated || text.length > 10_000 };
-}
-
 /** Keep public execution output bounded without copying an unbounded source. */
 export function boundExecutionPresentation(execution: Execution): {
   presentation: ExecutionPresentation;

@@ -33,6 +33,32 @@ async function colors(page: Page) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Notification titles match recent session typography in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=recent&theme=${theme}`);
+      const recent = page.locator('.recent-session-title').first();
+      await expect(recent).toBeVisible();
+      const typography = await recent.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight
+        };
+      });
+      await page.goto(
+        `${fixture.url}visual-alignment.html?long-notification=1&theme=${theme}${width < 768 ? '&mobile=1' : ''}`
+      );
+      await page.locator('.workbench-notification-center button').first().click();
+      const title = page.locator('.workbench-notification-title strong').first();
+      await expect(title).toBeVisible();
+      await expect(title).toHaveCSS('font-size', typography.fontSize);
+      await expect(title).toHaveCSS('font-weight', typography.fontWeight);
+      await expect(title).toHaveCSS('line-height', typography.lineHeight);
+    }
+  });
+
   test(`Theme apply uses an ordinary link while Active stays green in ${theme}`, async ({
     page
   }) => {

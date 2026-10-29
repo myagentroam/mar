@@ -162,6 +162,29 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (new URL(location.href).searchParams.has('disclosure-reset')) {
+  turns.value[0]!.items = ['first', 'second'].flatMap((groupId) =>
+    [
+      {
+        id: 'reasoning',
+        kind: 'reasoning',
+        status: 'COMPLETED',
+        payload: { sections: [{ text: 'Inspect the relevant files.' }] }
+      } as ConversationItem,
+      ...items.filter((item) => ['command', 'read', 'changes', 'child'].includes(item.id)),
+      {
+        id: 'tool',
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        payload: { toolName: 'inspect', outputSummary: 'Inspection result' }
+      } as ConversationItem
+    ].map((item, index) => ({
+      ...item,
+      id: `${groupId}-${item.id}`,
+      processGroup: { id: groupId, ...(index === 0 ? { isStart: true as const } : {}) }
+    }))
+  );
+}
 if (readFilesFixture) {
   turns.value = [
     {

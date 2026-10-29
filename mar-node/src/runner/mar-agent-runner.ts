@@ -1,16 +1,20 @@
 import type {
   MarAgentNodeModelSummary,
+  MarAgentRuntimeModelConfiguration,
   NodeCapabilities,
   RunnerDefaultConfiguration,
   RunnerProfile
 } from '@myagentroam/protocol';
 import {
   marAgentNodeModelSummarySchema,
+  marAgentRuntimeModelConfigurationSchema,
   parseComposerTags,
   resolveMarAgentDefaultReasoningEffort,
   serializeComposerTag
 } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../session/contracts.js';
+import type { NodeWorkspace } from '../workspace/contracts.js';
+import type { RunnerExecutionContext } from './execution-context.js';
 import { nodeLog } from '../operational.js';
 import { runnerErrorProjection } from './runner-error.js';
 import {
@@ -39,7 +43,10 @@ import {
   marAgentGeneratedImagesDirectory
 } from './mar-agent/generated-images.js';
 import { projectMarAgentHistory } from './mar-agent/history-projection.js';
-import { captureMarAgentExecutionInput } from './mar-agent/execution-input.js';
+import {
+  captureMarAgentExecutionInput,
+  marAgentEnvelopeInput
+} from './mar-agent/execution-input.js';
 
 export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   readonly name = 'mar-agent' as const;
@@ -64,6 +71,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     return { runner: this.name, runnerInput: captureMarAgentExecutionInput(input) };
   }
   readonly discoveryScope = 'ALL_WORKSPACES' as const;
+  // Display and usage hints only; request admission/defaults use captured resources.
   #models: readonly MarAgentNodeModelSummary[] = [];
   #releaseSessionResources: ((sessionId: string) => Promise<void>) | undefined;
   #generatedImageRegistrar:
@@ -76,13 +84,14 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     super();
   }
 
-  configureModels(value: unknown): void {
+  configureModels(value: unknown): RunnerProfile {
     this.#models = Array.isArray(value)
       ? value.flatMap((model) => {
           const parsed = marAgentNodeModelSummarySchema.safeParse(model);
           return parsed.success ? [parsed.data as MarAgentNodeModelSummary] : [];
         })
       : [];
+    return this.profileForValidation();
   }
   setSessionResourceReleaser(release: (sessionId: string) => Promise<void>): void {
     this.#releaseSessionResources = release;
@@ -177,10 +186,11 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   available(capabilities: NodeCapabilities): boolean {
     return capabilities.marAgent?.available === true;
   }
-  protected profileForValidation(): RunnerProfile {
-    const models = this.#models.filter(
-      (model) => model.enabled && model.conversationModel !== false
-    );
+  protected profileForValidation(
+    catalog: readonly (MarAgentNodeModelSummary | MarAgentRuntimeModelConfiguration)[] = this
+      .#models
+  ): RunnerProfile {
+    const models = catalog.filter((model) => model.enabled && model.conversationModel !== false);
     return {
       runner: 'mar-agent',
       models: models.map((model, index) => ({
@@ -278,9 +288,37 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     );
     return this.profileForValidation().models.filter((model) => eligible.has(model.id));
   }
-  override assertChildModel(modelId: string | null): void {
-    if (!this.childModels().some((model) => model.id === modelId))
+  override assertChildModel(modelId: string | null, context: RunnerExecutionContext): void {
+    if (
+      !this.executionModels(context).some(
+        (model) =>
+          model.id === modelId && model.enabled && model.conversationModel && model.subagentModel
+      )
+    )
       throw new Error('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+  }
+  private executionModels(
+    context: RunnerExecutionContext,
+    purpose: 'admission' | 'defaults' = 'admission'
+  ): readonly (MarAgentNodeModelSummary | MarAgentRuntimeModelConfiguration)[] {
+    if (context.runner !== this.name) return [];
+    const input = marAgentEnvelopeInput({ runnerInput: context.runnerInput });
+    const candidates =
+      purpose === 'defaults' && Array.isArray(input?.models) && input.models.length > 0
+        ? input.models
+        : input?.model !== undefined
+          ? [input.model]
+          : Array.isArray(input?.models)
+            ? input.models
+            : [];
+    return candidates.flatMap(
+      (value): (MarAgentNodeModelSummary | MarAgentRuntimeModelConfiguration)[] => {
+        const runtime = marAgentRuntimeModelConfigurationSchema.safeParse(value);
+        if (runtime.success) return [runtime.data];
+        const summary = marAgentNodeModelSummarySchema.safeParse(value);
+        return summary.success ? [summary.data] : [];
+      }
+    );
   }
   override supportsConfiguration(configuration: RunnerDefaultConfiguration): boolean {
     if (configuration.runner !== this.name) return false;
@@ -294,8 +332,16 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
       profile.accessOptions.some((candidate) => candidate.id === configuration.access)
     );
   }
-  defaultConfiguration(): RunnerDefaultConfiguration {
-    const profile = this.profileForValidation();
+  defaultConfiguration(
+    _workspace?: NodeWorkspace,
+    _environment?: Readonly<Record<string, string>>,
+    executionContext?: RunnerExecutionContext
+  ): RunnerDefaultConfiguration {
+    const profile = this.profileForValidation(
+      executionContext === undefined
+        ? this.#models
+        : this.executionModels(executionContext, 'defaults')
+    );
     const model = profile.models[0];
     return {
       runner: 'mar-agent',

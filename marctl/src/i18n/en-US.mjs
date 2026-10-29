@@ -86,7 +86,7 @@ Input and results:
   Start defaults to the current Session Runner; a terminal without a current
   Session must specify --runner or --parent. Profile lists configured models,
   not guaranteed account availability. Start returns without waiting.
-  Send appends by default; --steer replaces and --queue defers.
+  Send appends by default; --steer provides timely input and --queue defers.
   --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal
   without text; omitted Goal is unchanged. Stop clears the target Session Goal.
   Wait defaults to direct-child completion and 30s; 0ms is a snapshot.
@@ -95,11 +95,11 @@ Input and results:
   -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
   List exposes current identity and bounded pages; nextCursor marks more.
   Configuration and prompt changes apply to future executions.
-  Prefer --steer for timely coordination and for
-  results the recipient is waiting for; Node may switch the current execution.
-  Use --queue only for deliberately deferred follow-up work;
-  it waits for that execution and earlier queued work. Use --steer instead when
-  a result cannot wait until the current Goal exits.
+  Prefer --steer for timely communication or course correction.
+  Use --queue only for deliberately deferred input: it is consumed after
+  current work and earlier queued inputs finish. With an active Goal it is
+  not consumed until that Goal exits.
+  Acceptance does not guarantee immediate processing.
 
   show --json includes session.status, session.model, session.effort,
   session.title, session.runId, session.recentTools, session.queuedCount and

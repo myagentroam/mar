@@ -1,4 +1,5 @@
 import type { ConversationTurn } from '../model/workbench.js';
+import { appendExecutionPresentation } from '@myagentroam/protocol';
 import { translate } from '../service/locale-preference-service.js';
 
 export const MAX_CONVERSATION_HISTORY_BYTES = 8 * 1024 * 1024;
@@ -314,6 +315,11 @@ export function mergeConversationPayload(
   )
     merged[append] = `${previous[append]}${incoming[append]}`;
   if (append === 'output' && typeof incoming.output === 'object' && incoming.output !== null) {
+    if (incoming.toolPresentation !== undefined)
+      merged.toolPresentation = appendExecutionPresentation(
+        previous.toolPresentation,
+        incoming.toolPresentation
+      );
     const prior =
       typeof previous.output === 'object' && previous.output !== null
         ? (previous.output as Record<string, unknown>)

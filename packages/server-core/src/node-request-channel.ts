@@ -34,11 +34,7 @@ export class NodeRequestChannel {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly log: (event: string, fields: Record<string, unknown>) => void = () =>
       undefined,
-    private readonly recordTraffic?: (bytes: number) => void,
-    private readonly encode: (socket: WebSocket, envelope: NodeEnvelope) => unknown = (
-      _socket,
-      envelope
-    ) => envelope
+    private readonly recordTraffic?: (bytes: number) => void
   ) {}
 
   request(
@@ -74,11 +70,7 @@ export class NodeRequestChannel {
           socket.readyState === socket.OPEN
         ) {
           try {
-            socket.send(
-              JSON.stringify(
-                this.encode(socket, createEnvelope('node.request.cancel', { requestId: id }))
-              )
-            );
+            socket.send(JSON.stringify(createEnvelope('node.request.cancel', { requestId: id })));
           } catch {
             /* Connection is gone. */
           }
@@ -118,30 +110,27 @@ export class NodeRequestChannel {
       try {
         observe?.('requested', id);
         const serialized = JSON.stringify(
-          this.encode(
-            socket,
-            createEnvelope(
-              'node.request',
-              {
+          createEnvelope(
+            'node.request',
+            {
+              operation,
+              data,
+              userAuthorization: {
+                userId: user.userId,
+                sessionHash: user.sessionHash,
+                ...(user.marctlCaller === undefined ? {} : { marctlCaller: user.marctlCaller }),
+                ...(user.marctlExecutionResources === undefined
+                  ? {}
+                  : { marctlExecutionResources: user.marctlExecutionResources }),
+                ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
+                nodeId,
                 operation,
-                data,
-                userAuthorization: {
-                  userId: user.userId,
-                  sessionHash: user.sessionHash,
-                  ...(user.marctlCaller === undefined ? {} : { marctlCaller: user.marctlCaller }),
-                  ...(user.marctlExecutionResources === undefined
-                    ? {}
-                    : { marctlExecutionResources: user.marctlExecutionResources }),
-                  ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
-                  nodeId,
-                  operation,
-                  requestId: id,
-                  issuedAt,
-                  expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
-                }
-              },
-              { id }
-            )
+                requestId: id,
+                issuedAt,
+                expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
+              }
+            },
+            { id }
           )
         );
         this.recordTraffic?.(Buffer.byteLength(serialized));

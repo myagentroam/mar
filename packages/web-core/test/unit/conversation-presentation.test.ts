@@ -56,7 +56,6 @@ const zhGeneratedPresentation = conversationUiZhCN.generated.conversationPresent
 const enGeneratedPresentation = conversationUiEnUS.generated.conversationPresentation;
 const zhNodeMessages = conversationUiZhCN.nodeMessages;
 const zhDomain = conversationUiZhCN.generated.conversationDomain;
-const zhColon = String.fromCodePoint(0xff1a);
 
 describe('Runner approval details', () => {
   it('preserves reason, command and working directory without rendering HTML', () => {
@@ -1728,6 +1727,22 @@ describe('Conversation Show Aggregation', () => {
     expect(summaryPreview(' ')).toBe('');
   });
 
+  it('preserves raw output whitespace across ordinary, command, and subagent details', () => {
+    const output = '  first\n\n  last\n';
+    expect(
+      conversationItemDetail('tool_call', { toolName: 'read', outputSummary: output })
+    ).toContain(`Output:\n${output}`);
+    expect(
+      conversationItemDetail('tool_call', { toolName: 'read', output: { text: output } })
+    ).toContain(`Output:\n${output}`);
+    expect(conversationItemDetail('command_execution', { outputPreview: output })).toContain(
+      `Output:\n${output}`
+    );
+    expect(
+      conversationItemDetail('tool_call', { subagentOperation: 'STATUS', outputSummary: output })
+    ).toContain(`Result:\n${output}`);
+  });
+
   it('Prefer an ordinary tool name over its native target title', () => {
     const payload = {
       namespace: 'opencode',
@@ -1738,7 +1753,7 @@ describe('Conversation Show Aggregation', () => {
     expect(conversationItemLabel('tool_call', payload)).toBe(zhGeneratedPresentation.tool);
     expect(conversationItemText('tool_call', payload)).toBe('read');
     expect(conversationItemDetail('tool_call', payload)).toBe(
-      `${zhPresentation.detail}${zhColon}docs/design/PROJECT_DESIGN.md`
+      `${enPresentation.detail}: docs/design/PROJECT_DESIGN.md`
     );
   });
 
@@ -1759,7 +1774,7 @@ describe('Conversation Show Aggregation', () => {
     };
     expect(conversationItemText('tool_call', payload)).toBe(toolName);
     expect(conversationItemDetail('tool_call', payload)).toContain(
-      `${zhPresentation.input}${zhColon}${input}`
+      `${enPresentation.input}: ${input}`
     );
     expect(conversationItemDetail('tool_call', payload)).toContain('# README');
     localePreferenceService().setLocale('en-US');
@@ -1805,7 +1820,7 @@ describe('Conversation Show Aggregation', () => {
       progressLabel: 'Running'
     };
     expect(conversationItemDetail('tool_call', payload)).toContain(
-      `${zhPresentation.input}${zhColon}current news`
+      `${enPresentation.input}: current news`
     );
     localePreferenceService().setLocale('en-US');
     expect(conversationItemDetail('tool_call', payload)).toContain(
@@ -2147,22 +2162,22 @@ describe('Conversation Show Aggregation', () => {
     });
 
     expect(detail).toContain(
-      `${zhPresentation.operation}${zhColon}${zhPresentation.subagentOperation.START}`
+      `${enPresentation.operation}: ${zhPresentation.subagentOperation.START}`
     );
-    expect(detail).toContain(`${zhPresentation.subagentId}${zhColon}ses_child`);
-    expect(detail).toContain(`${zhPresentation.task}${zhColon}Check implementation`);
-    expect(detail).toContain(`${zhPresentation.model}${zhColon}Review Agent`);
-    expect(detail).toContain(`${zhPresentation.modelId}${zhColon}review`);
-    expect(detail).toContain(`${zhPresentation.reasoningEffort}${zhColon}high`);
+    expect(detail).toContain(`${enPresentation.subagentId}: ses_child`);
+    expect(detail).toContain(`${enPresentation.task}: Check implementation`);
+    expect(detail).toContain(`${enPresentation.model}: Review Agent`);
+    expect(detail).toContain(`${enPresentation.modelId}: review`);
+    expect(detail).toContain(`${enPresentation.reasoningEffort}: high`);
     expect(detail).toContain(
-      `${zhPresentation.messagePhase}${zhColon}${zhPresentation.subagentMessagePhase.commentary}`
+      `${enPresentation.messagePhase}: ${zhPresentation.subagentMessagePhase.commentary}`
     );
-    expect(detail).toContain(`${zhPresentation.latestMessage}${zhColon}Still checking.`);
-    expect(detail).toContain(`${zhPresentation.truncated}${zhColon}${zhPresentation.yes}`);
+    expect(detail).toContain(`${enPresentation.latestMessage}: Still checking.`);
+    expect(detail).toContain(`${enPresentation.truncated}: ${zhPresentation.yes}`);
     expect(detail).toContain(
-      `${zhPresentation.input}${zhColon}{"subagent_type":"explore","prompt":"Check Resolve Link"}`
+      `${enPresentation.input}: {"subagent_type":"explore","prompt":"Check Resolve Link"}`
     );
-    expect(detail).toContain(`${zhPresentation.result}${zhColon}Check Complete`);
+    expect(detail).toContain(`${enPresentation.result}:\nCheck Complete`);
     expect(detail).not.toContain('<task');
   });
 

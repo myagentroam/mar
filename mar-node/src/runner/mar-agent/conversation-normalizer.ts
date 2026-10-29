@@ -18,7 +18,8 @@ import {
   type ToolPresentation,
   type ExecutionPresentation
 } from '@myagentroam/protocol';
-import { boundExecutionPresentation, publicOutputSnapshot } from '../execution-presentation.js';
+import { boundExecutionPresentation } from '../execution-presentation.js';
+import { publicOutputSnapshot } from '../normalization.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;
@@ -38,6 +39,7 @@ export interface MarAgentNormalizedItem {
   readonly permissionStop?: NonNullable<ExecutionResult['permissionStop']>;
   readonly generatedImages?: readonly MarAgentGeneratedImageArtifact[];
   readonly merge?: boolean;
+  readonly append?: 'output';
 }
 
 export interface MarAgentGeneratedImageArtifact {
@@ -73,7 +75,41 @@ type CodeModeOutputCall = {
 type CodeModeOutputSnapshot = {
   readonly outputPreview: string;
   readonly truncated: boolean;
+  readonly displayOutput: NonNullable<CommandState['displayOutput']>;
+  readonly processId: string;
 };
+
+function boundCodeOutputSnapshots(sources: Map<string, CodeModeOutputSnapshot>): void {
+  for (const channel of ['outputPreview', 'stdout', 'stderr'] as const) {
+    const text = (entry: CodeModeOutputSnapshot) =>
+      channel === 'outputPreview' ? entry.outputPreview : entry.displayOutput[channel];
+    let excess =
+      [...sources.values()].reduce((length, entry) => length + text(entry).length, 0) - 10_000;
+    for (const [id, entry] of sources) {
+      if (excess <= 0) break;
+      const before = text(entry);
+      if (!before) continue;
+      let removed = Math.min(excess, before.length);
+      if (/^[\uDC00-\uDFFF]/u.test(before.slice(removed))) removed++;
+      const tail = before.slice(removed);
+      if (channel === 'outputPreview') {
+        sources.set(id, { ...entry, outputPreview: tail, truncated: true });
+      } else {
+        const dropped = channel === 'stdout' ? 'stdoutDroppedBytes' : 'stderrDroppedBytes';
+        sources.set(id, {
+          ...entry,
+          truncated: true,
+          displayOutput: {
+            ...entry.displayOutput,
+            [channel]: tail,
+            [dropped]: entry.displayOutput[dropped] + Buffer.byteLength(before.slice(0, removed))
+          }
+        });
+      }
+      excess -= removed;
+    }
+  }
+}
 
 type RunningCodeModeCell = {
   readonly cellId: string;
@@ -174,6 +210,7 @@ export class MarAgentConversationNormalizer {
   readonly #codeModeSourceCallIds = new Set<string>();
   readonly #codeModeOutputCalls = new Map<string, CodeModeOutputCall>();
   readonly #codeModeOutputSnapshots = new Map<string, Map<string, CodeModeOutputSnapshot>>();
+  readonly #codeModeOutputArchive = new Map<string, Map<string, CodeModeOutputSnapshot>>();
   readonly #runningCodeModeCells = new Map<string, RunningCodeModeCell>();
   readonly #codeModeCellWaiters = new Map<string, Set<string>>();
 
@@ -416,6 +453,7 @@ export class MarAgentConversationNormalizer {
     event: Extract<AgentEvent, { type: 'tool.output' }>
   ): readonly MarAgentNormalizedItem[] {
     const { callId, toolName, executionId, turnId, parentCallId, output } = event;
+    if (output.mode === 'delta') return this.#toolOutputDelta(event);
     const inputOutput = [output.stdout, output.stderr].filter(Boolean).join('\n');
     const displayOutput = execDisplayOutput(output.displayOutput) ?? {
       stdout: output.stdout,
@@ -433,10 +471,11 @@ export class MarAgentConversationNormalizer {
     const snapshot = {
       outputPreview: bounded.text,
       truncated: bounded.truncated || inputOutput.length > 10_000,
-      displayOutput
+      displayOutput,
+      processId: output.processId
     };
 
-    if (parentCallId !== undefined)
+    if (parentCallId !== undefined && (toolName === 'exec' || toolName === 'exec_wait'))
       return this.#codeModeToolOutput(
         callId,
         parentCallId,
@@ -460,7 +499,7 @@ export class MarAgentConversationNormalizer {
     if (typeof input?.processId === 'string' && input.processId !== output.processId) return [];
 
     if (state.commandOrigin === undefined) {
-      if (toolName !== 'exec_wait') return [];
+      if (toolName !== 'exec_wait' && toolName !== 'code_exec_wait') return [];
       return [
         genericToolItem(
           state.itemId,
@@ -470,7 +509,13 @@ export class MarAgentConversationNormalizer {
           snapshot.outputPreview,
           null,
           snapshot.truncated,
-          { processId: output.processId, displayOutput: snapshot.displayOutput }
+          {
+            processId: output.processId,
+            displayOutput: snapshot.displayOutput,
+            outputHeadTruncated:
+              snapshot.displayOutput.stdoutDroppedBytes > 0 ||
+              snapshot.displayOutput.stderrDroppedBytes > 0
+          }
         )
       ];
     }
@@ -482,6 +527,101 @@ export class MarAgentConversationNormalizer {
     command.outputPreview = snapshot.outputPreview;
     command.truncated = snapshot.truncated;
     return [commandItem(command, 'IN_PROGRESS')];
+  }
+
+  #toolOutputDelta(
+    event: Extract<AgentEvent, { type: 'tool.output' }>
+  ): readonly MarAgentNormalizedItem[] {
+    const { callId, toolName, executionId, turnId, parentCallId, output } = event;
+    let target = this.#tools.get(callId);
+    if (parentCallId !== undefined) {
+      const child = this.#codeModeOutputCalls.get(callId);
+      const parent = this.#tools.get(parentCallId);
+      if (
+        !child ||
+        child.parentCallId !== parentCallId ||
+        child.toolName !== toolName ||
+        child.executionId !== executionId ||
+        (child.turnId && turnId && child.turnId !== turnId) ||
+        !parent ||
+        parent.executionId !== executionId ||
+        (parent.turnId && turnId && parent.turnId !== turnId)
+      )
+        return [];
+      const input = record(child.input);
+      if (typeof input?.processId === 'string' && input.processId !== output.processId) return [];
+      const display = execDisplayOutput(output.displayOutput);
+      if (display) {
+        const snapshots = this.#codeModeOutputSnapshots.get(parentCallId) ?? new Map();
+        const text = [display.stdout, display.stderr].filter(Boolean).join('\n');
+        const bounded = publicOutputSnapshot(
+          text,
+          display.stdoutDroppedBytes > 0 || display.stderrDroppedBytes > 0
+        );
+        snapshots.set(callId, {
+          outputPreview: bounded.text,
+          truncated: bounded.truncated,
+          displayOutput: display,
+          processId: output.processId
+        });
+        this.#codeModeOutputSnapshots.set(parentCallId, snapshots);
+      }
+      target = parent.active
+        ? parent
+        : this.#runningCodeModeCells.get(parentCallId)?.executionId === executionId
+          ? this.#activeCodeModeWaiter(this.#runningCodeModeCells.get(parentCallId)!)
+          : undefined;
+    } else {
+      if (
+        !target ||
+        !target.active ||
+        target.toolName !== toolName ||
+        target.executionId !== executionId ||
+        (target.turnId && turnId && target.turnId !== turnId)
+      )
+        return [];
+      const input = record(target.input);
+      if (typeof input?.processId === 'string' && input.processId !== output.processId) return [];
+    }
+    if (!target) return [];
+    const command =
+      target.commandOrigin === undefined ? undefined : this.#commands.get(target.commandOrigin);
+    const item = command
+      ? commandItem(command, 'IN_PROGRESS')
+      : genericToolItem(target.itemId, target.toolName, 'IN_PROGRESS', target.input, null, null);
+    const original = record(record(item.payload.toolPresentation)?.execution);
+    const blocks = [
+      ...(output.stdout ? [{ channel: 'STDOUT' as const, text: output.stdout }] : []),
+      ...(output.stderr ? [{ channel: 'STDERR' as const, text: output.stderr }] : [])
+    ];
+    const text = [output.stdout, output.stderr].filter(Boolean).join('\n');
+    const boundedText = publicOutputSnapshot(text, output.truncated);
+    const bounded = boundExecutionPresentation({
+      kind:
+        parentCallId !== undefined
+          ? target.toolName === 'code_exec'
+            ? 'CODE'
+            : 'CONTROL'
+          : toolName === 'exec'
+            ? 'SHELL'
+            : 'CONTROL',
+      ...(typeof original?.toolName === 'string' ? { toolName: original.toolName } : {}),
+      output: blocks,
+      ...(output.truncated ? { truncation: { output: 'HEAD' as const } } : {})
+    });
+    return [
+      {
+        ...item,
+        append: 'output',
+        merge: true,
+        payload: {
+          ...item.payload,
+          outputPreview: boundedText.text,
+          output: boundedText,
+          toolPresentation: bounded.presentation
+        }
+      }
+    ];
   }
 
   #codeModeToolOutput(
@@ -520,13 +660,16 @@ export class MarAgentConversationNormalizer {
     const snapshots = this.#codeModeOutputSnapshots.get(parentCallId) ?? new Map();
     snapshots.set(callId, snapshot);
     this.#codeModeOutputSnapshots.set(parentCallId, snapshots);
-    const combined = [...snapshots.values()]
+    const sources = new Map(this.#codeModeOutputArchive.get(parentCallId));
+    for (const active of snapshots.values()) sources.set(active.processId, active);
+    const entries = [...sources.values()];
+    const combined = entries
       .map((entry) => entry.outputPreview)
       .filter(Boolean)
-      .join('\n');
+      .join('');
     const bounded = publicOutputSnapshot(
       combined,
-      [...snapshots.values()].some((entry) => entry.truncated)
+      entries.some((entry) => entry.truncated)
     );
     return [
       genericToolItem(
@@ -536,7 +679,24 @@ export class MarAgentConversationNormalizer {
         target.input,
         bounded.text,
         null,
-        bounded.truncated
+        bounded.truncated,
+        {
+          outputHeadTruncated: entries.some(
+            (entry) =>
+              entry.displayOutput.stdoutDroppedBytes > 0 ||
+              entry.displayOutput.stderrDroppedBytes > 0
+          ),
+          displayOutput: {
+            stdout: entries
+              .map((entry) => entry.displayOutput.stdout)
+              .filter(Boolean)
+              .join(''),
+            stderr: entries
+              .map((entry) => entry.displayOutput.stderr)
+              .filter(Boolean)
+              .join('')
+          }
+        }
       )
     ];
   }
@@ -573,7 +733,17 @@ export class MarAgentConversationNormalizer {
     const call = this.#codeModeOutputCalls.get(callId);
     if (call?.parentCallId === parentCallId) {
       this.#codeModeOutputCalls.delete(callId);
-      this.#codeModeOutputSnapshots.get(parentCallId)?.delete(callId);
+      const snapshots = this.#codeModeOutputSnapshots.get(parentCallId);
+      const completed = snapshots?.get(callId);
+      snapshots?.delete(callId);
+      if (completed) {
+        const archive =
+          this.#codeModeOutputArchive.get(parentCallId) ??
+          new Map<string, CodeModeOutputSnapshot>();
+        archive.set(completed.processId, completed);
+        boundCodeOutputSnapshots(archive);
+        this.#codeModeOutputArchive.set(parentCallId, archive);
+      }
     }
   }
 
@@ -654,6 +824,7 @@ export class MarAgentConversationNormalizer {
 
   #clearCodeModeOutputSnapshots(parentCallId: string): void {
     this.#codeModeOutputSnapshots.delete(parentCallId);
+    this.#codeModeOutputArchive.delete(parentCallId);
     for (const [callId, state] of this.#codeModeOutputCalls)
       if (state.parentCallId === parentCallId) this.#codeModeOutputCalls.delete(callId);
   }
@@ -1164,33 +1335,39 @@ function validCompactAnchor(value: string | undefined): string | undefined {
 function codeObservationOutput(
   data: Record<string, unknown> | undefined,
   summary: string | null
-): string | undefined {
+): ExecutionPresentation['execution']['output'] {
+  const blocks: NonNullable<ExecutionPresentation['execution']['output']>[number][] = [];
+  const add = (channel: 'TEXT' | 'STDOUT' | 'STDERR', text: unknown) => {
+    if (typeof text !== 'string' || text.length === 0) return;
+    const existing = blocks.find((block) => block.channel === channel);
+    if (existing) existing.text += `\n${text}`;
+    else blocks.push({ channel, text });
+  };
+  const streams = (value: Record<string, unknown> | undefined) => {
+    const display = record(value?.displayOutput) ?? value;
+    if (typeof display?.stdout !== 'string' && typeof display?.stderr !== 'string') return false;
+    add('STDOUT', display?.stdout);
+    add('STDERR', display?.stderr);
+    return true;
+  };
+  if (streams(data)) return blocks;
   if (Array.isArray(data?.observations)) {
-    return data.observations
-      .flatMap((entry) => {
-        const observation = record(entry);
-        if (observation?.type === 'value' && typeof observation.value === 'string')
-          return [observation.value];
-        const result = record(observation?.result);
-        const source = record(observation?.source);
-        if (
-          observation?.type === 'tool_result' &&
-          (source?.toolName === 'exec' || source?.toolName === 'exec_wait')
-        ) {
-          const resultData = record(result?.data);
-          const display = record(resultData?.displayOutput) ?? resultData;
-          if (typeof display?.stdout === 'string' || typeof display?.stderr === 'string')
-            return [display?.stdout, display?.stderr].filter(
-              (value): value is string => typeof value === 'string' && value.length > 0
-            );
-        }
-        return observation?.type === 'tool_result' && typeof result?.content === 'string'
-          ? [result.content]
-          : [];
-      })
-      .join('\n');
+    for (const entry of data.observations) {
+      const observation = record(entry);
+      if (observation?.type === 'value') add('TEXT', observation.value);
+      const result = record(observation?.result);
+      const source = record(observation?.source);
+      if (observation?.type !== 'tool_result') continue;
+      if (
+        (source?.toolName === 'exec' || source?.toolName === 'exec_wait') &&
+        streams(record(result?.data))
+      )
+        continue;
+      add('TEXT', result?.content);
+    }
+    return blocks.length ? blocks : [{ channel: 'TEXT', text: '' }];
   }
-  return summary ?? undefined;
+  return summary === null ? undefined : [{ channel: 'TEXT', text: summary }];
 }
 
 function codeExecutionError(
@@ -1246,7 +1423,14 @@ function genericToolItem(
       'Code execution',
       {
         kind: 'CODE',
-        ...(source.length > 10_000 ? { truncation: { input: true } } : {}),
+        ...(source.length > 10_000 || resultData?.outputHeadTruncated === true
+          ? {
+              truncation: {
+                ...(source.length > 10_000 ? { input: true } : {}),
+                ...(resultData?.outputHeadTruncated === true ? { output: 'HEAD' as const } : {})
+              }
+            }
+          : {}),
         ...(errorCode === null
           ? resultError === undefined
             ? {}
@@ -1257,8 +1441,9 @@ function genericToolItem(
                 message: compactRunnerText(outputSummary ?? '', 1000)
               }
             }),
-        ...(codeOutput === undefined ? {} : { output: [{ channel: 'TEXT', text: codeOutput }] })
-      }
+        ...(codeOutput === undefined ? {} : { output: codeOutput })
+      },
+      toolName
     );
   }
   if (toolName === 'code_exec_wait' || toolName === 'exec_wait') {
@@ -1296,7 +1481,7 @@ function genericToolItem(
     return commandItem(
       {
         itemId: id,
-        command: toolName,
+        command: '',
         cwd: null,
         outputPreview:
           status === 'IN_PROGRESS' && outputSummary !== null
@@ -1319,6 +1504,14 @@ function genericToolItem(
       toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait',
       {
         kind: 'CONTROL',
+        toolName,
+        action: compactRunnerText(action, 128),
+        ...(typeof inputRecord?.processId === 'string' || typeof inputRecord?.cellId === 'string'
+          ? {
+              targetId: compactRunnerText(String(inputRecord.processId ?? inputRecord.cellId), 256)
+            }
+          : {}),
+        ...executionSource(resultData?.executionSource),
         ...(display === undefined
           ? {}
           : {
@@ -1328,10 +1521,9 @@ function genericToolItem(
               ]
             }),
         ...(display === undefined && legacyBlocks.length > 0 ? { output: legacyBlocks } : {}),
-        ...(codeOutput === undefined
-          ? {}
-          : { output: [{ channel: 'TEXT' as const, text: codeOutput }] }),
+        ...(codeOutput === undefined ? {} : { output: codeOutput }),
         ...((typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000) ||
+        resultData?.outputHeadTruncated === true ||
         (display !== undefined && (display.stdoutDroppedBytes || display.stderrDroppedBytes)) ||
         (display === undefined && legacyBlocks.length > 0 && truncated)
           ? {
@@ -1339,8 +1531,9 @@ function genericToolItem(
                 ...(typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000
                   ? { input: true }
                   : {}),
-                ...(display !== undefined &&
-                (display.stdoutDroppedBytes || display.stderrDroppedBytes)
+                ...(resultData?.outputHeadTruncated === true ||
+                (display !== undefined &&
+                  (display.stdoutDroppedBytes || display.stderrDroppedBytes))
                   ? { output: 'HEAD' as const }
                   : display === undefined && legacyBlocks.length > 0 && truncated
                     ? { output: 'SOURCE' as const }
@@ -1381,6 +1574,7 @@ function genericToolItem(
       title: compactRunnerText(toolName, 500) || 'unknown',
       inputSummary: inputSummary.text || null,
       outputSummary: outputSummary === null ? null : compactRunnerText(outputSummary, 10_000),
+      ...(outputSummary === null ? {} : { output: publicOutputSnapshot(outputSummary, truncated) }),
       progressLabel: status === 'IN_PROGRESS' ? 'Running' : null,
       errorCode: errorCode === null ? null : compactRunnerText(errorCode, 80),
       truncated: truncated || inputSummary.truncated || (outputSummary?.length ?? 0) > 10_000,
@@ -1465,6 +1659,27 @@ function execDisplayOutput(value: unknown): CommandState['displayOutput'] {
   };
 }
 
+function executionSource(value: unknown): Pick<ExecutionPresentation['execution'], 'source'> {
+  const source = record(value);
+  if (
+    !source ||
+    (source.kind !== 'SHELL' && source.kind !== 'CODE') ||
+    typeof source.text !== 'string'
+  )
+    return {};
+  return {
+    source: {
+      kind: source.kind,
+      text: compactRunnerText(source.text, 10_000),
+      ...(typeof source.cwd === 'string' ? { cwd: compactRunnerText(source.cwd, 10_000) } : {}),
+      truncated:
+        source.truncated === true ||
+        source.text.length > 10_000 ||
+        (typeof source.cwd === 'string' && source.cwd.length > 10_000)
+    }
+  };
+}
+
 function commandItem(
   command: Pick<
     CommandState,
@@ -1473,7 +1688,8 @@ function commandItem(
     Partial<Pick<CommandState, 'displayOutput' | 'error' | 'inputTruncated'>>,
   status: MarAgentNormalizedItem['status'],
   title?: string,
-  execution?: ExecutionPresentation['execution']
+  execution?: ExecutionPresentation['execution'],
+  toolName = 'exec'
 ): MarAgentNormalizedItem {
   const display = command.displayOutput;
   const detail = execution ?? {
@@ -1499,7 +1715,7 @@ function commandItem(
           ]
         })
   };
-  const bounded = boundExecutionPresentation(detail);
+  const bounded = boundExecutionPresentation({ toolName, ...detail });
   return {
     itemId: command.itemId,
     kind: 'command_execution',
@@ -1509,7 +1725,15 @@ function commandItem(
       command: command.command,
       cwd: command.cwd,
       outputPreview: command.outputPreview,
-      outputRef: null,
+      output: {
+        text: publicOutputSnapshot(
+          bounded.presentation.execution.output
+            ?.map((block) => block.text)
+            .filter(Boolean)
+            .join('\n') ?? command.outputPreview
+        ).text,
+        truncated: command.truncated || bounded.truncated
+      },
       exitCode: command.exitCode,
       durationMs: null,
       truncated:
@@ -1553,7 +1777,6 @@ function patchChanges(value: unknown, extensions?: unknown): Record<string, unkn
       additions: entry.additions,
       deletions: entry.deletions,
       changeId: entry.changeId,
-      diffAvailable: entry.diff.status === 'available',
       diff:
         entry.diff.status === 'available'
           ? { ...entry.diff, source: 'TOOL_CHANGE' }
@@ -1591,7 +1814,7 @@ function change(
   additions: number | null,
   deletions: number | null
 ) {
-  return { path, change: operation, additions, deletions, diffAvailable: false };
+  return { path, change: operation, additions, deletions };
 }
 
 function execResult(
@@ -1707,9 +1930,18 @@ function marAgentSubagentProjection(
     ...(title.length === 0 ? {} : { title }),
     ...subagentPayload(details),
     ...(typeof details.latestMessage?.text === 'string'
-      ? { outputSummary: boundedToolSummary(details.latestMessage.text) }
+      ? {
+          outputSummary: boundedToolSummary(details.latestMessage.text),
+          output: publicOutputSnapshot(
+            details.latestMessage.text,
+            details.latestMessage.truncated === true
+          )
+        }
       : typeof outputData?.errorMessage === 'string'
-        ? { outputSummary: compactRunnerText(outputData.errorMessage, 10_000) }
+        ? {
+            outputSummary: compactRunnerText(outputData.errorMessage, 10_000),
+            output: publicOutputSnapshot(outputData.errorMessage)
+          }
         : {}),
     ...(typeof outputData?.errorCode === 'string'
       ? { errorCode: compactRunnerText(outputData.errorCode, 80) }

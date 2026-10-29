@@ -84,16 +84,16 @@ ${configurationHelp}
 输入与结果：
   start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或
   --parent。profile 显示已配置模型，不代表账号实时可用。start 不等待。
-  send 默认追加；--steer 替换，--queue 排队。--goal 设置或替换目标，
+  send 默认追加；--steer 优先补充，--queue 排队。--goal 设置或替换目标，
   --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
   stop 清除目标会话的 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数小于 10 秒按 10 秒等待，最多 5 分钟。等待不会停止任务。
   可只传图片：最多 5 张，单张 5 MiB、总计 10 MiB。-m 与 --message-file
   互斥；文件使用 UTF-8，- 从 stdin 读取。list 返回当前身份和分页结果，
   nextCursor 表示还有后续页面。配置和持久提示从后续执行生效。
-  及时协作优先使用 --steer，包括对方正在等待的结果；Node 可能切换当前执行。
-  仅明确要延后执行的后续工作使用 --queue，它会等待当前执行和前面的队列项；
-  无法等待 Goal 退出的结果应使用 --steer。
+  即时沟通或纠偏优先使用 --steer。
+  仅明确要延后处理的输入使用 --queue：当前工作及前面的队列项结束后才消费，
+  有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
   show --json 包含 session.status、session.model、session.effort、
   session.title、session.runId、session.recentTools、session.queuedCount 和

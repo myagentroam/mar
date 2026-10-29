@@ -517,8 +517,8 @@ const emit = defineEmits<{
   color: var(--mar-text-muted);
 }
 .workbench-notification-list > li > button:first-child strong {
-  font-size: var(--mar-font-size-body);
-  font-weight: 500;
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
   line-height: 1.35;
 }
 .workbench-notification-list > li > button:first-child small {

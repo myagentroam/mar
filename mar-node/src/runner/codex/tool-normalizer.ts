@@ -1,5 +1,5 @@
-import { compactRunnerText } from '../normalization.js';
-import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
+import { compactRunnerText, publicOutputSnapshot } from '../normalization.js';
+import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeCodexApproval(method: string) {
   return method === 'item/commandExecution/requestApproval'
@@ -19,12 +19,15 @@ export function normalizeCodexTool(input: {
   readonly inputSummary?: string | null;
   readonly outputSummary?: string | null;
   readonly truncated?: boolean;
+  readonly outputTruncated?: boolean;
   readonly outputOnly?: boolean;
   readonly attachments?: readonly unknown[];
 }): CodexNormalizedTool {
   const name = compactRunnerText(input.name, 128) || 'tool';
   const rawInput = input.rawInput;
   const attachments = input.attachments ?? [];
+  const outputTruncated =
+    input.outputTruncated ?? (input.outputSummary != null && input.truncated === true);
   const subagent = codexSubagentProjection(input.namespace, name, rawInput, input.outputSummary);
   if (isCommandTool(name)) {
     const outputPreview = compactRunnerText(input.outputSummary ?? '', 10_000);
@@ -32,15 +35,13 @@ export function normalizeCodexTool(input: {
       return {
         kind: 'command_execution',
         payload: {
+          toolName: name,
           outputPreview,
           truncated: input.truncated === true || (input.outputSummary?.length ?? 0) > 10_000,
           ...(input.outputSummary == null
             ? {}
-            : { output: publicOutputSnapshot(input.outputSummary, input.truncated === true) }),
-          toolPresentation: shellExecution(
-            input.outputSummary ?? undefined,
-            input.truncated === true
-          ),
+            : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
+          toolPresentation: shellExecution(input.outputSummary ?? undefined, outputTruncated),
           ...(attachments.length === 0 ? {} : { attachments })
         }
       };
@@ -56,19 +57,16 @@ export function normalizeCodexTool(input: {
     return {
       kind: 'command_execution',
       payload: {
+        toolName: name,
         command: compactRunnerText(command, 10_000),
         cwd: typeof values?.cwd === 'string' ? compactRunnerText(values.cwd, 4_096) : null,
         outputPreview,
-        outputRef: null,
         exitCode: null,
         durationMs: null,
-        toolPresentation: shellExecution(
-          input.outputSummary ?? undefined,
-          input.truncated === true
-        ),
+        toolPresentation: shellExecution(input.outputSummary ?? undefined, outputTruncated),
         ...(input.outputSummary == null
           ? {}
-          : { output: publicOutputSnapshot(input.outputSummary, input.truncated === true) }),
+          : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
         truncated:
           input.truncated === true ||
           command.length > 10_000 ||
@@ -81,7 +79,11 @@ export function normalizeCodexTool(input: {
     return {
       kind: 'tool_call',
       payload: {
-        outputSummary: input.outputSummary ?? null,
+        outputSummary:
+          input.outputSummary == null ? null : compactRunnerText(input.outputSummary, 10_000),
+        ...(input.outputSummary == null
+          ? {}
+          : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
         ...subagent,
         ...(attachments.length === 0 ? {} : { attachments })
       }
@@ -93,7 +95,11 @@ export function normalizeCodexTool(input: {
       namespace: compactRunnerText(input.namespace ?? 'codex', 128),
       toolName: name,
       inputSummary: input.inputSummary ?? null,
-      outputSummary: input.outputSummary ?? null,
+      outputSummary:
+        input.outputSummary == null ? null : compactRunnerText(input.outputSummary, 10_000),
+      ...(input.outputSummary == null
+        ? {}
+        : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
       progressLabel: null,
       errorCode: null,
       truncated: input.truncated === true,

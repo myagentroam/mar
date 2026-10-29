@@ -9,7 +9,7 @@ import { compareStableVersions } from '../../src/node-version.js';
 describe('Node controlled upgrade version checks', () => {
   it('does not offer a published target below the current business baseline', async () => {
     const service = new NodeUpgradeService(
-      '0.11.38',
+      '0.11.39',
       vi.fn().mockResolvedValue(['0.11.37', '0.11.36'])
     );
     await expect(service.availability('0.11.35', true)).resolves.toEqual({
@@ -19,14 +19,14 @@ describe('Node controlled upgrade version checks', () => {
   });
 
   it('reports an equal-version upgrade-only Node as unavailable rather than current', async () => {
-    const service = new NodeUpgradeService('0.11.38', vi.fn().mockResolvedValue(['0.11.38']));
-    await expect(service.availability('0.11.38', true, true)).resolves.toEqual({
+    const service = new NodeUpgradeService('0.11.39', vi.fn().mockResolvedValue(['0.11.39']));
+    await expect(service.availability('0.11.39', true, true)).resolves.toEqual({
       state: 'PACKAGE_UNAVAILABLE',
-      targetVersion: '0.11.38'
+      targetVersion: '0.11.39'
     });
-    await expect(service.availability('0.11.38', true, false)).resolves.toEqual({
+    await expect(service.availability('0.11.39', true, false)).resolves.toEqual({
       state: 'CURRENT',
-      targetVersion: '0.11.38'
+      targetVersion: '0.11.39'
     });
   });
 
@@ -82,10 +82,10 @@ describe('Node controlled upgrade version checks', () => {
   });
 
   it('does not allow a push when the same application version was not started by Supervisor', async () => {
-    const service = new NodeUpgradeService('0.11.38', vi.fn().mockResolvedValue(['0.11.38']));
+    const service = new NodeUpgradeService('0.11.39', vi.fn().mockResolvedValue(['0.11.39']));
     await expect(service.availability('0.1.6')).resolves.toEqual({
       state: 'NODE_UNSUPPORTED',
-      targetVersion: '0.11.38'
+      targetVersion: '0.11.39'
     });
   });
 

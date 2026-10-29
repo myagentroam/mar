@@ -45,7 +45,49 @@ function fixture() {
 }
 
 describe('public Node identity connection lifecycle', () => {
-  it('serializes an old v2 metadata write with replacement authentication and v3 capabilities', async () => {
+  it.each([
+    ['0.11.38', false],
+    ['0.11.39', true],
+    ['0.11.40', true],
+    ['0.11.39-beta.1', false],
+    ['unknown', false]
+  ] as const)(
+    'admits business for %s only after this connection reports capabilities',
+    async (nodeAppVersion, admitted) => {
+      const { control, store, attach } = fixture();
+      try {
+        const socket = attach();
+        socket.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+        await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+        expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(false);
+        socket.receive('capabilities', {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: 'v24',
+          nodeAppVersion,
+          codex: { available: false },
+          claudeCode: { available: false }
+        });
+        await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(2));
+        expect(
+          JSON.parse(store.updateNodeHeartbeat.mock.calls[1]![1]!.metadata).nodeAppVersion
+        ).toBe(nodeAppVersion);
+        expect(control.nodeCapabilities('node-1')?.nodeAppVersion).toBe(
+          admitted ? nodeAppVersion : undefined
+        );
+        expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(admitted);
+        if (admitted)
+          expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toMatchObject({
+            version: 3,
+            type: 'workbench.request'
+          });
+      } finally {
+        control.close();
+      }
+    }
+  );
+
+  it('serializes a previous connection metadata write with replacement authentication and v3 capabilities', async () => {
     const { control, store, attach } = fixture();
     let release!: () => void;
     let started!: () => void;
@@ -57,7 +99,7 @@ describe('public Node identity connection lifecycle', () => {
     });
     let metadata = '{}';
     store.updateNodeHeartbeat.mockImplementation(async (_id, capabilities) => {
-      if (capabilities?.metadata.includes('0.11.37')) {
+      if (capabilities?.metadata.includes('0.11.39')) {
         started();
         await blocked;
       }
@@ -69,7 +111,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 2,
+          version: 3,
           id: 'old-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -79,14 +121,16 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 2,
+          version: 3,
           id: 'old-cap',
           type: 'capabilities',
           payload: {
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: 'v24',
-            nodeAppVersion: '0.11.37'
+            nodeAppVersion: '0.11.39',
+            codex: { available: false },
+            claudeCode: { available: false }
           }
         })
       );
@@ -100,12 +144,12 @@ describe('public Node identity connection lifecycle', () => {
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: 'v24',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.40',
         codex: { available: false },
         claudeCode: { available: false }
       });
-      await vi.waitFor(() => expect(JSON.parse(metadata).nodeAppVersion).toBe('0.11.38'));
-      expect(control.nodeCapabilities('node-1')?.nodeAppVersion).toBe('0.11.38');
+      await vi.waitFor(() => expect(JSON.parse(metadata).nodeAppVersion).toBe('0.11.40'));
+      expect(control.nodeCapabilities('node-1')?.nodeAppVersion).toBe('0.11.40');
     } finally {
       release();
       control.close();
@@ -117,7 +161,7 @@ describe('public Node identity connection lifecycle', () => {
       platform: 'linux',
       architecture: 'x64',
       nodeVersion: 'v24.15.0',
-      nodeAppVersion: '0.11.38',
+      nodeAppVersion: '0.11.39',
       codex: { available: false },
       claudeCode: { available: false }
     };
@@ -193,59 +237,33 @@ describe('public Node identity connection lifecycle', () => {
     expect(control.isNodeConnected('node-2')).toBe(false);
   });
 
-  it('keeps an authenticated v2 socket on the upgrade control plane', async () => {
-    const { control, store, attach } = fixture();
-    try {
-      const socket = attach();
-      const sendV2 = (id: string, type: string, payload: unknown) =>
-        socket.emit('message', JSON.stringify({ version: 2, id, type, payload }));
-      sendV2('auth', 'authenticate', { nodeId: 'node-1', credential: 'fixture' });
-      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
-      expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({
-        version: 2,
-        type: 'authenticated',
-        replyTo: 'auth'
-      });
-      sendV2('caps', 'capabilities', {
-        platform: 'linux',
-        architecture: 'x64',
-        nodeVersion: 'v24.15.0',
-        nodeAppVersion: '0.11.37',
-        metadata: { supervisedUpgrade: true },
-        marAgentRuntimeCredentials: {
-          apiVersion: 1,
-          websocket: true,
-          httpVersions: ['1.1'],
-          fastMode: true
-        },
-        codex: { available: false },
-        claudeCode: { available: false }
-      });
-      await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(2));
-      expect(JSON.parse(store.updateNodeHeartbeat.mock.calls[1]![1]!.metadata)).toMatchObject({
-        nodeAppVersion: '0.11.37',
-        supervisedUpgrade: true
-      });
-      expect(control.nodeCapabilities('node-1')).toBeUndefined();
-      expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(false);
-      sendV2('beat', 'heartbeat', {});
-      await vi.waitFor(() =>
-        expect(socket.send.mock.calls.map(([value]) => JSON.parse(value))).toContainEqual(
-          expect.objectContaining({ version: 2, type: 'ack', replyTo: 'beat' })
-        )
-      );
-      const writes = store.updateNodeHeartbeat.mock.calls.length;
-      sendV2('business', 'workbench.event', { arbitrary: true });
-      await vi.waitFor(() =>
-        expect(socket.send.mock.calls.map(([value]) => JSON.parse(value))).toContainEqual(
-          expect.objectContaining({ version: 2, type: 'error' })
-        )
-      );
-      expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(writes);
-    } finally {
-      control.close();
+  it.each([2, 4])(
+    'rejects wire v%i before authenticating or updating metadata',
+    async (version) => {
+      const { control, store, attach } = fixture();
+      try {
+        const socket = attach();
+        socket.emit(
+          'message',
+          JSON.stringify({
+            version,
+            id: 'auth',
+            type: 'authenticate',
+            payload: { nodeId: 'node-1', credential: 'fixture' }
+          })
+        );
+        await vi.waitFor(() =>
+          expect(socket.close).toHaveBeenCalledWith(1008, 'PROTOCOL_VERSION_UNSUPPORTED')
+        );
+        expect(store.authenticateNode).not.toHaveBeenCalled();
+        expect(store.updateNodeHeartbeat).not.toHaveBeenCalled();
+        expect(control.isNodeConnected('node-1')).toBe(false);
+        expect(control.sendAuthenticatedNode('node-1', 'node.upgrade.request', {})).toBe(false);
+      } finally {
+        control.close();
+      }
     }
-  });
+  );
 
   it('preserves the prompt completion capability through storage and public projection', async () => {
     const { control, store, attach } = fixture();
@@ -257,7 +275,7 @@ describe('public Node identity connection lifecycle', () => {
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: 'v24.15.0',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.39',
         codex: { available: false },
         claudeCode: { available: false },
         promptCompletion: { apiVersion: 1 }
@@ -294,7 +312,7 @@ describe('public Node identity connection lifecycle', () => {
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: 'v24.15.0',
-        nodeAppVersion: '0.11.38',
+        nodeAppVersion: '0.11.39',
         codex: { available: false },
         claudeCode: { available: false },
         chatgptLogin
@@ -335,7 +353,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 2,
+          version: 3,
           id: 'older-node-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -343,7 +361,7 @@ describe('public Node identity connection lifecycle', () => {
       );
       await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
       expect(JSON.parse(old.send.mock.calls[0]![0])).toMatchObject({
-        version: 2,
+        version: 3,
         type: 'authenticated',
         replyTo: 'older-node-auth'
       });

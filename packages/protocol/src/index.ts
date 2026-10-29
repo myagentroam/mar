@@ -926,7 +926,6 @@ const marAgentModelSummaryShape = {
   ...marAgentModelShape,
   baseUrl: z.string().url().max(2048),
   sortOrder: z.number().int(),
-  apiKeyConfigured: z.boolean().optional(),
   credentialType: z.enum(['INLINE_API_KEY', 'CREDENTIAL_REF']).optional(),
   credentialConfigured: z.boolean().optional(),
   lastTestedAt: z.number().int().nonnegative().nullable().optional(),
@@ -977,7 +976,6 @@ export interface MarAgentModelSummary {
   enabled: boolean;
   sortOrder: number;
   access: 'PUBLIC' | 'RESTRICTED';
-  apiKeyConfigured?: boolean;
   credentialType?: 'INLINE_API_KEY' | 'CREDENTIAL_REF';
   credentialConfigured?: boolean;
   lastTestedAt?: number | null;
@@ -991,9 +989,8 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
     .object({
       ...marAgentModelShape,
       baseUrl: z.string().url().max(2048),
-      apiKey: z.string().min(1).max(16_384).optional(),
       useResourceUrl: z.boolean().default(false),
-      credential: marAgentRuntimeCredentialSchema.optional(),
+      credential: marAgentRuntimeCredentialSchema,
       responsesToolNamespace: z
         .string()
         .regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/u)
@@ -1021,11 +1018,6 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
       code: 'custom',
       path: ['responsesToolNamespace'],
       message: 'Tool namespaces require Standard OpenAI Responses'
-    });
-  if ((configuration.apiKey === undefined) === (configuration.credential === undefined))
-    context.addIssue({
-      code: 'custom',
-      message: 'exactly one runtime model credential is required'
     });
   if (
     configuration.imageGeneration !== undefined &&
@@ -2218,6 +2210,18 @@ export const executionPresentationSchema = z
     execution: z
       .object({
         kind: z.enum(['SHELL', 'CODE', 'CONTROL']),
+        toolName: z.string().min(1).max(128).optional(),
+        action: z.string().max(128).optional(),
+        targetId: z.string().max(256).optional(),
+        source: z
+          .object({
+            kind: z.enum(['SHELL', 'CODE']),
+            text: z.string().max(10_000),
+            cwd: z.string().max(10_000).optional(),
+            truncated: z.boolean()
+          })
+          .strict()
+          .optional(),
         output: executionOutputSchema.optional(),
         error: executionErrorSchema.optional(),
         truncation: executionTruncationSchema.optional()
@@ -2230,6 +2234,61 @@ export const executionPresentationSchema = z
     'Execution presentation exceeds 128 KiB'
   );
 export type ExecutionPresentation = z.infer<typeof executionPresentationSchema>;
+
+/** Append output channels of the same call; snapshots and terminal items replace normally. */
+export function appendExecutionPresentation(previous: unknown, incoming: unknown): unknown {
+  const before = executionPresentationSchema.safeParse(previous);
+  const update = executionPresentationSchema.safeParse(incoming);
+  if (!update.success || !update.data.execution.output) return incoming;
+  const prior = before.success ? before.data.execution : undefined;
+  const next = update.data.execution;
+  const channels = new Map((prior?.output ?? []).map((block) => [block.channel, block.text]));
+  let clipped = false;
+  for (const block of next.output ?? []) {
+    const text = (channels.get(block.channel) ?? '') + block.text;
+    let tail = text.slice(-10_000);
+    if (tail.length < text.length) {
+      clipped = true;
+      if (/^[\uDC00-\uDFFF]/u.test(tail)) tail = tail.slice(1);
+    }
+    channels.set(block.channel, tail);
+  }
+  const output = [...channels].map(([channel, text]) => ({ channel, text }));
+  let head = clipped || prior?.truncation?.output === 'HEAD' || next.truncation?.output === 'HEAD';
+  const make = () => ({
+    kind: 'EXECUTION' as const,
+    execution: {
+      ...prior,
+      ...next,
+      output,
+      ...(head || prior?.truncation || next.truncation
+        ? {
+            truncation: {
+              ...prior?.truncation,
+              ...next.truncation,
+              ...(head ? { output: 'HEAD' as const } : {})
+            }
+          }
+        : {})
+    }
+  });
+  const size = () => new TextEncoder().encode(JSON.stringify(make())).length;
+  for (const block of output) {
+    if (size() <= 128 * 1024) break;
+    head = true;
+    const original = block.text;
+    let low = 0;
+    let high = original.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      block.text = original.slice(middle).replace(/^[\uDC00-\uDFFF]/u, '');
+      if (size() <= 128 * 1024) high = middle;
+      else low = middle + 1;
+    }
+    block.text = original.slice(low).replace(/^[\uDC00-\uDFFF]/u, '');
+  }
+  return make();
+}
 const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('READ'),
@@ -2309,11 +2368,11 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
 const commandExecutionItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('command_execution'),
   payload: z.object({
+    toolName: z.string().min(1).max(128).optional(),
     title: z.string().min(1).max(128).optional(),
     command: z.string().max(10000),
     cwd: z.string().max(4096).nullable(),
     outputPreview: z.string().max(10000),
-    outputRef: z.string().min(1).max(128).nullable(),
     exitCode: z.number().int().nullable(),
     durationMs: z.number().int().nonnegative().nullable(),
     truncated: z.boolean(),
@@ -2330,7 +2389,6 @@ const fileChangeItemSchema = conversationItemBaseSchema.extend({
         change: z.enum(['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED']),
         additions: z.number().int().nonnegative().nullable(),
         deletions: z.number().int().nonnegative().nullable(),
-        diffAvailable: z.boolean(),
         changeId: z.string().uuid().optional(),
         diff: fileChangeDiffSchema.optional()
       })

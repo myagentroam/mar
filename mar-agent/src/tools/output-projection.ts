@@ -114,12 +114,14 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
   let displayedCount = 0;
   let remaining = 10_000;
   let truncated = false;
+  let headTruncated = data.outputHeadTruncated === true;
   const clip = (text: string) => {
     let start = Math.max(0, text.length - remaining);
     if (start > 0 && /[\uDC00-\uDFFF]/u.test(text[start]!)) start++;
     const result = text.slice(start);
     remaining -= result.length;
     truncated ||= start > 0;
+    headTruncated ||= start > 0;
     return result;
   };
   for (let index = values.length - 1; index >= 0; index--) {
@@ -133,6 +135,7 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
     ) {
       if (displayedCount >= 32) {
         truncated = true;
+        headTruncated = true;
         continue;
       }
       displayedCount++;
@@ -162,6 +165,7 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
       ) {
         if (displayedCount >= 32) {
           truncated = true;
+          headTruncated = true;
           continue;
         }
         displayedCount++;
@@ -187,7 +191,12 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
       }
     }
   }
-  return { ...data, observations: selected, ...(truncated ? { truncated: true } : {}) };
+  return {
+    ...data,
+    observations: selected,
+    ...(truncated ? { truncated: true } : {}),
+    ...(headTruncated ? { outputHeadTruncated: true } : {})
+  };
 }
 
 /** Project only known, validated tool result shapes into public structured events. */
@@ -231,7 +240,21 @@ export function structuredToolEventData(
   )
     return publicCodeObservations(value.observations, {
       cellId: value.cellId,
+      ...(isRecord(value.executionSource) &&
+      value.executionSource.kind === 'CODE' &&
+      typeof value.executionSource.text === 'string'
+        ? {
+            executionSource: {
+              kind: 'CODE' as const,
+              text: value.executionSource.text.slice(0, 10_000),
+              truncated:
+                value.executionSource.truncated === true ||
+                value.executionSource.text.length > 10_000
+            }
+          }
+        : {}),
       status: value.status as CodeCellEventData['status'],
+      ...(value.outputHeadTruncated === true ? { outputHeadTruncated: true } : {}),
       cached: value.cached === true,
       ...(['snapshot', 'completion', 'timeout', 'yield', 'interrupted'].includes(
         String(value.waitOutcome)

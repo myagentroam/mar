@@ -1,5 +1,5 @@
-import { compactRunnerText, compactRunnerValue } from '../normalization.js';
-import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
+import { compactRunnerText, compactRunnerValue, publicOutputSnapshot } from '../normalization.js';
+import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeOpenCodeTool(
   toolName: string,
@@ -19,6 +19,7 @@ export function normalizeOpenCodeTool(
     return {
       kind: 'command_execution',
       payload: {
+        toolName: publicToolName,
         command: compactRunnerText(
           typeof input?.command === 'string'
             ? input.command
@@ -30,7 +31,6 @@ export function normalizeOpenCodeTool(
         cwd: typeof input?.cwd === 'string' ? compactRunnerText(input.cwd, 4_096) : null,
         outputPreview:
           typeof state?.output === 'string' ? compactRunnerText(state.output, 10_000) : '',
-        outputRef: null,
         exitCode: typeof state?.exitCode === 'number' ? state.exitCode : null,
         durationMs: null,
         truncated: typeof state?.output === 'string' && state.output.length > 10_000,
@@ -67,6 +67,7 @@ export function normalizeOpenCodeTool(
             }
           }
         : {}),
+      ...(typeof state?.output === 'string' ? { output: publicOutputSnapshot(state.output) } : {}),
       ...subagent
     }
   };
@@ -95,7 +96,10 @@ function openCodeSubagentProjection(
     ...(title.length === 0 ? {} : { title }),
     ...(nativeResult === undefined
       ? {}
-      : { outputSummary: compactRunnerText(nativeResult.result, 10_000) || null })
+      : {
+          outputSummary: compactRunnerText(nativeResult.result, 10_000) || null,
+          output: publicOutputSnapshot(nativeResult.result)
+        })
   };
 }
 

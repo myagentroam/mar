@@ -90,6 +90,10 @@ describe('exec_wait', () => {
     expect(poll1.eventData).toMatchObject({ displayOutput: { stdout: 'first' } });
     expect(poll2.eventData).toMatchObject({ displayOutput: { stdout: 'first second' } });
     expect(poll2.data).toMatchObject({ stdout: ' second' });
+    expect(poll2.eventData).toMatchObject({
+      executionSource: { kind: 'SHELL', text: 'fixture', truncated: false }
+    });
+    expect(poll2.data).not.toHaveProperty('executionSource');
     child.exitCode = 0;
     child.emit('close', 0, null);
   });
@@ -245,7 +249,12 @@ describe('exec_wait', () => {
       child.stdout.write('-second');
       await vi.advanceTimersByTimeAsync(100);
       expect(settled).toBe(false);
-      expect(snapshots.at(-1)).toMatchObject({ stdout: 'first-second', stderr: 'warning' });
+      expect(snapshots.at(-1)).toMatchObject({
+        mode: 'delta',
+        stdout: '-second',
+        stderr: 'warning',
+        displayOutput: { stdout: 'first-second', stderr: 'warning' }
+      });
       child.exitCode = 0;
       child.emit('exit', 0, null);
       child.stdout.write('-tail');
@@ -305,6 +314,10 @@ describe('exec_wait', () => {
       );
       expect(snapshot.stdout).not.toContain('�');
       expect(snapshot.truncated).toBe(true);
+      expect(snapshot).toMatchObject({
+        mode: 'snapshot',
+        displayOutput: { stdoutDroppedBytes: expect.any(Number) }
+      });
     }
     child.stdout.write('next');
     expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
@@ -313,6 +326,57 @@ describe('exec_wait', () => {
     });
     child.exitCode = 0;
     child.emit('close', 0, null);
+  });
+
+  it('resynchronizes after slow-consumer frame overflow with the contiguous display tail', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const { call } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+    vi.useFakeTimers();
+    let release!: () => void;
+    const onOutput = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          })
+      )
+      .mockImplementation(async () => {});
+    const waiting = call(
+      'exec_wait',
+      { processId: started.processId, yieldMs: 5000 },
+      { ...context(), onOutput }
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    child.stdout.write('old');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onOutput).toHaveBeenCalledTimes(1);
+    child.stdout.write('x'.repeat(50_000) + 'TAIL');
+    child.stderr.write('warning');
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onOutput).toHaveBeenCalledTimes(2);
+    expect(onOutput.mock.calls[1]?.[0]).toMatchObject({
+      mode: 'snapshot',
+      truncated: true,
+      stdout: expect.stringMatching(/TAIL$/u),
+      stderr: 'warning',
+      displayOutput: { stdout: expect.stringMatching(/TAIL$/u), stderr: 'warning' }
+    });
+    expect(onOutput.mock.calls[1]?.[0].stdout).not.toContain('old');
+    child.exitCode = 0;
+    child.emit('close', 0, null);
+    await waiting;
   });
 
   it.each(['cancel', 'steer'] as const)(
