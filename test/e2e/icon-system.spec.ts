@@ -1064,6 +1064,73 @@ for (const { theme, locale } of [
   });
 }
 
+for (const theme of ['dark', 'light']) {
+  for (const count of [0, 1, 99, 120]) {
+    test(`Desktop recent-session badge shows full English unread: ${theme}, ${count}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await page.goto(
+        `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=en-US&count=${count}&unread=1`
+      );
+      const badge = page.locator('.recent-sessions-trigger .recent-sessions-badge');
+      const unread = badge.locator('.session-state-unread');
+      await expect(unread).toHaveText('Unread');
+      const geometry = await unread.evaluate((element) => {
+        const nav = element.closest('nav')!.getBoundingClientRect();
+        const rect = element.getBoundingClientRect();
+        return {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          left: rect.left,
+          right: rect.right,
+          navLeft: nav.left,
+          navRight: nav.right
+        };
+      });
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+      expect(geometry.left).toBeGreaterThanOrEqual(geometry.navLeft);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.navRight);
+      if (count) {
+        const number = badge.locator('.session-state-count');
+        await expect(number).toHaveText(count > 99 ? '99+' : String(count));
+        const numberBounds = (await number.boundingBox())!;
+        const unreadBounds = (await unread.boundingBox())!;
+        expect(Math.abs(numberBounds.y - unreadBounds.y)).toBeLessThan(1);
+      }
+      if (count === 1)
+        await page
+          .locator('.recent-sessions-trigger')
+          .screenshot({ path: testInfo.outputPath('badge.png') });
+    });
+  }
+}
+
+test('Narrow desktop sidebar width includes the activity rail', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto(`${fixture.url}icon-system.html?navigation=1&locale=en-US&count=99&unread=1`);
+  const unread = page.locator('.recent-sessions-trigger .session-state-unread');
+  await expect(unread).toHaveText('Unread');
+  const widths = await unread.evaluate((element) => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    const probe = document.createElement('div');
+    probe.style.width = 'var(--mar-workbench-sidebar-total-width)';
+    root.append(probe);
+    const total = probe.getBoundingClientRect().width;
+    probe.remove();
+    return {
+      total,
+      rail: Number.parseFloat(style.getPropertyValue('--mar-activity-rail-width')),
+      sidebar: Number.parseFloat(style.getPropertyValue('--mar-workbench-sidebar-width')),
+      unreadWidth: element.clientWidth,
+      unreadContentWidth: element.scrollWidth
+    };
+  });
+  expect(widths.total).toBe(widths.rail + widths.sidebar);
+  expect(widths.unreadContentWidth).toBeLessThanOrEqual(widths.unreadWidth);
+});
+
 test('Conversation disclosure arrows share MAR geometry and retain nested keyboard toggles', async ({
   page
 }) => {

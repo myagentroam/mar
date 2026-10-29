@@ -263,7 +263,7 @@ function runTime(run: RecentRun): string {
   pointer-events: none;
 }
 .recent-sessions-count-only {
-  right: 4px;
+  right: calc(50% - 20px);
   max-width: calc(100% - 4px);
 }
 .recent-sessions-badge :deep(.session-state-count) {

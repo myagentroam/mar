@@ -608,9 +608,11 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-rail-item-height: 51px;
     --mar-settings-row-height: 37px;
     --sidebar-header-height: var(--mar-workbench-header-height);
-    --mar-activity-rail-width: 52px;
+    --mar-activity-rail-width: 68px;
     --mar-workbench-sidebar-width: 244px;
-    --mar-workbench-sidebar-total-width: 296px;
+    --mar-workbench-sidebar-total-width: calc(
+      var(--mar-activity-rail-width) + var(--mar-workbench-sidebar-width)
+    );
     --mar-workbench-header-height: 44px;
     --mar-session-sidebar-width: 262px;
     --mar-inspector-min-width: 275px;
@@ -626,7 +628,6 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
 @media (min-width: 768px) and (max-width: 860px) {
   html.console-ui {
     --mar-workbench-sidebar-width: 220px;
-    --mar-workbench-sidebar-total-width: 272px;
   }
 }
 
