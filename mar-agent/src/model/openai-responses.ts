@@ -1808,6 +1808,10 @@ function isRetryableResponsesUpstreamError(
   code: string | undefined,
   message: string | undefined
 ): boolean {
+  // Responses server_error reports upstream response-stream processing failure, not a
+  // local protocol parse failure or generic overload. Reuse bounded recovery without
+  // guaranteeing success or inferring a particular upstream service/proxy or root cause.
+  if (code === 'server_error') return true;
   if (isRetryableUpstreamOverloadCode(code)) return true;
   if (code !== 'invalid_request_error') return false;
   // Exact compatibility exception, not a general access/authentication retry rule.

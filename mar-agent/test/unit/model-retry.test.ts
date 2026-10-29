@@ -156,12 +156,12 @@ function stream(protocol: string, overload = false, text = 'Recovered') {
   });
 }
 
-function partialFailure(protocol: string) {
+function partialFailure(protocol: string, code = 'server_is_overloaded') {
   const events =
     protocol === 'OPENAI_RESPONSES'
       ? [
           { type: 'response.output_text.delta', item_id: 'partial', delta: 'Partial' },
-          { type: 'error', code: 'server_is_overloaded' }
+          { type: 'error', code, message: 'Transient upstream processing failure.' }
         ]
       : [
           { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -468,15 +468,22 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       }
     );
 
-    it.each([false, true])(
-      'shares one eight-attempt budget before and after visible output, exhausted=%s',
-      async (exhausted) => {
+    it.each(
+      [false, true].flatMap((exhausted) =>
+        (protocol === 'OPENAI_RESPONSES'
+          ? ['server_is_overloaded', 'server_error']
+          : ['server_is_overloaded']
+        ).map((code) => ({ exhausted, code }))
+      )
+    )(
+      'shares one eight-attempt budget before and after visible $code output, exhausted=$exhausted',
+      async ({ exhausted, code }) => {
         vi.spyOn(Math, 'random').mockReturnValue(0);
         const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
           const attempt = fetch.mock.calls.length;
           if (attempt === 8 && !exhausted) return stream(protocol);
           return attempt % 2 === 0 || attempt === 8
-            ? partialFailure(protocol)
+            ? partialFailure(protocol, code)
             : new Response('busy', { status: 503 });
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-unified-retry-'));
@@ -490,6 +497,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           const session = await agent.createSession({ workspace: home, title: 'Retry test' });
           const result = await session.run({ prompt: 'Continue.' }).result();
           expect(result.status).toBe(exhausted ? 'failed' : 'completed');
+          if (exhausted)
+            expect(result.errorCode).toBe(
+              protocol === 'OPENAI_RESPONSES' ? code : 'overloaded_error'
+            );
           expect(fetch).toHaveBeenCalledTimes(8);
           expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
             5000, 10000, 15000, 20000, 25000, 30000, 35000
@@ -595,18 +606,92 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       expect(diagnostics[1]?.errorCode).not.toBe('MAR_AGENT_MODEL_TIMEOUT');
     });
 
-    it('does not start another request when cancelled during backoff', async () => {
-      const controller = new AbortController();
-      const reason = new Error('cancelled in backoff');
+    it.each(protocol === 'OPENAI_RESPONSES' ? ['http', 'server_error'] : ['http'])(
+      'does not start another request when cancelled during %s backoff',
+      async (failure) => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled in backoff');
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(
+            failure === 'http'
+              ? new Response('busy', { status: 503 })
+              : new Response(
+                  'data: {"type":"error","code":"server_error","message":"Upstream processing failed."}\n\n'
+                )
+          );
+        vi.mocked(delay).mockImplementationOnce(async (_ms, _value, options) => {
+          controller.abort(reason);
+          throw options!.signal!.reason;
+        });
+        await expect(run(controller.signal)).rejects.toBe(reason);
+        expect(fetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    if (protocol === 'OPENAI_RESPONSES') {
+      it('cancels an in-flight request after a server_error retry without another attempt', async () => {
+        const controller = new AbortController();
+        const reason = new Error('Cancelled during the recovery request.');
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(new Response('data: {"type":"error","code":"server_error"}\n\n'))
+          .mockImplementation(
+            async (_url, init) =>
+              new Promise<Response>((_resolve, reject) => {
+                const signal = init!.signal!;
+                signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                controller.abort(reason);
+              })
+          );
+        await expect(run(controller.signal)).rejects.toBe(reason);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(delay).toHaveBeenCalledTimes(1);
+      });
+    }
+
+    it.each(['server_error', 'invalid_request_error', 'authentication_error', 'unknown_error'])(
+      'does not broaden non-retryable HTTP status classification for %s',
+      async (code) => {
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(
+            new Response(
+              JSON.stringify({ error: { code, type: code, message: 'server_error: retry.' } }),
+              { status: 400 }
+            )
+          );
+        await expect(run()).rejects.toMatchObject({ details: { status: 400 }, retryable: false });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(delay).not.toHaveBeenCalled();
+      }
+    );
+
+    it('does not retry malformed stream JSON even when it mentions server_error', async () => {
       const fetch = vi
         .spyOn(globalThis, 'fetch')
-        .mockResolvedValue(new Response('busy', { status: 503 }));
-      vi.mocked(delay).mockImplementationOnce(async (_ms, _value, options) => {
-        controller.abort(reason);
-        throw options!.signal!.reason;
+        .mockResolvedValue(new Response('data: {"type":"error","code":"server_error"\n\n'));
+      await expect(run()).rejects.toMatchObject({
+        code: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
+        retryable: false
       });
-      await expect(run(controller.signal)).rejects.toBe(reason);
       expect(fetch).toHaveBeenCalledTimes(1);
+      expect(delay).not.toHaveBeenCalled();
     });
+
+    if (protocol === 'ANTHROPIC_MESSAGES') {
+      it('does not retry a structured Anthropic server_error', async () => {
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(
+            new Response(
+              'data: {"type":"error","error":{"type":"server_error","message":"Upstream processing failed."}}\n\n'
+            )
+          );
+        await expect(run()).rejects.toMatchObject({ code: 'server_error', retryable: false });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(delay).not.toHaveBeenCalled();
+      });
+    }
   }
 );
