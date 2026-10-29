@@ -7,10 +7,7 @@ import type {
   AgentNetworkInvoke,
   AgentNetworkService
 } from './agent-network-service.js';
-import {
-  actorForApprovedAgentCall,
-  actorForAuthenticatedTerminal
-} from './agent-network-bindings.js';
+import { actorForAuthenticatedTerminal } from './agent-network-bindings.js';
 import type { AgentNetworkObservations } from './agent-network-observations.js';
 import { isPlainRecord } from '../util/records.js';
 import { randomUUID } from 'node:crypto';
@@ -88,23 +85,6 @@ export async function invokeAgentNetwork(
   context?: ExtensionOperationContext,
   requestSignal?: AbortSignal
 ): Promise<unknown> {
-  const targets =
-    typeof payload.agentId === 'string'
-      ? [payload.agentId]
-      : Array.isArray(payload.agentIds)
-        ? payload.agentIds.filter((id): id is string => typeof id === 'string')
-        : [];
-  const operations =
-    action === 'send'
-      ? (['send', 'goal'] as const)
-      : action === 'stop'
-        ? (['stop'] as const)
-        : action === 'wait'
-          ? (['wait'] as const)
-          : [];
-  const authorized = context
-    ? actorForApprovedAgentCall(actor, context, targets, operations)
-    : actor;
   const signal = context?.signal ?? requestSignal;
   switch (action) {
     case 'start':
@@ -135,15 +115,11 @@ export async function invokeAgentNetwork(
         signal
       );
     case 'send':
-      return service.send(
-        authorized,
-        payload as Parameters<AgentNetworkService['send']>[1],
-        signal
-      );
+      return service.send(actor, payload as Parameters<AgentNetworkService['send']>[1], signal);
     case 'stop':
-      return service.stop(authorized, payload as Parameters<AgentNetworkService['stop']>[1]);
+      return service.stop(actor, payload as Parameters<AgentNetworkService['stop']>[1]);
     case 'wait':
-      return service.wait(authorized, {
+      return service.wait(actor, {
         ...payload,
         ...(context
           ? { signal: context.signal, interrupt: context.waitInterrupt }

@@ -9,10 +9,7 @@ import { FakeRunner } from '../../src/fake-runner.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { AgentNetworkService } from '../../src/service/agent-network-service.js';
 import type { GoalRuntime } from '../../src/service/goal-runtime.js';
-import {
-  actorForApprovedAgentCall,
-  actorForAuthenticatedTerminal
-} from '../../src/service/agent-network-bindings.js';
+import { actorForAuthenticatedTerminal } from '../../src/service/agent-network-bindings.js';
 import {
   agentNetworkExecutionCommand,
   agentNetworkInvoke
@@ -97,24 +94,8 @@ describe('Node Agent Network owner integration', () => {
         };
         const act = (agentId: string) =>
           operation === 'send'
-            ? core.agentNetworkService.send(
-                actorForApprovedAgentCall(
-                  actor,
-                  { permission: { decision: 'approved' } } as ExtensionOperationContext,
-                  [agentId],
-                  ['goal']
-                ),
-                { agentId, goal: { clear: true } }
-              )
-            : core.agentNetworkService.wait(
-                actorForApprovedAgentCall(
-                  actor,
-                  { permission: { decision: 'approved' } } as ExtensionOperationContext,
-                  [agentId],
-                  ['wait']
-                ),
-                { agentId, waitMs: 0 }
-              );
+            ? core.agentNetworkService.send(actor, { agentId, goal: { clear: true } })
+            : core.agentNetworkService.wait(actor, { agentId, waitMs: 0 });
         expect(core.agentNetworkObservations.get(parent.session.id)).toBeUndefined();
         await act(child.session.id);
         const observations = core.agentNetworkObservations.get(parent.session.id);
@@ -915,14 +896,6 @@ describe('Node Agent Network owner integration', () => {
         coordinator: core.continuousRunCoordinator,
         service: core.agentNetworkService
       });
-      await expect(
-        childInvoke(
-          childExecutionId,
-          'send',
-          { agentId: parent.id, content: 'unsafe replacement', deliveryIntent: 'REPLACE_CURRENT' },
-          context
-        )
-      ).rejects.toThrow();
       expect(observer.capture(created.agentId)).toBeUndefined();
       expect(
         await childInvoke(
@@ -935,23 +908,25 @@ describe('Node Agent Network owner integration', () => {
       expect(core.runtime.activeSessionRun(parent.id)?.id).toBe(run.id);
       expect(core.runtime.currentExecutionId(run.id)).toBe(executionId);
       expect(observer.wake.pending()).toBe(false);
-      expect(observer.capture(created.agentId, childExecutionId)?.updates).toContainEqual(
+      expect(
+        core.runtime.sessionQueue(parent.id).itemIds.map((id) => core.runtime.getQueueItem(id))
+      ).toContainEqual(
         expect.objectContaining({
-          kind: 'message',
-          value: expect.stringContaining('upward report')
+          content: expect.stringContaining('upward report'),
+          initiatedByUserId: 7
         })
       );
       expect(core.agentNetworkObservations.get(created.agentId)).toBeUndefined();
       observer.capture(created.agentId, childExecutionId)?.acknowledge();
       observer.close();
-      await expect(
-        childInvoke(
+      expect(
+        await childInvoke(
           childExecutionId,
           'send',
           { agentId: parent.id, content: 'cold report' },
           context
         )
-      ).rejects.toThrow('AGENT_PARENT_NOT_WARM');
+      ).toMatchObject({ agentId: parent.id, message: { status: 'accepted' } });
       expect(core.agentNetworkObservations.get(parent.id)).toBeUndefined();
       expect(core.runtime.activeSessionRun(parent.id)?.id).toBe(run.id);
       observer = core.agentNetworkObservations.attach(parent.id);
@@ -1299,93 +1274,153 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it('reports to a warm idle parent without starting it and rejects a cold parent', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'mar-network-upward-'));
-    const database = new NodeDatabase(':memory:', 'network-upward');
-    const workspace = database.saveWorkspace({
-      path: directory,
-      kind: 'DIRECTORY',
-      gitSummary: null
-    });
-    const connector = new NodeConnector({
-      reconnect: false,
-      database,
-      fakeRunner: new FakeRunner(),
-      fakeScript: () => [{ type: 'long-running' }] as const,
-      capabilities: {
-        platform: 'linux',
-        architecture: 'x64',
-        nodeVersion: process.version,
-        codex: { available: true, version: 'codex-cli 0.147.0' },
-        claudeCode: { available: false }
-      }
-    });
-    const core = connector as unknown as {
-      runtime: NodeRuntimeState;
-      continuousRunCoordinator: ContinuousRunCoordinator<unknown>;
-      agentNetworkService: AgentNetworkService;
-      agentNetworkObservations: AgentNetworkObservations;
-      sessionMessageService: {
-        operations(): Record<string, (input: Record<string, unknown>) => Promise<unknown>>;
+  it.each(['parent', 'sibling', 'independent'] as const)(
+    'uses normal native messaging, wait, Goal and stop for %s targets without a relationship grant',
+    async (kind) => {
+      const directory = await mkdtemp(join(tmpdir(), 'mar-network-upward-'));
+      const database = new NodeDatabase(':memory:', 'network-upward');
+      const workspace = database.saveWorkspace({
+        path: directory,
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const connector = new NodeConnector({
+        reconnect: false,
+        database,
+        fakeRunner: new FakeRunner(),
+        fakeScript: () => [{ type: 'long-running' }] as const,
+        capabilities: {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: process.version,
+          codex: { available: true, version: 'codex-cli 0.147.0' },
+          claudeCode: { available: false }
+        }
+      });
+      const core = connector as unknown as {
+        runtime: NodeRuntimeState;
+        continuousRunCoordinator: ContinuousRunCoordinator<unknown>;
+        agentNetworkService: AgentNetworkService;
+        agentNetworkObservations: AgentNetworkObservations;
+        sessionMessageService: {
+          operations(): Record<string, (input: Record<string, unknown>) => Promise<unknown>>;
+        };
       };
-    };
-    const parent = core.runtime.createAgentSession({
-      workspaceId: workspace.id,
-      runner: 'codex',
-      cwd: workspace.path,
-      externalSessionId: 'idle-parent',
-      model: 'gpt-5.3-codex',
-      effort: 'medium',
-      nativeControl: 'MAR_MANAGED'
-    });
-    const child = core.runtime.createAgentSession({
-      workspaceId: workspace.id,
-      runner: 'codex',
-      cwd: workspace.path,
-      externalSessionId: 'active-child',
-      parentSessionId: parent.id,
-      model: 'gpt-5.3-codex',
-      effort: 'medium',
-      nativeControl: 'MAR_MANAGED'
-    });
-    const observer = core.agentNetworkObservations.attach(parent.id);
-    try {
-      await core.sessionMessageService.operations()['session.message']!({
-        sessionId: child.id,
-        content: 'child',
-        clientMessageId: 'child-start',
-        __requestUserId: 7
+      const parent = core.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        cwd: workspace.path,
+        externalSessionId: 'idle-parent',
+        model: 'gpt-5.3-codex',
+        effort: 'medium',
+        nativeControl: 'MAR_MANAGED'
       });
-      const run = core.runtime.activeSessionRun(child.id)!;
-      await vi.waitFor(() => expect(core.runtime.currentExecutionId(run.id)).toBeTruthy());
-      const executionId = core.runtime.currentExecutionId(run.id)!;
-      const invoke = agentNetworkInvoke({
-        sessionId: child.id,
-        runtime: core.runtime,
-        coordinator: core.continuousRunCoordinator,
-        service: core.agentNetworkService
+      const child = core.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        cwd: workspace.path,
+        externalSessionId: 'active-child',
+        parentSessionId: parent.id,
+        model: 'gpt-5.3-codex',
+        effort: 'medium',
+        nativeControl: 'MAR_MANAGED'
       });
-      const context = { signal: new AbortController().signal } as ExtensionOperationContext;
-      expect(
-        await invoke(executionId, 'send', { agentId: parent.id, content: 'idle report' }, context)
-      ).toMatchObject({ message: { status: 'accepted', result: { delivery: 'reported' } } });
-      expect(core.runtime.activeSessionRun(parent.id)).toBeUndefined();
-      expect(observer.wake.pending()).toBe(false);
-      expect(observer.capture(child.id, executionId)?.updates).toContainEqual(
-        expect.objectContaining({ value: expect.stringContaining('idle report') })
-      );
-      observer.close();
-      await expect(
-        invoke(executionId, 'send', { agentId: parent.id, content: 'cold report' }, context)
-      ).rejects.toThrow('AGENT_PARENT_NOT_WARM');
-      expect(core.runtime.activeSessionRun(parent.id)).toBeUndefined();
-      expect(core.agentNetworkObservations.get(parent.id)).toBeUndefined();
-    } finally {
-      observer.close();
-      await connector.stop();
-      await rm(directory, { recursive: true, force: true });
+      const target =
+        kind === 'parent'
+          ? parent
+          : core.runtime.createAgentSession({
+              workspaceId: workspace.id,
+              runner: 'codex',
+              cwd: workspace.path,
+              externalSessionId: `target-${kind}`,
+              ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
+              model: 'gpt-5.3-codex',
+              effort: 'medium',
+              nativeControl: 'MAR_MANAGED'
+            });
+      const observer = core.agentNetworkObservations.attach(child.id);
+      try {
+        await core.sessionMessageService.operations()['session.message']!({
+          sessionId: child.id,
+          content: 'child',
+          clientMessageId: 'child-start',
+          __requestUserId: 7
+        });
+        const run = core.runtime.activeSessionRun(child.id)!;
+        await vi.waitFor(() => expect(core.runtime.currentExecutionId(run.id)).toBeTruthy());
+        const executionId = core.runtime.currentExecutionId(run.id)!;
+        const invoke = agentNetworkInvoke({
+          sessionId: child.id,
+          runtime: core.runtime,
+          coordinator: core.continuousRunCoordinator,
+          service: core.agentNetworkService
+        });
+        const context = { signal: new AbortController().signal } as ExtensionOperationContext;
+        const requests: Record<string, unknown>[] = [];
+        const operations = core.sessionMessageService.operations.bind(core.sessionMessageService);
+        vi.spyOn(core.sessionMessageService, 'operations').mockImplementation(() => {
+          const handlers = operations();
+          return {
+            ...handlers,
+            'session.message': async (input) => {
+              requests.push(input);
+              return handlers['session.message']!(input);
+            }
+          };
+        });
+        expect(core.agentNetworkObservations.get(target.id)).toBeUndefined();
+        for (const deliveryIntent of ['SEND', 'QUEUE', 'REPLACE_CURRENT'] as const) {
+          expect(
+            await invoke(
+              executionId,
+              'send',
+              {
+                agentId: target.id,
+                content: `message ${deliveryIntent}`,
+                clientMessageId: `native-${deliveryIntent}`,
+                deliveryIntent
+              },
+              context
+            )
+          ).toMatchObject({ message: { status: 'accepted' } });
+          expect(requests.at(-1)).toMatchObject({
+            sessionId: target.id,
+            content: `message ${deliveryIntent}`,
+            clientMessageId: `native-${deliveryIntent}`,
+            deliveryIntent,
+            __marctlOrigin: { sessionId: child.id }
+          });
+        }
+        expect(
+          await invoke(
+            executionId,
+            'send',
+            { agentId: target.id, goal: { objective: 'Continue the existing target work' } },
+            context
+          )
+        ).toMatchObject({ goal: { status: 'applied' } });
+        const targetRun = core.runtime.activeSessionRun(target.id)!;
+        expect(targetRun.initiatedByUserId).toBe(7);
+        await vi.waitFor(() => expect(core.runtime.currentExecutionId(targetRun.id)).toBeTruthy());
+        expect(
+          await invoke(executionId, 'wait', { agentId: target.id, waitMs: 0 }, context)
+        ).toMatchObject({ agentId: target.id, waitOutcome: 'snapshot' });
+        expect(observer.capture(target.id)).toBeUndefined();
+        expect(
+          await invoke(
+            executionId,
+            'stop',
+            { agentId: target.id, executionId: core.runtime.currentExecutionId(targetRun.id)! },
+            context
+          )
+        ).toMatchObject({ cancel: { status: 'accepted' }, goal: { status: 'cleared' } });
+      } finally {
+        observer.close();
+        await connector.stop();
+        await rm(directory, { recursive: true, force: true });
+      }
     }
-  });
+  );
 
   it.each([
     ['start', 'inline'],
@@ -1566,7 +1601,7 @@ describe('Node Agent Network owner integration', () => {
       }
     }
   );
-  it('rejects sibling and independent control, and rejects a child owned by another user', async () => {
+  it('allows authorized session control regardless of relationships but rejects foreign ownership', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-authorization-'));
     const database = new NodeDatabase(':memory:', 'network-authorization');
     const workspace = database.saveWorkspace({
@@ -1610,61 +1645,19 @@ describe('Node Agent Network owner integration', () => {
     const observer = internals.agentNetworkObservations.attach(source.id);
     const actor = { sessionId: source.id, requestUserId: 7 };
     try {
-      for (const target of [sibling, independent]) {
-        await expect(
-          internals.agentNetworkService.send(actor, { agentId: target.id, content: 'message' })
-        ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-        await expect(
-          internals.agentNetworkService.send(actor, {
+      for (const target of [source, root, sibling, independent, child]) {
+        expect(
+          await internals.agentNetworkService.view(actor, { agentId: target.id })
+        ).toMatchObject({
+          session: { id: target.id }
+        });
+        expect(
+          await internals.agentNetworkService.send(actor, {
             agentId: target.id,
-            goal: { objective: 'goal' }
+            goal: { clear: true }
           })
-        ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-        await expect(
-          internals.agentNetworkService.stop(actor, {
-            agentId: target.id,
-            executionId: 'execution'
-          })
-        ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
+        ).toMatchObject({ goal: { status: 'applied' } });
       }
-      const approvedContext = { permission: { decision: 'approved' } } as ExtensionOperationContext;
-      const approved = actorForApprovedAgentCall(actor, approvedContext, [sibling.id], ['goal']);
-      expect(
-        await internals.agentNetworkService.send(approved, {
-          agentId: sibling.id,
-          goal: { clear: true }
-        })
-      ).toMatchObject({ goal: { status: 'applied' } });
-      await expect(
-        internals.agentNetworkService.send(approved, {
-          agentId: sibling.id,
-          content: 'not approved'
-        })
-      ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-      await expect(
-        internals.agentNetworkService.send(approved, {
-          agentId: independent.id,
-          goal: { clear: true }
-        })
-      ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-      const noApproval = actorForApprovedAgentCall(
-        actor,
-        {} as ExtensionOperationContext,
-        [sibling.id],
-        ['goal']
-      );
-      await expect(
-        internals.agentNetworkService.send(noApproval, {
-          agentId: sibling.id,
-          goal: { clear: true }
-        })
-      ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-      expect(
-        await internals.agentNetworkService.send(actor, {
-          agentId: child.id,
-          goal: { clear: true }
-        })
-      ).toMatchObject({ goal: { status: 'applied' } });
       internals.runtime.createQueueItem({
         sessionId: child.id,
         clientMessageId: 'foreign',
@@ -1681,6 +1674,25 @@ describe('Node Agent Network owner integration', () => {
         internals.agentNetworkService.stop(actor, { agentId: child.id, executionId: 'execution' })
       ).rejects.toThrow('RUN_OWNED_BY_ANOTHER_USER');
       await expect(
+        internals.agentNetworkService.wait(actor, { agentId: child.id, waitMs: 0 })
+      ).rejects.toThrow('RUN_OWNED_BY_ANOTHER_USER');
+      const foreignWorkspace = database.saveWorkspace({
+        path: join(directory, 'foreign'),
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const foreign = internals.runtime.createAgentSession({
+        workspaceId: foreignWorkspace.id,
+        runner: 'codex',
+        cwd: foreignWorkspace.path,
+        externalSessionId: 'foreign-session',
+        model: 'gpt-5.3-codex',
+        nativeControl: 'MAR_MANAGED'
+      });
+      await expect(
+        internals.agentNetworkService.send(actor, { agentId: foreign.id, content: 'forbidden' })
+      ).rejects.toThrow('SESSION_NOT_FOUND');
+      await expect(
         internals.agentNetworkService.send(
           { sessionId: source.id },
           { agentId: child.id, content: 'message' }
@@ -1693,7 +1705,7 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it('decides only live direct-child approvals through the existing Run owner', async () => {
+  it('decides live authorized approvals regardless of relationships through the existing Run owner', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-approval-'));
     const database = new NodeDatabase(':memory:', 'network-approval');
     const workspace = database.saveWorkspace({
@@ -1732,31 +1744,42 @@ describe('Node Agent Network owner integration', () => {
     const root = create('approval-root');
     const parent = create('approval-parent', root.id);
     const sibling = create('approval-sibling', root.id);
+    const foreignOwner = create('approval-foreign-owner');
     const child = create('approval-child', parent.id);
     const observer = internals.agentNetworkObservations.attach(parent.id);
     const terminalObserver = internals.agentNetworkObservations.attach('terminal-observer');
     const actor = { sessionId: parent.id, requestUserId: 7 };
-    const active = (sessionId: string, id: string) => {
+    const active = (sessionId: string, id: string, initiatedByUserId = 7) => {
       const run = internals.runtime.createMessageRun({
         sessionId,
         clientMessageId: id,
         content: 'work',
-        initiatedByUserId: 7
+        initiatedByUserId
       }).run;
       const execution = internals.runtime.createExecution(run.id);
       internals.runtime.transitionRun(run.id, 'RUNNING');
-      internals.runtime.createApproval({
+      const approval = internals.runtime.createApproval({
         runId: execution.id,
         approvalId: id,
         expiresAt: Date.now() + 60_000,
         payload: { toolName: 'exec', input: 'PRIVATE_INPUT' }
       });
-      return { run, execution };
+      return { run, execution, approval };
     };
     try {
       active(child.id, 'child-approval');
       active(sibling.id, 'sibling-approval');
-      active(root.id, 'root-approval');
+      const foreignApproval = active(foreignOwner.id, 'foreign-approval', 8).approval;
+      const rootExecution = active(root.id, 'root-approval').execution;
+      await expect(
+        internals.agentNetworkService.send(actor, {
+          agentId: foreignOwner.id,
+          approval: { approvalId: 'foreign-approval', decision: 'approve' }
+        })
+      ).rejects.toThrow('RUN_OWNED_BY_ANOTHER_USER');
+      expect(internals.runtime.getApproval(foreignApproval.id)).toMatchObject({
+        status: 'PENDING'
+      });
       const view = await internals.agentNetworkService.view(actor, { agentId: child.id });
       expect(view).toMatchObject({
         session: {
@@ -1772,12 +1795,14 @@ describe('Node Agent Network owner integration', () => {
         [sibling.id, 'sibling-approval'],
         [root.id, 'root-approval']
       ] as const)
-        await expect(
-          internals.agentNetworkService.send(actor, {
+        expect(
+          await internals.agentNetworkService.send(actor, {
             agentId,
             approval: { approvalId, decision: 'approve' }
           })
-        ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
+        ).toMatchObject({
+          approval: { status: 'applied', result: { approvalId, decision: 'approve' } }
+        });
       internals.agentNetworkObservations.publishChild({
         parentId: root.id,
         childId: sibling.id,
@@ -1816,10 +1841,16 @@ describe('Node Agent Network owner integration', () => {
         { sessionId: '', observationId: 'terminal-observer', requestUserId: 7 },
         workspace.id
       );
+      internals.runtime.createApproval({
+        runId: rootExecution.id,
+        approvalId: 'root-terminal-approval',
+        expiresAt: Date.now() + 60_000,
+        payload: { toolName: 'exec', input: 'PRIVATE_INPUT' }
+      });
       expect(
         await internals.agentNetworkService.send(terminal, {
           agentId: root.id,
-          approval: { approvalId: 'root-approval', decision: 'reject' }
+          approval: { approvalId: 'root-terminal-approval', decision: 'reject' }
         })
       ).toMatchObject({
         approval: { status: 'applied', result: { decision: 'reject' } }

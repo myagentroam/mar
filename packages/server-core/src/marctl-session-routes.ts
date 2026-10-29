@@ -380,34 +380,45 @@ export function registerMarctlSessionRoutes(
                   signal
                 );
         };
-        const body = command.data;
-        // Execution credentials may not use the retired collaboration paths: those paths
-        // predate relationship authorization. Route Goal mutations through the same Node
-        // use case as the six public operations; a Run ID is not an Execution ID, so an
-        // old stop request must use the current endpoint rather than guessing a target.
-        if (
+        const originalBody = command.data;
+        // Normalize Goal aliases before preparing resources for the shared network path.
+        const body: typeof command.data =
           caller.type === 'execution' &&
-          (body.action === 'goal.clear' || body.action === 'goal.set')
-        )
-          return reply.send(
-            await call('agent.network', {
-              action: 'send',
-              input: {
-                agentId: body.sessionId,
-                goal: body.action === 'goal.clear' ? { clear: true } : { objective: body.content }
+          (originalBody.action === 'goal.clear' || originalBody.action === 'goal.set')
+            ? {
+                action: 'network',
+                command: {
+                  operation: 'send',
+                  input: {
+                    agentId: originalBody.sessionId,
+                    goal:
+                      originalBody.action === 'goal.clear'
+                        ? { clear: true }
+                        : { objective: originalBody.content }
+                  }
+                }
               }
-            })
-          );
+            : originalBody;
+        // Legacy Run-based writes cannot identify the current target Execution safely.
         if (caller.type === 'execution' && ['start', 'send', 'stop'].includes(body.action))
           return sendError(reply, 409, 'MARCTL_AGENT_NETWORK_REQUIRED');
         if (body.action === 'network') {
           const { operation, input: arguments_ } = body.command;
           const networkInput: Record<string, unknown> = { ...arguments_ };
+          const messageInput =
+            operation === 'start' || operation === 'send' ? arguments_ : undefined;
+          const hasMessage =
+            messageInput !== undefined &&
+            (!!messageInput.content?.trim() || !!messageInput.attachments?.length);
           if (
-            (operation === 'start' || operation === 'send') &&
+            (operation === 'start' || (operation === 'send' && hasMessage)) &&
             networkInput.clientMessageId === undefined
           )
             networkInput.clientMessageId = randomUUID();
+          const requiresExecutionResources =
+            operation === 'start' ||
+            (operation === 'send' &&
+              (hasMessage || (isObject(arguments_.goal) && 'objective' in arguments_.goal)));
           const resources: Record<string, unknown> = {};
           let executionResources: Record<string, unknown> | undefined;
           if (caller.type === 'terminal') {
@@ -419,7 +430,7 @@ export function registerMarctlSessionRoutes(
               ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
             });
             Object.assign(resources, profileContext);
-            if (operation === 'start' || operation === 'send') {
+            if (requiresExecutionResources) {
               let runner: unknown = operation === 'start' ? arguments_.runner : undefined;
               let model: unknown = operation === 'start' ? arguments_.model : undefined;
               const sessionId =
@@ -498,7 +509,7 @@ export function registerMarctlSessionRoutes(
             const models = (await input.marAgentModels?.listForUser?.(user.userId)) ?? [];
             executionResources = { marAgentModels: models.map(nodeModelSummary) };
           } else if (
-            (operation === 'start' || operation === 'send') &&
+            requiresExecutionResources &&
             (operation !== 'start' ||
               arguments_.parentSessionId === undefined ||
               arguments_.parentSessionId === caller.sessionId)
@@ -507,65 +518,57 @@ export function registerMarctlSessionRoutes(
             const session = object(object(await call('session.get', { sessionId })).session);
             if (session.workspaceId !== scope.workspaceId)
               return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
-            // Provision only for the actual parent or direct child. Node remains the
-            // authority for relationship and Run ownership at dispatch.
-            if (operation === 'start' || session.parentSessionId === caller.sessionId) {
-              const runner =
-                operation === 'start' ? (arguments_.runner ?? session.runner) : session.runner;
-              let model: unknown = operation === 'start' ? arguments_.model : session.model;
-              if (runner === 'mar-agent') {
-                const profileContext = await prepareRunnerProfileContext({
-                  userId: user.userId,
-                  nodeId: scope.nodeId,
-                  workspaceId: scope.workspaceId,
-                  secrets: input.secrets,
-                  ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
-                });
-                const profiles = object(
-                  await call('runner.profiles.list', { ...profileContext, waitForRefresh: true })
+            // Provision for the authorized target; Node rechecks identity and Run ownership.
+            const runner =
+              operation === 'start' ? (arguments_.runner ?? session.runner) : session.runner;
+            let model: unknown = operation === 'start' ? arguments_.model : session.model;
+            if (runner === 'mar-agent') {
+              const profileContext = await prepareRunnerProfileContext({
+                userId: user.userId,
+                nodeId: scope.nodeId,
+                workspaceId: scope.workspaceId,
+                secrets: input.secrets,
+                ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
+              });
+              const profiles = object(
+                await call('runner.profiles.list', { ...profileContext, waitForRefresh: true })
+              );
+              if (typeof model !== 'string') {
+                const defaults = Array.isArray(profiles.defaults)
+                  ? profiles.defaults.find((value) => isObject(value) && value.runner === runner)
+                  : undefined;
+                const profile = Array.isArray(profiles.profiles)
+                  ? profiles.profiles.find((value) => isObject(value) && value.runner === runner)
+                  : undefined;
+                const models =
+                  isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
+                const preferred = models.find(
+                  (value) => isObject(value) && value.isDefault === true
                 );
-                if (typeof model !== 'string') {
-                  const defaults = Array.isArray(profiles.defaults)
-                    ? profiles.defaults.find((value) => isObject(value) && value.runner === runner)
-                    : undefined;
-                  const profile = Array.isArray(profiles.profiles)
-                    ? profiles.profiles.find((value) => isObject(value) && value.runner === runner)
-                    : undefined;
-                  const models =
-                    isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
-                  const preferred = models.find(
-                    (value) => isObject(value) && value.isDefault === true
-                  );
-                  model =
-                    (isObject(defaults) ? defaults.model : undefined) ??
-                    (isObject(preferred) ? preferred.id : undefined);
-                }
-              }
-              if (runner === 'mar-agent' && typeof model !== 'string')
-                return sendError(reply, 400, 'MODEL_ID_REQUIRED');
-              if (runner === 'mar-agent' && typeof model === 'string') {
-                if (operation === 'start') networkInput.model = model;
-                executionResources = await runtimeModelPayload({
-                  userId: user.userId,
-                  nodeId: scope.nodeId,
-                  workspaceId: scope.workspaceId,
-                  ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
-                  selectedModelId: model,
-                  ...(input.marAgentModels === undefined
-                    ? {}
-                    : { marAgentModels: input.marAgentModels }),
-                  ...(input.marAgentRuntimeModels === undefined
-                    ? {}
-                    : { marAgentRuntimeModels: input.marAgentRuntimeModels })
-                });
+                model =
+                  (isObject(defaults) ? defaults.model : undefined) ??
+                  (isObject(preferred) ? preferred.id : undefined);
               }
             }
+            if (runner === 'mar-agent' && typeof model !== 'string')
+              return sendError(reply, 400, 'MODEL_ID_REQUIRED');
+            if (runner === 'mar-agent' && typeof model === 'string') {
+              if (operation === 'start') networkInput.model = model;
+              executionResources = await runtimeModelPayload({
+                userId: user.userId,
+                nodeId: scope.nodeId,
+                workspaceId: scope.workspaceId,
+                ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
+                selectedModelId: model,
+                ...(input.marAgentModels === undefined
+                  ? {}
+                  : { marAgentModels: input.marAgentModels }),
+                ...(input.marAgentRuntimeModels === undefined
+                  ? {}
+                  : { marAgentRuntimeModels: input.marAgentRuntimeModels })
+              });
+            }
           }
-          const messageInput =
-            operation === 'start' || operation === 'send' ? arguments_ : undefined;
-          const hasMessage =
-            messageInput !== undefined &&
-            (!!messageInput.content?.trim() || !!messageInput.attachments?.length);
           const receipt =
             operation === 'start'
               ? { inputMode: 'NEW_SESSION' as const }
@@ -778,14 +781,20 @@ export function registerMarctlSessionRoutes(
               ...(body.content === undefined ? {} : { objective: body.content })
             })
           );
-        if (body.action === 'config')
+        if (body.action === 'config') {
+          const models =
+            session?.runner === 'mar-agent' && body.model !== undefined
+              ? ((await input.marAgentModels?.listForUser?.(user.userId)) ?? [])
+              : undefined;
           return reply.send(
             await call('session.config.update', {
               sessionId,
               ...(body.model === undefined ? {} : { model: body.model }),
-              ...(body.effort === undefined ? {} : { effort: body.effort })
+              ...(body.effort === undefined ? {} : { effort: body.effort }),
+              ...(models === undefined ? {} : { marAgentModels: models.map(nodeModelSummary) })
             })
           );
+        }
         if (body.action === 'graph')
           return reply.send(await call('session.graph', { sessionId, limit: body.limit ?? 100 }));
         if (body.action === 'history')

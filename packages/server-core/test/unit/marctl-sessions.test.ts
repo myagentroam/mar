@@ -163,6 +163,110 @@ describe('Workspace-bound marctl agents', () => {
     expect(network[2]).not.toHaveProperty('marAgentModels');
   });
 
+  it('supplies the authenticated safe model catalog for a MAR configuration update without issuing runtime credentials', async () => {
+    const listForUser = vi.fn(async () => [
+      {
+        id: 'eligible',
+        enabled: true,
+        conversationModel: true,
+        subagentModel: true,
+        access: { private: 'not-for-node' }
+      },
+      { id: 'disabled', enabled: false, conversationModel: true, subagentModel: true }
+    ]);
+    const prepare = vi.fn();
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', parentSessionId: 'someone-else', model: 'old' },
+      marAgentModels: { listForUser } as unknown as MarAgentModelService,
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: { action: 'config', sessionId: 'unrelated', model: 'eligible', effort: 'high' }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(listForUser).toHaveBeenCalledExactlyOnceWith(7);
+    expect(prepare).not.toHaveBeenCalled();
+    const configured = f.requestNode.mock.calls.find(
+      (call) => call[1] === 'session.config.update'
+    )!;
+    expect(configured[2]).toMatchObject({
+      sessionId: 'unrelated',
+      model: 'eligible',
+      effort: 'high',
+      marAgentModels: [
+        { id: 'eligible', enabled: true, conversationModel: true, subagentModel: true },
+        { id: 'disabled', enabled: false }
+      ]
+    });
+    expect(JSON.stringify(configured)).not.toContain('not-for-node');
+    expect(configured[2]).not.toHaveProperty('marAgentModel');
+  });
+
+  it('does not prepare model execution resources for a control-only Goal clear', async () => {
+    const control = { goal: { clear: true } };
+    const prepare = vi.fn(async () => {
+      throw new Error('MODEL_CONFIGURATION_UNAVAILABLE');
+    });
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', model: 'unavailable-model' },
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: { operation: 'send', input: { agentId: 'unrelated', ...control } }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(prepare).not.toHaveBeenCalled();
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[2]).toMatchObject({
+      action: 'send',
+      input: { agentId: 'unrelated', ...control }
+    });
+    expect(network[2].input).not.toHaveProperty('clientMessageId');
+    expect(network[3]).not.toHaveProperty('marctlExecutionResources');
+  });
+
+  it('prepares target MAR resources for the execution goal.set alias through the shared network path', async () => {
+    const prepare = vi.fn(async () => ({
+      runtimeScopeId: 'goal-scope',
+      model: { id: 'goal-model' },
+      models: [{ id: 'goal-model' }]
+    }));
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', model: 'goal-model' },
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: { action: 'goal.set', sessionId: 'unrelated', content: 'Continue the work' }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ userId: 7, sessionId: 'unrelated', selectedModelId: 'goal-model' })
+    );
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[2]).toMatchObject({
+      action: 'send',
+      input: { agentId: 'unrelated', goal: { objective: 'Continue the work' } }
+    });
+    expect(network[3]).toMatchObject({
+      marctlExecutionResources: { marAgentModel: { id: 'goal-model' } }
+    });
+  });
+
   it('uses the target MAR Runner default instead of the parent model for an Execution start', async () => {
     const prepare = vi.fn(async (input: { readonly selectedModelId: string }) => ({
       runtimeScopeId: 'scope',
@@ -252,11 +356,48 @@ describe('Workspace-bound marctl agents', () => {
     }
   );
 
-  it('does not prepare MAR resources for an unrelated target or a claimed foreign parent', async () => {
-    const prepare = vi.fn();
+  it('prepares authorized MAR resources for an unrelated target without a relationship grant', async () => {
+    const prepare = vi.fn(async () => ({
+      runtimeScopeId: 'peer-scope',
+      model: { id: 'eligible' },
+      models: [{ id: 'eligible' }]
+    }));
     const f = await fixture(true, false, {
       executionSource: 'parent',
       session: { runner: 'mar-agent', model: 'eligible', parentSessionId: 'someone-else' },
+      marAgentRuntimeModels: { prepare } as unknown as Pick<MarAgentRuntimeModelService, 'prepare'>
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: {
+          operation: 'send',
+          input: { agentId: 'unrelated', content: 'work', deliveryIntent: 'REPLACE_CURRENT' }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ userId: 7, sessionId: 'unrelated', selectedModelId: 'eligible' })
+    );
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[3]).toMatchObject({
+      marctlExecutionResources: {
+        marAgentRuntimeScopeId: 'peer-scope',
+        marAgentModel: { id: 'eligible' }
+      }
+    });
+    expect(response.body).not.toContain('marAgentModel');
+  });
+
+  it('does not prepare MAR resources for another Workspace or a claimed foreign parent', async () => {
+    const prepare = vi.fn();
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', model: 'eligible', workspaceId: 'other-workspace' },
       marAgentRuntimeModels: { prepare } as unknown as Pick<MarAgentRuntimeModelService, 'prepare'>
     });
     for (const [operation, input] of [
@@ -272,7 +413,7 @@ describe('Workspace-bound marctl agents', () => {
         headers: f.headers,
         payload: { action: 'network', command: { operation, input } }
       });
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(operation === 'send' ? 403 : 200);
     }
     expect(prepare).not.toHaveBeenCalled();
     for (const call of f.requestNode.mock.calls.filter((entry) => entry[1] === 'agent.network'))

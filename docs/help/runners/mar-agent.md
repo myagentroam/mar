@@ -125,7 +125,9 @@ MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提
 
 Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Subagent 扩展保留自己的准入策略。
 
-协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 必须提供非空标题，登记子会话和首个执行后即返回，不等待完成；手动 marctl 创建时标题可省略。使用结果中的 `agentId` 寻址子会话。`agent_send` 可发送消息、更新 Goal 或对直接子会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照。`agent_stop` 停止指定执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。已接收的输入和实际应用到上下文的输入是不同事实，应用不代表任务已完成。
+协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 必须提供非空标题，登记子会话和首个执行后即返回，不等待完成；手动 marctl 创建时标题可省略。使用结果中的 `agentId` 寻址子会话。`agent_send` 可发送消息、更新 Goal 或对获授权会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照。`agent_stop` 停止指定执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。已接收的输入和实际应用到上下文的输入是不同事实，应用不代表任务已完成。
+
+同一获授权 Node/Workspace 内，消息、显式等待、Goal、停止、审批及 marctl 会话设置均不按父子关系限制；目标 Run/队列用户归属、模型及资源授权仍有效。发送不建立横向自动订阅。
 
 子 Agent 的未读公开消息与新终态会在父 Agent 下一次正常模型请求前自动送达，包括原生 Extension API 创建的直接子 Agent；父 Agent 无需反复使用 message wait 检查进展。自动送达不唤醒空闲父 Agent，也不延迟正常最终回复；交付所必需的结果仍应在结束前主动汇合，真正阻塞时仍可使用 `agent_wait`。自动送达与模型的显式等待共享已读位置，因此已经送达的正文或终态证据不会在后续等待中重复返回。子 Agent 的内容是待核验的上下文，不是新的用户指令或授权。
 

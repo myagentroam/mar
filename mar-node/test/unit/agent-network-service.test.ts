@@ -49,8 +49,6 @@ function fixture(parentSessionId: string | null = 'parent') {
     children,
     observe,
     freezeExecution,
-    isUpward: async () => false,
-    reportUpward: async () => ({}),
     authorize: async () => {},
     start,
     setGoal,
