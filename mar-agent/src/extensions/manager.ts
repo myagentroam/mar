@@ -18,7 +18,6 @@ import type { ExtensionCheckpointBackend, ExtensionStoreBackend } from './data.j
 import type { ExtensionSessionBackend } from './session-input.js';
 import { coreSettingsBinding, settingsCapabilities } from './settings.js';
 import type { AgentHostExtensionPorts } from './host-ports.js';
-import { agentCapabilities, type ExtensionAgentsBackend } from './agents.js';
 
 export interface ExtensionManagerOptions {
   readonly toolRuntime: ExtensionToolRuntime;
@@ -34,7 +33,6 @@ export interface ExtensionManagerOptions {
   readonly checkpoint?: ExtensionCheckpointBackend;
   readonly store?: ExtensionStoreBackend;
   readonly sessionBackend?: (sessionId: string) => ExtensionSessionBackend | undefined;
-  readonly agentsBackend?: (sessionId: string) => ExtensionAgentsBackend | undefined;
   readonly allowTool?: (
     sessionId: string,
     name: string,
@@ -165,17 +163,13 @@ export class ExtensionManager {
           this.#epochs.get(sessionId) ?? 0,
           this.#agentServices,
           this.operations,
-          agentCapabilities(
-            this.capabilities,
-            this.options.agentsBackend?.(sessionId) !== undefined
-          ),
+          this.capabilities,
           (diagnostic) => this.#diagnose(diagnostic),
           (context) => this.options.baseTools?.(sessionId, context) ?? [],
           this.options.models,
           this.options.checkpoint,
           this.options.sessionBackend?.(sessionId),
           this.options.hostPorts,
-          this.options.agentsBackend?.(sessionId),
           (name, definition) => this.options.allowTool?.(sessionId, name, definition) ?? true,
           this.options.scheduleTool?.(sessionId),
           this.options.store

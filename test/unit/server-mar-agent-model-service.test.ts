@@ -759,6 +759,7 @@ describe('MAR Agent model service', () => {
             reasoning_efforts: '[]',
             default_reasoning_effort: 'medium',
             conversation_model: 0,
+            subagent_model: 1,
             enabled: 1,
             sort_order: 0,
             last_tested_at: null,
@@ -775,10 +776,15 @@ describe('MAR Agent model service', () => {
       () => 10,
       () => 'coding-id'
     );
-    const result = await service.create(7, { ...input, conversationModel: false });
+    const result = await service.create(7, {
+      ...input,
+      conversationModel: false,
+      subagentModel: true
+    });
     expect(result).toMatchObject({
       id: 'coding-id',
       conversationModel: false,
+      subagentModel: true,
       apiKeyConfigured: true,
       sortOrder: 0,
       access: 'RESTRICTED',
@@ -789,6 +795,7 @@ describe('MAR Agent model service', () => {
       String(sql).startsWith('INSERT INTO mar_agent_models')
     )!;
     expect((insert[1] as unknown[])[13]).toBe(false);
+    expect((insert[1] as unknown[])[14]).toBe(true);
     expect(String(insert[0])).toContain('default_reasoning_effort');
     expect(insert[1]).toContain('medium');
     expect(insert[1]).toContain('PERSONAL');

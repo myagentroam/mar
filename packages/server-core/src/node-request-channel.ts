@@ -8,7 +8,7 @@ import {
 } from '@myagentroam/protocol';
 import { safePublicError } from './http-errors.js';
 import type { UserNodeAuthorization } from './node-access-contracts.js';
-import { NodeRequestError } from './node-request-error.js';
+import { NodeRequestAdmissionError, NodeRequestError } from './node-request-error.js';
 
 type RequestObserver = (
   phase: 'requested' | 'completed' | 'failed',
@@ -23,6 +23,7 @@ interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: Error) => void;
   readonly observe?: RequestObserver;
+  readonly cleanupAbort?: () => void;
 }
 
 /** Transport only. Callers must authorize the fixed operation before dispatch. */
@@ -46,9 +47,10 @@ export class NodeRequestChannel {
     data: unknown,
     user: UserNodeAuthorization,
     timeoutMs = 15_000,
-    observe?: RequestObserver
+    observe?: RequestObserver,
+    signal?: AbortSignal
   ): Promise<unknown> {
-    if (this.closed) return Promise.reject(new Error('NODE_CONTROL_CLOSED'));
+    if (this.closed) return Promise.reject(new NodeRequestAdmissionError('NODE_CONTROL_CLOSED'));
     const modelResourceCapability =
       operation === 'model.resource.read' &&
       user.userId === 0 &&
@@ -57,15 +59,37 @@ export class NodeRequestChannel {
       !modelResourceCapability &&
       (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
     )
-      return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));
+      return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
     const socket = this.socketFor(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN)
-      return Promise.reject(new Error('NODE_OFFLINE'));
+      return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
     const id = randomUUID();
     const issuedAt = Date.now();
     const startedAt = performance.now();
     return new Promise((resolve, reject) => {
+      const cancel = () => {
+        if (
+          operation === 'agent.network' &&
+          this.pending.has(id) &&
+          socket.readyState === socket.OPEN
+        ) {
+          try {
+            socket.send(
+              JSON.stringify(
+                this.encode(socket, createEnvelope('node.request.cancel', { requestId: id }))
+              )
+            );
+          } catch {
+            /* Connection is gone. */
+          }
+        }
+      };
+      const onAbort = () => {
+        cancel();
+        this.fail(id, new Error('NODE_REQUEST_CANCELLED'));
+      };
       const timer = setTimeout(() => {
+        cancel();
         this.fail(
           id,
           new NodeRequestError(
@@ -81,8 +105,16 @@ export class NodeRequestChannel {
         timer,
         resolve,
         reject,
-        ...(observe === undefined ? {} : { observe })
+        ...(observe === undefined ? {} : { observe }),
+        ...(signal === undefined
+          ? {}
+          : { cleanupAbort: () => signal.removeEventListener('abort', onAbort) })
       });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      signal?.addEventListener('abort', onAbort, { once: true });
       try {
         observe?.('requested', id);
         const serialized = JSON.stringify(
@@ -96,6 +128,10 @@ export class NodeRequestChannel {
                 userAuthorization: {
                   userId: user.userId,
                   sessionHash: user.sessionHash,
+                  ...(user.marctlCaller === undefined ? {} : { marctlCaller: user.marctlCaller }),
+                  ...(user.marctlExecutionResources === undefined
+                    ? {}
+                    : { marctlExecutionResources: user.marctlExecutionResources }),
                   ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
                   nodeId,
                   operation,
@@ -147,6 +183,7 @@ export class NodeRequestChannel {
     }
     this.pending.delete(id);
     clearTimeout(pending.timer);
+    pending.cleanupAbort?.();
     try {
       const durationMs = Math.round(performance.now() - pending.startedAt);
       if (durationMs >= 250)
@@ -173,6 +210,7 @@ export class NodeRequestChannel {
     if (pending === undefined) return;
     this.pending.delete(id);
     clearTimeout(pending.timer);
+    pending.cleanupAbort?.();
     const failure = safePublicError(error);
     const correlated =
       error instanceof NodeRequestError

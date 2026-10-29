@@ -7,6 +7,10 @@ import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import type { ExecutionHandle, Agent } from '../../src/sdk/types.js';
 import type { AgentExtension } from '../../src/extensions/contracts.js';
+import {
+  createSubagentExtension,
+  SUBAGENT_NATIVE_SERVICE
+} from '../../extensions/subagent/src/index.js';
 import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { restoreMessages } from '../../src/runtime/context/restore.js';
@@ -75,7 +79,8 @@ async function fixture(
     index: number
   ) => AsyncIterable<ModelEvent> | readonly ModelEvent[],
   generate: (signal: AbortSignal) => Promise<{ summary: string } | undefined>,
-  attach?: (context: Parameters<NonNullable<AgentExtension['attachSession']>>[0]) => void
+  attach?: (context: Parameters<NonNullable<AgentExtension['attachSession']>>[0]) => void,
+  withSubagents = false
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-async-compact-'));
   homes.push(home);
@@ -88,6 +93,7 @@ async function fixture(
   const extension: AgentExtension = {
     id: 'compact-test',
     apiVersion: '1.0',
+    ...(withSubagents ? { serviceDependencies: [{ key: SUBAGENT_NATIVE_SERVICE }] } : {}),
     attachSession(value) {
       context = value;
       value.hooks.intercept('compact.generate', async (_input, call) => {
@@ -105,12 +111,15 @@ async function fixture(
       yield* script(request, index);
     }
   };
-  const agent = await createAgentWithAdapter(
+  let agent!: Agent;
+  agent = await createAgentWithAdapter(
     {
       mode: 'normal',
       host,
-      models: [configuration],
-      extensions: [extension]
+      models: [withSubagents ? { ...configuration, subagentModel: true } : configuration],
+      extensions: withSubagents
+        ? [createSubagentExtension({ agent: () => agent }), extension]
+        : [extension]
     },
     () => adapter
   );
@@ -676,7 +685,10 @@ describe('asynchronous Compact', () => {
     let interceptedParentRounds = 0;
     let childId = '';
     const isChild = (request: ModelRequest) =>
-      effectiveInstructions(request).includes('non-recursive subagent');
+      request.messages.some(
+        (message) =>
+          message.role === 'user' && message.content.includes('Report CHILD_COMPACT_TAIL.')
+      );
     const f = await fixture(
       (request) => {
         if (isChild(request)) return response('CHILD_COMPACT_TAIL', 100);
@@ -700,7 +712,8 @@ describe('asynchronous Compact', () => {
         context.hooks.intercept('model.request', async (request, _call, next) => {
           if (!isChild(request) && ++interceptedParentRounds === 3) {
             await generated.promise;
-            const child = await context.agents!.spawn({
+            const client = context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open();
+            const child = await client.spawn({
               description: 'Compact tail child',
               prompt: 'Report CHILD_COMPACT_TAIL.',
               role: 'explore',
@@ -710,7 +723,8 @@ describe('asynchronous Compact', () => {
           }
           return next(request);
         });
-      }
+      },
+      true
     );
     await f.session.run({ prompt: 'Seed objective' }).result();
     const result = f.session.run({ prompt: 'Read twice and finish' }).result();
@@ -732,7 +746,7 @@ describe('asynchronous Compact', () => {
       );
       expect(update).toHaveLength(1);
       expect(update[0]).toMatchObject({ role: 'user', contextKind: 'contextual' });
-      expect(update[0]!.content).toContain('agentId="' + childId + '"');
+      expect(update[0]!.content).toContain(childId);
       expect(update[0]!.content).toContain('CHILD_COMPACT_TAIL');
       const store = await JsonlSessionStore.open(f.home);
       try {
@@ -896,17 +910,20 @@ describe('asynchronous Compact', () => {
     let childRounds = 0;
     let parentContext!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
-    const agent = await createAgentWithAdapter(
+    let agent!: Agent;
+    agent = await createAgentWithAdapter(
       {
         mode: 'normal',
         host,
-        models: [configuration],
+        models: [{ ...configuration, subagentModel: true }],
         extensions: [
+          createSubagentExtension({ agent: () => agent }),
           {
             id: 'reconfiguration-compact',
             apiVersion: '1.0',
+            serviceDependencies: [{ key: SUBAGENT_NATIVE_SERVICE }],
             attachSession(context) {
-              if (context.agents) parentContext = context;
+              parentContext = context;
               context.hooks.intercept('compact.generate', async () => {
                 generations++;
                 await releaseCompact.promise;
@@ -920,7 +937,12 @@ describe('asynchronous Compact', () => {
         const adapter: ModelAdapter = {
           configuration: selected,
           async *start(request) {
-            if (effectiveInstructions(request).includes('non-recursive subagent')) {
+            if (
+              request.messages.some(
+                (message) =>
+                  message.role === 'user' && message.content.includes('read evidence and finish')
+              )
+            ) {
               if (++childRounds === 1) {
                 childStarted = true;
                 await resumeChild.promise;
@@ -949,7 +971,8 @@ describe('asynchronous Compact', () => {
         'status',
         'completed'
       );
-      const task = await parentContext.agents!.spawn({
+      const client = parentContext.services.consume(SUBAGENT_NATIVE_SERVICE)!.open();
+      const task = await client.spawn({
         prompt: 'read evidence and finish',
         background: true
       });
@@ -978,9 +1001,10 @@ describe('asynchronous Compact', () => {
       expect(await joined.result()).toMatchObject({ status: 'completed' });
       releaseReconfiguration.release();
       await reconfiguration;
-      expect(
-        await parentContext.agents!.wait({ agentId: task.agentId, waitMs: 1000 })
-      ).toHaveProperty('status', 'completed');
+      expect(await client.wait({ agentId: task.agentId, waitMs: 1000 })).toHaveProperty(
+        'status',
+        'completed'
+      );
       const store = await JsonlSessionStore.open(home);
       try {
         expect(

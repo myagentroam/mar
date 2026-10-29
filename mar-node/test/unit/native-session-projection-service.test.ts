@@ -6,6 +6,126 @@ import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 
 describe('native session metadata ownership', () => {
+  it('imports a native parent snapshot once without replacing a Node relationship', () => {
+    const database = new NodeDatabase(':memory:', 'native-parent-test');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/workspace/native-parent',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const runners = new RunnerRegistry();
+      runners.register(new CodexRunner());
+      const service = new NativeSessionProjectionService({
+        database: () => database,
+        nodeId: () => 'node',
+        runners
+      } as unknown as ConstructorParameters<typeof NativeSessionProjectionService>[0]);
+      const input = {
+        runner: 'codex' as const,
+        externalSessionId: 'child',
+        workspace,
+        cwd: workspace.path,
+        parentSessionId: 'native-parent'
+      };
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'native-parent',
+        workspaceId: workspace.id
+      });
+      const child = service.project(input);
+      expect(child.parentSessionId).toBe('native-parent');
+      service.remember([child]);
+      expect(
+        database.getNativeSessionMetadata('codex', 'child', workspace.id)?.parentSessionId
+      ).toBe('native-parent');
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'other-child',
+        workspaceId: workspace.id,
+        parentSessionId: 'node-parent'
+      });
+      const authoritative = service.project({ ...input, externalSessionId: 'other-child' });
+      expect(authoritative.parentSessionId).toBe('node-parent');
+      service.remember([authoritative]);
+      expect(
+        database.getNativeSessionMetadata('codex', 'other-child', workspace.id)?.parentSessionId
+      ).toBe('node-parent');
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'known-root',
+        workspaceId: workspace.id
+      });
+      const root = service.project({ ...input, externalSessionId: 'known-root' });
+      expect(root.parentSessionId).toBeNull();
+      service.remember([root]);
+      expect(
+        database.getNativeSessionMetadata('codex', 'known-root', workspace.id)?.parentSessionId
+      ).toBeNull();
+      const invalid = service.project({
+        ...input,
+        externalSessionId: 'orphan',
+        parentSessionId: 'missing'
+      });
+      service.remember([invalid]);
+      expect(service.cachedNative().find((session) => session.id === 'orphan')).toBeUndefined();
+      expect(database.getNativeSessionMetadata('codex', 'orphan', workspace.id)).toBeUndefined();
+      service.remember([
+        service.project({
+          workspace,
+          runner: 'codex',
+          externalSessionId: 'missing',
+          cwd: input.cwd
+        })
+      ]);
+      service.remember([
+        service.project({ ...input, externalSessionId: 'orphan', parentSessionId: 'missing' })
+      ]);
+      expect(
+        database.getNativeSessionMetadata('codex', 'orphan', workspace.id)?.parentSessionId
+      ).toBe('missing');
+      const batch = [
+        service.project({
+          ...input,
+          externalSessionId: 'batch-grandchild',
+          parentSessionId: 'batch-child'
+        }),
+        service.project({
+          ...input,
+          externalSessionId: 'batch-child',
+          parentSessionId: 'batch-root'
+        }),
+        service.project({
+          workspace,
+          runner: 'codex',
+          externalSessionId: 'batch-root',
+          cwd: input.cwd
+        })
+      ];
+      const save = vi.spyOn(database, 'saveNativeSessionMetadata');
+      service.remember(batch);
+      expect(save.mock.calls.map(([entry]) => entry.externalSessionId)).toEqual([
+        'batch-root',
+        'batch-child',
+        'batch-grandchild'
+      ]);
+      expect(
+        database.getNativeSessionMetadata('codex', 'batch-grandchild', workspace.id)
+          ?.parentSessionId
+      ).toBe('batch-child');
+      const tooDeep = service.project({
+        ...input,
+        externalSessionId: 'too-deep',
+        parentSessionId: 'batch-grandchild'
+      });
+      service.remember([tooDeep]);
+      expect(database.getNativeSessionMetadata('codex', 'too-deep', workspace.id)).toBeUndefined();
+      expect(service.cachedNative().find((session) => session.id === 'too-deep')).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
   it('persists a native rename only after the runner accepts it and clears pending on confirmation', async () => {
     const database = new NodeDatabase(':memory:', 'native-projection-test');
     try {

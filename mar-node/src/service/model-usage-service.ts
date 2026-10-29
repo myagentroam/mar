@@ -33,6 +33,17 @@ export class NodeModelUsageService {
   bindInherited(runId: string, sessionId: string, runner: ModelUsageRecord['runner']): void {
     if (!this.bindings.has(runId)) this.bind(runId, this.scope.getStore(), sessionId, runner);
   }
+  /** Reuse only the current Run's attribution for an authorized child submission. */
+  grantForRun(runId: string, sessionId: string, userId?: number): ModelUsageGrant | undefined {
+    const binding = this.bindings.get(runId);
+    if (
+      !binding ||
+      binding.sessionId !== sessionId ||
+      (userId !== undefined && binding.userId !== userId)
+    )
+      return undefined;
+    return binding.grant;
+  }
   bind(runId: string, grant: unknown, sessionId: string, runner: ModelUsageRecord['runner']): void {
     this.bindings.delete(runId);
     if (grant === undefined) return;

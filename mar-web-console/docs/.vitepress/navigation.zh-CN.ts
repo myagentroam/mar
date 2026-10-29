@@ -46,7 +46,7 @@ export const zhSidebar = [
   {
     text: 'Agent 指南',
     items: [
-      { text: '选择 OpenCode、Codex 或 Claude Code', link: '/runners/overview' },
+      { text: '选择 Agent', link: '/runners/overview' },
       { text: '安装、配置和使用 OpenCode', link: '/runners/opencode' },
       { text: '安装、配置和使用 Codex', link: '/runners/codex' },
       { text: '安装、配置和使用 Claude Code', link: '/runners/claude-code' },

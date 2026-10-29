@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentEvent } from '../../src/index.js';
+import type { Agent, AgentEvent } from '../../src/index.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 import type { ModelRequest } from '../../src/model/contracts.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
@@ -59,7 +60,8 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
           })
         ).status
       ).toBe('accepted');
-      expect(await execution.result()).toMatchObject({ status: 'completed' });
+      const result = await execution.result();
+      expect(result.status, JSON.stringify(result)).toBe('completed');
       await collecting;
       expect(requests).toHaveLength(3);
       expect(
@@ -74,12 +76,13 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
     const holdChild = Promise.withResolvers<void>();
     let childReads = 0;
     let childRounds = 0;
+    let agent!: Agent;
     const parents: ModelRequest[] = [];
     const f = await fixture(
-      [],
+      [createSubagentExtension({ agent: () => agent })],
       (request) => {
         const child = request.messages.some(
-          (message) => message.role === 'user' && message.content === 'sleep child worker'
+          (message) => message.role === 'user' && message.content.includes('sleep child worker')
         );
         if (child) {
           childRounds++;
@@ -99,6 +102,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
         parents.push(request);
         if (parents.length === 1)
           return call('agent_start', {
+            title: 'Child progress',
             description: 'Child progress',
             prompt: 'sleep child worker',
             role: 'explore'
@@ -107,13 +111,13 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
         const updates = request.messages.filter(
           (message) =>
             message.contextKind === 'contextual' &&
-            message.content.startsWith('<mar_subagent_update ')
+            message.content.startsWith('<mar_subagent_update>')
         );
         expect(updates).toHaveLength(1);
         expect(updates[0]!.content).toContain('public progress while still running');
         if (parents.length === 3) {
           expect(sleepResult(request).wakeReason).toBe('subagent_message');
-          expect(updates[0]!.content).toContain('status="running"');
+          expect(updates[0]!.content).toContain('"kind":"message"');
           return call('sleep', { durationMs: 10 });
         }
         expect(sleepResult(request).wakeReason).toBe('elapsed');
@@ -131,6 +135,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
       protocol
     );
     try {
+      agent = f.agent;
+      await agent.reconfigureModels({
+        models: [{ ...f.adapter.configuration, subagentModel: true }]
+      });
       const execution = f.session.run({
         prompt: 'receive child progress',
         permissionMode: 'full-access'
@@ -139,7 +147,8 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
         for await (const event of execution)
           if (event.type === 'tool.started' && event.toolName === 'sleep') releaseMessage.resolve();
       })();
-      expect(await execution.result()).toMatchObject({ status: 'completed' });
+      const result = await execution.result();
+      expect(result.status, JSON.stringify(result)).toBe('completed');
       await collecting;
       expect(parents).toHaveLength(4);
       expect(childReads).toBe(2);

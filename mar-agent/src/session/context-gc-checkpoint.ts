@@ -20,7 +20,9 @@ import {
   contextGcPatchResultFromCompletedPayload,
   contextGcPatchResultFromFailedPayload,
   contextGcStaleReadReplacement,
+  contextGcToolOutputReplacement,
   contextGcWebOutputReplacement,
+  isGenericContextGcTool,
   normalizeContextGcCodeModeInput,
   normalizeContextGcExecResult
 } from './context-gc-replacements.js';
@@ -527,6 +529,32 @@ function replacementMatchesRecords(
         )
     );
   }
+  if (replacement.kind === 'TOOL_OUTPUT') {
+    const evidence = successfulToolEvidence(
+      records,
+      recordsBySequence,
+      replacement.evidenceSequence,
+      replacement.toolName,
+      replacement.callId
+    );
+    return (
+      isGenericContextGcTool(replacement.toolName) &&
+      evidence !== undefined &&
+      evidence.result.sequence === replacement.target.sequence &&
+      !hasFailedToolEvidence(records, evidence.call, evidence.result, replacement.toolName) &&
+      isRecord(evidence.completed.payload) &&
+      typeof evidence.completed.payload.truncated === 'boolean' &&
+      typeof source.payload.content === 'string' &&
+      isRecord(evidence.result.payload) &&
+      evidence.result.payload.content === source.payload.content &&
+      replacement.replacementContent ===
+        contextGcToolOutputReplacement(
+          replacement.toolName,
+          source.payload.content,
+          evidence.completed.payload.truncated
+        )
+    );
+  }
   if (replacement.kind === 'SUBAGENT_OUTPUT') {
     const retainedPriorFinal = replacement.retainedPriorFinal;
     const sourceEvidence = successfulToolEvidence(
@@ -685,14 +713,7 @@ function successfulToolEvidence(
   records: readonly SessionRecord[],
   recordsBySequence: ReadonlyMap<number, SessionRecord>,
   evidenceSequence: number,
-  toolName:
-    | 'apply_patch'
-    | 'exec'
-    | 'exec_wait'
-    | 'code_exec'
-    | 'code_exec_wait'
-    | ContextGcSubagentToolName
-    | ContextGcWebToolName,
+  toolName: string,
   expectedCallId?: string
 ):
   | {
@@ -763,7 +784,7 @@ function hasFailedToolEvidence(
   records: readonly SessionRecord[],
   call: SessionRecord,
   result: SessionRecord,
-  toolName: ContextGcWebToolName
+  toolName: string
 ): boolean {
   if (!isRecord(result.payload) || typeof result.payload.callId !== 'string') return true;
   const callId = result.payload.callId;
@@ -1229,6 +1250,23 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
       ]) &&
       value.target.role === 'tool' &&
       (value.toolName === 'web_search' || value.toolName === 'web_fetch') &&
+      (value.target.toolName === undefined || value.target.toolName === value.toolName) &&
+      isNonemptyString(value.replacementContent) &&
+      isPositiveInteger(value.evidenceSequence)
+    );
+  if (value.kind === 'TOOL_OUTPUT')
+    return (
+      hasOnlyKeys(value, [
+        'kind',
+        'toolName',
+        'callId',
+        'target',
+        'replacementContent',
+        'evidenceSequence'
+      ]) &&
+      value.target.role === 'tool' &&
+      isNonemptyString(value.toolName) &&
+      isGenericContextGcTool(value.toolName) &&
       (value.target.toolName === undefined || value.target.toolName === value.toolName) &&
       isNonemptyString(value.replacementContent) &&
       isPositiveInteger(value.evidenceSequence)

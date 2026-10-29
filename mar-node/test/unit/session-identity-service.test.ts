@@ -439,6 +439,73 @@ describe('Bootstrap Session identity retirement', () => {
     expect(releaseAttachments).not.toHaveBeenCalled();
   });
 
+  it('bootstraps a Goal-owned first message without also submitting an ordinary message', async () => {
+    const { runtime, bootstrap, identity } = fixture();
+    const execute = vi.fn(async (operation: string) => {
+      if (operation === 'session.create') return { session: bootstrap };
+      throw new Error(`Unexpected operation: ${operation}`);
+    });
+    const lifecycle = new SessionLifecycleService({
+      runtime,
+      identity,
+      runners: new RunnerRegistry([new ClaudeCodeRunner()]),
+      execute,
+      interceptedSessionId: () => undefined,
+      present: (session: unknown) => session
+    } as never);
+    const submit = vi.fn(async () => {
+      const { run } = runtime.createMessageRun({
+        sessionId: bootstrap.id,
+        clientMessageId: 'goal-body',
+        content: 'once'
+      });
+      identity.promote(bootstrap.id, 'native-goal');
+      return { run, delivery: 'STARTED', idempotent: false };
+    });
+    await expect(
+      lifecycle.startAgentWithGoal(
+        {
+          clientMessageId: 'goal-body',
+          content: 'once'
+        },
+        submit
+      )
+    ).resolves.toMatchObject({ session: { id: 'native-goal' }, delivery: 'STARTED' });
+    expect(submit).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledWith(bootstrap, { runner: 'claude-code' });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith('session.create', expect.anything());
+  });
+
+  it('reports a failed Goal-owned bootstrap without starting an ordinary message', async () => {
+    const { runtime, bootstrap, identity } = fixture();
+    const execute = vi.fn(async (operation: string) => {
+      if (operation === 'session.create') return { session: bootstrap };
+      throw new Error(`Unexpected operation: ${operation}`);
+    });
+    const lifecycle = new SessionLifecycleService({
+      runtime,
+      identity,
+      runners: new RunnerRegistry([new ClaudeCodeRunner()]),
+      execute,
+      interceptedSessionId: () => undefined,
+      present: (session: unknown) => session
+    } as never);
+    await expect(
+      lifecycle.startAgentWithGoal(
+        {
+          clientMessageId: 'goal-failure',
+          content: 'once'
+        },
+        async () => {
+          throw new Error('GOAL_SUBMISSION_FAILED');
+        }
+      )
+    ).rejects.toThrow('GOAL_SUBMISSION_FAILED');
+    expect(execute).toHaveBeenCalledOnce();
+    expect(runtime.getAgentSession(bootstrap.id)).toBeUndefined();
+  });
+
   it('promotes a successful bootstrap and does not retire its native alias on later rejection', async () => {
     const { runtime, bootstrap, identity, persist, emitSession, releaseAttachments } = fixture();
     const waiting = identity.wait(bootstrap.id);

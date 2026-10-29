@@ -187,6 +187,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
         id: model.id,
         label: model.name,
         supportedEfforts: [...model.reasoningEfforts],
+        subagentModel: model.subagentModel === true,
         defaultEffort: resolveMarAgentDefaultReasoningEffort(
           model.defaultReasoningEffort,
           model.reasoningEfforts
@@ -264,6 +265,22 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
         'subagent'
       ]
     };
+  }
+
+  override childModels(): RunnerProfile['models'] {
+    const eligible = new Set(
+      this.#models
+        .filter(
+          (model) =>
+            model.enabled && model.conversationModel !== false && model.subagentModel === true
+        )
+        .map((model) => model.id)
+    );
+    return this.profileForValidation().models.filter((model) => eligible.has(model.id));
+  }
+  override assertChildModel(modelId: string | null): void {
+    if (!this.childModels().some((model) => model.id === modelId))
+      throw new Error('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
   }
   override supportsConfiguration(configuration: RunnerDefaultConfiguration): boolean {
     if (configuration.runner !== this.name) return false;
@@ -371,6 +388,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
                   runner: this.name,
                   externalSessionId: session.id,
                   cwd: session.workspace,
+                  ...(session.source?.parentSessionId === undefined
+                    ? {}
+                    : { parentSessionId: session.source.parentSessionId }),
                   lastActivityAt: Date.parse(session.lastActivityAt)
                 })
               ]
@@ -397,6 +417,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
                   runner: this.name,
                   externalSessionId: session.id,
                   cwd: session.workspace,
+                  ...(session.source?.parentSessionId === undefined
+                    ? {}
+                    : { parentSessionId: session.source.parentSessionId }),
                   ...title,
                   lastActivityAt: Date.parse(session.lastActivityAt)
                 }),
@@ -488,6 +511,23 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       return (await catalog.delete(nativeSessionId)).deleted ? true : 'MISSING';
+    } finally {
+      await catalog.close().catch(() => undefined);
+    }
+  }
+  override supportsNativeBatchRemoval(): boolean {
+    return true;
+  }
+  override async removeNativeMembers(sessions: readonly NodeAgentSession[]): Promise<void> {
+    const ids = sessions.map((session) => {
+      if (session.runner !== this.name || session.externalSessionId === null)
+        throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
+      return session.externalSessionId;
+    });
+    for (const id of ids) await this.#releaseSessionResources?.(id);
+    const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+    try {
+      await catalog.deleteMembers(ids);
     } finally {
       await catalog.close().catch(() => undefined);
     }

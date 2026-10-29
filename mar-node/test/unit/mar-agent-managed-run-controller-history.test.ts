@@ -471,7 +471,8 @@ describe('MAR Agent managed run projection', () => {
         payload: {
           text: 'Done.',
           format: 'markdown',
-          model: 'Model'
+          model: 'Model',
+          phase: 'final_answer'
         }
       })
     ]);
@@ -586,6 +587,8 @@ describe('MAR Agent managed run projection', () => {
   it.each([
     ['agent_start', 'START'],
     ['agent_wait', 'STATUS'],
+    ['agent_send', 'MESSAGE'],
+    ['agent_stop', 'CANCEL'],
     ['agent_message', 'MESSAGE'],
     ['agent_cancel', 'CANCEL']
   ])('maps %s and agentId at the MAR Runner boundary', (toolName, operation) => {

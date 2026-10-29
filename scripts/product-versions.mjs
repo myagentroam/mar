@@ -18,7 +18,8 @@ const productPaths = [
   'ee/web',
   'mar-web-console',
   'packages/server-core',
-  'packages/web-core'
+  'packages/web-core',
+  'mar-agent/extensions/subagent'
 ];
 export const MAIN_PACKAGE_PATHS = [...productPaths, ...commonPaths].map((path) =>
   path === '.' ? 'package.json' : `${path}/package.json`

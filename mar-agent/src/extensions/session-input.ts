@@ -26,6 +26,7 @@ export interface ExtensionAppendInput {
 }
 export interface ExtensionInputSource {
   readonly operationId: string;
+  readonly sessionId?: string;
   readonly actor?: ExtensionOperationContext['actor'];
   readonly extensionId?: string;
   readonly ownerInstanceId?: string;
@@ -151,7 +152,6 @@ export interface SessionInputEntry {
   readonly source: ExtensionOperationContext;
   readonly action: ExtensionSessionAction;
   receipt: ExtensionSessionReceipt;
-  readonly parentMessage?: unknown;
   readonly started: Promise<void>;
   start(): void;
   readonly terminal: Promise<void>;
@@ -335,10 +335,9 @@ export class SessionInputCoordinator {
     request: ExtensionSessionRequest,
     source: ExtensionOperationContext,
     action: ExtensionSessionAction,
-    status: 'accepted' | 'queued',
-    parentMessage?: unknown
+    status: 'accepted' | 'queued'
   ): SessionInputEntry {
-    const entry = this.#record(request, source, action, status, parentMessage);
+    const entry = this.#record(request, source, action, status);
     this.#pending.push(entry);
     return entry;
   }
@@ -363,8 +362,7 @@ export class SessionInputCoordinator {
     request: ExtensionSessionRequest,
     source: ExtensionOperationContext,
     action: ExtensionSessionAction,
-    status: 'accepted' | 'queued',
-    parentMessage?: unknown
+    status: 'accepted' | 'queued'
   ): SessionInputEntry {
     if (this.#closed)
       throw new AgentError(
@@ -388,7 +386,6 @@ export class SessionInputCoordinator {
         ...(source.extensionId ? { extensionId: source.extensionId } : {}),
         ...(source.parentOperationId ? { parentOperationId: source.parentOperationId } : {})
       },
-      ...(parentMessage === undefined ? {} : { parentMessage }),
       started: new Promise<void>((resolve) => {
         started = resolve;
       }),

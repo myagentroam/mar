@@ -3,6 +3,12 @@ import { homedir } from 'node:os';
 import { access, constants } from 'node:fs/promises';
 import { LocalAgentHost } from '@myagentroam/agent/host';
 import {
+  SESSION_CONTEXT_PROVIDER,
+  type ExtensionSessionContextProvider
+} from '@myagentroam/agent/extensions';
+import { agentNetworkExtension } from './agent-network-extension.js';
+import type { AgentNetworkInvoke } from '../../service/agent-network-service.js';
+import {
   createAgent,
   type ToolApprovalRequest,
   type ToolApprovalDecision
@@ -43,6 +49,7 @@ export interface MarAgentSessionRuntime {
   readonly normalizer: MarAgentConversationNormalizer;
   readonly mcpLease: MarAgentMcpClientLease;
   readonly releaseEnvironment: (() => void) | undefined;
+  readonly releaseNetworkContext?: () => void;
   readonly automaticTitleEnabled: boolean;
   models: MarAgentRuntimeModel[];
   modelFingerprint: string;
@@ -96,6 +103,10 @@ export interface MarAgentRuntimeResources {
   readonly resourceIdleTtlMs: number;
   readonly retainEnvironment?: (environment: Readonly<Record<string, string>>) => () => void;
   readonly customTitle: (sessionId: string) => string | undefined;
+  readonly attachNetworkContext?: (sessionId: string) => ExtensionSessionContextProvider & {
+    close(): void;
+    invoke?: AgentNetworkInvoke;
+  };
   readonly modelUsage: (
     runId: string,
     usage: Parameters<NonNullable<HostOptions['modelUsage']>>[0]
@@ -130,8 +141,11 @@ export async function createSessionRuntime(
   let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
   let models: MarAgentRuntimeModel[] = [];
   let releaseEnvironment: (() => void) | undefined;
+  let networkContext:
+    (ExtensionSessionContextProvider & { close(): void; invoke?: AgentNetworkInvoke }) | undefined;
   try {
     releaseEnvironment = dependencies.retainEnvironment?.(input.secretEnvironment ?? {});
+    networkContext = dependencies.attachNetworkContext?.(input.sessionId);
     const mcp = mcpLease.pool;
     const localHost = new LocalAgentHost({
       publishModelResource:
@@ -181,6 +195,8 @@ export async function createSessionRuntime(
       models,
       input.models.map((model) => model.id)
     );
+    const compactSource = marAgentCompactExtensionSource(compactState);
+    const networkProvider = networkContext;
     agent = await dependencies.createAgent({
       mode: 'node',
       host: localHost,
@@ -188,7 +204,30 @@ export async function createSessionRuntime(
         models.filter((model) => input.models.some((candidate) => candidate.id === model.id))
       ),
       defaultModelId: input.model.id,
-      extensions: marAgentCompactExtensionSource(compactState),
+      extensions:
+        networkProvider === undefined
+          ? compactSource
+          : {
+              async resolve(request) {
+                const snapshot = await compactSource.resolve(request);
+                return {
+                  ...snapshot,
+                  extensions: [
+                    ...snapshot.extensions,
+                    {
+                      id: 'mar.node.agent-network-context',
+                      apiVersion: '1.0' as const,
+                      attachSession(context) {
+                        context.services.provide(SESSION_CONTEXT_PROVIDER, networkProvider);
+                      }
+                    },
+                    ...(networkProvider.invoke === undefined
+                      ? []
+                      : [agentNetworkExtension(networkProvider.invoke, currentRunId)])
+                  ]
+                };
+              }
+            },
       ...(input.personalInstructions ? { systemInstruction: input.personalInstructions } : {})
     });
     const customTitle = dependencies.customTitle(input.sessionId) ?? undefined;
@@ -207,6 +246,9 @@ export async function createSessionRuntime(
       normalizer: new MarAgentConversationNormalizer(),
       mcpLease,
       releaseEnvironment,
+      ...(networkContext === undefined
+        ? {}
+        : { releaseNetworkContext: () => networkContext?.close() }),
       automaticTitleEnabled: input.externalSessionId === undefined,
       models,
       compactState,
@@ -217,6 +259,7 @@ export async function createSessionRuntime(
   } catch (error) {
     for (const cleanup of [
       () => agent?.dispose(),
+      () => networkContext?.close(),
       () => closeModelCredentialProviders(models),
       () => mcpLease.release(),
       () => releaseEnvironment?.()
@@ -286,6 +329,7 @@ export async function releaseSessionRuntime(runtime: MarAgentSessionRuntime): Pr
   const failures: unknown[] = [];
   for (const cleanup of [
     () => runtime.agent.dispose(),
+    () => runtime.releaseNetworkContext?.(),
     () => runtime.mcpLease.release(),
     () => runtime.releaseEnvironment?.()
   ]) {

@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerMarctlSessionRoutes } from '../../src/marctl-session-routes.js';
 import { MarctlUserCredentials } from '../../src/marctl-user-credentials.js';
 import type { ConversationAuditObserver } from '../../src/conversation-audit.js';
-import type { MarAgentRuntimeModelService } from '../../src/session-run-contracts.js';
+import type {
+  MarAgentModelService,
+  MarAgentRuntimeModelService
+} from '../../src/session-run-contracts.js';
+import type { UserNodeAuthorization } from '../../src/node-access-contracts.js';
 
 const apps: ReturnType<typeof Fastify>[] = [];
 afterEach(async () => {
@@ -21,8 +25,10 @@ async function fixture(
     profiles?: Record<string, unknown>;
     authorizedNode?: boolean;
     ownsConnection?: boolean;
+    executionSource?: string;
     channel?: boolean;
     marAgentRuntimeModels?: Pick<MarAgentRuntimeModelService, 'prepare'>;
+    marAgentModels?: MarAgentModelService;
     audits?: ConversationAuditObserver;
   } = {}
 ) {
@@ -36,10 +42,20 @@ async function fixture(
       ...(scheduled ? {} : { sessionHash: 'a'.repeat(43) }),
       ...(options.channel === true ? { channel: true } : {})
     },
-    scoped ? scope : undefined
+    scoped ? scope : undefined,
+    options.executionSource === undefined
+      ? { type: 'terminal' }
+      : { type: 'execution', sessionId: options.executionSource, executionId: 'execution-1' }
   );
   const requestNode = vi.fn(
-    async (_node: string, operation: string, data: Record<string, unknown>): Promise<unknown> => {
+    async (
+      _node: string,
+      operation: string,
+      data: Record<string, unknown>,
+      _user?: UserNodeAuthorization,
+      _timeout?: number,
+      _signal?: AbortSignal
+    ): Promise<unknown> => {
       if (operation === 'session.cli.context')
         return { workspace: { id: 'workspace', path: '/fixture' }, session: null, run: null };
       if (operation === 'session.get')
@@ -87,6 +103,7 @@ async function fixture(
     ...(options.marAgentRuntimeModels === undefined
       ? {}
       : { marAgentRuntimeModels: options.marAgentRuntimeModels }),
+    ...(options.marAgentModels === undefined ? {} : { marAgentModels: options.marAgentModels }),
     ...(options.audits === undefined ? {} : { audits: options.audits }),
     ownsWorkbenchConnection
   });
@@ -104,17 +121,311 @@ async function fixture(
   };
 }
 
-describe('Workspace-bound marctl sessions', () => {
+describe('Workspace-bound marctl agents', () => {
+  it('supplies only authorized safe MAR model summaries for an Execution profile query', async () => {
+    const listForUser = vi.fn(async () => [
+      {
+        id: 'eligible',
+        enabled: true,
+        conversationModel: true,
+        subagentModel: true,
+        access: { private: 'not-for-node' }
+      },
+      { id: 'disabled', enabled: false, conversationModel: true, subagentModel: true },
+      { id: 'no-subagent', enabled: true, conversationModel: true, subagentModel: false }
+    ]);
+    const prepare = vi.fn();
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'codex', model: 'parent-model' },
+      marAgentModels: { listForUser } as unknown as MarAgentModelService,
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: { operation: 'list', input: { scope: 'profile', runner: 'mar-agent' } }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(listForUser).toHaveBeenCalledExactlyOnceWith(7);
+    expect(prepare).not.toHaveBeenCalled();
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[3]).toMatchObject({
+      marctlExecutionResources: {
+        marAgentModels: [{ id: 'eligible' }, { id: 'disabled' }, { id: 'no-subagent' }]
+      }
+    });
+    expect(JSON.stringify(network[3])).not.toContain('not-for-node');
+    expect(network[2]).not.toHaveProperty('marAgentModels');
+  });
+
+  it('uses the target MAR Runner default instead of the parent model for an Execution start', async () => {
+    const prepare = vi.fn(async (input: { readonly selectedModelId: string }) => ({
+      runtimeScopeId: 'scope',
+      model: { id: input.selectedModelId },
+      models: []
+    }));
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', model: 'parent-non-default' },
+      profiles: {
+        profiles: [{ runner: 'mar-agent', models: [] }],
+        defaults: [{ runner: 'mar-agent', model: 'runner-default' }]
+      },
+      marAgentRuntimeModels: { prepare }
+    });
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: {
+          operation: 'start',
+          input: { title: 'Child', content: 'Start work' }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({ selectedModelId: 'runner-default' })
+    );
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[2]).toMatchObject({ input: { model: 'runner-default' } });
+  });
+
+  it.each(['start', 'send'] as const)(
+    'prepares MAR model resources for an authenticated non-MAR Execution %s',
+    async (operation) => {
+      const prepare = vi.fn(async () => ({
+        runtimeScopeId: 'scope',
+        model: { id: 'eligible' },
+        models: [{ id: 'eligible' }]
+      }));
+      const f = await fixture(true, false, {
+        executionSource: 'parent',
+        session:
+          operation === 'send'
+            ? { runner: 'mar-agent', model: 'eligible', parentSessionId: 'parent' }
+            : { runner: 'codex', model: 'codex-model' },
+        marAgentRuntimeModels: { prepare } as unknown as Pick<
+          MarAgentRuntimeModelService,
+          'prepare'
+        >
+      });
+      const input =
+        operation === 'start'
+          ? { content: 'Start work', runner: 'mar-agent', model: 'eligible' }
+          : { agentId: 'child', content: 'Continue work' };
+      const response = await f.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: f.headers,
+        payload: { action: 'network', command: { operation, input } }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(prepare).toHaveBeenCalledOnce();
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 7,
+          selectedModelId: 'eligible',
+          ...(operation === 'send' ? { sessionId: 'child' } : {})
+        })
+      );
+      expect(f.requestNode.mock.calls.some((call) => call[1] === 'runner.profiles.list')).toBe(
+        true
+      );
+      const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+      expect(network[3]).toMatchObject({
+        marctlExecutionResources: {
+          marAgentRuntimeScopeId: 'scope',
+          marAgentModel: { id: 'eligible' },
+          marAgentModels: [{ id: 'eligible' }]
+        }
+      });
+      expect(network[2]).not.toHaveProperty('marAgentModel');
+      expect(response.body).not.toContain('marAgentModel');
+    }
+  );
+
+  it('does not prepare MAR resources for an unrelated target or a claimed foreign parent', async () => {
+    const prepare = vi.fn();
+    const f = await fixture(true, false, {
+      executionSource: 'parent',
+      session: { runner: 'mar-agent', model: 'eligible', parentSessionId: 'someone-else' },
+      marAgentRuntimeModels: { prepare } as unknown as Pick<MarAgentRuntimeModelService, 'prepare'>
+    });
+    for (const [operation, input] of [
+      ['send', { agentId: 'unrelated', content: 'work' }],
+      [
+        'start',
+        { parentSessionId: 'someone-else', runner: 'mar-agent', model: 'eligible', content: 'work' }
+      ]
+    ] as const) {
+      const response = await f.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: f.headers,
+        payload: { action: 'network', command: { operation, input } }
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect(prepare).not.toHaveBeenCalled();
+    for (const call of f.requestNode.mock.calls.filter((entry) => entry[1] === 'agent.network'))
+      expect(call[3]).not.toHaveProperty('marctlExecutionResources');
+  });
+  it.each(['goal.clear', 'goal.set'] as const)(
+    'routes legacy %s through the Node network authorization',
+    async (action) => {
+      const f = await fixture(true, false, { executionSource: 'parent' });
+      for (const target of ['child', 'sibling']) {
+        const response = await f.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: f.headers,
+          payload: {
+            action,
+            sessionId: target,
+            ...(action === 'goal.set' ? { content: 'Finish task' } : {})
+          }
+        });
+        expect(response.statusCode).toBe(200);
+        expect(f.requestNode).toHaveBeenLastCalledWith(
+          'node',
+          'agent.network',
+          expect.objectContaining({
+            action: 'send',
+            input: {
+              agentId: target,
+              goal: action === 'goal.clear' ? { clear: true } : { objective: 'Finish task' }
+            }
+          }),
+          expect.objectContaining({
+            marctlCaller: expect.objectContaining({ sessionId: 'parent' })
+          })
+        );
+      }
+      expect(f.requestNode.mock.calls.some((call) => call[1] === 'session.command.execute')).toBe(
+        false
+      );
+    }
+  );
+
+  it.each(['start', 'send', 'stop'] as const)(
+    'rejects legacy execution %s without reaching a Node write',
+    async (action) => {
+      const f = await fixture(true, false, { executionSource: 'parent' });
+      const payload =
+        action === 'start'
+          ? { action, runner: 'codex', content: 'work', clientMessageId: 'msg' }
+          : action === 'send'
+            ? {
+                action,
+                sessionId: 'sibling',
+                content: 'work',
+                clientMessageId: 'msg',
+                deliveryIntent: 'SEND'
+              }
+            : { action, sessionId: 'sibling', runId: 'run' };
+      const response = await f.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: f.headers,
+        payload
+      });
+      expect(response.statusCode).toBe(409);
+      expect(f.requestNode).not.toHaveBeenCalled();
+    }
+  );
+
+  it('relays unified Agent commands with the authenticated Execution and a bounded wait', async () => {
+    const f = await fixture(true, false, { executionSource: 'source' });
+    const original = f.requestNode.getMockImplementation()!;
+    f.requestNode.mockImplementation(async (...args) =>
+      args[1] === 'agent.network'
+        ? { waitOutcome: 'snapshot', agentId: 'child' }
+        : original(...args)
+    );
+    const response = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: { operation: 'wait', input: { agentId: 'child', waitMs: 0 } }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+    expect(network[2]).toMatchObject({
+      workspaceId: 'workspace',
+      action: 'wait',
+      input: { agentId: 'child', waitMs: 0 }
+    });
+    expect(network[3]).toMatchObject({
+      marctlCaller: { type: 'execution', sessionId: 'source', executionId: 'execution-1' }
+    });
+    expect(network[4]).toBe(5_000);
+    expect(network[5]).toBeInstanceOf(AbortSignal);
+    const forged = await f.app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers: f.headers,
+      payload: {
+        action: 'network',
+        command: {
+          operation: 'wait',
+          input: { agentId: 'child', __marctlCaller: { type: 'terminal' } }
+        }
+      }
+    });
+    expect(forged.statusCode).toBe(400);
+  });
+
+  it.each([
+    [undefined, 35_000],
+    [0, 5_000],
+    [1, 15_000],
+    [10_000, 15_000],
+    [300_000, 305_000]
+  ])('budgets Node wait time using its effective duration (%s)', async (waitMs, expected) => {
+    const { app, headers, requestNode } = await fixture(true, false, { executionSource: 'source' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'network',
+        command: {
+          operation: 'wait',
+          input: { agentId: 'target', ...(waitMs === undefined ? {} : { waitMs }) }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    const relay = requestNode.mock.calls.find((call) => call[1] === 'agent.network');
+    expect(relay?.[4]).toBe(expected);
+  });
+
   it('accepts real CLI subprocess requests over HTTP using the issued Workspace credential', async () => {
-    const { app, headers, requestNode } = await fixture(true, false);
+    const { app, headers, requestNode } = await fixture(true, false, { executionSource: 'source' });
     const request = requestNode.getMockImplementation()!;
     requestNode.mockImplementation(async (...args) =>
-      args[1] === 'session.message'
+      args[1] === 'agent.network' && args[2].action === 'send'
         ? {
-            session: { id: 'target' },
-            run: { id: 'active-run' },
-            queueItemId: 'input',
-            delivery: 'ACCEPTED'
+            agentId: 'target',
+            message: {
+              status: 'accepted',
+              result: {
+                run: { id: 'active-run' },
+                queueItemId: 'input',
+                delivery: 'ACCEPTED'
+              }
+            }
           }
         : request(...args)
     );
@@ -132,7 +443,7 @@ describe('Workspace-bound marctl sessions', () => {
       ]) {
         const result = await promisify(execFile)(
           process.execPath,
-          [cli, 'sessions', ...args, '--json'],
+          [cli, 'agents', ...args, '--json'],
           {
             timeout: 10_000,
             env: {
@@ -148,11 +459,16 @@ describe('Workspace-bound marctl sessions', () => {
         expect(JSON.parse(result.stdout)).toBeTypeOf('object');
         if (args[0] === 'send')
           expect(JSON.parse(result.stdout)).toMatchObject({
-            sessionId: 'target',
-            runId: 'active-run',
-            queueItemId: 'input',
             clientMessageId: 'input',
-            delivery: 'ACCEPTED'
+            agentId: 'target',
+            message: {
+              status: 'accepted',
+              result: {
+                run: { id: 'active-run' },
+                queueItemId: 'input',
+                delivery: 'ACCEPTED'
+              }
+            }
           });
       }
       expect(requestNode).toHaveBeenCalledWith(
@@ -558,49 +874,38 @@ describe('Workspace-bound marctl sessions', () => {
   );
 
   it.each(['send', 'start'] as const)(
-    'resolves a local source snapshot for %s without trusting CLI names',
-    async (action) => {
+    'relays %s with the authenticated Execution rather than a client origin',
+    async (operation) => {
       const { app, headers, requestNode } = await fixture(true, true, {
-        session: { customTitle: 'Coordinator#42 Plan & review', runnerTitle: 'Auto title' }
+        executionSource: 'source'
       });
-      const payload = {
-        action,
-        content: 'task',
-        clientMessageId: 'source-input',
-        sourceSessionId: 'source',
-        ...(action === 'start'
-          ? { runner: 'codex' }
-          : { sessionId: 'target', deliveryIntent: 'QUEUE' })
-      };
+      const input =
+        operation === 'start'
+          ? { content: 'task', clientMessageId: 'source-input', runner: 'codex' }
+          : {
+              agentId: 'target',
+              content: 'task',
+              clientMessageId: 'source-input',
+              deliveryIntent: 'QUEUE'
+            };
       const response = await app.inject({
         method: 'POST',
         url: '/api/marctl/sessions',
         headers,
-        payload
+        payload: { action: 'network', command: { operation, input } }
       });
       expect(response.statusCode).toBe(200);
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        'session.get',
-        { sessionId: 'source', workspaceId: 'workspace', registeredOnly: true },
-        expect.any(Object)
-      );
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        action === 'start' ? 'session.start' : 'session.message',
-        expect.objectContaining({
-          content: 'task',
-          __marctlOrigin: { sessionId: 'source', name: 'Coordinator#42 Plan & review' }
-        }),
-        expect.any(Object)
-      );
-      const spoofed = await app.inject({
-        method: 'POST',
-        url: '/api/marctl/sessions',
-        headers,
-        payload: { ...payload, sourceSessionName: 'Fake' }
+      const network = requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+      expect(network[2]).toMatchObject({ action: operation, input });
+      expect(network[2]).not.toHaveProperty('__marctlOrigin');
+      expect(network[3]).toMatchObject({
+        marctlCaller: { type: 'execution', sessionId: 'source', executionId: 'execution-1' }
       });
-      expect(spoofed.statusCode).toBe(400);
+      expect(
+        requestNode.mock.calls.some(
+          (call) => call[1] === 'session.start' || call[1] === 'session.message'
+        )
+      ).toBe(false);
     }
   );
 
@@ -628,37 +933,62 @@ describe('Workspace-bound marctl sessions', () => {
     ).not.toHaveProperty('__marctlOrigin');
   });
 
-  it.each([
-    { customTitle: null, runnerTitle: 'Runner title', expected: 'Runner title' },
-    { customTitle: '  Custom title  ', runnerTitle: 'Runner title', expected: 'Custom title' },
-    { customTitle: '', runnerTitle: null, expected: 'source' }
-  ])(
-    'uses the current Session title or ID as its source name ($expected)',
-    async ({ expected, ...session }) => {
-      const { app, headers, requestNode } = await fixture(true, true, { session });
+  it('rejects legacy writes with a claimed execution source or parent before Node dispatch', async () => {
+    const { app, headers, requestNode } = await fixture(true, true, { executionSource: 'source' });
+    for (const payload of [
+      {
+        action: 'send',
+        sessionId: 'target',
+        sourceSessionId: 'other',
+        content: 'message',
+        clientMessageId: 'one',
+        deliveryIntent: 'QUEUE'
+      },
+      {
+        action: 'start',
+        runner: 'codex',
+        parentSessionId: 'other',
+        content: 'message',
+        clientMessageId: 'two'
+      }
+    ]) {
       const response = await app.inject({
         method: 'POST',
         url: '/api/marctl/sessions',
         headers,
-        payload: {
-          action: 'send',
-          sessionId: 'source',
-          sourceSessionId: 'source',
-          content: 'task',
-          clientMessageId: 'self-message',
-          deliveryIntent: 'QUEUE'
-        }
+        payload
       });
-      expect(response.statusCode).toBe(200);
-      expect(requestNode.mock.calls.filter(([, op]) => op === 'session.get')).toHaveLength(1);
-      expect(requestNode.mock.calls.find(([, op]) => op === 'session.message')?.[2]).toMatchObject({
-        __marctlOrigin: { sessionId: 'source', name: expected }
-      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: { code: 'MARCTL_AGENT_NETWORK_REQUIRED' } });
     }
-  );
+    expect(requestNode).not.toHaveBeenCalled();
+  });
 
-  it('rejects a foreign or missing source before sending the message', async () => {
+  it('does not derive a Session origin from a terminal caller’s environment claim', async () => {
     const { app, headers, requestNode } = await fixture();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/marctl/sessions',
+      headers,
+      payload: {
+        action: 'send',
+        sessionId: 'target',
+        sourceSessionId: 'forged',
+        content: 'message',
+        clientMessageId: 'one',
+        deliveryIntent: 'QUEUE'
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(
+      requestNode.mock.calls.find(([, operation]) => operation === 'session.message')?.[2]
+    ).toMatchObject({ __marctlOrigin: {} });
+  });
+
+  // Source title and ID projection are exercised through the Node network owner.
+
+  it('rejects foreign or missing execution sources on the retired write route', async () => {
+    const { app, credentials, scope, requestNode } = await fixture();
     requestNode.mockImplementation(async (_node, operation, data) => {
       if (operation === 'session.cli.context')
         return { workspace: { id: 'workspace', path: '/fixture' } };
@@ -675,10 +1005,15 @@ describe('Workspace-bound marctl sessions', () => {
       return {};
     });
     for (const sourceSessionId of ['foreign', 'missing']) {
+      const token = credentials.issue({ userId: 7 }, scope, {
+        type: 'execution',
+        sessionId: sourceSessionId,
+        executionId: 'execution-1'
+      });
       const response = await app.inject({
         method: 'POST',
         url: '/api/marctl/sessions',
-        headers,
+        headers: { authorization: `Bearer ${token}` },
         payload: {
           action: 'send',
           sessionId: 'target',
@@ -688,7 +1023,8 @@ describe('Workspace-bound marctl sessions', () => {
           sourceSessionId
         }
       });
-      expect(response.statusCode).toBe(sourceSessionId === 'foreign' ? 403 : 404);
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: { code: 'MARCTL_AGENT_NETWORK_REQUIRED' } });
     }
     expect(requestNode.mock.calls.some(([, op]) => op === 'session.message')).toBe(false);
   });

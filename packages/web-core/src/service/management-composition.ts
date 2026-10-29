@@ -1,11 +1,13 @@
 import { inject, type Component, type InjectionKey } from 'vue';
 import type { AdminState } from './admin-auth-service.js';
 import type { NodeSummary } from '../model/node.js';
+import type { NodeUpgradeProgress } from '../model/node-upgrade.js';
 
 export interface ManagementPageContext {
   readonly admin: AdminState;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly nodes: readonly NodeSummary[];
+  readonly nodeUpgradeProgress?: Readonly<Record<string, NodeUpgradeProgress | null>>;
   readonly onlineNodeCount: number;
   readonly serverVersion: string | undefined;
 }
@@ -14,6 +16,7 @@ export interface ManagementPageProps {
   readonly request: ManagementPageContext['request'];
   readonly writable?: boolean;
   readonly nodes?: readonly NodeSummary[];
+  readonly nodeUpgradeProgress?: Readonly<Record<string, NodeUpgradeProgress | null>>;
   readonly authenticated?: boolean;
   readonly onlineNodeCount?: number;
   readonly nodeCount?: number;

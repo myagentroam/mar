@@ -690,7 +690,9 @@ function messageWorkspaceId(message: object): string | undefined {
 }
 
 function messageWorkspaceOperation(message: object): string {
-  return (message as { type?: unknown }).type === 'node'
+  if ((message as { type?: unknown }).type === 'node.upgrade')
+    return 'workbench.node.upgrade.receive';
+  return ['node', 'node.upgrade'].includes(String((message as { type?: unknown }).type))
     ? 'workbench.node.receive'
     : 'workbench.event.receive';
 }

@@ -33,7 +33,6 @@ function basePorts(): ConstructorParameters<typeof ExecutionContextCoordinator>[
       workspace: '/tmp',
       platform: 'linux'
     },
-    child: false,
     start: unused,
     wait: async () => false,
     activeProcesses: async () => new Set()
@@ -86,12 +85,12 @@ it('prepares input and compact safety points before recording the environment', 
     }
   });
   await coordinator.prepareInputs({
-    includeSubagentUpdates: true,
+    includeSessionContext: true,
     appendMailbox: async () => {
       order.push('mailbox');
     },
-    appendSubagentUpdates: async () => {
-      order.push('subagents');
+    appendSessionContext: async () => {
+      order.push('session-context');
     },
     refreshTools: () => {
       order.push('tools');
@@ -102,7 +101,7 @@ it('prepares input and compact safety points before recording the environment', 
   });
   expect(order).toEqual([
     'mailbox',
-    'subagents',
+    'session-context',
     'tools',
     'world',
     'requests',

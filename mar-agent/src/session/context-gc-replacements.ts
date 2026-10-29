@@ -182,6 +182,41 @@ export function contextGcWebOutputReplacement(
   });
 }
 
+/** Tools with their own evidence and lifecycle policies are never handled as generic output. */
+export function isGenericContextGcTool(toolName: string): boolean {
+  return (
+    toolName.length > 0 &&
+    ![
+      'read',
+      'apply_patch',
+      'exec',
+      'exec_wait',
+      'code_exec',
+      'code_exec_wait',
+      'web_search',
+      'web_fetch'
+    ].includes(toolName)
+  );
+}
+
+export function contextGcToolOutputReplacement(
+  toolName: string,
+  originalContent: string,
+  truncated: boolean
+): string {
+  const preview = unicodeHeadTail(originalContent, EXEC_OUTPUT_PREVIEW_CHARACTERS);
+  return JSON.stringify({
+    toolName,
+    originalBytes: Buffer.byteLength(originalContent),
+    lines: lineCount(originalContent),
+    truncated,
+    preview,
+    previewComplete: !truncated && preview === originalContent,
+    contextGc:
+      'Detailed tool output was reclaimed after six successful rollouts. An incomplete preview is not the complete result; the tool was not replayed.'
+  });
+}
+
 export function contextGcExecInputReplacement(
   arguments_: unknown,
   toolName: string = 'exec'

@@ -1,6 +1,10 @@
 import { MarctlError } from './errors.mjs';
 import { sessionTarget } from './session-target.mjs';
-import { prepareSessionRequest } from './session-prepare.mjs';
+import {
+  isAgentNetworkAction,
+  prepareAgentNetworkRequest,
+  prepareSessionRequest
+} from './session-prepare.mjs';
 import { waitForSessionRun } from './session-wait.mjs';
 
 export async function runSessionCommand({
@@ -17,33 +21,41 @@ export async function runSessionCommand({
   const sessionId =
     args.sessionId ??
     (sessionTarget[args.action] === 'current' ? env.MAR_CTL_SESSION_ID : undefined);
-  if (targeted && !sessionId)
+  if (targeted && !sessionId && sessionTarget[args.action] !== 'optional')
     throw new MarctlError(translate('errors.sessionContextRequired'), {
       code: 'MARCTL_SESSION_CONTEXT_REQUIRED'
     });
-  if (args.action === 'wait') {
+  if (args.action === 'wait' && args.runId !== undefined)
     return waitForSessionRun({
       client,
       sessionId,
       runId: args.runId,
-      timeoutMs: args.timeoutMs,
+      timeoutMs: args.timeoutMs ?? 30000,
       until: args.until,
       WebSocketClass,
       translate,
       signal
     });
-  }
-  const body = await prepareSessionRequest({ args, env, stdin, translate, sessionId, targeted });
+  const network = isAgentNetworkAction(args.action);
+  const body = network
+    ? await prepareAgentNetworkRequest({ args, stdin, translate, sessionId })
+    : await prepareSessionRequest({ args, env, stdin, translate, sessionId, targeted });
+  const clientMessageId = network ? body.command.input.clientMessageId : body.clientMessageId;
   try {
-    const result = await client.sessionCommand(body);
+    const requestedWait = args.timeoutMs ?? 30000;
+    const effectiveWait = requestedWait === 0 ? 0 : Math.max(10000, requestedWait);
+    const result = await client.sessionCommand(
+      body,
+      args.action === 'wait' ? { timeoutMs: effectiveWait + 10000, signal } : undefined
+    );
     return {
       ...result,
       ...(typeof result?.session?.id === 'string' ? { sessionId: result.session.id } : {}),
       ...(typeof result?.run?.id === 'string' ? { runId: result.run.id } : {}),
-      ...(body.clientMessageId === undefined ? {} : { clientMessageId: body.clientMessageId })
+      ...(clientMessageId === undefined ? {} : { clientMessageId })
     };
   } catch (error) {
-    if (body.clientMessageId !== undefined) error.clientMessageId = body.clientMessageId;
+    if (clientMessageId !== undefined) error.clientMessageId = clientMessageId;
     if (
       [
         'start',

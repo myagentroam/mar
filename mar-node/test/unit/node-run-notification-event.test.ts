@@ -12,7 +12,8 @@ import type { NodeEnvelope, WorkbenchEvent } from '@myagentroam/protocol';
 
 function fixture(
   keepRunActive: (sessionId: string) => boolean = () => false,
-  observe?: (runtime: NodeRuntimeState, category: string) => void
+  observe?: (runtime: NodeRuntimeState, category: string) => void,
+  observeAgentEvent?: ConstructorParameters<typeof RunEventService>[0]['observeAgentEvent']
 ) {
   let now = 100;
   const runtime = new NodeRuntimeState(
@@ -49,7 +50,8 @@ function fixture(
     acceptExecutionTerminal: (input) => coordinator.acceptExecutionTerminal(input),
     publishGoalUpdate: vi.fn(),
     publishQueueChange: vi.fn(),
-    releaseExecution: vi.fn()
+    releaseExecution: vi.fn(),
+    ...(observeAgentEvent === undefined ? {} : { observeAgentEvent })
   });
   const createRun = (
     clientMessageId: string,
@@ -96,6 +98,31 @@ function fixture(
 }
 
 describe('Node Run notification attachment events', () => {
+  it('observes committed live messages and terminal state', () => {
+    const observations: Array<{
+      eventType: string;
+      terminalStatus: string | undefined;
+      status: string | undefined;
+    }> = [];
+    let runtime!: NodeRuntimeState;
+    const f = fixture(undefined, undefined, ({ run, eventType, terminalStatus }) => {
+      observations.push({ eventType, terminalStatus, status: runtime.getRun(run.id)?.status });
+    });
+    runtime = f.runtime;
+    const run = f.createRun('network-observation');
+    const execution = f.startExecution(run.id);
+    f.service.emit(execution.id, 'conversation.item', {
+      itemId: 'message-1',
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      payload: { text: 'hello' }
+    });
+    f.service.emit(execution.id, 'run.completed', {}, 'SUCCEEDED');
+    expect(observations).toEqual([
+      { eventType: 'conversation.item', terminalStatus: undefined, status: 'STARTING' },
+      { eventType: 'run.completed', terminalStatus: 'SUCCEEDED', status: 'SUCCEEDED' }
+    ]);
+  });
   it('accepts terminal facts and finalizes state before synchronous publication', () => {
     const observed: Array<{ category: string; status: string | undefined; active: boolean }> = [];
     let runId = '';

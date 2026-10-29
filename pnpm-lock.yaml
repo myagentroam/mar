@@ -144,6 +144,15 @@ importers:
         specifier: ^4.0.14
         version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(tsx@4.23.12))
 
+  mar-agent/extensions/subagent:
+    devDependencies:
+      '@myagentroam/agent':
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: ^4.0.14
+        version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(tsx@4.23.12))
+
   mar-node:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':

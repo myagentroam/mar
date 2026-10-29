@@ -159,6 +159,8 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
       ([keyword]) => keyword !== 'propertyNames' && keyword !== 'uniqueItems'
     )
   );
+  if (Array.isArray(schema.anyOf))
+    supportedSchema.anyOf = schema.anyOf.map((branch) => strictFunctionSchema(branch));
   if (optional && Array.isArray(schema.enum) && !schema.enum.includes(null))
     supportedSchema.enum = [...schema.enum, null];
   if (schema.type === 'object') {
@@ -191,6 +193,13 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
       type: schema.type.includes('null') ? schema.type : [...schema.type, 'null']
     };
   if (Array.isArray(schema.enum)) return supportedSchema;
+  if (Array.isArray(supportedSchema.anyOf))
+    return {
+      ...supportedSchema,
+      anyOf: supportedSchema.anyOf.some((branch) => record(branch).type === 'null')
+        ? supportedSchema.anyOf
+        : [...supportedSchema.anyOf, { type: 'null' }]
+    };
   return { anyOf: [supportedSchema, { type: 'null' }] };
 }
 

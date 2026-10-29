@@ -239,12 +239,25 @@ describe('MAR Agent Node Runner', () => {
       const resumedItems = resumedEvents
         .flatMap((event) => normalizer.normalize(event))
         .filter((item) => item.kind === 'command_execution');
-      expect(resumedItems).toHaveLength(1);
-      expect(resumedItems.map((item) => item.itemId)).toEqual(['mar-agent-tool:poll-command']);
+      expect(resumedItems.map((item) => [item.itemId, item.status])).toEqual([
+        ['mar-agent-tool:poll-command', 'IN_PROGRESS'],
+        ['mar-agent-tool:poll-command', 'COMPLETED']
+      ]);
+      expect(resumedItems[0]?.payload.toolPresentation).toMatchObject({
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL' }
+      });
       expect(resumedItems.at(-1)).toMatchObject({
         itemId: 'mar-agent-tool:poll-command',
         status: 'COMPLETED',
-        payload: expect.objectContaining({ outputPreview: 'RETAINED', exitCode: 0 })
+        payload: expect.objectContaining({
+          outputPreview: 'RETAINED',
+          exitCode: 0,
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: expect.objectContaining({ kind: 'CONTROL' })
+          }
+        })
       });
 
       const catalog = await openAgentSessionCatalog({ homeDirectory: join(root, 'home') });
@@ -316,19 +329,26 @@ describe('MAR Agent Node Runner', () => {
       }
     });
     const resumed = { ...base, executionId: 'second', turnId: 'second-turn' };
-    expect(
-      normalizer.normalize({
-        ...resumed,
-        type: 'tool.started',
-        toolName: 'exec',
-        callId: 'expired-poll',
-        input: { action: 'poll', processId: 'finished-process' }
-      })
-    ).toEqual([]);
+    const [waiting] = normalizer.normalize({
+      ...resumed,
+      type: 'tool.started',
+      toolName: 'exec_wait',
+      callId: 'expired-poll',
+      input: { action: 'poll', processId: 'finished-process' }
+    });
+    expect(waiting).toMatchObject({
+      itemId: 'mar-agent-tool:expired-poll',
+      kind: 'command_execution',
+      status: 'IN_PROGRESS',
+      payload: {
+        command: 'exec_wait (poll)',
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CONTROL' } }
+      }
+    });
     const [failed] = normalizer.normalize({
       ...resumed,
       type: 'tool.failed',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'expired-poll',
       code: 'MAR_AGENT_PROCESS_NOT_FOUND',
       message: 'Managed process was not found.'
@@ -340,8 +360,14 @@ describe('MAR Agent Node Runner', () => {
     });
     expect(failed).toMatchObject({
       itemId: 'mar-agent-tool:expired-poll',
-      kind: 'tool_call',
-      status: 'FAILED'
+      kind: 'command_execution',
+      status: 'FAILED',
+      payload: {
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: { kind: 'CONTROL', error: { code: 'MAR_AGENT_PROCESS_NOT_FOUND' } }
+        }
+      }
     });
     const failedStart = new MarAgentConversationNormalizer();
     failedStart.normalize({
@@ -577,31 +603,51 @@ describe('MAR Agent Node Runner', () => {
       ['mar-agent-tool:cancel-failed', 'command_execution', 'FAILED']
     ]);
     expect(items).toMatchObject([
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('poll') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (poll)',
+          outputPreview: expect.stringContaining('poll')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (poll)',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('cancel') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (cancel)',
+          outputPreview: expect.stringContaining('cancel')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (cancel)',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('poll') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (poll)',
+          outputPreview: expect.stringContaining('poll')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (poll)',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('cancel') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (cancel)',
+          outputPreview: expect.stringContaining('cancel')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (cancel)',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       }
@@ -1125,6 +1171,47 @@ describe('MAR Agent Node Runner', () => {
           expect.objectContaining({ id: corrupt.id, runnerTitle: 'New session' })
         ])
       );
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('removes all MAR members through one real Core maintenance transaction', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-runner-tree-home-'));
+    try {
+      const store = await JsonlSessionStore.open(home);
+      const first = await store.createSession({ workspace: '/workspace' });
+      const second = await store.createSession({ workspace: '/workspace' });
+      await store.close();
+      const runner = new MarAgentRunner(home);
+      const release = vi.fn(async () => undefined);
+      runner.setSessionResourceReleaser(release);
+      const members = [first, second].map(
+        ({ id }) => ({ id, runner: 'mar-agent', externalSessionId: id }) as NodeAgentSession
+      );
+      await expect(
+        runner.removeNativeMembers([
+          ...members,
+          { id: 'missing', runner: 'mar-agent', externalSessionId: 'missing' } as NodeAgentSession
+        ])
+      ).rejects.toThrow();
+      let catalog = await openAgentSessionCatalog({ homeDirectory: home });
+      try {
+        expect((await catalog.list({ limit: 20 })).sessions.map((item) => item.id)).toEqual(
+          expect.arrayContaining([first.id, second.id])
+        );
+      } finally {
+        await catalog.close();
+      }
+      await runner.removeNativeMembers(members);
+      expect(release).toHaveBeenCalledWith(first.id);
+      expect(release).toHaveBeenCalledWith(second.id);
+      catalog = await openAgentSessionCatalog({ homeDirectory: home });
+      try {
+        expect((await catalog.list({ limit: 20 })).sessions).toEqual([]);
+      } finally {
+        await catalog.close();
+      }
     } finally {
       await rm(home, { recursive: true, force: true });
     }
@@ -1776,6 +1863,42 @@ describe('MAR Agent Node Runner', () => {
         { managedActive: false, commandStates: [] }
       ).runtime.capabilities
     ).toEqual(expect.arrayContaining(['turn.start', 'user-input.respond']));
+  });
+
+  it('filters child model candidates by both usage flags and rechecks current configuration', () => {
+    const runner = new MarAgentRunner();
+    const base = {
+      name: 'Model',
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://example.test',
+      modelId: 'model',
+      contextWindowTokens: 128000,
+      maxOutputTokens: 8192,
+      inputCapabilities: ['TEXT'],
+      outputCapabilities: ['TEXT'],
+      reasoningEfforts: ['high'],
+      defaultReasoningEffort: 'high',
+      titleGeneration: false,
+      codeMode: false,
+      hostedWebSearch: false,
+      enabled: true,
+      sortOrder: 0
+    };
+    const both = { ...base, id: 'both', conversationModel: true, subagentModel: true };
+    runner.configureModels([
+      { ...base, id: 'neither', conversationModel: false, subagentModel: false },
+      { ...base, id: 'conversation', conversationModel: true, subagentModel: false },
+      { ...base, id: 'subagent', conversationModel: false, subagentModel: true },
+      { ...base, id: 'missing-subagent', conversationModel: true },
+      { ...base, id: 'disabled', conversationModel: true, subagentModel: true, enabled: false },
+      both
+    ]);
+    expect(runner.childModels().map((model) => model.id)).toEqual(['both']);
+    expect(() => runner.assertChildModel('both')).not.toThrow();
+    for (const id of ['neither', 'conversation', 'subagent', 'missing-subagent', 'disabled'])
+      expect(() => runner.assertChildModel(id)).toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+    runner.configureModels([{ ...both, subagentModel: false }]);
+    expect(() => runner.assertChildModel('both')).toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
   });
 
   it('keeps models with unknown catalog hints but rejects sensitive or invalid model entries', () => {

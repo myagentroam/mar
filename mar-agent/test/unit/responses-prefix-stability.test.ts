@@ -12,7 +12,6 @@ import {
   projectCodeModeTools,
   projectCodeModeSearchResult
 } from '../../src/tools/code-mode/index.js';
-import { agentStartToolDefinitionWithModels } from '../../src/tools/agent/agent-start.js';
 import type {
   ModelAttemptDiagnostic,
   ModelEvent,
@@ -301,20 +300,6 @@ describe('Responses serialized prefix stability', () => {
         'alpha'
       ]);
     }
-  });
-
-  it('stabilizes the advertised subagent model catalog without changing effort order', () => {
-    const models = ['zeta', 'alpha'].map((id) => ({
-      id,
-      name: id,
-      reasoningEfforts: ['high', 'low']
-    }));
-    const original = JSON.stringify(models);
-    const first = agentStartToolDefinitionWithModels(models);
-    const next = agentStartToolDefinitionWithModels([...models].reverse());
-    expect(first.description).toBe(next.description);
-    expect(first.description).toContain('high, low');
-    expect(JSON.stringify(models)).toBe(original);
   });
 
   it('replays changed native output after its owner resets continuation', async () => {

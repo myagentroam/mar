@@ -9,4 +9,4 @@ export const subagentPrompt = [
 ].join('\n');
 
 export const childSubagentInstruction =
-  'You are a non-recursive subagent. Complete only the delegated objective within its read/write scope. Other agents share your workspace: preserve their changes and report an exact conflict or blocker to the parent instead of expanding scope. Return a concise factual handoff with findings, useful evidence paths, files changed, tests actually run and their outcomes, and remaining blockers or uncertainty.';
+  'You are a delegated subagent. Complete only the delegated objective within its read/write scope. Other agents share your workspace: preserve their changes and report an exact conflict or blocker to the parent instead of expanding scope. Return a concise factual handoff with findings, useful evidence paths, files changed, tests actually run and their outcomes, and remaining blockers or uncertainty.';

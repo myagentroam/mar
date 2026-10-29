@@ -8,6 +8,7 @@ import {
 
 import { scopedAuditEvent } from '../audit/audit-policy.js';
 import { MysqlNodeIdentityStorage } from '@myagentroam/server-core/mysql-node-identity';
+import type { StoredNodeUpgrade } from '@myagentroam/server-core/node-upgrade-progress';
 import { MysqlAuthenticationStorage } from '@myagentroam/server-core/mysql-authentication';
 import {
   lockMysqlUsers,
@@ -492,6 +493,9 @@ export class MysqlServerDatabase {
   findCurrentUserSession(sessionId: string): CurrentUserSession | undefined {
     return this.authentication.findCurrentUserSession(sessionId);
   }
+  isSessionHashActive(userId: number, sessionHash: string): boolean {
+    return this.authentication.isSessionHashActive(userId, sessionHash);
+  }
   userDisplayName(userId: number): Promise<string | undefined> {
     return this.authentication.userDisplayName(userId);
   }
@@ -542,6 +546,15 @@ export class MysqlServerDatabase {
   }
   updateNodeHeartbeat(nodeId: string, capabilities?: { readonly metadata: string }) {
     return this.nodeIdentities.updateNodeHeartbeat(nodeId, capabilities);
+  }
+  updateNodeUpgrade<T>(
+    nodeId: string,
+    update: (current: StoredNodeUpgrade | null) => {
+      readonly next: StoredNodeUpgrade | null;
+      readonly result: T;
+    }
+  ): Promise<T> {
+    return this.nodeIdentities.updateNodeUpgrade(nodeId, update);
   }
   listNodes() {
     return this.nodeIdentities.listNodes();

@@ -20,10 +20,14 @@ import { safeErrorCode } from './http-errors.js';
 export interface SessionExecutionContext {
   readonly nodeId: string;
   readonly workspaceId: string;
-  readonly user: Pick<UserNodeAuthorization, 'userId' | 'sessionHash' | 'usageGrant'> & {
+  readonly user: Pick<
+    UserNodeAuthorization,
+    'userId' | 'sessionHash' | 'usageGrant' | 'marctlCaller'
+  > & {
     readonly username?: string;
     readonly channel?: boolean;
     readonly scheduled?: boolean;
+    readonly marctlExpiresAt?: number;
   };
 }
 
@@ -217,6 +221,9 @@ export class SessionInputService {
     return {
       userId: context.user.userId,
       sessionHash: context.user.sessionHash,
+      ...(context.user.marctlCaller === undefined
+        ? {}
+        : { marctlCaller: context.user.marctlCaller }),
       ...(context.user.usageGrant === undefined ? {} : { usageGrant: context.user.usageGrant }),
       ...this.workspaceScope(context.workspaceId)
     };

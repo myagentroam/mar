@@ -2,6 +2,8 @@ import { contextGcTargetKey } from '../../session/context-gc-checkpoint.js';
 
 import {
   contextGcWebOutputReplacement,
+  contextGcToolOutputReplacement,
+  isGenericContextGcTool,
   type ContextGcWebToolName
 } from '../../session/context-gc-replacements.js';
 
@@ -63,6 +65,75 @@ export function collectWebCandidates(
           callId: group.callId,
           target,
           replacementContent: contextGcWebOutputReplacement(
+            group.toolName,
+            group.result.message.content,
+            group.completed.payload.truncated
+          ),
+          evidenceSequence
+        }
+      ],
+      observedRollouts,
+      evidenceSequence
+    };
+    const reclaimedTokens = candidateSavings(candidate);
+    if (reclaimedTokens <= 0) continue;
+    if (observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts) eligible.push(candidate);
+    else {
+      protectedTokens += reclaimedTokens;
+      retryAfterRollouts = Math.min(
+        retryAfterRollouts,
+        CONTEXT_GC_POLICY.largeExecProtectionRollouts - observedRollouts
+      );
+    }
+  }
+  return { eligible, protectedTokens, retryAfterRollouts };
+}
+
+/** Generic successful tool results share output economics, without inferring resource state. */
+export function collectToolOutputCandidates(
+  input: ContextGcPlannerInput,
+  groups: ReadonlyMap<string, ToolGroup>,
+  existingTargets: ReadonlySet<string>,
+  candidateSavings: CandidateSavings
+): { eligible: ContextCandidate[]; protectedTokens: number; retryAfterRollouts: number } {
+  const eligible: ContextCandidate[] = [];
+  let protectedTokens = 0;
+  let retryAfterRollouts = Infinity;
+  for (const group of groups.values()) {
+    if (
+      !isGenericContextGcTool(group.toolName) ||
+      group.evidenceOnly ||
+      !group.call ||
+      !group.result ||
+      group.failed ||
+      !group.completed ||
+      group.call.message.role !== 'tool_call' ||
+      group.result.message.role !== 'tool' ||
+      typeof group.result.message.content !== 'string' ||
+      !isRecord(group.completed.payload) ||
+      group.completed.payload.type !== 'tool.completed' ||
+      group.completed.payload.callId !== group.callId ||
+      group.completed.payload.toolName !== group.toolName ||
+      typeof group.completed.payload.truncated !== 'boolean'
+    )
+      continue;
+    const target = targetFor(group.result.record, group.result.message);
+    if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
+    const evidenceSequence = group.result.record.sequence;
+    const observedRollouts = successfulRolloutsAfter(
+      input.records,
+      evidenceSequence,
+      input.modelId,
+      input.contextWindowTokens
+    );
+    const candidate: ContextCandidate = {
+      replacements: [
+        {
+          kind: 'TOOL_OUTPUT',
+          toolName: group.toolName,
+          callId: group.callId,
+          target,
+          replacementContent: contextGcToolOutputReplacement(
             group.toolName,
             group.result.message.content,
             group.completed.payload.truncated

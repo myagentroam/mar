@@ -29,9 +29,14 @@ export const channelOriginSchema = z
   .strict();
 export type ChannelOrigin = z.infer<typeof channelOriginSchema>;
 export const sessionMessageOriginSchema = z
-  .object({ sessionId: z.string().min(1).max(512).optional(), name: name.optional() })
+  .object({
+    sessionId: z.string().min(1).max(512).optional(),
+    name: name.optional(),
+    relation: z.enum(['parent', 'other']).optional()
+  })
   .strict()
-  .refine((value) => (value.sessionId === undefined) === (value.name === undefined));
+  .refine((value) => (value.sessionId === undefined) === (value.name === undefined))
+  .refine((value) => value.relation === undefined || value.sessionId !== undefined);
 export type SessionMessageOrigin = z.infer<typeof sessionMessageOriginSchema>;
 const relativePath = path.refine((value) => !/^(?:[\\/]|[A-Za-z]:)/u.test(value));
 const workspacePath = relativePath.refine((value) => !value.split(/[\\/]/u).includes('..'));
@@ -167,7 +172,7 @@ export function serializeComposerTag<K extends ComposerTagName>(
   if (kind === 'mar_steer') children.unshift(`  <instruction>${STEER_INSTRUCTION}</instruction>`);
   if (kind === 'mar_session_origin')
     children.push(
-      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : 'Message from another session, not directly from the user.'}</instruction>`
+      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : value.relation === 'parent' ? 'Message from the parent session.' : value.relation === 'other' ? 'Message from another session.' : 'Message from a session.'}</instruction>`
     );
   const opening = `<${kind}${markupAttributes(attributes)}`;
   const encoded = children.length

@@ -5,8 +5,14 @@ import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost } from '../../src/host.js';
-import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import {
+  AgentError,
+  SecretValue,
+  type Agent,
+  type AgentModelConfiguration
+} from '../../src/index.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
 import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import {
   type ModelEvent,
@@ -123,6 +129,12 @@ const overload = {
   type: 'error',
   code: 'server_is_overloaded',
   message: 'Transient test overload.'
+};
+
+const serverError = {
+  type: 'error',
+  code: 'server_error',
+  message: 'The upstream response could not be processed.'
 };
 
 const accessVerificationFailure = {
@@ -276,72 +288,73 @@ describe('Responses retry boundaries', () => {
     }
   });
 
-  it.each(['cancel', 'deterministic'] as const)(
-    'does not continue recovery after %s',
-    async (kind) => {
-      const { home, directory } = await workspace();
-      const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-      const model = configuration('http://localhost:1');
-      let requests = 0;
-      let cancel = () => {};
-      if (kind === 'cancel')
-        vi.mocked(waitForModelRetry).mockImplementationOnce(async (_value, _attempt, signal) => {
-          cancel();
-          expect(signal.aborted).toBe(true);
-          throw signal.reason;
-        });
-      const adapter: ModelAdapter = {
-        configuration: model,
-        async *start() {
-          requests++;
-          yield { type: 'text.delta', itemId: 'partial', phase: 'commentary', delta: 'Partial' };
-          throw new AgentError(
-            kind === 'cancel' ? 'server_is_overloaded' : 'invalid_request_error',
-            'Local test failure.',
-            { retryable: kind === 'cancel' }
-          );
-        }
-      };
-      const agent = await createMarAgent(
-        {
-          mode: 'normal',
-          host,
-          models: [model]
-        },
-        () => adapter
-      );
-      try {
-        const session = await agent.createSession({
-          workspace: directory,
-          title: 'Recovery boundary'
-        });
-        const handle = session.run({ prompt: 'Continue.' });
-        cancel = () => {
-          void handle.cancel();
-        };
-        expect((await handle.result()).status).toBe(kind === 'cancel' ? 'cancelled' : 'failed');
-        expect(requests).toBe(1);
-      } finally {
-        await agent.dispose();
+  it.each([
+    { kind: 'cancel', code: overload.code },
+    { kind: 'cancel', code: serverError.code },
+    { kind: 'deterministic', code: 'invalid_request_error' }
+  ])('does not continue $code recovery after $kind', async ({ kind, code }) => {
+    const { home, directory } = await workspace();
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
+    const model = configuration('http://localhost:1');
+    let requests = 0;
+    let cancel = () => {};
+    if (kind === 'cancel')
+      vi.mocked(waitForModelRetry).mockImplementationOnce(async (_value, _attempt, signal) => {
+        cancel();
+        expect(signal.aborted).toBe(true);
+        throw signal.reason;
+      });
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start() {
+        requests++;
+        yield { type: 'text.delta', itemId: 'partial', phase: 'commentary', delta: 'Partial' };
+        throw new AgentError(code, 'Local test failure.', { retryable: kind === 'cancel' });
       }
+    };
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host,
+        models: [model]
+      },
+      () => adapter
+    );
+    try {
+      const session = await agent.createSession({
+        workspace: directory,
+        title: 'Recovery boundary'
+      });
+      const handle = session.run({ prompt: 'Continue.' });
+      cancel = () => {
+        void handle.cancel();
+      };
+      expect((await handle.result()).status).toBe(kind === 'cancel' ? 'cancelled' : 'failed');
+      expect(requests).toBe(1);
+    } finally {
+      await agent.dispose();
     }
-  );
+  });
   it.each([false, true])(
     'recovers bounded subagent overloads (persistent=%s)',
     async (persistent) => {
       const { home, directory } = await workspace();
       const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-      const model = configuration('http://localhost:1');
+      const model = {
+        ...configuration('http://localhost:1'),
+        conversationModel: true,
+        subagentModel: true
+      };
       let childRequests = 0;
       const adapter: ModelAdapter = {
         configuration: model,
         async *start(request) {
           if (
-            request.system.includes('non-recursive subagent') ||
+            request.system.includes('delegated subagent') ||
             request.messages.some(
               (message) =>
                 message.contextualBlock?.authority === 'instruction' &&
-                message.content.includes('non-recursive subagent')
+                message.content.includes('delegated subagent')
             )
           ) {
             childRequests++;
@@ -362,6 +375,7 @@ describe('Responses retry boundaries', () => {
               callId: 'task-retry',
               name: 'agent_start',
               arguments: {
+                title: 'Inspect',
                 description: 'Inspect',
                 prompt: 'Inspect only.',
                 role: 'explore'
@@ -381,11 +395,13 @@ describe('Responses retry boundaries', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       };
-      const agent = await createMarAgent(
+      let agent!: Agent;
+      agent = await createMarAgent(
         {
           mode: 'normal',
           host,
-          models: [model]
+          models: [model],
+          extensions: [createSubagentExtension({ agent: () => agent })]
         },
         () => adapter
       );
@@ -396,11 +412,15 @@ describe('Responses retry boundaries', () => {
         });
         expect((await session.run({ prompt: 'Inspect.' }).result()).status).toBe('completed');
         expect(childRequests).toBe(persistent ? 8 : 2);
-        expect(host.events).toContainEqual(
-          expect.objectContaining({
-            type: 'subagent.completed',
-            status: persistent ? 'failed' : 'completed'
-          })
+        const waitResult = host.events.find(
+          (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
+        );
+        if (waitResult?.type !== 'tool.completed')
+          throw new Error('Missing external subagent wait result.');
+        expect(JSON.parse(waitResult.summary)).toMatchObject(
+          persistent
+            ? { status: 'failed', errorCode: 'server_is_overloaded' }
+            : { status: 'completed', summary: 'Recovered child' }
         );
       } finally {
         await agent.dispose();
@@ -548,7 +568,7 @@ describe('Responses retry boundaries', () => {
 
   it.each(
     (['run', 'plan', 'compact'] as const).flatMap((mode) =>
-      [overload, accessVerificationFailure].map((failure) => ({ mode, failure }))
+      [overload, accessVerificationFailure, serverError].map((failure) => ({ mode, failure }))
     )
   )(
     'recovers a post-semantic $failure.code in $mode without changing the adapter replay boundary',
@@ -621,104 +641,110 @@ describe('Responses retry boundaries', () => {
     }
   );
 
-  it('bounds post-semantic overload recovery and never commits a failed compact checkpoint', async () => {
-    const failed = [
-      { type: 'response.created', response: { id: 'failed' } },
-      { type: 'response.reasoning_summary_text.done', item_id: 'r', text: 'A visible summary.' },
-      overload
-    ];
-    const server = await startResponsesWebSocketServer([], {
-      responsesByRequest: Array(8).fill(failed)
-    });
-    servers.push(server.server);
-    const { home, directory } = await workspace();
-    const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-    const agent = await createMarAgent(
-      {
+  it.each([overload, serverError])(
+    'bounds post-semantic $code recovery and never commits a failed compact checkpoint',
+    async (failure) => {
+      const failed = [
+        { type: 'response.created', response: { id: 'failed' } },
+        { type: 'response.reasoning_summary_text.done', item_id: 'r', text: 'A visible summary.' },
+        failure
+      ];
+      const server = await startResponsesWebSocketServer([], {
+        responsesByRequest: Array(8).fill(failed)
+      });
+      servers.push(server.server);
+      const { home, directory } = await workspace();
+      const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host,
+          models: [configuration(server.baseUrl)]
+        },
+        isolatedCompactSeedFactory()
+      );
+      try {
+        const session = await agent.createSession({ workspace: directory, title: 'Bounded retry' });
+        expect((await session.run({ prompt: 'Seed.' }).result()).status).toBe('completed');
+        expect(server.requests).toHaveLength(0);
+        expect(server.connections()).toBe(0);
+        expect(await session.compact().result()).toMatchObject({
+          status: 'failed',
+          errorCode: failure.code
+        });
+        expect(server.requests).toHaveLength(8);
+        expect(server.connections()).toBe(8);
+        for (const request of server.requests) {
+          expect(request).not.toHaveProperty('previous_response_id');
+          expect(request).toMatchObject({ tool_choice: 'none' });
+          expect(request.tools).not.toHaveLength(0);
+          expect(JSON.stringify(request.input)).toContain('Seed state');
+          expect(request.input).toEqual(server.requests[0]?.input);
+        }
+        expect(host.events.some((event) => event.type === 'context.compacted')).toBe(false);
+        const store = await JsonlSessionStore.open(home);
+        try {
+          expect(
+            (await store.read(session.id)).some((record) => record.type === 'compact.completed')
+          ).toBe(false);
+        } finally {
+          await store.close();
+        }
+      } finally {
+        await agent.dispose();
+      }
+    }
+  );
+
+  it.each([overload, serverError])(
+    'executes a completed client tool exactly once after $code and continues with its result',
+    async (failure) => {
+      const server = await startResponsesWebSocketServer([], {
+        responsesByRequest: [
+          [
+            { type: 'response.created', response: { id: 'failed' } },
+            {
+              type: 'response.output_item.done',
+              item: {
+                type: 'custom_tool_call',
+                id: 'patch-item',
+                call_id: 'patch-call',
+                name: 'apply_patch',
+                input: '*** Begin Patch\n*** Add File: marker.txt\n+created once\n*** End Patch'
+              }
+            },
+            failure
+          ],
+          completed()
+        ]
+      });
+      servers.push(server.server);
+      const { home, directory } = await workspace();
+      const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
+      const executed = vi.spyOn(host, 'executeTool');
+      const agent = await createMarAgent({
         mode: 'normal',
         host,
         models: [configuration(server.baseUrl)]
-      },
-      isolatedCompactSeedFactory()
-    );
-    try {
-      const session = await agent.createSession({ workspace: directory, title: 'Bounded retry' });
-      expect((await session.run({ prompt: 'Seed.' }).result()).status).toBe('completed');
-      expect(server.requests).toHaveLength(0);
-      expect(server.connections()).toBe(0);
-      expect(await session.compact().result()).toMatchObject({
-        status: 'failed',
-        errorCode: 'server_is_overloaded'
       });
-      expect(server.requests).toHaveLength(8);
-      expect(server.connections()).toBe(8);
-      for (const request of server.requests) {
-        expect(request).not.toHaveProperty('previous_response_id');
-        expect(request).toMatchObject({ tool_choice: 'none' });
-        expect(request.tools).not.toHaveLength(0);
-        expect(JSON.stringify(request.input)).toContain('Seed state');
-        expect(request.input).toEqual(server.requests[0]?.input);
-      }
-      expect(host.events.some((event) => event.type === 'context.compacted')).toBe(false);
-      const store = await JsonlSessionStore.open(home);
       try {
-        expect(
-          (await store.read(session.id)).some((record) => record.type === 'compact.completed')
-        ).toBe(false);
+        const session = await agent.createSession({ workspace: directory, title: 'Tool retry' });
+        expect(await session.run({ prompt: 'Write the marker.' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        expect(await readFile(join(directory, 'marker.txt'), 'utf8')).toBe('created once\n');
+        expect(executed.mock.calls.filter(([call]) => call.name === 'apply_patch')).toHaveLength(1);
+        expect(server.requests).toHaveLength(2);
+        expect(server.requests[1]).toMatchObject({
+          input: expect.arrayContaining([
+            expect.objectContaining({ type: 'custom_tool_call_output', call_id: 'patch-call' })
+          ])
+        });
       } finally {
-        await store.close();
+        await agent.dispose();
       }
-    } finally {
-      await agent.dispose();
     }
-  });
-
-  it('executes a completed client tool exactly once after an overload and continues with its result', async () => {
-    const server = await startResponsesWebSocketServer([], {
-      responsesByRequest: [
-        [
-          { type: 'response.created', response: { id: 'failed' } },
-          {
-            type: 'response.output_item.done',
-            item: {
-              type: 'custom_tool_call',
-              id: 'patch-item',
-              call_id: 'patch-call',
-              name: 'apply_patch',
-              input: '*** Begin Patch\n*** Add File: marker.txt\n+created once\n*** End Patch'
-            }
-          },
-          overload
-        ],
-        completed()
-      ]
-    });
-    servers.push(server.server);
-    const { home, directory } = await workspace();
-    const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
-    const executed = vi.spyOn(host, 'executeTool');
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host,
-      models: [configuration(server.baseUrl)]
-    });
-    try {
-      const session = await agent.createSession({ workspace: directory, title: 'Tool retry' });
-      expect(await session.run({ prompt: 'Write the marker.' }).result()).toMatchObject({
-        status: 'completed'
-      });
-      expect(await readFile(join(directory, 'marker.txt'), 'utf8')).toBe('created once\n');
-      expect(executed.mock.calls.filter(([call]) => call.name === 'apply_patch')).toHaveLength(1);
-      expect(server.requests).toHaveLength(2);
-      expect(server.requests[1]).toMatchObject({
-        input: expect.arrayContaining([
-          expect.objectContaining({ type: 'custom_tool_call_output', call_id: 'patch-call' })
-        ])
-      });
-    } finally {
-      await agent.dispose();
-    }
-  });
+  );
 
   it('retries automatic compaction without retaining the failed summary', async () => {
     const server = await startResponsesWebSocketServer([], {

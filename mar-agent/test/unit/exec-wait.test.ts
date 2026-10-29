@@ -55,11 +55,110 @@ async function fixture(processExecutor?: LocalProcessExecutor) {
   hosts.push(host);
   const call = async (name: string, args: unknown, ctx = context()) =>
     (await host.executeTool({ name, arguments: args }, ctx)).data as ExecResult;
-  return { call };
+  return { call, host };
 }
 const command = (script: string) => `"${process.execPath}" -e ${JSON.stringify(script)}`;
 
 describe('exec_wait', () => {
+  it('reports cumulative display snapshots across successive polls', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const { host } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const first = await host.executeTool(
+      { name: 'exec', arguments: { command: 'fixture', yieldMs: 0 } },
+      context()
+    );
+    const processId = (first.data as ExecResult).processId;
+    child.stdout.write('first');
+    const poll1 = await host.executeTool(
+      { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
+      context()
+    );
+    child.stdout.write(' second');
+    const poll2 = await host.executeTool(
+      { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
+      context()
+    );
+    expect(poll1.eventData).toMatchObject({ displayOutput: { stdout: 'first' } });
+    expect(poll2.eventData).toMatchObject({ displayOutput: { stdout: 'first second' } });
+    expect(poll2.data).toMatchObject({ stdout: ' second' });
+    child.exitCode = 0;
+    child.emit('close', 0, null);
+  });
+
+  it('includes process start errors in the public display tail', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const { host } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const first = await host.executeTool(
+      { name: 'exec', arguments: { command: 'fixture', yieldMs: 0 } },
+      context()
+    );
+    child.emit('error', new Error('Unable to start fixture'));
+    child.exitCode = 1;
+    child.emit('close', 1, null);
+    const result = await host.executeTool(
+      {
+        name: 'exec_wait',
+        arguments: { processId: (first.data as ExecResult).processId, yieldMs: 1000 }
+      },
+      context()
+    );
+    expect(result.eventData).toMatchObject({
+      displayOutput: { stderr: 'Unable to start fixture' }
+    });
+  });
+
+  it('replays display tails in cached events without adding them to model or guest data', async () => {
+    const { host } = await fixture();
+    const started = await host.executeTool(
+      {
+        name: 'exec',
+        arguments: {
+          command: command("process.stdout.write('中'.repeat(4000) + 'END')"),
+          yieldMs: 10000
+        }
+      },
+      context()
+    );
+    const result = started.data as ExecResult;
+    expect(result).not.toHaveProperty('displayOutput');
+    expect(started.content).not.toContain('displayOutput');
+    const display = started.eventData?.displayOutput as {
+      stdout: string;
+      stdoutDroppedBytes: number;
+    };
+    expect(display.stdout.endsWith('END')).toBe(true);
+    expect(display.stdout).not.toContain('\ufffd');
+    expect(display.stdoutDroppedBytes).toBeGreaterThan(0);
+    const cached = await host.executeTool(
+      {
+        name: 'exec_wait',
+        arguments: { processId: result.processId, yieldMs: 0 }
+      },
+      context()
+    );
+    expect(cached.data).toMatchObject({ cached: true });
+    expect(cached.eventData?.displayOutput).toEqual(display);
+    expect(cached.data).not.toHaveProperty('displayOutput');
+  });
+
   it.each(['stdout', 'stderr'] as const)(
     'returns buffered %s with a pending steer, without treating output as completion or replaying it',
     async (stream) => {

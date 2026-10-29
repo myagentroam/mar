@@ -195,7 +195,18 @@ export async function persistFormatSelection(path: string, index: SessionIndex):
 }
 
 export function normalizeSessionSource(value: SessionSource | undefined): SessionSource {
-  if (value === undefined || value.type === 'user') return { type: 'user' };
+  if (value === undefined) return { type: 'user' };
+  if (value.type === 'user') {
+    if (
+      value.parentSessionId !== undefined &&
+      (typeof value.parentSessionId !== 'string' || !value.parentSessionId.trim())
+    )
+      throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Session source is invalid.');
+    return {
+      type: 'user',
+      ...(value.parentSessionId === undefined ? {} : { parentSessionId: value.parentSessionId })
+    };
+  }
   if (
     value.type !== 'subagent' ||
     typeof value.parentSessionId !== 'string' ||
@@ -236,27 +247,21 @@ export function normalizeSessionSource(value: SessionSource | undefined): Sessio
 }
 
 interface SessionListFilter {
-  readonly source: SessionSource['type'];
+  readonly source?: SessionSource['type'];
   readonly parentSessionId?: string;
   readonly rootSessionId?: string;
 }
 
 export function sessionListFilter(input: SessionListInput): SessionListFilter {
-  const source =
-    input.source ??
-    (input.parentSessionId !== undefined || input.rootSessionId !== undefined
-      ? 'subagent'
-      : 'user');
+  const source = input.source;
   if (
-    (source !== 'user' && source !== 'subagent') ||
-    (input.parentSessionId !== undefined &&
-      (source !== 'subagent' || input.parentSessionId.length === 0)) ||
-    (input.rootSessionId !== undefined &&
-      (source !== 'subagent' || input.rootSessionId.length === 0))
+    (source !== undefined && source !== 'user' && source !== 'subagent') ||
+    (input.parentSessionId !== undefined && input.parentSessionId.length === 0) ||
+    (input.rootSessionId !== undefined && (source === 'user' || input.rootSessionId.length === 0))
   )
     throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Session list filter is invalid.');
   return {
-    source,
+    ...(source === undefined ? {} : { source }),
     ...(input.parentSessionId === undefined ? {} : { parentSessionId: input.parentSessionId }),
     ...(input.rootSessionId === undefined ? {} : { rootSessionId: input.rootSessionId })
   };
@@ -265,9 +270,8 @@ export function sessionListFilter(input: SessionListInput): SessionListFilter {
 export function sessionMatchesFilter(meta: SessionMeta, filter: SessionListFilter): boolean {
   const source = normalizeSessionSource(meta.source);
   return (
-    source.type === filter.source &&
-    (filter.parentSessionId === undefined ||
-      (source.type === 'subagent' && source.parentSessionId === filter.parentSessionId)) &&
+    (filter.source === undefined || source.type === filter.source) &&
+    (filter.parentSessionId === undefined || source.parentSessionId === filter.parentSessionId) &&
     (filter.rootSessionId === undefined ||
       (source.type === 'subagent' && source.rootSessionId === filter.rootSessionId))
   );
@@ -317,12 +321,7 @@ export function sessionTreeIds(sessions: readonly SessionMeta[], sessionId: stri
     const parentId = ids[index]!;
     for (const session of sessions) {
       const source = normalizeSessionSource(session.source);
-      if (
-        source.type === 'subagent' &&
-        source.parentSessionId === parentId &&
-        !ids.includes(session.id)
-      )
-        ids.push(session.id);
+      if (source.parentSessionId === parentId && !ids.includes(session.id)) ids.push(session.id);
     }
   }
   return ids;

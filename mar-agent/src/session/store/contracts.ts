@@ -227,11 +227,12 @@ export interface SessionStore {
   /** Retention requires the originating owner to hold an active Execution lease. */
   retainSessionLease(sessionId: string, owner: object): Promise<() => Promise<void>>;
   hasRetainedSessionLease(sessionId: string, owner: object): boolean;
-  /** Conflicts fail before cleanup; delete includes the Store's current Session tree. */
+  /** Conflicts fail before cleanup; delete admits only the explicit members, or the given Session. */
   acquireSessionMaintenance(
     sessionId: string,
     kind: 'clear' | 'delete',
-    owner?: object
+    owner?: object,
+    members?: readonly string[]
   ): Promise<SessionStoreMaintenance>;
   forkSession(
     sessionId: string,

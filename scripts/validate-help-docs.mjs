@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
+import { inspectHelpMarkdown, missingHelpTargets } from './help-anchors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const helpRoot = resolve(root, 'docs/help');
@@ -17,9 +18,11 @@ const documentSet = new Set(documents);
 const englishRoot = resolve(helpRoot, 'en-US');
 const chineseDocuments = documents.filter((file) => !file.startsWith(`${englishRoot}/`));
 const englishDocuments = documents.filter((file) => file.startsWith(`${englishRoot}/`));
+const sources = new Map(documents.map((file) => [file, readFileSync(file, 'utf8')]));
+const { pages, errors: anchorErrors } = await inspectHelpMarkdown(helpRoot, sources);
 for (const file of documents) {
   const relative = file.slice(helpRoot.length + 1);
-  const source = readFileSync(file, 'utf8');
+  const source = sources.get(file);
   const frontmatter = /^---\n([\s\S]*?)\n---\n/u.exec(source)?.[1];
   if (frontmatter === undefined) {
     errors.push(`${relative}: missing frontmatter`);
@@ -41,24 +44,10 @@ for (const file of documents) {
       `${relative}: public help must not expose internal implementation terms ${internalTerm}`
     );
 
-  for (const match of source.matchAll(/\[[^\]]*\]\(([^)]+)\)/gu)) {
-    const rawTarget = match[1]?.trim();
-    if (
-      rawTarget === undefined ||
-      rawTarget.startsWith('#') ||
-      /^[a-z][a-z\d+.-]*:/iu.test(rawTarget)
-    )
-      continue;
-    const targetWithoutFragment = rawTarget.split(/[?#]/u)[0];
-    if (targetWithoutFragment === '') continue;
-    const target = targetWithoutFragment.startsWith('/docs/')
-      ? resolve(helpRoot, `${targetWithoutFragment.slice('/docs/'.length)}.md`)
-      : resolve(dirname(file), targetWithoutFragment);
-    const candidates = extname(target) === '' ? [target, `${target}.md`] : [target];
-    if (!candidates.some((candidate) => existsSync(candidate) && statSync(candidate).isFile()))
-      errors.push(`${relative}: missing local link ${rawTarget}`);
-  }
+  errors.push(...missingHelpTargets(helpRoot, file, pages.get(file)));
 }
+
+errors.push(...anchorErrors);
 
 if (existsSync(resolve(helpRoot, 'index.md')))
   errors.push('index.md: /docs/ must open the first help document, not a separate home page');

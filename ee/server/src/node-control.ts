@@ -10,7 +10,10 @@ import type { TerminalDirectCoordinator } from '@myagentroam/server-core/termina
 import type { WebSocket } from 'ws';
 import {
   directNodeEventSchema,
+  marctlExecutionCredentialRequestSchema,
   terminalDirectNodeEventSchema,
+  type MarctlExecutionCredentialRequest,
+  type NodeCapabilities,
   type NodeEnvelope
 } from '@myagentroam/protocol';
 import type { NodeIdentityStore, StoredNode } from '@myagentroam/server-core/node-identity';
@@ -74,6 +77,13 @@ export interface NodeControlComponents {
 }
 
 export interface NodeControlConsumers extends NodeMessageConsumers {
+  readonly nodeUpgradeProgress?: {
+    issueReportCredential(nodeId: string, attemptId: string): Promise<string>;
+    confirmConnection(nodeId: string, attemptId: string, version: string): Promise<void>;
+    failBeforeHandoff(nodeId: string, attemptId: string, code: string): Promise<void>;
+    markAccepted(nodeId: string, attemptId: string, activeRunCount?: number): Promise<void>;
+    cancel(nodeId: string, attemptId: string): Promise<void>;
+  };
   readonly authorizeHostedConversation: (
     userId: number,
     nodeId: string,
@@ -85,6 +95,10 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
   readonly restartAuthorizer: RestartRunAuthorizer;
+  readonly marctlExecutionCredential: (
+    nodeId: string,
+    request: MarctlExecutionCredentialRequest
+  ) => Promise<string>;
   readonly runtimeCredentials: Pick<
     RuntimeCredentialService,
     'activateNodeConnection' | 'deactivateNodeConnection' | 'resolve'
@@ -97,6 +111,10 @@ export class NodeControl extends NodeIdentityControl {
   protected override connectionFeatures(): Record<string, unknown> {
     return {
       modelUsage: { apiVersion: 1 },
+      marctlExecutionCredential: { apiVersion: 1 },
+      ...(this.consumers.nodeUpgradeProgress === undefined
+        ? {}
+        : { nodeUpgradeProgress: { apiVersion: 1 } }),
       notificationChannels: { apiVersion: 1 }
     };
   }
@@ -183,6 +201,49 @@ export class NodeControl extends NodeIdentityControl {
       connected: true,
       ...(replaced ? { reason: 'CONNECTION_REPLACED' as const } : {})
     });
+  }
+  broadcastUpgrade(
+    nodeId: string,
+    snapshot: import('@myagentroam/server-core/node-upgrade-progress').NodeUpgradeSnapshot | null
+  ): void {
+    this.workbenchRelay.broadcast({ type: 'node.upgrade', nodeId, snapshot });
+  }
+  protected override async onNodeCapabilities(
+    nodeId: string,
+    capabilities: NodeCapabilities
+  ): Promise<void> {
+    const progress = this.consumers.nodeUpgradeProgress;
+    if (!progress) return;
+    const metadata = capabilities.metadata;
+    if (metadata?.upgradeProgress?.apiVersion !== 1) return;
+    if (metadata.upgradeAttemptId && capabilities.nodeAppVersion)
+      await progress.confirmConnection(
+        nodeId,
+        metadata.upgradeAttemptId,
+        capabilities.nodeAppVersion
+      );
+    if (
+      metadata.upgrade?.attemptId &&
+      (metadata.upgrade.state === 'WAITING_FOR_RUNS' ||
+        metadata.upgrade.state === 'READY_TO_RESTART')
+    )
+      await progress.markAccepted(
+        nodeId,
+        metadata.upgrade.attemptId,
+        metadata.upgrade.activeRunCount
+      );
+    if (metadata.upgrade?.state === 'IDLE' && metadata.upgrade.attemptId)
+      await progress.cancel(nodeId, metadata.upgrade.attemptId);
+    if (
+      metadata.upgrade?.state === 'FAILED' &&
+      metadata.upgrade.attemptId &&
+      metadata.upgrade.errorCode
+    )
+      await progress.failBeforeHandoff(
+        nodeId,
+        metadata.upgrade.attemptId,
+        metadata.upgrade.errorCode
+      );
   }
   protected override onNodeDisconnected(nodeId: string): void {
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
@@ -359,9 +420,10 @@ export class NodeControl extends NodeIdentityControl {
     operation: string,
     data: unknown,
     user: UserNodeAuthorization,
-    timeoutMs?: number
+    timeoutMs?: number,
+    signal?: AbortSignal
   ): Promise<unknown> {
-    return this.requestBroker.request(nodeId, operation, data, user, timeoutMs);
+    return this.requestBroker.request(nodeId, operation, data, user, timeoutMs, signal);
   }
 
   requestHostedConversationNode(
@@ -375,6 +437,20 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   protected override sendStaleConnectionError(socket: WebSocket, envelope: NodeEnvelope): void {
+    if (envelope.type === 'marctl.execution-credential.request') {
+      this.send(
+        socket,
+        'marctl.execution-credential.response',
+        {
+          error: {
+            code: 'MARCTL_EXECUTION_AUTHORIZATION_INVALID',
+            message: 'The Node connection is no longer valid.'
+          }
+        },
+        envelope.id
+      );
+      return;
+    }
     if (envelope.type === 'notification.channels.send') {
       this.send(
         socket,
@@ -430,6 +506,54 @@ export class NodeControl extends NodeIdentityControl {
     socket: WebSocket,
     envelope: NodeEnvelope
   ): Promise<boolean> {
+    if (envelope.type === 'marctl.execution-credential.request') {
+      const request = marctlExecutionCredentialRequestSchema.safeParse(envelope.payload);
+      let payload: unknown = {
+        error: {
+          code: 'MARCTL_EXECUTION_AUTHORIZATION_INVALID',
+          message: 'Execution authorization could not be verified.'
+        }
+      };
+      if (request.success) {
+        try {
+          payload = { token: await this.consumers.marctlExecutionCredential(nodeId, request.data) };
+        } catch {
+          /* Do not disclose credentials or authorization internals. */
+        }
+      }
+      if (this.sockets.get(nodeId) === socket)
+        this.send(socket, 'marctl.execution-credential.response', payload, envelope.id);
+      return true;
+    }
+    if (envelope.type === 'node.upgrade.credential.request') {
+      const payload = envelope.payload as { attemptId?: unknown } | null;
+      let response: unknown = {
+        error: {
+          code: 'NODE_UPGRADE_CREDENTIAL_REJECTED',
+          message: 'Upgrade authorization is unavailable.'
+        }
+      };
+      if (
+        this.consumers.nodeUpgradeProgress !== undefined &&
+        this.upgradeCapabilities(nodeId)?.metadata?.upgradeProgress?.apiVersion === 1 &&
+        typeof payload?.attemptId === 'string' &&
+        /^[0-9a-f-]{36}$/u.test(payload.attemptId)
+      ) {
+        try {
+          response = {
+            token: await this.consumers.nodeUpgradeProgress.issueReportCredential(
+              nodeId,
+              payload.attemptId
+            )
+          };
+        } catch {
+          /* Never expose credential or authorization internals. */
+        }
+      }
+      if (this.sockets.get(nodeId) === socket)
+        this.send(socket, 'node.upgrade.credential.response', response, envelope.id);
+      return true;
+    }
     if (envelope.type === 'usage.batch') {
       const batch = modelUsageBatchSchema.safeParse(envelope.payload);
       if (!batch.success) {

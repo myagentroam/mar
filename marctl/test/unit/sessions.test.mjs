@@ -19,10 +19,122 @@ const env = {
   MAR_CTL_SESSION_ID: 'source'
 };
 
+test('uses agents as the sole CLI command group', () => {
+  assert.equal(parseArgs(['agents', 'current']).command, 'agents');
+  assert.throws(() => parseArgs(['sessions', 'current']));
+});
+
+test('maps six Agent operations to the common Node command without inventing a source', async () => {
+  const calls = [];
+  const invoke = (args) =>
+    main(['agents', ...args, '--json'], {
+      env,
+      stdout: { write() {} },
+      client: {
+        sessionCommand: async (body) => {
+          calls.push(body);
+          return { ok: true };
+        }
+      }
+    });
+  assert.equal(await invoke(['start', '-m', 'work', '--goal', 'finish']), 0);
+  assert.equal(await invoke(['send', 'child', '--clear-goal']), 0);
+  assert.equal(
+    await invoke([
+      'wait',
+      '--agent',
+      'child',
+      '--agent',
+      'other',
+      '--mode',
+      'all',
+      '--wait-for',
+      'message',
+      '--timeout',
+      '0ms'
+    ]),
+    0
+  );
+  assert.equal(await invoke(['stop', 'child', '--execution', 'exec-1']), 0);
+  assert.equal(
+    await invoke(['list', '--scope', 'descendants', '--agent', 'child', '--limit', '10']),
+    0
+  );
+  assert.equal(await invoke(['view', 'child', '--history', '--limit', '5']), 0);
+  assert.deepEqual(
+    calls.map((call) => call.command.operation),
+    ['start', 'send', 'wait', 'stop', 'list', 'view']
+  );
+  assert.deepEqual(calls[0].command.input.goal, { objective: 'finish' });
+  assert.equal(calls[0].command.input.runner, undefined);
+  assert.equal(calls[0].command.input.parentSessionId, undefined);
+  assert.deepEqual(calls[1].command.input.goal, { clear: true });
+  assert.equal(calls[1].command.input.content, undefined);
+  assert.deepEqual(calls[2].command.input.agentIds, ['child', 'other']);
+  assert.equal(calls[2].command.input.waitMs, 0);
+  assert.equal(calls[3].command.input.executionId, 'exec-1');
+  assert.deepEqual(calls[4].command.input, { scope: 'descendants', agentId: 'child', limit: 10 });
+  assert.deepEqual(calls[5].command.input, { agentId: 'child', includeHistory: true, limit: 5 });
+});
+
+test('keeps the CLI wait transport budget above the effective Node wait', async () => {
+  for (const [timeout, expected] of [
+    [undefined, 40000],
+    ['0ms', 10000],
+    ['1ms', 20000],
+    ['10s', 20000],
+    ['5m', 310000]
+  ]) {
+    let options;
+    const exit = await main(
+      ['agents', 'wait', 'child', ...(timeout ? ['--timeout', timeout] : []), '--json'],
+      {
+        env,
+        stdout: { write() {} },
+        client: {
+          sessionCommand: async (_body, supplied) => {
+            options = supplied;
+            return { waitOutcome: 'snapshot' };
+          }
+        }
+      }
+    );
+    assert.equal(exit, 0);
+    assert.equal(options.timeoutMs, expected);
+  }
+});
+
+test('send maps an approval ID and decision without a Run ID', async () => {
+  const calls = [];
+  const client = {
+    sessionCommand: async (body) => {
+      calls.push(body);
+      return { accepted: true };
+    }
+  };
+  assert.equal(
+    await main(
+      ['agents', 'send', 'child', '--approval', 'approval-1', '--decision', 'approve', '--json'],
+      { env, stdout: { write() {} }, client }
+    ),
+    0
+  );
+  assert.deepEqual(calls[0].command.input.approval, {
+    approvalId: 'approval-1',
+    decision: 'approve'
+  });
+  assert.equal(calls[0].command.input.runId, undefined);
+  assert.throws(() => parseArgs(['agents', 'send', 'child', '--approval', 'approval-1']));
+  assert.throws(() => parseArgs(['agents', 'send', 'child', '--decision', 'approve']));
+  assert.throws(() =>
+    parseArgs(['agents', 'send', 'child', '--approval', 'approval-1', '--decision', 'maybe'])
+  );
+});
+
 test('renames sessions, manages prompts and schedules, and decides approvals', async () => {
   const calls = [];
   const invoke = (args) =>
-    main(['sessions', ...args, '--json'], {
+    main(['agents', ...args, '--json'], {
       env,
       stdout: { write() {} },
       client: {
@@ -109,7 +221,7 @@ test('renames sessions, manages prompts and schedules, and decides approvals', a
     ['schedule', 'update', 'other', '--expected-revision', '1', '--enabled', 'false'],
     ['schedule', 'get', 'other', '--node', 'foreign']
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
 });
 
 test('defaults only state and configuration commands to the current Session before reading input', async () => {
@@ -135,15 +247,15 @@ test('defaults only state and configuration commands to the current Session befo
         }
       }
     };
-    assert.equal(await main(['sessions', ...args, '--json'], options), 0);
+    assert.equal(await main(['agents', ...args, '--json'], options), 0);
     assert.equal(calls[0].sessionId, 'source');
     const explicit = [...args];
     explicit.splice(args[0] === 'schedule' ? 2 : 1, 0, 'target');
-    assert.equal(await main(['sessions', ...explicit, '--json'], options), 0);
+    assert.equal(await main(['agents', ...explicit, '--json'], options), 0);
     assert.equal(calls[1].sessionId, 'target');
     let errorOutput = '';
     assert.notEqual(
-      await main(['sessions', ...args, '--json'], {
+      await main(['agents', ...args, '--json'], {
         ...options,
         env: { ...env, MAR_CTL_SESSION_ID: '' },
         stdout: {
@@ -171,7 +283,7 @@ test('defaults only state and configuration commands to the current Session befo
     ['stop', '--run', 'r'],
     ['wait', '--run', 'r', '--timeout', '1s']
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
 });
 
 test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertain outcomes', async () => {
@@ -182,16 +294,7 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
   ]) {
     let calls = 0;
     const code = await main(
-      [
-        'sessions',
-        'schedule',
-        'update',
-        '--expected-revision',
-        '1',
-        '--message-file',
-        '-',
-        '--json'
-      ],
+      ['agents', 'schedule', 'update', '--expected-revision', '1', '--message-file', '-', '--json'],
       {
         env,
         stdin: (async function* () {
@@ -230,7 +333,7 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
       }
     });
     assert.equal(
-      await main(['sessions', ...args, '--json'], {
+      await main(['agents', ...args, '--json'], {
         env,
         client,
         stdout: {
@@ -261,7 +364,7 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
       let output = '';
       let calls = 0;
       assert.equal(
-        await main(['sessions', ...args, '--json'], {
+        await main(['agents', ...args, '--json'], {
           env,
           stdout: { write: (value) => (output += value) },
           client: { sessionCommand: async () => (calls++, {}) }
@@ -277,7 +380,7 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
     const submitted = [];
     const client = { sessionCommand: async (body) => (submitted.push(body), {}) };
     assert.equal(
-      await main(['sessions', 'prompt', 'set', 's', '--message-file', validUtf8, '--json'], {
+      await main(['agents', 'prompt', 'set', 's', '--message-file', validUtf8, '--json'], {
         env,
         stdout: { write() {} },
         client
@@ -285,7 +388,7 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
       0
     );
     assert.equal(
-      await main(['sessions', 'prompt', 'set', 's', '--message-file', '-', '--json'], {
+      await main(['agents', 'prompt', 'set', 's', '--message-file', '-', '--json'], {
         env,
         stdin: (async function* () {
           yield Buffer.from('stdin instructions');
@@ -307,7 +410,7 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
     let output = '';
     let calls = 0;
     assert.equal(
-      await main(['sessions', 'prompt', 'set', '--message-file', '-', '--json'], {
+      await main(['agents', 'prompt', 'set', '--message-file', '-', '--json'], {
         env: { ...env, MAR_CTL_SESSION_ID: '' },
         stdin: (async function* () {
           consumed = true;
@@ -326,8 +429,9 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
   }
 });
 
-test('send requires an explicit steer or queued delivery', async () => {
+test('send defaults to append and supports explicit steer or queued delivery', async () => {
   for (const [flags, intent] of [
+    [[], 'SEND'],
     [['--steer'], 'REPLACE_CURRENT'],
     [['--queue'], 'QUEUE']
   ]) {
@@ -335,7 +439,7 @@ test('send requires an explicit steer or queued delivery', async () => {
     assert.equal(
       await main(
         [
-          'sessions',
+          'agents',
           'send',
           'target',
           '-m',
@@ -360,17 +464,20 @@ test('send requires an explicit steer or queued delivery', async () => {
     );
     assert.deepEqual(calls, [
       {
-        action: 'send',
-        sessionId: 'target',
-        sourceSessionId: 'source',
-        content: 'notice',
-        clientMessageId: 'input',
-        deliveryIntent: intent
+        action: 'network',
+        command: {
+          operation: 'send',
+          input: {
+            agentId: 'target',
+            content: 'notice',
+            clientMessageId: 'input',
+            deliveryIntent: intent
+          }
+        }
       }
     ]);
   }
   for (const args of [
-    ['send', 'target', '-m', 'task'],
     ['send', 'target', '-m', 'task', '--steer', '--queue'],
     ['send', 'target', '-m', 'task', '--queue', '--steer'],
     ['send', 'target', '-m', 'task', '--steer', '--steer'],
@@ -384,13 +491,12 @@ test('send requires an explicit steer or queued delivery', async () => {
     ['start', '--runner', 'codex', '-m', 'task', '--steer'],
     ['start', '--runner', 'codex', '-m', 'task', '--forced']
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
 });
 
-test('rejects missing, conflicting, repeated, or retired send modes locally before reading input or authorization', async () => {
+test('rejects conflicting, repeated, or retired send modes locally before reading input or authorization', async () => {
   for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
     for (const [flags, expectsDeliveryError] of [
-      [[], true],
       [['--steer', '--queue'], true],
       [['--queue', '--steer'], true],
       [['--steer', '--steer'], false],
@@ -400,7 +506,7 @@ test('rejects missing, conflicting, repeated, or retired send modes locally befo
     ]) {
       let output = '';
       const code = await main(
-        ['sessions', 'send', 'target', '--message-file', '-', ...flags, '--json'],
+        ['agents', 'send', 'target', '--message-file', '-', ...flags, '--json'],
         {
           env: new Proxy(
             { LANG: locale },
@@ -459,7 +565,7 @@ test('updates model and effort independently and forwards startup effort', async
     }
   };
   const invoke = (args) =>
-    main(['sessions', ...args, '--json'], { env, client, stdout: { write() {} } });
+    main(['agents', ...args, '--json'], { env, client, stdout: { write() {} } });
   assert.equal(await invoke(['config', 'target', '--model', 'next-model', '--effort', 'high']), 0);
   assert.deepEqual(calls[0], {
     action: 'config',
@@ -472,7 +578,7 @@ test('updates model and effort independently and forwards startup effort', async
   assert.equal(await invoke(['config', 'target', '--model', 'next-model']), 0);
   assert.equal(Object.hasOwn(calls[2], 'effort'), false);
   assert.equal(await invoke(['start', '--runner', 'codex', '--effort', 'low', '-m', 'task']), 0);
-  assert.equal(calls[3].effort, 'low');
+  assert.equal(calls[3].command.input.effort, 'low');
   for (const args of [
     ['config', 'target'],
     ['config', 'target', '--access', 'full-access'],
@@ -480,11 +586,11 @@ test('updates model and effort independently and forwards startup effort', async
     ['config', 'target', '--effort', 'x'.repeat(121)],
     ['config', 'target', '--model', 'x'.repeat(121)]
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
   let output = '';
   let writes = 0;
   assert.equal(
-    await main(['sessions', 'config', 'target', '--effort', 'low', '--json'], {
+    await main(['agents', 'config', 'target', '--effort', 'low', '--json'], {
       env,
       stdout: {
         write: (value) => {
@@ -514,7 +620,7 @@ test('forwards parent and graph queries without assigning parents to sends or te
     }
   };
   const invoke = (args, context = env) =>
-    main(['sessions', ...args, '--json'], {
+    main(['agents', ...args, '--json'], {
       env: context,
       client,
       stdout: {
@@ -524,7 +630,13 @@ test('forwards parent and graph queries without assigning parents to sends or te
       }
     });
   assert.equal(await invoke(['list', '--parent', 'source', '--limit', '1']), 0);
-  assert.deepEqual(calls[0], { action: 'list', parentSessionId: 'source', limit: 1 });
+  assert.deepEqual(calls[0], {
+    action: 'network',
+    command: {
+      operation: 'list',
+      input: { parent: 'source', limit: 1 }
+    }
+  });
   assert.equal(await invoke(['graph', 'source', '--limit', '2']), 0);
   assert.deepEqual(calls[1], { action: 'graph', sessionId: 'source', limit: 2 });
   assert.equal(JSON.parse(output).truncated, true);
@@ -535,16 +647,16 @@ test('forwards parent and graph queries without assigning parents to sends or te
     }),
     0
   );
-  assert.equal(Object.hasOwn(calls[2], 'parentSessionId'), false);
-  assert.equal(Object.hasOwn(calls[2], 'sourceSessionId'), false);
+  assert.equal(Object.hasOwn(calls[2].command.input, 'parentSessionId'), false);
+  assert.equal(Object.hasOwn(calls[2].command.input, 'sourceSessionId'), false);
   assert.equal(await invoke(['send', 'existing', '--steer', '-m', 'task']), 0);
-  assert.equal(Object.hasOwn(calls[3], 'parentSessionId'), false);
-  assert.equal(calls[3].sourceSessionId, 'source');
+  assert.equal(Object.hasOwn(calls[3].command.input, 'parentSessionId'), false);
+  assert.equal(Object.hasOwn(calls[3].command.input, 'sourceSessionId'), false);
   assert.equal(await invoke(['start', '--runner', 'codex', '-m', 'new task']), 0);
-  assert.equal(calls[4].parentSessionId, 'source');
-  assert.equal(calls[4].sourceSessionId, 'source');
+  assert.equal(Object.hasOwn(calls[4].command.input, 'parentSessionId'), false);
+  assert.equal(Object.hasOwn(calls[4].command.input, 'sourceSessionId'), false);
   assert.equal(await invoke(['send', 'existing', '--queue', '-m', 'later']), 0);
-  assert.equal(calls[5].sourceSessionId, 'source');
+  assert.equal(Object.hasOwn(calls[5].command.input, 'sourceSessionId'), false);
   assert.equal(await invoke(['goal', 'set', 'existing', '-m', 'objective']), 0);
   assert.equal(Object.hasOwn(calls[6], 'sourceSessionId'), false);
 });
@@ -559,7 +671,7 @@ test('forwards title searches and preserves nearby Session hints in JSON and tex
     }
   };
   assert.equal(
-    await main(['sessions', 'list', '--query', 'fixer#42', '--json'], {
+    await main(['agents', 'list', '--query', 'fixer#42', '--json'], {
       env,
       client,
       stdout: {
@@ -570,7 +682,15 @@ test('forwards title searches and preserves nearby Session hints in JSON and tex
     }),
     0
   );
-  assert.deepEqual(calls, [{ action: 'list', query: 'fixer#42' }]);
+  assert.deepEqual(calls, [
+    {
+      action: 'network',
+      command: {
+        operation: 'list',
+        input: { query: 'fixer#42' }
+      }
+    }
+  ]);
   const details = 'Similar Sessions (suggestions only):\nsession-id fixer#42 Fix totals';
   for (const json of [true, false]) {
     output = '';
@@ -579,7 +699,7 @@ test('forwards title searches and preserves nearby Session hints in JSON and tex
         output += value;
       }
     };
-    const code = await main(['sessions', 'show', 'mistyped-id', ...(json ? ['--json'] : [])], {
+    const code = await main(['agents', 'show', 'mistyped-id', ...(json ? ['--json'] : [])], {
       env,
       client: {
         sessionCommand: async () => {
@@ -612,11 +732,14 @@ test('wait reports a rejected WebSocket credential as authorization failure', as
   };
   let output = '';
   try {
-    const code = await main(['sessions', 'wait', 's', '--run', 'r', '--timeout', '1s', '--json'], {
-      env,
-      client,
-      stdout: { write: (value) => (output += value) }
-    });
+    const code = await main(
+      ['agents', 'wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'approval', '--json'],
+      {
+        env,
+        client,
+        stdout: { write: (value) => (output += value) }
+      }
+    );
     assert.equal(code, 3);
     assert.equal(JSON.parse(output).error.code, 'UNAUTHENTICATED');
   } finally {
@@ -655,7 +778,11 @@ test('wait preserves authorization failure and request IDs when its Watch renewa
           watchEnvelope({
             type: 'watch.session.snapshot',
             watchId: body.watchId,
-            payload: { runs: [{ id: 'r', sessionId: 's', status: 'RUNNING' }] },
+            payload: {
+              session: { id: 's' },
+              progress: { runId: 'r', pendingApprovals: [] },
+              runs: [{ id: 'r', sessionId: 's', status: 'RUNNING' }]
+            },
             expiresAt: Date.now() + 100
           })
         );
@@ -669,11 +796,14 @@ test('wait preserves authorization failure and request IDs when its Watch renewa
       return { accepted: true };
     }
   };
-  const code = await main(['sessions', 'wait', 's', '--run', 'r', '--timeout', '1s', '--json'], {
-    env,
-    client,
-    stdout: { write: (value) => (output += value) }
-  });
+  const code = await main(
+    ['agents', 'wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'approval', '--json'],
+    {
+      env,
+      client,
+      stdout: { write: (value) => (output += value) }
+    }
+  );
   assert.equal(code, 3);
   assert.deepEqual(JSON.parse(output).error, {
     code: 'RESOURCE_ACCESS_DENIED',
@@ -688,19 +818,21 @@ test('wait preserves authorization failure and request IDs when its Watch renewa
   assert.equal(socket.closed, true);
 });
 test('parses closed Session commands including creation and rejects scope overrides', () => {
-  assert.equal(parseArgs(['sessions', 'list', '--parent', 'source']).parentSessionId, 'source');
-  assert.equal(parseArgs(['sessions', 'graph', 'source', '--limit', '2']).limit, 2);
-  assert.equal(parseArgs(['sessions', 'graph']).action, 'graph');
-  for (const args of [
-    ['graph', 'source', '--limit', '101'],
-    ['start', '--runner', 'codex', '-m', 'task', '--parent', 'source']
-  ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
-  assert.equal(parseArgs(['sessions', 'list', '--query', 'fixer#42']).query, 'fixer#42');
-  assert.throws(() => parseArgs(['sessions', 'list', '--query', 'x'.repeat(161)]));
+  assert.equal(parseArgs(['agents', 'list', '--parent', 'source']).parentSessionId, 'source');
+  assert.equal(parseArgs(['agents', 'graph', 'source', '--limit', '2']).limit, 2);
+  assert.equal(parseArgs(['agents', 'graph']).action, 'graph');
+  for (const args of [['graph', 'source', '--limit', '101']])
+    assert.throws(() => parseArgs(['agents', ...args]));
+  assert.equal(
+    parseArgs(['agents', 'start', '--runner', 'codex', '-m', 'task', '--parent', 'source'])
+      .parentSessionId,
+    'source'
+  );
+  assert.equal(parseArgs(['agents', 'list', '--query', 'fixer#42']).query, 'fixer#42');
+  assert.throws(() => parseArgs(['agents', 'list', '--query', 'x'.repeat(161)]));
   assert.deepEqual(
     parseArgs([
-      'sessions',
+      'agents',
       'start',
       '--runner',
       'codex',
@@ -711,7 +843,7 @@ test('parses closed Session commands including creation and rejects scope overri
       '--json'
     ]),
     {
-      command: 'sessions',
+      command: 'agents',
       action: 'start',
       runner: 'codex',
       messageFile: '-',
@@ -719,13 +851,13 @@ test('parses closed Session commands including creation and rejects scope overri
       json: true
     }
   );
-  assert.equal(parseArgs(['sessions', 'goal', 'clear', 's']).action, 'goal.clear');
-  assert.deepEqual(parseArgs(['sessions', 'prompt', 'get']), {
-    command: 'sessions',
+  assert.equal(parseArgs(['agents', 'goal', 'clear', 's']).action, 'goal.clear');
+  assert.deepEqual(parseArgs(['agents', 'prompt', 'get']), {
+    command: 'agents',
     action: 'prompt.get'
   });
   assert.equal(
-    parseArgs(['sessions', 'wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'approval'])
+    parseArgs(['agents', 'wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'approval'])
       .until,
     'approval'
   );
@@ -740,21 +872,21 @@ test('parses closed Session commands including creation and rejects scope overri
     ['approval', 'decide', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
     ['wait', 's', '--run', 'r', '--timeout', '1s', '--until', 'anything']
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
 });
 test('supports direct messages and repeated images without accepting ambiguous input', () => {
   for (const content of ['--help', '-h', '--json', '--review'])
-    assert.equal(parseArgs(['sessions', 'send', 's', '--steer', '-m', content]).message, content);
+    assert.equal(parseArgs(['agents', 'send', 's', '--steer', '-m', content]).message, content);
   assert.equal(
-    parseArgs(['sessions', 'send', 's', '--steer', '-m', 'Review this']).message,
+    parseArgs(['agents', 'send', 's', '--steer', '-m', 'Review this']).message,
     'Review this'
   );
   assert.equal(
-    parseArgs(['sessions', 'goal', 'set', 's', '--message', 'Finish review']).message,
+    parseArgs(['agents', 'goal', 'set', 's', '--message', 'Finish review']).message,
     'Finish review'
   );
   assert.deepEqual(
-    parseArgs(['sessions', 'start', '--runner', 'codex', '--image', 'a.png', '--image', 'b.jpg'])
+    parseArgs(['agents', 'start', '--runner', 'codex', '--image', 'a.png', '--image', 'b.jpg'])
       .images,
     ['a.png', 'b.jpg']
   );
@@ -765,7 +897,7 @@ test('supports direct messages and repeated images without accepting ambiguous i
     ['goal', 'set', 's', '-m', 'goal', '--image', 'a.png'],
     ['send', 's', '--steer', ...Array(6).fill(['--image', 'a.png']).flat()]
   ])
-    assert.throws(() => parseArgs(['sessions', ...args]));
+    assert.throws(() => parseArgs(['agents', ...args]));
 });
 
 test('submits inline text and local images once, including image-only input, with local validation', async () => {
@@ -800,7 +932,7 @@ test('submits inline text and local images once, including image-only input, wit
     }
   };
   const invoke = async (args) =>
-    main(['sessions', ...args, '--json'], {
+    main(['agents', ...args, '--json'], {
       env,
       client,
       stdout: { write() {} },
@@ -813,12 +945,12 @@ test('submits inline text and local images once, including image-only input, wit
     );
     assert.equal(await invoke(['send', 's', '--steer', '--image', image]), 0);
     assert.equal(await invoke(['goal', 'set', 's', '-m', 'Finish review']), 0);
-    assert.equal(calls[0].content, 'Describe this');
-    assert.deepEqual(calls[0].attachments, [
+    assert.equal(calls[0].command.input.content, 'Describe this');
+    assert.deepEqual(calls[0].command.input.attachments, [
       { name: 'screen shot.png', mime: 'image/png', dataBase64: png.toString('base64') }
     ]);
-    assert.equal(calls[1].content, '');
-    assert.deepEqual(calls[1].attachments, calls[0].attachments);
+    assert.equal(calls[1].command.input.content, undefined);
+    assert.deepEqual(calls[1].command.input.attachments, calls[0].command.input.attachments);
     assert.equal(calls[2].content, 'Finish review');
     assert.equal(calls[2].attachments, undefined);
     assert.equal(
@@ -834,9 +966,9 @@ test('submits inline text and local images once, including image-only input, wit
       ]),
       0
     );
-    assert.equal(calls[3].content, 'Describe these images');
+    assert.equal(calls[3].command.input.content, 'Describe these images');
     assert.deepEqual(
-      calls[3].attachments.map((value) => value.mime),
+      calls[3].command.input.attachments.map((value) => value.mime),
       ['image/png', ...formats.map((value) => value[2])]
     );
     for (const args of [
@@ -861,7 +993,7 @@ test('submits one start with stdin and preserves the generated correlation ID', 
   let error = '';
   const calls = [];
   const result = await main(
-    ['sessions', 'start', '--runner', 'codex', '--message-file', '-', '--json'],
+    ['agents', 'start', '--runner', 'codex', '--message-file', '-', '--json'],
     {
       env,
       stdin: (async function* () {
@@ -880,10 +1012,10 @@ test('submits one start with stdin and preserves the generated correlation ID', 
   assert.equal(result, 0);
   assert.equal(error, '');
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].content, 'Develop a fixture');
-  assert.equal(calls[0].parentSessionId, 'source');
-  assert.match(calls[0].clientMessageId, /^[a-f0-9-]{36}$/u);
-  assert.equal(JSON.parse(output).clientMessageId, calls[0].clientMessageId);
+  assert.equal(calls[0].command.input.content, 'Develop a fixture');
+  assert.equal(calls[0].command.input.parentSessionId, undefined);
+  assert.match(calls[0].command.input.clientMessageId, /^[a-f0-9-]{36}$/u);
+  assert.equal(JSON.parse(output).clientMessageId, calls[0].command.input.clientMessageId);
 });
 test('wait ignores invalid frames and closes observation when cancelled', async () => {
   class Socket extends EventEmitter {
@@ -1084,7 +1216,7 @@ test('message text does not select JSON error output', async () => {
     let output = '';
     let error = '';
     const result = await main(
-      ['sessions', 'send', 's', '--steer', '-m', '--json', ...(json ? ['--json'] : [])],
+      ['agents', 'send', 's', '--steer', '-m', '--json', ...(json ? ['--json'] : [])],
       {
         env,
         client: {
@@ -1114,8 +1246,8 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
   test(`Session help has readable command continuations and offline entrypoints (${locale})`, async () => {
     const outputs = [];
     for (const args of [
-      ['help', 'sessions'],
-      ['sessions', '--help']
+      ['help', 'agents'],
+      ['agents', '--help']
     ]) {
       let output = '';
       assert.equal(
@@ -1136,63 +1268,26 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         0
       );
       outputs.push(output);
-      for (const [action, syntax] of [
-        [
-          'start',
-          '--runner <runner> [-m <text> | --message-file <file|->] [--image <path> ...] [--model <id>] [--effort <value>] [--title <name>] [--client-message-id <id>] [--json]'
-        ],
-        [
-          'send',
-          '<session-id> [-m <text> | --message-file <file|->] [--image <path> ...] (--steer | --queue) [--client-message-id <id>] [--json]'
-        ]
-      ]) {
+      for (const action of ['start', 'send', 'wait', 'stop', 'list', 'view']) {
         const lines = output.split('\n');
-        const start = lines.findIndex((line) => line.startsWith(`  marctl sessions ${action} `));
+        const start = lines.findIndex((line) => line.startsWith(`  marctl agents ${action} `));
         assert.ok(start >= 0, action);
-        const block = [lines[start]];
-        for (let i = start + 1; /^ {4}\S/u.test(lines[i] ?? ''); i++) block.push(lines[i]);
-        assert.ok(block.length > 1, `${action} needs explicit indented continuations`);
-        assert.equal(
-          block.join(' ').trim().replace(/\s+/gu, ' '),
-          `marctl sessions ${action} ${syntax}`
-        );
+        if (action !== 'stop') assert.match(lines[start + 1], /^ {4}\S/u);
       }
-      assert.ok(output.includes('Additional context: focus on the resume path.'));
+      for (const flag of [
+        '--runner',
+        '--parent',
+        '--goal',
+        '--clear-goal',
+        '--execution',
+        '--scope',
+        '--wait-for',
+        '--timeout',
+        '--history'
+      ])
+        assert.ok(output.includes(flag), flag);
       assert.ok(!output.includes('--forced'));
       assert.ok(!output.toLowerCase().includes('urgent'));
-      const deliveryStart = output.indexOf(
-        locale.startsWith('zh') ? '投递与等待：' : 'Delivery and waiting:'
-      );
-      const scopeStart = output.indexOf(
-        locale.startsWith('zh') ? '凭据与范围：' : 'Credentials and scope:'
-      );
-      assert.ok(deliveryStart >= 0 && scopeStart > deliveryStart);
-      const delivery = output.slice(deliveryStart, scopeStart).replace(/\s+/gu, ' ').toLowerCase();
-      const steerStart = delivery.indexOf(
-        locale.startsWith('zh')
-          ? '及时协作优先使用 --steer'
-          : 'prefer --steer for timely coordination'
-      );
-      const queueStart = delivery.indexOf(
-        locale.startsWith('zh')
-          ? '仅明确要延后执行的后续工作使用 --queue'
-          : 'use --queue only for deliberately deferred follow-up work'
-      );
-      assert.ok(steerStart >= 0 && queueStart > steerStart);
-      const steering = delivery.slice(steerStart, queueStart);
-      assert.ok(
-        steering.includes(
-          locale.startsWith('zh') ? '可能切换当前执行' : 'may switch the current execution'
-        )
-      );
-      assert.ok(!steering.includes(locale.startsWith('zh') ? '打断' : 'interrupt'));
-      assert.ok(
-        delivery
-          .slice(queueStart)
-          .includes(
-            locale.startsWith('zh') ? '不打断活动执行' : 'does not interrupt active execution'
-          )
-      );
       for (const line of output.split('\n')) {
         // Count CJK glyphs as two columns; other help characters occupy one.
         const columns = [...line].reduce(
@@ -1206,8 +1301,8 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         assert.ok(columns <= 80, `${columns} columns: ${line}`);
       }
       for (const heading of locale.startsWith('zh')
-        ? ['输入', '投递与等待', '凭据与范围', 'Worker', '退出码']
-        : ['Input', 'Delivery and waiting', 'Credentials and scope', 'Workers', 'Exit codes'])
+        ? ['管理', '输入与结果', '退出码']
+        : ['Management', 'Input and results', 'Exit codes'])
         assert.ok(output.includes(`\n\n${heading}`), heading);
     }
     assert.equal(outputs[0], outputs[1]);
@@ -1218,29 +1313,27 @@ test('Session help documents prompts and approvals without supporting --prompt-f
   for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
     let output = '';
     assert.equal(
-      await main(['help', 'sessions'], {
+      await main(['help', 'agents'], {
         env: { LANG: locale },
         stdout: { write: (value) => (output += value) },
         client: { sessionCommand: () => assert.fail('Help must not contact Server') }
       }),
       0
     );
-    assert.ok(output.includes('start --runner'));
+    assert.ok(output.includes('[--runner <runner>]'));
     assert.ok(output.includes('-m <text>'));
     assert.ok(output.includes('--image <path>'));
-    assert.ok(output.includes('fixer#42'));
-    assert.ok(output.includes('reviewer#42'));
     assert.ok(output.includes('prompt get'));
     assert.ok(output.includes('prompt set'));
-    assert.ok(output.includes('sessions prompt get|clear'));
+    assert.ok(output.includes('agents prompt get|clear'));
     assert.ok(output.includes('approval decide'));
     assert.ok(output.includes('--until approval'));
     assert.ok(!output.includes('--prompt-file'));
   }
-  assert.throws(() => parseArgs(['sessions', 'prompt', 'set', 's', '--file', '-']));
+  assert.throws(() => parseArgs(['agents', 'prompt', 'set', 's', '--file', '-']));
   assert.throws(() =>
     parseArgs([
-      'sessions',
+      'agents',
       'start',
       '--runner',
       'codex',
@@ -1281,7 +1374,7 @@ test('keeps structured authorization failures and reports unknown mutation outco
   let calls = 0;
   const code = await main(
     [
-      'sessions',
+      'agents',
       'send',
       's',
       '--steer',
@@ -1320,14 +1413,14 @@ test('keeps structured authorization failures and reports unknown mutation outco
     ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
     ['schedule', 'create', 's', '--cron', '* * * * *', '-m', 'task'],
     ['schedule', 'update', 's', '--expected-revision', '1', '--cron', '* * * * *'],
-    ['stop', 's'],
+    ['stop', 's', '--execution', 'execution'],
     ['goal', 'set', 's', '-m', 'goal'],
     ['goal', 'clear', 's']
   ]) {
     let mutationCalls = 0;
     let mutationOutput = '';
     assert.equal(
-      await main(['sessions', ...args, '--json'], {
+      await main(['agents', ...args, '--json'], {
         env,
         stdout: { write: (value) => (mutationOutput += value) },
         client: {
@@ -1403,6 +1496,7 @@ test('wait timeouts return the latest observed activity in JSON and text without
       status: 'SLEEPING',
       runId: 'r',
       observedAt: 2,
+      pendingApprovals: [],
       latestMessage: {
         runId: 'r',
         state: 'COMPLETED',
@@ -1450,6 +1544,7 @@ test('wait timeouts return the latest observed activity in JSON and text without
                 watchId: command.watchId,
                 payload: {
                   session: { id: 's' },
+                  progress,
                   runs: [{ id: 'r', sessionId: 's', status: 'RUNNING' }]
                 }
               })
@@ -1509,7 +1604,18 @@ test('wait timeouts return the latest observed activity in JSON and text without
     let output = '';
     let errors = '';
     const exit = await main(
-      ['sessions', 'wait', 's', '--run', 'r', '--timeout', '1s', ...(json ? ['--json'] : [])],
+      [
+        'agents',
+        'wait',
+        's',
+        '--run',
+        'r',
+        '--timeout',
+        '1s',
+        '--until',
+        'approval',
+        ...(json ? ['--json'] : [])
+      ],
       {
         env,
         client,
@@ -1698,6 +1804,8 @@ test('wait failures retain target, stage and bounded public upstream diagnostics
                       scenario === 'invalid-snapshot'
                         ? {}
                         : {
+                            session: { id: 's' },
+                            progress: { runId: 'r', pendingApprovals: [] },
                             runs:
                               scenario === 'missing-run'
                                 ? []
@@ -1714,11 +1822,14 @@ test('wait failures retain target, stage and bounded public upstream diagnostics
       }
     };
     let output = '';
-    const exit = await main(['sessions', 'wait', 's', '--run', 'r', '--timeout', '2s', '--json'], {
-      env,
-      client,
-      stdout: { write: (value) => (output += value) }
-    });
+    const exit = await main(
+      ['agents', 'wait', 's', '--run', 'r', '--timeout', '2s', '--until', 'approval', '--json'],
+      {
+        env,
+        client,
+        stdout: { write: (value) => (output += value) }
+      }
+    );
     const failure = JSON.parse(output).error;
     assert.equal(exit, scenario === 'subscribe-denied' ? 3 : 6, scenario);
     assert.equal(
@@ -1768,7 +1879,7 @@ test('a successful HTTP response with unreadable JSON leaves mutation outcome un
   });
   const code = await main(
     [
-      'sessions',
+      'agents',
       'send',
       's',
       '--steer',
@@ -1878,7 +1989,7 @@ test('rejects non-object Session success bodies and reports missing authorizatio
   }
   let output = '';
   assert.equal(
-    await main(['sessions', 'list', '--json'], {
+    await main(['agents', 'list', '--json'], {
       env: {},
       stdout: { write: (value) => (output += value) }
     }),

@@ -1,15 +1,19 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Create and Manage Sessions
 
 Select a group badge to open an unread session first, or an active session if none is unread. Chats switches to the opened session's actual group. Notifications, recent sessions, and workspace tabs also synchronize the group when opening a session. Selecting the rest of a group tab only switches the list and does not change the conversation.
 
-On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions created by `marctl` with a parent relationship appear under Child Sessions; sessions without one, including scheduled and externally discovered sessions, appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. A Node without grouping capability retains the mixed list.
+On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions with a parent relationship appear under Child Sessions; sessions without one appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. A Node without grouping capability retains the mixed list.
 
-Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. From a child session's more menu, choose **Move to Main Sessions**. Confirmation clears only that session's group relationship with its parent, preserving its history, active runs, queue, and its own child relationships. The list stays on Child Sessions after success and the current conversation stays open.
+Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
+
+Expand a parent session's subagent control record and choose **Open child session** when Node provides an official session mapping. Normal session permissions govern viewing, messaging, and stopping it. Native subagents without a mapping do not offer this entry.
+
+Expand an execution record to inspect the available command or code, output, working directory, exit code, and status. Each call has its own record. **Copy public record** copies that record's available public information, which can be truncated; older Nodes may provide fewer details.
 
 A regular work session must execute in the selected Workspace's valid root or a subdirectory. An independently registered Git worktree uses its own Workspace. Node rejects new execution if the directory disappears, the registered root is replaced, or a link escapes the Workspace; it does not silently switch directories. If queued messages are paused for this reason, restore a valid directory and use **Resume** in the queue. Messages and attachments are retained and can still be removed through the existing queue controls. This check does not make work mode a host filesystem sandbox or change hosted-conversation isolation.
 
@@ -29,7 +33,7 @@ Working sessions hide Delete. If a session starts working during deletion confir
 
 On supported Nodes, choose **Session Prompt** from an existing session's More menu to save multiline instructions of up to 20,000 characters. Leave it blank and save to clear it. The setting belongs only to that session and survives reopening or a Node restart. It is appended after the sender's shared and Agent-specific personal instructions, without replacing account settings or appearing as an ordinary message.
 
-Changes do not interrupt the current execution. They apply from the next execution, including queued messages, Goal continuation, and messages sent to that session through marctl. marctl has no prompt-editing command. Clearing stops future injection; it does not remove old instructions already in the Agent's conversation history. Start a new session if you need to isolate old instructions completely. Hosted conversations do not offer this setting.
+Changes do not interrupt the current execution. They apply from the next execution, including queued messages, Goal continuation, and messages sent to that session through marctl. You can also [read, set, or clear the prompt with marctl](../operations/marctl.md#persistent-instructions-and-approvals). Clearing stops future injection; it does not remove old instructions already in the Agent's conversation history. Start a new session if you need to isolate old instructions completely. Hosted conversations do not offer this setting.
 
 Sessions discovered from an external Agent appear normally. Their first message automatically validates and activates a safe continuation path; if validation fails, no Run is created.
 

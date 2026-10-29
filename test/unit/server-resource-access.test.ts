@@ -21,6 +21,18 @@ import { domainErrorStatus } from '../../packages/server-core/src/domain-errors.
 const unrestrictedCredentialScope = { assertModelGrantWithinScope: async () => undefined };
 
 describe('Server Node/Workspace ownership and grants', () => {
+  it('delivers upgrade progress to a manager without granting Node use or ordinary events', async () => {
+    const fixture = resourceFixture();
+    fixture.node = { owner_type: 'PERSONAL', owner_user_id: 1, owner_organization_id: null };
+    fixture.authorization.authorize = vi.fn(async (_userId, permission, context) => ({
+      allowed: permission === 'NODE_MANAGE' && context?.ownerType === 'SYSTEM'
+    }));
+    const service = new ResourceAccessService(fixture.database, fixture.authorization);
+    expect(await service.canRelay(8, 'node-1', 'workbench.node.receive', {})).toBe(false);
+    expect(await service.canRelay(8, 'node-1', 'workbench.node.upgrade.receive', {})).toBe(true);
+    fixture.authorization.authorize = vi.fn(async () => ({ allowed: false }));
+    expect(await service.canRelay(8, 'node-1', 'workbench.node.upgrade.receive', {})).toBe(false);
+  });
   it.each(['NODE', 'WORKSPACE'] as const)(
     'freezes %s secret CRUD ownership without auditing values',
     async (scope) => {

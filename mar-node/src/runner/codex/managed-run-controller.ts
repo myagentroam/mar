@@ -10,6 +10,7 @@ import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
 import type { CodexComposerInput, CodexRunConfiguration } from './codex-app-server.js';
 import type { RunnerExecutionStatus } from '../contracts.js';
 import { extractId } from './conversation-parser.js';
+import { publicOutputSnapshot } from '../execution-presentation.js';
 import { normalizeCodexApproval } from './tool-normalizer.js';
 import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
@@ -136,7 +137,7 @@ export interface CodexManagedRunHost<TAttachment> {
         'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'DECLINED' | 'INTERRUPTED';
       readonly payload: Record<string, unknown>;
       readonly merge?: boolean;
-      readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
+      readonly append?: 'sections' | 'outputPreview' | 'outputSummary' | 'output';
     }
   ): void;
   appendImages(
@@ -452,13 +453,14 @@ export class CodexManagedRunController<TAttachment> {
       typeof params.itemId === 'string' &&
       typeof params.delta === 'string'
     ) {
+      const output = publicOutputSnapshot(params.delta);
       this.emitItem(runId, {
         itemId: boundedConversationItemId('codex', params.itemId),
         kind: 'command_execution',
         status: 'IN_PROGRESS',
-        payload: { outputPreview: compactRunnerText(params.delta, 10_000) },
+        payload: { outputPreview: output.text, output },
         merge: true,
-        append: 'outputPreview'
+        append: 'output'
       });
       return;
     }

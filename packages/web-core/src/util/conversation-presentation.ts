@@ -405,9 +405,16 @@ export function composerMessageSource(input: ReturnType<typeof composerMessagePr
   if (origin !== undefined) {
     if (origin.sessionId !== undefined && origin.name !== undefined)
       return {
-        label: translate('generated.conversationPresentation.messageFromSource', {
-          name: origin.name
-        }),
+        label: translate(
+          origin.relation === 'parent'
+            ? 'generated.conversationPresentation.messageFromParentSession'
+            : origin.relation === 'other'
+              ? 'generated.conversationPresentation.messageFromOtherSession'
+              : 'generated.conversationPresentation.messageFromSource',
+          {
+            name: origin.name
+          }
+        ),
         title: translate('generated.conversationPresentation.sessionSourceDetails', {
           sessionId: origin.sessionId
         })
@@ -594,18 +601,24 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
   if (kind === 'reasoning') return reasoningSections(value).join('\n\n');
   if (kind === 'tool_call' && isSubagentToolCall(value)) return subagentToolDetail(value);
   if (kind === 'tool_call' && toolPresentation(payload)) return toolPresentationDetails(payload);
-  if (kind === 'tool_call')
+  if (kind === 'tool_call') {
+    const output = conversationPayload(value.output);
     return [
       !isSubagentToolCall(value) && stringField(value, 'title') !== stringField(value, 'toolName')
         ? formatDetail(translate('presentation.detail'), stringField(value, 'title'))
         : '',
       formatDetail(translate('presentation.input'), stringField(value, 'inputSummary')),
-      formatDetail(translate('presentation.output'), stringField(value, 'outputSummary')),
+      formatDetail(
+        translate('presentation.output'),
+        output ? stringField(output, 'text') : stringField(value, 'outputSummary')
+      ),
+      output?.truncated === true ? translate('toolPresentation.detail.truncated') : '',
       formatDetail(translate('presentation.progress'), stringField(value, 'progressLabel')),
       formatDetail(translate('presentation.error'), stringField(value, 'errorCode'))
     ]
       .filter(Boolean)
       .join('\n');
+  }
   if (kind === 'command_execution')
     return [
       formatDetail(translate('presentation.command'), stringField(value, 'command')),
@@ -755,6 +768,17 @@ function subagentTaskTitle(value: Record<string, unknown>): string {
   const title = stringField(value, 'title');
   if (title.length > 0 && title.toLowerCase() !== toolName.toLowerCase()) return title;
   return stringField(value, 'subagentId') || toolName || translate('presentation.subagentTask');
+}
+
+/** Only an explicit Node-provided product Session mapping is navigable. */
+export function subagentGroupSessionId(items: readonly ConversationItem[]): string | undefined {
+  const ids = new Set(
+    items.flatMap((item) => {
+      const id = conversationPayload(item.payload)?.subagentSessionId;
+      return typeof id === 'string' && id.trim().length > 0 && id.length <= 128 ? [id] : [];
+    })
+  );
+  return ids.size === 1 ? [...ids][0] : undefined;
 }
 
 export interface TaskListEntry {

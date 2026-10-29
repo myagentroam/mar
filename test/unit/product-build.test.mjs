@@ -41,7 +41,7 @@ test('Node packages allow only the declared public config type and reject other 
   assert.deepEqual(unexpectedNpmPackageFiles('@myagentroam/server', ['dist/config.d.ts']), [
     'dist/config.d.ts'
   ]);
-  for (const name of ['agent', 'protocol', 'code-navigation']) {
+  for (const name of ['agent', 'agent-extension-subagent', 'protocol', 'code-navigation']) {
     assert.deepEqual(
       unexpectedNpmPackageFiles(`@myagentroam/${name}`, ['dist/index.js', 'dist/index.d.ts']),
       []

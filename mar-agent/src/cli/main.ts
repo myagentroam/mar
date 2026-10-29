@@ -13,11 +13,13 @@ import {
   resolveModelDefaultReasoningEffort,
   SecretValue,
   testAgentModelTransport,
+  type Agent,
   type RunInput,
   type ExecutionHandle,
   type AgentModelConfiguration,
   type AgentReasoningEffort
 } from '../index.js';
+import type { AgentExtension } from '../extensions.js';
 import { CodexAuthFileCredentialProvider } from './codex-auth-file.js';
 import { generateSessionTitle } from '../shared/auto-title.js';
 
@@ -28,7 +30,7 @@ Usage:
   maragent run <prompt> [--permission-mode auto|full-access] [--reasoning-effort EFFORT] [--format text|json|stream-json] [--codex-auth-file PATH]
   maragent resume [sessionId] [--reasoning-effort EFFORT] [--codex-auth-file PATH]
   maragent sessions list|delete <sessionId>
-  maragent models list|add|edit|remove|test [id] [--default-reasoning-effort EFFORT] [--code-mode|--no-code-mode] [--fast-mode|--no-fast-mode] [--codex-auth-file PATH]
+  maragent models list|add|edit|remove|test [id] [--default-reasoning-effort EFFORT] [--conversation-model|--no-conversation-model] [--subagent-model|--no-subagent-model] [--code-mode|--no-code-mode] [--fast-mode|--no-fast-mode] [--codex-auth-file PATH]
 `;
 
 function takeOption(arguments_: string[], name: string) {
@@ -96,7 +98,7 @@ async function modelsCommand(
   if (action === 'list') {
     for (const model of catalog.models)
       stdout.write(
-        `${model.id}\t${model.name}\t${model.protocol}\t${model.modelId}\tcredential=${model.apiKey === undefined ? 'codex-auth-file' : 'api-key'}\n`
+        `${model.id}\t${model.name}\t${model.protocol}\t${model.modelId}\tcredential=${model.apiKey === undefined ? 'codex-auth-file' : 'api-key'}\tconversation=${model.conversationModel !== false}\tsubagent=${model.subagentModel === true}\n`
       );
     return;
   }
@@ -230,7 +232,18 @@ async function modelsCommand(
             defaultReasoningEffort: existing?.defaultReasoningEffort
           })
         : parseReasoningEffort(defaultReasoningEffortOption, '--default-reasoning-effort'),
-    conversationModel: existing?.conversationModel ?? true,
+    conversationModel: booleanFlag(
+      arguments_,
+      '--conversation-model',
+      '--no-conversation-model',
+      existing?.conversationModel ?? true
+    ),
+    subagentModel: booleanFlag(
+      arguments_,
+      '--subagent-model',
+      '--no-subagent-model',
+      existing?.subagentModel ?? false
+    ),
     titleGeneration: existing?.titleGeneration ?? false,
     codeMode: booleanFlag(arguments_, '--code-mode', '--no-code-mode', existing?.codeMode ?? false),
     ...(credential === 'codex-auth-file' && fastMode ? { fastMode: true } : {}),
@@ -372,10 +385,18 @@ async function main() {
     }
   });
   const runtime = runtimeModels(catalog.models, codexAuthFile);
-  const agent = await createAgent({
+  // The CLI-only build contains the independently published extension's same source.
+  const extensionPath = './subagent/index.js';
+  const extensionModule = (await import(extensionPath)) as {
+    createSubagentExtension(options: { agent: () => Agent }): AgentExtension;
+  };
+  let agent!: Agent;
+  const subagent = extensionModule.createSubagentExtension({ agent: () => agent });
+  agent = await createAgent({
     mode: 'normal',
     host,
     models: runtime.models,
+    extensions: [subagent],
     ...(modelId === undefined ? {} : { defaultModelId: modelId })
   });
   try {

@@ -121,7 +121,7 @@ export type PublicConversationItem = {
   readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'DECLINED' | 'INTERRUPTED';
   readonly payload: Record<string, unknown>;
   readonly merge?: boolean;
-  readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
+  readonly append?: 'sections' | 'outputPreview' | 'outputSummary' | 'output';
 };
 
 export interface NativeTranscriptSubagentResult {

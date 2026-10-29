@@ -49,11 +49,13 @@ export class MarctlClient {
     });
   }
 
-  async sessionCommand(body) {
+  async sessionCommand(body, { timeoutMs, signal } = {}) {
     const result = await this.#requestJson('/api/marctl/sessions', {
       method: 'POST',
       body,
-      preserveError: true
+      preserveError: true,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(signal === undefined ? {} : { signal })
     });
     if (!isRecord(result))
       throw new MarctlError(this.#translate('errors.serverInvalidJson'), {
@@ -171,19 +173,33 @@ export class MarctlClient {
     return this.#request(pathname, { ...options, json: true });
   }
 
-  async #request(pathname, { method = 'GET', body, json = false, preserveError = false } = {}) {
+  async #request(
+    pathname,
+    {
+      method = 'GET',
+      body,
+      json = false,
+      preserveError = false,
+      timeoutMs = this.#requestTimeoutMs,
+      signal
+    } = {}
+  ) {
     const headers = {
       Accept: 'application/json',
       Authorization: `Bearer ${this.#key}`
     };
     const controller = new AbortController();
-    const request = { method, headers, signal: controller.signal };
+    const request = {
+      method,
+      headers,
+      signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal
+    };
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       request.body = JSON.stringify(body);
     }
 
-    const timer = setTimeout(() => controller.abort(), this.#requestTimeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await this.#fetch(new URL(pathname, `${this.#serverUrl}/`), request);
       if (!response?.ok) {
@@ -227,6 +243,10 @@ export class MarctlClient {
         );
       }
     } catch (error) {
+      if (signal?.aborted)
+        throw new MarctlError(this.#translate('errors.sessionWaitCancelled'), {
+          code: 'MARCTL_WAIT_CANCELLED'
+        });
       if (error instanceof MarctlError) throw error;
       throw new MarctlError(
         this.#translate(

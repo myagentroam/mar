@@ -1,6 +1,6 @@
 ---
 title: First Sign-in and Password Change
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-29
 ---
 
 # First Sign-in and Password Change
@@ -11,7 +11,7 @@ A new database creates the sole administrator `admin` with initial password `Ean
 2. Enter the current password, a new password, and its confirmation. The new password must contain 8–1024 characters.
 3. Submit, then sign in again with the new password.
 
-**Success:** the Nodes page opens and previous browser sessions are invalidated.
+**Success:** the Work page opens and previous browser sessions are invalidated.
 
 Network or server failures while checking sign-in status show an error without signing you out or clearing the current page. On first opening, neither the sign-in form nor business content appears until verification completes; refresh after connectivity recovers. The sign-in page appears only when Server explicitly confirms you are not signed in.
 

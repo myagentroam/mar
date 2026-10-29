@@ -115,7 +115,7 @@ describe('local workspace tools', () => {
     expect(viewProperties.resize).not.toHaveProperty('minProperties');
   });
 
-  it('registers every built-in tool once and keeps agent handlers explicit', () => {
+  it('registers each built-in once without a built-in collaboration handler', () => {
     const names = BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name);
     const todoRead = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_read')!;
     const todoWrite = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_write')!;
@@ -133,10 +133,6 @@ describe('local workspace tools', () => {
       'question',
       'todo_read',
       'todo_write',
-      'agent_start',
-      'agent_wait',
-      'agent_message',
-      'agent_cancel',
       'smart_compact',
       'sleep'
     ]);
@@ -147,12 +143,9 @@ describe('local workspace tools', () => {
       'tool_search',
       'question',
       'todo_read',
-      'todo_write',
-      'agent_start',
-      'agent_wait',
-      'agent_message',
-      'agent_cancel'
+      'todo_write'
     ]);
+    expect(names.some((name) => name.startsWith('agent_'))).toBe(false);
     expect(todoRead.description).toContain(
       'Do not read an empty or new Todo merely to decide whether straightforward bounded work needs one.'
     );

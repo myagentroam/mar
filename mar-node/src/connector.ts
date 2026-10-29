@@ -37,6 +37,16 @@ import { CommandStateStore } from './runner-command-engine.js';
 import { GoalRuntime } from './service/goal-runtime.js';
 import { GoalContinuationCoordinator } from './service/goal-continuation-coordinator.js';
 import { GoalMcpBridge } from './service/goal-mcp-bridge.js';
+import {
+  AgentNetworkObservations,
+  agentObservationFromRunEvent
+} from './service/agent-network-observations.js';
+import { createNodeAgentNetwork } from './service/agent-network-bindings.js';
+import {
+  agentNetworkExecutionCommand,
+  agentNetworkInvoke
+} from './service/agent-network-invoke.js';
+import type { AgentNetworkService } from './service/agent-network-service.js';
 import { RunnerUsageReader } from './runner-usage.js';
 import { ClaudeCodeRunner } from './runner/claude-code-runner.js';
 import { ClaudeManagedRunController } from './runner/claude/managed-run-controller.js';
@@ -78,7 +88,7 @@ import { SessionWatchSlotCoordinator } from './service/session-watch-slot-coordi
 import { SessionContextService } from './session/session-context-service.js';
 import { RunWorkbenchService } from './service/run-workbench-service.js';
 import { SessionQueryService } from './session/session-query-service.js';
-import { marctlSessionProgress } from './service/session-recent-activity.js';
+import { marctlSessionDetail, marctlSessionProgress } from './service/session-recent-activity.js';
 import { WorkspaceQueueWorkbenchService } from './workspace/workspace-queue-workbench-service.js';
 import { ContinuousRunCoordinator } from './service/continuous-run-coordinator.js';
 import { SessionIdentityService } from './session/session-identity-service.js';
@@ -97,9 +107,12 @@ import { ScheduledSessionCoordinator } from './service/scheduled-session-coordin
 import { ScheduledSessionStore } from './service/scheduled-session-store.js';
 import { RunAuthorizationControl } from './service/run-authorization-control.js';
 import { PlannedRestartHandoff } from './service/planned-restart-handoff.js';
+import { NodeUpgradeCredentialControl } from './service/node-upgrade-credential-control.js';
 import { RestartSessionRestorer } from './service/restart-session-restorer.js';
 import { ScheduleMcpBridge } from './service/schedule-mcp-bridge.js';
 import { MailNotificationControl } from './service/mail-notification-control.js';
+import { MarctlExecutionCredentialControl } from './service/marctl-execution-credential-control.js';
+import { authorizeMarctlExecutionOperation, resolveMarctlCaller } from './service/marctl-caller.js';
 import {
   NotificationMcpBridge,
   resolveNotificationCapability
@@ -129,6 +142,7 @@ import { ManagedRunnerSessionService } from './service/managed-runner-session-se
 import { NodeConnectionLifecycleService } from './service/node-connection-lifecycle-service.js';
 import {
   NodeUpgradeCoordinator,
+  upgradeMetadata,
   nodeUpgradeRequestPath
 } from './service/node-upgrade-coordinator.js';
 import {
@@ -196,18 +210,6 @@ export function nextReconnectDelay(attempt: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.min(Math.max(attempt, 0), 16));
 }
 
-function upgradeMetadata(
-  metadata: NodeCapabilities['metadata'],
-  status: ReturnType<NodeUpgradeCoordinator['snapshot']>
-): NonNullable<NodeCapabilities['metadata']> {
-  const next = { ...(metadata ?? {}) };
-  if (process.env['MAR_NODE_SUPERVISED'] === '1') next.supervisedUpgrade = true;
-  else delete next.supervisedUpgrade;
-  if (status.state === 'IDLE') delete next.upgrade;
-  else next.upgrade = status;
-  return next;
-}
-
 export class NodeConnector {
   private usageOutbox: ModelUsageOutbox | undefined;
   private readonly modelUsage = new NodeModelUsageService(
@@ -225,6 +227,12 @@ export class NodeConnector {
   private readonly executionLifecycle: ExecutionLifecycle;
   private readonly pendingSessionGroups = new Map<string, SessionGroupChanged>();
   private readonly mailNotificationControl = new MailNotificationControl((envelope) =>
+    this.sendEnvelope(envelope)
+  );
+  private readonly marctlExecutionCredentials = new MarctlExecutionCredentialControl((envelope) =>
+    this.sendEnvelope(envelope)
+  );
+  private readonly upgradeCredentials = new NodeUpgradeCredentialControl((envelope) =>
     this.sendEnvelope(envelope)
   );
   private readonly scheduledSessions: ScheduledSessionCoordinator;
@@ -308,6 +316,7 @@ export class NodeConnector {
   private readonly sessionLifecycleService: SessionLifecycleService;
   private readonly externalSessionResumeService: ExternalSessionResumeService;
   private readonly sessionMessageService: SessionMessageService;
+  private readonly agentNetworkService: AgentNetworkService;
   private readonly sessionCatalogService: SessionCatalogService;
   private readonly sessionCommandService: SessionCommandService;
   private readonly runAttachmentService: RunAttachmentService;
@@ -448,6 +457,8 @@ export class NodeConnector {
     database: () => this.database
   });
   private readonly metrics = new NodeMetrics();
+  private readonly agentNetworkObservations = new AgentNetworkObservations();
+  private readonly transientAgentObservers = new Map<string, string>();
   private readonly runEventService = new RunEventService({
     runtime: this.runtime,
     metrics: this.metrics,
@@ -462,6 +473,40 @@ export class NodeConnector {
     refreshWorkspaceSessions: (workspaceId) =>
       this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
     onTerminalRun: (run, status) => this.executionLifecycle.terminal(run, status),
+    observeAgentEvent: ({ run, executionId, eventType, payload, terminalStatus }) => {
+      const child = this.runtime.getAgentSession(run.sessionId);
+      if (!child) return;
+      const parent =
+        child.parentSessionId == null
+          ? undefined
+          : this.runtime.getAgentSession(child.parentSessionId);
+      let observation = agentObservationFromRunEvent({ eventType, payload, terminalStatus });
+      if (eventType === 'approval.request') {
+        const approvals = marctlSessionDetail(this.runtime, child, 0).pendingApprovals;
+        if (approvals.length)
+          observation = {
+            kind: 'message',
+            value: JSON.stringify({
+              pendingApprovals: approvals
+            })
+          };
+      }
+      if (observation)
+        this.agentNetworkObservations.publishChild({
+          ...(parent?.workspaceId === child.workspaceId ? { parentId: parent.id } : {}),
+          childId: child.id,
+          runId: run.id,
+          executionId,
+          ...observation
+        });
+      if (
+        terminalStatus !== undefined &&
+        this.transientAgentObservers.get(run.sessionId) === run.id
+      ) {
+        this.transientAgentObservers.delete(run.sessionId);
+        this.agentNetworkObservations.get(run.sessionId)?.close();
+      }
+    },
     dispatchQueue: (sessionId, delayMs) =>
       this.executionLifecycle.dispatchQueue(sessionId, delayMs),
     executionStarted: (executionId) => this.continuousRunCoordinator.executionStarted(executionId),
@@ -568,18 +613,37 @@ export class NodeConnector {
       (status) => {
         this.capabilities = {
           ...this.capabilities,
-          metadata: upgradeMetadata(this.capabilities.metadata, status)
+          metadata: upgradeMetadata(
+            this.capabilities.metadata,
+            status,
+            options.supervisorUpgradeHandoff !== undefined
+          )
         };
         this.controlChannel?.send('capabilities', this.capabilities);
       },
       options.upgradeReady ??
         (() => {
-          void this.stop().finally(() => process.exit(75));
-        })
+          throw new Error('NODE_UPGRADE_HANDOFF_UNAVAILABLE');
+        }),
+      Date.now,
+      options.supervisorUpgradeHandoff === undefined
+        ? undefined
+        : async (attemptId, targetVersion) => {
+            const credential = await this.upgradeCredentials.request(attemptId);
+            await options.supervisorUpgradeHandoff!.handoff({
+              attemptId,
+              targetVersion,
+              credential
+            });
+          }
     );
     this.capabilities = {
       ...this.capabilities,
-      metadata: upgradeMetadata(this.capabilities.metadata, this.upgradeCoordinator.snapshot())
+      metadata: upgradeMetadata(
+        this.capabilities.metadata,
+        this.upgradeCoordinator.snapshot(),
+        options.supervisorUpgradeHandoff !== undefined
+      )
     };
     const detect = options.capabilityDetector ?? detectCapabilitiesAsync;
     this.capabilityDetector = async () => {
@@ -587,7 +651,11 @@ export class NodeConnector {
       return this.projectComputerUseCapability(
         await this.conversationHosting.project({
           ...capabilities,
-          metadata: upgradeMetadata(capabilities.metadata, this.upgradeCoordinator.snapshot())
+          metadata: upgradeMetadata(
+            capabilities.metadata,
+            this.upgradeCoordinator.snapshot(),
+            options.supervisorUpgradeHandoff !== undefined
+          )
         })
       );
     };
@@ -696,8 +764,10 @@ export class NodeConnector {
         executionAccepted: (runId) => this.runtime.executionAccepted(runId),
 
         adopt: (input) => this.runtime.adoptRun(input),
-        promote: (sessionId, nativeSessionId) =>
-          this.sessionIdentityService.promote(sessionId, nativeSessionId),
+        promote: (sessionId, nativeSessionId) => {
+          this.sessionIdentityService.promote(sessionId, nativeSessionId);
+          this.agentNetworkObservations.promote(sessionId, nativeSessionId);
+        },
         customTitle: (sessionId) => this.runtime.getAgentSession(sessionId)?.customTitle,
         syncTitle: (nativeSessionId, cwd) =>
           this.managedRunnerSessions.refreshTitle(nativeSessionId, nativeSessionId, cwd),
@@ -726,6 +796,35 @@ export class NodeConnector {
       },
       {
         modelFactory: this.marAgentRuntimeModels,
+        attachNetworkContext: (sessionId) =>
+          Object.assign(this.agentNetworkObservations.attach(sessionId), {
+            invoke: agentNetworkInvoke({
+              sessionId,
+              runtime: this.runtime,
+              coordinator: this.continuousRunCoordinator,
+              service: this.agentNetworkService
+            }),
+            resources: async (signal: AbortSignal) => {
+              signal.throwIfAborted();
+              const run = this.runtime.activeSessionRun(sessionId);
+              if (!run || !run.initiatedByUserId) return [];
+              const result = await this.agentNetworkService.list(
+                { sessionId, runId: run.id, requestUserId: run.initiatedByUserId },
+                { scope: 'children', limit: 100 }
+              );
+              signal.throwIfAborted();
+              const data = result as { sessions?: unknown[]; truncated?: boolean };
+              if (!data.sessions?.length && !data.truncated) return [];
+              return [
+                `Child Sessions (use agent_list for details): ${JSON.stringify({
+                  sessions: data.sessions ?? [],
+                  truncated: data.truncated === true
+                }).replace(/[<>&]/g, (c) =>
+                  c === '<' ? '\\u003c' : c === '>' ? '\\u003e' : '\\u0026'
+                )}`
+              ];
+            }
+          }),
         publishModelResource: (image, context) => {
           const session = this.runtime.getAgentSession(context.ownerSessionId);
           if (session === undefined) throw new Error('RUN_SESSION_NOT_FOUND');
@@ -929,6 +1028,7 @@ export class NodeConnector {
     this.continuousRunCoordinator = new ContinuousRunCoordinator({
       resolveExecutionDirectory,
       runtime: this.runtime,
+      mintMarctlExecutionCredential: (input) => this.marctlExecutionCredentials.request(input),
       steer: (prepared, item, executionId) => {
         const runner = this.runners.optional(prepared.executionContext.runner);
         if (!runner?.supportsNativeSteer()) return undefined;
@@ -1190,6 +1290,74 @@ export class NodeConnector {
       goalPreparationFailed: (session, goal, activated) =>
         this.goalCoordinator.handleGoalPreparationFailed(session, goal, activated)
     });
+    this.agentNetworkService = createNodeAgentNetwork({
+      runtime: this.runtime,
+      database: () => this.database,
+      runners: this.runners,
+      projection: this.nativeSessionProjectionService,
+      resume: this.externalSessionResumeService,
+      lifecycle: this.sessionLifecycleService,
+      messages: this.sessionMessageService,
+      coordinator: this.goalCoordinator,
+      goals: this.goalRuntime,
+      runs: this.runWorkbenchService,
+      observations: this.agentNetworkObservations,
+      listSessions: async (input) =>
+        this.sessionCatalogService.operations()['session.list']!(input),
+      history: async (input) => this.sessionQueryService.operations()['session.turns.list']!(input),
+      profiles: async (environment, models) => {
+        const summaries = Array.isArray(models)
+          ? models.flatMap((model, index) => {
+              if (!isPlainRecord(model)) return [];
+              const {
+                apiKey: _apiKey,
+                credential: _credential,
+                imageGeneration: _images,
+                access: _access,
+                ...summary
+              } = model;
+              return [
+                {
+                  ...summary,
+                  sortOrder: typeof summary.sortOrder === 'number' ? summary.sortOrder : index
+                }
+              ];
+            })
+          : undefined;
+        const result = await this.runnerService.operations()['runner.profiles.list']!({
+          secretEnvironment: environment,
+          marAgentModels: summaries,
+          waitForRefresh: true
+        });
+        if (!isPlainRecord(result) || !Array.isArray(result.profiles))
+          throw new Error('RUNNER_PROFILE_INVALID');
+        return result.profiles as import('@myagentroam/protocol').RunnerProfile[];
+      },
+      ensureObservations: (actor) => {
+        const existing = this.agentNetworkObservations.get(actor.observationId ?? actor.sessionId);
+        if (existing) return existing;
+        const run = actor.runId === undefined ? undefined : this.runtime.getRun(actor.runId);
+        if (
+          !run ||
+          run.sessionId !== actor.sessionId ||
+          this.runtime.activeSessionRun(actor.sessionId)?.id !== run.id
+        )
+          throw new Error('AGENT_ACTOR_NOT_ACTIVE');
+        const observer = this.agentNetworkObservations.attach(actor.sessionId);
+        this.transientAgentObservers.set(actor.sessionId, run.id);
+        return observer;
+      },
+      withGrant: (actor, work) => this.modelUsage.withGrant(actor.usageGrant, work)
+    });
+    this.operationRouter.register(
+      'agent.network',
+      agentNetworkExecutionCommand({
+        runtime: this.runtime,
+        coordinator: this.continuousRunCoordinator,
+        service: this.agentNetworkService,
+        observations: this.agentNetworkObservations
+      })
+    );
     const inputState = (
       entry: import('./service/planned-restart-handoff.js').RestartSession,
       message: import('./service/planned-restart-handoff.js').RestartMessage
@@ -1379,6 +1547,7 @@ export class NodeConnector {
       onReconnectScheduled: () => this.metrics.reconnectScheduled(),
       onMessage: (raw) => this.handleMessage(raw),
       onClose: (code, reason) => {
+        this.nodeRequests.disconnect();
         this.promptCompletion?.disconnect();
         this.usageOutbox?.disconnected();
         this.directTransferService?.close('DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
@@ -1387,6 +1556,8 @@ export class NodeConnector {
         this.scheduledRunAuthorization.disconnected();
         this.restartAuthorization.disconnected();
         this.mailNotificationControl.disconnected();
+        this.marctlExecutionCredentials.disconnected();
+        this.upgradeCredentials.disconnect();
         this.notificationMcpBridge.revokeAll();
         this.terminalChannel.disconnect();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
@@ -1404,6 +1575,8 @@ export class NodeConnector {
       register: async (nodeId, credential, payload) => {
         await this.configMutations.run(() => this.connectionLifecycle.register(nodeId, credential));
         this.mailNotificationControl.setFeatures(payload);
+        this.marctlExecutionCredentials.setFeatures(payload);
+        this.upgradeCredentials.setFeatures(payload);
         this.usageOutbox?.connected(payload);
         for (const change of this.pendingSessionGroups.values())
           this.send('session.group.changed', change);
@@ -1436,15 +1609,21 @@ export class NodeConnector {
         for (const change of this.pendingSessionGroups.values())
           this.send('session.group.changed', change);
         this.mailNotificationControl.setFeatures(payload);
+        this.marctlExecutionCredentials.setFeatures(payload);
+        this.upgradeCredentials.setFeatures(payload);
       },
       close: (code, reason) => this.controlChannel.close(code, reason),
       inspectWorkspace: (envelope) => this.workspaceCoordinator.inspect(envelope),
       handleNodeRequest: (envelope) => this.nodeRequests.handle(envelope),
+      cancelNodeWait: (requestId) => this.nodeRequests.cancelWait(requestId),
       handleRuntimeCredentialResponse: (envelope) => this.runtimeCredentials.handle(envelope),
       handleScheduledRunAuthorizeResponse: (envelope) =>
         this.scheduledRunAuthorization.handle(envelope) ||
         this.restartAuthorization.handle(envelope),
       handleMailNotificationResponse: (envelope) => this.mailNotificationControl.handle(envelope),
+      handleMarctlExecutionCredentialResponse: (envelope) =>
+        this.marctlExecutionCredentials.handle(envelope),
+      handleUpgradeCredentialResponse: (envelope) => this.upgradeCredentials.handle(envelope),
       handleDirectTransfer: (envelope) => this.handleDirectTransfer(envelope),
       handleTerminalDirect: (envelope) => this.handleTerminalDirect(envelope),
       runners: this.runners,
@@ -1458,6 +1637,24 @@ export class NodeConnector {
     this.nodeRequests = new NodeRequestService({
       nodeId: () => this.config?.nodeId,
       databaseAvailable: () => this.database !== undefined,
+      resolveMarctlCaller: (caller, userId, data) =>
+        resolveMarctlCaller({
+          caller,
+          userId,
+          data,
+          runtime: this.runtime,
+          coordinator: this.continuousRunCoordinator
+        }),
+      authorizeMarctlOperation: (caller, operation, data, userId) =>
+        authorizeMarctlExecutionOperation({
+          caller,
+          operation,
+          data,
+          userId,
+          runtime: this.runtime,
+          resolveSession: (sessionId) =>
+            this.nativeSessionProjectionService.resolve(sessionId, true)
+        }),
       execute: (operation, data) =>
         this.modelUsage.withGrant(isPlainRecord(data) ? data.__usageGrant : undefined, () =>
           this.executeNodeOperation(operation, data)
@@ -1511,7 +1708,11 @@ export class NodeConnector {
       setCapabilities: (capabilities) =>
         (this.capabilities = {
           ...capabilities,
-          metadata: upgradeMetadata(capabilities.metadata, this.upgradeCoordinator.snapshot())
+          metadata: upgradeMetadata(
+            capabilities.metadata,
+            this.upgradeCoordinator.snapshot(),
+            options.supervisorUpgradeHandoff !== undefined
+          )
         }),
       control: this.controlChannel,
       terminal: this.terminalChannel,
@@ -1530,6 +1731,7 @@ export class NodeConnector {
         this.restartAuthorization.connected();
         if (!this.stopped) void this.restartHandoff.recover();
         this.mailNotificationControl.connected();
+        this.marctlExecutionCredentials.connected();
         this.recentRunProjectionService.publishSnapshot();
       }
     });
@@ -1957,6 +2159,8 @@ export class NodeConnector {
     this.scheduledRunAuthorization.close();
     this.restartAuthorization.close();
     this.mailNotificationControl.close();
+    this.marctlExecutionCredentials.disconnected();
+    this.upgradeCredentials.disconnect();
     const notificationMcpDrain = this.notificationMcpBridge.close();
     const webToolDrain = this.webToolService.close();
     this.directTransferService?.dispose();

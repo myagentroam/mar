@@ -22,6 +22,8 @@ function fixture() {
   const native: NodeAgentSession[] = [];
   const present = vi.fn((session: NodeAgentSession) => session);
   const discover = vi.fn(async () => native);
+  const cachedWorkspace = vi.fn(async () => native);
+  const history = vi.fn(async () => ({ turns: [], nextCursor: null }));
   const catalog = new SessionCatalogService({
     database: () => database,
     nodeId: () => 'node',
@@ -30,7 +32,7 @@ function fixture() {
     projection,
     runnerAvailable: () => true,
     cachedNative: () => native,
-    cachedWorkspace: async () => native,
+    cachedWorkspace,
     discoverWorkspace: discover,
     discoveryPending: () => false,
     present,
@@ -39,7 +41,7 @@ function fixture() {
     refreshActivity: async () => undefined,
     externalActivity: () => undefined,
     isWatching: () => false,
-    history: async () => ({ turns: [], nextCursor: null }),
+    history,
     invalidateHistory: () => undefined,
     invalidateWorkspaceSessions: () => undefined,
     emitSession: () => undefined
@@ -53,10 +55,59 @@ function fixture() {
         ? {}
         : { externalSessionId, nativeControl: 'MAR_MANAGED' })
     });
-  return { database, runtime, aliases, projection, catalog, native, present, discover, create };
+  return {
+    database,
+    runtime,
+    aliases,
+    projection,
+    catalog,
+    native,
+    present,
+    discover,
+    cachedWorkspace,
+    history,
+    create
+  };
 }
 
 describe('Session Catalog collection', () => {
+  it('reads a bounded registered workspace page without native discovery or history', async () => {
+    const f = fixture();
+    try {
+      for (let index = 0; index < 512; index++) {
+        f.database.saveNativeSessionMetadata({
+          runner: 'claude-code',
+          externalSessionId: `session-${index}`,
+          workspaceId: 'workspace-a',
+          runnerTitle: `Reference ${index}`
+        });
+      }
+      f.history.mockResolvedValue({
+        turns: Array.from({ length: 2000 }, (_, index) => ({ id: `long-history-${index}` })),
+        nextCursor: null
+      } as never);
+      const list = f.catalog.operations()['session.list']!;
+      const result = (await list({
+        workspaceId: 'workspace-a',
+        registeredOnly: true,
+        sessionGroup: 'MAIN',
+        query: 'Reference',
+        limit: 10
+      })) as {
+        sessions: NodeAgentSession[];
+        nextCursor: string | null;
+      };
+      expect(result.sessions).toHaveLength(10);
+      expect(result.nextCursor).not.toBeNull();
+      expect(f.discover).not.toHaveBeenCalled();
+      expect(f.cachedWorkspace).not.toHaveBeenCalled();
+      expect(f.history).not.toHaveBeenCalled();
+      await list({ workspaceId: 'workspace-a', query: 'Reference', limit: 10 });
+      expect(f.discover).toHaveBeenCalledOnce();
+    } finally {
+      f.database.close();
+    }
+  });
   it('does not rebind a stale managed alias through an unrelated external ID fallback', () => {
     const f = fixture();
     try {

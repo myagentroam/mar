@@ -123,7 +123,7 @@ describe('sleep tool', () => {
         };
       };
       const input = context(
-        wakeReason === 'steer' ? { waitInterrupt: source } : { subagentMessages: source }
+        wakeReason === 'steer' ? { waitInterrupt: source } : { contextUpdates: source }
       );
       const waiting = executeSleep({ durationMs: 300000 }, input);
       await vi.advanceTimersByTimeAsync(20);
@@ -140,7 +140,7 @@ describe('sleep tool', () => {
   it('ignores notifications without unread messages and cleans up on expiry', async () => {
     vi.useFakeTimers();
     const source = createToolWaitInterrupt(() => false);
-    const waiting = executeSleep({ durationMs: 50 }, context({ subagentMessages: source }));
+    const waiting = executeSleep({ durationMs: 50 }, context({ contextUpdates: source }));
     source.notify();
     await vi.advanceTimersByTimeAsync(50);
     expect((await waiting).data.wakeReason).toBe('elapsed');
@@ -153,7 +153,7 @@ describe('sleep tool', () => {
       { durationMs: 300000 },
       context({
         waitInterrupt: source,
-        subagentMessages: source
+        contextUpdates: source
       })
     );
     expect(result.data.wakeReason).toBe('subagent_message');
@@ -172,7 +172,7 @@ describe('sleep tool', () => {
         { durationMs: 300000 },
         context({
           signal: controller.signal,
-          subagentMessages: { pending: () => false, subscribe }
+          contextUpdates: { pending: () => false, subscribe }
         })
       );
       const assertion = expect(waiting).rejects.toBe(reason);

@@ -267,7 +267,7 @@ describe('single shared Web implementation', () => {
       ['FileTypeIcon', 'workspace'],
       ['WorkspaceFileTree', 'workspace'],
       ['QuickOpenDialog', 'workspace'],
-      ['ComposerFileReferencePicker', 'composer']
+      ['ComposerReferencePicker', 'composer']
     ]) {
       expect(existsSync(`ee/web/src/view/${folder}/${name}.vue`)).toBe(false);
       expect(manifest.exports[`./${name}.vue`]).toBe(`./src/view/${folder}/${name}.vue`);
@@ -288,7 +288,7 @@ describe('single shared Web implementation', () => {
       '../../view/workspace/QuickOpenDialog.vue'
     );
     expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
-      '../../view/composer/ComposerFileReferencePicker.vue'
+      '../../view/composer/ComposerReferencePicker.vue'
     );
     expect(read('mar-web-console/vite.config.ts')).toContain(
       '@myagentroam/web-core/build/third-party-notices'

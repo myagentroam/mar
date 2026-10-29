@@ -36,6 +36,7 @@ COPY ee/web ee/web
 COPY mar-web-console mar-web-console
 COPY docs/help docs/help
 COPY scripts/validate-help-docs.mjs scripts/validate-help-docs.mjs
+COPY scripts/help-anchors.mjs scripts/help-anchors.mjs
 
 RUN pnpm --filter @myagentroam/web-console... build
 

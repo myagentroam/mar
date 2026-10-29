@@ -45,10 +45,7 @@ describe('Core Extension SDK composition', () => {
         expect(lower).toHaveBeenCalledTimes(intercept ? 1 : 0);
         expect(adapter.requests[0]!.promptCacheKey).toBe(session.id);
         expect(adapter.requests[0]!.systemBlocks).toBeUndefined();
-        expect(
-          adapter.requests[0]!.tools.find((tool) => tool.name === 'agent_start')?.inputSchema
-            .properties
-        ).not.toHaveProperty('agentType');
+        expect(adapter.requests[0]!.tools.some((tool) => tool.name === 'agent_start')).toBe(false);
         expect(
           adapter.requests[0]!.messages.every((message) => message.textBlocks === undefined)
         ).toBe(true);

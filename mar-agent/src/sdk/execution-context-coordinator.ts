@@ -37,7 +37,6 @@ export class ExecutionContextCoordinator {
         ContextGcRuntimeInput,
         'system' | 'tools' | 'usage' | 'inlineMedia' | 'mediaView' | 'getActiveProcessIds'
       >;
-      readonly child: boolean;
       start(input?: { focus?: string; async?: boolean }): CompactFlight;
       wait(input?: { focus?: string; async?: boolean }): Promise<boolean>;
       activeProcesses(): Promise<ReadonlySet<string>>;
@@ -65,14 +64,14 @@ export class ExecutionContextCoordinator {
     );
   }
   async prepareInputs(ports: {
-    includeSubagentUpdates: boolean;
+    includeSessionContext: boolean;
     appendMailbox(): Promise<unknown>;
-    appendSubagentUpdates(): Promise<void>;
+    appendSessionContext(): Promise<void>;
     refreshTools(): void;
     updateEnvironment(): void;
   }): Promise<void> {
     await ports.appendMailbox();
-    if (ports.includeSubagentUpdates) await ports.appendSubagentUpdates();
+    if (ports.includeSessionContext) await ports.appendSessionContext();
     ports.refreshTools();
     await this.ports.context.syncMcpWorldState(this.ports.messages.length);
     this.advanceBoundary();
@@ -128,7 +127,7 @@ export class ExecutionContextCoordinator {
         this.ports.signal.throwIfAborted();
         this.ports.execution.assertContextValid();
       });
-    if (!this.ports.compact.pending && !this.ports.child)
+    if (!this.ports.compact.pending)
       await this.gc(round, usage, await this.ports.resources.gcCandidate(), true);
   }
   async gc(

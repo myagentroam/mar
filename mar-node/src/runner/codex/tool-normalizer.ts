@@ -1,4 +1,5 @@
 import { compactRunnerText } from '../normalization.js';
+import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
 
 export function normalizeCodexApproval(method: string) {
   return method === 'item/commandExecution/requestApproval'
@@ -33,6 +34,13 @@ export function normalizeCodexTool(input: {
         payload: {
           outputPreview,
           truncated: input.truncated === true || (input.outputSummary?.length ?? 0) > 10_000,
+          ...(input.outputSummary == null
+            ? {}
+            : { output: publicOutputSnapshot(input.outputSummary, input.truncated === true) }),
+          toolPresentation: shellExecution(
+            input.outputSummary ?? undefined,
+            input.truncated === true
+          ),
           ...(attachments.length === 0 ? {} : { attachments })
         }
       };
@@ -54,6 +62,13 @@ export function normalizeCodexTool(input: {
         outputRef: null,
         exitCode: null,
         durationMs: null,
+        toolPresentation: shellExecution(
+          input.outputSummary ?? undefined,
+          input.truncated === true
+        ),
+        ...(input.outputSummary == null
+          ? {}
+          : { output: publicOutputSnapshot(input.outputSummary, input.truncated === true) }),
         truncated:
           input.truncated === true ||
           command.length > 10_000 ||

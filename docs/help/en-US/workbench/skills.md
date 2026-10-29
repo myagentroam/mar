@@ -1,6 +1,6 @@
 ---
 title: Favorite and Install Skills
-lastUpdated: 2026-10-13
+lastUpdated: 2026-10-29
 ---
 
 # Favorite and Install Skills
@@ -12,3 +12,21 @@ Open **Admin > Skill Configuration** to browse Skill and MCP entries made availa
 Choose the Node and, when required, the Workspace before installing. Review version, source, and target status. Updating replaces the installed copy with the selected catalog version; reinstalling restores the same version. If files conflict, inspect the target before approving an overwrite.
 
 Skill Configuration shows installed state and environment checks. Removing an installation does not remove the catalog favorite or its source. Authorized users administer external sources under **Admin > Skill Sources** and configure referenced secrets under **Admin > Environment Secrets**.
+
+## Skill sources and installation
+
+Skills provide reusable instructions; MCP servers connect Agents to tools and services. Node-level configuration applies to its Workspaces, while a same-named Workspace configuration takes precedence. In **Skill Sources**, choose an enabled source and add a Skill to the available personal, organization, or enterprise catalog. Check its source and version before adding it. Catalog updates do not automatically update installed copies: check for updates, confirm the new version, and install it on each intended target.
+
+Repository sources require a recognizable Git revision. Public GitHub and compatible GitLab repositories can use HTTPS; SSH sources use `git@host:owner/repo.git` and the Server deployment account's SSH configuration. SSH Skill sources skip host fingerprint verification, so use only trusted networks and sources; see [Server deployment](../getting-started/server-installation.md). Source addresses are checked against local and private targets. TLS verification is enabled by default; disabling it for a self-signed source is a separate, high-risk administrator setting and does not relax address checks.
+
+Choose an online Node and optionally its Workspace in **Skill Configuration**. Check the environment, then install, update, or reinstall. Node installations use the service account's `~/.agents/skills`; Workspace installations maintain `.agents/skills` and `.claude/skills`, with managed local Git exclusions rather than changes to the tracked `.gitignore`. A Node or browser interruption does not automatically retry an installation. If confirmation times out, refresh the target's actual status before deciding whether to retry. Unknown installed versions can be reinstalled; inspect permission, target path, and environment errors before trying again.
+
+To see what a Workspace session will load, open the Workspace and choose **Loaded Skills** from the menu next to **New Session**. Installation and removal remain in **Skill Configuration**; removing a Workspace override can expose a same-named Node entry again.
+
+## MCP servers
+
+In **MCP Sources**, search an enabled Registry, inspect the server and pinned version, and add it to the available catalog. In **Skill Configuration**, switch to the MCP tab, select the online Node or Workspace, and install the intended entry. Node installation uses the Node account's command environment: npm-based entries may download a pinned package via `npx`. MAR validates initialization and reads at least one tool before saving the configuration. Resolve network, authentication, package, or system dependency errors on that Node before retrying.
+
+Changes affect new or reopened Agent sessions, not an already running session. Removing the configuration does not clear npm caches. Environment variables and request headers refer to names in **Environment Secrets**, not secret values; add a missing referenced secret before using the MCP. Use **Loaded MCP** beside **New Session** to inspect the effective Workspace and Node configuration.
+
+For Playwright, add a pinned Registry version and install it on the intended target. Its default browser is headless, each Agent session has an isolated browser context, and browser state is not retained after the session. The Node must be able to run the package and access the target site. If tools are unavailable, verify the target and installation and start a new session.

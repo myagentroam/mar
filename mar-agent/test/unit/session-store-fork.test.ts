@@ -4,12 +4,49 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { createSessionCatalog } from '../../src/session/catalog.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
+});
+
+it('preserves the applied input receipt identity when a Session is forked', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'mar-agent-fork-receipt-'));
+  homes.push(home);
+  const store = await JsonlSessionStore.open(home);
+  try {
+    const source = await store.createSession({ title: 'Source', workspace: home });
+    const input = await store.append(source.id, {
+      type: 'turn.user',
+      payload: { prompt: 'private', clientMessageId: 'message' },
+      executionId: 'execution',
+      turnId: 'boundary'
+    });
+    await store.append(source.id, {
+      type: 'input.applied',
+      payload: { inputRef: input.recordId },
+      executionId: 'execution',
+      turnId: 'boundary'
+    });
+    const fork = await store.forkSession(source.id, {
+      boundaryTurnId: 'boundary',
+      title: 'Branch'
+    });
+    const catalog = createSessionCatalog(store, true);
+    await expect(
+      catalog.inputReceipt(fork.id, { clientMessageId: 'message', executionId: 'execution' })
+    ).resolves.toMatchObject({ status: 'applied', turnId: 'boundary', appliedTurnId: 'boundary' });
+    const records = await store.read(fork.id);
+    const copiedInput = records.find((record) => record.type === 'turn.user');
+    const applied = records.find((record) => record.type === 'input.applied');
+    expect(applied?.payload).toEqual({ inputRef: copiedInput?.recordId });
+    expect(copiedInput?.recordId).not.toBe(input.recordId);
+  } finally {
+    await store.close();
+  }
 });
 
 it('forks thousands of records with segment-bounded synchronization', async () => {

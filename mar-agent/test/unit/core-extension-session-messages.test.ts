@@ -12,6 +12,8 @@ import { restoreMessages } from '../../src/runtime/context/restore.js';
 import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
 import { buildContextProjection } from '../../src/runtime/context/projection.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+import { createSessionExtensionMessages } from '../../src/sdk/session-extension-messages.js';
+import type { ResolvedModelConfiguration } from '../../src/sdk/model-runtime.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -51,6 +53,108 @@ async function messagesFixture(codeMode = false) {
 }
 
 describe('Core Session active message views', () => {
+  it.each([true, false])(
+    'projects a cold completed child using its own image and Code Mode configuration (%s)',
+    async (childCapabilities) => {
+      const f = await messagesFixture();
+      try {
+        const child = await f.store.createSession({
+          workspace: f.home,
+          source: { type: 'user', parentSessionId: f.session.id }
+        });
+        await f.store.append(child.id, {
+          type: 'execution.header',
+          executionId: 'child-execution',
+          turnId: 'child-turn',
+          payload: { modelId: 'child-model' }
+        });
+        const images = await f.store.persistInputImages(child.id, [
+          {
+            name: 'image.png',
+            mimeType: 'image/png',
+            dataBase64: Buffer.from('pixels').toString('base64')
+          }
+        ]);
+        await f.store.append(child.id, {
+          type: 'turn.user',
+          turnId: 'child-turn',
+          payload: { prompt: 'child image', images }
+        });
+        await f.store.append(child.id, {
+          type: 'model.context',
+          payload: {
+            role: 'tool_call',
+            callId: 'search',
+            name: 'tool_search',
+            arguments: { query: 'echo' }
+          }
+        });
+        await f.store.append(child.id, {
+          type: 'model.context',
+          payload: {
+            role: 'tool',
+            callId: 'search',
+            content: 'original search',
+            toolSearchTools: [
+              { name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }
+            ]
+          }
+        });
+        await f.store.append(child.id, {
+          type: 'execution.completed',
+          executionId: 'child-execution',
+          turnId: 'child-turn',
+          payload: {}
+        });
+        const parentModel = {
+          ...f.adapter.configuration,
+          id: 'parent-model',
+          inputCapabilities: childCapabilities ? ['TEXT'] : ['TEXT', 'IMAGE'],
+          codeMode: !childCapabilities
+        } as ResolvedModelConfiguration;
+        const childModel = {
+          ...f.adapter.configuration,
+          id: 'child-model',
+          inputCapabilities: childCapabilities ? ['TEXT', 'IMAGE'] : ['TEXT'],
+          codeMode: childCapabilities
+        } as ResolvedModelConfiguration;
+        const read = createSessionExtensionMessages({
+          sessionId: f.session.id,
+          store: f.store,
+          runtime: () => undefined,
+          models: () => ({
+            defaultModelId: 'parent-model',
+            models: new Map([
+              ['parent-model', parentModel],
+              ['child-model', childModel]
+            ])
+          })
+        });
+        const page = await read(
+          { agentId: child.id, view: 'request', includeImages: true },
+          {
+            operationId: 'read',
+            sessionId: f.session.id,
+            sessionEpoch: 0,
+            actor: 'extension',
+            entry: 'native-api',
+            signal: new AbortController().signal
+          }
+        );
+        const user = page.messages.find((message) => message.role === 'user');
+        expect(user?.role === 'user' && !!user.images?.length).toBe(childCapabilities);
+        const search = page.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'search'
+        );
+        expect(search?.role === 'tool' && search.content !== 'original search').toBe(
+          childCapabilities
+        );
+      } finally {
+        await f.store.close();
+      }
+    }
+  );
+
   it('orders an append admitted during checkpoint commit after the checkpoint without losing it', async () => {
     const f = await messagesFixture();
     const commit = JsonlSessionStore.prototype.compact;
@@ -712,25 +816,20 @@ describe('Core Session active message views', () => {
     }
   });
 
-  it('reads actual children without consuming unread results and rejects foreign targets', async () => {
+  it('reads actual children without starting executions and rejects foreign targets', async () => {
     const f = await messagesFixture();
     try {
-      const child = await f.context.agents!.spawn({ prompt: 'child message' });
-      if (!('agentId' in child)) throw new Error('Expected an actual child task.');
-      await vi.waitFor(async () =>
-        expect(await f.context.agents!.inspect({ agentId: child.agentId })).toMatchObject({
-          status: 'completed'
-        })
-      );
+      const child = await f.agent.createSession({
+        workspace: f.home,
+        parentSessionId: f.session.id
+      });
+      expect((await child.run({ prompt: 'child message' }).result()).status).toBe('completed');
       const count = f.adapter.requests.length;
-      const page = await f.api.messages({ agentId: child.agentId, view: 'conversation' });
+      const page = await f.api.messages({ agentId: child.id, view: 'conversation' });
       expect(page.messages).toEqual([
         expect.objectContaining({ role: 'user', content: 'child message' }),
         expect.objectContaining({ role: 'assistant', content: 'done' })
       ]);
-      expect(
-        (await f.context.agents!.wait({ agentId: child.agentId, waitMs: 1 })).latestMessage
-      ).toBeDefined();
       const other = await f.agent.createSession({ workspace: f.home, title: 'Other parent' });
       await expect(f.api.messages({ agentId: other.id })).rejects.toMatchObject({
         code: 'MAR_AGENT_SUBAGENT_NOT_FOUND'
@@ -739,12 +838,8 @@ describe('Core Session active message views', () => {
         code: 'MAR_AGENT_SUBAGENT_NOT_FOUND'
       });
       expect(f.adapter.requests).toHaveLength(count);
-      await other.run({ prompt: 'other parent' }).result();
-      const foreign = await f.contexts
-        .get(other.id)!
-        .agents!.spawn({ prompt: 'foreign child', background: false });
-      if (!('agentId' in foreign)) throw new Error('Expected an actual child task.');
-      await expect(f.api.messages({ agentId: foreign.agentId })).rejects.toMatchObject({
+      const foreign = await f.agent.createSession({ workspace: f.home, parentSessionId: other.id });
+      await expect(f.api.messages({ agentId: foreign.id })).rejects.toMatchObject({
         code: 'MAR_AGENT_SUBAGENT_NOT_FOUND'
       });
     } finally {
@@ -752,17 +847,16 @@ describe('Core Session active message views', () => {
     }
   });
 
-  it('rejects a child target when the real child-controller capability is absent', async () => {
+  it('lets a child inspect direct descendants without exposing its parent', async () => {
     let childContext!: SessionExtensionContext;
-    let rootContext!: SessionExtensionContext;
+    let childId = '';
     const f = await fixture(
       [
         {
           id: 'child-reader',
           apiVersion: '1.0',
           attachSession(current) {
-            if (current.agents) rootContext = current;
-            else childContext = current;
+            if (current.sessionId === childId) childContext = current;
           }
         }
       ],
@@ -770,14 +864,24 @@ describe('Core Session active message views', () => {
       false,
       true
     );
-    await f.session.run({ prompt: 'initialize' }).result();
-    await rootContext.agents!.spawn({ prompt: 'child', background: false });
+    const child = await f.agent.createSession({ workspace: f.home, parentSessionId: f.session.id });
+    childId = child.id;
+    await child.run({ prompt: 'child' }).result();
     expect((await childContext.session!.messages({ view: 'conversation' })).messages).toHaveLength(
       2
     );
     await expect(childContext.session!.messages({ agentId: f.session.id })).rejects.toMatchObject({
-      code: 'MAR_AGENT_SESSION_INPUT_UNAVAILABLE'
+      code: 'MAR_AGENT_SUBAGENT_NOT_FOUND'
     });
+    const grandchild = await f.agent.createSession({
+      workspace: f.home,
+      parentSessionId: child.id
+    });
+    await grandchild.run({ prompt: 'grandchild' }).result();
+    expect(
+      (await childContext.session!.messages({ agentId: grandchild.id, view: 'conversation' }))
+        .messages
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ content: 'grandchild' })]));
   });
 
   it.each([

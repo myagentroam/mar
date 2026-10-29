@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LocalAgentHost, type HostSkill } from '../../src/host.js';
-import { parseModelCatalog } from '../../src/index.js';
+import { parseModelCatalog, type Agent } from '../../src/index.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import { type ModelEvent } from '../../src/model/contracts.js';
 import { loadAgentInstructions, loadAgentSkill } from '../../src/runtime/context/instructions.js';
 import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
+import { waitForNewChild } from './support/subagent-wait.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -89,6 +91,8 @@ it('uses the selected child model for generic Host policies and tool execution',
       inputCapabilities: ['TEXT'],
       outputCapabilities: ['TEXT'],
       reasoningEfforts: [],
+      conversationModel: true,
+      subagentModel: true,
       hostedWebSearch: false,
       enabled: true
     }))
@@ -108,12 +112,14 @@ it('uses the selected child model for generic Host policies and tool execution',
     }
   });
   const rounds = new Map<string, number>();
-  const agent = await createMarAgent(
+  let agent!: Agent;
+  agent = await createMarAgent(
     {
       mode: 'normal',
       host,
       models,
-      defaultModelId: 'parent'
+      defaultModelId: 'parent',
+      extensions: [createSubagentExtension({ agent: () => agent })]
     },
     (configuration) => ({
       configuration,
@@ -129,6 +135,7 @@ it('uses the selected child model for generic Host policies and tool execution',
             arguments:
               configuration.id === 'parent'
                 ? {
+                    title: 'Child task',
                     description: 'Child task',
                     prompt: 'Use the host action.',
                     role: 'general-purpose',
@@ -138,12 +145,9 @@ it('uses the selected child model for generic Host policies and tool execution',
           };
           yield { type: 'completed', reason: 'tool_use' };
         } else if (configuration.id === 'parent' && round === 2) {
-          yield {
-            type: 'client_tool.call',
-            callId: 'wait-child',
-            name: 'agent_wait',
-            arguments: { waitFor: 'completion', waitMs: 10_000 }
-          };
+          const wait = waitForNewChild(request);
+          if (!wait) throw new Error('Expected the external subagent start receipt.');
+          yield wait;
           yield { type: 'completed', reason: 'tool_use' };
         } else {
           yield { type: 'text.completed', itemId: `${configuration.id}-answer`, text: 'Done' };

@@ -12,7 +12,6 @@ import { assertMcpToolCatalog } from '../tools/mcp/catalog.js';
 import { DeferredMcpRegistry } from '../tools/mcp/tool-search.js';
 import { discoveredMcpToolNames, rebindMcpToolSearchOutputs } from '../tools/mcp/history.js';
 import { BUILTIN_TOOL_DEFINITIONS } from '../tools/registry.js';
-import { agentStartToolDefinitionWithModels } from '../tools/agent/agent-start.js';
 import { toolCallers } from '../tools/callers.js';
 import type { SessionModelMessage } from '../session/model-request.js';
 import type { ExecutionMode } from './types.js';
@@ -55,15 +54,7 @@ export async function initializeExecutionToolCatalog(input: {
       'MAR_AGENT_TOOL_INPUT_INVALID',
       'Host tools cannot use the MCP namespace.'
     );
-  const builtins = BUILTIN_TOOL_DEFINITIONS.map((tool) =>
-    tool.name === 'agent_start'
-      ? agentStartToolDefinitionWithModels(
-          [...input.models.values()]
-            .filter((configuration) => configuration.conversationModel !== false)
-            .map(({ id, name, reasoningEfforts }) => ({ id, name, reasoningEfforts }))
-        )
-      : tool
-  );
+  const builtins = BUILTIN_TOOL_DEFINITIONS;
   const tools = [
     ...builtins,
     ...(extensions.tools ?? []),
@@ -103,12 +94,7 @@ export class ExecutionToolCatalog {
   ) {}
   eligible(tool: ClientToolDefinition): boolean {
     toolCallers(tool);
-    if (
-      this.input.child &&
-      (tool.agentScope === 'ROOT_ONLY' ||
-        tool.name.startsWith('agent_') ||
-        tool.name === 'question')
-    )
+    if (this.input.child && (tool.agentScope === 'ROOT_ONLY' || tool.name === 'question'))
       return false;
     if (tool.name === 'tool_search') return this.input.registry.hasDeferred;
     return tool.name === 'code_exec' || tool.name === 'code_exec_wait'

@@ -1,6 +1,6 @@
 ---
 title: Windows Node 与任务计划
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # Windows Node 与任务计划
@@ -142,7 +142,7 @@ Get-Command opencode, codex, claude -ErrorAction SilentlyContinue
 
 后两行都是按需检查，未安装未使用的 Agent 或工具不影响 Node 上线。计划任务启动后，以节点详情中的“支持 Agent”和“工具环境”为最终结果；若与当前 PowerShell 不一致，应检查计划任务的运行账号、用户配置目录和 `PATH`，不要为绕过问题改用 `SYSTEM`。
 
-然后按[升级 MyAgentRoam](upgrade.md)从管理页推送 npm 中不超过当前 Server 版本的最高稳定版本。升级后再次查看任务与节点详情，确认计划任务仍在运行、Node 版本已更新且既有 Workspace 可打开。
+然后按[升级 MyAgentRoam](upgrade.md)从管理页推送 npm 中符合当前业务基线、且不超过 Server 版本的最高稳定版本。升级后再次查看任务与节点详情，确认计划任务仍在运行、Node 版本已更新且既有 Workspace 可打开。
 
 **成功标志：** 重新启动任务，或重启 Windows 并登录目标用户后，Node 自动上线，支持 Agent 保持可发现，详情显示已启用 Supervisor 升级能力；从 Web Terminal 或 Agent 工具启动的 GUI 程序显示在该用户当前桌面。
 

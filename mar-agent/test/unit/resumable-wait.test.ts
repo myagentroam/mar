@@ -59,6 +59,64 @@ describe('resumable wait outcomes', () => {
     await expect(pending).resolves.toBe('timeout');
   });
 
+  it.each(['ready', 'cancel'] as const)(
+    'releases a synchronous source subscription on %s without registering later resources',
+    async (outcome) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const addAbort = vi.spyOn(controller.signal, 'addEventListener');
+      const unsubscribe = vi.fn();
+      const subscribeInterrupt = vi.fn(() => vi.fn());
+      const error = new Error('cancelled while subscribing');
+      let ready = false;
+      const waiting = waitForToolCondition({
+        ready: () => ready,
+        subscribe: (notify) => {
+          if (outcome === 'ready') ready = true;
+          else controller.abort(error);
+          notify();
+          return unsubscribe;
+        },
+        waitMs: 300000,
+        signal: controller.signal,
+        interrupt: { pending: () => false, subscribe: subscribeInterrupt }
+      });
+      if (outcome === 'ready') await expect(waiting).resolves.toBe('ready');
+      else await expect(waiting).rejects.toBe(error);
+      expect(unsubscribe).toHaveBeenCalledOnce();
+      expect(subscribeInterrupt).not.toHaveBeenCalled();
+      expect(addAbort).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
+  it('releases both subscriptions if interrupt notifies synchronously', async () => {
+    vi.useFakeTimers();
+    const unsubscribe = vi.fn();
+    const unsubscribeInterrupt = vi.fn();
+    const controller = new AbortController();
+    const addAbort = vi.spyOn(controller.signal, 'addEventListener');
+    await expect(
+      waitForToolCondition({
+        ready: () => false,
+        subscribe: () => unsubscribe,
+        waitMs: 300000,
+        signal: controller.signal,
+        interrupt: {
+          pending: () => true,
+          subscribe: (notify) => {
+            notify();
+            return unsubscribeInterrupt;
+          }
+        }
+      })
+    ).resolves.toBe('interrupted');
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(unsubscribeInterrupt).toHaveBeenCalledOnce();
+    expect(addAbort).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('observes a pending steer on entry and releases both subscriptions', async () => {
     let pending = true;
     const interrupt = createToolWaitInterrupt(() => pending);

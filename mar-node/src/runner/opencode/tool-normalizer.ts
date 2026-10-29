@@ -1,4 +1,5 @@
 import { compactRunnerText, compactRunnerValue } from '../normalization.js';
+import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
 
 export function normalizeOpenCodeTool(
   toolName: string,
@@ -32,7 +33,13 @@ export function normalizeOpenCodeTool(
         outputRef: null,
         exitCode: typeof state?.exitCode === 'number' ? state.exitCode : null,
         durationMs: null,
-        truncated: false
+        truncated: typeof state?.output === 'string' && state.output.length > 10_000,
+        ...(typeof state?.output === 'string'
+          ? { output: publicOutputSnapshot(state.output) }
+          : {}),
+        toolPresentation: shellExecution(
+          typeof state?.output === 'string' ? state.output : undefined
+        )
       }
     };
   return {

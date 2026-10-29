@@ -34,7 +34,7 @@ import { errorMessage } from '../util/error-presentation.js';
 import { errorCode } from '../util/api-error.js';
 import { isAgentRun, isSession } from '../util/workbench-guards.js';
 import { createRunnerInteractionService } from './runner-interaction-service.js';
-import { createFileReferenceService } from './file-reference-service.js';
+import { createComposerReferenceService } from './composer-reference-service.js';
 import { createComposerSkillService } from './composer-skill-service.js';
 import { createComposerSkillTokenService } from './composer-skill-token-service.js';
 import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-service.js';
@@ -281,7 +281,7 @@ export function createSessionShareConversationService(options: {
   const attachmentsPending = computed(() =>
     attachments.attachments.value.some((value) => value.status !== 'COMPLETED')
   );
-  const fileReferences = createFileReferenceService(
+  const fileReferences = createComposerReferenceService(
     input,
     {
       nodeId: computed(() => target.nodeId),

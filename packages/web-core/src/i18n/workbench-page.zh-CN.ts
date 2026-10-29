@@ -39,7 +39,7 @@ export const workbenchPageZhCN = {
       agentConversation: 'Agent 对话',
       run: '执行 /{value0}',
       typeForCommandsToReferenceWorkspaceFiles:
-        "输入 / 调用命令、# 使用快捷提示词、用 {'@'} 提及工作区文件或文件夹，或添加附件，向 {value0} 提问…",
+        "输入 / 调用命令、# 使用快捷提示词、用 {'@'} 提及工作区文件、文件夹或会话，或添加附件，向 {value0} 提问…",
       readOnlyInspector: '只读检查器',
       workspace: '工作区'
     },

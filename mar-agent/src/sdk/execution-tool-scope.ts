@@ -1,4 +1,3 @@
-import { bindAgentController } from './extension-agent-controller.js';
 import { createExecutionCodeModeContext } from './execution-code-mode.js';
 import { currentExecutionImages } from '../tools/output-projection.js';
 import { requestSmartCompaction, type SmartCompactionInput } from '../runtime/compaction/smart.js';
@@ -12,10 +11,10 @@ import type { RoundToolScope } from '../tools/execution.js';
 import type { SessionRuntime } from './session-runtime.js';
 import type { ExecutionToolSources } from './extension-tools.js';
 import type { ExtensionSession } from '../extensions/session.js';
+import { SESSION_CONTEXT_PROVIDER } from '../extensions/session-context.js';
 import type { ExtensionOperations, ExtensionOperationContext } from '../extensions/operation.js';
 import type { ExtensionPromptComposition } from '../extensions/prompt-composition.js';
 import type { DeferredMcpRegistry } from '../tools/mcp/tool-search.js';
-import type { SubagentSessionController } from '../subagent/session-controller.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import type { ExecutionMode } from './types.js';
 import type { CompactFlight } from '../runtime/compaction/coordinator.js';
@@ -46,19 +45,16 @@ export function createExecutionToolScope(input: {
   readonly todo: ToolRuntimeContext['todo'];
   readonly waitInterrupt: ToolRuntimeContext['waitInterrupt'];
   readonly skills: ToolRuntimeContext['skills'];
-  readonly subagents:
-    | Pick<SubagentSessionController, 'captureParentFrame' | 'captureExecution' | 'modelMessages'>
-    | undefined;
   readonly coreExtensions: Pick<
     ExtensionSession,
     | 'epoch'
-    | 'agentAction'
     | 'withTools'
     | 'invoke'
     | 'assertLive'
     | 'pin'
     | 'diagnose'
     | 'composeModelSystem'
+    | 'services'
   >;
   readonly operations: Pick<ExtensionOperations, 'enter'>;
   readonly scheduleTool: SessionRuntime['scheduleTool'];
@@ -96,7 +92,6 @@ export function createExecutionToolScope(input: {
     todo,
     waitInterrupt,
     skills,
-    subagents,
     coreExtensions,
     operations,
     scheduleTool,
@@ -136,11 +131,11 @@ export function createExecutionToolScope(input: {
         .filter((tool) => roundBindings.get(tool.name)?.mcp !== undefined)
         .map((tool) => [tool.name, mcpRegistry.expectedTool(tool.name)])
     );
-    const parentFrame =
-      subagents === undefined || mode === 'compact'
-        ? undefined
-        : subagents.captureParentFrame(executionId);
     const roundSmartInput = smartInput();
+    const modelMessages =
+      mode === 'compact'
+        ? undefined
+        : coreExtensions.services.resolve(SESSION_CONTEXT_PROVIDER)?.wake;
     const toolContext: ToolRuntimeContext = {
       imageStore: store,
       host: host,
@@ -168,15 +163,7 @@ export function createExecutionToolScope(input: {
       permissionPolicy,
       writeToolResultResource: (text) => store.writeToolResultResource(sessionId, text),
       todo,
-      ...(subagents === undefined || mode === 'compact'
-        ? {}
-        : {
-            subagents: bindAgentController(
-              subagents.captureExecution(executionId),
-              coreExtensions.agentAction
-            ),
-            subagentMessages: subagents.modelMessages
-          }),
+      ...(modelMessages === undefined ? {} : { contextUpdates: modelMessages }),
       mode,
       sessionId,
       executionId,
@@ -200,15 +187,16 @@ export function createExecutionToolScope(input: {
                   ...(context.parentCallId === undefined
                     ? {}
                     : { parentToolCallId: context.parentCallId }),
+                  ...(context.waitInterrupt === undefined
+                    ? {}
+                    : { waitInterrupt: context.waitInterrupt }),
                   signal: context.signal
                 },
                 (operation) => coreExtensions.invoke(call, operation, roundBindings)
               )
             )
           );
-        return sources.withFrame(context, () =>
-          parentFrame === undefined ? invoke() : parentFrame(invoke)
-        );
+        return sources.withFrame(context, invoke);
       }
     };
     const recentImages = async () => {

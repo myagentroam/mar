@@ -119,6 +119,13 @@ export interface ContinuousRunCoordinatorOptions {
   readonly markInterrupted: (executionId: string) => void;
   readonly mcps: (workspaceId: string) => readonly NodeMcpInstallation[];
   readonly retainEnvironment?: (environment: Readonly<Record<string, string>>) => () => void;
+  readonly mintMarctlExecutionCredential?: (input: {
+    readonly parentToken: string;
+    readonly workspaceId: string;
+    readonly sessionId: string;
+    readonly executionId: string;
+    readonly userId: number;
+  }) => Promise<string>;
   readonly afterExecutionStarted?: (input: PreparedExecutionInput<unknown>) => Promise<void>;
   readonly afterExecutionSteered?: (input: PreparedExecutionInput<unknown>) => Promise<void>;
   readonly afterExecutionStartFailed?: (
@@ -889,8 +896,34 @@ export class ContinuousRunCoordinator<TAttachment> {
         pending.goal === undefined ? undefined : await this.options.goalMcp?.(executionInput);
       const scheduleMcp = await this.options.scheduleMcp?.(executionInput);
       const notificationMcp = await this.options.notificationMcp?.(executionInput);
+      const { MAR_CTL_USER_TOKEN: parentToken, ...runnerEnvironment } = pending.secretEnvironment;
+      let executionToken: string | undefined;
+      if (parentToken !== undefined) {
+        const execution = this.options.runtime.executionSnapshot(executionId);
+        if (
+          !this.options.mintMarctlExecutionCredential ||
+          !execution ||
+          execution.sessionId !== pending.sessionId ||
+          execution.runId !== active.id ||
+          !Number.isSafeInteger(active.initiatedByUserId)
+        )
+          throw new Error('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
+        executionToken = await this.options.mintMarctlExecutionCredential({
+          parentToken,
+          workspaceId: pending.workspaceId,
+          sessionId: pending.sessionId,
+          executionId,
+          userId: active.initiatedByUserId!
+        });
+      }
       if (this.suspended || this.options.stopped() || !this.dispatchedExecutions.has(executionId))
         return;
+      if (
+        executionToken !== undefined &&
+        (this.options.runtime.activeSessionRun(pending.sessionId)?.id !== active.id ||
+          this.options.runtime.currentExecutionId(active.id) !== executionId)
+      )
+        throw new Error('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
       if (!this.goalCurrent(pending)) {
         this.dispatchedExecutions.delete(executionId);
         this.rejectStaleGoal(executionId);
@@ -921,7 +954,8 @@ export class ContinuousRunCoordinator<TAttachment> {
         collaborationMode: pending.collaborationMode,
         ...(pending.serviceTier === undefined ? {} : { serviceTier: pending.serviceTier }),
         secretEnvironment: {
-          ...pending.secretEnvironment,
+          ...runnerEnvironment,
+          ...(executionToken === undefined ? {} : { MAR_CTL_USER_TOKEN: executionToken }),
           MAR_CTL_NODE_ID: this.options.runtime.getAgentSession(pending.sessionId)?.nodeId ?? '',
           MAR_CTL_WORKSPACE_ID: pending.workspaceId,
           MAR_CTL_SESSION_ID:

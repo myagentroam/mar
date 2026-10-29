@@ -33,7 +33,9 @@ function fixture(
     },
     { id: REQUEST_ID }
   );
-  const execute = vi.fn(async (_operation: string, _data: unknown) => ({ workspaces: [] }));
+  const execute = vi.fn(async (_operation: string, _data: unknown): Promise<unknown> => ({
+    workspaces: []
+  }));
   const send = vi.fn();
   const service = new NodeRequestService({
     nodeId: () => NODE_ID,
@@ -47,6 +49,83 @@ function fixture(
 afterEach(() => vi.restoreAllMocks());
 
 describe('Node request user authorization', () => {
+  it('binds Server-prepared execution model resources and strips a forged body value', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
+    const caller = { type: 'execution', sessionId: 'source', executionId: 'execution' };
+    const prepared = { marAgentModel: { id: 'eligible' }, marAgentRuntimeScopeId: 'scope' };
+    const execute = vi.fn(async () => ({ accepted: true }));
+    const send = vi.fn();
+    const service = new NodeRequestService({
+      nodeId: () => NODE_ID,
+      databaseAvailable: () => true,
+      resolveMarctlCaller: () => caller,
+      authorizeMarctlOperation: async () => {},
+      execute,
+      send
+    });
+    const request = createEnvelope(
+      'node.request',
+      {
+        operation: 'agent.network',
+        data: { action: 'start', __marctlExecutionResources: { marAgentModel: { id: 'forged' } } },
+        userAuthorization: {
+          userId: 1,
+          sessionHash: SESSION_HASH,
+          nodeId: NODE_ID,
+          operation: 'agent.network',
+          requestId: REQUEST_ID,
+          issuedAt: ISSUED_AT,
+          expiresAt: EXPIRES_AT,
+          marctlCaller: caller,
+          marctlExecutionResources: prepared
+        }
+      },
+      { id: REQUEST_ID }
+    );
+    await service.handle(request);
+    expect(execute).toHaveBeenCalledWith(
+      'agent.network',
+      expect.objectContaining({
+        __marctlCaller: caller,
+        __marctlExecutionResources: prepared
+      })
+    );
+    expect(JSON.stringify(send.mock.calls)).not.toContain('marAgentModel');
+  });
+  it('cancels the matching wait with a trusted signal and ignores a caller-supplied signal', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
+    const f = fixture({ operation: 'agent.network' });
+    const forged = new AbortController();
+    let received: AbortSignal | undefined;
+    f.execute.mockImplementation(async (_operation, data) => {
+      received = (data as { __requestAbortSignal: AbortSignal }).__requestAbortSignal;
+      await new Promise<void>((resolve) =>
+        received!.addEventListener('abort', () => resolve(), { once: true })
+      );
+      return { cancelled: received.aborted };
+    });
+    const pending = f.service.handle({
+      ...f.request,
+      payload: {
+        ...(f.request.payload as Record<string, unknown>),
+        operation: 'agent.network',
+        data: { action: 'wait', __requestAbortSignal: forged.signal }
+      }
+    });
+    await vi.waitFor(() => expect(received).toBeDefined());
+    expect(received).not.toBe(forged.signal);
+    f.service.cancelWait('different-request');
+    expect(received!.aborted).toBe(false);
+    f.service.cancelWait(REQUEST_ID);
+    await pending;
+    expect(received!.aborted).toBe(true);
+    expect(f.send).toHaveBeenCalledWith(
+      'node.response',
+      { result: { cancelled: true } },
+      REQUEST_ID
+    );
+  });
+
   it('forwards the authenticated initiator and private usage grant instead of client-supplied attribution', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
     const usageGrant = {

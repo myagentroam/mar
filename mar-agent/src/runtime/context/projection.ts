@@ -145,6 +145,7 @@ export function applyContextGcReplacementsToMessages(
       else if (
         (replacement.kind === 'EXEC_OUTPUT' ||
           replacement.kind === 'CODE_MODE_OUTPUT' ||
+          replacement.kind === 'TOOL_OUTPUT' ||
           replacement.kind === 'SUBAGENT_OUTPUT' ||
           replacement.kind === 'WEB_OUTPUT') &&
         next.role === 'tool'

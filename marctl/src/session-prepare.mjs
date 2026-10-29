@@ -1,6 +1,54 @@
 import { randomUUID } from 'node:crypto';
 import { messageContent, imageAttachments } from './session-input.mjs';
 
+const networkActions = new Set(['start', 'send', 'wait', 'stop', 'list', 'view']);
+
+/** Adapt CLI syntax to the same Node Agent Network command used by native tools. */
+export async function prepareAgentNetworkRequest({ args, stdin, translate, sessionId }) {
+  const input = {};
+  for (const name of [
+    'runner',
+    'model',
+    'effort',
+    'title',
+    'cursor',
+    'limit',
+    'query',
+    'parentSessionId',
+    'scope',
+    'waitFor',
+    'mode',
+    'executionId'
+  ])
+    if (args[name] !== undefined) input[name] = args[name];
+  if (args.action === 'list' && input.parentSessionId !== undefined) {
+    input.parent = input.parentSessionId;
+    delete input.parentSessionId;
+  }
+  if (args.action === 'list' && args.agent !== undefined) input.agentId = args.agent;
+  if (['send', 'stop', 'view', 'wait'].includes(args.action) && sessionId)
+    input.agentId = sessionId;
+  if (args.action === 'wait' && args.agentIds?.length) input.agentIds = args.agentIds;
+  if (args.action === 'wait' && args.timeoutMs !== undefined) input.waitMs = args.timeoutMs;
+  if (args.action === 'view' && args.history) input.includeHistory = true;
+  if (args.message !== undefined || args.messageFile !== undefined)
+    input.content = await messageContent(args, stdin, 100000, translate);
+  if (args.images?.length) input.attachments = await imageAttachments(args.images, translate);
+  if (args.goal !== undefined) input.goal = { objective: args.goal.trim() };
+  if (args.clearGoal) input.goal = { clear: true };
+  if (args.action === 'send' && args.approvalId !== undefined)
+    input.approval = { approvalId: args.approvalId, decision: args.decision };
+  if (args.action === 'start' || args.action === 'send')
+    input.clientMessageId = args.clientMessageId ?? randomUUID();
+  if (args.action === 'send')
+    input.deliveryIntent = args.steer ? 'REPLACE_CURRENT' : args.queue ? 'QUEUE' : 'SEND';
+  return { action: 'network', command: { operation: args.action, input } };
+}
+
+export function isAgentNetworkAction(action) {
+  return networkActions.has(action);
+}
+
 export async function prepareSessionRequest({ args, env, stdin, translate, sessionId, targeted }) {
   const body = { action: args.action };
   for (const name of [

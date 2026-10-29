@@ -6,7 +6,9 @@ import { AsyncQueue } from '../../src/runtime/async-queue.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
-import { residencyFixture } from '../support/subagent-residency.js';
+
+import { SessionObservations } from '../../extensions/subagent/src/observations.js';
+import type { AgentEvent } from '../../src/index.js';
 
 function collectHeap() {
   if (typeof globalThis.gc !== 'function') throw new Error('MAR_AGENT_MEMORY_TEST_REQUIRES_GC');
@@ -15,52 +17,68 @@ function collectHeap() {
 }
 
 describe('resource growth guardrails', () => {
-  it('releases consumed durable subagent bodies while retaining recent results', async () => {
+  it('releases confirmed durable native observation bodies across repeated child executions', async () => {
     const sample = async (bytes: number) => {
-      const f = await residencyFixture(bytes);
+      const observations = new SessionObservations(true, {
+        sessionHistory: async () => ({
+          entries: [{ kind: 'event', event: { eventId: 'event' } }]
+        })
+      } as never);
+      const samples: number[] = [];
       try {
-        let oldest = '';
-        let recent: string[] = [];
-        const samples: number[] = [];
         for (let round = 0; round < 6; round++) {
-          await f.begin();
-          recent = [];
-          for (let i = 0; i < 16; i++) {
-            const { agentId } = await f.controller.run({
-              description: 'inspect',
-              prompt: 'inspect',
-              role: 'explore',
-              background: false
+          for (let index = 0; index < 16; index++) {
+            const sessionId = `child-${round}-${index}`;
+            const executionId = `execution-${round}-${index}`;
+            let publish!: (event: AgentEvent) => void;
+            observations.observe({
+              id: sessionId,
+              subscribe(listener) {
+                publish = listener;
+                return { unsubscribe() {} };
+              }
             });
-            oldest ||= agentId;
-            recent.push(agentId);
+            const base = {
+              sessionId,
+              executionId,
+              eventId: 'event',
+              sequence: 1,
+              timestamp: 'now'
+            };
+            publish({
+              ...base,
+              type: 'message.completed',
+              itemId: 'final',
+              modelId: 'model',
+              modelName: 'model',
+              phase: 'final_answer',
+              text: Buffer.alloc(bytes, 120).toString('utf8'),
+              turnId: 'turn'
+            });
+            publish({ ...base, type: 'execution.completed' });
+            const capture = observations.capture(sessionId, executionId);
+            expect(capture?.snapshot.summary).toHaveLength(bytes);
+            capture?.acknowledge();
+            await Promise.resolve();
+            if (round > 0) {
+              expect(
+                observations.snapshot(
+                  `child-${round - 1}-${index}`,
+                  `execution-${round - 1}-${index}`
+                )
+              ).not.toHaveProperty('summary');
+            }
           }
-          for (const update of f.controller.collectModelUpdates()) update.acknowledge();
-          await f.controller.prepareSessionResources();
           samples.push(collectHeap());
         }
-        for (const id of recent)
-          expect((await f.controller.inspect(id)).summary).toHaveLength(bytes * 2);
-        expect(f.loads.size).toBe(0);
-        const summary = (await f.controller.inspect(oldest)).summary;
-        expect(summary).toHaveLength(bytes * 2);
-        expect(f.controller.collectModelUpdates()).toEqual([]);
-        return {
-          samples,
-          growth: Math.max(...samples.slice(-2)) - samples[1]!,
-          reloads: f.loads.get(oldest) ?? 0
-        };
+        return Math.max(...samples.slice(-2)) - samples[1]!;
       } finally {
-        await f.close();
+        observations.close();
       }
     };
     const small = await sample(256);
     const large = await sample(128 * 1024);
-    console.info('subagent-residency-heap', JSON.stringify({ small, large }));
-    // Old bodies would retain roughly 16 MiB more after the second sample.
-    expect(large.growth - small.growth).toBeLessThan(6 * 1024 * 1024);
-    expect(small.reloads).toBe(1);
-    expect(large.reloads).toBe(1);
+    expect(large - small).toBeLessThan(6 * 1024 * 1024);
   });
 
   it('does not retain result-only event buffers across repeated long executions', () => {

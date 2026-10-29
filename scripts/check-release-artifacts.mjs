@@ -112,7 +112,8 @@ async function checkBuildDirectory(directory) {
 }
 
 export function unexpectedNpmPackageFiles(packageName, files) {
-  const isAgent = packageName === '@myagentroam/agent';
+  const isAgent =
+    packageName === '@myagentroam/agent' || packageName === '@myagentroam/agent-extension-subagent';
   const isProtocol = packageName === '@myagentroam/protocol';
   const isCodeNavigation = packageName === '@myagentroam/code-navigation';
   const isNode = packageName === '@myagentroam/node';
@@ -138,7 +139,8 @@ async function checkNpmPackage(directory) {
   const report = JSON.parse(result.stdout)[0];
   const files = report.files.map(({ path }) => path);
   const packageName = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8')).name;
-  const isAgent = packageName === '@myagentroam/agent';
+  const isAgent =
+    packageName === '@myagentroam/agent' || packageName === '@myagentroam/agent-extension-subagent';
   const isProtocol = packageName === '@myagentroam/protocol';
   const isCodeNavigation = packageName === '@myagentroam/code-navigation';
   const isNode = packageName === '@myagentroam/node';
@@ -172,6 +174,7 @@ export async function checkProductReleaseArtifacts(directory = root) {
       'packages/protocol/dist',
       'packages/code-navigation/dist',
       'mar-agent/dist',
+      'mar-agent/extensions/subagent/dist',
       'mar-node/dist',
       'mar-server/dist',
       'ee/server/dist',
@@ -180,9 +183,13 @@ export async function checkProductReleaseArtifacts(directory = root) {
     ].map((path) => checkBuildDirectory(resolve(directory, path)))
   );
   await Promise.all(
-    ['packages/protocol', 'packages/code-navigation', 'mar-agent', 'mar-node'].map((path) =>
-      checkNpmPackage(resolve(directory, path))
-    )
+    [
+      'packages/protocol',
+      'packages/code-navigation',
+      'mar-agent',
+      'mar-agent/extensions/subagent',
+      'mar-node'
+    ].map((path) => checkNpmPackage(resolve(directory, path)))
   );
   const notices = await readFile(
     resolve(directory, 'mar-web-console/dist/THIRD_PARTY_NOTICES.txt'),

@@ -570,7 +570,7 @@ describe('SDK inline media lifecycle', () => {
     }
   );
 
-  it('does not enable GC for a Subagent Session at the inline hard limit', async () => {
+  it('reclaims Subagent history at the inline hard limit without losing fresh media', async () => {
     const { home, create } = await fixture();
     const store = await JsonlSessionStore.open(home);
     const parent = await store.createSession({ workspace: home, title: 'Parent' });
@@ -592,7 +592,7 @@ describe('SDK inline media lifecycle', () => {
     );
     const adapter = new ScriptedAdapter(modelBase, [
       { events: [{ type: 'text.completed', itemId: 'seed', text: 'protected child history' }] },
-      { events: [{ type: 'text.completed', itemId: 'unexpected', text: 'unexpected dispatch' }] }
+      { events: [{ type: 'text.completed', itemId: 'fresh', text: 'fresh image retained' }] }
     ]);
     const agent = await create(adapter);
     try {
@@ -612,15 +612,14 @@ describe('SDK inline media lifecycle', () => {
             images: [imageInput('fresh.png', images[2]!)]
           })
           .result()
-      ).toMatchObject({ status: 'failed', errorCode: 'MAR_AGENT_INLINE_MEDIA_LIMIT' });
-      expect(adapter.requests).toHaveLength(1);
-      expect(adapter.resetContinuationCalls).toBe(0);
+      ).toMatchObject({ status: 'completed' });
+      expect(adapter.requests).toHaveLength(2);
+      expect(adapter.requests[1]!.imageHashes).toEqual([imageHash(images[2]!)]);
+      expect(adapter.resetContinuationCalls).toBe(1);
     } finally {
       await agent.dispose();
     }
-    expect(
-      (await readRecords(home, child.id)).filter((record) => record.type === 'context.gc.completed')
-    ).toHaveLength(0);
+    expectSingleInlineGcCheckpoint(await readRecords(home, child.id), 'HARD_LIMIT');
   });
 
   it('fails fresh media above the hard limit before dispatch when no history can be reclaimed', async () => {

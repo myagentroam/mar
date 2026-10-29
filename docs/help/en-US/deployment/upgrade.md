@@ -1,6 +1,6 @@
 ---
 title: Upgrade MyAgentRoam
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # Upgrade MyAgentRoam
@@ -28,3 +28,18 @@ The first transition from the combined Server is not a routine automatic upgrade
 7. After reconnection, verify a new session, file read, terminal, and automatic startup after a service or host restart.
 
 The system does not automatically upgrade or downgrade Nodes. **Target npm package unavailable** means the published versions cannot be queried, no stable package satisfies both the Server ceiling and business baseline, or the Server version is invalid. Check the Server version, registry access, network, and publication status, then refresh.
+
+## Upgrade status and recovery
+
+- **Upgrade available** identifies an eligible target for a Node with Supervisor support. The Node must also be online and enabled before a push.
+- **No upgrade needed** means the Node has reached or exceeded the selected target; the system does not downgrade it. An unknown or unsupported version requires checking the Node installation. If Supervisor is not enabled, follow the platform instructions above to configure it manually.
+- **Waiting for runs** means the request was accepted and active runs are draining; cancellation is available before handoff. A request whose result is unconfirmed is not proof of acceptance: do not blindly push it again.
+- **Upgrading** shows closing the old Node, installing, or waiting for it to come online. Installation alone is not success. An interrupted progress stream means the result is unconfirmed, not that installation failed. If reconnection takes a long time, inspect the host rather than starting an overlapping upgrade.
+- **Completed** means the target Node authenticated on its control connection for this attempt. A later disconnect does not undo that result.
+- **Failed** provides the reason. Inspect Node and Supervisor logs and the result in the Node data directory. Retry only after the old operation has ended and the Node is online; otherwise investigate on the host. Installation failure before the entry switch retains the old entry; a subsequent startup failure does not automatically roll back.
+
+Live progress and the exit-timeout fallback require support from Server, Node, and the Supervisor actually running on the host. Updating only the Node child does not update an already running Supervisor. To enable the capability initially, update Server first, then update the Supervisor startup entry and restart the service in a maintenance window using the platform instructions. An older Supervisor continues the existing upgrade flow without live progress; a previously stuck old process requires separate intervention.
+
+If the push action is absent, check that your account can manage that Node, the enterprise License is not frozen, and the Node is online and enabled. Remote upgrade only installs the Node package and switches its child process: it does not install Node.js, configure a system service, elevate permissions, or update Server/Web. Server and Node service accounts must each be able to access the selected npm package.
+
+If a database migration fails, stop the upgrade and restore a matching backup rather than modifying the schema by hand. See [Backup and restore](backup-restore.md).

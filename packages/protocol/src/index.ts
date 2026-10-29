@@ -19,6 +19,7 @@ export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
 export * from './mail-notification.js';
+export * from './marctl-execution-credential.js';
 export * from './notification-channels.js';
 export * from './web-push.js';
 export * from './workbench-notification.js';
@@ -339,6 +340,7 @@ export const nodeUpgradeStatusSchema = z.object({
     .regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
     .optional(),
   activeRunCount: z.number().int().nonnegative().optional(),
+  attemptId: z.string().uuid().optional(),
   errorCode: z.string().trim().min(1).max(80).optional(),
   updatedAt: z.number().int().nonnegative()
 });
@@ -364,6 +366,11 @@ export const nodeMetadataSchema = z
     marAgent: runnerAvailabilitySchema.optional(),
     runtimeCommands: z.array(runtimeCommandSchema).max(16).optional(),
     supervisedUpgrade: z.boolean().optional(),
+    upgradeProgress: z
+      .object({ apiVersion: z.literal(1) })
+      .strict()
+      .optional(),
+    upgradeAttemptId: z.string().uuid().optional(),
     upgrade: nodeUpgradeStatusSchema.optional()
   })
   .partial()
@@ -872,6 +879,7 @@ const marAgentModelShape = {
   reasoningEfforts: z.array(marAgentReasoningEffortSchema).max(6),
   defaultReasoningEffort: marAgentReasoningEffortSchema.optional(),
   conversationModel: z.boolean().default(true),
+  subagentModel: z.boolean().default(false),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
@@ -959,6 +967,7 @@ export interface MarAgentModelSummary {
   reasoningEfforts: MarAgentReasoningEffort[];
   defaultReasoningEffort?: MarAgentReasoningEffort;
   conversationModel?: boolean;
+  subagentModel?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
@@ -1875,7 +1884,8 @@ export const runnerProfileSchema = z.object({
       label: z.string().min(1).max(128),
       supportedEfforts: z.array(z.string().min(1).max(64)).max(32),
       isDefault: z.boolean().optional(),
-      defaultEffort: z.string().min(1).max(64).optional()
+      defaultEffort: z.string().min(1).max(64).optional(),
+      subagentModel: z.boolean().optional()
     })
   ),
   accessOptions: z.array(
@@ -2096,7 +2106,8 @@ const assistantMessageItemSchema = conversationItemBaseSchema.extend({
   payload: z.object({
     text: z.string(),
     format: z.literal('markdown'),
-    model: z.string().max(128).nullable()
+    model: z.string().max(128).nullable(),
+    phase: z.enum(['commentary', 'final_answer']).optional()
   })
 });
 const userMessageItemSchema = conversationItemBaseSchema.extend({
@@ -2172,7 +2183,54 @@ export const subagentLatestMessageSchema = z.object({
   truncated: z.boolean().optional()
 });
 export type SubagentLatestMessage = z.infer<typeof subagentLatestMessageSchema>;
-export const toolPresentationSchema = z.discriminatedUnion('kind', [
+const executionOutputSchema = z
+  .array(
+    z
+      .object({
+        channel: z.enum(['STDOUT', 'STDERR', 'COMBINED', 'TEXT']),
+        text: z.string().max(10000)
+      })
+      .strict()
+  )
+  .max(4)
+  .superRefine((blocks, ctx) => {
+    const channels = blocks.map((block) => block.channel);
+    if (
+      new Set(channels).size !== channels.length ||
+      (channels.includes('COMBINED') &&
+        (channels.includes('STDOUT') || channels.includes('STDERR')))
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Conflicting output channels' });
+    }
+  });
+const executionErrorSchema = z
+  .object({ code: z.string().min(1).max(80), message: z.string().max(1000) })
+  .strict();
+const executionTruncationSchema = z
+  .object({
+    input: z.boolean().optional(),
+    output: z.enum(['HEAD', 'SOURCE']).optional()
+  })
+  .strict();
+export const executionPresentationSchema = z
+  .object({
+    kind: z.literal('EXECUTION'),
+    execution: z
+      .object({
+        kind: z.enum(['SHELL', 'CODE', 'CONTROL']),
+        output: executionOutputSchema.optional(),
+        error: executionErrorSchema.optional(),
+        truncation: executionTruncationSchema.optional()
+      })
+      .strict()
+  })
+  .strict()
+  .refine(
+    (value) => new TextEncoder().encode(JSON.stringify(value)).length <= 128 * 1024,
+    'Execution presentation exceeds 128 KiB'
+  );
+export type ExecutionPresentation = z.infer<typeof executionPresentationSchema>;
+const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('READ'),
     paths: z.array(z.string().min(1).max(4096)).max(16).optional()
@@ -2215,7 +2273,14 @@ export const toolPresentationSchema = z.discriminatedUnion('kind', [
     wakeReason: z.enum(['elapsed', 'steer', 'subagent_message']).optional()
   })
 ]);
+export const toolPresentationSchema = z.union([
+  toolCallPresentationSchema,
+  executionPresentationSchema
+]);
 export type ToolPresentation = z.infer<typeof toolPresentationSchema>;
+const toolOutputSnapshotSchema = z
+  .object({ text: z.string().max(10000), truncated: z.boolean() })
+  .strict();
 const toolCallItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('tool_call'),
   payload: z.object({
@@ -2227,11 +2292,13 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
     progressLabel: z.string().max(500).nullable(),
     errorCode: z.string().max(80).nullable(),
     truncated: z.boolean(),
+    output: toolOutputSnapshotSchema.optional(),
     toolCategory: z.enum(['IMAGE_GENERATION']).optional(),
-    toolPresentation: toolPresentationSchema.optional(),
+    toolPresentation: toolCallPresentationSchema.optional(),
     subagentOperation: subagentOperationSchema.optional(),
     subagentWait: z.boolean().optional(),
     subagentId: z.string().min(1).max(128).nullable().optional(),
+    subagentSessionId: z.string().min(1).max(128).optional(),
     subagentModelId: z.string().min(1).max(128).optional(),
     subagentModelName: z.string().min(1).max(128).optional(),
     subagentReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional(),
@@ -2249,7 +2316,9 @@ const commandExecutionItemSchema = conversationItemBaseSchema.extend({
     outputRef: z.string().min(1).max(128).nullable(),
     exitCode: z.number().int().nullable(),
     durationMs: z.number().int().nonnegative().nullable(),
-    truncated: z.boolean()
+    truncated: z.boolean(),
+    output: toolOutputSnapshotSchema.optional(),
+    toolPresentation: executionPresentationSchema.optional()
   })
 });
 const fileChangeItemSchema = conversationItemBaseSchema.extend({
@@ -3601,6 +3670,7 @@ export const gitHistoryFileSchema = z.object({
 export type GitHistoryFile = z.infer<typeof gitHistoryFileSchema>;
 
 export const workbenchNodeOperationSchema = z.enum([
+  'agent.network',
   'workspace.git.settings.get',
   'workspace.git.settings.update',
   'node.workbench.capabilities',

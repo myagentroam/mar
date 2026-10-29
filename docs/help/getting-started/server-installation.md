@@ -1,6 +1,6 @@
 ---
 title: 部署 MyAgentRoam Server 与 Web
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-29
 ---
 
 # 部署 MyAgentRoam Server 与 Web
@@ -30,16 +30,14 @@ lastUpdated: 2026-10-22
 
    `MAR_SERVER_SSH_DIR` 填写当前独立部署账号的 `.ssh` 绝对路径。Compose 会把整个目录只读挂载到 Server；即使暂不使用 SSH 技能源，也应创建权限正确的空目录。
 
-2. 检查该目录及私钥只允许部署账号访问，并验证部署账号可以非交互读取所需仓库：
+2. 检查该目录及私钥只允许部署账号访问。如果使用 SSH Skill 源，在部署主机以部署账号验证对目标仓库的非交互读取；将下例中的地址替换为你有权访问的仓库：
 
    ```bash
-   chmod 700 /home/mar/.ssh
-   chmod 600 /home/mar/.ssh/config /home/mar/.ssh/id_* 2>/dev/null || true
    GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
-     git ls-remote git@codeup.aliyun.com:group/project.git HEAD
+     git ls-remote git@<repository-host>:<owner>/<repository>.git HEAD
    ```
 
-   `.ssh/config` 中的 `IdentityFile` 应写成 `~/.ssh/密钥名`，不要引用容器内不存在的宿主机绝对路径。宿主机部署账号 UID 应与镜像内 `node` 用户 UID 一致（默认 `1000`），否则 OpenSSH 可能因所有权不匹配拒绝私钥。
+   上例会连接外部仓库，且与 Server 的 SSH Skill 源一样跳过主机指纹校验，存在冒充服务器的风险；仅对可信网络和仓库使用，不要把该选项设为全局 SSH 默认值。`.ssh/config` 中的 `IdentityFile` 应写成 `~/.ssh/密钥名`，不要引用容器内不存在的宿主机绝对路径。宿主机部署账号 UID 应与镜像内 `node` 用户 UID 一致（默认 `1000`），否则 OpenSSH 可能因所有权不匹配拒绝私钥。
 
 3. 启动服务：
 
@@ -64,7 +62,7 @@ lastUpdated: 2026-10-22
 - MySQL 未健康：执行 `docker compose logs mysql`，确认密码变量已填写且 `13006` 未被占用。
 - SSH 技能源不可读：确认 `MAR_SERVER_SSH_DIR` 是绝对路径、部署账号 UID 为 `1000`，并检查 `.ssh/config` 的 `IdentityFile` 在容器内仍指向 `~/.ssh/`。
 - 登录页打开但请求失败：检查反向代理是否把 `/api/` 转到同一站点，以及 `MAR_PUBLIC_ORIGIN` 是否完全匹配外部地址。
-- Node 无法连接：不要为 Node 开入站端口；检查 Node 到 `MAR_PUBLIC_ORIGIN` 的出站 HTTPS/WSS 与证书链。
+- Node 无法连接：Node 控制连接无需开放入站 HTTP API；检查 Node 到 `MAR_PUBLIC_ORIGIN` 的出站 HTTPS/WSS 与证书链。
 
 安全提示：`.env` 含数据库密码，不要提交 Git、贴入对话或放在 Web 根目录。
 

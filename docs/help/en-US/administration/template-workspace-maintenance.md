@@ -1,6 +1,6 @@
 ---
 title: Maintain a Conversation Template Workspace
-lastUpdated: 2026-09-14
+lastUpdated: 2026-10-29
 ---
 
 # Maintain a Conversation Template Workspace
@@ -95,7 +95,7 @@ Published `.venv/`, `node_modules/`, and other dependencies are read-only at run
 
 ## Sandbox, environment, and network rules
 
-- Hosted conversations run only on an enabled organization-owned Linux Node that passed capability probing. Every local command and local stdio MCP process must enter the Bubblewrap sandbox. If the sandbox is unavailable, the policy is invalid, or a mount fails, the Run is rejected rather than falling back to direct host execution.
+- Hosted conversations run only on an enabled Linux Node that passed capability probing. Community users can use their own Node; shared Enterprise hosting requires an organization-owned Node. Every local command and local stdio MCP process must enter the Bubblewrap sandbox. If the sandbox is unavailable, the policy is invalid, or a mount fails, the Run is rejected rather than falling back to direct host execution.
 - The sandbox exposes only the documented mounts and a limited read-only system runtime. It isolates user, process, hostname, and IPC namespaces, uses a separate cgroup namespace when supported, drops Linux capabilities, and applies seccomp and process resource limits. Fixed `full-access` removes per-operation application prompts but does not relax these boundaries. See [System limits](../reference/limits.md) for per-process CPU, address-space, process-count, file-descriptor, and file-size limits.
 - Processes start from a clean environment. The Host fixes `PATH`, `HOME=/home/mar`, `TMPDIR=/tmp`, and locale variables, then adds only variables explicitly permitted for the current tool or published MCP server. Do not depend on a maintainer's login profile, shell aliases, current directory, SSH agent, global proxy variables, or source Workspace `.env` files.
 - **No network** isolates local process networking and also disables Web Search, Web Fetch, model Hosted Web, and remote HTTP MCP. Local stdio MCP can still run offline.

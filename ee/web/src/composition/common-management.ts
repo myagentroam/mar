@@ -46,8 +46,10 @@ export function createCommonManagementPages(
         delay: 0
       }),
       visible: resourceManagementVisible,
-      props: ({ request, admin }) => ({
+      props: ({ request, admin, nodes, nodeUpgradeProgress }) => ({
         request,
+        nodes,
+        ...(nodeUpgradeProgress === undefined ? {} : { nodeUpgradeProgress }),
         writable: admin.managementWritable === true,
         edition: admin.edition ?? 'COMMUNITY',
         role: admin.role ?? null

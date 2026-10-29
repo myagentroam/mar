@@ -15,7 +15,10 @@ import type {
 } from '../../service/prompt-completion-service.js';
 
 const editorElement = ref<HTMLTextAreaElement>();
-const completionEditor = ref<{ restoreFocus(cursor?: number): void }>();
+const completionEditor = ref<{
+  restoreFocus(cursor?: number): void;
+  replaceRange(start: number, end: number, text: string): boolean;
+}>();
 const composerElement = ref<HTMLElement>();
 const mobileComposerHeight = ref(0);
 let composerResizeObserver: ResizeObserver | undefined;
@@ -38,7 +41,11 @@ function focus(): void {
   focusEditor();
 }
 
-defineExpose({ focusAt, focus });
+function replaceRange(start: number, end: number, text: string): boolean {
+  return completionEditor.value?.replaceRange(start, end, text) ?? false;
+}
+
+defineExpose({ focusAt, focus, replaceRange });
 
 const props = withDefaults(
   defineProps<{

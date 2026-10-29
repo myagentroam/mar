@@ -28,6 +28,31 @@ function fixture(
 }
 
 describe('public page-level Workbench relay', () => {
+  it('authorizes upgrade progress separately and never sends it when denied', async () => {
+    const { relay, database, attach } = fixture();
+    const socket = attach();
+    try {
+      database.userCanRequestNode.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      relay.broadcast({ type: 'node.upgrade', nodeId: 'node-1', snapshot: null });
+      relay.broadcast({ type: 'node.upgrade', nodeId: 'node-1', snapshot: { state: 'FAILED' } });
+      await vi.waitFor(() => expect(database.userCanRequestNode).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(socket.sent.filter((message) => message.type === 'node.upgrade')).toHaveLength(1)
+      );
+      expect(database.userCanRequestNode).toHaveBeenCalledWith(
+        1,
+        'node-1',
+        'workbench.node.upgrade.receive',
+        expect.anything(),
+        undefined
+      );
+      expect(socket.sent.find((message) => message.type === 'node.upgrade')?.snapshot).toEqual({
+        state: 'FAILED'
+      });
+    } finally {
+      relay.close();
+    }
+  });
   it('counts only ready open browser sockets for the specified user, not resumable records', () => {
     const { relay, attach } = fixture();
     const pending = new Socket();

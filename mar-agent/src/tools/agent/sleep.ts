@@ -53,7 +53,7 @@ export async function executeSleep(
     durationMs,
     startedAt: new Date().toISOString()
   });
-  const messages = context.subagentMessages;
+  const messages = context.contextUpdates;
   const outcome = await waitForToolCondition({
     ready: () => messages?.pending() ?? false,
     subscribe: (notify) => messages?.subscribe(notify) ?? (() => {}),

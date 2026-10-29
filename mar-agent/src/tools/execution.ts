@@ -15,7 +15,9 @@ import type {
 } from './contracts.js';
 import {
   boundedModelToolOutput,
+  publicToolEventInput,
   structuredToolArtifacts,
+  publicExtensionToolEventData,
   structuredToolEventData,
   structuredToolFailureData
 } from './output-projection.js';
@@ -132,12 +134,17 @@ export async function executeRoundTools(
     caller: ToolCaller = 'direct',
     parentCallId?: string
   ): Promise<ExecutedToolCall> => {
+    const inputFields = scope.tools.find((tool) => tool.name === call.name)?.eventInputFields;
+    const publicInput =
+      inputFields === undefined
+        ? call.arguments
+        : publicToolEventInput(call.arguments, inputFields);
     await scope.emit({
       type: 'tool.started',
       toolName: call.name,
       callId: call.callId,
       ...(parentCallId === undefined ? {} : { parentCallId }),
-      input: call.arguments
+      input: publicInput
     });
     try {
       if (call.argumentError)
@@ -176,8 +183,19 @@ export async function executeRoundTools(
               ...(publishedImages === undefined ? {} : { images: publishedImages })
             };
       const modelOutput = boundedModelToolOutput(call.name, output.content, output.data);
-      const eventSummary = toolEventSummary(output.content);
-      const structuredData = structuredToolEventData(call.name, output.data);
+      const eventSummary = toolEventSummary(
+        output.eventSummary === undefined
+          ? output.content
+          : typeof output.eventSummary === 'string'
+            ? output.eventSummary
+            : ''
+      );
+      const structuredData =
+        call.name === 'exec' || call.name === 'exec_wait'
+          ? structuredToolEventData(call.name, output.eventData ?? output.data)
+          : output.eventData === undefined
+            ? structuredToolEventData(call.name, output.data)
+            : publicExtensionToolEventData(output.eventData);
       const artifacts = structuredToolArtifacts(output.artifacts);
       await scope.emit({
         type: 'tool.completed',

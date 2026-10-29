@@ -20,6 +20,9 @@ export interface ExtensionModelDescription {
   readonly maxOutputTokens: number;
   readonly inputCapabilities: readonly string[];
   readonly reasoningEfforts: readonly AgentReasoningEffort[];
+  readonly defaultReasoningEffort: AgentReasoningEffort;
+  readonly conversationModel: boolean;
+  readonly subagentModel: boolean;
   readonly isDefault: boolean;
 }
 export type ExtensionModelTextBlock = ModelTextBlock;

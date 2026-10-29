@@ -289,7 +289,7 @@ describe('MAR Agent compact extension', () => {
         { createAgent: createAgent as never, modelFactory: factory }
       );
       const main = runtimeModel(model({ id: 'main', conversationModel: true }));
-      const compact = runtimeModel(model());
+      const compact = runtimeModel(model({ subagentModel: false }));
       if (credentialType === 'RUNTIME_TICKET') {
         delete compact.apiKey;
         compact.credential = {

@@ -9,6 +9,8 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
+import type { NodeSummary } from '../../model/node.js';
+import type { NodeUpgradeProgress } from '../../model/node-upgrade.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
@@ -41,6 +43,8 @@ const documentationAvailable = useDocumentationAvailability();
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly writable: boolean;
+  readonly nodes?: readonly NodeSummary[] | undefined;
+  readonly nodeUpgradeProgress?: Readonly<Record<string, NodeUpgradeProgress | null>> | undefined;
   readonly resourceType: 'NODE' | 'WORKSPACE';
   readonly resourcePath?: string;
   readonly nodePath?: string;
@@ -84,10 +88,18 @@ const usageStatuses = ref<readonly { runner: RunnerUsageName; available: boolean
 const detailsUpgradeState = computed<NodeDetailsUpgradeState | undefined>(() => {
   const row = details.value;
   if (row?.resourceType !== 'NODE') return undefined;
+  const progress = liveProgress(row);
   return {
-    label: upgradeLabel(row),
+    label: progress
+      ? `${upgradeLabel(row)} · ${translate('generated.resourceSharingPage.upgradeStartedAt', { value0: timeLabel(progress.createdAt) })} · ${translate('generated.resourceSharingPage.upgradeElapsed', { value0: Math.max(0, Math.floor(((progress.state === 'SUCCEEDED' || progress.state === 'FAILED' ? progress.updatedAt : clock.value) - progress.createdAt) / 60_000)) })} · ${translate('generated.resourceSharingPage.upgradeLastReportAt', { value0: timeLabel(progress.lastReportReceivedAt) })}`
+      : upgradeLabel(row),
     canUpgrade: canUpgrade(row),
-    waitingForRuns: row.metadata?.upgrade?.state === 'WAITING_FOR_RUNS',
+    waitingForRuns:
+      progress === null
+        ? false
+        : progress !== undefined
+          ? progress.state === 'WAITING_FOR_RUNS' && progress.requestAccepted === true
+          : row.metadata?.upgrade?.state === 'WAITING_FOR_RUNS',
     canCancelUpgrade: props.writable && row.manageable !== false
   };
 });
@@ -189,6 +201,8 @@ const loading = pagination.loading;
 const pageReady = ref(false);
 const refreshLoading = ref(false);
 const displayedResources = resources;
+const clock = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | undefined;
 watch(pagination.result, (result) => {
   if (result !== undefined) pageReady.value = true;
 });
@@ -346,7 +360,60 @@ function statusLabel(row: Row): string {
 function timeLabel(value: number | null | undefined): string {
   return value == null ? '-' : managementDateTime(value);
 }
+function liveProgress(row: Row) {
+  const managementLive = props.nodeUpgradeProgress?.[row.nodeId];
+  if (managementLive === null) return null;
+  const live =
+    managementLive ?? props.nodes?.find((node) => node.id === row.nodeId)?.upgradeProgress;
+  if (live == null) return row.upgradeProgress ?? undefined;
+  return row.upgradeProgress && row.upgradeProgress.updatedAt > live.updatedAt
+    ? row.upgradeProgress
+    : live;
+}
 function upgradeLabel(row: Row): string {
+  const progress = liveProgress(row);
+  const status = upgradeStatusLabel(row);
+  return progress ? `${status} · ${progress.targetVersion}` : status;
+}
+function upgradeStatusLabel(row: Row): string {
+  const progress = liveProgress(row);
+  if (progress === null) return '-';
+  if (progress) {
+    if (progress.state === 'WAITING_FOR_RUNS')
+      return !progress.requestAccepted
+        ? translate('generated.resourceSharingPage.upgradePendingConfirmation')
+        : progress.activeRunCount === undefined
+          ? translate('generated.resourceSharingPage.upgradeWaiting')
+          : translate('generated.resourceSharingPage.waitingForRuns', {
+              value0: progress.activeRunCount
+            });
+    if (progress.state === 'SUCCEEDED')
+      return translate('generated.resourceSharingPage.upgradeCompleted');
+    if (progress.state === 'FAILED')
+      return translate('generated.resourceSharingPage.upgradeDetailedFailure', {
+        value0: progress.failure?.step ?? '-',
+        value1: progress.failure?.code ?? '-',
+        value2: [
+          progress.failure?.message ?? translate('common.unknownError'),
+          progress.failure?.details,
+          progress.failure?.requestId
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      });
+    if (
+      progress.lastReportReceivedAt === undefined ||
+      clock.value - progress.lastReportReceivedAt >= 45_000
+    )
+      return translate('generated.resourceSharingPage.upgradeProgressInterrupted');
+    if (progress.step === 'WAITING_FOR_ONLINE')
+      return clock.value - progress.updatedAt >= 90_000
+        ? `${translate('generated.resourceSharingPage.upgradeInProgressOnline')} ${translate('generated.resourceSharingPage.upgradeWaitingLong')}`
+        : translate('generated.resourceSharingPage.upgradeInProgressOnline');
+    return progress.step === 'INSTALLING'
+      ? translate('generated.resourceSharingPage.upgradeInProgressInstalling')
+      : translate('generated.resourceSharingPage.upgradeInProgressClosing');
+  }
   if (row.connected === false) return '-';
   const upgrade = row.metadata?.upgrade;
   if (upgrade?.state === 'WAITING_FOR_RUNS')
@@ -373,11 +440,17 @@ function upgradeLabel(row: Row): string {
   }[row.upgradeAvailability.state];
 }
 function canUpgrade(row: Row): boolean {
+  const progress = liveProgress(row);
   return (
     props.writable &&
     row.manageable !== false &&
     row.connected === true &&
     row.disabled !== true &&
+    !(
+      progress?.state === 'WAITING_FOR_RUNS' ||
+      progress?.state === 'UPGRADING' ||
+      (progress?.state === 'FAILED' && progress.operationEnded !== true)
+    ) &&
     row.metadata?.upgrade?.state !== 'WAITING_FOR_RUNS' &&
     row.metadata?.upgrade?.state !== 'READY_TO_RESTART' &&
     row.upgradeAvailability?.state === 'AVAILABLE'
@@ -425,11 +498,13 @@ async function pushAllUpgrades(): Promise<void> {
   }
   let succeeded = 0;
   const failures: string[] = [];
+  const unconfirmed: string[] = [];
   try {
     for (const row of candidates) {
       try {
-        await requestUpgrade(row);
-        succeeded++;
+        const result = (await requestUpgrade(row)) as { status?: string } | undefined;
+        if (result?.status === 'PENDING_CONFIRMATION') unconfirmed.push(row.label);
+        else succeeded++;
       } catch (error) {
         failures.push(`${row.label}: ${errorMessage(error)}`);
       }
@@ -437,14 +512,14 @@ async function pushAllUpgrades(): Promise<void> {
     await load();
     if (details.value?.resourceType === 'NODE')
       details.value = resources.value.find((item) => item.key === details.value?.key);
-    if (failures.length === 0)
+    if (failures.length === 0 && unconfirmed.length === 0)
       showMessage(
         translate('generated.resourceSharingPage.pushAllUpgradesSucceeded', {
           value0: succeeded
         }),
         'success'
       );
-    else
+    else if (failures.length > 0)
       await ElMessageBox.alert(
         h(
           'div',
@@ -464,6 +539,13 @@ async function pushAllUpgrades(): Promise<void> {
           confirmButtonText: translate('generated.resourceSharingPage.close2')
         }
       ).catch(() => undefined);
+    if (unconfirmed.length > 0)
+      showMessage(
+        translate('generated.resourceSharingPage.pushAllUpgradesUnconfirmed', {
+          value0: unconfirmed.join(', ')
+        }),
+        'warning'
+      );
   } finally {
     pushingAllUpgrades.value = false;
   }
@@ -484,10 +566,12 @@ async function pushUpgrade(row: Row): Promise<void> {
         cancelButtonText: translate('generated.resourceSharingPage.cancel')
       }
     );
-    await requestUpgrade(row);
+    const result = (await requestUpgrade(row)) as { status?: string } | undefined;
     showMessage(
-      translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen'),
-      'success'
+      result?.status === 'PENDING_CONFIRMATION'
+        ? translate('generated.resourceSharingPage.upgradePendingConfirmation')
+        : translate('generated.resourceSharingPage.upgradeRequestedTheNodeWillUpgradeWhen'),
+      result?.status === 'PENDING_CONFIRMATION' ? 'warning' : 'success'
     );
     await load();
     if (details.value?.nodeId === row.nodeId)
@@ -718,10 +802,14 @@ function usageDisabledReason(runner: RunnerUsageName): string {
     : translate('generated.resourceSharingPage.usageUnavailable');
 }
 onMounted(() => {
+  clockTimer = setInterval(() => {
+    clock.value = Date.now();
+  }, 15_000);
   pagination.start();
   void load();
 });
 onUnmounted(() => {
+  if (clockTimer !== undefined) clearInterval(clockTimer);
   closeDetails();
   pagination.dispose();
 });

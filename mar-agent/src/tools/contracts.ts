@@ -11,6 +11,8 @@ export interface ClientToolDefinition extends ModelToolDefinition {
   outputSchema?: Record<string, unknown>;
   /** Runtime-only policy. MCP defaults to both callers; other tools default to direct only. */
   allowedCallers?: readonly ToolCaller[];
+  /** Runtime-only allowlist of scalar fields in the public tool.started input. */
+  eventInputFields?: readonly string[];
   /** Runtime-only exposure override; retains both permitted entry points with Code Mode enabled. */
   codeModeExposure?: 'both';
   parallelSafety?: 'safe' | 'serial';
@@ -102,13 +104,26 @@ export interface ExecOutputSnapshot {
   stdout: string;
   stderr: string;
   truncated: boolean;
+  displayOutput?: ExecDisplayOutput;
+}
+
+/** Bounded, non-consuming tail for public presentation, not model output. */
+export interface ExecDisplayOutput {
+  stdout: string;
+  stderr: string;
+  stdoutDroppedBytes: number;
+  stderrDroppedBytes: number;
 }
 
 export interface ToolExecutionResult {
   calls?: readonly import('../session/code-observation-contract.js').CodeToolCallRecord[];
   content: string;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
+  /** Explicit, bounded public structured projection; never inferred from data. */
+  eventData?: Readonly<Record<string, unknown>>;
   data?: unknown;
+  /** Explicit public event summary, separate from model-visible content. */
+  eventSummary?: string;
   /** Runtime-only definitions used to encode a Tool Search output. */
   toolSearchTools?: readonly ClientToolDefinition[];
   truncated?: boolean;
@@ -125,7 +140,9 @@ export interface CodeCellEventData {
   waitOutcome?: import('./wait.js').ToolWaitOutcome;
   reason?: 'steer';
   cached?: boolean;
+  truncated?: boolean;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
+  error?: { code: string; message: string };
 }
 export interface ExecResult {
   status: 'running' | 'completed' | 'cancelled';
@@ -142,6 +159,7 @@ export interface ExecResult {
   stderrDroppedBytes: number;
   /** A terminal snapshot replay rather than new process output. */
   cached?: boolean;
+  displayOutput?: ExecDisplayOutput;
 }
 export interface ApplyPatchFileResult {
   path: string;

@@ -1,5 +1,6 @@
 import { managementPageQuery } from '@myagentroam/server-core/management-pagination';
 import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
+import type { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 import type { FastifyInstance } from 'fastify';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
@@ -19,6 +20,7 @@ export function registerResourceGrantRoutes(input: {
   readonly grants: ResourceGrantService;
   readonly nodeControl: NodeControl;
   readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
+  readonly nodeUpgradeProgress?: NodeUpgradeProgress;
   readonly publicOrigin: string | undefined;
 }): void {
   const { app, database, directory, grants, nodeControl, nodeUpgrades, publicOrigin } = input;
@@ -37,6 +39,9 @@ export function registerResourceGrantRoutes(input: {
           nodes: await Promise.all(
             overview.nodes.map(async (node) => ({
               ...node,
+              upgradeProgress: node.disabled
+                ? null
+                : ((await input.nodeUpgradeProgress?.snapshot(node.id)) ?? null),
               upgradeAvailability: await nodeUpgrades.availability(
                 node.nodeAppVersion,
                 node.metadata?.['supervisedUpgrade'] === true,
@@ -52,10 +57,15 @@ export function registerResourceGrantRoutes(input: {
       );
       return reply.send({
         ...overview,
-        nodes: overview.nodes.map((node) => ({
-          ...node,
-          connected: nodeControl.isNodeConnected(node.id)
-        }))
+        nodes: await Promise.all(
+          overview.nodes.map(async (node) => ({
+            ...node,
+            upgradeProgress: node.disabled
+              ? null
+              : ((await input.nodeUpgradeProgress?.snapshot(node.id)) ?? null),
+            connected: nodeControl.isNodeConnected(node.id)
+          }))
+        )
       });
     } catch (error) {
       return databaseError(reply, error);

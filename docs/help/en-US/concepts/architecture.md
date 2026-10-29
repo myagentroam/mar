@@ -1,6 +1,6 @@
 ---
 title: Server, Node, Web, and Agent
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-29
 ---
 
 # Server, Node, Web, and Agent
@@ -14,7 +14,7 @@ Browser Web ── HTTPS / WebSocket ── Server ── outbound Node connecti
 - **Server** handles identity, authorization, managed model credentials, enterprise administration, and controlled relay. It is not the authority for Workspace files or session content.
 - **Node** owns local execution and Workspace storage: files, Git, terminals, Agent tasks, and local session integration. It initiates outbound connections to Server; no general-purpose inbound Node API is exposed to browsers.
 - **MAR Agent** is the shared runtime behind its SDK, CLI, and Node integration. It manages model execution, tools, context, and session continuation. External runners (Codex, Claude Code, and OpenCode) retain their native account and history mechanisms; their supported controls are projected into the workbench.
-- **Web** presents capabilities and necessary browser UI state. Business APIs and control signaling go through Server. Ordinary Workspace files and terminals may use a Server-authorized direct data channel, with relay fallback; hosted conversations remain relayed. The browser does not hold Node/Runner execution credentials.
+- **Web** presents capabilities and necessary browser UI state. Business APIs and control signaling go through Server. Ordinary Workspace files, Git, and terminals may use Server-authorized direct data channels when supported, or use relay; hosted conversations remain relayed. The browser does not hold Node/Runner execution credentials.
 
 ## Why Agent-first?
 

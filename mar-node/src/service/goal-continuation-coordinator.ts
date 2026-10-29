@@ -25,6 +25,9 @@ type GoalStartInput = Omit<
   readonly session: NodeAgentSession;
   readonly objective: string;
   readonly secretEnvironment: Readonly<Record<string, string>>;
+  /** Queue a new objective behind an active Run instead of replacing it. */
+  readonly preserveActiveRun?: boolean;
+  readonly messageIntent?: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 };
 interface Options {
   readonly goals: GoalRuntime;
@@ -259,7 +262,14 @@ export class GoalContinuationCoordinator {
     secretEnvironment,
     personalInstructions,
     executionContext,
-    usageGrant
+    usageGrant,
+    preserveActiveRun,
+    messageIntent,
+    messageContent,
+    clientMessageId,
+    messageOrigin,
+    attachments,
+    attachmentIds
   }: GoalStartInput): Promise<unknown> {
     this.invalidateGoalContinuation(session.id);
     const prepared = this.prepareGoalSession(session);
@@ -280,8 +290,19 @@ export class GoalContinuationCoordinator {
         kind: 'start',
         content: this.options.goals.prompt(attempt.sessionId, 'start'),
         objective: goal.objective,
-        deliveryIntent: replacing ? 'REPLACE_CURRENT' : 'SEND',
+        deliveryIntent:
+          messageIntent ??
+          (preserveActiveRun && activeRun !== undefined
+            ? 'QUEUE'
+            : replacing
+              ? 'REPLACE_CURRENT'
+              : 'SEND'),
         goal: goalRef,
+        ...(messageContent === undefined ? {} : { messageContent }),
+        ...(clientMessageId === undefined ? {} : { clientMessageId }),
+        ...(messageOrigin === undefined ? {} : { messageOrigin }),
+        ...(attachments === undefined ? {} : { attachments }),
+        ...(attachmentIds === undefined ? {} : { attachmentIds }),
         ...(suppressNotifications === true ? { suppressNotifications: true } : {}),
         ...(usageGrant === undefined ? {} : { usageGrant }),
         ...(initiatedByUserId === undefined ? {} : { initiatedByUserId }),

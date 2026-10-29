@@ -8,7 +8,6 @@ import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import { JsonlSessionStore } from '../../src/session/store/jsonl/jsonl-store.js';
 import type { ModelEvent } from '../../src/model/contracts.js';
 import { ExtensionManager } from '../../src/extensions/manager.js';
-import { SubagentSessionController } from '../../src/subagent/session-controller.js';
 
 const releaseFault = vi.hoisted(() => ({ path: '', error: new Error('lock release failed') }));
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -202,7 +201,7 @@ function childInput(workspace: string, parentSessionId: string, rootSessionId = 
   } as const;
 }
 
-it('blocks opening descendants throughout admitted tree deletion', async () => {
+it('blocks opening all explicitly admitted members throughout deletion', async () => {
   const f = await fixture();
   const root = await f.store.createSession({ workspace: f.home });
   const child = await f.store.createSession(childInput(f.home, root.id));
@@ -215,7 +214,7 @@ it('blocks opening descendants throughout admitted tree deletion', async () => {
       await release.promise;
     }
   });
-  const deleting = instance.deleteSession(root.id);
+  const deleting = instance.deleteSessions([root.id, child.id]);
   try {
     await entered.promise;
     await expect(instance.openSession(child.id)).rejects.toMatchObject({
@@ -228,6 +227,56 @@ it('blocks opening descendants throughout admitted tree deletion', async () => {
     release.resolve();
     await deleting;
   }
+});
+
+it('rejects missing deletion members before closing or deleting an existing Session', async () => {
+  const f = await fixture();
+  const root = await f.store.createSession({ workspace: f.home });
+  const { instance, hostCleanup } = await f.agent();
+  await expect(
+    instance.deleteSessions([root.id, '00000000-0000-4000-8000-000000000000'])
+  ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_NOT_FOUND' });
+  expect(hostCleanup).not.toHaveBeenCalled();
+  await expect(f.store.getSession(root.id)).resolves.toMatchObject({ id: root.id });
+});
+
+it('joins reverse-order deletion requests while rejecting a different overlapping set', async () => {
+  const f = await fixture();
+  const ids = (
+    await Promise.all(Array.from({ length: 3 }, () => f.store.createSession({ workspace: f.home })))
+  )
+    .map((session) => session.id)
+    .sort();
+  const [a, b, c] = ids as [string, string, string];
+  const { instance, hostCleanup } = await f.agent();
+  const entered = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const acquire = f.store.acquireSessionMaintenance.bind(f.store);
+  const admission = vi
+    .spyOn(f.store, 'acquireSessionMaintenance')
+    .mockImplementation(async (...args) => {
+      entered.resolve();
+      await resume.promise;
+      return acquire(...args);
+    });
+  const originalOrder = [b, a];
+  const first = instance.deleteSessions(originalOrder);
+  await entered.promise;
+  const second = instance.deleteSessions([a, b]);
+  try {
+    expect(first).toBe(second);
+    expect(originalOrder).toEqual([b, a]);
+    expect(admission).toHaveBeenCalledOnce();
+    expect(admission).toHaveBeenCalledWith(a, 'delete', expect.anything(), [a, b]);
+    await expect(instance.deleteSessions([a, c])).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_CLOSING'
+    });
+  } finally {
+    resume.resolve();
+    await Promise.all([first, second]);
+  }
+  expect(hostCleanup).toHaveBeenCalledTimes(2);
+  await expect(f.store.getSession(c)).resolves.toMatchObject({ id: c });
 });
 
 it('joins a pending create before disposing global resources', async () => {
@@ -310,7 +359,7 @@ it.each(['clear', 'delete', 'dispose'] as const)(
   }
 );
 
-it('reports candidate cleanup failure during dispose after waiting for the stale open', async () => {
+it('joins a stale open during dispose without retaining a Session lease', async () => {
   const f = await fixture();
   const stored = await f.store.createSession({ workspace: f.home });
   const { instance } = await f.agent();
@@ -318,18 +367,13 @@ it('reports candidate cleanup failure during dispose after waiting for the stale
   cleanups.push(() => cleanupAgent().catch(() => undefined));
   const ready = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const failure = new Error('candidate cleanup failed');
-  const open = SubagentSessionController.open.bind(SubagentSessionController);
-  vi.spyOn(SubagentSessionController, 'open').mockImplementation(async (input) => {
-    const controller = await open(input);
-    const dispose = controller.dispose.bind(controller);
-    vi.spyOn(controller, 'dispose').mockImplementation(async () => {
-      await dispose();
-      throw failure;
-    });
-    ready.resolve();
-    await release.promise;
-    return controller;
+  const original = f.store.getSession.bind(f.store);
+  vi.spyOn(f.store, 'getSession').mockImplementation(async (id) => {
+    if (id === stored.id) {
+      ready.resolve();
+      await release.promise;
+    }
+    return original(id);
   });
   const opening = instance.openSession(stored.id);
   void opening.catch(() => undefined);
@@ -338,7 +382,9 @@ it('reports candidate cleanup failure during dispose after waiting for the stale
   void disposing.catch(() => undefined);
   release.resolve();
   await expect(opening).rejects.toBeDefined();
-  await expect(disposing).rejects.toBe(failure);
+  await expect(disposing).resolves.toBeUndefined();
+  const releaseLease = await f.store.acquireSessionLease(stored.id, {});
+  await releaseLease();
 });
 
 it.each(['clear', 'delete'] as const)(
@@ -383,7 +429,12 @@ it.each(['clear', 'delete'] as const)(
     const child = await f.store.createSession(childInput(f.home, root.id));
     const other = await f.store.createSession({ workspace: f.home });
     const before = await f.store.list({ source: 'subagent', rootSessionId: root.id });
-    const holding = await f.store.acquireSessionMaintenance(root.id, kind);
+    const holding = await f.store.acquireSessionMaintenance(
+      root.id,
+      kind,
+      undefined,
+      kind === 'delete' ? [root.id, child.id] : undefined
+    );
     try {
       await expect(f.store.createSession(childInput(f.home, root.id))).rejects.toMatchObject({
         code: 'MAR_AGENT_SESSION_LOCKED'
@@ -417,7 +468,7 @@ it.each(['clear', 'delete'] as const)(
   }
 );
 
-it('finishes an in-flight child publication before tree maintenance admission', async () => {
+it('finishes an in-flight child publication before explicit maintenance admission', async () => {
   const f = await fixture();
   const root = await f.store.createSession({ workspace: f.home });
   const entered = Promise.withResolvers<void>();
@@ -443,11 +494,9 @@ it('finishes an in-flight child publication before tree maintenance admission', 
     const child = await creating;
     const holding = await admitting;
     try {
-      expect(holding.sessionIds).toEqual(expect.arrayContaining([root.id, child.id]));
+      expect(holding.sessionIds).toEqual([root.id]);
       await f.store.delete(root.id, holding);
-      await expect(f.store.getSession(child.id)).rejects.toMatchObject({
-        code: 'MAR_AGENT_SESSION_NOT_FOUND'
-      });
+      await expect(f.store.getSession(child.id)).resolves.toMatchObject({ id: child.id });
     } finally {
       await holding.release();
     }
@@ -495,8 +544,11 @@ it.each(['clearSession', 'deleteSession', 'tree'] as const)(
     const running = (await a.instance.openSession(target.id)).run({ prompt: 'hold A writer' });
     const signal = await a.entered.promise;
     const before = await f.store.read(root.id);
-    const action = operation === 'clearSession' ? 'clearSession' : 'deleteSession';
-    await expect(b.instance[action](root.id)).rejects.toMatchObject({
+    const action = () =>
+      operation === 'tree'
+        ? b.instance.deleteSessions([root.id, sibling!.id, target.id])
+        : b.instance[operation](root.id);
+    await expect(action()).rejects.toMatchObject({
       code: 'MAR_AGENT_SESSION_LOCKED'
     });
     expect(signal.aborted).toBe(false);
@@ -515,12 +567,12 @@ it.each(['clearSession', 'deleteSession', 'tree'] as const)(
       'completed'
     );
     expect(b.attached).toHaveBeenCalledTimes(attachedBefore);
-    await b.instance[action](root.id);
+    await action();
     expect(b.ending).toHaveBeenCalled();
     expect(b.retired).toHaveBeenCalled();
     expect(b.hostCleanup).toHaveBeenCalled();
     expect(b.adapterClose).toHaveBeenCalled();
-    if (action === 'clearSession') expect(await f.store.read(root.id)).toHaveLength(1);
+    if (operation === 'clearSession') expect(await f.store.read(root.id)).toHaveLength(1);
     else
       await expect(f.store.getSession(root.id)).rejects.toMatchObject({
         code: 'MAR_AGENT_SESSION_NOT_FOUND'
@@ -608,7 +660,7 @@ it('rejects a foreign-owned child before aborting the caller-owned active parent
   const parentRun = parent.run({ prompt: 'parent' });
   const childRun = (await a.instance.openSession(child.id)).run({ prompt: 'child' });
   const signals = await Promise.all([a.entered.promise, b.entered.promise]);
-  await expect(b.instance.deleteSession(parent.id)).rejects.toMatchObject({
+  await expect(b.instance.deleteSessions([parent.id, child.id])).rejects.toMatchObject({
     code: 'MAR_AGENT_SESSION_LOCKED'
   });
   expect(signals.every((signal) => !signal.aborted)).toBe(true);
@@ -617,7 +669,7 @@ it('rejects a foreign-owned child before aborting the caller-owned active parent
   a.resume.resolve();
   b.resume.resolve();
   await Promise.all([parentRun.result(), childRun.result()]);
-  await b.instance.deleteSession(parent.id);
+  await b.instance.deleteSessions([parent.id, child.id]);
 });
 
 it('joins same-owner active parent and child before deleting the tree', async () => {
@@ -642,7 +694,7 @@ it('joins same-owner active parent and child before deleting the tree', async ()
   ];
   await vi.waitFor(() => expect(a.signals).toHaveLength(2));
   const mutation = vi.spyOn(f.store, 'delete');
-  const deleting = a.instance.deleteSession(parent.id);
+  const deleting = a.instance.deleteSessions([parent.id, child.id]);
   try {
     await vi.waitFor(() => expect(a.signals.every((signal) => signal.aborted)).toBe(true));
     expect(mutation).not.toHaveBeenCalled();
@@ -698,7 +750,7 @@ it.each(['parent', 'child'] as const)(
         throw new Error('child ending failed');
       }
     );
-    const deleting = a.instance.deleteSession(parent.id);
+    const deleting = a.instance.deleteSessions([parent.id, child.id]);
     const result = expect(deleting).rejects.toBe(primary);
     try {
       await childEntered.promise;
@@ -822,41 +874,28 @@ it('validates maintenance scope, rejects fresh work and never steals retained re
   await next();
 });
 
-it('rechecks tree membership during maintenance admission and releases earlier members on conflict', async () => {
+it('releases earlier explicit members when a later member conflicts', async () => {
   const f = await fixture();
-  const root = await f.store.createSession({ workspace: f.home });
-  const tree = f.store.sessionTree.bind(f.store);
-  let child!: string;
-  let releaseChild!: () => Promise<void>;
-  const discover = vi.spyOn(f.store, 'sessionTree').mockImplementationOnce(async (id) => {
-    const snapshot = await tree(id);
-    child = (
-      await f.store.createSession({
-        workspace: f.home,
-        source: {
-          type: 'subagent',
-          parentSessionId: root.id,
-          rootSessionId: root.id,
-          parentExecutionId: 'parent',
-          description: 'new child',
-          role: 'general-purpose'
-        }
-      })
-    ).id;
-    releaseChild = await f.store.acquireSessionLease(child, {});
-    return snapshot;
-  });
-  releaseFault.path = join(f.home, '.mar', 'agent', 'sessions', root.id, 'lock');
-  await expect(f.store.acquireSessionMaintenance(root.id, 'delete')).rejects.toMatchObject({
+  const sessions = await Promise.all(
+    Array.from({ length: 2 }, () => f.store.createSession({ workspace: f.home }))
+  );
+  const [foreign, anchor] = sessions.map((session) => session.id).sort() as [string, string];
+  const releaseForeign = await f.store.acquireSessionLease(foreign, {});
+  releaseFault.path = join(f.home, '.mar', 'agent', 'sessions', anchor, 'lock');
+  await expect(
+    f.store.acquireSessionMaintenance(anchor, 'delete', undefined, [anchor, foreign])
+  ).rejects.toMatchObject({
     code: 'MAR_AGENT_SESSION_LOCKED'
   });
   expect(releaseFault.path).toBe('');
-  discover.mockRestore();
-  const parentRelease = await f.store.acquireSessionLease(root.id, {});
+  const parentRelease = await f.store.acquireSessionLease(anchor, {});
   await parentRelease();
-  await releaseChild();
-  const holding = await f.store.acquireSessionMaintenance(root.id, 'delete');
-  expect(holding.sessionIds).toEqual([root.id, child]);
-  await f.store.delete(root.id, holding);
+  await releaseForeign();
+  const holding = await f.store.acquireSessionMaintenance(anchor, 'delete', undefined, [
+    anchor,
+    foreign
+  ]);
+  expect(new Set(holding.sessionIds)).toEqual(new Set([anchor, foreign]));
+  await f.store.delete(anchor, holding);
   await holding.release();
 });

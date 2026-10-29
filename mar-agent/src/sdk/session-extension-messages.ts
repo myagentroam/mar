@@ -4,7 +4,6 @@ import {
   sessionMessagesPage
 } from '../extensions/session-messages.js';
 import type { ExtensionSessionBackend } from '../extensions/session-input.js';
-import type { ExtensionAgentsBackend } from '../extensions/agents.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import { readResourceImages, restoreMessages } from '../runtime/context/restore.js';
 import {
@@ -20,28 +19,30 @@ export function createSessionExtensionMessages(ports: {
   sessionId: string;
   store: Pick<
     SessionStore,
-    'readResource' | 'readInputImages' | 'readExecutionState' | 'readContextualWorldState'
+    | 'getSession'
+    | 'executionConfiguration'
+    | 'readResource'
+    | 'readInputImages'
+    | 'readExecutionState'
+    | 'readContextualWorldState'
   >;
-  agents(): Pick<ExtensionAgentsBackend, 'inspect'> | undefined;
   runtime(id: string): Pick<SessionRuntime, 'execution' | 'contextualWorldState'> | undefined;
   models(): { models: ReadonlyMap<string, ResolvedModelConfiguration>; defaultModelId: string };
 }): ExtensionSessionBackend['messages'] {
-  const { sessionId, store, agents, runtime, models } = ports;
+  const { sessionId, store, runtime, models } = ports;
   return async (input, call) => {
     const selection = normalizeSessionMessagesInput(input);
     call.signal.throwIfAborted();
     let target = sessionId;
-    let targetModelId: string | undefined;
     if (selection.agentId !== undefined) {
-      const backend = agents();
-      if (!backend)
-        throw new AgentError(
-          'MAR_AGENT_SESSION_INPUT_UNAVAILABLE',
-          'Session child message access is unavailable.'
-        );
-      const child = await backend.inspect({ agentId: selection.agentId }, call);
-      target = child.agentId;
-      targetModelId = child.modelId;
+      const child = await store.getSession(selection.agentId).catch((error: unknown) => {
+        if (error instanceof AgentError && error.code === 'MAR_AGENT_SESSION_NOT_FOUND')
+          throw new AgentError('MAR_AGENT_SUBAGENT_NOT_FOUND', 'Direct child Session not found.');
+        throw error;
+      });
+      if (child.source.parentSessionId !== sessionId)
+        throw new AgentError('MAR_AGENT_SUBAGENT_NOT_FOUND', 'Direct child Session not found.');
+      target = child.id;
     }
     call.signal.throwIfAborted();
     const targetRuntime = runtime(target);
@@ -64,9 +65,14 @@ export function createSessionExtensionMessages(ports: {
       return sessionMessagesPage(restored, selection);
     }
     const modelState = models();
+    const targetConfiguration =
+      selection.view === 'request' && target !== sessionId
+        ? await store.executionConfiguration(target)
+        : undefined;
+    call.signal.throwIfAborted();
     const requestModel =
       selection.view === 'request'
-        ? modelState.models.get(targetModelId ?? modelState.defaultModelId)
+        ? modelState.models.get(targetConfiguration?.modelId ?? modelState.defaultModelId)
         : undefined;
     if (selection.view === 'request' && !requestModel)
       throw new AgentError('MAR_AGENT_MODEL_DISABLED', 'Selected model is unavailable.');

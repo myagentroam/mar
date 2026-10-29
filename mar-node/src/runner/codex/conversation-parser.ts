@@ -159,6 +159,7 @@ import type {
 } from '../../runtime-model.js';
 import { parseCodexComposerImageMarkers } from './composer-image-markers.js';
 import { normalizeCodexTool } from './tool-normalizer.js';
+import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
 import { publicGoalHistoryText } from '../../service/goal-runtime.js';
 const MAX_COMPOSER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
@@ -872,7 +873,7 @@ export function codexOfficialItem(
             ? compactRunnerText(value.command, 10_000)
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
-        outputPreview: compactRunnerText(output, 10_000),
+        outputPreview: publicOutputSnapshot(output).text,
         outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
@@ -884,7 +885,20 @@ export function codexOfficialItem(
           value.durationMs >= 0
             ? value.durationMs
             : null,
-        truncated: output.length > 10_000
+        truncated: output.length > 10_000,
+        ...(base.status !== 'IN_PROGRESS'
+          ? {
+              output:
+                typeof value.aggregatedOutput === 'string'
+                  ? publicOutputSnapshot(output)
+                  : undefined
+            }
+          : {}),
+        toolPresentation: shellExecution(
+          base.status === 'IN_PROGRESS' || typeof value.aggregatedOutput !== 'string'
+            ? undefined
+            : output
+        )
       }
     };
   }
@@ -1057,7 +1071,7 @@ export function codexLiveConversationItem(
             ? compactRunnerText(value.command, 10_000)
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
-        outputPreview: compactRunnerText(output, 10_000),
+        outputPreview: publicOutputSnapshot(output).text,
         outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
@@ -1069,7 +1083,18 @@ export function codexLiveConversationItem(
           value.durationMs >= 0
             ? value.durationMs
             : null,
-        truncated: output.length > 10_000
+        truncated: output.length > 10_000,
+        ...(completed
+          ? {
+              output:
+                typeof value.aggregatedOutput === 'string'
+                  ? publicOutputSnapshot(output)
+                  : undefined
+            }
+          : {}),
+        toolPresentation: shellExecution(
+          !completed || typeof value.aggregatedOutput !== 'string' ? undefined : output
+        )
       }
     };
   }

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost, type ClientToolDefinition } from '../../src/host.js';
 import {
   SecretValue,
-  type ExecutionResult,
   type AgentEvent,
   type AgentModelConfiguration,
   type ToolApprovalDecision,
@@ -15,13 +14,11 @@ import {
   type ToolApprovalRequest
 } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
+import type { Agent } from '../../src/index.js';
 import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
-import { JsonlSessionStore, type SessionRecord } from '../../src/session/store/index.js';
+import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
-import {
-  SubagentSessionController,
-  type PersistedSubagentSession
-} from '../../src/subagent/session-controller.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -78,151 +75,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const childStop = {
-  action: 'ask' as const,
-  reason: 'Confirm shared target.',
-  source: {
-    sessionId: 'child',
-    executionId: 'child-execution',
-    callId: 'child-call',
-    toolName: 'effect'
-  }
-};
-
-async function childController(results: ExecutionResult[], records: SessionRecord[] = []) {
-  const persisted: PersistedSubagentSession = {
-    id: 'child',
-    createdAt: '2026-10-15T00:00:00.000Z',
-    lastActivityAt: '2026-10-15T00:00:00.000Z',
-    source: {
-      type: 'subagent',
-      parentSessionId: 'parent',
-      rootSessionId: 'parent',
-      role: 'explore',
-      description: 'Inspect target'
-    },
-    records
-  };
-  const controller = await SubagentSessionController.open({
-    parentSessionId: 'parent',
-    rootSessionId: 'parent',
-    backend: {
-      createSession: async () => ({ id: 'child' }),
-      deleteSession: async () => undefined,
-      listChildren: async () => (records.length ? [persisted] : []),
-      loadChild: async () => persisted
-    }
-  });
-  cleanups.push(() => controller.dispose());
-  await controller.beginParentExecution({
-    executionId: 'parent-execution',
-    modelId: 'test',
-    reasoningEffort: 'medium',
-    models: new Map([
-      [
-        'test',
-        { id: 'test', name: 'Test', reasoningEfforts: ['medium'], defaultReasoningEffort: 'medium' }
-      ]
-    ]),
-    emitTerminal: async () => undefined,
-    startTurn: async ({ turnId }) => {
-      const result = results.shift();
-      if (!result) throw new Error('Unexpected child Turn.');
-      return {
-        executionId: result.executionId,
-        turnId,
-        async *[Symbol.asyncIterator]() {},
-        result: async () => result,
-        cancel: () => undefined,
-        enqueueMessage: () => false
-      };
-    }
-  });
-  return controller;
-}
-
-describe('Auto subagent stop lifecycle', () => {
-  it.each(['failed', 'cancelled'] as const)(
-    'does not reuse a prior stop when the next Turn is %s',
-    async (status) => {
-      const controller = await childController([
-        { executionId: 'first', status: 'completed', finalAnswer: '', permissionStop: childStop },
-        { executionId: 'second', status, finalAnswer: '' }
-      ]);
-      const first = await controller.run(
-        { description: 'Inspect target', prompt: 'Inspect.', role: 'explore' },
-        { waitFor: 'completion' }
-      );
-      expect(first.permissionStop).toEqual(childStop);
-      await controller.message(first.agentId, 'Continue the authorized task.');
-      const next = await controller.output(first.agentId, { untilSettled: true });
-      expect(next.status).toBe(status);
-      expect(next.permissionStop).toBeUndefined();
-    }
-  );
-
-  it.each(['ask', 'deny'] as const)(
-    'restores the latest persisted %s stop after reopening',
-    async (action) => {
-      const permissionStop = { ...childStop, action };
-      const controller = await childController(
-        [],
-        [
-          {
-            schemaVersion: 1,
-            recordId: 'completed',
-            sequence: 1,
-            timestamp: '2026-10-15T00:00:00.000Z',
-            sessionId: 'child',
-            executionId: 'child-execution',
-            type: 'event',
-            payload: { type: 'execution.completed', permissionStop }
-          }
-        ]
-      );
-      const restored = await controller.output('child', { untilSettled: true });
-      expect(restored).toMatchObject({ status: 'completed', permissionStop });
-    }
-  );
-
-  it.each(['started', 'completed', 'failed', 'cancelled'])(
-    'does not restore an old stop after a newer execution is %s',
-    async (type) => {
-      const base: SessionRecord = {
-        schemaVersion: 1,
-        recordId: 'old',
-        sequence: 1,
-        timestamp: '2026-10-15T00:00:00.000Z',
-        sessionId: 'child',
-        executionId: 'old',
-        type: 'event',
-        payload: { type: 'execution.completed', permissionStop: childStop }
-      };
-      const controller = await childController(
-        [],
-        [
-          base,
-          {
-            ...base,
-            recordId: 'new',
-            sequence: 2,
-            executionId: 'new',
-            payload: { type: `execution.${type}` }
-          }
-        ]
-      );
-      expect(
-        (await controller.output('child', { untilSettled: true })).permissionStop
-      ).toBeUndefined();
-    }
-  );
-});
-
 async function fixture(
   rounds: ModelEvent[][] | ((request: ModelRequest) => readonly ModelEvent[]),
   tools: ClientToolDefinition[] = [effect],
   extensions: NonNullable<Parameters<typeof createAgentWithAdapter>[0]['extensions']> = [],
-  approval?: ToolApprovalHandler
+  approval?: ToolApprovalHandler,
+  agentReady?: (agent: Agent) => void
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-auto-'));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
@@ -259,6 +117,7 @@ async function fixture(
     })
   );
   cleanups.push(() => agent.dispose());
+  agentReady?.(agent);
   const session = await agent.createSession({ workspace: home });
   return { agent, session, requests, effects, home };
 }
@@ -388,39 +247,60 @@ describe('Auto execution and ordinary-message continuation', () => {
 
   it('inherits Auto in a child and exposes its stop in terminal events and wait snapshots', async () => {
     let parentRound = 0;
-    const f = await fixture((request) => {
-      if ((request.system + JSON.stringify(request.messages)).includes('non-recursive subagent')) {
-        expect(request.allowHostedTools).not.toBe(false);
-        return [
-          call('child-stop', {
-            target: 'shared',
-            permission: { action: 'ask', reason: 'Confirm shared target.' }
-          }),
-          { type: 'completed', reason: 'tool_use' }
-        ];
+    let agent!: Agent;
+    const f = await fixture(
+      (request) => {
+        if (
+          request.messages.some(
+            (message) =>
+              message.role === 'user' &&
+              message.content.includes(
+                'Inspect shared target; the real user has not authorized writes.'
+              )
+          )
+        ) {
+          expect(request.allowHostedTools).not.toBe(false);
+          return [
+            call('child-stop', {
+              target: 'shared',
+              permission: { action: 'ask', reason: 'Confirm shared target.' }
+            }),
+            { type: 'completed', reason: 'tool_use' }
+          ];
+        }
+        const index = parentRound++;
+        if (index === 0)
+          return [
+            call(
+              'start-child',
+              {
+                prompt: 'Inspect shared target; the real user has not authorized writes.',
+                title: 'Inspect target',
+                description: 'Inspect target',
+                modelId: 'test',
+                reasoningEffort: 'medium',
+                role: 'general-purpose'
+              },
+              'agent_start'
+            ),
+            { type: 'completed', reason: 'tool_use' }
+          ];
+        if (index === 1)
+          return [
+            call('wait-child', { waitMs: 10000 }, 'agent_wait'),
+            { type: 'completed', reason: 'tool_use' }
+          ];
+        return final;
+      },
+      [effect],
+      [createSubagentExtension({ agent: () => agent })],
+      undefined,
+      (created) => {
+        agent = created;
       }
-      const index = parentRound++;
-      if (index === 0)
-        return [
-          call(
-            'start-child',
-            {
-              prompt: 'Inspect shared target; the real user has not authorized writes.',
-              description: 'Inspect target',
-              modelId: 'test',
-              reasoningEffort: 'medium',
-              role: 'general-purpose'
-            },
-            'agent_start'
-          ),
-          { type: 'completed', reason: 'tool_use' }
-        ];
-      if (index === 1)
-        return [
-          call('wait-child', { waitMs: 10000 }, 'agent_wait'),
-          { type: 'completed', reason: 'tool_use' }
-        ];
-      return final;
+    );
+    await f.agent.reconfigureModels({
+      models: [{ ...model, conversationModel: true, subagentModel: true }]
     });
     const events = [];
     const run = f.session.run({
@@ -430,16 +310,32 @@ describe('Auto execution and ordinary-message continuation', () => {
     for await (const event of run) events.push(event);
     expect(await run.result()).toMatchObject({ status: 'completed' });
     expect(f.effects).toEqual([]);
-    expect(events).toEqual(
+    const start = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'agent_start'
+    );
+    const wait = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
+    );
+    if (start?.type !== 'tool.completed' || wait?.type !== 'tool.completed')
+      throw new Error(
+        `Missing child receipts: ${JSON.stringify(events.filter((event) => event.type === 'tool.failed'))}`
+      );
+    expect(JSON.parse(wait.summary)).toMatchObject({ permissionStop: { action: 'ask' } });
+    const childId = (JSON.parse(start.summary) as { agentId: string }).agentId;
+    const childHistory = await f.agent.sessionHistory(childId);
+    expect(childHistory.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          type: 'subagent.completed',
-          permissionStop: expect.objectContaining({ action: 'ask' })
+          kind: 'event',
+          event: expect.objectContaining({
+            type: 'execution.started',
+            permissionMode: 'auto'
+          })
         }),
         expect.objectContaining({
-          type: 'tool.completed',
-          toolName: 'agent_wait',
-          data: expect.objectContaining({
+          kind: 'event',
+          event: expect.objectContaining({
+            type: 'execution.completed',
             permissionStop: expect.objectContaining({ action: 'ask' })
           })
         })

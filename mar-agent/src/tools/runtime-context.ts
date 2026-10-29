@@ -1,7 +1,6 @@
 import type { ResourcePublisher, ResourceStore } from '../runtime/resource-publication.js';
 import type { ExecutionMode } from '../runtime/contracts.js';
 import type { AgentSkill } from '../runtime/context/instructions.js';
-import type { SubagentController, SubagentLatestMessage } from '../subagent/contracts.js';
 import type { TodoStore } from './agent/todo.js';
 import type {
   McpToolCallContext,
@@ -41,27 +40,7 @@ export type ToolRuntimeEvent =
   | { type: 'sleep.started'; callId: string; durationMs: number; startedAt: string }
   | { type: 'todo.updated'; revision: number; items: readonly import('./agent/todo.js').TodoItem[] }
   | { type: 'user_input.requested'; requestId: string; questions: unknown[] }
-  | { type: 'user_input.resolved'; requestId: string }
-  | {
-      type: 'subagent.started';
-      agentId: string;
-      description: string;
-      modelId?: string;
-      modelName?: string;
-      reasoningEffort?: import('../model/configuration.js').AgentReasoningEffort;
-    }
-  | {
-      type: 'subagent.completed';
-      agentId: string;
-      description: string;
-      status: string;
-      modelId?: string;
-      modelName?: string;
-      reasoningEffort?: import('../model/configuration.js').AgentReasoningEffort;
-      latestMessage?: SubagentLatestMessage;
-      errorCode?: string;
-      errorMessage?: string;
-    };
+  | { type: 'user_input.resolved'; requestId: string };
 
 export interface ToolRuntimeImage {
   readonly mimeType: string;
@@ -73,14 +52,13 @@ export interface ToolRuntimeContext {
   imageStore?: ToolImageStore;
   todo: TodoStore;
   requestSmartCompact?: () => void;
-  subagents?: SubagentController;
   mode: ExecutionMode;
   sessionId: string;
   executionId: string;
   modelId?: string;
   signal: AbortSignal;
   waitInterrupt?: import('./wait.js').ToolWaitInterrupt | undefined;
-  subagentMessages?: import('./wait.js').ToolWaitInterrupt;
+  contextUpdates?: import('./wait.js').ToolWaitInterrupt;
   permissionPolicy?: import('./permissions.js').ExecutionToolPermissions;
   parentCallId?: string;
   writeToolResultResource?: import('./result-extensions.js').ToolResultResourceWriter;

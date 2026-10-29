@@ -1,4 +1,17 @@
 export const composerZhCN = {
+  composerReference: {
+    picker: '引用文件或会话',
+    file: '文件',
+    session: '会话',
+    fileUnavailable: '文件搜索不可用。',
+    enterPath: '输入路径以搜索文件和文件夹。',
+    fileError: '文件搜索失败，请修改关键词后重试。',
+    sessionLoading: '正在搜索会话…',
+    sessionUnavailable: '会话搜索不可用。',
+    sessionError: '会话搜索失败，请修改关键词后重试。',
+    noSessions: '没有匹配的会话。',
+    refine: '还有更多结果，请细化关键词。'
+  },
   composerSend: {
     steer: '插入消息',
     holdHint: '上滑插入消息，越过输入框顶部取消。',

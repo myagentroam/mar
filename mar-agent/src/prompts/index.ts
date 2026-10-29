@@ -9,7 +9,6 @@ import {
 } from './core.js';
 import { modePrompt } from './modes.js';
 import { outputStylePrompt } from './output.js';
-import { subagentPrompt } from './subagent.js';
 import {
   interactionPrompt,
   longRunningPrompt,
@@ -44,7 +43,7 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
     'todo_write',
     'agent_start',
     'agent_wait',
-    'agent_cancel'
+    'agent_stop'
   ].some((name) => toolNames.has(name));
 
   const values: readonly (readonly [string, string])[] = [
@@ -65,7 +64,6 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
       })
     ],
     ['compaction', input.mode === 'compact' ? compactionPrompt() : ''],
-    ['subagent', toolNames.has('agent_start') ? subagentPrompt : ''],
     [
       'caller-instructions',
       input.extension

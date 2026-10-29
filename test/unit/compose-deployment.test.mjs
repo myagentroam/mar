@@ -88,4 +88,11 @@ test('Web image build includes product help without marketing-only screenshots',
   const helpCopyIndex = webBuild.indexOf('COPY docs/help docs/help');
   const buildIndex = webBuild.search(/RUN pnpm --filter @myagentroam\/web-console\.\.\. build/u);
   assert.ok(helpCopyIndex >= 0 && buildIndex > helpCopyIndex);
+  for (const script of ['scripts/validate-help-docs.mjs', 'scripts/help-anchors.mjs']) {
+    const copy = webBuild
+      .split('\n')
+      .find((line) => line.startsWith('COPY ') && line.split(/\s+/u).slice(1, -1).includes(script));
+    assert.ok(copy !== undefined, `Web build must copy ${script}`);
+    assert.ok(webBuild.indexOf(copy) < buildIndex, `${script} must be copied before the Web build`);
+  }
 });

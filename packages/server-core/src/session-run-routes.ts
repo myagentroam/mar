@@ -465,6 +465,7 @@ export function registerSessionRunRoutes(input: {
       limit?: string;
       query?: string;
       sessionGroup?: string;
+      registeredOnly?: string;
     };
   }>('/api/agent-sessions', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
@@ -481,6 +482,9 @@ export function registerSessionRunRoutes(input: {
       (request.query.sessionGroup !== undefined &&
         request.query.sessionGroup !== 'MAIN' &&
         request.query.sessionGroup !== 'CHILD') ||
+      (request.query.registeredOnly !== undefined &&
+        (request.query.workspaceId === undefined ||
+          (request.query.registeredOnly !== 'true' && request.query.registeredOnly !== 'false'))) ||
       (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100))
     )
       return sendError(reply, 400, 'SESSION_INVALID');
@@ -493,6 +497,9 @@ export function registerSessionRunRoutes(input: {
           ...(request.query.workspaceId === undefined
             ? {}
             : { workspaceId: request.query.workspaceId }),
+          ...(request.query.registeredOnly === undefined
+            ? {}
+            : { registeredOnly: request.query.registeredOnly === 'true' }),
           ...(request.query.cursor === undefined ? {} : { cursor: request.query.cursor }),
           ...(request.query.query === undefined || request.query.query.trim().length === 0
             ? {}
@@ -772,6 +779,30 @@ export function registerSessionRunRoutes(input: {
           sessionId: request.params.sessionId,
           ...(page.cursor === undefined ? {} : { cursor: page.cursor }),
           ...(page.limit === undefined ? {} : { limit: page.limit })
+        })
+      );
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  });
+
+  app.get<{
+    Params: { sessionId: string };
+    Querystring: { nodeId?: string; workspaceId?: string };
+  }>('/api/agent-sessions/:sessionId/tree', async (request, reply) => {
+    const admin = protectedAdmin(database, request, reply);
+    if (admin === undefined) return;
+    if (!isNonEmptyString(request.query.nodeId)) return sendError(reply, 400, 'NODE_ID_REQUIRED');
+    if (!isNonEmptyString(request.query.workspaceId) || request.query.workspaceId.length > 128)
+      return sendError(reply, 400, 'WORKSPACE_ID_REQUIRED');
+    reply.header('cache-control', 'private, no-store');
+    try {
+      return reply.send(
+        await requestUserNode(nodeControl, admin, request.query.nodeId, 'session.graph', {
+          workspaceId: request.query.workspaceId,
+          sessionId: request.params.sessionId,
+          includeAncestors: true,
+          limit: 100
         })
       );
     } catch (error) {

@@ -18,6 +18,7 @@ import {
   h,
   onBeforeUnmount,
   ref,
+  watch,
   type ShallowUnwrapRef
 } from 'vue';
 import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
@@ -31,6 +32,7 @@ import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
+import WorkspaceSessionTreeDialog from '../../view/workspace/WorkspaceSessionTreeDialog.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
 import ConversationHeader from '../../view/conversation/ConversationHeader.vue';
@@ -41,7 +43,7 @@ import ComposerQueue from '../../view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../view/composer/ComposerCommandPicker.vue';
-import ComposerFileReferencePicker from '../../view/composer/ComposerFileReferencePicker.vue';
+import ComposerReferencePicker from '../../view/composer/ComposerReferencePicker.vue';
 import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
 import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
@@ -77,11 +79,37 @@ const managementComposition = useManagementComposition<ManagementSection>();
 const managementPage = computed(() =>
   managementComposition.resolve(props.page.managementSection, props.page.admin)
 );
-const composer = ref<{ focusAt(cursor: number): void; focus(): void }>();
+const composer = ref<{
+  focusAt(cursor: number): void;
+  focus(): void;
+  replaceRange(start: number, end: number, text: string): boolean;
+}>();
 const composerToolbar = ref<{ openModelMenu(): boolean }>();
 const cleanupDialogOpen = ref(false);
+const treeTarget = ref<{ nodeId: string; workspaceId: string; sessionId: string }>();
 const inspectorElement = ref<HTMLElement>();
 const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
+watch(
+  () => [props.page.workspaceTarget?.nodeId, props.page.workspaceTarget?.workspaceId],
+  ([nodeId, workspaceId]) => {
+    if (
+      treeTarget.value &&
+      (treeTarget.value.nodeId !== nodeId || treeTarget.value.workspaceId !== workspaceId)
+    )
+      treeTarget.value = undefined;
+  }
+);
+
+function openSessionTree(sessionId: string): void {
+  const target = props.page.workspaceTarget;
+  if (target)
+    treeTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId, sessionId };
+}
+
+function openSessionFromTree(sessionId: string): void {
+  treeTarget.value = undefined;
+  void props.page.openSessionFromList(sessionId);
+}
 const hostedConversationHeader = computed(() => {
   const workspace = props.page.hostedConversationWorkspace;
   return (
@@ -142,7 +170,13 @@ const workspaceImageResourceUrl = computed(() => {
 });
 
 props.page.setComposerInputFocus((cursor) => composer.value?.focusAt(cursor));
-onBeforeUnmount(() => props.page.setComposerInputFocus(() => undefined));
+props.page.setComposerRangeEditor(
+  (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
+);
+onBeforeUnmount(() => {
+  props.page.setComposerInputFocus(() => undefined);
+  props.page.setComposerRangeEditor(() => false);
+});
 const mobileToolsFocus = createMobileSurfaceFocusService({
   isOpen: () => props.page.mobileViewport && props.page.mobileWorkspaceSurface !== 'conversation',
   regions: () => [
@@ -337,7 +371,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :group-state="page.workspaceSessionGroupState"
             @select-group="page.selectWorkspaceSessionGroup"
             @activate-group-marker="page.activateWorkspaceSessionGroupMarker"
-            @move-to-main="page.moveSessionToMain"
+            @open-tree="openSessionTree"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
             :mobile-viewport="page.mobileViewport"
@@ -399,6 +433,16 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :cleanup="cleanupWorkspaceSessions"
             @update:model-value="updateCleanupDialogOpen"
           />
+          <WorkspaceSessionTreeDialog
+            v-if="treeTarget"
+            :model-value="true"
+            :node-id="treeTarget.nodeId"
+            :workspace-id="treeTarget.workspaceId"
+            :session-id="treeTarget.sessionId"
+            :request="page.request"
+            @close="treeTarget = undefined"
+            @open="openSessionFromTree"
+          />
           <section
             class="conversation-panel"
             :aria-label="translate('generated.workbenchSurface.agentConversation')"
@@ -413,6 +457,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :session-title="page.sessionTitle"
                 :content-search-ready="page.contentSearchReady"
                 @open-surface="page.openMobileWorkspaceSurface"
+                @open-tree="openSessionTree"
               />
               <ConversationScroll
                 :has-older="page.conversationNextCursor !== null"
@@ -447,6 +492,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   :node-ready="page.nodeReady"
                   :synchronized="page.liveConnected && !page.conversationSyncPending"
                   :tool-change-enabled="page.nodeReady"
+                  :session-navigation-enabled="page.nodeReady"
                   :rewind-enabled="page.rewindConversationEnabled"
                   :rollback-enabled="page.rollbackConversationEnabled"
                   @initial-rendered="page.confirmConversationInitialRender"
@@ -454,6 +500,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   @image-unavailable="page.markRunImageUnavailable"
                   @open-file="page.openAgentWorkspaceFile"
                   @open-file-change="page.openAgentFileChange"
+                  @open-session="page.openMappedSubagentSession"
                   @set-answer="page.setUserInputAnswer"
                   @submit-input="page.submitUserInput"
                   @implement-plan="page.implementPlan"
@@ -511,7 +558,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :completion="page.workPromptCompletion"
                 :completion-blocked="
                   page.commandPickerOpen ||
-                  page.fileReferencePickerOpen ||
+                  page.referencePickerOpen ||
                   page.selectedRunnerCommand !== undefined ||
                   page.composerAttachmentsPending
                 "
@@ -634,14 +681,23 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @select-skill="page.selectComposerSkill"
                     @select-quick-prompt="page.selectComposerQuickPrompt"
                   />
-                  <ComposerFileReferencePicker
-                    :open="page.fileReferencePickerOpen"
-                    :entries="page.fileReferenceEntries"
+                  <ComposerReferencePicker
+                    :open="page.referencePickerOpen"
+                    :candidates="page.referenceCandidates"
                     :active-index="page.activeFileReferenceIndex"
                     :loading="page.fileReferenceLoading"
-                    :query="page.activeFileReferenceMatch?.query ?? ''"
+                    :query="page.activeReferenceMatch?.query ?? ''"
+                    :session-enabled="true"
+                    :session-ready="page.referenceSessionAvailable()"
+                    :file-ready="page.filesReady"
+                    :session-only="page.activeReferenceMatch?.sessionOnly ?? false"
+                    :session-loading="page.referenceSessionLoading"
+                    :file-error="page.referenceFileError"
+                    :session-error="page.referenceSessionError"
+                    :file-more="page.referenceFileMore"
+                    :session-more="page.referenceSessionMore"
                     @activate="page.activeFileReferenceIndex = $event"
-                    @select="page.selectFileReference"
+                    @select="page.selectReference"
                   />
                 </template>
               </ConversationComposer>

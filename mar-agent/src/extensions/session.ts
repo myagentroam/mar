@@ -18,12 +18,6 @@ import { bindCoreNetwork } from './network.js';
 import { ExtensionMcp } from './mcp.js';
 import { bindCoreProcesses } from './processes.js';
 import { bindCoreEnvironment } from './environment.js';
-import {
-  bindCoreAgents,
-  invokeCoreAgentOperation,
-  type ExtensionAgentsBackend,
-  type ExtensionAgentAction
-} from './agents.js';
 import { bindCoreSettings, coreSettingsBinding, settingsCapabilities } from './settings.js';
 import type { AgentHostExtensionPorts } from './host-ports.js';
 import { ExtensionOperations, type ExtensionOperationContext } from './operation.js';
@@ -107,7 +101,6 @@ export class ExtensionSession {
     readonly checkpoint?: ExtensionCheckpointBackend,
     readonly sessionBackend?: ExtensionSessionBackend,
     readonly hostPorts?: AgentHostExtensionPorts,
-    readonly agentsBackend?: ExtensionAgentsBackend,
     readonly allowTool: (
       name: string,
       definition?: ExtensionToolBinding['definition']
@@ -209,11 +202,6 @@ export class ExtensionSession {
       };
     return {
       sessionId: this.id,
-      ...(this.agentsBackend
-        ? {
-            agents: bindCoreAgents(this.agentsBackend, scope, run, this.hooks)
-          }
-        : {}),
       ...(settings ? { settings: bindCoreSettings(settings, run, this.hooks) } : {}),
       ...(this.hostPorts?.environment
         ? { environment: bindCoreEnvironment(this.hostPorts.environment, run, this.hooks) }
@@ -277,7 +265,7 @@ export class ExtensionSession {
         ? { mcp: this.mcp.bind(scope, extension.id, this.hostPorts.mcp, run) }
         : {}),
       resources: scope,
-      services: this.services.bind(scope),
+      services: this.services.bind(scope, run),
       capabilities: settingsCapabilities(this.capabilities, settings !== undefined),
       bindings: Object.freeze({ ...(extension.bindings ?? {}) }),
       observability: {
@@ -343,13 +331,6 @@ export class ExtensionSession {
   ): Promise<ToolExecutionResult> {
     return this.#toolDomain.invoke(call, context, snapshot);
   }
-
-  readonly agentAction: ExtensionAgentAction = (key, input, leaf) => {
-    const call = this.operations.current();
-    if (!call)
-      throw new AgentError('MAR_AGENT_SUBAGENT_FAILED', 'Agent operation context is unavailable.');
-    return invokeCoreAgentOperation(this.hooks, key, input, call, leaf);
-  };
 
   async modelEvent(
     event: ExtensionModelEvent,

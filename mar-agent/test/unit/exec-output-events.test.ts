@@ -10,6 +10,60 @@ import { answer, call, cleanupCoreFixtures, fixture } from './support/core-exten
 afterEach(cleanupCoreFixtures);
 
 describe('exec live output and model observation separation', () => {
+  it('keeps a UTF-8 safe bounded display tail independent of model output', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const f = await fixture(
+      [],
+      (_request, index) =>
+        index === 0 ? call('exec', { command: 'fixture', yieldMs: 2000 }) : answer(),
+      false,
+      false,
+      {
+        processExecutor: {
+          async spawn() {
+            return child as unknown as ChildProcessWithoutNullStreams;
+          }
+        }
+      }
+    );
+    const events: AgentEvent[] = [];
+    const execution = f.session.run({ prompt: 'Run.' });
+    const collecting = (async () => {
+      for await (const event of execution) events.push(event);
+    })();
+    try {
+      await vi.waitFor(() => expect(child.stdout.listenerCount('data')).toBe(1));
+      child.stdout.write('中'.repeat(4000) + 'TAIL');
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+      await execution.result();
+      await collecting;
+      const final = events.find(
+        (event) => event.type === 'tool.completed' && event.toolName === 'exec'
+      );
+      expect(final?.type).toBe('tool.completed');
+      if (final?.type !== 'tool.completed') throw new Error('missing result');
+      const data = final.data as { displayOutput: { stdout: string; stdoutDroppedBytes: number } };
+      expect(data.displayOutput.stdout.endsWith('TAIL')).toBe(true);
+      expect(data.displayOutput.stdout).not.toContain('\ufffd');
+      expect(Buffer.byteLength(data.displayOutput.stdout)).toBeLessThanOrEqual(8192);
+      expect(data.displayOutput.stdoutDroppedBytes).toBeGreaterThan(0);
+      expect(
+        f.adapter.requests.at(-1)!.messages.findLast((m) => m.role === 'tool')?.content
+      ).not.toContain('displayOutput');
+    } finally {
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+      await execution.result();
+      await collecting;
+    }
+  });
+
   it('does not make the next model request wait for slow Host display delivery', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),
@@ -179,7 +233,12 @@ describe('exec live output and model observation separation', () => {
         expect(progress).toMatchObject({
           type: 'tool.output',
           toolName: 'exec',
-          output: { stdout: 'display-first', stderr: 'warning', truncated: false }
+          output: {
+            stdout: 'display-first',
+            stderr: 'warning',
+            truncated: false,
+            displayOutput: { stdout: 'display-first', stderr: 'warning', stdoutDroppedBytes: 0 }
+          }
         });
         expect(progress && 'parentCallId' in progress ? progress.parentCallId : undefined).toBe(
           mode === 'direct' ? undefined : 'call'
@@ -201,13 +260,19 @@ describe('exec live output and model observation separation', () => {
         const modelResult = f.adapter.requests
           .at(-1)!
           .messages.findLast((message) => message.role === 'tool');
+        expect(modelResult?.content).not.toContain('displayOutput');
         if (mode === 'unobserved') expect(modelResult?.content).not.toContain('display-first');
         else expect(modelResult?.content).toContain('display-first-tail');
         const final = events.find(
           (event) => event.type === 'tool.completed' && event.toolName === 'exec'
         );
         expect(final).toMatchObject({
-          data: { stdout: 'display-first-tail', stderr: 'warning', waitOutcome: 'completion' }
+          data: {
+            stdout: 'display-first-tail',
+            stderr: 'warning',
+            waitOutcome: 'completion',
+            displayOutput: { stdout: 'display-first-tail', stderr: 'warning' }
+          }
         });
         const store = await JsonlSessionStore.open(f.home);
         try {

@@ -7,7 +7,7 @@ export async function runtimeModelPayload(input: {
   readonly selectedModelId: string;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
-}): Promise<object> {
+}): Promise<Record<string, unknown>> {
   if (input.marAgentRuntimeModels !== undefined) {
     const prepared = await input.marAgentRuntimeModels.prepare({
       userId: input.userId,

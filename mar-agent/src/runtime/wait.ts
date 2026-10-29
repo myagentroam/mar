@@ -69,8 +69,18 @@ export function waitForToolCondition(input: {
         input.signal?.reason ??
           new AgentError('MAR_AGENT_EXECUTION_CANCELLED', 'Execution cancelled.')
       );
-    unsubscribe = input.subscribe(check);
-    unsubscribeInterrupt = input.interrupt?.subscribe(check) ?? (() => {});
+    const releaseSubscription = input.subscribe(check);
+    if (settled) {
+      releaseSubscription();
+      return;
+    }
+    unsubscribe = releaseSubscription;
+    const releaseInterrupt = input.interrupt?.subscribe(check) ?? (() => {});
+    if (settled) {
+      releaseInterrupt();
+      return;
+    }
+    unsubscribeInterrupt = releaseInterrupt;
     cancelTimer = waitDeadline(input.waitMs, () => {
       check();
       finish('timeout');

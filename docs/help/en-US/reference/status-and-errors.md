@@ -1,6 +1,6 @@
 ---
 title: Statuses and Common Errors
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # Statuses and Common Errors
@@ -19,4 +19,4 @@ Errors written in uppercase with underscores are stable diagnostic codes. Before
 
 Never work around path, identity, CSRF, OAuth state, or permission errors by editing browser storage or private credentials.
 
-`NODE_UPGRADE_PACKAGE_UNAVAILABLE` means the published npm versions cannot be queried, no stable version satisfies the current Server version ceiling, or the Server version is invalid. Check the Server version, registry access, network, and publication status, then refresh. Supervisor receives the selected exact version, never a floating tag; see [Upgrade MyAgentRoam](../deployment/upgrade.md).
+`NODE_UPGRADE_PACKAGE_UNAVAILABLE` means the published npm versions cannot be queried, no stable version satisfies both the Server version ceiling and business baseline, or the Server version is invalid. Check the Server version, registry access, network, and publication status, then refresh. Supervisor receives the selected exact version, never a floating tag; see [Upgrade MyAgentRoam](../deployment/upgrade.md).

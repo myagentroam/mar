@@ -1,5 +1,6 @@
 packages:
   - 'mar-agent'
+  - 'mar-agent/extensions/*'
   - 'marctl'
   - 'mar-node'
   - 'mar-server'

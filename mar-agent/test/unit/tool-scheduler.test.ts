@@ -242,14 +242,7 @@ describe('tool call scheduler', () => {
 
     for (const name of ['skill', 'read', 'view_image', 'todo_read', 'exec'])
       expect(safety.get(name), name).toBe('safe');
-    for (const name of [
-      'apply_patch',
-      'question',
-      'todo_write',
-      'agent_start',
-      'agent_wait',
-      'agent_cancel'
-    ])
+    for (const name of ['apply_patch', 'question', 'todo_write'])
       expect(safety.get(name), name).toBe('serial');
   });
 });

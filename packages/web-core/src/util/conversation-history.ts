@@ -313,7 +313,31 @@ export function mergeConversationPayload(
     typeof incoming[append] === 'string'
   )
     merged[append] = `${previous[append]}${incoming[append]}`;
+  if (append === 'output' && typeof incoming.output === 'object' && incoming.output !== null) {
+    const prior =
+      typeof previous.output === 'object' && previous.output !== null
+        ? (previous.output as Record<string, unknown>)
+        : {};
+    const update = incoming.output as Record<string, unknown>;
+    if (typeof update.text === 'string') {
+      const text = `${typeof prior.text === 'string' ? prior.text : ''}${update.text}`;
+      merged.output = {
+        text: boundedOutputTail(text),
+        truncated: prior.truncated === true || update.truncated === true || text.length > 10_000
+      };
+      if (typeof incoming.outputPreview === 'string') {
+        const combined = `${typeof previous.outputPreview === 'string' ? previous.outputPreview : ''}${incoming.outputPreview}`;
+        merged.outputPreview = boundedOutputTail(combined);
+      }
+    }
+  }
   return merged;
+}
+
+function boundedOutputTail(text: string): string {
+  if (text.length <= 10_000) return text;
+  const tail = text.slice(-10_000);
+  return /^[\uDC00-\uDFFF]/u.test(tail) ? tail.slice(1) : tail;
 }
 
 export function isOptimisticSteerItem(item: ConversationTurn['items'][number]): boolean {

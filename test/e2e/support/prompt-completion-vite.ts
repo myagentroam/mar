@@ -29,7 +29,7 @@ export async function startPromptCompletionViteFixture(): Promise<{
     },
     load(id) {
       return id === messageLibraryStub
-        ? `export { ElButton } from 'element-plus/es/components/button/index.mjs';\nexport const ElMessage = { info() {}, error() {}, warning() {} };\nexport const ElMessageBox = { confirm: async () => undefined };`
+        ? `export { ElButton } from 'element-plus/es/components/button/index.mjs';\nexport { ElTooltip } from 'element-plus/es/components/tooltip/index.mjs';\nexport { useZIndex } from 'element-plus/es/hooks/use-z-index/index.mjs';\nexport const ElMessage = { info() {}, error() {}, warning() {} };\nexport const ElMessageBox = { confirm: async () => undefined };`
         : undefined;
     }
   };

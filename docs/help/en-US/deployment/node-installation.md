@@ -1,6 +1,6 @@
 ---
 title: Install and Register a Node
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-29
 ---
 
 # Install and Register a Node
@@ -19,6 +19,20 @@ For a first connection, you can use [built-in MAR Agent](../runners/mar-agent.md
 4. Restrict the configuration and entire data directory to the service account. They contain Node credentials, SQLite data, and logs; keep them out of npm package directories, Git, and chats.
 5. Verify in the foreground with `mar-node run --config <config-file>`, then configure a Supervisor-backed service for production.
 
+For example, on Linux create a private JSON file, replacing every placeholder with your Server address, service account paths, and one-time registration key:
+
+```json
+{
+  "serverUrl": "https://mar.example.com",
+  "allowedRoots": ["/home/mar-node/workspaces"],
+  "dataDirectory": "/home/mar-node/.local/share/myagentroam",
+  "directTransfer": { "udpPortRangeBegin": 49152, "udpPortRangeEnd": 49215 },
+  "registrationToken": "registration-key-from-console"
+}
+```
+
+On Windows or macOS, use absolute paths appropriate to that service account; see the platform guides below. After registration, Node writes its ID and credential back to the configuration; the used `registrationToken` can be removed. When upgrading a configuration using the old `databasePath`, replace it with the containing `dataDirectory` and confirm the database is named `node-runtime.sqlite`; Node rejects the old field and does not move the data automatically.
+
 For step 1, replace the placeholder before running:
 
 ```bash
@@ -27,9 +41,11 @@ npm install --global "@myagentroam/node@${common_version}"
 npm list --global "@myagentroam/node@${common_version}" --depth=0
 ```
 
-Supervisor stores versioned installations in the service account's writable Node data directory without sudo or UAC. After initial service setup, management upgrades only to the highest published stable npm version not exceeding the current Server version, following explicit confirmation, and sends the selected exact version to Supervisor. See [Upgrade MyAgentRoam](upgrade.md).
+Supervisor stores versioned installations in the service account's writable Node data directory without sudo or UAC. After initial service setup, management upgrades only to the highest published stable npm version that meets the business baseline and does not exceed the current Server version, following explicit confirmation, and sends the selected exact version to Supervisor. See [Upgrade MyAgentRoam](upgrade.md).
 
-After registration, open a Workspace and verify files, terminals, and Agent sessions. The Node needs outbound HTTPS/WSS and exposes no browser HTTP API. For ordinary Workspace direct transfer, permit the configured UDP range only from the browser LAN; otherwise files automatically use the Server relay. Each Node process uses ICE UDP Mux so all of its Probe and transfer PeerConnections reuse one selected port. Multiple Nodes on one host can share the default pool and select separate free ports; assign distinct fixed ports or non-overlapping ranges when each Node needs isolation. For missing Agents, reproduce discovery under the service account; for MCP or Python failures, verify the exact `npx`, Python, and pip commands reported in Node details.
+After setting up automatic startup, restart the service or host and confirm that Node reconnects and its upgrade status is not **Enable Supervisor manually**. A Node without Supervisor must first be installed manually at a version meeting the current business baseline and have its startup entry changed; it cannot bootstrap Supervisor through an unsupported remote operation.
+
+After registration, open a Workspace and verify files, terminals, and Agent sessions. The Node needs outbound HTTPS/WSS and exposes no browser HTTP API. For authorized ordinary Workspace file, Git, and terminal direct connections, permit the configured UDP range only from the browser LAN; the Server relay remains available when direct connection cannot be established. A transfer already in progress can still fail and need a retry. Each Node process uses ICE UDP Mux to reuse one selected port. Multiple Nodes on one host can share the default pool and select separate free ports; assign distinct fixed ports or non-overlapping ranges when each Node needs isolation. For missing Agents, reproduce discovery under the service account; for MCP or Python failures, verify the exact `npx`, Python, and pip commands reported in Node details.
 
 Configure automatic startup for the target platform: [Linux systemd](node-linux.md), [Windows Task Scheduler](node-windows.md), or [macOS launchd](node-macos.md).
 

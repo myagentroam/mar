@@ -11,7 +11,7 @@ Usage:
   marctl help [command]
 
 Commands:
-  sessions Inspect and coordinate Sessions in the current Workspace.
+  agents   Inspect and coordinate Sessions in the current Workspace.
   nodes    List accessible Nodes and their connection status.
   ssh      Open a Node terminal or execute a remote command.
   scp      Copy a regular file between this machine and Nodes, or between Nodes.
@@ -42,130 +42,73 @@ Notes:
   Each alias shows only its own command help. Use marctl help <command> for details.
   Remote access uses authorized Node Terminal transport, not system SSH or SCP.`,
   commandHelp: Object.freeze({
-    sessions: `{program} — Coordinate Sessions in the current MAR Workspace
+    agents: `{program} — Coordinate Agents in the current MAR Workspace
 
 Usage:
-  {program} current [--json]
-  {program} list [--query <title>] [--parent <session-id>]
+  {program} start [-m <text> | --message-file <file|->] [--image <path> ...]
+    [--runner <runner>] [--parent <id>] [--model <id>] [--effort <value>]
+    [--title <name>] [--goal <objective> | --clear-goal]
+    [--client-message-id <id>] [--json]
+  {program} send <id> [-m <text> | --message-file <file|->]
+    [--image <path> ...]
+    [--steer | --queue] [--goal <objective> | --clear-goal]
+    [--approval <id> --decision <approve|reject>]
+    [--client-message-id <id>] [--json]
+  {program} wait [<id>] [--agent <id> ...] [--mode any|all]
+    [--wait-for message|completion] [--timeout <duration>] [--json]
+  {program} stop <id> --execution <execution-id> [--json]
+  {program} list [--scope children|descendants|workspace|profile]
+    [--agent <id>]
+    [--runner <runner>] [--query <title>] [--parent <id>]
     [--cursor <cursor>] [--limit <1..100>] [--json]
-  {program} show [<session-id>] [--json]
-  {program} config [<session-id>]
-    [--model <id>] [--effort <value>] [--json]
-  {program} rename [<session-id>] --title <name> [--json]
-  {program} prompt get|clear [<session-id>] [--json]
-  {program} prompt set [<session-id>]
-    (-m <text> | --message-file <file|->) [--json]
+  {program} view [<id>] [--history] [--cursor <cursor>]
+    [--limit <1..100>] [--json]
+
+Management:
+  {program} config [<id>] [--model <id>] [--effort <value>] [--json]
+  {program} rename [<id>] --title <name> [--json]
+  {program} prompt get|clear [<id>] [--json]
+  {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]
   {program} schedule list [--cursor <cursor>] [--limit <1..100>] [--json]
-  {program} schedule get [<session-id>] [--json]
-  {program} schedule create [<session-id>] --cron <cron>
+  {program} schedule get [<id>] [--json]
+  {program} schedule create [<id>] --cron <cron>
     (-m <text> | --message-file <file|->) [--json]
-  {program} schedule update [<session-id>]
-    --expected-revision <revision>
+  {program} schedule update [<id>] --expected-revision <revision>
     [--cron <cron>] [-m <text> | --message-file <file|->] [--json]
-  {program} graph [<session-id>] [--limit <1..100>] [--json]
-  {program} history [<session-id>]
-    [--cursor <cursor>] [--limit <1..100>] [--json]
+  {program} approval decide <id> --run <run-id> --approval <approval-id>
+    --decision <approve|reject> [--json]
+  {program} wait <id> --run <run-id> [--until approval] --timeout <duration>
+  {program} goal get|clear <id> [--json]
+  {program} goal set <id> (-m <text> | --message-file <file|->) [--json]
+  {program} current | show [<id>] | graph [<id>] | history [<id>]
 
-  {program} start --runner <runner>
-    [-m <text> | --message-file <file|->] [--image <path> ...]
-    [--model <id>] [--effort <value>] [--title <name>]
-    [--client-message-id <id>] [--json]
+Input and results:
+  Start defaults to the current Session Runner; a terminal without a current
+  Session must specify --runner or --parent. Profile lists configured models,
+  not guaranteed account availability. Start returns without waiting.
+  Send appends by default; --steer replaces and --queue defers.
+  --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal
+  without text; omitted Goal is unchanged. Stop clears the target Session Goal.
+  Wait defaults to direct-child completion and 30s; 0ms is a snapshot.
+  Positive timeouts below 10s become 10s; maximum is 5m. Waiting does not stop.
+  Images may be supplied without text: at most 5, 5 MiB each, 10 MiB total.
+  -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
+  List exposes current identity and bounded pages; nextCursor marks more.
+  Configuration and prompt changes apply to future executions.
+  Prefer --steer for timely coordination and for
+  results the recipient is waiting for; Node may switch the current execution.
+  Use --queue only for deliberately deferred follow-up work;
+  it waits for that execution and earlier queued work. Use --steer instead when
+  a result cannot wait until the current Goal exits.
 
-  {program} send <session-id>
-    [-m <text> | --message-file <file|->] [--image <path> ...]
-    (--steer | --queue)
-    [--client-message-id <id>] [--json]
+  show --json includes session.status, session.model, session.effort,
+  session.title, session.runId, session.recentTools, session.queuedCount and
+  session.latestMessage. list reports latestActivity; wait may include progress.
+  Status is RUNNING/IDLE/SLEEPING. In history, segments[].items[] with
+  kind === "assistant_message" expose payload.text.
 
-  {program} stop <session-id> [--run <run-id>] [--json]
-  {program} goal get|clear <session-id> [--json]
-  {program} goal set <session-id>
-    (-m <text> | --message-file <file|->) [--json]
-  {program} wait <session-id>
-    --run <run-id> --timeout <30s|5m> [--until approval] [--json]
-  {program} approval decide <session-id> --run <run-id>
-    --approval <approval-id> --decision <approve|reject> [--json]
-
-Input:
-  show/config/history/graph/rename and prompt may omit the ID.
-  schedule get/create/update follow the same rule.
-  They use the current Session; without one, specify an ID explicitly.
-  send/goal/stop/wait/approval always require an explicit Session ID.
-  Runners: mar-agent, codex, claude-code, opencode; actual capabilities apply.
-  -m / --message supplies text; it is mutually exclusive with --message-file.
-  Files use UTF-8; - reads stdin. Repeat --image for PNG/JPEG/GIF/WebP files.
-  Start/send allow image-only input: up to 5 images, 5 MiB each, 10 MiB total.
-  Goal set accepts text only.
-  Config requires model or effort; other fields and permissions are unchanged.
-  Use --effort "" for the Runner default. Active execution is not restarted.
-  Prompt reads, sets or clears persistent instructions for future executions.
-
-Titles and scheduled tasks:
-  rename uses the existing title update; no parent-tree restriction.
-  It does not restart execution. schedule list reads local Workspace tasks.
-  schedule get/create/update share MCP task data.
-  Schedule text is limited to 20,000 characters; update requires cron or text.
-  Other-owner edits create PENDING proposals.
-  Read the current revision before updating; a version conflict is not retried.
-
-Reading JSON:
-  list: id/title/runner/status/runId and one latestActivity per Session.
-  show: session.status, session.title, session.runId,
-    session.model, session.effort, session.queuedCount,
-    session.latestMessage, session.recentTools (up to three summaries).
-    session.pendingApprovals shows current requests; pendingApprovalsTruncated
-    marks an incomplete summary. Full evidence remains in history.
-  Status is RUNNING/IDLE/SLEEPING; tools keep their original states.
-  history: segments[].items[]; select kind === "assistant_message",
-    read payload.text.
-
-Delivery and waiting:
-  Start/send return a clientMessageId.
-  Send requires exactly one of --steer or --queue, even when idle.
-  Prefer --steer for timely coordination: blockers, decisions, corrections,
-    and results the recipient is waiting for. It uses native delivery when
-    available, but may switch the current execution.
-    Node decides from actual state.
-  Use --queue only for deliberately deferred follow-up work.
-    It does not interrupt active execution; during normal active work it
-    waits for that execution and earlier queued work. An active Goal can delay
-    it until the Goal exits.
-    Use --steer instead when the update is needed during current work.
-    New input resumes a paused FIFO without interrupting
-    active execution; cancellation settles before resuming.
-  Example:
-    marctl sessions send <session-id> --steer \\
-      -m "Additional context: focus on the resume path." --json
-  A queued runId may identify another
-  active input: correlate queueItemId/clientMessageId with visible history.
-  Wait observes the specified Run through Watch. Timeout does not stop it;
-  timeout errors may include progress, the last observed bounded snapshot.
-  --until approval also returns when the Run needs an approval decision.
-  Approval decide explicitly approves or rejects one request, subject to
-    existing user authorization. Accepted decisions do not prove completion.
-  Run success is not proof of task success.
-  Completion never wakes a Coordinator.
-  On an unknown delivery outcome, inspect state/history; do not blindly resend.
-
-Credentials and scope:
-  Credentials expire 24 hours after issue without automatic renewal.
-  Scope is bound by MAR to the current Node/Workspace;
-  there are no scope override options.
-  List and ID lookup use Node-known Sessions without scanning Runners.
-  --query filters display titles; missing IDs may suggest nearby IDs, not retry.
-  Start records the current Session as parent; no parent override.
-  --parent lists direct children; graph includes the root and descendants.
-  Graph defaults to 100 nodes and reports truncation, not task dependencies.
-
-Workers:
-  Create workers as needed, e.g. --title "fixer#42 Handle empty totals" or
-  --title "reviewer#42 Review empty totals". Titles are not routing identities;
-  record returned Session IDs. Put task/role instructions in the first message.
-  Sessions share files and the Git index; no automatic worktree or worker pool.
-
-Exit codes:
-  1 failure, 2 input, 3 authorization, 4 unsupported, 5 timeout,
-  6 unknown outcome, 130 cancelled wait.
-  --json prints one result/error object.`,
+Exit codes: 1 failure, 2 input, 3 authorization, 4 unsupported, 5 timeout,
+  6 unknown outcome, 130 cancelled wait. --json prints one result or error.`,
     nodes: `{program} — List accessible Nodes
 
 Usage:

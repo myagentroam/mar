@@ -1,6 +1,6 @@
 ---
 title: 状态、提示与常见错误
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # 状态、提示与常见错误
@@ -19,6 +19,6 @@ lastUpdated: 2026-10-11
 | `CONVERSATION_HOSTING_STORAGE_FULL`        | 托管目录所在文件系统使用率已达到 95%，Node 实时拒绝新建托管对话 | 联系管理员在节点详情预览并清理非活跃对话，或先扩容/释放磁盘；已有对话仍可使用 |
 | `CONVERSATION_HOSTING_DISABLE_ACTIVE_RUNS` | Node 仍有活动或启动中的托管 Run，不能安全禁用托管能力           | 等待 Run 结束，或由该对话的用户主动停止后再禁用；禁用不会自动取消 Run         |
 | `NODE_UPGRADE_PENDING`                     | Node 正等待活动 Run 结束并升级                                  | 等待升级完成，或在节点管理取消升级                                            |
-| `NODE_UPGRADE_PACKAGE_UNAVAILABLE`         | 无法确认不超过当前 Server 版本的稳定 npm 包                     | 检查 Server 版本、Registry 配置、网络与发布状态后刷新                         |
+| `NODE_UPGRADE_PACKAGE_UNAVAILABLE`         | 无法确认满足 Server 版本上限和业务基线的稳定 npm 包             | 检查 Server 版本、Registry 配置、网络与发布状态后刷新                         |
 
 排查时保留界面显示的错误码、Server 请求 ID、Node 请求 ID（如有）、发生时间与时区和脱敏详情，按[快速诊断](../troubleshooting/quick-diagnosis.md)关联日志。不要复制密钥、完整内部堆栈或敏感正文。

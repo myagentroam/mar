@@ -1,4 +1,5 @@
 import type { ComputerUseCapability, ConversationHostingCapability } from '@myagentroam/protocol';
+import type { NodeUpgradeProgress } from './node-upgrade.js';
 
 export interface ResourceRow<Owner = unknown> {
   key: string;
@@ -11,6 +12,7 @@ export interface ResourceRow<Owner = unknown> {
   ownerUsername?: string;
   manageable?: boolean;
   connected?: boolean;
+  upgradeProgress?: NodeUpgradeProgress | null;
   disabled?: boolean;
   lastHeartbeatAt?: number | null;
   registeredAddress?: string;

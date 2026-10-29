@@ -113,32 +113,52 @@ export class SessionCatalogService {
   private async graph(input: Record<string, unknown>): Promise<unknown> {
     if (typeof input.workspaceId !== 'string') throw new Error('WORKSPACE_NOT_FOUND');
     if (typeof input.sessionId !== 'string') throw new Error('SESSION_INVALID');
+    if (input.includeAncestors !== undefined && typeof input.includeAncestors !== 'boolean')
+      throw new Error('SESSION_INVALID');
     const limit = input.limit === undefined ? 100 : input.limit;
     if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 100)
       throw new Error('SESSION_INVALID');
-    const sessions = await this.collect({ workspaceId: input.workspaceId, registeredOnly: true });
-    const root = sessions.find((session) => session.id === input.sessionId);
-    if (root === undefined) throw new Error('SESSION_NOT_FOUND');
-    const children = new Map<string, NodeAgentSession[]>();
-    for (const session of sessions) {
-      if (session.parentSessionId == null) continue;
-      const siblings = children.get(session.parentSessionId) ?? [];
-      siblings.push(session);
-      children.set(session.parentSessionId, siblings);
+    const database = this.options.database();
+    let root = database.getSessionRecord(input.sessionId);
+    if (root === undefined || root.workspaceId !== input.workspaceId)
+      throw new Error('SESSION_NOT_FOUND');
+    const ancestors = new Set([root.id]);
+    while (input.includeAncestors === true && typeof root.metadata.parentSessionId === 'string') {
+      const parent = database.getSessionRecord(root.metadata.parentSessionId);
+      if (
+        parent === undefined ||
+        parent.workspaceId !== input.workspaceId ||
+        ancestors.has(parent.id)
+      )
+        throw new Error('SESSION_PARENT_INVALID');
+      ancestors.add(parent.id);
+      root = parent;
     }
     const queue = [root];
     const visited = new Set([root.id]);
     const nodes = [];
     for (let index = 0; index < queue.length && index < limit; index += 1) {
       const session = queue[index]!;
+      const active = this.options.runtime.getAgentSession(session.id);
+      const live = active === undefined ? undefined : this.options.present(active);
       nodes.push({
         id: session.id,
-        parentSessionId: session.parentSessionId ?? null,
-        title: session.customTitle ?? session.runnerTitle ?? 'Untitled session',
+        parentSessionId: session.metadata.parentSessionId ?? null,
+        title:
+          live?.customTitle ??
+          session.metadata.customTitle ??
+          live?.runnerTitle ??
+          session.metadata.runnerTitle ??
+          'Untitled session',
         runner: session.runner,
-        ...('activity' in session ? { activity: session.activity } : {})
+        activity: live && 'activity' in live ? live.activity : 'IDLE'
       });
-      for (const child of children.get(session.id) ?? []) {
+      const children = [...database.listChildSessionRecords(input.workspaceId, session.id)];
+      if (input.includeAncestors === true)
+        children.sort(
+          (left, right) => Number(ancestors.has(right.id)) - Number(ancestors.has(left.id))
+        );
+      for (const child of children) {
         if (visited.has(child.id)) continue;
         visited.add(child.id);
         queue.push(child);
@@ -410,10 +430,89 @@ export class SessionCatalogService {
       (await this.options.projection.resolve(input.sessionId));
     if (session === undefined) throw new Error('SESSION_NOT_FOUND');
     try {
-      await this.removeResolved(session);
+      await this.removeTree(session);
       return { deleted: true };
     } finally {
       this.options.invalidateWorkspaceSessions(session.workspaceId);
+    }
+  }
+
+  private async removeTree(root: NodeAgentSession): Promise<void> {
+    if (root.externalSessionId === null) throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
+    const database = this.options.database();
+    const live = this.options.runtime
+      .listAgentSessions()
+      .filter((session) => session.workspaceId === root.workspaceId);
+    const liveChildren = new Map<string, string[]>();
+    for (const session of live) {
+      if (session.parentSessionId == null) continue;
+      const children = liveChildren.get(session.parentSessionId) ?? [];
+      children.push(session.externalSessionId ?? session.id);
+      liveChildren.set(session.parentSessionId, children);
+    }
+    const ids = [root.externalSessionId];
+    const seen = new Set(ids);
+    const parents = new Map<string, string>();
+    const releases: Array<() => void> = [];
+    const locked = new Set<string>();
+    const lock = (id: string) => {
+      const actual = this.options.runtime.getAgentSession(id)?.id ?? id;
+      if (locked.has(actual)) return;
+      releases.push(
+        this.options.runtime.beginSessionHistoryMutation(actual, { allowQueued: true })
+      );
+      locked.add(actual);
+    };
+    try {
+      lock(root.id);
+      for (let index = 0; index < ids.length; index += 1) {
+        const parent = ids[index]!;
+        const children = [
+          ...database.listChildSessionRecords(root.workspaceId, parent).map((record) => record.id),
+          ...(liveChildren.get(parent) ?? [])
+        ];
+        for (const child of children) {
+          if (seen.has(child)) {
+            if (parents.get(child) !== parent) throw new Error('SESSION_RELATION_INVALID');
+            continue;
+          }
+          seen.add(child);
+          parents.set(child, parent);
+          lock(child);
+          ids.push(child);
+        }
+      }
+      const sessions: NodeAgentSession[] = [];
+      for (const id of ids) {
+        const session =
+          this.options.runtime.getAgentSession(id) ??
+          (await this.options.projection.resolve(id, true));
+        if (session === undefined || session.workspaceId !== root.workspaceId)
+          throw new Error('SESSION_NOT_FOUND');
+        sessions.push(session);
+      }
+      // Validate every member before performing any irreversible native deletion.
+      for (const session of sessions) await this.assertRemovable(session);
+      const batches = new Map<NodeAgentSession['runner'], NodeAgentSession[]>();
+      for (const session of [...sessions].reverse()) {
+        if (session.externalSessionId === null) continue;
+        const runner = this.options.runners.require(session.runner);
+        if (runner.supportsNativeBatchRemoval?.() === true) {
+          const members = batches.get(session.runner) ?? [];
+          members.push(session);
+          batches.set(session.runner, members);
+        } else await this.removeNativeHistories(session, this.options.nativeIds(session));
+      }
+      for (const [runner, members] of batches)
+        await this.options.runners.require(runner).removeNativeMembers(members);
+      // Preserve every relationship if any native owner fails, so retries cannot
+      // lose sight of descendants whose native cleanup was already attempted.
+      for (const session of sessions.reverse()) {
+        this.options.database().deleteSessionRecord(session.id);
+        this.options.forget(session, this.options.nativeIds(session));
+      }
+    } finally {
+      for (const release of releases.reverse()) release();
     }
   }
 
@@ -475,6 +574,11 @@ export class SessionCatalogService {
         candidates.set(session.id, session);
       }
       this.mergePersisted(candidates, workspaceId, false);
+      const candidateParents = new Set(
+        [...candidates.values()].flatMap((candidate) =>
+          candidate.parentSessionId === null ? [] : [candidate.parentSessionId]
+        )
+      );
       candidateCount = candidates.size;
       for (const session of candidates.values()) {
         budget.check();
@@ -489,6 +593,17 @@ export class SessionCatalogService {
             session.lastActivityAt > 0 &&
             session.lastActivityAt >= cutoff) ||
           (session.pinOrder !== null && session.pinOrder !== undefined) ||
+          (session.externalSessionId !== null &&
+            (this.options.database().listChildSessionRecords(workspaceId, session.externalSessionId)
+              .length > 0 ||
+              candidateParents.has(session.externalSessionId) ||
+              this.options.runtime
+                .listAgentSessions()
+                .some(
+                  (child) =>
+                    child.workspaceId === workspaceId &&
+                    child.parentSessionId === session.externalSessionId
+                ))) ||
           this.options.isWatching(session.id) ||
           this.options.isRecovering?.(session.id) ||
           this.options.runtime.sessionQueue(session.id).itemIds.length > 0 ||
@@ -561,6 +676,42 @@ export class SessionCatalogService {
     };
   }
 
+  private async assertRemovable(session: NodeAgentSession): Promise<void> {
+    if (this.options.isRecovering?.(session.id)) throw new Error('SESSION_RESTART_PENDING');
+    if (
+      this.options.runtime
+        .listRunsForSession(session.id)
+        .some((run) => !isTerminalRunStatus(run.status))
+    )
+      throw new Error('SESSION_ACTIVE');
+    if (session.externalSessionId !== null && session.nativeControl === 'EXTERNAL') {
+      await this.options.refreshActivity(session);
+      if (this.options.externalActivity(session.id) === 'BUSY') throw new Error('SESSION_ACTIVE');
+    }
+  }
+
+  private async removeNativeHistories(
+    session: NodeAgentSession,
+    nativeIds: ReadonlySet<string>
+  ): Promise<boolean> {
+    const runner = this.options.runners.require(session.runner);
+    let deleted = false;
+    for (const externalSessionId of nativeIds) {
+      try {
+        const result = await runner.removeNative(session, externalSessionId);
+        if (result === true) deleted = true;
+        else if (result === false) {
+          await removeNativeSession(session.runner, session.cwd, externalSessionId);
+          deleted = true;
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'NATIVE_TRANSCRIPT_UNAVAILABLE')
+          throw error;
+      }
+    }
+    return deleted;
+  }
+
   private async removeResolved(
     session: NodeAgentSession,
     requireCleanupSafety = false,
@@ -612,21 +763,7 @@ export class SessionCatalogService {
         this.options.forget(session, nativeIds);
         return 'deleted';
       }
-      const runner = this.options.runners.require(session.runner);
-      let deleted = false;
-      for (const externalSessionId of nativeIds) {
-        try {
-          const result = await runner.removeNative(session, externalSessionId);
-          if (result === true) deleted = true;
-          else if (result === false) {
-            await removeNativeSession(session.runner, session.cwd, externalSessionId);
-            deleted = true;
-          }
-        } catch (error) {
-          if (!(error instanceof Error) || error.message !== 'NATIVE_TRANSCRIPT_UNAVAILABLE')
-            throw error;
-        }
-      }
+      const deleted = await this.removeNativeHistories(session, nativeIds);
       this.options.database().deleteSessionRecord(session.id);
       this.options.forget(session, nativeIds);
       return deleted ? 'deleted' : 'skipped';

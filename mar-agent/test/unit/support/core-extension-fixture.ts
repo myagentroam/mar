@@ -65,6 +65,7 @@ export async function fixture(
   hostOptions: Pick<
     ConstructorParameters<typeof LocalAgentHost>[0],
     | 'network'
+    | 'approval'
     | 'modelUsage'
     | 'processExecutor'
     | 'environment'

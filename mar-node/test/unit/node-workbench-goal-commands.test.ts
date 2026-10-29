@@ -7,12 +7,171 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serializeComposerTag } from '@myagentroam/protocol';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
+import { FakeRunner } from '../../src/fake-runner.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { RunnerSteerResult } from '../../src/runner/contracts.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 
 describe('Node Workbench Manifest and command control', () => {
+  it('starts a new Session and its Goal-owned initial message in one submission', async () => {
+    const database = new NodeDatabase(':memory:', 'node-agent-goal-start');
+    const workspace = database.saveWorkspace({
+      path: await workspacePath('agent-goal-start'),
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const script = vi.fn((_input: unknown) => [{ type: 'long-running' } as const]);
+    const connector = new NodeConnector({
+      reconnect: false,
+      database,
+      fakeRunner: new FakeRunner(),
+      fakeScript: script,
+      capabilities: {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.version,
+        codex: { available: true, version: 'codex-cli 0.147.0' },
+        claudeCode: { available: false }
+      }
+    });
+    const internals = connector as unknown as {
+      sessionLifecycleService: {
+        startAgentWithGoal(
+          input: Record<string, unknown>,
+          callback: (session: { id: string }, context: { runner: 'codex' }) => Promise<unknown>
+        ): Promise<unknown>;
+      };
+      goalCoordinator: {
+        start(input: Record<string, unknown>): Promise<unknown>;
+      };
+      goalRuntime: { get(id: string): { id: string; objective: string } | undefined };
+      sessionMessageService: { submitGoal(input: Record<string, unknown>): Promise<unknown> };
+    };
+    const submit = vi.spyOn(internals.sessionMessageService, 'submitGoal');
+    try {
+      const result = (await internals.sessionLifecycleService.startAgentWithGoal(
+        {
+          workspaceId: workspace.id,
+          runner: 'codex',
+          cwd: workspace.path,
+          model: 'gpt-5.3-codex',
+          clientMessageId: 'goal-start-once',
+          content: 'Implement this exactly once'
+        },
+        (session, executionContext) =>
+          internals.goalCoordinator.start({
+            session,
+            executionContext,
+            objective: 'Finish the feature',
+            clientMessageId: 'goal-start-once',
+            messageContent: 'Implement this exactly once',
+            secretEnvironment: {},
+            preserveActiveRun: true
+          })
+      )) as { session: { id: string }; run: { id: string } };
+      await vi.waitFor(() => expect(script).toHaveBeenCalledOnce());
+      const first = submit.mock.calls.filter(([input]) => input.kind === 'start');
+      expect(first).toHaveLength(1);
+      expect(first[0]![0]).toMatchObject({
+        sessionId: result.session.id,
+        messageContent: 'Implement this exactly once',
+        goal: {
+          id: internals.goalRuntime.get(result.session.id)?.id
+        }
+      });
+      expect(internals.goalRuntime.get(result.session.id)?.objective).toBe('Finish the feature');
+      expect(script.mock.calls[0]![0]).toContain('Implement this exactly once');
+      expect(
+        (script.mock.calls[0]![0] as string).split('Implement this exactly once')
+      ).toHaveLength(2);
+    } finally {
+      await connector.stop();
+    }
+  });
+
+  it('delivers a Goal and initial message as one Goal-owned submission through the Node owner', async () => {
+    const database = new NodeDatabase(':memory:', 'node-network-goal-message');
+    const workspace = database.saveWorkspace({
+      path: await workspacePath('network-goal-message'),
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const prompts: string[] = [];
+    const connector = new NodeConnector({
+      reconnect: false,
+      database,
+      capabilities: {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.version,
+        codex: { available: false },
+        claudeCode: { available: true, version: '2.1.0' }
+      },
+      claudeClient: {
+        startChannel(input: { prompt: string }) {
+          prompts.push(input.prompt);
+          return {
+            completed: new Promise<void>(() => undefined),
+            deliver: async () => undefined,
+            interrupt: async () => undefined,
+            cancel: () => undefined,
+            getContextUsage: async () => null
+          };
+        }
+      } as never
+    });
+    const internals = connector as unknown as {
+      runtime: NodeRuntimeState;
+      goalCoordinator: GoalContinuationCoordinator;
+      sessionMessageService: { submitGoal(input: unknown): Promise<unknown> };
+      goalRuntime: {
+        get(id: string): { id: string; revision: number; objective: string } | undefined;
+      };
+    };
+    const session = internals.runtime.createAgentSession({
+      workspaceId: workspace.id,
+      runner: 'claude-code',
+      cwd: workspace.path,
+      nativeControl: 'MAR_MANAGED'
+    });
+    const submit = vi.spyOn(internals.sessionMessageService, 'submitGoal');
+    try {
+      await internals.goalCoordinator.start({
+        session,
+        objective: 'Verify the feature',
+        messageContent: 'Deliver this body once',
+        clientMessageId: 'network-body',
+        preserveActiveRun: true,
+        secretEnvironment: {},
+        executionContext: { runner: 'claude-code' }
+      });
+      await vi.waitFor(() => expect(prompts).toHaveLength(1));
+      expect(prompts[0]!.match(/Deliver this body once/g)).toHaveLength(1);
+      // Goal continuation may be queued as soon as the first execution starts;
+      // only one initial submission may carry the caller's body.
+      const starts = submit.mock.calls
+        .map(([input]) => input as { kind: string })
+        .filter((input) => input.kind === 'start');
+      expect(starts).toHaveLength(1);
+      const goal = internals.goalRuntime.get(session.id)!;
+      expect(goal.objective).toBe('Verify the feature');
+      expect(submit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'start',
+          messageContent: 'Deliver this body once',
+          clientMessageId: 'network-body',
+          goal: expect.objectContaining({ id: goal.id, revision: goal.revision })
+        })
+      );
+      const submission = internals.runtime.findMessageSubmission(session.id, 'network-body');
+      expect(submission).toBeDefined();
+      expect(internals.runtime.activeSessionRun(session.id)?.id).toBe(submission?.run?.id);
+    } finally {
+      await connector.stop();
+    }
+  });
+
   it.each(['command', 'message'] as const)(
     'keeps a Goal submitted during compaction out of every public queue snapshot (%s)',
     async (entry) => {
@@ -464,7 +623,8 @@ describe('Node Workbench Manifest and command control', () => {
                 }),
                 serializeComposerTag('mar_session_origin', {
                   sessionId: 'coordinator',
-                  name: 'Coordinator#42'
+                  name: 'Coordinator#42',
+                  relation: 'other'
                 })
               ].join('\n')
             })
@@ -478,7 +638,8 @@ describe('Node Workbench Manifest and command control', () => {
     expect(prompts[0]).toContain(
       serializeComposerTag('mar_session_origin', {
         sessionId: 'coordinator',
-        name: 'Coordinator#42'
+        name: 'Coordinator#42',
+        relation: 'other'
       })
     );
     const continuationBeforeRetry = [...internals.runtime.sessionQueue(session.id).itemIds];

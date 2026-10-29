@@ -27,95 +27,22 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   }
   const skill = marctlHostSkill(environment)!;
   expect(skill.requiredTools).toEqual(['exec']);
-  expect(skill.description).toContain('MAR-managed Workspace');
-  expect(skill.description).toContain('scheduled tasks');
-  expect(skill.description).toContain('status/history/results');
-  expect(skill.description).toContain('independent Sessions');
-  expect(skill.description).toContain('for the current or other Sessions');
-  expect(skill.description).toContain('other authorized MAR Nodes');
-  expect(skill.description).toContain('Ordinary local shell work');
+  expect(skill.description).toContain('model and effort configuration');
+  expect(skill.description).toContain('persistent prompts, schedules');
+  expect(skill.description).toContain('authorized Node discovery');
+  expect(skill.description).toContain('remote commands, and file transfer');
   const content = await skill.load();
   for (const term of [
-    'sessions start',
-    'sessions wait',
-    '24 hours',
-    'fixer#<task-id>',
-    'reviewer#<task-or-change-id>',
-    'never automatically wakes',
-    'untrusted task data'
+    '## MAR Workspace management',
+    'Use native agent_* tools for Agent discovery, creation, communication, observation, waiting and stopping.',
+    'Do not switch to marctl when a native operation fails.',
+    'Use marctl agents config <id> --model <id> --effort <effort>',
+    'Use agents prompt get/set/clear for persistent instructions',
+    'Use agents schedule list/get/create/update for scheduled tasks',
+    'marctl nodes lists authorized Nodes',
+    'Session IDs and parent relationships do not grant authorization.'
   ])
     expect(content).toContain(term);
-  for (const instruction of [
-    'only when the current identity or scope is unknown',
-    'known target ID',
-    'sessions config <session-id> --model <id> --effort high --json',
-    'may otherwise switch the current execution',
-    'Choose exactly one of --steer or --queue, even when idle',
-    'Use --queue only for deliberately deferred follow-up work',
-    'during normal active work it waits for the current execution and earlier queued work',
-    'Do not use it when the recipient needs the information during current work',
-    'Additional context: focus on the resume path.',
-    'missing, conflicting, repeated, or obsolete options are rejected locally',
-    'when fresh state is needed',
-    'sessions list --limit 10 --json',
-    '--query <title>',
-    '--parent <session-id>',
-    'sessions graph <session-id>',
-    'without scanning Runners',
-    'Do not scan the Workspace to prove capacity',
-    'Reuse recorded Session/Run IDs and receipts',
-    'session.status',
-    'sessions rename <session-id> --title <name>',
-    'sessions schedule list/get/create/update',
-    'send/goal/stop/wait/approval always require explicit target IDs',
-    'Other-owner edits return a PENDING proposal',
-    'session.model',
-    'session.effort',
-    'session.title',
-    'session.runId',
-    'session.queuedCount',
-    'session.latestMessage',
-    'session.recentTools',
-    'RUNNING/IDLE/SLEEPING',
-    'progress, the last observed snapshot',
-    'Do not queue a result merely because it is a report; omit routine progress chatter',
-    'ordinary queued input waits until the Goal exits',
-    'latest 10 SEGMENTs, not messages',
-    '--limit 1..100',
-    'segments[].items[]',
-    'assistant_message',
-    'kind === "assistant_message"',
-    'payload.text',
-    'user_message.payload.clientMessageId',
-    'Reuse the returned page',
-    '--cursor <nextCursor>',
-    'Follow the repository workflow for development and review',
-    'Prefer --timeout 5m',
-    'reuse its process/cell handle',
-    'sessions prompt get/set/clear [session-id]',
-    'no queue-item edit/delete/reorder commands'
-  ])
-    expect(content).toContain(instruction);
-  for (const instruction of [
-    'shared by all Session subcommands',
-    'get returns task (null if absent)',
-    'id, revision, objective, cron, timezone and enabled',
-    'applied updates also return task',
-    'Reuse that task instead of probing its shape or refetching unchanged state',
-    'Schedule text is trimmed at both ends',
-    'compare after the same trimming',
-    'a conclusive update response needs no extra get'
-  ])
-    expect(content).toContain(instruction);
-  expect(content).not.toContain('--forced');
-  expect(content).not.toContain('urgent corrections');
-  expect(content).not.toContain('--steer without interrupting');
-  expect(content).not.toContain('not live steering');
-  expect(content).not.toContain('Start with marctl sessions current');
-  expect(content).not.toContain('--delivery');
-  expect(content).not.toContain('cancel the current Run');
-  expect(content).not.toContain('There is no Session custom prompt setting');
-  expect(content).not.toContain('Shape:');
   expect(content).not.toContain(environment.MAR_CTL_USER_TOKEN);
   expect(content).toContain('\n\n');
   expect(marctlExecutionEnvironment(environment)).not.toHaveProperty('OTHER_SECRET');

@@ -177,6 +177,12 @@ describe('Node hosted conversation template switch', () => {
         })
       ]);
     } finally {
+      for (const pending of f.pendingRuns) {
+        pending.handle.cancel.mockImplementation(() => {
+          pending.complete({ status: 'INTERRUPTED', completedAt: 3_000 });
+          return true;
+        });
+      }
       await f.service.dispose();
     }
   });
@@ -267,54 +273,63 @@ describe('Node hosted conversation template switch', () => {
 
   it('preserves the Session and files, switches the next Run environment and never returns credentials', async () => {
     const f = await fixture();
-    const paths = f.store.pathsForConversation(7, f.conversation.id);
-    await writeFile(join(paths.uploadsDirectory, 'input.txt'), 'input');
-    await writeFile(join(paths.outputDirectory, 'result.txt'), 'result');
-    await f.store.reconcileFiles(7, f.conversation.id);
-    const files = f.store.listFiles(7, f.conversation.id);
-    const result = await f.switchTemplate(f.request);
-    expect(result).toMatchObject({
-      conversation: {
-        id: f.conversation.id,
-        sessionId: f.conversation.sessionId,
-        templateId: 'template-2',
-        activeVersionId: 'office-v1',
-        modelId: 'model-2'
-      },
-      template: { id: 'template-2', name: 'Office', currentVersionId: 'office-v1' },
-      models: [{ id: 'model-2' }]
-    });
-    expect(JSON.stringify(result)).not.toContain('secret-');
-    expect(f.runtime.createSession).toHaveBeenCalledOnce();
-    expect(f.runtime.startRun).not.toHaveBeenCalled();
-    expect(f.store.requireConversation(7, f.conversation.id).clientRequestId).toBe(
-      'create-request-1'
-    );
-    expect(await readFile(join(paths.uploadsDirectory, 'input.txt'), 'utf8')).toBe('input');
-    expect(await readFile(join(paths.outputDirectory, 'result.txt'), 'utf8')).toBe('result');
-    expect(f.store.listFiles(7, f.conversation.id)).toEqual(files);
-    await f.service.operations()['conversation.hosted.message']!({
-      conversationId: f.conversation.id,
-      clientMessageId: 'after-switch',
-      prompt: 'Continue.',
-      attachmentIds: [],
-      __requestUserId: 7,
-      __sourceTemplateId: 'template-2',
-      __marAgentModels: [modelOne, modelTwo]
-    });
-    expect(f.runtime.startRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: f.conversation.sessionId,
-        modelId: 'model-2',
-        pathMounts: expect.arrayContaining([
-          expect.objectContaining({
-            logicalPath: '/workspace',
-            physicalPath: expect.stringContaining('office_v1')
-          })
-        ])
-      })
-    );
-    await f.service.dispose();
+    try {
+      const paths = f.store.pathsForConversation(7, f.conversation.id);
+      await writeFile(join(paths.uploadsDirectory, 'input.txt'), 'input');
+      await writeFile(join(paths.outputDirectory, 'result.txt'), 'result');
+      await f.store.reconcileFiles(7, f.conversation.id);
+      const files = f.store.listFiles(7, f.conversation.id);
+      const result = await f.switchTemplate(f.request);
+      expect(result).toMatchObject({
+        conversation: {
+          id: f.conversation.id,
+          sessionId: f.conversation.sessionId,
+          templateId: 'template-2',
+          activeVersionId: 'office-v1',
+          modelId: 'model-2'
+        },
+        template: { id: 'template-2', name: 'Office', currentVersionId: 'office-v1' },
+        models: [{ id: 'model-2' }]
+      });
+      expect(JSON.stringify(result)).not.toContain('secret-');
+      expect(f.runtime.createSession).toHaveBeenCalledOnce();
+      expect(f.runtime.startRun).not.toHaveBeenCalled();
+      expect(f.store.requireConversation(7, f.conversation.id).clientRequestId).toBe(
+        'create-request-1'
+      );
+      expect(await readFile(join(paths.uploadsDirectory, 'input.txt'), 'utf8')).toBe('input');
+      expect(await readFile(join(paths.outputDirectory, 'result.txt'), 'utf8')).toBe('result');
+      expect(f.store.listFiles(7, f.conversation.id)).toEqual(files);
+      await f.service.operations()['conversation.hosted.message']!({
+        conversationId: f.conversation.id,
+        clientMessageId: 'after-switch',
+        prompt: 'Continue.',
+        attachmentIds: [],
+        __requestUserId: 7,
+        __sourceTemplateId: 'template-2',
+        __marAgentModels: [modelOne, modelTwo]
+      });
+      expect(f.runtime.startRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: f.conversation.sessionId,
+          modelId: 'model-2',
+          pathMounts: expect.arrayContaining([
+            expect.objectContaining({
+              logicalPath: '/workspace',
+              physicalPath: expect.stringContaining('office_v1')
+            })
+          ])
+        })
+      );
+    } finally {
+      for (const pending of f.pendingRuns) {
+        pending.handle.cancel.mockImplementation(() => {
+          pending.complete({ status: 'INTERRUPTED', completedAt: 3_000 });
+          return true;
+        });
+      }
+      await f.service.dispose();
+    }
   });
 
   it('keeps the current model when the target permits it', async () => {

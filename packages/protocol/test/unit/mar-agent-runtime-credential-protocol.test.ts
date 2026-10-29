@@ -53,6 +53,36 @@ const ticket = {
 };
 
 describe('Conversation model purpose', () => {
+  it('defaults subagent use off and preserves explicit model purpose in every projection', () => {
+    for (const subagentModel of [undefined, false, true]) {
+      const value = {
+        ...baseModel,
+        credential: { type: 'INLINE_API_KEY', value: 'test-key' },
+        ...(subagentModel === undefined ? {} : { subagentModel })
+      };
+      expect(marAgentStoredModelConfigurationSchema.parse(value).subagentModel).toBe(
+        subagentModel ?? false
+      );
+      expect(marAgentRuntimeModelConfigurationSchema.parse(value).subagentModel).toBe(
+        subagentModel ?? false
+      );
+      expect(
+        marAgentModelSummarySchema.parse({
+          ...baseModel,
+          sortOrder: 0,
+          access: 'RESTRICTED',
+          ...(subagentModel === undefined ? {} : { subagentModel })
+        }).subagentModel
+      ).toBe(subagentModel ?? false);
+    }
+    expect(
+      marAgentRuntimeModelConfigurationSchema.safeParse({
+        ...baseModel,
+        apiKey: 'test-key',
+        subagentModel: 'true'
+      }).success
+    ).toBe(false);
+  });
   it.each([undefined, {}, { useResourceUrl: true }])(
     'keeps resource metadata separate from the effective runtime flag: %j',
     (metadata) => {

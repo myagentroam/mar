@@ -3,11 +3,9 @@ import { access, mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost, type McpToolCatalogContext } from '../../src/host.js';
-import { SecretValue, type AgentModelConfiguration, type AgentEvent } from '../../src/index.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { LocalWorkspaceTools } from '../support/local-workspace-tools.js';
-import { createTestSubagents } from './support/subagent-controller.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
@@ -54,72 +52,44 @@ class McpScopeTrackingHost extends LocalAgentHost {
   }
 }
 
-class WarmResourceAdapter implements ModelAdapter {
+class WarmProcessAdapter implements ModelAdapter {
   readonly configuration = model;
   readonly requests: ModelRequest[] = [];
   readonly #rounds = new Map<string, number>();
-  readonly childStarted: Promise<void>;
-  #resolveChildStarted!: () => void;
+  readonly processReady: Promise<void>;
+  #resolveProcessReady!: () => void;
 
   constructor() {
-    this.childStarted = new Promise<void>((resolve) => (this.#resolveChildStarted = resolve));
+    this.processReady = new Promise<void>((resolve) => (this.#resolveProcessReady = resolve));
   }
 
   async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    if (effectiveInstructions(request).includes('non-recursive subagent')) {
-      this.#resolveChildStarted();
-      await new Promise<never>((_resolve, reject) => {
-        const abort = () => reject(signal.reason ?? new Error('cancelled'));
-        signal.addEventListener('abort', abort, { once: true });
-        if (signal.aborted) abort();
-      });
-      return;
-    }
-
     const prompt =
       [...request.messages]
         .reverse()
         .find((message) => message.role === 'user' && message.contextKind === undefined)?.content ??
       '';
-    if (prompt === 'start subagent and wait') {
-      const wait = waitForNewChild(request);
-      if (wait) {
-        yield wait;
-        yield { type: 'completed', reason: 'tool_use' };
-        return;
-      }
-    }
     const round = this.#rounds.get(prompt) ?? 0;
     this.#rounds.set(prompt, round + 1);
-    if (
-      (prompt === 'start warm resources' || prompt === 'interrupt warm resources') &&
-      round === 0
-    ) {
+    if ((prompt === 'start warm process' || prompt === 'interrupt warm process') && round === 0) {
       yield {
         type: 'client_tool.call',
-        callId: 'warm-exec-start',
+        callId: prompt === 'start warm process' ? 'start-process' : 'interrupt-process',
         name: 'exec',
         arguments: {
-          command: `${JSON.stringify(process.execPath)} -e "console.log('READY'); setInterval(() => {}, 1000)"`,
+          command:
+            JSON.stringify(process.execPath) +
+            ' -e "console.log(\'READY\'); setInterval(() => {}, 1000)"',
           yieldMs: 100,
           timeoutMs: 10_000
-        }
-      };
-      yield {
-        type: 'client_tool.call',
-        callId: 'warm-task-start',
-        name: 'agent_start',
-        arguments: {
-          description: 'Keep inspecting',
-          prompt: 'Wait until the parent resumes.',
-          role: 'explore'
         }
       };
       yield { type: 'completed', reason: 'tool_use' };
       return;
     }
-    if (prompt === 'interrupt warm resources') {
+    if (prompt === 'interrupt warm process') {
+      this.#resolveProcessReady();
       await new Promise<never>((_resolve, reject) => {
         const abort = () => reject(signal.reason ?? new Error('cancelled'));
         signal.addEventListener('abort', abort, { once: true });
@@ -127,126 +97,69 @@ class WarmResourceAdapter implements ModelAdapter {
       });
       return;
     }
-    if (prompt === 'start subagent and wait' && round === 0) {
-      yield {
-        type: 'client_tool.call',
-        callId: 'foreground-task-start',
-        name: 'agent_start',
-        arguments: {
-          description: 'Wait for disposal',
-          prompt: 'Wait until the parent is disposed.',
-          role: 'explore'
-        }
-      };
-      yield { type: 'completed', reason: 'tool_use' };
-      return;
-    }
-    if (prompt === 'inspect retained waiting subagent' && round === 0) {
-      const retainedContext = request.messages
-        .filter((message) => message.role === 'user')
-        .map((message) => message.content)
-        .join('\n');
-      const agentId = /agentId: ([0-9a-f-]+)/u.exec(retainedContext)?.[1];
-      if (!agentId) throw new Error('retained foreground agent ID missing from context');
-      yield {
-        type: 'client_tool.call',
-        callId: 'retained-foreground-wait',
-        name: 'agent_wait',
-        arguments: { agentId, waitMs: 0 }
-      };
-      yield { type: 'completed', reason: 'tool_use' };
-      return;
-    }
-    if (prompt === 'inspect retained waiting subagent') {
-      yield { type: 'text.completed', itemId: 'retained-foreground-answer', text: 'done' };
-      yield { type: 'completed', reason: 'completed' };
-      return;
-    }
     if (
-      (prompt === 'resume warm resources' || prompt === 'reuse interrupted resources') &&
+      (prompt === 'resume warm process' || prompt === 'reuse interrupted process') &&
       round === 0
     ) {
       const retained = request.messages
         .filter((message) => message.role === 'tool')
         .flatMap((message) => {
           try {
-            return [JSON.parse(message.content) as { processId?: string; agentId?: string }];
+            return [JSON.parse(message.content) as { processId?: string }];
           } catch {
             return [];
           }
         });
       const processId = retained.find((value) => value.processId)?.processId;
-      const agentId = retained.find((value) => value.agentId)?.agentId;
-      if (!processId || !agentId) throw new Error('retained resource IDs missing from history');
+      if (!processId) throw new Error('retained process ID missing from history');
       yield {
         type: 'client_tool.call',
-        callId: 'warm-exec-poll',
+        callId: prompt === 'resume warm process' ? 'resume-process' : 'reuse-process',
         name: 'exec_wait',
         arguments: { processId }
       };
-      yield prompt === 'resume warm resources'
-        ? {
-            type: 'client_tool.call',
-            callId: 'warm-task-cancel',
-            name: 'agent_cancel',
-            arguments: { agentId }
-          }
-        : {
-            type: 'client_tool.call',
-            callId: 'warm-task-message',
-            name: 'agent_message',
-            arguments: { agentId, message: 'Continue the retained task.' }
-          };
       yield { type: 'completed', reason: 'tool_use' };
       return;
     }
-    yield { type: 'text.completed', itemId: `answer-${prompt}`, text: 'done' };
+    yield { type: 'text.completed', itemId: 'answer-' + prompt, text: 'done' };
     yield { type: 'completed', reason: 'completed' };
   }
 }
 
-class ReconfigurableBackgroundAdapter implements ModelAdapter {
+class ReconfigurableSessionAdapter implements ModelAdapter {
   readonly close = vi.fn(async () => undefined);
 
   constructor(
     readonly configuration: AgentModelConfiguration,
-    private readonly state: {
-      childStarted: Promise<void>;
-      resolveChildStarted(): void;
-    }
+    private readonly state: { activeStarted(): void; releaseActive: Promise<void> }
   ) {}
 
   async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
-    if (effectiveInstructions(request).includes('non-recursive subagent')) {
-      this.state.resolveChildStarted();
-      await new Promise<never>((_resolve, reject) => {
-        const abort = () => reject(signal.reason ?? new Error('cancelled'));
-        signal.addEventListener('abort', abort, { once: true });
-        if (signal.aborted) abort();
-      });
-      return;
-    }
     const prompt =
       [...request.messages]
         .reverse()
         .find((message) => message.role === 'user' && message.contextKind === undefined)?.content ??
       '';
-    const hasToolResult = request.messages.some((message) => message.role === 'tool');
-    if (prompt === 'start background task' && !hasToolResult) {
-      yield {
-        type: 'client_tool.call',
-        callId: 'background-task',
-        name: 'agent_start',
-        arguments: {
-          description: 'Keep working',
-          prompt: 'Keep working until cancelled.',
-          role: 'explore'
-        }
-      };
-      yield { type: 'completed', reason: 'tool_use' };
-      return;
+    if (prompt === 'hold active Session') {
+      this.state.activeStarted();
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const abort = () => {
+          if (settled) return;
+          settled = true;
+          reject(signal.reason ?? new Error('cancelled'));
+        };
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        void this.state.releaseActive.then(() => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener('abort', abort);
+          resolve();
+        });
+      });
     }
-    yield { type: 'text.completed', itemId: `answer-${prompt}`, text: 'done' };
+    yield { type: 'text.completed', itemId: 'answer-' + prompt, text: 'done' };
     yield { type: 'completed', reason: 'completed' };
   }
 }
@@ -581,92 +494,6 @@ describe('resource lifecycle', () => {
     expect(() => agent.setSystemInstruction('after disposal')).toThrow('MAR_AGENT_DISPOSED');
   });
 
-  it('keeps active background subagent instructions when the parent instructions change', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-child-instruction-snapshot-'));
-    roots.push(home);
-    const workspace = join(home, 'workspace');
-    await mkdir(workspace);
-    const childSystems: string[] = [];
-    const parentSystems: string[] = [];
-    let started!: () => void;
-    let resume!: () => void;
-    let finished!: () => void;
-    const childStarted = new Promise<void>((resolve) => (started = resolve));
-    const childResumed = new Promise<void>((resolve) => (resume = resolve));
-    const childFinished = new Promise<void>((resolve) => (finished = resolve));
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model],
-        systemInstruction: 'ORIGINAL_HOST_INSTRUCTION'
-      },
-      (configuration) => ({
-        configuration,
-        async *start(request) {
-          if (effectiveInstructions(request).includes('non-recursive subagent')) {
-            childSystems.push(effectiveInstructions(request));
-            if (childSystems.length === 1) {
-              started();
-              await childResumed;
-              yield {
-                type: 'client_tool.call',
-                callId: 'child-read',
-                name: 'todo_read',
-                arguments: {}
-              };
-              yield { type: 'completed', reason: 'tool_use' };
-              return;
-            }
-            yield { type: 'text.completed', itemId: 'child-answer', text: 'done' };
-            yield { type: 'completed', reason: 'completed' };
-            finished();
-            return;
-          }
-          parentSystems.push(effectiveInstructions(request));
-          if (parentSystems.length === 1) {
-            yield {
-              type: 'client_tool.call',
-              callId: 'start-child',
-              name: 'agent_start',
-              arguments: {
-                description: 'Keep working',
-                prompt: 'Work',
-                role: 'explore'
-              }
-            };
-            yield { type: 'completed', reason: 'tool_use' };
-          } else {
-            yield { type: 'text.completed', itemId: 'answer', text: 'done' };
-            yield { type: 'completed', reason: 'completed' };
-          }
-        }
-      })
-    );
-    try {
-      const session = await agent.createSession({ workspace });
-      await expect(session.run({ prompt: 'start child' }).result()).resolves.toMatchObject({
-        status: 'completed'
-      });
-      await childStarted;
-      agent.setSystemInstruction('REPLACEMENT_HOST_INSTRUCTION');
-      await expect(session.run({ prompt: 'continue parent' }).result()).resolves.toMatchObject({
-        status: 'completed'
-      });
-      expect(parentSystems.at(-1)).toContain('REPLACEMENT_HOST_INSTRUCTION');
-      resume();
-      await childFinished;
-      expect(childSystems).toHaveLength(2);
-      for (const system of childSystems) {
-        expect(system).toContain('ORIGINAL_HOST_INSTRUCTION');
-        expect(system).not.toContain('REPLACEMENT_HOST_INSTRUCTION');
-      }
-    } finally {
-      resume();
-      await agent.dispose();
-    }
-  });
-
   it('retries an obsolete credential provider close during Agent disposal', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-provider-close-retry-'));
     roots.push(home);
@@ -718,8 +545,8 @@ describe('resource lifecycle', () => {
     expect(secondClose).toHaveBeenCalledOnce();
   });
 
-  it('rebinds an idle parent Session without interrupting an active background subagent', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-active-subagent-reconfiguration-'));
+  it('rebinds an idle Session without interrupting another active Session', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-active-session-reconfiguration-'));
     roots.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
@@ -743,12 +570,12 @@ describe('resource lifecycle', () => {
       apiKey: undefined,
       credentialProvider: secondProvider
     } as AgentModelConfiguration;
-    let resolveChildStarted!: () => void;
-    const state = {
-      childStarted: new Promise<void>((resolve) => (resolveChildStarted = resolve)),
-      resolveChildStarted
-    };
-    const adapters: ReconfigurableBackgroundAdapter[] = [];
+    let markActiveStarted!: () => void;
+    const activeStarted = new Promise<void>((resolve) => (markActiveStarted = resolve));
+    let releaseActive!: () => void;
+    const activeRelease = new Promise<void>((resolve) => (releaseActive = resolve));
+    const state = { activeStarted: markActiveStarted, releaseActive: activeRelease };
+    const adapters: ReconfigurableSessionAdapter[] = [];
     const agent = await createMarAgent(
       {
         mode: 'normal',
@@ -756,38 +583,60 @@ describe('resource lifecycle', () => {
         models: [firstModel]
       },
       (configuration) => {
-        const adapter = new ReconfigurableBackgroundAdapter(configuration, state);
+        const adapter = new ReconfigurableSessionAdapter(configuration, state);
         adapters.push(adapter);
         return adapter;
       }
     );
-    const session = await agent.createSession({ workspace, title: 'Active background task' });
-
-    await expect(session.run({ prompt: 'start background task' }).result()).resolves.toMatchObject({
-      status: 'completed'
+    const idleSession = await agent.createSession({ workspace, title: 'Idle Session' });
+    const activeSession = await agent.createSession({
+      workspace,
+      title: 'Active Session',
+      source: {
+        type: 'subagent',
+        parentSessionId: idleSession.id,
+        rootSessionId: idleSession.id,
+        parentExecutionId: 'completed-parent',
+        role: 'general-purpose',
+        description: 'Active child'
+      }
     });
-    await state.childStarted;
-    expect(adapters).toHaveLength(2);
 
-    await expect(
-      agent.reconfigureModels({ models: [secondModel], defaultModelId: 'coding' })
-    ).resolves.toBeUndefined();
-    expect(adapters[0]!.close).toHaveBeenCalledOnce();
-    expect(adapters[1]!.close).not.toHaveBeenCalled();
-    expect(firstProvider.close).not.toHaveBeenCalled();
+    try {
+      await expect(
+        idleSession.run({ prompt: 'initialize idle Session' }).result()
+      ).resolves.toMatchObject({ status: 'completed' });
+      const activeExecution = activeSession.run({ prompt: 'hold active Session' });
+      await activeStarted;
+      expect(adapters).toHaveLength(2);
 
-    await expect(
-      session.run({ prompt: 'continue after rebinding' }).result()
-    ).resolves.toMatchObject({ status: 'completed' });
-    expect(adapters).toHaveLength(3);
-    expect(adapters[2]!.configuration.credentialProvider).toBe(secondProvider);
-    expect(adapters[1]!.close).not.toHaveBeenCalled();
+      await expect(
+        agent.reconfigureModels({ models: [secondModel], defaultModelId: 'coding' })
+      ).resolves.toBeUndefined();
+      expect(adapters[0]!.close).toHaveBeenCalledOnce();
+      expect(adapters[1]!.close).not.toHaveBeenCalled();
+      expect(firstProvider.close).not.toHaveBeenCalled();
 
-    await agent.dispose();
-    expect(adapters[1]!.close).toHaveBeenCalledOnce();
-    expect(adapters[2]!.close).toHaveBeenCalledOnce();
-    expect(firstProvider.close).toHaveBeenCalledOnce();
-    expect(secondProvider.close).toHaveBeenCalledOnce();
+      await expect(
+        idleSession.run({ prompt: 'continue after rebinding' }).result()
+      ).resolves.toMatchObject({ status: 'completed' });
+      expect(adapters).toHaveLength(3);
+      expect(adapters[2]!.configuration.credentialProvider).toBe(secondProvider);
+      expect(adapters[1]!.close).not.toHaveBeenCalled();
+
+      releaseActive();
+      await expect(activeExecution.result()).resolves.toMatchObject({ status: 'completed' });
+      expect(adapters[1]!.close).toHaveBeenCalledOnce();
+
+      await agent.dispose();
+      expect(adapters[1]!.close).toHaveBeenCalledOnce();
+      expect(adapters[2]!.close).toHaveBeenCalledOnce();
+      expect(firstProvider.close).toHaveBeenCalledOnce();
+      expect(secondProvider.close).toHaveBeenCalledOnce();
+    } finally {
+      releaseActive();
+      await agent.dispose();
+    }
   });
 
   it('rebuilds the old model Adapter after a reconfiguration close failure', async () => {
@@ -879,6 +728,33 @@ describe('resource lifecycle', () => {
     handle.cancel();
     await expect(handle.result()).resolves.toMatchObject({ status: 'cancelled' });
     await agent.dispose();
+  });
+
+  it('cancels an active Session execution during Agent disposal', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-active-session-dispose-'));
+    roots.push(home);
+    const workspace = join(home, 'workspace');
+    await mkdir(workspace);
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => (markStarted = resolve));
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model]
+      },
+      (configuration) => new BlockingExecutionAdapter(configuration, markStarted)
+    );
+    const session = await agent.createSession({ workspace, title: 'Dispose active Session' });
+    const execution = session.run({ prompt: 'wait until disposal' });
+
+    try {
+      await started;
+      await expect(agent.dispose()).resolves.toBeUndefined();
+      await expect(execution.result()).resolves.toMatchObject({ status: 'cancelled' });
+    } finally {
+      await agent.dispose();
+    }
   });
 
   it.each([
@@ -987,28 +863,6 @@ describe('resource lifecycle', () => {
     expect(hostDispose).toHaveBeenCalledOnce();
   });
 
-  it('waits for aborted running subagents before disposal completes', async () => {
-    let settled = false;
-    const scheduler = await createTestSubagents(
-      async (_task, signal) =>
-        new Promise<never>((_resolve, reject) => {
-          const finish = () => {
-            settled = true;
-            reject(signal.reason ?? new Error('cancelled'));
-          };
-          signal.addEventListener('abort', finish, { once: true });
-        })
-    );
-    await scheduler.run({
-      description: 'wait',
-      prompt: 'wait for cancellation',
-      role: 'explore',
-      background: true
-    });
-    await scheduler.dispose();
-    expect(settled).toBe(true);
-  });
-
   it('waits for managed process termination and does not leave a process tree behind', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'mar-agent-process-lifecycle-'));
     roots.push(workspace);
@@ -1026,12 +880,12 @@ describe('resource lifecycle', () => {
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
-  it('retains managed processes and background subagents for the next Session execution', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-warm-resources-'));
+  it('retains managed processes for the next Session execution', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-warm-process-'));
     roots.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
-    const adapter = new WarmResourceAdapter();
+    const adapter = new WarmProcessAdapter();
     const agent = await createMarAgent(
       {
         mode: 'normal',
@@ -1040,19 +894,19 @@ describe('resource lifecycle', () => {
       },
       () => adapter
     );
-    const session = await agent.createSession({ workspace, title: 'Warm resources' });
+    const session = await agent.createSession({ workspace, title: 'Warm process' });
 
-    await expect(session.run({ prompt: 'start warm resources' }).result()).resolves.toMatchObject({
+    await expect(session.run({ prompt: 'start warm process' }).result()).resolves.toMatchObject({
       status: 'completed'
     });
-    const resumed = session.run({ prompt: 'resume warm resources' });
+    const resumed = session.run({ prompt: 'resume warm process' });
     const events = [];
     for await (const event of resumed) events.push(event);
     await expect(resumed.result()).resolves.toMatchObject({ status: 'completed' });
 
     const resumedRequest = adapter.requests.find((request) =>
       request.messages.some(
-        (message) => message.role === 'user' && message.content === 'resume warm resources'
+        (message) => message.role === 'user' && message.content === 'resume warm process'
       )
     );
     const resumedContext = resumedRequest?.messages
@@ -1066,30 +920,16 @@ describe('resource lifecycle', () => {
         (message) => message.role === 'tool' && message.content.includes('processId')
       )
     ).toBe(true);
-    expect(
-      resumedRequest?.messages.some(
-        (message) => message.role === 'tool' && message.content.includes('agentId')
-      )
-    ).toBe(true);
-    expect(resumedContext).not.toContain('Explicit cancel still releases a resource immediately.');
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'tool.completed',
           toolName: 'exec_wait',
-          callId: 'warm-exec-poll'
-        }),
-        expect.objectContaining({
-          type: 'tool.completed',
-          toolName: 'agent_cancel',
-          callId: 'warm-task-cancel',
-          data: expect.objectContaining({
-            description: 'Keep inspecting',
-            status: 'cancelled'
-          })
+          callId: 'resume-process'
         })
       ])
     );
+
     await agent.dispose();
     const store = await import('../../src/session/store/index.js').then(({ JsonlSessionStore }) =>
       JsonlSessionStore.open(home)
@@ -1099,12 +939,12 @@ describe('resource lifecycle', () => {
     expect(JSON.stringify(records)).not.toContain('# Retained Session resources');
   });
 
-  it('retains managed processes and background subagents after the parent execution is interrupted', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-interrupted-warm-resources-'));
+  it('retains managed processes after the parent execution is interrupted', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-interrupted-warm-process-'));
     roots.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
-    const adapter = new WarmResourceAdapter();
+    const adapter = new WarmProcessAdapter();
     const host = new McpScopeTrackingHost({ homeDirectory: home, workspace });
     const agent = await createMarAgent(
       {
@@ -1114,62 +954,46 @@ describe('resource lifecycle', () => {
       },
       () => adapter
     );
-    const session = await agent.createSession({ workspace, title: 'Interrupted warm resources' });
+    const session = await agent.createSession({ workspace, title: 'Interrupted warm process' });
 
-    const interrupted = session.run({
-      prompt: 'interrupt warm resources'
-    });
-    await adapter.childStarted;
+    const interrupted = session.run({ prompt: 'interrupt warm process' });
+    await adapter.processReady;
     expect(host.catalogContexts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           executionId: interrupted.executionId,
           claimExecutionScope: true
-        }),
-        expect.objectContaining({
-          executionScopeId: interrupted.executionId
         })
       ])
     );
     interrupted.cancel();
     await expect(interrupted.result()).resolves.toMatchObject({ status: 'cancelled' });
 
-    const resumed = session.run({
-      prompt: 'reuse interrupted resources'
-    });
+    const resumed = session.run({ prompt: 'reuse interrupted process' });
     const events = [];
     for await (const event of resumed) events.push(event);
     await expect(resumed.result()).resolves.toMatchObject({ status: 'completed' });
+    expect(host.catalogContexts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ executionId: resumed.executionId, claimExecutionScope: true })
+      ])
+    );
     const resumedRequest = adapter.requests.find((request) =>
       request.messages.some(
-        (message) => message.role === 'user' && message.content === 'reuse interrupted resources'
+        (message) => message.role === 'user' && message.content === 'reuse interrupted process'
       )
     );
-    const resumedContext = resumedRequest?.messages
-      .filter((message) => message.role === 'user')
-      .map((message) => message.content)
-      .join('\n');
-    expect(resumedContext).not.toContain('# Retained Session resources');
     expect(
       resumedRequest?.messages.some(
         (message) => message.role === 'tool' && message.content.includes('processId')
-      )
-    ).toBe(true);
-    expect(
-      resumedRequest?.messages.some(
-        (message) => message.role === 'tool' && message.content.includes('agentId')
       )
     ).toBe(true);
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'tool.completed',
-          toolName: 'agent_message',
-          callId: 'warm-task-message',
-          data: expect.objectContaining({
-            status: 'running',
-            deliveryStatus: expect.stringMatching(/accepted|applied/u)
-          })
+          toolName: 'exec_wait',
+          callId: 'reuse-process'
         })
       ])
     );
@@ -1177,158 +1001,24 @@ describe('resource lifecycle', () => {
     await agent.dispose();
   });
 
-  it('cancels subagents and their active parent wait during Agent disposal', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-foreground-dispose-'));
-    roots.push(home);
-    const workspace = join(home, 'workspace');
-    await mkdir(workspace);
-    const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
-    const session = await agent.createSession({ workspace, title: 'Foreground disposal' });
-    const handle = session.run({ prompt: 'start subagent and wait' });
-    await adapter.childStarted;
-
-    await expect(
-      Promise.race([
-        agent.dispose(),
-        new Promise<never>((_resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error('Agent disposal timed out')), 2_000);
-          timer.unref();
-        })
-      ])
-    ).resolves.toBeUndefined();
-    await expect(handle.result()).resolves.toMatchObject({ status: 'cancelled' });
-  });
-
-  it('retains a subagent after cancelling its parent wait and recovers its handle only after Compact', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-foreground-cancel-'));
-    roots.push(home);
-    const workspace = join(home, 'workspace');
-    await mkdir(workspace);
-    const adapter = new WarmResourceAdapter();
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
-    const session = await agent.createSession({ workspace, title: 'Foreground cancellation' });
-    const handle = session.run({ prompt: 'start subagent and wait' });
-    const events: AgentEvent[] = [];
-    let resolveStarted!: () => void;
-    const started = new Promise<void>((resolve) => (resolveStarted = resolve));
-    const consume = (async () => {
-      for await (const event of handle) {
-        events.push(event);
-        if (event.type === 'subagent.started') resolveStarted();
-      }
-    })();
-
-    try {
-      await adapter.childStarted;
-      await expect(
-        Promise.race([
-          started,
-          new Promise<never>((_resolve, reject) => {
-            const timer = setTimeout(
-              () => reject(new Error('Subagent start event timed out')),
-              2_000
-            );
-            timer.unref();
-          })
-        ])
-      ).resolves.toBeUndefined();
-
-      handle.cancel();
-      await expect(
-        Promise.race([
-          handle.result(),
-          new Promise<never>((_resolve, reject) => {
-            const timer = setTimeout(
-              () => reject(new Error('Foreground subagent cancellation timed out')),
-              2_000
-            );
-            timer.unref();
-          })
-        ])
-      ).resolves.toMatchObject({ status: 'cancelled' });
-      await consume;
-      expect(events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: 'subagent.started',
-            description: 'Wait for disposal'
-          })
-        ])
-      );
-      expect(
-        events.some((event) => event.type === 'subagent.completed' && event.status === 'cancelled')
-      ).toBe(false);
-
-      expect((await session.compact().result()).status).toBe('completed');
-
-      const resumed = session.run({
-        prompt: 'inspect retained waiting subagent'
-      });
-      const resumedEvents: AgentEvent[] = [];
-      for await (const event of resumed) resumedEvents.push(event);
-      await expect(resumed.result()).resolves.toMatchObject({ status: 'completed' });
-      expect(resumedEvents).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: 'tool.completed',
-            toolName: 'agent_wait',
-            callId: 'retained-foreground-wait',
-            data: expect.objectContaining({
-              status: 'running',
-              waitOutcome: 'snapshot'
-            })
-          })
-        ])
-      );
-      const resumedRequest = adapter.requests.find((request) =>
-        request.messages.some(
-          (message) =>
-            message.role === 'user' && message.content === 'inspect retained waiting subagent'
-        )
-      );
-      const retainedContext = resumedRequest?.messages
-        .filter((message) => message.role === 'user')
-        .map((message) => message.content)
-        .join('\n');
-      expect(retainedContext).toMatch(/agentId: [0-9a-f-]+/u);
-      expect(retainedContext).toContain('status: running');
-    } finally {
-      await agent.dispose();
-    }
-  });
-
-  it('immediately reclaims active Session resources before deleting the Session', async () => {
+  it('immediately cancels an active Session execution before deleting the Session', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-session-delete-'));
     roots.push(home);
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
-    const adapter = new WarmResourceAdapter();
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => (markStarted = resolve));
     const agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
         models: [model]
       },
-      () => adapter
+      (configuration) => new BlockingExecutionAdapter(configuration, markStarted)
     );
     const session = await agent.createSession({ workspace, title: 'Delete active Session' });
-    const handle = session.run({ prompt: 'start subagent and wait' });
-    await adapter.childStarted;
+    const handle = session.run({ prompt: 'block until deleted' });
+    await started;
 
     await expect(agent.deleteSession(session.id)).resolves.toBeUndefined();
     await expect(handle.result()).resolves.toMatchObject({ status: 'cancelled' });

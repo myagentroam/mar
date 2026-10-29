@@ -80,18 +80,19 @@ async function fixture() {
     };
   };
   await node.executeNodeOperation('runner.profiles.list', { workspaceId: workspace.id });
-  const session = node.runtime.createAgentSession({
-    workspaceId: workspace.id,
-    runner: 'codex',
-    externalSessionId: 'network-thread',
-    nativeControl: 'MAR_MANAGED',
-    cwd: directory
-  });
   const coordinator = node.runtime.createAgentSession({
     workspaceId: workspace.id,
     runner: 'codex',
     externalSessionId: 'coordinator-thread',
     nativeControl: 'MAR_MANAGED',
+    cwd: directory
+  });
+  const session = node.runtime.createAgentSession({
+    workspaceId: workspace.id,
+    runner: 'codex',
+    externalSessionId: 'network-thread',
+    nativeControl: 'MAR_MANAGED',
+    parentSessionId: coordinator.id,
     cwd: directory
   });
   const credentials = new MarctlUserCredentials({
@@ -124,7 +125,8 @@ async function fixture() {
     requestNode: async (_node, operation, data, user) =>
       node.executeNodeOperation(operation, {
         ...data,
-        __requestUserId: user.userId
+        __requestUserId: user.userId,
+        __marctlCaller: user.marctlCaller
       }),
     secrets: { resolve: async () => ({}) }
   });
@@ -132,7 +134,7 @@ async function fixture() {
   const command = async (...args: string[]) => {
     const result = await promisify(execFile)(
       process.execPath,
-      [cliPath, 'sessions', ...args, '--json'],
+      [cliPath, 'agents', ...args, '--json'],
       {
         timeout: 10_000,
         env: {
@@ -143,7 +145,10 @@ async function fixture() {
           MAR_CTL_SESSION_ID: coordinator.id
         }
       }
-    );
+    ).catch((error: Error & { stdout?: string }) => {
+      const output = error.stdout ? JSON.parse(error.stdout) : undefined;
+      throw new Error(`CLI command failed: ${output?.error?.code ?? error.message}`);
+    });
     expect(result.stderr).toBe('');
     return JSON.parse(result.stdout);
   };
@@ -184,24 +189,26 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
         sessionPrompt: 'Initial rule'
       });
       const first = await h.command('send', h.session.id, '--queue', '-m', 'First input');
+      expect(first.message.status).toBe('accepted');
+      const firstRunId = first.message.result.run.id;
       await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledTimes(1));
       expect(h.startTurn.mock.calls[0]?.[3]).toMatchObject({
         developerInstructions: 'Initial rule'
       });
       const second = await h.command('send', h.session.id, '--queue', '-m', 'Queued input');
-      expect(second.delivery).toBe('QUEUED');
+      expect(second.message).toMatchObject({ status: 'accepted', result: { delivery: 'QUEUED' } });
       await h.command('prompt', 'set', h.session.id, '-m', 'Updated rule');
       expect(h.interruptTurn).not.toHaveBeenCalled();
       h.finish('turn-1');
       await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledTimes(2));
-      expect(h.startTurn.mock.calls[1]?.[1]).toContain('\nQueued input');
-      expect(h.startTurn.mock.calls[1]?.[1]).toContain('<mar_session_origin');
+      expect(h.startTurn.mock.calls[1]?.[1]).toBe('Queued input');
+      expect(h.startTurn.mock.calls[1]?.[1]).not.toContain('<mar_session_origin');
       expect(h.startTurn.mock.calls[1]?.[3]).toMatchObject({
         developerInstructions: 'Updated rule'
       });
       h.finish('turn-2');
       expect(
-        (await h.command('wait', h.session.id, '--run', first.runId, '--timeout', '2s')).run.status
+        (await h.command('wait', h.session.id, '--run', firstRunId, '--timeout', '2s')).run.status
       ).toBe('SUCCEEDED');
       expect(await h.command('prompt', 'clear', h.session.id)).toEqual({
         sessionId: h.session.id,
@@ -216,12 +223,14 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
     const h = await fixture();
     try {
       const sent = await h.command('send', h.session.id, '--queue', '-m', 'Review request');
+      expect(sent.message.status).toBe('accepted');
+      const sentRunId = sent.message.result.run.id;
       await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
       const waiting = h.command(
         'wait',
         h.session.id,
         '--run',
-        sent.runId,
+        sentRunId,
         '--until',
         'approval',
         '--timeout',
@@ -239,7 +248,7 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
       expect(blocked.stopReason).toBe('APPROVAL_REQUIRED');
       expect(blocked.pendingApprovals).toHaveLength(1);
       const approval = blocked.pendingApprovals[0];
-      expect(approval.runId).toBe(sent.runId);
+      expect(approval.runId).toBe(sentRunId);
       expect(approval.approvalId).toContain('native-request');
       expect(JSON.stringify(blocked)).not.toContain('private raw command');
       expect((await h.command('show', h.session.id)).session.pendingApprovals).toEqual(
@@ -251,16 +260,16 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
           'decide',
           h.session.id,
           '--run',
-          sent.runId,
+          sentRunId,
           '--approval',
           approval.approvalId,
           '--decision',
           'approve'
         )
-      ).toMatchObject({ runId: sent.runId, decision: 'APPROVED' });
+      ).toMatchObject({ runId: sentRunId, decision: 'APPROVED' });
       expect(h.respond).toHaveBeenCalledExactlyOnceWith('native-request', { decision: 'accept' });
       expect((await h.command('show', h.session.id)).session.pendingApprovals).toEqual([]);
-      const completed = h.command('wait', h.session.id, '--run', sent.runId, '--timeout', '3s');
+      const completed = h.command('wait', h.session.id, '--run', sentRunId, '--timeout', '3s');
       await vi.waitFor(() =>
         expect(
           h.send.mock.calls.filter((call) => call[0] === 'watch.event').length
@@ -279,10 +288,14 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
       const h = await fixture();
       try {
         const initial = await h.command('send', h.session.id, '--queue', '-m', 'Running input');
+        expect(initial.message.status).toBe('accepted');
+        const initialRunId = initial.message.result.run.id;
         await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
         await h.command('send', h.session.id, '--queue', '-m', 'Old first');
         await h.command('send', h.session.id, '--queue', '-m', 'Old second');
-        await h.command('stop', h.session.id);
+        const executionId = h.node.runtime.currentExecutionId(initialRunId);
+        expect(executionId).toBeDefined();
+        await h.command('stop', h.session.id, '--execution', executionId!);
         expect(h.node.runtime.activeSessionRun(h.session.id)?.status).toBe('CANCELLING');
         if (explicitResume)
           await h.node.executeNodeOperation('workspace.queue.resume', {
@@ -299,7 +312,10 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
           '--client-message-id',
           'recovery'
         );
-        expect(receipt.delivery).toBe('QUEUED');
+        expect(receipt.message).toMatchObject({
+          status: 'accepted',
+          result: { delivery: 'QUEUED' }
+        });
         const duplicate = await h.command(
           'send',
           h.session.id,
@@ -309,7 +325,7 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
           '--client-message-id',
           'recovery'
         );
-        expect(duplicate.queueItemId).toBe(receipt.queueItemId);
+        expect(duplicate.message.result.queueItemId).toBe(receipt.message.result.queueItemId);
         expect(h.startTurn).toHaveBeenCalledOnce();
         h.settleCancellation();
         const expected = explicitResume
@@ -318,8 +334,8 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
         for (const [index, content] of expected.entries()) {
           await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledTimes(index + 2));
           if (index === 0)
-            expect(h.node.runtime.activeSessionRun(h.session.id)?.id).not.toBe(initial.runId);
-          expect(h.startTurn.mock.calls[index + 1]?.[1]).toContain('\n' + content);
+            expect(h.node.runtime.activeSessionRun(h.session.id)?.id).not.toBe(initialRunId);
+          expect(h.startTurn.mock.calls[index + 1]?.[1]).toBe(content);
           h.finish('turn-' + (index + 2));
         }
         expect(h.node.runtime.sessionQueue(h.session.id).itemIds).toEqual([]);

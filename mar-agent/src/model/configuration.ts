@@ -53,6 +53,7 @@ const modelFieldsSchema = z
     reasoningEfforts: z.array(agentReasoningEffortSchema),
     defaultReasoningEffort: agentReasoningEffortSchema.optional(),
     conversationModel: z.boolean().optional().default(true),
+    subagentModel: z.boolean().optional().default(false),
     titleGeneration: z.boolean().optional().default(false),
     codeMode: z.boolean().optional().default(false),
     useResourceUrl: z.boolean().optional().default(false),
@@ -166,9 +167,11 @@ export interface AgentModelConfiguration extends Omit<
   | 'responsesPreviousResponseId'
   | 'responsesTransport'
   | 'conversationModel'
+  | 'subagentModel'
   | 'useResourceUrl'
 > {
   conversationModel?: boolean;
+  subagentModel?: boolean;
   useResourceUrl?: boolean;
   apiKey?: SecretValue;
   credentialProvider?: ModelCredentialProvider;

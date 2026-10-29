@@ -9,11 +9,16 @@ import {
   type AgentEvent,
   type AgentModelConfiguration
 } from '../../src/index.js';
-import { type ExtensionAgentsApi, type AgentExtension } from '../../src/extensions.js';
+import { type AgentExtension } from '../../src/extensions.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import { resolveAgentModels } from '../../src/sdk/model-runtime.js';
 import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import {
+  createSubagentExtension,
+  SUBAGENT_NATIVE_SERVICE,
+  type NativeSubagentClient
+} from '../../extensions/subagent/src/index.js';
 
 const roots: string[] = [];
 const agents: Agent[] = [];
@@ -88,18 +93,35 @@ describe('conversation model eligibility', () => {
     }
   );
 
-  it('hides auxiliary choices and reports an unavailable explicit agent_start without running the model', async () => {
-    const configs = [model('chat'), model('helper', false)];
+  it('lists eligible subagent models and rejects an unavailable explicit agent_start', async () => {
+    const configs = [
+      { ...model('chat'), conversationModel: true, subagentModel: true },
+      model('helper', false)
+    ];
     const adapters = new Map<string, FakeAdapter>();
-    const f = await fixture(configs, (configuration) => {
-      const adapter = new FakeAdapter(configuration, (_request, call) =>
-        call === 1
-          ? [
+    let agent!: Agent;
+    const f = await fixture(
+      configs,
+      (configuration) => {
+        const adapter = new FakeAdapter(configuration, (_request, call) => {
+          if (call === 1)
+            return [
+              {
+                type: 'client_tool.call',
+                callId: 'list-profile',
+                name: 'agent_list',
+                arguments: { scope: 'profile' }
+              },
+              { type: 'completed', reason: 'tool_use' }
+            ];
+          if (call === 2)
+            return [
               {
                 type: 'client_tool.call',
                 callId: 'start-helper',
                 name: 'agent_start',
                 arguments: {
+                  title: 'Use the helper model',
                   description: 'Use the helper model',
                   prompt: 'Run this bounded task.',
                   role: 'general-purpose',
@@ -107,65 +129,79 @@ describe('conversation model eligibility', () => {
                 }
               },
               { type: 'completed', reason: 'tool_use' }
-            ]
-          : [
-              { type: 'text.completed', itemId: 'final', text: 'Rejected safely.' },
-              { type: 'completed', reason: 'completed' }
-            ]
-      );
-      adapters.set(configuration.id, adapter);
-      return adapter;
-    });
+            ];
+          return [
+            { type: 'text.completed', itemId: 'final', text: 'Rejected safely.' },
+            { type: 'completed', reason: 'completed' }
+          ];
+        });
+        adapters.set(configuration.id, adapter);
+        return adapter;
+      },
+      [createSubagentExtension({ agent: () => agent })]
+    );
+    agent = f.agent;
 
     const handle = f.session.run({ prompt: 'Try the helper.' });
     const events: AgentEvent[] = [];
     for await (const event of handle) events.push(event);
     expect(await handle.result()).toMatchObject({ status: 'completed' });
 
-    const startDefinition = adapters
-      .get('chat')
-      ?.requests[0]?.tools.find((tool) => tool.name === 'agent_start');
-    expect(startDefinition?.description).toContain('"chat"');
-    expect(startDefinition?.description).not.toContain('"helper"');
+    const profile = JSON.parse(
+      adapters
+        .get('chat')
+        ?.requests[1]?.messages.findLast(
+          (message) => message.role === 'tool' && message.name === 'agent_list'
+        )?.content ?? '{}'
+    );
+    expect(profile.models).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'chat' })])
+    );
+    expect(profile.models).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'helper' })])
+    );
+    expect(JSON.stringify(profile)).not.toContain('apiKey');
     expect(
-      events.find((event) => event.type === 'tool.completed' && event.toolName === 'agent_start')
-    ).toMatchObject({
-      type: 'tool.completed',
-      data: { status: 'failed', errorCode: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE' }
-    });
+      events.find((event) => event.type === 'tool.failed' && event.toolName === 'agent_start')
+    ).toMatchObject({ type: 'tool.failed', code: 'MAR_AGENT_MODEL_DISABLED' });
     expect(adapters.has('helper')).toBe(false);
 
     const store = await JsonlSessionStore.open(f.home);
     try {
-      // Failed model-tool tasks retain their diagnostic child Session without executing it.
-      expect(await store.listSubagentChildren(f.session.id)).toHaveLength(1);
+      expect(await store.listSubagentChildren(f.session.id)).toHaveLength(0);
     } finally {
       await store.close();
     }
   });
 
   it('rejects an auxiliary model requested by a native Extension Agent without creating a child Session', async () => {
-    let api!: ExtensionAgentsApi;
-    const extension: AgentExtension = {
+    let client!: NativeSubagentClient;
+    let agent!: Agent;
+    const consumer: AgentExtension = {
       id: 'conversation-model-native-agent',
       apiVersion: '1.0',
+      serviceDependencies: [{ key: SUBAGENT_NATIVE_SERVICE }],
       attachSession: (context) => {
-        if (context.agents) api = context.agents;
+        client = context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open();
       }
     };
-    const f = await fixture([model('chat'), model('helper', false)], undefined, [extension]);
+    const f = await fixture([model('chat'), model('helper', false)], undefined, [
+      createSubagentExtension({ agent: () => agent }),
+      consumer
+    ]);
+    agent = f.agent;
     expect(
       await f.session.run({ prompt: 'Initialize the native Agent API.' }).result()
     ).toMatchObject({
       status: 'completed'
     });
 
-    await expect(api.spawn({ prompt: 'Try the helper.', modelId: 'helper' })).rejects.toMatchObject(
-      {
-        code: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
-      }
-    );
-    expect(await api.list()).toHaveLength(0);
+    await expect(
+      client.spawn({ prompt: 'Try the helper.', modelId: 'helper' })
+    ).rejects.toMatchObject({
+      code: 'MAR_AGENT_MODEL_DISABLED'
+    });
+    expect(await client.list()).toHaveLength(0);
     const store = await JsonlSessionStore.open(f.home);
     try {
       expect(await store.listSubagentChildren(f.session.id)).toHaveLength(0);

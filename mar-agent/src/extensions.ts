@@ -1,18 +1,4 @@
 export type {
-  ExtensionAgentCompletion,
-  ExtensionAgentHandledResult,
-  ExtensionAgentManySnapshot,
-  ExtensionAgentMessageInput,
-  ExtensionAgentsApi,
-  ExtensionAgentsBackend,
-  ExtensionAgentSnapshot,
-  ExtensionAgentSpawnInput,
-  ExtensionAgentSpawnResult,
-  ExtensionAgentTarget,
-  ExtensionAgentWaitInput,
-  ExtensionAgentWaitResult
-} from './extensions/agents.js';
-export type {
   ExtensionCompactContext,
   ExtensionCompactDiagnostic,
   ExtensionCompactMessage,
@@ -122,7 +108,18 @@ export type {
   ExtensionResourceRegistration,
   ExtensionResourceScope
 } from './extensions/resources.js';
-export type { ExtensionServiceKey, ExtensionServiceRegistry } from './extensions/services.js';
+export type {
+  ExtensionServiceConsumer,
+  ExtensionServiceKey,
+  ExtensionServiceRegistry
+} from './extensions/services.js';
+export { SESSION_CONTEXT_PROVIDER } from './extensions/session-context.js';
+export type {
+  ExtensionSessionContextItem,
+  ExtensionSessionContextProvider
+} from './extensions/session-context.js';
+export { waitForToolCondition } from './runtime/wait.js';
+export type { ToolWaitInterrupt } from './runtime/wait.js';
 export type {
   ExtensionAppendInput,
   ExtensionCompactInput,

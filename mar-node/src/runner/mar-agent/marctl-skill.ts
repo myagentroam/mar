@@ -1,4 +1,8 @@
-import { hasMarctlContext, marctlDescription, marctlInstructions } from '../../marctl-guidance.js';
+import {
+  hasMarctlContext,
+  marctlManagementDescription,
+  marctlManagementInstructions
+} from '../../marctl-guidance.js';
 import type { HostSkill } from '@myagentroam/agent/host';
 
 export function marctlExecutionEnvironment(
@@ -15,8 +19,8 @@ export function marctlHostSkill(
   if (!hasMarctlContext(environment)) return undefined;
   return {
     name: 'marctl',
-    description: marctlDescription,
+    description: marctlManagementDescription,
     requiredTools: ['exec'],
-    load: async () => marctlInstructions
+    load: async () => marctlManagementInstructions
   };
 }

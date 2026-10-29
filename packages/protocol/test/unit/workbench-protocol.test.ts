@@ -111,6 +111,97 @@ describe('Workbench protocol contracts', () => {
         conversationItemSchema.safeParse({ ...item, payload: { ...item.payload, title } }).success
       ).toBe(false);
   });
+  it('validates execution details only on command items and preserves empty outputs', () => {
+    const base = {
+      id: 'item',
+      sessionId: 'session',
+      turnId: 'turn',
+      runId: null,
+      parentItemId: null,
+      sourceSequence: null,
+      revision: 0,
+      status: 'COMPLETED',
+      startedAt: null,
+      completedAt: null
+    };
+    const execution = { kind: 'EXECUTION', execution: { kind: 'SHELL', output: [] } };
+    const command = {
+      ...base,
+      kind: 'command_execution',
+      payload: {
+        command: 'echo',
+        cwd: null,
+        outputPreview: '',
+        outputRef: null,
+        exitCode: null,
+        durationMs: null,
+        truncated: false,
+        toolPresentation: execution
+      }
+    };
+    expect(conversationItemSchema.parse(command)).toEqual(command);
+    expect(
+      conversationItemSchema.safeParse({
+        ...command,
+        payload: { ...command.payload, toolPresentation: { kind: 'READ' } }
+      }).success
+    ).toBe(false);
+    const tool = {
+      ...base,
+      kind: 'tool_call',
+      payload: {
+        namespace: 'x',
+        toolName: 'read',
+        title: 'Read',
+        inputSummary: null,
+        outputSummary: null,
+        progressLabel: null,
+        errorCode: null,
+        truncated: false,
+        toolPresentation: execution
+      }
+    };
+    expect(conversationItemSchema.safeParse(tool).success).toBe(false);
+    const invalidOutput = {
+      ...execution,
+      execution: {
+        ...execution.execution,
+        output: [
+          { channel: 'COMBINED', text: 'a' },
+          { channel: 'STDERR', text: 'b' }
+        ]
+      }
+    };
+    expect(
+      conversationItemSchema.safeParse({
+        ...command,
+        payload: { ...command.payload, toolPresentation: invalidOutput }
+      }).success
+    ).toBe(false);
+    const permissionStop = {
+      action: 'deny',
+      reason: 'Not allowed',
+      source: {
+        sessionId: 'session',
+        executionId: 'execution',
+        callId: 'child',
+        toolName: 'exec',
+        parentCallId: 'parent'
+      }
+    };
+    const code = {
+      ...command,
+      permissionStop,
+      payload: {
+        ...command.payload,
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: { kind: 'CODE', error: { code: 'DENIED', message: 'Not allowed' } }
+        }
+      }
+    };
+    expect(conversationItemSchema.parse(code)).toEqual(code);
+  });
   it('preserves bounded upstream error codes without interpreting plain error text as codes', () => {
     const failure = safePublicError({
       code: 'service_unavailable_error',
@@ -650,17 +741,17 @@ describe('Workbench protocol contracts', () => {
     ).toBe(true);
   });
 
-  it('uses Node protocol v2 and rejects other envelopes', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(2);
+  it('uses Node protocol v3 and rejects other envelopes', () => {
+    expect(NODE_PROTOCOL_VERSION).toBe(3);
     expect(
       nodeEnvelopeSchema.safeParse({
-        version: 2,
+        version: NODE_PROTOCOL_VERSION,
         id: 'node-request',
         type: 'node.request',
         payload: {}
       }).success
     ).toBe(true);
-    for (const version of [1, 3, 4])
+    for (const version of [1, 2, 4])
       expect(
         nodeEnvelopeSchema.safeParse({
           version,
@@ -852,6 +943,21 @@ describe('Workbench protocol contracts', () => {
       }
     });
     expect(assistant.payload).not.toHaveProperty('performance');
+    const finalMessage = conversationItemSchema.parse({
+      ...base,
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      payload: { text: 'answer', format: 'markdown', model: null, phase: 'final_answer' }
+    });
+    expect(finalMessage.payload).toMatchObject({ phase: 'final_answer' });
+    expect(
+      conversationItemSchema.safeParse({
+        ...base,
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: { text: 'answer', format: 'markdown', model: null, phase: 'unknown' }
+      }).success
+    ).toBe(false);
     expect(
       conversationItemSchema.safeParse({
         ...base,
@@ -868,6 +974,7 @@ describe('Workbench protocol contracts', () => {
           subagentOperation: 'STATUS',
           subagentWait: true,
           subagentId: 'task-1',
+          subagentSessionId: 'session-1',
           subagentModelId: 'review',
           subagentModelName: 'Review Agent',
           subagentReasoningEffort: 'high',
@@ -881,7 +988,7 @@ describe('Workbench protocol contracts', () => {
           }
         }
       }).data
-    ).toMatchObject({ payload: { subagentWait: true } });
+    ).toMatchObject({ payload: { subagentWait: true, subagentSessionId: 'session-1' } });
     expect(
       conversationItemSchema.safeParse({
         ...base,

@@ -6,8 +6,427 @@ import type { ExtensionToolRef } from '../../src/extensions/tools.js';
 import type { ExtensionServiceKey } from '../../src/extensions/services.js';
 import { answer, call, fixture, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
+import { createSubagentExtension } from '../../extensions/subagent/src/index.js';
+import type { Agent } from '../../src/index.js';
+import {
+  publicExtensionToolEventData,
+  publicToolEventInput
+} from '../../src/tools/output-projection.js';
 
 afterEach(cleanupCoreFixtures);
+
+describe('tool permission and wait context', () => {
+  it('runs a native service with actual caller identity and the owning session lifetime', async () => {
+    type Probe = { run(): Promise<unknown> };
+    const key: ExtensionServiceKey<Probe> = {
+      id: 'native-probe',
+      scope: 'session',
+      bindConsumer: (_service, consumer) => ({ run: () => consumer.run(async (call) => call) })
+    };
+    let probe: Probe | undefined;
+    const observed: Array<{ outer: unknown; inner: unknown }> = [];
+    const service: AgentExtension = {
+      id: 'native-service-provider',
+      apiVersion: '1.0',
+      provides: [{ key }],
+      attachSession(context) {
+        context.services.provide(key, { async run() {} });
+      }
+    };
+    const consumer: AgentExtension = {
+      id: 'native-service-consumer',
+      apiVersion: '1.0',
+      serviceDependencies: [{ key }],
+      attachSession(context) {
+        const forgedKey: ExtensionServiceKey<Probe> = {
+          ...key,
+          bindConsumer: () => {
+            throw new Error('caller-supplied binder must not run');
+          }
+        };
+        probe = context.services.consume(forgedKey)!;
+        context.tools.register({
+          name: 'native_service_probe',
+          description: 'Exercise a native service.',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          async execute(_input, outer) {
+            observed.push({ outer, inner: await probe!.run() });
+            return { content: 'done' };
+          }
+        });
+      }
+    };
+    const { agent, session } = await fixture([service, consumer], (_request, index) =>
+      index === 0 ? call('native_service_probe', {}) : answer()
+    );
+    const execution = session.run({ prompt: 'probe' });
+    expect((await execution.result()).status).toBe('completed');
+    const { outer, inner } = observed[0] as {
+      outer: Record<string, unknown>;
+      inner: Record<string, unknown>;
+    };
+    expect(inner).toMatchObject({
+      entry: outer.entry,
+      sessionId: session.id,
+      executionId: execution.executionId,
+      extensionId: 'native-service-consumer',
+      parentOperationId: outer.operationId
+    });
+    const idle = (await probe!.run()) as Record<string, unknown>;
+    expect(idle).toMatchObject({
+      entry: 'native-api',
+      sessionId: session.id,
+      extensionId: 'native-service-consumer'
+    });
+    expect(idle.ownerInstanceId).toBe(inner.ownerInstanceId);
+    expect(idle).not.toHaveProperty('executionId');
+    await agent.dispose();
+    await expect(probe!.run()).rejects.toThrow();
+  });
+  it('drops oversized and throwing public projections without recovering raw values', () => {
+    expect(publicExtensionToolEventData({ text: 'x'.repeat(8193) })).toBeUndefined();
+    expect(publicToolEventInput({ id: 'x'.repeat(8193), secret: 'private' }, ['id'])).toEqual({});
+    const input = Object.defineProperty({}, 'id', {
+      enumerable: true,
+      get() {
+        throw new Error('private');
+      }
+    });
+    expect(publicToolEventInput(input, ['id'])).toEqual({});
+  });
+  it.each([false, true])(
+    'projects explicit public tool events without changing inputs (invalid=%s)',
+    async (invalid) => {
+      const calls: unknown[] = [];
+      const extension: AgentExtension = {
+        id: 'public-event',
+        apiVersion: '1.0',
+        attachSession(context) {
+          context.tools.register({
+            name: 'event_probe',
+            description: 'Inspect projection.',
+            eventInputFields: ['id'],
+            inputSchema: {
+              type: 'object',
+              properties: { id: { type: 'string' }, image: { type: 'string' } },
+              required: ['id', 'image'],
+              additionalProperties: false
+            },
+            execute(input) {
+              calls.push(input);
+              return {
+                content: 'private model result',
+                data: { private: 'secret-result' },
+                eventData: { id: 'safe' },
+                eventSummary: 'public receipt'
+              };
+            }
+          });
+        }
+      };
+      const input = {
+        id: 'safe',
+        image: invalid ? 123 : 'secret-image',
+        ...(invalid ? { unknown: 'secret-extra' } : {})
+      };
+      const { agent, session } = await fixture([extension], (_request, index) =>
+        index === 0 ? call('event_probe', input) : answer()
+      );
+      const run = session.run({ prompt: 'inspect projection' });
+      const events = [];
+      for await (const event of run) events.push(event);
+      expect((await run.result()).status).toBe('completed');
+      expect(
+        events.find((event) => event.type === 'tool.started' && event.toolName === 'event_probe')
+      ).toMatchObject({ input: { id: 'safe' } });
+      const toolEvents = events.filter(
+        (event) =>
+          event.type.startsWith('tool.') && 'toolName' in event && event.toolName === 'event_probe'
+      );
+      expect(JSON.stringify(toolEvents)).not.toContain('secret-');
+      expect(JSON.stringify(await agent.sessionHistory(session.id))).not.toContain('secret-');
+      if (invalid) {
+        expect(calls).toEqual([]);
+        expect(toolEvents).toContainEqual(expect.objectContaining({ type: 'tool.failed' }));
+      } else {
+        expect(calls).toEqual([input]);
+        expect(toolEvents).toContainEqual(
+          expect.objectContaining({
+            type: 'tool.completed',
+            summary: 'public receipt',
+            data: { id: 'safe' }
+          })
+        );
+      }
+    }
+  );
+
+  it.each(['auto', 'full-access'] as const)(
+    'exposes the actual tool execution permission mode: %s',
+    async (mode) => {
+      const seen: unknown[] = [];
+      const extension: AgentExtension = {
+        id: 'mode-probe',
+        apiVersion: '1.0',
+        attachSession(context) {
+          context.tools.register({
+            name: 'mode_probe',
+            description: 'Inspect mode.',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            execute(_input, call) {
+              seen.push(call.permissionMode);
+              return { content: 'ok' };
+            }
+          });
+        }
+      };
+      const { session } = await fixture([extension], (_request, index) =>
+        index === 0 ? call('mode_probe', {}) : answer()
+      );
+      await session.run({ prompt: 'test', permissionMode: mode }).result();
+      expect(seen).toEqual([mode]);
+    }
+  );
+
+  it.each([
+    { decision: 'APPROVED' as const, change: false, approved: true },
+    { decision: 'APPROVED' as const, change: true, approved: false },
+    { decision: 'REJECTED' as const, change: false, approved: null }
+  ])(
+    'exposes actual approval only for the unchanged approved invocation: $decision/$change',
+    async ({ decision, change, approved }) => {
+      const seen: Array<{ target: unknown; permission: unknown; hasWait: boolean }> = [];
+      const extension: AgentExtension = {
+        id: 'approval-context',
+        apiVersion: '1.0',
+        attachSession(value) {
+          value.tools.register({
+            name: 'approval_probe',
+            description: 'Test call-scoped permission.',
+            inputSchema: {
+              type: 'object',
+              properties: { target: { type: 'string' } },
+              required: ['target'],
+              additionalProperties: false
+            },
+            async execute(input, context) {
+              seen.push({
+                target: (input as { target: string }).target,
+                permission: context.permission,
+                hasWait: context.waitInterrupt !== undefined
+              });
+              return { content: 'done' };
+            }
+          });
+          if (change)
+            value.hooks.intercept('tool.invoke', async (input, _context, next) =>
+              next({ ...input, arguments: { target: 'changed' } })
+            );
+        }
+      };
+      const { session } = await fixture(
+        [extension],
+        (_request, index) =>
+          index === 0
+            ? call('approval_probe', {
+                target: 'original',
+                permission: { action: 'ask', reason: 'Confirm target.' }
+              })
+            : answer(),
+        false,
+        false,
+        { approval: async () => decision }
+      );
+      await session.run({ prompt: 'test', permissionMode: 'auto' }).result();
+      if (approved === null) expect(seen).toEqual([]);
+      else
+        expect(seen).toEqual([
+          {
+            target: change ? 'changed' : 'original',
+            permission: approved ? { decision: 'approved' } : undefined,
+            hasWait: true
+          }
+        ]);
+    }
+  );
+
+  it('does not pass approval to a modified wrapper continuation or a nested tool call', async () => {
+    const seen: unknown[] = [];
+    const base: AgentExtension = {
+      id: 'base-probe',
+      apiVersion: '1.0',
+      attachSession(value) {
+        value.tools.register({
+          name: 'base_probe',
+          description: 'Probe approval.',
+          inputSchema: {
+            type: 'object',
+            properties: { target: { type: 'string' } },
+            required: ['target'],
+            additionalProperties: false
+          },
+          async execute(_input, context) {
+            seen.push(context.permission);
+            return { content: 'ok' };
+          }
+        });
+      }
+    };
+    const wrapper: AgentExtension = {
+      id: 'wrapper-probe',
+      apiVersion: '1.0',
+      attachSession(value) {
+        value.tools.register({
+          name: 'base_probe',
+          description: 'Wrap probe.',
+          override: 'wrap',
+          inputSchema: {
+            type: 'object',
+            properties: { target: { type: 'string' } },
+            required: ['target'],
+            additionalProperties: false
+          },
+          async execute(_input, context, next) {
+            seen.push(context.permission);
+            await value.tools.invoke({ name: 'nested_probe', arguments: {} });
+            return next({ target: 'changed' });
+          }
+        });
+        value.tools.register({
+          name: 'nested_probe',
+          description: 'Nested probe.',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          async execute(_input, context) {
+            seen.push(context.permission);
+            return { content: 'ok' };
+          }
+        });
+      }
+    };
+    const { session } = await fixture(
+      [base, wrapper],
+      (_request, index) =>
+        index === 0
+          ? call('base_probe', {
+              target: 'original',
+              permission: { action: 'ask', reason: 'Confirm.' }
+            })
+          : answer(),
+      false,
+      false,
+      { approval: async () => 'APPROVED' }
+    );
+    await session.run({ prompt: 'test', permissionMode: 'auto' }).result();
+    expect(seen).toEqual([{ decision: 'approved' }, undefined, undefined]);
+  });
+
+  it('does not retain approval when an identity parser and wrapper mutate nested arguments in place', async () => {
+    const seen: unknown[] = [];
+    const definition = {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+          additionalProperties: false
+        }
+      },
+      required: ['target'],
+      additionalProperties: false
+    };
+    const base: AgentExtension = {
+      id: 'identity-base',
+      apiVersion: '1.0',
+      attachSession(value) {
+        value.tools.register({
+          name: 'identity_probe',
+          description: 'Probe approval.',
+          inputSchema: definition,
+          async execute(input, context) {
+            seen.push({ input, permission: context.permission });
+            return { content: 'ok' };
+          }
+        });
+      }
+    };
+    const wrapper: AgentExtension = {
+      id: 'identity-wrapper',
+      apiVersion: '1.0',
+      attachSession(value) {
+        value.tools.register({
+          name: 'identity_probe',
+          description: 'Wrap approval.',
+          override: 'wrap',
+          inputSchema: definition,
+          parseInput: (input) => input,
+          async execute(input, _context, next) {
+            (input as { target: { id: string } }).target.id = 'changed';
+            return next(input);
+          }
+        });
+      }
+    };
+    const { session } = await fixture(
+      [base, wrapper],
+      (_request, index) =>
+        index === 0
+          ? call('identity_probe', {
+              target: { id: 'original' },
+              permission: { action: 'ask', reason: 'Confirm.' }
+            })
+          : answer(),
+      false,
+      false,
+      { approval: async () => 'APPROVED' }
+    );
+    await session.run({ prompt: 'test', permissionMode: 'auto' }).result();
+    expect(seen).toEqual([{ input: { target: { id: 'changed' } }, permission: undefined }]);
+  });
+
+  it('does not expose approval when a custom parser mutates approved arguments', async () => {
+    const seen: unknown[] = [];
+    const extension: AgentExtension = {
+      id: 'parser-probe',
+      apiVersion: '1.0',
+      attachSession(value) {
+        value.tools.register({
+          name: 'parser_probe',
+          description: 'Probe parser.',
+          inputSchema: {
+            type: 'object',
+            properties: { target: { type: 'string' } },
+            required: ['target'],
+            additionalProperties: false
+          },
+          parseInput(input) {
+            (input as { target: string }).target = 'other';
+            return input;
+          },
+          async execute(input, context) {
+            seen.push({ input, permission: context.permission });
+            return { content: 'ok' };
+          }
+        });
+      }
+    };
+    const { session } = await fixture(
+      [extension],
+      (_request, index) =>
+        index === 0
+          ? call('parser_probe', {
+              target: 'original',
+              permission: { action: 'ask', reason: 'Confirm.' }
+            })
+          : answer(),
+      false,
+      false,
+      { approval: async () => 'APPROVED' }
+    );
+    await session.run({ prompt: 'test', permissionMode: 'auto' }).result();
+    expect(seen).toEqual([{ input: { target: 'other' }, permission: undefined }]);
+  });
+});
 
 describe('Execution tool sources outside model tool handlers', () => {
   it.each(['prompt.compose', 'model.request'] as const)(
@@ -446,16 +865,15 @@ describe('Execution tool sources outside model tool handlers', () => {
   it.each([false, true])(
     'does not expose ROOT_ONLY tools to native child Session Hooks (wrapped=%s)',
     async (wrapped) => {
-      let parent!: SessionExtensionContext;
+      let childId = '';
       let childChecked = false;
       let effects = 0;
-      const { session } = await fixture(
+      const { session, agent, home } = await fixture(
         [
           {
             id: 'hooks',
             apiVersion: '1.0',
             attachSession(value) {
-              if (value.agents) parent = value;
               if (wrapped)
                 value.tools.register({
                   name: 'root_probe',
@@ -465,7 +883,7 @@ describe('Execution tool sources outside model tool handlers', () => {
                   execute: (input, _call, next) => next(input)
                 });
               value.hooks.intercept('model.request', async (input, _call, next) => {
-                if (!value.agents) {
+                if (value.sessionId === childId) {
                   expect(
                     value.tools.catalog().some((ref) => ref.definition.name === 'root_probe')
                   ).toBe(false);
@@ -506,10 +924,19 @@ describe('Execution tool sources outside model tool handlers', () => {
         }
       );
       expect((await session.run({ prompt: 'initialize' }).result()).status).toBe('completed');
-      const task = await parent.agents!.spawn({ prompt: 'child' });
-      if (!('agentId' in task)) throw new Error('Expected an actual child task.');
-      const outcome = await parent.agents!.wait({ agentId: task.agentId, waitMs: 1000 });
-      expect(outcome.status).toBe('completed');
+      const child = await agent.createSession({
+        workspace: home,
+        source: {
+          type: 'subagent',
+          parentSessionId: session.id,
+          rootSessionId: session.id,
+          parentExecutionId: 'parent-execution',
+          role: 'explore',
+          description: 'Verify child tool restrictions'
+        }
+      });
+      childId = child.id;
+      expect((await child.run({ prompt: 'child' }).result()).status).toBe('completed');
       expect(childChecked).toBe(true);
       expect(effects).toBe(0);
     }
@@ -695,20 +1122,23 @@ describe('Execution tool sources outside model tool handlers', () => {
     }
   );
 
-  it('keeps native Agent delegation bound to a real retained cell parent', async () => {
+  it('binds retained programmatic Agent delegation to its original Execution', async () => {
     const gate = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
     let context!: SessionExtensionContext;
     let launch = true;
     let cellId!: string;
     let childId!: string;
+    let agent!: Agent;
+    let rootId = '';
     const f = await fixture(
       [
+        createSubagentExtension({ agent: () => agent }),
         {
           id: 'retained-native-agent',
           apiVersion: '1.0',
           attachSession(value) {
-            if (!value.agents) return;
+            if (value.sessionId !== rootId) return;
             context = value;
             value.tools.register({
               name: 'retained_delegate',
@@ -718,14 +1148,31 @@ describe('Execution tool sources outside model tool handlers', () => {
               async execute(_input, operation) {
                 entered.resolve();
                 await gate.promise;
-                const child = await value.agents!.spawn({
-                  prompt: 'RETAINED_NATIVE_CHILD',
-                  background: false
+                const result = await value.tools.invoke({
+                  name: 'agent_start',
+                  arguments: {
+                    title: 'retained delegation',
+                    description: 'retained delegation',
+                    prompt: 'RETAINED_NATIVE_CHILD',
+                    role: 'general-purpose'
+                  }
                 });
-                if (!('agentId' in child)) throw new Error('Expected an actual child task.');
+                const child = result.data as { agentId: string; executionId: string };
                 childId = child.agentId;
+                const childSession = await agent.openSession(child.agentId);
+                const completion = childSession.joinExecution(child.executionId);
+                if (completion) expect((await completion).status).toBe('completed');
+                const history = await agent.sessionHistory(child.agentId);
+                expect(history.entries).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      kind: 'event',
+                      event: expect.objectContaining({ type: 'execution.completed' })
+                    })
+                  ])
+                );
                 return {
-                  content: `RETAINED_AGENT_${child.status}`,
+                  content: 'RETAINED_AGENT_completed',
                   data: { executionId: operation.executionId }
                 };
               }
@@ -751,6 +1198,11 @@ describe('Execution tool sources outside model tool handlers', () => {
       true,
       true
     );
+    agent = f.agent;
+    rootId = f.session.id;
+    await agent.reconfigureModels({
+      models: [{ ...f.adapter.configuration, subagentModel: true }]
+    });
     try {
       const parent = f.session.run({ prompt: 'launch retained delegation' });
       expect(await parent.result()).toHaveProperty('status', 'completed');
@@ -774,16 +1226,11 @@ describe('Execution tool sources outside model tool handlers', () => {
       await f.session.run({ prompt: 'join retained delegation' }).result();
       await registration.dispose();
       expect(result?.data, JSON.stringify(result)).toMatchObject({ status: 'completed' });
-      expect(result?.content).toContain('RETAINED_AGENT_completed');
-      expect(childId).toBeTruthy();
-      const { JsonlSessionStore } = await import('../../src/session/store/index.js');
-      const store = await JsonlSessionStore.open(f.home);
-      expect((await store.getSession(childId)).source).toMatchObject({
+      expect(childId).toEqual(expect.any(String));
+      expect((await agent.getSession(childId)).source).toMatchObject({
         parentSessionId: f.session.id,
-        parentExecutionId: parent.executionId,
-        extensionId: 'retained-native-agent'
+        parentExecutionId: parent.executionId
       });
-      expect((await context.agents!.inspect({ agentId: childId })).status).toBe('completed');
     } finally {
       gate.resolve();
     }

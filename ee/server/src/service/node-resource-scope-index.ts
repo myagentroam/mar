@@ -84,6 +84,7 @@ const WORKSPACE_INPUTS = new Set([
   ...SESSION_TARGETS,
   ...RUN_TARGETS,
   ...TERMINAL_TARGETS,
+  'agent.network',
   'session.create',
   'session.start',
   'session.list',

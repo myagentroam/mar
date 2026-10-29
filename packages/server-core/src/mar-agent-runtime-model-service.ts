@@ -338,6 +338,7 @@ function runtimeModel(
       model.reasoningEfforts
     ),
     conversationModel: model.conversationModel ?? true,
+    subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
     ...(supportsTier ? { serviceTier } : {}),

@@ -8,6 +8,7 @@ import type { RunnerUsageReader } from '../runner-usage.js';
 import type { TerminalManager } from '../terminal.js';
 import type { OpenCodeServerClient } from '../runner/opencode/opencode-server.js';
 import type { ConversationHostingProbe } from '../service/conversation-hosting-capability-service.js';
+import type { SupervisorUpgradeHandoff } from '../service/supervisor-upgrade-handoff.js';
 
 export interface NodeConnectorOptions {
   readonly configPath?: string;
@@ -27,5 +28,6 @@ export interface NodeConnectorOptions {
   readonly terminalManager?: TerminalManager;
   readonly runnerUsageReader?: RunnerUsageReader;
   readonly upgradeReady?: () => void;
+  readonly supervisorUpgradeHandoff?: SupervisorUpgradeHandoff;
   readonly conversationHostingProbe?: ConversationHostingProbe;
 }

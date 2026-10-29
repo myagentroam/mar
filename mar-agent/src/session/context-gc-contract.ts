@@ -77,6 +77,14 @@ export type ContextGcReplacement =
       readonly evidenceSequence: number;
     }
   | {
+      readonly kind: 'TOOL_OUTPUT';
+      readonly toolName: string;
+      readonly callId: string;
+      readonly target: ContextGcTarget;
+      readonly replacementContent: string;
+      readonly evidenceSequence: number;
+    }
+  | {
       readonly kind: 'SUBAGENT_OUTPUT';
       readonly toolName: 'agent_wait' | 'agent_message' | 'agent_cancel';
       readonly callId: string;

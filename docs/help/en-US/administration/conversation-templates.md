@@ -1,6 +1,6 @@
 ---
 title: Manage Conversation Templates
-lastUpdated: 2026-10-13
+lastUpdated: 2026-10-29
 ---
 
 # Manage Conversation Templates
@@ -11,12 +11,12 @@ A conversation template publishes the source Workspace’s complete safety-filte
 
 ## Edition scope
 
-In the Community state, the fixed Admin can create, test, and publish templates on an owned personal Linux Node and use hosted conversations without an enterprise License or organization grants. The Enterprise state require organization-owned Nodes for shared templates; the organization ownership and grant steps below apply only to the Enterprise state. In either license state, enable hosting in [Node details](nodes-workspaces.md) and confirm that it is available first.
+In the Community state, the fixed Admin can create, test, and publish templates on an owned personal Linux Node and use hosted conversations without an enterprise License or organization grants. The Enterprise state requires organization-owned Nodes for shared templates; the organization ownership and grant steps below apply only to the Enterprise state. In either license state, enable hosting in [Node details](nodes-workspaces.md) and confirm that it is available first.
 
 ## Prerequisites
 
 - Your account can manage templates. In the Enterprise state, enterprise administrator permission is required to manage template grants.
-- At least one online, enabled Linux Node supports conversation hosting, and the source Workspace is registered and readable. The Enterprise state require an organization-owned Node and do not allow personal Nodes to host shared templates. The Community state uses a personal Node owned by Admin.
+- At least one online, enabled Linux Node supports conversation hosting, and the source Workspace is registered and readable. The Enterprise state requires an organization-owned Node and does not allow personal Nodes to host shared templates. The Community state uses a personal Node owned by Admin.
 - The source Workspace root cannot already contain `inbox/` or `output/`. Those names are reserved for each conversation's writable directories.
 
 ## Create, validate, and publish

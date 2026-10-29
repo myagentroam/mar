@@ -13,6 +13,12 @@ export interface ExtensionOperationContext {
   /** Correlation with the actual enclosing tool call; not an authority token. */
   readonly toolCallId?: string;
   readonly parentToolCallId?: string;
+  /** Wakes a foreground tool wait when its Execution receives a steering input. */
+  readonly waitInterrupt?: import('../runtime/wait.js').ToolWaitInterrupt;
+  /** Present only for the exact tool invocation explicitly approved by the Host. */
+  readonly permission?: Readonly<{ readonly decision: 'approved' }>;
+  /** Effective execution permission mode, when the invocation has an execution owner. */
+  readonly permissionMode?: import('../tools/permission-contract.js').PermissionMode;
   readonly actor: 'model' | 'sdk' | 'extension' | 'code-mode';
   readonly entry: 'direct' | 'programmatic' | 'native-api';
   readonly signal: AbortSignal;
@@ -112,6 +118,9 @@ export class ExtensionOperations {
             ...((identity.parentToolCallId ?? parent.parentToolCallId) === undefined
               ? {}
               : { parentToolCallId: identity.parentToolCallId ?? parent.parentToolCallId! }),
+            ...((identity.waitInterrupt ?? parent.waitInterrupt) === undefined
+              ? {}
+              : { waitInterrupt: identity.waitInterrupt ?? parent.waitInterrupt! }),
             entry: parent.entry,
             signal: AbortSignal.any([identity.signal, parent.signal])
           }

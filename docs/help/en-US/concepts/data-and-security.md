@@ -1,6 +1,6 @@
 ---
 title: Data, Credentials, and Security Boundaries
-lastUpdated: 2026-09-18
+lastUpdated: 2026-10-29
 ---
 
 # Data, Credentials, and Security Boundaries
@@ -12,8 +12,8 @@ lastUpdated: 2026-09-18
 | Agent CLI    | Authentication, provider settings, conversation history                            | Official Agent account and configuration directory         |
 | Workspace    | Source, Git data, and build outputs                                                | Filesystem permissions, repository credentials, backups    |
 
-Browsers never connect directly to Node, receive Node/Agent credentials, or retain terminal output on Server. MyAgentRoam does not replace host patching, disk encryption, least privilege, code review, or Agent security controls.
+Browsers authenticate and obtain authorization through Server; they do not access a general Node API directly. Authorized ordinary Workspace file, Git, and terminal data may use a direct WebRTC connection, falling back to Server relay when unavailable; direct transfer does not replace authorization. Server does not persist terminal output or give Node or Agent credentials to browsers. MyAgentRoam does not replace host patching, disk encryption, least privilege, code review, or Agent security controls.
 
-MAR Agent model API keys are stored as plaintext in Server MySQL but are never returned by query APIs, audit events, or the UI. MAR Agent has no per-call tool approval; fixed `full-access` is not an operating-system sandbox. Tools use the Node service account's existing permissions, while Host path and resource validation remains active.
+MAR Agent model API keys are stored as plaintext in Server MySQL but are never returned by query APIs, audit events, or the UI. Tool permission modes do not replace an operating-system sandbox: Host path and resource restrictions still apply, and tools use the Node service account's actual permissions. See [MAR Agent sessions and permissions](../runners/mar-agent.md#sessions-and-permissions) for defaults and approval rules by entry point.
 
 Next: [Backup and Restore](../deployment/backup-restore.md) and the [Production Security Checklist](../deployment/security-checklist.md).

@@ -69,7 +69,12 @@ export function createCodeToolDispatch(input: {
           'programmatic'
         );
         const bounded = boundedModelToolOutput(call.name, result.content, result.data);
-        const data = structuredToolEventData(call.name, result.data);
+        const data = structuredToolEventData(
+          call.name,
+          call.name === 'exec' || call.name === 'exec_wait'
+            ? (result.eventData ?? result.data)
+            : result.data
+        );
         const preview = toolEventSummary(result.content);
         input.assertLive();
         await input.emit({
@@ -81,8 +86,9 @@ export function createCodeToolDispatch(input: {
           truncated: result.truncated === true || bounded.truncated || preview.truncated,
           ...(result.artifacts ? { artifacts: result.artifacts } : {})
         });
+        const { eventData: _eventData, ...guestResult } = result;
         return {
-          ...result,
+          ...guestResult,
           content: bounded.content,
           truncated: result.truncated === true || bounded.truncated
         };

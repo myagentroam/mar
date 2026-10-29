@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fileReferenceAtCursor,
-  insertFileReference,
-  createFileReferenceService
+  insertFileReference
 } from '../../src/service/file-reference-service.js';
+import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
 
 describe('Web Composer File Reference', () => {
   afterEach(() => vi.useRealTimers());
@@ -33,7 +33,7 @@ describe('Web Composer File Reference', () => {
 
   it('Do not reset keyboard selection for duplicate cursor events on the same query', () => {
     const input = { value: '@app' } as never;
-    const state = createFileReferenceService(input);
+    const state = createComposerReferenceService(input);
     state.update(4);
     state.activeIndex.value = 2;
     state.update(4);
@@ -52,7 +52,7 @@ describe('Web Composer File Reference', () => {
           resolveSearch = resolve;
         })
     );
-    const service = createFileReferenceService(input, {
+    const service = createComposerReferenceService(input, {
       nodeId: nodeId as never,
       workspaceId: workspaceId as never,
       ready: () => true,
@@ -72,7 +72,7 @@ describe('Web Composer File Reference', () => {
   it('Keep search results for files and folders and select a folder reference token', async () => {
     vi.useFakeTimers();
     const input = { value: '@src' };
-    const service = createFileReferenceService(input as never, {
+    const service = createComposerReferenceService(input as never, {
       nodeId: { value: 'node-1' } as never,
       workspaceId: { value: 'workspace-1' } as never,
       ready: () => true,
@@ -91,7 +91,10 @@ describe('Web Composer File Reference', () => {
     await vi.advanceTimersByTimeAsync(120);
     expect(service.entries.value.map((entry) => entry.kind)).toEqual(['FILE', 'DIRECTORY']);
 
-    service.select(service.entries.value[1]!);
+    service.selectCandidate(service.candidates.value[1]!, (start, end, text) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      return true;
+    });
     expect(input.value).toBe('');
     expect(service.selected.value).toEqual([
       { type: 'directory', path: 'src/components', label: 'components' }

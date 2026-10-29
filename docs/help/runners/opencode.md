@@ -1,6 +1,6 @@
 ---
 title: 安装、配置和使用 OpenCode
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # 安装、配置和使用 OpenCode
@@ -16,13 +16,7 @@ npm install -g opencode-ai
 opencode --version
 ```
 
-Linux 或 macOS 也可使用 OpenCode 官方安装脚本：
-
-```bash
-curl -fsSL https://opencode.ai/install | bash
-```
-
-Windows 可使用 npm 安装；安装后应在 Node 服务账号的 PowerShell 中确认 `opencode --version`。完整的平台安装选项以 [OpenCode 官方文档](https://opencode.ai/docs/) 为准。
+Windows 可使用 npm 安装；安装后应在 Node 服务账号的 PowerShell 中确认 `opencode --version`。其他平台安装方式见 [OpenCode 官方文档](https://opencode.ai/docs/)。远程安装脚本会以当前账号权限执行；下载并检查来源和内容后再决定是否运行，不要直接把未经检查的网络脚本交给 Shell。
 
 ## 配置模型
 
@@ -39,12 +33,13 @@ Windows 可使用 npm 安装；安装后应在 Node 服务账号的 PowerShell �
 
 **成功标志：** 只出现你显式配置的模型名称，例如 `your-model`；发送后能够回复，并可在刷新后重新打开该会话。
 
-最小示意（字段以你安装版本的 OpenCode 官方文档为准）：
+以下是 OpenAI 兼容 **Chat Completions** 接口的自定义 Provider 示意，包含支持图片输入的模型。请替换示例地址和模型，并单独配置环境密钥；模型能力声明须与实际服务一致。字段和适配包适用性以所安装版本的 [OpenCode Provider 文档](https://opencode.ai/docs/providers/)为准；使用 Responses 接口时应按该文档选用 `@ai-sdk/openai`，不要照搬此 Chat Completions 配置。
 
 ```jsonc
 {
   "provider": {
     "mar": {
+      "npm": "@ai-sdk/openai-compatible",
       "options": {
         "baseURL": "https://api.example.com/v1",
         "apiKey": "{env:MAR_PROVIDER_API_KEY}"
@@ -79,7 +74,7 @@ Windows 可使用 npm 安装；安装后应在 Node 服务账号的 PowerShell �
 
 `attachment` 允许 OpenCode 接收消息附件，`modalities.input` 声明模型可接收图片。两项应与模型服务的真实能力一致；不支持图片的模型不要填写。修改全局配置后，应让正在运行的 OpenCode 服务实例退出并重新建立，再开始新的验证消息。
 
-可以先在 Node 服务账号下直接验证 OpenCode 原生附件链路：
+可以先在 Node 服务账号下直接验证 OpenCode 原生附件链路。该命令会发出真实模型请求，只应使用获授权的测试图片和服务：
 
 ```bash
 opencode run \

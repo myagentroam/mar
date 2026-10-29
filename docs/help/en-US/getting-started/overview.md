@@ -1,13 +1,13 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-10-22
+lastUpdated: 2026-10-29
 ---
 
 # What Is MyAgentRoam?
 
 MyAgentRoam is a privately deployed, shared Agent workbench for teams with two ways to work: **Work** and **Conversation**. Configure Agents, models, project directories, and toolchains once on team-owned Windows, Linux, or macOS hosts. Work mode provides the complete Node, Workspace, Agent session, file, Git, and terminal environment; Conversation mode lets members start directly from a published template. The environment does not need to be rebuilt on every personal device. Hosted conversations require Bubblewrap and therefore run only on Linux Nodes.
 
-Source code, Agent credentials, and terminals remain on your hosts. Browsers connect only to Server; each Node opens an outbound connection to Server, so work hosts do not need public inbound access.
+Workspace source, external Agents' local credentials, and terminals remain on your hosts. Server-managed model and credential configuration is stored on Server. MyAgentRoam lets authorized members share the work environment and continue work with clear data and permission boundaries.
 
 ## Four components
 
@@ -18,7 +18,7 @@ Source code, Agent credentials, and terminals remain on your hosts. Browsers con
 | Node      | Each work host | Workspaces, Agents, files, Git, and terminals                      |
 | Agent     | On the Node    | Performs work using your configured Agent and model                |
 
-Each Workspace belongs to one Node. Files, terminals, and sessions never cross Node boundaries.
+Browsers authenticate and obtain authorization through Server, while each Node opens an outbound control connection. Authorized ordinary Workspace data can also use direct WebRTC; see [Network, TLS, and WebSocket](../deployment/network.md) for its requirements and fallback. Each Workspace belongs to one Node; files, terminals, and sessions do not cross Node boundaries.
 
 ## Interface Language
 
@@ -36,4 +36,4 @@ Console and the documentation center use the language saved in the current brows
 
 Community Edition is intended for individual use and does not limit the number of registered Nodes. Enterprise licenses add organizations, roles, sharing, SSO, and auditing. See [Users, Organizations, and Access](../concepts/permissions-and-sharing.md).
 
-Next: [Before You Deploy](prerequisites.md) or [Next Steps](next-steps.md).
+If Server is already available, start with [First Sign-in](first-login.md), [Connect a Node](connect-node.md), or [Your First Agent Session](first-agent-session.md). Administrators deploying the product can start with [Before You Deploy](prerequisites.md).

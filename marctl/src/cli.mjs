@@ -75,7 +75,7 @@ export async function main(
       }
       return 0;
     }
-    if (args.command === 'sessions') {
+    if (args.command === 'agents') {
       const execute = (signal) =>
         runSessionCommand({
           args,
@@ -122,7 +122,7 @@ export async function main(
       })
     );
   } catch (error) {
-    if (argv[0] === 'sessions') {
+    if (argv[0] === 'agents') {
       const failure = {
         code: error.code ?? 'MARCTL_COMMAND_FAILED',
         message: error instanceof MarctlError ? error.message : translate('errors.commandFailed'),
@@ -176,7 +176,7 @@ export function executableArgs(executable, args) {
 }
 
 export function parseArgs(argv, translate = createTranslator()) {
-  if (argv[0] === 'sessions') return parseSessionArgs(argv.slice(1), translate);
+  if (argv[0] === 'agents') return parseSessionArgs(argv.slice(1), translate);
   let command;
   let nodeId;
   const remoteArgs = [];
@@ -208,7 +208,7 @@ export function parseArgs(argv, translate = createTranslator()) {
         argument !== 'nodes' &&
         argument !== 'ssh' &&
         argument !== 'scp' &&
-        argument !== 'sessions' &&
+        argument !== 'agents' &&
         argument !== 'version'
       )
         throw unsupportedSshOption(argument, translate);

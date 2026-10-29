@@ -122,6 +122,7 @@ export class MarAgentRuntimeModelFactory {
             configuration.reasoningEfforts
           ),
           conversationModel: configuration.conversationModel ?? true,
+          subagentModel: configuration.subagentModel ?? false,
           titleGeneration: configuration.titleGeneration,
           codeMode: configuration.codeMode,
           ...(configuration.serviceTier === undefined

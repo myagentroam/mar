@@ -165,6 +165,7 @@ export class TerminalManager {
     platform: TerminalPlatform
   ) => Promise<void>;
   private readonly terminals = new Map<string, ManagedTerminal>();
+  private readonly closing = new Map<string, Promise<TerminalSummary>>();
   private readonly attachments = new Map<string, ManagedAttachment>();
   private readonly frameListeners = new Set<(frame: TerminalDataFrame) => void>();
   private readonly summaryListeners = new Set<(summary: TerminalSummary) => void>();
@@ -483,35 +484,56 @@ export class TerminalManager {
     await this.close(terminal.id);
   }
 
-  async close(terminalId: string): Promise<TerminalSummary> {
+  close(terminalId: string): Promise<TerminalSummary> {
     const terminal = this.requireTerminal(terminalId);
-    if (terminal.state !== 'RUNNING') return this.summary(terminal);
+    const pending = this.closing.get(terminalId);
+    if (pending !== undefined) return pending;
+    if (terminal.state !== 'RUNNING') return Promise.resolve(this.summary(terminal));
     terminal.state = 'CLOSED';
     terminal.updatedAt = this.now();
-    this.detachAll(terminal);
-    const summary = this.notifySummary(terminal);
-    try {
-      if (terminal.pty !== undefined) {
-        // Native PTY hangup reaches POSIX foreground jobs in a separate process group
-        // and releases the native console on Windows; shell-group TERM cannot do this.
-        try {
-          terminal.pty.kill();
-        } catch {
-          await this.terminate(terminal.pty, this.platform);
+    let resolveClosing!: (summary: TerminalSummary) => void;
+    let rejectClosing!: (error: unknown) => void;
+    const closing = new Promise<TerminalSummary>((resolve, reject) => {
+      resolveClosing = resolve;
+      rejectClosing = reject;
+    });
+    this.closing.set(terminalId, closing);
+    void (async () => {
+      this.detachAll(terminal);
+      const summary = this.notifySummary(terminal);
+      try {
+        if (terminal.pty !== undefined) {
+          // Native PTY hangup reaches POSIX foreground jobs in a separate process group
+          // and releases the native console on Windows; shell-group TERM cannot do this.
+          try {
+            terminal.pty.kill();
+          } catch {
+            await this.terminate(terminal.pty, this.platform);
+          }
         }
+        if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
+      } finally {
+        this.emit({ type: 'exit', terminalId: terminal.id, exitCode: terminal.exitCode });
       }
-      if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
-    } finally {
-      this.emit({ type: 'exit', terminalId: terminal.id, exitCode: terminal.exitCode });
-    }
-    return summary;
+      return summary;
+    })().then(
+      (summary) => {
+        this.closing.delete(terminalId);
+        resolveClosing(summary);
+      },
+      (error: unknown) => {
+        this.closing.delete(terminalId);
+        rejectClosing(error);
+      }
+    );
+    return closing;
   }
 
   /** Ends current terminals without disposing the manager's idle collection. */
   async closeAll(): Promise<void> {
     await Promise.all(
       [...this.terminals.values()]
-        .filter((terminal) => terminal.state === 'RUNNING')
+        .filter((terminal) => terminal.state === 'RUNNING' || this.closing.has(terminal.id))
         .map((terminal) => this.close(terminal.id))
     );
   }

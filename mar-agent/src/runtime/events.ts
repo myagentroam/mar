@@ -117,9 +117,8 @@ export type AgentEvent = AgentEventBase &
           | import('../tools/contracts.js').ApplyPatchResult
           | import('../tools/contracts.js').ReadEventData
           | import('../tools/contracts.js').ViewImageResult
-          | import('../subagent/contracts.js').SubagentTaskSnapshot
-          | import('../subagent/contracts.js').SubagentManyOutput
           | import('../tools/contracts.js').SleepResult
+          | Readonly<Record<string, unknown>>
           | import('./public-tool-metadata.js').PublicToolMetadata;
       }
     | {
@@ -173,8 +172,9 @@ export type AgentEvent = AgentEventBase &
         modelId?: string;
         modelName?: string;
         reasoningEffort?: AgentReasoningEffort;
-        latestMessage?: import('../subagent/contracts.js').SubagentLatestMessage;
-        latestActivity?: import('../subagent/contracts.js').SubagentLatestActivity;
+        /** Historical event fields retained for reading existing session records. */
+        latestMessage?: unknown;
+        latestActivity?: unknown;
         errorCode?: string;
         errorMessage?: string;
       }

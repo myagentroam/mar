@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost } from '../../src/host/local-agent-host.js';
 import { CodeCells } from '../../src/tools/code-mode/cells.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
 import { TOOL_EXECUTION_LIMITS as limits } from '../../src/tools/execution-limits.js';
 import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
 import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
@@ -121,7 +122,14 @@ describe('Code Exec retained cells', () => {
       waitOutcome: 'completion'
     });
     expect(direct.data).toMatchObject({ stdoutBytes: 7, stderrBytes: 0, truncated: false });
-    expect(first.result).not.toHaveProperty('data');
+    expect(first.result.data).toMatchObject({
+      stdout: 'example',
+      stdoutBytes: 7,
+      stderrBytes: 0,
+      truncated: false
+    });
+    expect(observed.content).not.toContain('stdoutBytes');
+    expect(observed.content).not.toContain('stderrBytes');
     const replay = await host.executeTool(
       { name: 'code_exec_wait', arguments: { cellId: data(observed).cellId } },
       input
@@ -276,6 +284,10 @@ describe('Code Exec retained cells', () => {
       expect(replay.data).toMatchObject({
         status: 'failed',
         cached: true,
+        error: { code: 'MAR_AGENT_CODE_FAILED', message }
+      });
+      expect(structuredToolEventData('code_exec_wait', replay.data)).toMatchObject({
+        status: 'failed',
         error: { code: 'MAR_AGENT_CODE_FAILED', message }
       });
     } finally {

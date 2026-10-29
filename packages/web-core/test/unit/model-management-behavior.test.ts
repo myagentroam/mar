@@ -124,6 +124,34 @@ afterEach(() => {
 });
 
 describe('Model management component behavior', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'edits and saves the explicit subagent model purpose in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const labels = commonMessages[locale].marAgentModels;
+      const request = requestFixture([{ ...model, subagentModel: true }]);
+      const view = renderComponent(
+        Page,
+        { request, canManageModels: true, writable: true, nodes: [] },
+        {},
+        { validate: async () => true }
+      );
+      try {
+        await flushComponent();
+        await trigger(button(view, labels.edit), 'onClick');
+        const setting = view
+          .findAll('ElCheckbox')
+          .find((node) => textContent(node).trim() === labels.subagentModel)!;
+        expect(setting.props['modelValue']).toBe(true);
+        await trigger(setting, 'onUpdate:modelValue', false);
+        await trigger(button(view, labels.save), 'onClick');
+        const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');
+        expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ subagentModel: false });
+      } finally {
+        view.unmount();
+      }
+    }
+  );
   it('does not submit twice or submit an old draft after validation outlives the dialog', async () => {
     const request = requestFixture();
     const gate = deferred<boolean>();

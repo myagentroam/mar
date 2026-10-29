@@ -23,6 +23,40 @@ function fixture() {
 }
 
 describe('shared Node identity persistence', () => {
+  it('locks upgrade snapshot updates and rejects disabled nodes before writing', async () => {
+    const { store, connection } = fixture();
+    connection.execute.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('SELECT disabled,upgrade_snapshot'))
+        return [[{ id: 'node', disabled: 0, upgrade_snapshot: null }], []];
+      return [{ affectedRows: 1 }, []];
+    });
+    const next = {
+      attemptId: 'a',
+      targetVersion: '1.0.0',
+      state: 'WAITING_FOR_RUNS' as const,
+      installed: false,
+      targetOnline: false,
+      createdAt: 1,
+      updatedAt: 1,
+      requesterUserId: 1,
+      requesterSessionHash: 'session-hash'
+    };
+    await expect(store.updateNodeUpgrade('node', () => ({ next, result: 'ok' }))).resolves.toBe(
+      'ok'
+    );
+    expect(connection.execute.mock.calls[0]?.[0]).toContain('FOR UPDATE');
+    expect(connection.execute.mock.calls[1]?.[1]).toEqual([JSON.stringify(next), 'node']);
+    expect(connection.commit).toHaveBeenCalledOnce();
+    connection.execute.mockImplementation(async () => [
+      [{ id: 'node', disabled: 1, upgrade_snapshot: null }],
+      []
+    ]);
+    await expect(store.updateNodeUpgrade('node', () => ({ next, result: 'bad' }))).rejects.toThrow(
+      'NODE_NOT_FOUND'
+    );
+    expect(connection.rollback).toHaveBeenCalledOnce();
+  });
+
   it('freezes the authorized Node name and rename values before later changes', async () => {
     const { store, connection, audit } = fixture();
     const node = {

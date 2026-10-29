@@ -4,6 +4,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
+import MarIcon from '../common/MarIcon.vue';
 
 defineProps<{
   readonly session: Session | undefined;
@@ -17,6 +18,7 @@ defineProps<{
 
 const emit = defineEmits<{
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
+  openTree: [sessionId: string];
 }>();
 
 async function copySessionId(sessionId: string): Promise<void> {
@@ -56,6 +58,16 @@ async function copySessionId(sessionId: string): Promise<void> {
               : sessionTitle(session!)
           }}
         </h2>
+        <button
+          v-if="session?.sessionGroup === 'CHILD' && !sessionIsDraft(session)"
+          v-tooltip="translate('sessionGroups.tree')"
+          class="utility-control"
+          type="button"
+          :aria-label="translate('sessionGroups.tree')"
+          @click="emit('openTree', session.id)"
+        >
+          <MarIcon name="collection" />
+        </button>
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button

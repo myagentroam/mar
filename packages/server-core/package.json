@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/server-core",
-  "version": "0.11.39",
+  "version": "0.11.40",
   "private": true,
   "type": "module",
   "files": [
@@ -349,6 +349,16 @@
       "development": "./src/node-upgrade-service.ts",
       "types": "./dist/node-upgrade-service.d.ts",
       "import": "./dist/node-upgrade-service.js"
+    },
+    "./node-upgrade-progress": {
+      "development": "./src/node-upgrade-progress.ts",
+      "types": "./dist/node-upgrade-progress.d.ts",
+      "import": "./dist/node-upgrade-progress.js"
+    },
+    "./node-request-error": {
+      "development": "./src/node-request-error.ts",
+      "types": "./dist/node-request-error.d.ts",
+      "import": "./dist/node-request-error.js"
     },
     "./runner-routes": {
       "development": "./src/runner-routes.ts",

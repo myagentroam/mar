@@ -2,7 +2,6 @@ import { AgentError } from '../error.js';
 import { parseApplyPatchResult, parseApplyPatchPartialResult } from './shared/patch-result.js';
 import { AGENT_EXECUTION_POLICY } from '../runtime/execution-policy.js';
 import { countModelTokens, countTextLines, truncateModelText } from '../runtime/token-budget.js';
-import type { SubagentTaskSnapshot, SubagentManyOutput } from '../subagent/contracts.js';
 import type {
   ApplyPatchResult,
   ApplyPatchPartialResult,
@@ -20,6 +19,21 @@ import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
 import { publicToolMetadata, type PublicToolMetadata } from '../runtime/public-tool-metadata.js';
 import type { ModelImage } from '../model/image.js';
+/** Copy an explicitly public JSON object without exposing the full tool result. */
+export function publicExtensionToolEventData(
+  value: unknown
+): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value)) return undefined;
+  try {
+    const json = JSON.stringify(value);
+    if (Buffer.byteLength(json, 'utf8') > 8192) return undefined;
+    const copy: unknown = JSON.parse(json);
+    return isRecord(copy) ? copy : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function currentExecutionImages(
   modelInputImages: readonly ModelImage[] | undefined,
   toolImages: readonly ToolRuntimeImage[]
@@ -67,6 +81,115 @@ export function boundedModelToolOutput(
   return { content: result.content, truncated: result.truncated };
 }
 
+/** The opted-in allowlist fails closed and never mutates the invocation arguments. */
+export function publicToolEventInput(
+  value: unknown,
+  fields: readonly string[]
+): Readonly<Record<string, unknown>> {
+  try {
+    if (!isRecord(value)) return {};
+    const projected = Object.fromEntries(
+      fields
+        .filter(
+          (key) =>
+            Object.hasOwn(value, key) &&
+            (typeof value[key] === 'string' ||
+              typeof value[key] === 'boolean' ||
+              (typeof value[key] === 'number' && Number.isFinite(value[key])) ||
+              value[key] === null)
+        )
+        .map((key) => [key, value[key]])
+    );
+    return publicExtensionToolEventData(projected) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** Explicit observations are public, but their event projection must remain bounded. */
+function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeCellEventData {
+  if (!Array.isArray(values)) return data;
+  const retained = new Set<unknown>(data.observations ?? []);
+  const selected: NonNullable<CodeCellEventData['observations']>[number][] = [];
+  let displayedCount = 0;
+  let remaining = 10_000;
+  let truncated = false;
+  const clip = (text: string) => {
+    let start = Math.max(0, text.length - remaining);
+    if (start > 0 && /[\uDC00-\uDFFF]/u.test(text[start]!)) start++;
+    const result = text.slice(start);
+    remaining -= result.length;
+    truncated ||= start > 0;
+    return result;
+  };
+  for (let index = values.length - 1; index >= 0; index--) {
+    const entry = values[index];
+    if (!isRecord(entry)) continue;
+    if (
+      entry.type === 'value' &&
+      typeof entry.value === 'string' &&
+      typeof entry.id === 'string' &&
+      (entry.format === 'text' || entry.format === 'json' || entry.format === 'image')
+    ) {
+      if (displayedCount >= 32) {
+        truncated = true;
+        continue;
+      }
+      displayedCount++;
+      truncated ||= entry.truncated === true;
+      const value = clip(entry.value);
+      selected.unshift({
+        type: 'value',
+        id: entry.id,
+        format: entry.format,
+        value,
+        ...(entry.truncated === true || value.length < entry.value.length
+          ? { truncated: true }
+          : {})
+      });
+    } else if (entry.type === 'tool_result' && isRecord(entry.source) && isRecord(entry.result)) {
+      const name = entry.source.toolName;
+      if (name !== 'exec' && name !== 'exec_wait') {
+        if (retained.has(entry))
+          selected.unshift(
+            entry as unknown as NonNullable<CodeCellEventData['observations']>[number]
+          );
+      } else if (
+        (name === 'exec' || name === 'exec_wait') &&
+        typeof entry.id === 'string' &&
+        typeof entry.source.callId === 'string' &&
+        (entry.outcome === 'completed' || entry.outcome === 'failed')
+      ) {
+        if (displayedCount >= 32) {
+          truncated = true;
+          continue;
+        }
+        displayedCount++;
+        truncated ||= entry.result.truncated === true;
+        const data = isRecord(entry.result.data) ? entry.result.data : undefined;
+        const stderr = typeof data?.stderr === 'string' ? clip(data.stderr) : undefined;
+        const stdout = typeof data?.stdout === 'string' ? clip(data.stdout) : undefined;
+        const content =
+          stdout === undefined && stderr === undefined && typeof entry.result.content === 'string'
+            ? clip(entry.result.content)
+            : '';
+        selected.unshift({
+          type: 'tool_result',
+          id: entry.id,
+          source: { callId: entry.source.callId, toolName: name, input: null },
+          outcome: entry.outcome,
+          result: {
+            content,
+            ...(stdout === undefined && stderr === undefined ? {} : { data: { stdout, stderr } }),
+            ...(entry.result.truncated === true || truncated ? { truncated: true } : {})
+          }
+        });
+      }
+    }
+  }
+  return { ...data, observations: selected, ...(truncated ? { truncated: true } : {}) };
+}
+
 /** Project only known, validated tool result shapes into public structured events. */
 export function structuredToolEventData(
   toolName: string,
@@ -77,8 +200,6 @@ export function structuredToolEventData(
   | ApplyPatchResult
   | ReadEventData
   | ViewImageResult
-  | SubagentTaskSnapshot
-  | SubagentManyOutput
   | SleepResult
   | PublicToolMetadata
   | undefined {
@@ -104,30 +225,11 @@ export function structuredToolEventData(
       wakeReason: value.wakeReason
     };
   if (
-    toolName === 'agent_wait' &&
-    (value.mode === 'any' || value.mode === 'all') &&
-    (value.waitFor === 'completion' || value.waitFor === 'message') &&
-    ['snapshot', 'message', 'completion', 'timeout', 'interrupted'].includes(
-      String(value.waitOutcome)
-    ) &&
-    Array.isArray(value.agents) &&
-    value.agents.length > 0 &&
-    value.agents.length <= TOOL_EXECUTION_LIMITS.agentWaitMaxAgents &&
-    value.agents.every((agent) => isRecord(agent) && isSubagentTaskSnapshot(agent)) &&
-    Array.isArray(value.pendingAgentIds) &&
-    value.pendingAgentIds.every(
-      (id) =>
-        typeof id === 'string' &&
-        (value.agents as SubagentTaskSnapshot[]).some((agent) => agent.agentId === id)
-    )
-  )
-    return value as unknown as SubagentManyOutput;
-  if (
     (toolName === 'code_exec' || toolName === 'code_exec_wait') &&
     typeof value.cellId === 'string' &&
     ['running', 'completed', 'failed', 'cancelled'].includes(String(value.status))
   )
-    return {
+    return publicCodeObservations(value.observations, {
       cellId: value.cellId,
       status: value.status as CodeCellEventData['status'],
       cached: value.cached === true,
@@ -138,6 +240,21 @@ export function structuredToolEventData(
         : {}),
       ...(value.waitOutcome === 'interrupted' && value.reason === 'steer'
         ? { reason: 'steer' as const }
+        : {}),
+      ...(value.truncated === true ? { truncated: true } : {}),
+      ...(isRecord(value.error) &&
+      typeof value.error.code === 'string' &&
+      value.error.code.length > 0 &&
+      typeof value.error.message === 'string'
+        ? {
+            ...(value.error.code.length > 80 || value.error.message.length > 1000
+              ? { truncated: true }
+              : {}),
+            error: {
+              code: value.error.code.slice(0, 80).replace(/[\uD800-\uDBFF]$/u, ''),
+              message: value.error.message.slice(0, 1000).replace(/[\uD800-\uDBFF]$/u, '')
+            }
+          }
         : {}),
       ...(isRecord(value.permissionStop)
         ? {
@@ -151,15 +268,7 @@ export function structuredToolEventData(
             calls: value.calls.filter(
               (entry) =>
                 isRecord(entry) &&
-                [
-                  'apply_patch',
-                  'todo_read',
-                  'todo_write',
-                  'agent_start',
-                  'agent_wait',
-                  'agent_message',
-                  'agent_cancel'
-                ].includes(String(entry.toolName))
+                ['apply_patch', 'todo_read', 'todo_write'].includes(String(entry.toolName))
             ) as NonNullable<CodeCellEventData['calls']>
           }
         : {}),
@@ -170,27 +279,11 @@ export function structuredToolEventData(
                 isRecord(entry) &&
                 entry.type === 'tool_result' &&
                 isRecord(entry.source) &&
-                [
-                  'apply_patch',
-                  'todo_read',
-                  'todo_write',
-                  'agent_start',
-                  'agent_wait',
-                  'agent_message',
-                  'agent_cancel'
-                ].includes(String(entry.source.toolName))
+                ['apply_patch', 'todo_read', 'todo_write'].includes(String(entry.source.toolName))
             ) as NonNullable<CodeCellEventData['observations']>
           }
         : {})
-    };
-  if (
-    (toolName === 'agent_start' ||
-      toolName === 'agent_wait' ||
-      toolName === 'agent_message' ||
-      toolName === 'agent_cancel') &&
-    isSubagentTaskSnapshot(value)
-  )
-    return value;
+    });
   if (
     toolName === 'read' &&
     value.mode === 'batch' &&
@@ -382,66 +475,6 @@ export function validateToolResult(value: ToolExecutionResult): ToolExecutionRes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isSubagentTaskSnapshot(value: Record<string, unknown>): value is SubagentTaskSnapshot {
-  return (
-    typeof value.agentId === 'string' &&
-    value.agentId.length > 0 &&
-    value.agentId.length <= 128 &&
-    typeof value.description === 'string' &&
-    value.description.length > 0 &&
-    value.description.length <= TOOL_EXECUTION_LIMITS.subagentDescriptionMaxCharacters &&
-    (value.status === 'queued' ||
-      value.status === 'running' ||
-      value.status === 'completed' ||
-      value.status === 'failed' ||
-      value.status === 'cancelled' ||
-      value.status === 'interrupted') &&
-    (value.modelId === undefined || typeof value.modelId === 'string') &&
-    (value.modelName === undefined || typeof value.modelName === 'string') &&
-    (value.reasoningEffort === undefined ||
-      (typeof value.reasoningEffort === 'string' &&
-        ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value.reasoningEffort))) &&
-    (value.waitOutcome === undefined ||
-      value.waitOutcome === 'snapshot' ||
-      value.waitOutcome === 'message' ||
-      value.waitOutcome === 'completion' ||
-      value.waitOutcome === 'timeout' ||
-      value.waitOutcome === 'interrupted') &&
-    (value.latestMessage === undefined ||
-      (isRecord(value.latestMessage) &&
-        typeof value.latestMessage.itemId === 'string' &&
-        typeof value.latestMessage.turnId === 'string' &&
-        (value.latestMessage.phase === 'commentary' ||
-          value.latestMessage.phase === 'final_answer') &&
-        typeof value.latestMessage.text === 'string' &&
-        typeof value.latestMessage.timestamp === 'string' &&
-        typeof value.latestMessage.truncated === 'boolean')) &&
-    (value.summary === undefined || typeof value.summary === 'string') &&
-    (value.changedFiles === undefined ||
-      (Array.isArray(value.changedFiles) &&
-        value.changedFiles.every((path) => typeof path === 'string'))) &&
-    (value.verification === undefined ||
-      (Array.isArray(value.verification) &&
-        value.verification.every((item) => typeof item === 'string'))) &&
-    (value.evidence === undefined ||
-      (Array.isArray(value.evidence) &&
-        value.evidence.every(
-          (item) =>
-            isRecord(item) &&
-            typeof item.path === 'string' &&
-            (item.startLine === undefined ||
-              (typeof item.startLine === 'number' &&
-                Number.isInteger(item.startLine) &&
-                item.startLine >= 1)) &&
-            (item.endLine === undefined ||
-              (typeof item.endLine === 'number' &&
-                Number.isInteger(item.endLine) &&
-                item.endLine >= 1))
-        ))) &&
-    (value.errorCode === undefined || typeof value.errorCode === 'string')
-  );
 }
 
 function isNonnegativeInteger(value: unknown): value is number {

@@ -13,6 +13,7 @@ import type { ResourceAccessService } from '../rbac/resource-access-service.js';
 import type { ResourceMutationService } from '../rbac/resource-mutation-service.js';
 import type { MarctlUserCredentials } from '@myagentroam/server-core/marctl-user-credentials';
 import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
+import type { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 import type { MarAgentModelService } from '../service/mar-agent-model-service.js';
 import {
   databaseError,
@@ -28,6 +29,7 @@ export function registerNodeRoutes(input: {
   readonly database: ReturnType<typeof openServerDatabase> | MysqlServerDatabase;
   readonly nodeControl: NodeControl;
   readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
+  readonly nodeUpgradeProgress?: NodeUpgradeProgress;
   readonly publicOrigin: string | undefined;
   readonly capabilities: ServerWorkbenchCapabilities;
   readonly secrets: EnvironmentSecretService | MysqlEnvironmentSecretService;
@@ -49,6 +51,7 @@ export function registerNodeRoutes(input: {
     database,
     nodeControl,
     nodeUpgrades,
+    nodeUpgradeProgress,
     secrets,
     publicOrigin,
     resources,
@@ -75,6 +78,7 @@ export function registerNodeRoutes(input: {
           };
           return {
             ...projection,
+            upgradeProgress: (await nodeUpgradeProgress?.snapshot(node.id)) ?? null,
             ownership: await resources.nodeOwnership(node.id),
             manageable: await resources.canManageNode(user.userId, node.id),
             workspaceCreatable: await resources.canRegisterWorkspace(user.userId, node.id),
@@ -95,6 +99,7 @@ export function registerNodeRoutes(input: {
     database,
     nodeControl,
     nodeUpgrades,
+    ...(nodeUpgradeProgress === undefined ? {} : { progress: nodeUpgradeProgress }),
     publicOrigin,
     databaseError,
     authorize: async (userId, nodeId) => {

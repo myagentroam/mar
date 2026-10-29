@@ -1,5 +1,4 @@
 import type { ExtensionInputSource } from '../extensions/session-input.js';
-import type { SubagentMailboxMessage } from '../subagent/session-controller.js';
 import { AsyncQueue } from '../runtime/async-queue.js';
 import { randomUUID } from 'node:crypto';
 import { eventForPersistence } from '../runtime/event-projection.js';
@@ -11,7 +10,6 @@ import { DEFAULT_COMPACTION_FOCUS } from '../runtime/compaction/history.js';
 import type { ExecutionMode, ExecutionResult, AgentEvent } from './types.js';
 import type { ModelAdapter, ModelTurnSession } from '../model/contracts.js';
 import { AgentError } from '../error.js';
-import type { SubagentMessageDelivery } from '../subagent/session-controller.js';
 import type { SessionModelMessage } from '../session/model-request.js';
 import type { ExecutionToolSources } from './extension-tools.js';
 import type { ExecutionHandle } from './types.js';
@@ -32,16 +30,13 @@ export interface InternalExecutionOptions {
   readonly modelText?: string;
   readonly inputContext?: readonly string[];
   readonly modelContext?: readonly string[];
-  readonly initialMailbox?: readonly SubagentMailboxMessage[];
   readonly turnId?: string;
-  readonly delivery?: SubagentMessageDelivery;
   readonly mcpExecutionScopeId?: string;
 }
 
 export interface InternalExecutionHandle extends ExecutionHandle {
   readonly persistedEvents: boolean;
   readonly turnId: string;
-  enqueueMessage(message: string, delivery?: SubagentMessageDelivery): boolean;
 }
 
 export interface SessionExecutionContext {
@@ -51,7 +46,10 @@ export interface SessionExecutionContext {
   readonly models: ReadonlyMap<string, ResolvedModelConfiguration>;
   readonly instruction: string | undefined;
   readonly steer?:
-    | ((input: import('./types.js').SteerInput) => Promise<import('./types.js').SteerResult>)
+    | ((
+        input: import('./types.js').SteerInput,
+        source?: import('../extensions/session-input.js').ExtensionInputSource
+      ) => Promise<import('./types.js').SteerResult>)
     | undefined;
   readonly compactRequests?: CompactRequests | undefined;
   readonly requestMessages?: { read(): readonly SessionModelMessage[] } | undefined;
@@ -66,6 +64,7 @@ export type ExecutionEventPayload<T = AgentEvent> = T extends AgentEvent
 
 export interface ExecutionEventPorts {
   persist(event: AgentEvent, payload: AgentEvent): Promise<void>;
+  observe?(event: AgentEvent): void;
   publish?(event: AgentEvent): void | Promise<void>;
   hasRetainedLease?(): boolean;
 }
@@ -83,6 +82,15 @@ interface ExecutionFinalization {
 
 /** Resources and settlement of one Execution, independent of its Session identity. */
 export class SessionExecution {
+  #observedTerminal:
+    | Extract<
+        AgentEvent,
+        { type: 'execution.completed' | 'execution.failed' | 'execution.cancelled' }
+      >
+    | undefined;
+  get observedTerminal() {
+    return this.#observedTerminal;
+  }
   #contextInvalid = false;
   #contextFailure: unknown;
   #bindings: Pick<
@@ -344,8 +352,15 @@ export class SessionExecution {
         )
           committedTerminal = this.persistedTerminal = true;
       }
+      if (
+        full.type === 'execution.completed' ||
+        full.type === 'execution.failed' ||
+        full.type === 'execution.cancelled'
+      )
+        this.#observedTerminal = structuredClone(full);
       if (full.type === 'tool.output') this.events.pushIfWaiting(full);
       else this.events.push(full);
+      ports.observe?.(full);
       this.compactRequests.publish(full);
       try {
         await ports.publish?.(full);
@@ -504,9 +519,7 @@ export class SessionExecution {
     return this.resultPromise;
   }
 
-  handle(
-    enqueueMessage: (message: string, delivery?: SubagentMessageDelivery) => boolean
-  ): InternalExecutionHandle {
+  handle(): InternalExecutionHandle {
     const owner = this;
     return {
       get persistedEvents() {
@@ -519,8 +532,7 @@ export class SessionExecution {
         this.events.discardIfUnobserved();
         return this.resultPromise!;
       },
-      cancel: () => owner.cancel(new AgentError('MAR_AGENT_CANCELLED', 'Execution was cancelled.')),
-      enqueueMessage
+      cancel: () => owner.cancel(new AgentError('MAR_AGENT_CANCELLED', 'Execution was cancelled.'))
     };
   }
 

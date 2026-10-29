@@ -1,6 +1,6 @@
 ---
 title: Server、Node、Web 与 Agent
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-29
 ---
 
 # Server、Node、Web 与 Agent
@@ -14,7 +14,7 @@ MyAgentRoam 把网页管理与本机执行分开：浏览器通过 Server 完成
 - **Server** 负责身份、授权、受管模型凭据、企业管理与受控中继，不是工作区文件或会话正文的权威。
 - **Node** 拥有本地执行与工作区存储，处理文件、Git、终端、Agent 任务及本机会话集成。它主动连接 Server，不向浏览器暴露通用的入站 Node API。
 - **MAR Agent** 是 SDK、CLI 与 Node 集成共用的运行内核，管理模型执行、工具、上下文和会话续接。外部 Runner（Codex、Claude Code、OpenCode）保留原生账号与历史机制，各自支持的控制能力被呈现到统一工作台。
-- **Web** 呈现能力并保留必要的浏览器界面状态。业务 API 与控制信令经 Server；普通工作区文件与终端可使用 Server 授权的直传数据通道，失败回退中继，托管对话始终经中继。浏览器不持有 Node/Runner 的执行凭据。
+- **Web** 呈现能力并保留必要的浏览器界面状态。业务 API 与控制信令经 Server；普通工作区文件、Git 与终端可按能力使用 Server 授权的直连数据通道，也可使用中继；托管对话始终经中继。浏览器不持有 Node/Runner 的执行凭据。
 
 ## 为什么以 Agent 为中心？
 

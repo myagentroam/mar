@@ -54,9 +54,7 @@ export function createSessionExtensionPrompt(ports: {
         (tool) =>
           !(
             ports.source === 'subagent' &&
-            (tool.agentScope === 'ROOT_ONLY' ||
-              tool.name.startsWith('agent_') ||
-              tool.name === 'question')
+            (tool.agentScope === 'ROOT_ONLY' || tool.name === 'question')
           ) &&
           !(tool.name === 'question' && mode !== 'plan') &&
           !(tool.name === 'view_image' && !model.inputCapabilities.includes('IMAGE')) &&

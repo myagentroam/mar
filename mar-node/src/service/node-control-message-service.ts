@@ -12,9 +12,12 @@ interface NodeControlMessageServiceOptions {
   readonly close: (code: number, reason: string) => void;
   readonly inspectWorkspace: (envelope: NodeEnvelope) => Promise<void>;
   readonly handleNodeRequest: (envelope: NodeEnvelope) => Promise<void>;
+  readonly cancelNodeWait?: (requestId: string) => void;
   readonly handleRuntimeCredentialResponse: (envelope: NodeEnvelope) => boolean;
   readonly handleScheduledRunAuthorizeResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleMailNotificationResponse?: (envelope: NodeEnvelope) => boolean;
+  readonly handleMarctlExecutionCredentialResponse?: (envelope: NodeEnvelope) => boolean;
+  readonly handleUpgradeCredentialResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleDirectTransfer?: (envelope: NodeEnvelope) => boolean;
   readonly handleTerminalDirect?: (envelope: NodeEnvelope) => boolean;
   readonly runners: RunnerRegistry;
@@ -55,9 +58,16 @@ export class NodeControlMessageService {
       void this.options.handleNodeRequest(envelope);
       return;
     }
+    if (envelope.type === 'node.request.cancel') {
+      const payload = envelope.payload as { requestId?: unknown } | null;
+      if (typeof payload?.requestId === 'string') this.options.cancelNodeWait?.(payload.requestId);
+      return;
+    }
     if (this.options.handleRuntimeCredentialResponse(envelope)) return;
     if (this.options.handleScheduledRunAuthorizeResponse?.(envelope) === true) return;
     if (this.options.handleMailNotificationResponse?.(envelope) === true) return;
+    if (this.options.handleMarctlExecutionCredentialResponse?.(envelope) === true) return;
+    if (this.options.handleUpgradeCredentialResponse?.(envelope) === true) return;
     if (
       envelope.type.startsWith('direct.') &&
       this.options.handleDirectTransfer?.(envelope) === true

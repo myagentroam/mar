@@ -313,7 +313,24 @@ function restoreFocus(cursor?: number) {
   if (cursor !== undefined) editor?.setSelectionRange(cursor, cursor);
   service.wakeAutomatic();
 }
-defineExpose({ restoreFocus });
+function replaceRange(start: number, end: number, text: string): boolean {
+  if (
+    !editor ||
+    editor.readOnly ||
+    editor.disabled ||
+    composing ||
+    start < 0 ||
+    end < start ||
+    end > editor.value.length
+  )
+    return false;
+  service.cancel();
+  clearPreview();
+  editor.focus({ preventScroll: true });
+  editor.setSelectionRange(start, end);
+  return document.execCommand('insertText', false, text);
+}
+defineExpose({ restoreFocus, replaceRange });
 
 function focusin(event: FocusEvent) {
   if (event.target !== editor) return;

@@ -55,7 +55,7 @@ export const enSidebar = [
   {
     text: 'Agent Guide',
     items: [
-      { text: 'Choose OpenCode, Codex, or Claude Code', link: '/en-US/runners/overview' },
+      { text: 'Choose an Agent', link: '/en-US/runners/overview' },
       { text: 'OpenCode', link: '/en-US/runners/opencode' },
       { text: 'Codex', link: '/en-US/runners/codex' },
       { text: 'Claude Code', link: '/en-US/runners/claude-code' },

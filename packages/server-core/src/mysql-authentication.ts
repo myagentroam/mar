@@ -194,6 +194,16 @@ export class MysqlAuthenticationStorage {
     return projection.current;
   }
 
+  isSessionHashActive(userId: number, sessionHash: string): boolean {
+    const projection = this.sessionProjection.get(sessionHash);
+    return (
+      projection !== undefined &&
+      projection.expiresAt > this.now() &&
+      projection.current.userId === userId &&
+      !projection.current.mustChangePassword
+    );
+  }
+
   async listActiveUserSessions(
     userId: number,
     currentSessionId: string

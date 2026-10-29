@@ -4,8 +4,10 @@ import { NodeControl } from '../../ee/server/src/node-control.js';
 describe('enterprise Node identity persistence boundary', () => {
   it('rejects outstanding requests when an authenticated connection is replaced', () => {
     const rejectNode = vi.fn();
+    const activateNodeConnection = vi.fn();
     const receiver = {
       requestBroker: { rejectNode },
+      runtimeCredentials: { activateNodeConnection },
       workbenchRelay: { broadcast: vi.fn() }
     };
     const hooks = NodeControl.prototype as unknown as {
@@ -13,11 +15,14 @@ describe('enterprise Node identity persistence boundary', () => {
     };
     hooks.onNodeConnected.call(receiver, 'node-1', false);
     expect(rejectNode).not.toHaveBeenCalled();
+    expect(activateNodeConnection).toHaveBeenCalledExactlyOnceWith('node-1');
     hooks.onNodeConnected.call(receiver, 'node-1', true);
     expect(rejectNode).toHaveBeenCalledWith(
       'node-1',
       expect.objectContaining({ message: 'NODE_CONNECTION_REPLACED' })
     );
+    expect(rejectNode).toHaveBeenCalledOnce();
+    expect(activateNodeConnection).toHaveBeenNthCalledWith(2, 'node-1');
   });
   it.each(['revokeNode', 'deleteNode'] as const)(
     '%s closes only after a successful commit',

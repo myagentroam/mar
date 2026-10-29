@@ -1,6 +1,6 @@
 ---
 title: Node 注册失败或离线
-lastUpdated: 2026-10-08
+lastUpdated: 2026-10-29
 ---
 
 # Node 注册失败或离线
@@ -9,7 +9,7 @@ lastUpdated: 2026-10-08
 
 1. 在 Node 主机确认服务进程仍运行，并读取 service/systemd/任务计划日志。
 2. 检查配置中的 `serverUrl` 是浏览器可访问的 HTTPS Origin，系统时间正确。
-3. 从 Node 主机测试 DNS、TLS 和到 Server 的出站 HTTPS/WSS；不需要 Node 入站端口。
+3. 从 Node 主机测试 DNS、TLS 和到 Server 的出站 HTTPS/WSS；控制连接不需要公开 Node HTTP API。可选直连 UDP 配置见[网络说明](../deployment/network.md)。
 4. 首次注册失败时重新创建一次性令牌；已注册 Node 应使用写回配置的 Node ID 与凭据重连。
 5. 恢复后观察节点详情中的心跳、平台与 Agent 列表。
 

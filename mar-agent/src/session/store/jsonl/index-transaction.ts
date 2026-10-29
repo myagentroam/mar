@@ -42,7 +42,7 @@ export async function commitSessionIndex(
       if (!created)
         throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session publication is missing.');
       const source = normalizeSessionSource(created.source);
-      if (source.type !== 'subagent') continue;
+      if (source.parentSessionId === undefined) continue;
       if (!disk.sessions.some((entry) => entry.id === source.parentSessionId))
         throw new ParentPublicationRejected(
           'MAR_AGENT_SESSION_NOT_FOUND',
@@ -59,7 +59,6 @@ export async function commitSessionIndex(
       }
     }
     if (deleteExpected) {
-      const ids = new Set(deleteExpected.map((entry) => entry.id));
       for (const expected of deleteExpected) {
         const current = disk.sessions.find((entry) => entry.id === expected.id);
         if (
@@ -71,18 +70,7 @@ export async function commitSessionIndex(
           current.storageTransactionId !== expected.storageTransactionId ||
           current.nextSequence !== expected.nextSequence
         )
-          throw new AgentError(
-            'MAR_AGENT_SESSION_CORRUPT',
-            'Session tree changed during deletion.'
-          );
-      }
-      for (const entry of disk.sessions) {
-        const source = normalizeSessionSource(entry.source);
-        if (source.type === 'subagent' && ids.has(source.parentSessionId) && !ids.has(entry.id))
-          throw new AgentError(
-            'MAR_AGENT_SESSION_CORRUPT',
-            'Session tree changed during deletion.'
-          );
+          throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session changed during deletion.');
       }
     }
     const local = snapshot();

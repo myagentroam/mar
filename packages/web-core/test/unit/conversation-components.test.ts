@@ -19,6 +19,7 @@ import type { ConversationItem, ConversationTurn, Session } from '../../src/mode
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
 import MarIcon from '../../src/view/common/MarIcon.vue';
@@ -50,6 +51,31 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
 }));
 
 const originalLocale = localePreferenceService().locale.value;
+
+it.each([
+  ['en-US', 'Declined'],
+  ['zh-CN', '已拒绝']
+] as const)('localizes declined execution details in %s', async (locale, expected) => {
+  localePreferenceService().setLocale(locale);
+  try {
+    const item = {
+      ...conversationItem('declined', 'command_execution', {
+        command: 'run',
+        cwd: null,
+        outputPreview: '',
+        exitCode: null,
+        truncated: false,
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
+      }),
+      status: 'DECLINED' as const
+    };
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(expected);
+    expect(html).not.toContain('toolPresentation.detail.DECLINED');
+  } finally {
+    localePreferenceService().setLocale(originalLocale);
+  }
+});
 
 // The custom host renderer has no CSS engine; browser tests cover transition timing.
 vi.mock('vue', async (importOriginal) => {
@@ -533,6 +559,34 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   );
 
+  it.each(['parent', 'other'] as const)(
+    'renders the saved %s Session relationship',
+    async (relation) => {
+      const origin = serializeComposerTag('mar_session_origin', {
+        sessionId: 'source',
+        name: 'Source',
+        relation
+      });
+      const html = await render(ConversationTimeline, {
+        ...timelineProps,
+        turns: [
+          conversationTurn([
+            conversationItem('origin', 'user_message', { text: `${origin}\nHello` })
+          ])
+        ]
+      });
+      expect(html).toContain(
+        i18n.global.t(
+          relation === 'parent'
+            ? 'generated.conversationPresentation.messageFromParentSession'
+            : 'generated.conversationPresentation.messageFromOtherSession',
+          { name: 'Source' }
+        )
+      );
+      expect(html).not.toContain('mar_session_origin');
+    }
+  );
+
   it('uses the sharer name for original messages in a shared conversation', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
@@ -731,6 +785,33 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain(i18n.global.t('generated.conversationHeader.sessions'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.files'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
+  });
+
+  it('offers the session tree shortcut only for a child session', async () => {
+    const session: Session = {
+      id: 'child',
+      workspaceId: 'workspace-1',
+      runner: 'mar-agent',
+      externalSessionId: 'child'
+    };
+    const props = {
+      runner: 'mar-agent',
+      filesReady: false,
+      terminalReady: false,
+      contentSearchReady: false,
+      runnerIcon: () => '/icon.svg',
+      sessionTitle: () => 'Title'
+    };
+    const child = await render(ConversationHeader, {
+      ...props,
+      session: { ...session, sessionGroup: 'CHILD' }
+    });
+    const root = await render(ConversationHeader, {
+      ...props,
+      session: { ...session, sessionGroup: 'MAIN' }
+    });
+    expect(child).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
+    expect(root).not.toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
   });
 
   it('omits duplicate header activity indicators for active and idle sessions', async () => {

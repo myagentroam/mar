@@ -1,6 +1,5 @@
 import { CODE_STATE_LIMITS } from '../session/code-state.js';
 import { HISTORY_INPUT_LIMITS } from '../session/history-input-limits.js';
-import { SUBAGENT_LIMITS } from '../subagent/limits.js';
 
 export const TOOL_EXECUTION_LIMITS = Object.freeze({
   readDefaultLines: 200,
@@ -50,7 +49,6 @@ export const TOOL_EXECUTION_LIMITS = Object.freeze({
   patchMaxFiles: 100,
   patchMaxFileBytes: 8_388_608,
   patchMaxTotalBytes: 33_554_432,
-  ...SUBAGENT_LIMITS,
   sleepMaxDurationMs: 1_800_000,
   questionMaxTextCharacters: 1_000,
   questionMaxOptionCharacters: 500,

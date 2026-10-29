@@ -318,6 +318,36 @@ describe('Node Admin Terminal', () => {
     15_000
   );
 
+  it('waits for in-flight terminal cleanup on repeated close and shutdown', async () => {
+    const pty = new FakePty();
+    vi.spyOn(pty, 'kill').mockImplementation(() => {
+      throw new Error('PTY_CLOSE_FAILED');
+    });
+    let release!: () => void;
+    const terminate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const manager = new TerminalManager({ ptyFactory: () => pty, terminate });
+    const terminal = manager.open();
+    const first = manager.close(terminal.id);
+    await vi.waitFor(() => expect(terminate).toHaveBeenCalledOnce());
+    let shutdownFinished = false;
+    const second = manager.close(terminal.id);
+    const shutdown = manager.shutdown().then(() => {
+      shutdownFinished = true;
+    });
+    expect(second).toBe(first);
+    await Promise.resolve();
+    expect(shutdownFinished).toBe(false);
+    release();
+    await Promise.all([first, second, shutdown]);
+    expect(shutdownFinished).toBe(true);
+    expect(terminate).toHaveBeenCalledOnce();
+  });
+
   it.each(
     (['win32', 'linux', 'darwin'] as const).flatMap((platform) =>
       (['close', 'shutdown'] as const).map((operation) => [platform, operation] as const)

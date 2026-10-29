@@ -30,6 +30,7 @@ import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
+import ConversationToolDetail from './ConversationToolDetail.vue';
 import {
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
@@ -59,6 +60,7 @@ import {
   composerMessageSource,
   conversationItemText,
   subagentGroupText,
+  subagentGroupSessionId,
   subagentOperationText,
   conversationErrorCodeVisible,
   conversationErrorPresentation,
@@ -126,6 +128,7 @@ const props = defineProps<{
   readonly nodeReady: boolean;
   readonly synchronized?: boolean;
   readonly toolChangeEnabled?: boolean;
+  readonly sessionNavigationEnabled?: boolean;
   readonly rewindEnabled: boolean;
   readonly rollbackEnabled: boolean;
   readonly captureRenderAnchor: () => () => void;
@@ -146,6 +149,7 @@ function markdownCacheIdentity(
 const emit = defineEmits<{
   openFileChange: [entry: FileChangeEntry];
   initialRendered: [version: number];
+  openSession: [sessionId: string];
   openImage: [attachment: ImageAttachment];
   imageUnavailable: [source: string];
   openFile: [
@@ -733,6 +737,12 @@ function stepDuration(item: ConversationItem): string | undefined {
               v-if="groupedItemDisclosure[`group:${displayItem.id}`]"
               class="conversation-tool-list"
             >
+              <el-button
+                v-if="props.sessionNavigationEnabled && subagentGroupSessionId(displayItem.items)"
+                link
+                @click="emit('openSession', subagentGroupSessionId(displayItem.items)!)"
+                >{{ translate('presentation.openSubagentSession') }}</el-button
+              >
               <details
                 v-for="toolItem in displayItem.items"
                 :key="toolItem.id"
@@ -812,15 +822,19 @@ function stepDuration(item: ConversationItem): string | undefined {
                   toolPresentationStatus(entry.item.status)
                 }}</span>
               </summary>
-              <p
-                class="conversation-record-detail"
-                v-if="
-                  groupedItemDisclosure[entry.id] &&
-                  conversationItemDetail(entry.item.kind, entry.item.payload)
-                "
-              >
-                {{ conversationItemDetail(entry.item.kind, entry.item.payload) }}
-              </p>
+              <template v-if="groupedItemDisclosure[entry.id]">
+                <p
+                  v-if="conversationItemDetail(entry.item.kind, entry.item.payload)"
+                  class="conversation-record-detail"
+                >
+                  {{ conversationItemDetail(entry.item.kind, entry.item.payload) }}
+                </p>
+                <ConversationToolDetail
+                  :item="entry.item"
+                  copy-only
+                  @copy="(text, done) => emit('copy', text, done)"
+                />
+              </template>
             </details>
           </details>
         </template>
@@ -867,15 +881,11 @@ function stepDuration(item: ConversationItem): string | undefined {
                   }}</span>
                 </span>
               </summary>
-              <p
-                class="conversation-command-output"
-                v-if="
-                  groupedItemDisclosure[commandItem.id] &&
-                  conversationItemDetail(commandItem.kind, commandItem.payload)
-                "
-              >
-                {{ conversationItemDetail(commandItem.kind, commandItem.payload) }}
-              </p>
+              <ConversationToolDetail
+                v-if="groupedItemDisclosure[commandItem.id]"
+                :item="commandItem"
+                @copy="(text, done) => emit('copy', text, done)"
+              />
             </details>
           </details>
         </template>
@@ -1446,6 +1456,11 @@ function stepDuration(item: ConversationItem): string | undefined {
               }}</span>
             </summary>
             <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
+            <ConversationToolDetail
+              :item="displayItem.item"
+              copy-only
+              @copy="(text, done) => emit('copy', text, done)"
+            />
             <ul
               v-if="toolPresentationSources(displayItem.item.payload).length"
               class="conversation-tool-sources"

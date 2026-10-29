@@ -11,6 +11,11 @@ export interface MarctlExecutionScope {
   readonly workspaceId: string;
 }
 
+export type MarctlCredentialSource =
+  | { readonly type: 'terminal' }
+  | { readonly type: 'delegation' }
+  | { readonly type: 'execution'; readonly sessionId: string; readonly executionId: string };
+
 interface ScopedUser {
   readonly userId: number;
   readonly sessionHash: string;
@@ -18,6 +23,7 @@ interface ScopedUser {
   readonly scheduled: boolean;
   readonly channel: boolean;
   readonly scope?: MarctlExecutionScope;
+  readonly source: MarctlCredentialSource;
 }
 
 /** Ephemeral, user-scoped CLI credentials. No browser session secret leaves Server. */
@@ -36,7 +42,9 @@ export class MarctlUserCredentials {
       readonly scheduled?: boolean;
       readonly channel?: boolean;
     },
-    scope?: MarctlExecutionScope
+    scope?: MarctlExecutionScope,
+    source: MarctlCredentialSource = { type: 'terminal' },
+    expiresAt = this.now() + TOKEN_LIFETIME_MS
   ): string {
     if (!Number.isSafeInteger(user.userId) || user.userId <= 0)
       throw new Error('USER_AUTHORIZATION_REQUIRED');
@@ -51,9 +59,10 @@ export class MarctlUserCredentials {
     this.credentials.set(tokenDigest.toString('hex'), {
       userId: user.userId,
       sessionHash: user.sessionHash ?? tokenDigest.toString('base64url'),
-      expiresAt: this.now() + TOKEN_LIFETIME_MS,
+      expiresAt: Math.min(expiresAt, this.now() + TOKEN_LIFETIME_MS),
       scheduled: user.scheduled === true || user.sessionHash === undefined,
       channel: user.channel === true,
+      source: { ...source },
       ...(scope === undefined ? {} : { scope: { ...scope } })
     });
     return token;
@@ -92,7 +101,9 @@ export class MarctlUserCredentials {
       readonly channel?: boolean;
     },
     serverUrl: string | undefined,
-    scope?: MarctlExecutionScope
+    scope?: MarctlExecutionScope,
+    source: MarctlCredentialSource = { type: 'terminal' },
+    expiresAt?: number
   ): Promise<Readonly<Record<string, string>>> {
     const identity = await this.userEnvironment(user);
     if (serverUrl === undefined) return { ...identity, MAR_CTL_CONTEXT_REQUIRED: '1' };
@@ -110,8 +121,51 @@ export class MarctlUserCredentials {
       ...identity,
       MAR_CTL_CONTEXT_REQUIRED: '1',
       MAR_CTL_SERVER_URL: origin.origin,
-      MAR_CTL_USER_TOKEN: this.issue(user, scope)
+      MAR_CTL_USER_TOKEN: this.issue(user, scope, source, expiresAt)
     };
+  }
+
+  /** Called only from the authenticated Node control channel after Node admission. */
+  async deriveExecution(input: {
+    readonly parentToken: string;
+    readonly nodeId: string;
+    readonly workspaceId: string;
+    readonly sessionId: string;
+    readonly executionId: string;
+    readonly userId: number;
+    readonly authorize: (userId: number, nodeId: string, workspaceId: string) => Promise<boolean>;
+  }): Promise<string> {
+    const parent = await this.authenticateContext(`Bearer ${input.parentToken}`);
+    const record = this.credentials.get(digest(input.parentToken));
+    if (
+      !parent ||
+      !record ||
+      record.source.type !== 'delegation' ||
+      record.userId !== input.userId ||
+      record.scope?.nodeId !== input.nodeId ||
+      record.scope.workspaceId !== input.workspaceId ||
+      !input.sessionId ||
+      !input.executionId ||
+      !(await input.authorize(record.userId, input.nodeId, input.workspaceId))
+    )
+      throw new Error('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
+    // Recheck after asynchronous authorization so expiration/revocation cannot be raced.
+    if (
+      record.expiresAt <= this.now() ||
+      !(await this.authenticateContext(`Bearer ${input.parentToken}`))
+    )
+      throw new Error('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
+    return this.issue(
+      {
+        userId: record.userId,
+        sessionHash: record.sessionHash,
+        scheduled: record.scheduled,
+        channel: record.channel
+      },
+      record.scope,
+      { type: 'execution', sessionId: input.sessionId, executionId: input.executionId },
+      record.expiresAt
+    );
   }
 
   async authenticate(header: unknown): Promise<UserNodeAuthorization | undefined> {
@@ -124,6 +178,8 @@ export class MarctlUserCredentials {
         readonly scheduled: boolean;
         readonly channel?: boolean;
         readonly scope?: MarctlExecutionScope;
+        readonly source: MarctlCredentialSource;
+        readonly expiresAt: number;
       }
     | undefined
   > {
@@ -152,6 +208,8 @@ export class MarctlUserCredentials {
     return {
       user: { userId: credential.userId, sessionHash: credential.sessionHash },
       scheduled: credential.scheduled,
+      source: { ...credential.source },
+      expiresAt: credential.expiresAt,
       ...(credential.channel ? { channel: true } : {}),
       ...(credential.scope === undefined ? {} : { scope: { ...credential.scope } })
     };

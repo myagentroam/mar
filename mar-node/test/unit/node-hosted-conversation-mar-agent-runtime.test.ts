@@ -945,6 +945,7 @@ function agent(overrides: {
     })),
     setSessionTitle: vi.fn(async () => true),
     deleteSession: vi.fn(),
+    deleteSessions: vi.fn(),
     dispose: vi.fn(async () => undefined)
   };
 }
@@ -952,6 +953,8 @@ function agent(overrides: {
 function session(id: string, handle: ReturnType<typeof execution>): AgentSession {
   return {
     id,
+    subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    joinExecution: () => undefined,
     run: vi.fn(() => handle),
     steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
     plan: vi.fn(),

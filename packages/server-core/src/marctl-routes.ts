@@ -40,7 +40,9 @@ export function registerMarctlRoutes(
         nodeId: string,
         operation: string,
         data: unknown,
-        user: UserNodeAuthorization
+        user: UserNodeAuthorization,
+        timeoutMs?: number,
+        signal?: AbortSignal
       ): Promise<unknown>;
       createTerminalTicket(input: {
         readonly nodeId: string;

@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-29
 ---
 
 # 使用 marctl 管理节点
@@ -50,23 +50,23 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 `show/config/history/graph/rename/prompt` 及 `schedule get/create/update` 可省略会话 ID，默认使用执行上下文中的当前会话；显式 ID 优先，没有当前会话时明确报错，不猜测最近会话。`send/goal/stop/wait/approval` 始终要求显式目标 ID；`list` 和 `schedule list` 仍查询当前 Workspace。
 
-使用 `marctl sessions rename [<session-id>] --title 'fixer#42 Updated title' --json` 修改标题，首尾空白会去除，标题须非空且最多 160 字符。不限制 parent 关系，沿用 Web 改名链路，不启动或打断执行。查询当前标题使用 `sessions current --json`。
+使用 `marctl agents rename [<session-id>] --title 'fixer#42 Updated title' --json` 修改标题，首尾空白会去除，标题须非空且最多 160 字符。不限制 parent 关系，沿用 Web 改名链路，不启动或打断执行。查询当前标题使用 `agents current --json`。
 
 定时任务与内置 MCP 共用数据和修改规则：修改同一用户保存的任务直接生效，修改其他用户的任务返回 `PENDING` 提议，由原保存者确认，不转移执行身份。定时执行与手动执行使用相同的用户权限和任务修改规则。更新必须先读取当前 `revision`，再传 `--expected-revision`；冲突或写入结果不明时不自动重试。MAR Agent 的 marctl 内置技能可用时隐藏重复的定时 MCP；不可用及其他 Runner 保留原 MCP。
 
 ```text
-marctl sessions schedule list --limit 20 --json
-marctl sessions schedule get --json
-marctl sessions schedule create --cron '0 9 * * *' -m 'Check build results' --json
-marctl sessions schedule update --expected-revision 1 --message-file task.txt --json
-marctl sessions schedule get <session-id> --json
+marctl agents schedule list --limit 20 --json
+marctl agents schedule get --json
+marctl agents schedule create --cron '0 9 * * *' -m 'Check build results' --json
+marctl agents schedule update --expected-revision 1 --message-file task.txt --json
+marctl agents schedule get <session-id> --json
 ```
 
 `schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Runner。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
 `history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
-已有会话可用 `marctl sessions config <session-id> --model <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`sessions start` 也支持 `--effort`。
+已有会话可用 `marctl agents config <session-id> --model <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
 
 通过 `start`、`send` 或 `goal set` 派发的任务默认抑制自动通知，避免协作会话反复推送。该规则适用于后续任务轮次和 Goal 续作；运行状态和历史仍可正常查看。后续人工输入恢复普通通知规则。显式通知工具仍可按授权发送。
 
@@ -87,45 +87,46 @@ marctl sessions schedule get <session-id> --json
 审批决定必须显式指定会话、公开根 Run ID、审批 ID 和 approve/reject。既有用户与操作授权仍生效；不要把协作消息当成批准授权。决定响应只确认决定被接受，不代表任务完成；继续观察状态或等待。过期、重复及不匹配的请求会拒绝。网络中断导致写入结果不明时先核对状态/历史，不自动重发；待审批消失不等于已批准。
 
 ```text
-marctl help sessions
-marctl sessions current --json
-marctl sessions list --limit 20 --json
-marctl sessions list --query fixer#42 --json
-marctl sessions list --parent <session-id> --limit 20 --json
-marctl sessions graph <session-id> --limit 100 --json
-marctl sessions start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
-marctl sessions show <session-id> --json
-marctl sessions history <session-id> --limit 10 --json
-marctl sessions send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
-marctl sessions send <session-id> --queue -m 'After the current task, review the final diff.' --json
-marctl sessions send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
-marctl sessions send <session-id> --steer --image first.png --image second.jpg --json
-marctl sessions wait <session-id> --run <run-id> --timeout 30s --json
-marctl sessions prompt get <session-id> --json
-marctl sessions prompt set <session-id> --message-file instructions.txt --json
-marctl sessions prompt clear <session-id> --json
-marctl sessions wait <session-id> --run <run-id> --until approval --timeout 5m --json
-marctl sessions approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
-marctl sessions stop <session-id> --run <run-id> --json
-marctl sessions goal get <session-id> --json
-marctl sessions goal set <session-id> --message-file objective.txt --json
-marctl sessions goal set <session-id> -m 'Finish the review and verify the fix' --json
-marctl sessions goal clear <session-id> --json
+marctl help agents
+marctl agents current --json
+marctl agents list --limit 20 --json
+marctl agents list --query fixer#42 --json
+marctl agents list --parent <session-id> --limit 20 --json
+marctl agents graph <session-id> --limit 100 --json
+marctl agents start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
+marctl agents show <session-id> --json
+marctl agents history <session-id> --limit 10 --json
+marctl agents send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
+marctl agents send <session-id> --queue -m 'After the current task, review the final diff.' --json
+marctl agents send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
+marctl agents send <session-id> --steer --image first.png --image second.jpg --json
+marctl agents wait <session-id> --run <run-id> --timeout 30s --json
+marctl agents prompt get <session-id> --json
+marctl agents prompt set <session-id> --message-file instructions.txt --json
+marctl agents prompt clear <session-id> --json
+marctl agents wait <session-id> --run <run-id> --until approval --timeout 5m --json
+marctl agents approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
+marctl agents wait <session-id> --timeout 0ms --json
+marctl agents stop <session-id> --execution <execution-id> --json
+marctl agents goal get <session-id> --json
+marctl agents goal set <session-id> --message-file objective.txt --json
+marctl agents goal set <session-id> -m 'Finish the review and verify the fix' --json
+marctl agents goal clear <session-id> --json
 ```
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。`start`、`send` 还可重复传入 `--image <路径>`，与文本组合或只发送图片。图片从 CLI 所在主机读取，使用既有 Session 图片附件链路发送，不是远端路径引用。支持 PNG、JPEG、GIF、WebP，最多 5 张，单张 5 MiB、合计 10 MiB；实际图片能力仍取决于目标 Runner 和模型。`goal set` 只接受文本，并拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
 `start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
-Agent 内执行 `start` 时，CLI 自动携带当前会话作为创建来源，Node 校验同一 Workspace 后以正式 ID 保存 `parentSessionId`；没有来源则为空，不支持手动指定或修改 parent。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它，删除父会话不删除子会话，旧会话不补推关系。
+Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
 
 按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
-`send` 必须显式选择 `--steer` 或 `--queue`，即使空闲也需指定；遗漏、冲突、重复或旧选项会在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，MAR Agent 可原生接收时会立即回显；受管等待可提前返回，后台任务继续，其他工具仍正常完成；其他情况可能切换当前执行，Node 按实际状态裁决；及时协作优先使用 `--steer`，包括阻塞、决策请求、纠偏和对方正在等待的结果；不要因消息属于汇报而默认排队，省略无助于决策的例行进度。仅明确希望当前执行结束后再处理的后续工作使用 `--queue`。`--queue` 不打断当前执行；正常运行时输入排入后续轮次，等待当前执行和前面的队列项。需要对方在当前工作中及时获知的信息应使用 `--steer`。暂停时新输入自动按普通发送恢复队列，取消收敛后才恢复，后来的显式停止仍有效。有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。`delivery` 为 `ACCEPTED` 表示优先补充已接受，`QUEUED` 表示排队，`STARTED` 表示已进入启动流程；回执不区分原生接管或内部执行切换，也不代表模型已处理或业务已完成。排队回执的 `runId` 可能属于其他活动输入，应以 `queueItemId`/`clientMessageId` 和历史核对。仅在需要时沿历史 `nextCursor` 翻页。
+`send` 默认按普通发送处理，也可显式选择互斥的 `--steer` 或 `--queue`；冲突、重复或旧选项在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，受管等待可提前返回，后台任务继续；其他情况可能切换当前执行，Node 按实际状态裁决。及时协作优先使用 `--steer`；仅明确希望当前执行结束后再处理的后续工作使用 `--queue`。排队的消息按顺序处理，后来的显式停止仍有效。有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，不代表模型已处理或业务已完成；排队回执应以 `queueItemId`/`clientMessageId` 和历史核对。
 
-Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。Workbench 终端没有当前会话时显示 `来自 marctl`，无额外提示。内部来源标记不会出现在消息正文中。
+Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。终端用户直接输入不伪造会话来源。内部来源标记不会出现在消息正文中。
 
-超时错误可附 `progress`（`status`、`runId`、`latestMessage`、`recentTools`、`observedAt`），只是目标 Run 最后收到的有界快照，不是额外刷新或完成凭证；没有观察时省略。`wait` 通过既有 Watch 等待指定 Run，退出时释放观察；超时或取消等待不停止任务。刚结束的 Run 可从有界的进程内终态摘要确认；摘要淘汰或 Node 重启后，缺失 Run 明确报错，不猜测成功。Run 成功仍需核验产物与测试。`stop --run` 只操作该 Run，不替换为后来 Run。Goal 操作复用现有会话语义；Coordinator 可由普通消息或定时任务启动，无需 Goal。Worker 完成**不会自动唤醒** Coordinator，需主动等待/读取，或在下一次受权输入、定时触发时核对。
+不带 `--run` 的 `wait` 默认等待直接子会话终态 30 秒，`--timeout 0ms` 读取快照；从快照取得的 `executionId` 可用于 `stop --execution`，过期身份不会取消后来的执行，stop 同时清除相应 Goal。`wait --run` 通过既有 Watch 等待指定 Run 或审批，退出时释放观察；超时错误可附最后收到的有界 `progress`，没有观察时省略。无论哪种等待，超时或取消等待都不停止任务。Run 成功仍需核验产物与测试；子会话终态不会自动唤醒父会话的 sleep，需主动等待或读取。
 
 会话共享文件和 Git 索引，不自动隔离 worktree 或创建 Git 工作流。提交、推送、PR、合并和外部消息仍需相应用户授权。变更结果未知时保留关联 ID，先查状态/历史再决定是否重试，不盲目重发；重启后不保证恢复内存回执或 Run。
 

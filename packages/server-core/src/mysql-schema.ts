@@ -176,6 +176,10 @@ const CORE_MYSQL_SCHEMA_V19: MysqlSchema = {
 
 export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   ...CORE_MYSQL_SCHEMA_V19,
+  nodes: CORE_MYSQL_SCHEMA_V19['nodes']!.replace(
+    '  `metadata` json NOT NULL,',
+    '  `metadata` json NOT NULL,\n  `upgrade_snapshot` json DEFAULT NULL,'
+  ),
   system_settings: CORE_MYSQL_SCHEMA_V19['system_settings']!.replace(
     '`setting_key` varchar(128)',
     '`setting_key` varchar(191)'
@@ -195,7 +199,7 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   ),
   mar_agent_models: CORE_MYSQL_SCHEMA_V19['mar_agent_models']!.replace(
     "  `title_generation` tinyint(1) NOT NULL DEFAULT '0',",
-    "  `conversation_model` tinyint(1) NOT NULL DEFAULT '1',\n  `title_generation` tinyint(1) NOT NULL DEFAULT '0',"
+    "  `conversation_model` tinyint(1) NOT NULL DEFAULT '1',\n  `subagent_model` tinyint(1) NOT NULL DEFAULT '0',\n  `title_generation` tinyint(1) NOT NULL DEFAULT '0',"
   )
     .split('\n')
     .filter(
@@ -246,6 +250,8 @@ const XAI_SUBSCRIPTION_PROXY_ENDPOINT_SQL =
   "UPDATE mar_agent_models SET base_url='https://cli-chat-proxy.grok.com/v1',last_tested_at=NULL,last_test_status='UNVERIFIED',last_test_code=NULL WHERE protocol='OPENAI_RESPONSES' AND base_url='https://api.x.ai/v1' AND JSON_UNQUOTE(JSON_EXTRACT(credential,'$.type'))='CREDENTIAL_REF'";
 const CONVERSATION_MODEL_SQL =
   'ALTER TABLE mar_agent_models ADD COLUMN conversation_model tinyint(1) NOT NULL DEFAULT 1 AFTER default_reasoning_effort';
+const SUBAGENT_MODEL_SQL =
+  'ALTER TABLE mar_agent_models ADD COLUMN subagent_model tinyint(1) NOT NULL DEFAULT 0 AFTER conversation_model';
 
 // Keep this catalog at its baseline only; append future migrations without rewriting v9.
 export const CORE_MYSQL_MIGRATIONS = [
@@ -608,5 +614,45 @@ export const CORE_MYSQL_MIGRATIONS = [
       });
     }
   },
-  MODEL_SETTINGS_MIGRATION
+  MODEL_SETTINGS_MIGRATION,
+  {
+    version: 35,
+    name: 'subagent_model_usage',
+    checksum: createHash('sha256').update(SUBAGENT_MODEL_SQL).digest('hex'),
+    up: async (connection: MysqlMigrationConnection) => {
+      const [rows] = (await connection.execute(
+        "SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='mar_agent_models' AND COLUMN_NAME='subagent_model'"
+      )) as [readonly Record<string, unknown>[], unknown];
+      if (rows.length === 0) await connection.execute(SUBAGENT_MODEL_SQL);
+      else if (
+        rows.length !== 1 ||
+        rows[0]?.COLUMN_TYPE !== 'tinyint(1)' ||
+        rows[0]?.IS_NULLABLE !== 'NO' ||
+        String(rows[0]?.COLUMN_DEFAULT) !== '0'
+      )
+        throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
+    }
+  },
+  {
+    version: 36,
+    name: 'node_upgrade_snapshot',
+    checksum: createHash('sha256')
+      .update('ALTER TABLE nodes ADD COLUMN upgrade_snapshot json DEFAULT NULL AFTER metadata')
+      .digest('hex'),
+    up: async (connection: MysqlMigrationConnection) => {
+      const [rows] = (await connection.execute(
+        "SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='nodes' AND COLUMN_NAME='upgrade_snapshot'"
+      )) as [readonly Record<string, unknown>[], unknown];
+      if (rows.length === 0)
+        await connection.execute(
+          'ALTER TABLE nodes ADD COLUMN upgrade_snapshot json DEFAULT NULL AFTER metadata'
+        );
+      else if (
+        rows.length !== 1 ||
+        rows[0]?.COLUMN_TYPE !== 'json' ||
+        rows[0]?.IS_NULLABLE !== 'YES'
+      )
+        throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
+    }
+  }
 ] as const;

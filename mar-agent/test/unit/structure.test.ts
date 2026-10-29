@@ -13,8 +13,7 @@ const contracts = new Set([
   'runtime/events.ts',
   'runtime/execution-handle.ts',
   'runtime/context/contracts.ts',
-  'tools/contracts.ts',
-  'subagent/contracts.ts'
+  'tools/contracts.ts'
 ]);
 // Public DTOs may reference domain-owned support types, never their implementations.
 const contractSupportDependencies: Readonly<Record<string, readonly string[]>> = {
@@ -52,8 +51,7 @@ const contractSupportDependencies: Readonly<Record<string, readonly string[]>> =
     'tools/permission-contract.ts',
     'tools/result-extensions.ts',
     'tools/wait.ts'
-  ],
-  'subagent/contracts.ts': ['tools/permission-contract.ts', 'runtime/wait.ts']
+  ]
 };
 
 function source(path: string): string {
@@ -136,8 +134,7 @@ describe('Agent structure boundaries', () => {
       'session/catalog.ts': ['session/store/jsonl/jsonl-store.ts'],
       'session/store/contracts.ts': ['session/context-gc-checkpoint.ts'],
       'sdk/session-execution-factory.ts': ['sdk/session.ts'],
-      'subagent/session-controller.ts': ['extensions/operation.ts'],
-      'tools/runtime-context.ts': ['host/contracts.ts', 'subagent/session-controller.ts']
+      'tools/runtime-context.ts': ['host/contracts.ts', '../extensions/subagent/src/index.ts']
     };
     for (const [consumer, targets] of Object.entries(forbidden))
       for (const target of targets) expect(dependencies(consumer), consumer).not.toContain(target);
@@ -170,7 +167,7 @@ describe('Agent structure boundaries', () => {
       );
   });
 
-  it('keeps Tools and Subagent independent of foreign implementations', () => {
+  it('keeps Tools independent of foreign implementations', () => {
     for (const path of files()) {
       const deps = dependencies(path);
       if (path.startsWith('tools/')) {
@@ -180,16 +177,6 @@ describe('Agent structure boundaries', () => {
         ).toEqual([]);
         expect(deps, path).not.toContain('runtime/execution.ts');
       }
-      if (path.startsWith('subagent/')) {
-        expect(
-          deps.filter(
-            (dependency) =>
-              /^(extensions|sdk|host|session\/store)\//.test(dependency) ||
-              (dependency.startsWith('tools/') && dependency !== 'tools/permission-contract.ts')
-          ),
-          path
-        ).toEqual([]);
-      }
     }
   });
 
@@ -198,19 +185,21 @@ describe('Agent structure boundaries', () => {
       'tools/contracts.ts',
       'tools/permission-contract.ts',
       'tools/result-extension-contract.ts',
-      'subagent/contracts.ts',
       'host/skill-contract.ts'
     ]);
-    const extensionFacts = new Set(['tools/contracts.ts', 'subagent/contracts.ts']);
+    const extensionFacts = new Set(['tools/contracts.ts', 'tools/permission-contract.ts']);
     for (const path of files()) {
       for (const dependency of collectDependencies(path, source(path))) {
         const target = dependency.path;
+        expect(target, `${path} -> ${target}`).not.toMatch(
+          /^(?:subagent\/|\.\.\/extensions\/subagent\/)/
+        );
         if (path.startsWith('model/')) {
           expect(target, `${path} -> ${target}`).not.toMatch(
-            /^(host|tools|extensions|sdk|session|runtime|subagent)\//
+            /^(host|tools|extensions|sdk|session|runtime)\//
           );
         }
-        if (path.startsWith('runtime/') && /^(tools|subagent|extensions|sdk|host)\//.test(target)) {
+        if (path.startsWith('runtime/') && /^(tools|extensions|sdk|host)\//.test(target)) {
           expect(dependency.typeOnly && runtimeFacts.has(target), `${path} -> ${target}`).toBe(
             true
           );
@@ -221,32 +210,19 @@ describe('Agent structure boundaries', () => {
             `${path} -> ${target}`
           ).toBe(true);
         }
-        if (
-          path.startsWith('extensions/') &&
-          /^(tools|subagent|sdk|host|session\/store)\//.test(target)
-        ) {
-          const pureWaitSelection = target === 'subagent/wait-targets.ts';
-          expect(
-            pureWaitSelection || (dependency.typeOnly && extensionFacts.has(target)),
-            `${path} -> ${target}`
-          ).toBe(true);
+        if (path.startsWith('extensions/') && /^(tools|sdk|host|session\/store)\//.test(target)) {
+          expect(dependency.typeOnly && extensionFacts.has(target), `${path} -> ${target}`).toBe(
+            true
+          );
         }
         if (path.startsWith('host/')) {
           expect(target, `${path} -> ${target}`).not.toMatch(/^(sdk|session\/store)\//);
-        }
-        if (path.startsWith('tools/') && target.startsWith('subagent/')) {
-          expect(
-            target === 'subagent/limits.ts' ||
-              target === 'subagent/wait-targets.ts' ||
-              (dependency.typeOnly && target === 'subagent/contracts.ts'),
-            `${path} -> ${target}`
-          ).toBe(true);
         }
         if (path.startsWith('session/store/')) {
           expect(target, `${path} -> ${target}`).not.toMatch(
             /^(host|sdk)\/|^session\/catalog\.ts$/
           );
-          if (/^(tools|extensions|subagent|runtime)\//.test(target)) {
+          if (/^(tools|extensions|runtime)\//.test(target)) {
             const facts = new Set([
               'tools/contracts.ts',
               'tools/result-extension-contract.ts',
@@ -284,20 +260,13 @@ describe('Agent structure boundaries', () => {
   });
   it('groups Agent state tools separately from local side effects while keeping shared dispatch at the root', () => {
     const paths = new Set(files());
-    for (const name of [
-      'agent-start',
-      'agent-wait',
-      'agent-message',
-      'agent-cancel',
-      'question',
-      'skill',
-      'todo',
-      'todo-read',
-      'todo-write'
-    ]) {
+    for (const name of ['question', 'skill', 'todo', 'todo-read', 'todo-write']) {
       expect(paths.has(`tools/agent/${name}.ts`), name).toBe(true);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
     }
+    for (const name of ['agent-start', 'agent-wait', 'agent-message', 'agent-cancel'])
+      expect(paths.has(`tools/agent/${name}.ts`), name).toBe(false);
+    expect(paths.has('subagent/session-controller.ts')).toBe(false);
     for (const name of ['apply-patch', 'exec', 'read', 'view-image']) {
       expect(paths.has(`tools/local/${name}.ts`), name).toBe(true);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
@@ -356,12 +325,35 @@ describe('Agent structure boundaries', () => {
       'session-store.ts',
       'shared',
       'storage',
-      'subagent',
       'tools'
     ]);
+    const subagentSourceDirectory = '../extensions/subagent/src';
+    const subagentFiles = files(subagentSourceDirectory);
+    expect(subagentFiles.length).toBeGreaterThan(0);
+    const subagentManifest = JSON.parse(
+      readFileSync(join(packageSourceRoot, '../extensions/subagent/package.json'), 'utf8')
+    ) as { peerDependencies?: Record<string, string> };
+    expect(subagentManifest.peerDependencies?.['@myagentroam/agent']).toBeDefined();
+    for (const path of subagentFiles) {
+      const dependencies = collectDependencies(path, source(path));
+      expect(
+        dependencies.filter(
+          (dependency) => !dependency.path.startsWith(`${subagentSourceDirectory}/`)
+        ),
+        path
+      ).toEqual([]);
+      expect(source(path), path).not.toMatch(/@myagentroam\/agent\/(?:src|dist)\//);
+    }
+    for (const path of files().filter((path) => !path.startsWith('cli/'))) {
+      expect(
+        dependencies(path).filter((dependency) => dependency.startsWith('../extensions/subagent/')),
+        path
+      ).toEqual([]);
+      expect(source(path), path).not.toContain('@myagentroam/agent-extension-subagent');
+    }
     for (const path of files().filter(
       (path) =>
-        /^(sdk|runtime|model|session|extensions|subagent|host|network|storage|process|tools|prompts)\//.test(
+        /^(sdk|runtime|model|session|extensions|host|network|storage|process|tools|prompts)\//.test(
           path
         ) || path === 'error.ts'
     )) {
@@ -407,6 +399,7 @@ describe('Agent structure boundaries', () => {
       for (const dependency of collectDependencies(path, contents)) {
         expect(
           entries.has(dependency.path) ||
+            (dependency.typeOnly && dependency.path === 'extensions.ts') ||
             dependency.path.startsWith('cli/') ||
             dependency.path.startsWith('shared/'),
           `${path} -> ${dependency.path}`
@@ -417,7 +410,7 @@ describe('Agent structure boundaries', () => {
 
   it('keeps domain modules independent of the SDK facade and root barrel', () => {
     for (const path of files().filter((path) =>
-      /^(host|model|runtime|session|subagent|tools|prompts)\//.test(path)
+      /^(host|model|runtime|session|tools|prompts)\//.test(path)
     )) {
       const imports = dependencies(path);
       expect(

@@ -54,6 +54,8 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
     };
     const session = {
       id: 'native-session',
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      joinExecution: () => undefined,
       run: vi.fn(() => {
         const executionId = `sdk-${++execution}`;
         return {
@@ -136,6 +138,9 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
       createSession: vi.fn(async () => session),
       openSession: vi.fn(async () => session),
       listSessions: vi.fn(),
+      sessionHistory: vi.fn(async () => ({ entries: [] })),
+      sessionInputReceipt: vi.fn(async () => undefined),
+      sessionExecutionWasInterrupted: vi.fn(async () => false),
       getSession: vi.fn(async () => ({
         id: 'native-session',
         title: 'New session',
@@ -147,10 +152,12 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
       })),
       setSessionTitle: vi.fn(async () => true),
       deleteSession: vi.fn(),
+      deleteSessions: vi.fn(),
       clearSession: vi.fn(),
       setSystemInstruction: vi.fn(),
       reconfigureModels: vi.fn(async () => undefined),
       extensionDiagnostics: () => [],
+      observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
       dispose: async () => {
         disposed();
         await host.dispose?.();
