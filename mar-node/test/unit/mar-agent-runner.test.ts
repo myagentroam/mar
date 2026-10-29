@@ -239,12 +239,25 @@ describe('MAR Agent Node Runner', () => {
       const resumedItems = resumedEvents
         .flatMap((event) => normalizer.normalize(event))
         .filter((item) => item.kind === 'command_execution');
-      expect(resumedItems).toHaveLength(1);
-      expect(resumedItems.map((item) => item.itemId)).toEqual(['mar-agent-tool:poll-command']);
+      expect(resumedItems.map((item) => [item.itemId, item.status])).toEqual([
+        ['mar-agent-tool:poll-command', 'IN_PROGRESS'],
+        ['mar-agent-tool:poll-command', 'COMPLETED']
+      ]);
+      expect(resumedItems[0]?.payload.toolPresentation).toMatchObject({
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL' }
+      });
       expect(resumedItems.at(-1)).toMatchObject({
         itemId: 'mar-agent-tool:poll-command',
         status: 'COMPLETED',
-        payload: expect.objectContaining({ outputPreview: 'RETAINED', exitCode: 0 })
+        payload: expect.objectContaining({
+          outputPreview: 'RETAINED',
+          exitCode: 0,
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: expect.objectContaining({ kind: 'CONTROL' })
+          }
+        })
       });
 
       const catalog = await openAgentSessionCatalog({ homeDirectory: join(root, 'home') });
@@ -316,19 +329,26 @@ describe('MAR Agent Node Runner', () => {
       }
     });
     const resumed = { ...base, executionId: 'second', turnId: 'second-turn' };
-    expect(
-      normalizer.normalize({
-        ...resumed,
-        type: 'tool.started',
-        toolName: 'exec',
-        callId: 'expired-poll',
-        input: { action: 'poll', processId: 'finished-process' }
-      })
-    ).toEqual([]);
+    const [waiting] = normalizer.normalize({
+      ...resumed,
+      type: 'tool.started',
+      toolName: 'exec_wait',
+      callId: 'expired-poll',
+      input: { action: 'poll', processId: 'finished-process' }
+    });
+    expect(waiting).toMatchObject({
+      itemId: 'mar-agent-tool:expired-poll',
+      kind: 'command_execution',
+      status: 'IN_PROGRESS',
+      payload: {
+        command: 'exec_wait (poll)',
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CONTROL' } }
+      }
+    });
     const [failed] = normalizer.normalize({
       ...resumed,
       type: 'tool.failed',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'expired-poll',
       code: 'MAR_AGENT_PROCESS_NOT_FOUND',
       message: 'Managed process was not found.'
@@ -340,8 +360,14 @@ describe('MAR Agent Node Runner', () => {
     });
     expect(failed).toMatchObject({
       itemId: 'mar-agent-tool:expired-poll',
-      kind: 'tool_call',
-      status: 'FAILED'
+      kind: 'command_execution',
+      status: 'FAILED',
+      payload: {
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: { kind: 'CONTROL', error: { code: 'MAR_AGENT_PROCESS_NOT_FOUND' } }
+        }
+      }
     });
     const failedStart = new MarAgentConversationNormalizer();
     failedStart.normalize({
@@ -577,31 +603,51 @@ describe('MAR Agent Node Runner', () => {
       ['mar-agent-tool:cancel-failed', 'command_execution', 'FAILED']
     ]);
     expect(items).toMatchObject([
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('poll') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (poll)',
+          outputPreview: expect.stringContaining('poll')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (poll)',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('cancel') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (cancel)',
+          outputPreview: expect.stringContaining('cancel')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (cancel)',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('poll') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (poll)',
+          outputPreview: expect.stringContaining('poll')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (poll)',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       },
-      { payload: { command: 'code_exec_wait', outputPreview: expect.stringContaining('cancel') } },
       {
         payload: {
-          command: 'code_exec_wait',
+          command: 'code_exec_wait (cancel)',
+          outputPreview: expect.stringContaining('cancel')
+        }
+      },
+      {
+        payload: {
+          command: 'code_exec_wait (cancel)',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       }

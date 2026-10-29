@@ -13,7 +13,12 @@ import {
   compactRunnerValue
 } from '../normalization.js';
 import { runnerErrorProjection } from '../runner-error.js';
-import { toolPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
+import {
+  toolPresentationSchema,
+  type ToolPresentation,
+  type ExecutionPresentation
+} from '@myagentroam/protocol';
+import { boundExecutionPresentation, publicOutputSnapshot } from '../execution-presentation.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;
@@ -57,12 +62,6 @@ type ToolState = {
   readonly subagentDetails?: SubagentDetails;
 };
 
-type ToolOutputSnapshot = {
-  readonly commandOrigin: string;
-  readonly outputPreview: string;
-  readonly truncated: boolean;
-};
-
 type CodeModeOutputCall = {
   readonly parentCallId: string;
   readonly executionId: string;
@@ -90,13 +89,20 @@ type SubagentDetails = {
 
 type CommandState = {
   readonly itemId: string;
-  readonly turnKey: string;
   readonly command: string;
   readonly cwd: string | null;
-  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   outputPreview: string;
   exitCode: number | null;
   truncated: boolean;
+  inputTruncated?: boolean;
+  displayOutput?: {
+    stdout: string;
+    stderr: string;
+    stdoutDroppedBytes: number;
+    stderrDroppedBytes: number;
+  };
+  error?: { code: string; message: string };
 };
 
 type CodeModeToolResult = {
@@ -162,12 +168,10 @@ export class MarAgentConversationNormalizer {
   }
   readonly #tools = new Map<string, ToolState>();
   readonly #commands = new Map<string, CommandState>();
-  readonly #processOrigins = new Map<string, string>();
   readonly #subagentTitles = new Map<string, string>();
   readonly #subagentDetails = new Map<string, SubagentDetails>();
   readonly #codeModeObservationIds = new Set<string>();
   readonly #codeModeSourceCallIds = new Set<string>();
-  readonly #toolOutputSnapshots = new Map<string, ToolOutputSnapshot>();
   readonly #codeModeOutputCalls = new Map<string, CodeModeOutputCall>();
   readonly #codeModeOutputSnapshots = new Map<string, Map<string, CodeModeOutputSnapshot>>();
   readonly #runningCodeModeCells = new Map<string, RunningCodeModeCell>();
@@ -329,7 +333,6 @@ export class MarAgentConversationNormalizer {
   #toolStarted(event: Extract<AgentEvent, { type: 'tool.started' }>) {
     const ownItemId = itemId('tool', event.callId);
     this.#clearRetainedCodeModeCellsForOtherExecutions(event.executionId);
-    this.#toolOutputSnapshots.delete(event.callId);
     this.#codeModeOutputCalls.delete(event.callId);
     this.#clearCodeModeOutputSnapshots(event.callId);
     if (event.toolName === 'exec' || event.toolName === 'exec_wait') {
@@ -344,13 +347,19 @@ export class MarAgentConversationNormalizer {
       if (action === 'start' && typeof input.command === 'string') {
         const command: CommandState = {
           itemId: ownItemId,
-          turnKey: event.turnId ?? event.executionId,
           command: compactRunnerText(input.command, 10_000),
           cwd: typeof input.cwd === 'string' ? compactRunnerText(input.cwd, 4_096) : null,
           status: 'IN_PROGRESS',
           outputPreview: '',
           exitCode: null,
-          truncated: false
+          truncated:
+            event.truncated === true ||
+            input.command.length > 10_000 ||
+            (typeof input.cwd === 'string' && input.cwd.length > 4096),
+          inputTruncated:
+            event.truncated === true ||
+            input.command.length > 10_000 ||
+            (typeof input.cwd === 'string' && input.cwd.length > 4096)
         };
         this.#commands.set(event.callId, command);
         this.#tools.set(event.callId, {
@@ -364,51 +373,6 @@ export class MarAgentConversationNormalizer {
           commandOrigin: event.callId
         });
         return [commandItem(command, 'IN_PROGRESS')];
-      }
-      if (
-        (action === 'poll' || action === 'write' || action === 'cancel') &&
-        typeof input.processId === 'string'
-      ) {
-        const origin = this.#processOrigins.get(input.processId);
-        if (origin !== undefined) {
-          const previous = this.#commands.get(origin);
-          const sameTurn = previous?.turnKey === (event.turnId ?? event.executionId);
-          if (previous !== undefined && !sameTurn) {
-            const command: CommandState = {
-              itemId: ownItemId,
-              turnKey: event.turnId ?? event.executionId,
-              command: previous.command,
-              cwd: previous.cwd,
-              status: 'IN_PROGRESS',
-              outputPreview: '',
-              exitCode: null,
-              truncated: false
-            };
-            this.#commands.set(event.callId, command);
-            this.#tools.set(event.callId, {
-              toolName: event.toolName,
-              input: event.input,
-              itemId: ownItemId,
-              structured: true,
-              executionId: event.executionId,
-              ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
-              active: true,
-              commandOrigin: event.callId
-            });
-            return [];
-          }
-          this.#tools.set(event.callId, {
-            toolName: event.toolName,
-            input: event.input,
-            itemId: ownItemId,
-            structured: true,
-            executionId: event.executionId,
-            ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
-            active: true,
-            commandOrigin: origin
-          });
-          return [];
-        }
       }
     }
     const agentId = isMarAgentControlTool(event.toolName)
@@ -452,9 +416,23 @@ export class MarAgentConversationNormalizer {
   ): readonly MarAgentNormalizedItem[] {
     const { callId, toolName, executionId, turnId, parentCallId, output } = event;
     const inputOutput = [output.stdout, output.stderr].filter(Boolean).join('\n');
+    const displayOutput = execDisplayOutput(output.displayOutput) ?? {
+      stdout: output.stdout,
+      stderr: output.stderr,
+      stdoutDroppedBytes: 0,
+      stderrDroppedBytes: 0
+    };
+    const displayed = [displayOutput.stdout, displayOutput.stderr].filter(Boolean).join('\n');
+    const bounded = publicOutputSnapshot(
+      displayed,
+      output.truncated ||
+        displayOutput.stdoutDroppedBytes > 0 ||
+        displayOutput.stderrDroppedBytes > 0
+    );
     const snapshot = {
-      outputPreview: compactRunnerText(inputOutput, 10_000),
-      truncated: output.truncated || inputOutput.length > 10_000
+      outputPreview: bounded.text,
+      truncated: bounded.truncated || inputOutput.length > 10_000,
+      displayOutput
     };
 
     if (parentCallId !== undefined)
@@ -490,28 +468,19 @@ export class MarAgentConversationNormalizer {
           state.input,
           snapshot.outputPreview,
           null,
-          snapshot.truncated
+          snapshot.truncated,
+          { processId: output.processId, displayOutput: snapshot.displayOutput }
         )
       ];
     }
 
     const command = this.#commands.get(state.commandOrigin);
     if (command === undefined || command.status !== 'IN_PROGRESS') return [];
-    this.#toolOutputSnapshots.set(callId, {
-      commandOrigin: state.commandOrigin,
-      ...snapshot
-    });
-    return [
-      commandItem(
-        commandWithOutputSnapshots(
-          command,
-          [...this.#toolOutputSnapshots.values()].filter(
-            (entry) => entry.commandOrigin === state.commandOrigin
-          )
-        ),
-        'IN_PROGRESS'
-      )
-    ];
+    const display = snapshot.displayOutput;
+    if (display !== undefined) command.displayOutput = display;
+    command.outputPreview = snapshot.outputPreview;
+    command.truncated = snapshot.truncated;
+    return [commandItem(command, 'IN_PROGRESS')];
   }
 
   #codeModeToolOutput(
@@ -554,17 +523,19 @@ export class MarAgentConversationNormalizer {
       .map((entry) => entry.outputPreview)
       .filter(Boolean)
       .join('\n');
-    const truncated =
-      [...snapshots.values()].some((entry) => entry.truncated) || combined.length > 10_000;
+    const bounded = publicOutputSnapshot(
+      combined,
+      [...snapshots.values()].some((entry) => entry.truncated)
+    );
     return [
       genericToolItem(
         target.itemId,
         target.toolName,
         'IN_PROGRESS',
         target.input,
-        compactRunnerText(combined, 10_000),
+        bounded.text,
         null,
-        truncated
+        bounded.truncated
       )
     ];
   }
@@ -639,7 +610,6 @@ export class MarAgentConversationNormalizer {
   #finishToolCall(event: Extract<AgentEvent, { type: 'tool.completed' | 'tool.failed' }>): void {
     const state = this.#tools.get(event.callId);
     if (state !== undefined) state.active = false;
-    this.#toolOutputSnapshots.delete(event.callId);
     const data = record(event.data);
     const cellId = typeof data?.cellId === 'string' ? data.cellId : undefined;
     const status = data?.status;
@@ -706,7 +676,6 @@ export class MarAgentConversationNormalizer {
     for (const [callId, state] of this.#tools)
       if (state.executionId !== executionId) {
         state.active = false;
-        this.#toolOutputSnapshots.delete(callId);
       }
     for (const [callId, state] of this.#codeModeOutputCalls)
       if (state.executionId !== executionId) this.#codeModeOutputCalls.delete(callId);
@@ -740,24 +709,17 @@ export class MarAgentConversationNormalizer {
 
   #toolCompleted(event: Extract<AgentEvent, { type: 'tool.completed' }>) {
     const state = this.#tools.get(event.callId);
-    if (
-      (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
-      state?.commandOrigin !== undefined
-    ) {
+    if (event.toolName === 'exec' && state?.commandOrigin !== undefined) {
       const command = this.#commands.get(state.commandOrigin);
       const result = execResult(event.data, event.summary, event.truncated === true);
       if (command !== undefined && result !== undefined) {
-        if (result.processId !== undefined)
-          this.#processOrigins.set(result.processId, state.commandOrigin);
         applyCommandResult(command, result);
-        const status =
-          result.status === 'running'
-            ? 'IN_PROGRESS'
-            : result.status === 'completed' && result.exitCode === 0
-              ? 'COMPLETED'
-              : 'FAILED';
-        command.status = status;
-        return [commandItem(command, status)];
+        const data = record(event.data);
+        const display = execDisplayOutput(data?.displayOutput);
+        if (display !== undefined) command.displayOutput = display;
+        else delete command.displayOutput;
+        command.status = 'COMPLETED';
+        return [commandItem(command, 'COMPLETED')];
       }
     }
     if (
@@ -822,20 +784,17 @@ export class MarAgentConversationNormalizer {
 
   #toolFailed(event: Extract<AgentEvent, { type: 'tool.failed' }>) {
     const state = this.#tools.get(event.callId);
-    if (
-      (event.toolName === 'exec' || event.toolName === 'exec_wait') &&
-      state?.commandOrigin !== undefined
-    ) {
+    if (event.toolName === 'exec' && state?.commandOrigin !== undefined) {
       const command = this.#commands.get(state.commandOrigin);
-      const input = record(state.input);
-      if (
-        command !== undefined &&
-        command.status === 'IN_PROGRESS' &&
-        (state.itemId !== command.itemId ||
-          input?.action === 'start' ||
-          (input?.action == null && typeof input?.command === 'string'))
-      ) {
+      if (command !== undefined) {
+        const error = {
+          code: compactRunnerText(event.code, 80) || 'UNKNOWN',
+          message: compactRunnerText(event.message ?? event.code, 1000)
+        };
         command.status = 'FAILED';
+        command.error = error;
+        delete command.displayOutput;
+        command.outputPreview = '';
         return [commandItem(command, 'FAILED')];
       }
     }
@@ -1201,6 +1160,38 @@ function validCompactAnchor(value: string | undefined): string | undefined {
   return value !== undefined && value.length > 0 && value.length <= 128 ? value : undefined;
 }
 
+function codeObservationOutput(
+  data: Record<string, unknown> | undefined,
+  summary: string | null
+): string | undefined {
+  if (Array.isArray(data?.observations)) {
+    return data.observations
+      .flatMap((entry) => {
+        const observation = record(entry);
+        if (observation?.type === 'value' && typeof observation.value === 'string')
+          return [observation.value];
+        const result = record(observation?.result);
+        const source = record(observation?.source);
+        if (
+          observation?.type === 'tool_result' &&
+          (source?.toolName === 'exec' || source?.toolName === 'exec_wait')
+        ) {
+          const resultData = record(result?.data);
+          const display = record(resultData?.displayOutput) ?? resultData;
+          if (typeof display?.stdout === 'string' || typeof display?.stderr === 'string')
+            return [display?.stdout, display?.stderr].filter(
+              (value): value is string => typeof value === 'string' && value.length > 0
+            );
+        }
+        return observation?.type === 'tool_result' && typeof result?.content === 'string'
+          ? [result.content]
+          : [];
+      })
+      .join('\n');
+  }
+  return summary ?? undefined;
+}
+
 function genericToolItem(
   id: string,
   toolName: string,
@@ -1218,7 +1209,9 @@ function genericToolItem(
     const code = typeof input === 'string' ? input : record(input)?.code;
     const source =
       typeof code === 'string' ? code : compactRunnerValue(input, 10_000).text || toolName;
-    const output =
+    const resultData = record(output);
+    const codeOutput = codeObservationOutput(resultData, outputSummary);
+    const preview =
       errorCode === null
         ? (outputSummary ?? '')
         : [errorCode, outputSummary].filter(Boolean).join(': ');
@@ -1227,16 +1220,45 @@ function genericToolItem(
         itemId: id,
         command: compactRunnerText(source, 10_000),
         cwd: null,
-        outputPreview: compactRunnerText(output, 10_000),
+        outputPreview: compactRunnerText(preview, 10_000),
         exitCode: null,
-        truncated: truncated || source.length > 10_000 || output.length > 10_000
+        truncated:
+          truncated ||
+          resultData?.truncated === true ||
+          source.length > 10_000 ||
+          preview.length > 10_000
       },
       status,
-      'Code execution'
+      'Code execution',
+      {
+        kind: 'CODE',
+        ...(source.length > 10_000 ? { truncation: { input: true } } : {}),
+        ...(errorCode === null
+          ? {}
+          : {
+              error: {
+                code: compactRunnerText(errorCode, 80),
+                message: compactRunnerText(outputSummary ?? '', 1000)
+              }
+            }),
+        ...(codeOutput === undefined ? {} : { output: [{ channel: 'TEXT', text: codeOutput }] })
+      }
     );
   }
   if (toolName === 'code_exec_wait' || toolName === 'exec_wait') {
     const inputRecord = record(input);
+    const resultData = record(output);
+    const display = execDisplayOutput(resultData?.displayOutput);
+    const legacyBlocks = [
+      ...(typeof resultData?.stdout === 'string'
+        ? [{ channel: 'STDOUT' as const, text: resultData.stdout }]
+        : []),
+      ...(typeof resultData?.stderr === 'string'
+        ? [{ channel: 'STDERR' as const, text: resultData.stderr }]
+        : [])
+    ];
+    const codeOutput =
+      toolName === 'code_exec_wait' ? codeObservationOutput(resultData, outputSummary) : undefined;
     const action = typeof inputRecord?.action === 'string' ? inputRecord.action : 'poll';
     const inputSummary = compactRunnerValue(input, 10_000);
     const result = output === undefined ? null : compactRunnerValue(output, 10_000);
@@ -1257,18 +1279,67 @@ function genericToolItem(
     return commandItem(
       {
         itemId: id,
-        command: toolName,
+        command: `${toolName} (${compactRunnerText(action, 128)})`,
         cwd: null,
-        outputPreview: details,
-        exitCode: null,
+        outputPreview:
+          status === 'IN_PROGRESS' && outputSummary !== null
+            ? outputSummary
+            : legacyBlocks.length > 0
+              ? legacyBlocks
+                  .map((block) => block.text)
+                  .filter(Boolean)
+                  .join('\n')
+              : details,
+        exitCode: typeof resultData?.exitCode === 'number' ? resultData.exitCode : null,
         truncated:
           truncated ||
+          resultData?.truncated === true ||
           inputSummary.truncated ||
           result?.truncated === true ||
           resultSummary.length > 10_000
       },
       status,
-      toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait'
+      toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait',
+      {
+        kind: 'CONTROL',
+        ...(display === undefined
+          ? {}
+          : {
+              output: [
+                { channel: 'STDOUT' as const, text: display.stdout },
+                { channel: 'STDERR' as const, text: display.stderr }
+              ]
+            }),
+        ...(display === undefined && legacyBlocks.length > 0 ? { output: legacyBlocks } : {}),
+        ...(codeOutput === undefined
+          ? {}
+          : { output: [{ channel: 'TEXT' as const, text: codeOutput }] }),
+        ...((typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000) ||
+        (display !== undefined && (display.stdoutDroppedBytes || display.stderrDroppedBytes)) ||
+        (display === undefined && legacyBlocks.length > 0 && truncated)
+          ? {
+              truncation: {
+                ...(typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000
+                  ? { input: true }
+                  : {}),
+                ...(display !== undefined &&
+                (display.stdoutDroppedBytes || display.stderrDroppedBytes)
+                  ? { output: 'HEAD' as const }
+                  : display === undefined && legacyBlocks.length > 0 && truncated
+                    ? { output: 'SOURCE' as const }
+                    : {})
+              }
+            }
+          : {}),
+        ...(errorCode === null
+          ? {}
+          : {
+              error: {
+                code: compactRunnerText(errorCode, 80),
+                message: compactRunnerText(outputSummary ?? '', 1000)
+              }
+            })
+      }
     );
   }
   const subagent = marAgentSubagentProjection(
@@ -1354,14 +1425,62 @@ function projectToolPresentation(
   return parsed.success ? parsed.data : { kind };
 }
 
+function execDisplayOutput(value: unknown): CommandState['displayOutput'] {
+  const data = record(value);
+  if (
+    typeof data?.stdout !== 'string' ||
+    typeof data.stderr !== 'string' ||
+    typeof data.stdoutDroppedBytes !== 'number' ||
+    !Number.isSafeInteger(data.stdoutDroppedBytes) ||
+    data.stdoutDroppedBytes < 0 ||
+    typeof data.stderrDroppedBytes !== 'number' ||
+    !Number.isSafeInteger(data.stderrDroppedBytes) ||
+    data.stderrDroppedBytes < 0
+  )
+    return undefined;
+  return {
+    stdout: data.stdout,
+    stderr: data.stderr,
+    stdoutDroppedBytes: data.stdoutDroppedBytes,
+    stderrDroppedBytes: data.stderrDroppedBytes
+  };
+}
+
 function commandItem(
   command: Pick<
     CommandState,
     'itemId' | 'command' | 'cwd' | 'outputPreview' | 'exitCode' | 'truncated'
-  >,
+  > &
+    Partial<Pick<CommandState, 'displayOutput' | 'error' | 'inputTruncated'>>,
   status: MarAgentNormalizedItem['status'],
-  title?: string
+  title?: string,
+  execution?: ExecutionPresentation['execution']
 ): MarAgentNormalizedItem {
+  const display = command.displayOutput;
+  const detail = execution ?? {
+    kind: 'SHELL' as const,
+    ...(command.error === undefined ? {} : { error: command.error }),
+    ...(!command.inputTruncated &&
+    !(display && (display.stdoutDroppedBytes > 0 || display.stderrDroppedBytes > 0))
+      ? {}
+      : {
+          truncation: {
+            ...(command.inputTruncated ? { input: true } : {}),
+            ...(display && (display.stdoutDroppedBytes > 0 || display.stderrDroppedBytes > 0)
+              ? { output: 'HEAD' as const }
+              : {})
+          }
+        }),
+    ...(display === undefined
+      ? {}
+      : {
+          output: [
+            { channel: 'STDOUT' as const, text: display.stdout },
+            { channel: 'STDERR' as const, text: display.stderr }
+          ]
+        })
+  };
+  const bounded = boundExecutionPresentation(detail);
   return {
     itemId: command.itemId,
     kind: 'command_execution',
@@ -1374,29 +1493,15 @@ function commandItem(
       outputRef: null,
       exitCode: command.exitCode,
       durationMs: null,
-      truncated: command.truncated
+      truncated:
+        command.truncated ||
+        command.inputTruncated === true ||
+        bounded.truncated ||
+        (display !== undefined &&
+          (display.stdoutDroppedBytes > 0 || display.stderrDroppedBytes > 0)),
+      toolPresentation: bounded.presentation
     },
     merge: true
-  };
-}
-
-function commandWithOutputSnapshots(
-  command: CommandState,
-  snapshots: readonly ToolOutputSnapshot[]
-): CommandState {
-  const outputPreview = [
-    command.outputPreview,
-    ...snapshots.map((snapshot) => snapshot.outputPreview)
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return {
-    ...command,
-    outputPreview: compactRunnerText(outputPreview, 10_000),
-    truncated:
-      command.truncated ||
-      snapshots.some((snapshot) => snapshot.truncated) ||
-      outputPreview.length > 10_000
   };
 }
 
@@ -1405,15 +1510,9 @@ function applyCommandResult(
   result: NonNullable<ReturnType<typeof execResult>>
 ) {
   const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
-  if (output.length > 0) {
-    const combined = result.cached
-      ? output
-      : [command.outputPreview, output].filter(Boolean).join('\n');
-    command.truncated ||= combined.length > 10_000;
-    command.outputPreview = compactRunnerText(combined, 10_000);
-  }
-  command.exitCode = result.exitCode ?? command.exitCode;
-  command.truncated ||= result.truncated;
+  command.outputPreview = compactRunnerText(output, 10_000);
+  command.truncated = result.truncated || output.length > 10_000;
+  command.exitCode = result.exitCode ?? null;
 }
 
 function fileChangeItem(

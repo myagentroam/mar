@@ -20,6 +20,21 @@ import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
 import { publicToolMetadata, type PublicToolMetadata } from '../runtime/public-tool-metadata.js';
 import type { ModelImage } from '../model/image.js';
+/** Copy an explicitly public JSON object without exposing the full tool result. */
+export function publicExtensionToolEventData(
+  value: unknown
+): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value)) return undefined;
+  try {
+    const json = JSON.stringify(value);
+    if (Buffer.byteLength(json, 'utf8') > 8192) return undefined;
+    const copy: unknown = JSON.parse(json);
+    return isRecord(copy) ? copy : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function currentExecutionImages(
   modelInputImages: readonly ModelImage[] | undefined,
   toolImages: readonly ToolRuntimeImage[]
@@ -65,6 +80,90 @@ export function boundedModelToolOutput(
     execDiagnostics
   );
   return { content: result.content, truncated: result.truncated };
+}
+
+/** Explicit observations are public, but their event projection must remain bounded. */
+function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeCellEventData {
+  if (!Array.isArray(values)) return data;
+  const retained = new Set<unknown>(data.observations ?? []);
+  const selected: NonNullable<CodeCellEventData['observations']>[number][] = [];
+  let displayedCount = 0;
+  let remaining = 10_000;
+  let truncated = false;
+  const clip = (text: string) => {
+    let start = Math.max(0, text.length - remaining);
+    if (start > 0 && /[\uDC00-\uDFFF]/u.test(text[start]!)) start++;
+    const result = text.slice(start);
+    remaining -= result.length;
+    truncated ||= start > 0;
+    return result;
+  };
+  for (let index = values.length - 1; index >= 0; index--) {
+    const entry = values[index];
+    if (!isRecord(entry)) continue;
+    if (
+      entry.type === 'value' &&
+      typeof entry.value === 'string' &&
+      typeof entry.id === 'string' &&
+      (entry.format === 'text' || entry.format === 'json' || entry.format === 'image')
+    ) {
+      if (displayedCount >= 32) {
+        truncated = true;
+        continue;
+      }
+      displayedCount++;
+      truncated ||= entry.truncated === true;
+      const value = clip(entry.value);
+      selected.unshift({
+        type: 'value',
+        id: entry.id,
+        format: entry.format,
+        value,
+        ...(entry.truncated === true || value.length < entry.value.length
+          ? { truncated: true }
+          : {})
+      });
+    } else if (entry.type === 'tool_result' && isRecord(entry.source) && isRecord(entry.result)) {
+      const name = entry.source.toolName;
+      if (name !== 'exec' && name !== 'exec_wait') {
+        if (retained.has(entry))
+          selected.unshift(
+            entry as unknown as NonNullable<CodeCellEventData['observations']>[number]
+          );
+      } else if (
+        (name === 'exec' || name === 'exec_wait') &&
+        typeof entry.id === 'string' &&
+        typeof entry.source.callId === 'string' &&
+        (entry.outcome === 'completed' || entry.outcome === 'failed')
+      ) {
+        if (displayedCount >= 32) {
+          truncated = true;
+          continue;
+        }
+        displayedCount++;
+        truncated ||= entry.result.truncated === true;
+        const data = isRecord(entry.result.data) ? entry.result.data : undefined;
+        const stderr = typeof data?.stderr === 'string' ? clip(data.stderr) : undefined;
+        const stdout = typeof data?.stdout === 'string' ? clip(data.stdout) : undefined;
+        const content =
+          stdout === undefined && stderr === undefined && typeof entry.result.content === 'string'
+            ? clip(entry.result.content)
+            : '';
+        selected.unshift({
+          type: 'tool_result',
+          id: entry.id,
+          source: { callId: entry.source.callId, toolName: name, input: null },
+          outcome: entry.outcome,
+          result: {
+            content,
+            ...(stdout === undefined && stderr === undefined ? {} : { data: { stdout, stderr } }),
+            ...(entry.result.truncated === true || truncated ? { truncated: true } : {})
+          }
+        });
+      }
+    }
+  }
+  return { ...data, observations: selected, ...(truncated ? { truncated: true } : {}) };
 }
 
 /** Project only known, validated tool result shapes into public structured events. */
@@ -127,7 +226,7 @@ export function structuredToolEventData(
     typeof value.cellId === 'string' &&
     ['running', 'completed', 'failed', 'cancelled'].includes(String(value.status))
   )
-    return {
+    return publicCodeObservations(value.observations, {
       cellId: value.cellId,
       status: value.status as CodeCellEventData['status'],
       cached: value.cached === true,
@@ -182,7 +281,7 @@ export function structuredToolEventData(
             ) as NonNullable<CodeCellEventData['observations']>
           }
         : {})
-    };
+    });
   if (
     (toolName === 'agent_start' ||
       toolName === 'agent_wait' ||

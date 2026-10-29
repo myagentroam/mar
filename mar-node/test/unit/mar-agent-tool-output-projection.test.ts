@@ -3,9 +3,300 @@ import { conversationItemSchema } from '@myagentroam/protocol';
 import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
+import { structuredToolEventData } from '../../../mar-agent/src/tools/output-projection.js';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 describe('MAR Agent live tool output projection', () => {
+  it('retains the latest long SDK observations through terminal normalization', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'long-code',
+        input: { code: 'run()' }
+      })
+    );
+    const data = structuredToolEventData('code_exec', {
+      cellId: 'cell',
+      status: 'completed',
+      observations: [
+        {
+          type: 'tool_result',
+          id: 'one',
+          source: { callId: 'inner', toolName: 'exec', input: {} },
+          outcome: 'completed',
+          result: {
+            content: '{"stdout":"wrapped"}',
+            data: { stdout: 'x'.repeat(10_100) + '😀TAIL', stderr: 'stderr' }
+          }
+        },
+        { type: 'value', id: 'two', format: 'text', value: 'later observation' }
+      ]
+    });
+    const terminal = normalizer.normalize(
+      toolEvent({ type: 'tool.completed', toolName: 'code_exec', callId: 'long-code', data })
+    );
+    expect(terminal[0]?.payload).toMatchObject({
+      truncated: true,
+      toolPresentation: {
+        execution: {
+          output: [
+            { channel: 'TEXT', text: expect.stringMatching(/😀TAIL\nstderr\nlater observation$/u) }
+          ]
+        }
+      }
+    });
+    expectValidConversationItems(terminal);
+  });
+
+  it('uses the public tail snapshot for Code Mode live output, including JSON text', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'outer-live',
+        input: { code: 'run()' }
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec',
+        callId: 'inner-live',
+        parentCallId: 'outer-live',
+        input: { command: 'run' }
+      })
+    );
+    const json = normalizer.normalize(
+      toolOutput('inner-live', '{"valid":true}', 'process-1', 'outer-live')
+    );
+    expect(json[0]?.payload.toolPresentation).toMatchObject({
+      execution: { output: [{ channel: 'TEXT', text: '{"valid":true}' }] }
+    });
+    const long = normalizer.normalize(
+      toolEvent({
+        type: 'tool.output',
+        toolName: 'exec',
+        callId: 'inner-live',
+        parentCallId: 'outer-live',
+        output: {
+          processId: 'process-1',
+          stdout: 'old model buffer',
+          stderr: '',
+          truncated: true,
+          displayOutput: {
+            stdout: 'x'.repeat(10_100) + '😀tail',
+            stderr: '',
+            stdoutDroppedBytes: 5,
+            stderrDroppedBytes: 0
+          }
+        }
+      })
+    );
+    expect(long[0]?.payload).toMatchObject({
+      truncated: true,
+      outputPreview: expect.stringMatching(/😀tail$/u),
+      toolPresentation: {
+        execution: { output: [{ channel: 'TEXT', text: expect.stringMatching(/😀tail$/u) }] }
+      }
+    });
+    expectValidConversationItems([...json, ...long]);
+  });
+
+  it.each(['code_exec', 'code_exec_wait'] as const)(
+    'renders %s exec observations without the SDK result wrapper',
+    (toolName) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const input =
+        toolName === 'code_exec'
+          ? { code: 'observe.result(await tools.exec({command: "echo hi"}))' }
+          : { cellId: 'cell-1' };
+      normalizer.normalize(toolEvent({ type: 'tool.started', toolName, callId: 'outer', input }));
+      const data = {
+        observations: [
+          {
+            type: 'tool_result',
+            id: 'one',
+            source: { callId: 'inner', toolName: 'exec', input: {} },
+            outcome: 'completed',
+            result: {
+              content: '{"stdout":"hello","exitCode":0}',
+              data: { stdout: 'hello', stderr: 'warning', exitCode: 0 }
+            }
+          },
+          {
+            type: 'tool_result',
+            id: 'two',
+            source: { callId: 'inner-wait', toolName: 'exec_wait', input: {} },
+            outcome: 'completed',
+            result: {
+              content: '{"stdout":"done","status":"completed"}',
+              data: { stdout: 'done', stderr: '' }
+            }
+          },
+          { type: 'value', id: 'three', format: 'json', value: '{"stdout":"user content"}' }
+        ]
+      };
+      const result = normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          toolName,
+          callId: 'outer',
+          data,
+          summary: JSON.stringify(data)
+        })
+      );
+      expect(result[0]?.payload.toolPresentation).toMatchObject({
+        execution: {
+          output: [{ channel: 'TEXT', text: 'hello\nwarning\ndone\n{"stdout":"user content"}' }]
+        }
+      });
+      expectValidConversationItems(result);
+    }
+  );
+
+  it('keeps each wait independent and never rewrites the exec item across turns', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const display = (stdout: string) => ({
+      stdout,
+      stderr: '',
+      stdoutDroppedBytes: 0,
+      stderrDroppedBytes: 0
+    });
+    const all = [
+      ...normalizer.normalize(
+        toolEvent({
+          type: 'tool.started',
+          toolName: 'exec',
+          callId: 'start',
+          input: { command: 'run' }
+        })
+      )
+    ];
+    all.push(
+      ...normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          toolName: 'exec',
+          callId: 'start',
+          data: {
+            status: 'running',
+            processId: 'p1',
+            stdout: 'first',
+            stderr: '',
+            displayOutput: display('first')
+          }
+        })
+      )
+    );
+    const original = all.at(-1);
+    for (const [id, text] of [
+      ['p1-call', 'first second'],
+      ['p2-call', 'first second third']
+    ] as const) {
+      const turnId = `turn-${id}`;
+      all.push(
+        ...normalizer.normalize(
+          toolEvent({
+            type: 'tool.started',
+            toolName: 'exec_wait',
+            callId: id,
+            turnId,
+            input: { processId: 'p1' }
+          })
+        )
+      );
+      const progress = normalizer.normalize(
+        toolEvent({
+          type: 'tool.output',
+          toolName: 'exec_wait',
+          callId: id,
+          turnId,
+          output: {
+            processId: 'p1',
+            stdout: text,
+            stderr: '',
+            truncated: false,
+            displayOutput: display(text)
+          }
+        })
+      );
+      expect(progress[0]?.payload.toolPresentation).toMatchObject({
+        execution: {
+          kind: 'CONTROL',
+          output: [
+            { channel: 'STDOUT', text },
+            { channel: 'STDERR', text: '' }
+          ]
+        }
+      });
+      all.push(...progress);
+      all.push(
+        ...normalizer.normalize(
+          toolEvent({
+            type: 'tool.completed',
+            toolName: 'exec_wait',
+            callId: id,
+            turnId,
+            data: {
+              status: 'running',
+              waitOutcome: 'timeout',
+              processId: 'p1',
+              stdout: text.split(' ').at(-1),
+              stderr: '',
+              displayOutput: display(text)
+            }
+          })
+        )
+      );
+    }
+    expect(new Set(all.map((item) => item.itemId)).size).toBe(3);
+    expect(original?.payload.toolPresentation).toMatchObject({
+      execution: {
+        kind: 'SHELL',
+        output: [
+          { channel: 'STDOUT', text: 'first' },
+          { channel: 'STDERR', text: '' }
+        ]
+      }
+    });
+    expect(all.at(-1)?.payload.toolPresentation).toMatchObject({
+      kind: 'EXECUTION',
+      execution: {
+        kind: 'CONTROL',
+        output: [
+          { channel: 'STDOUT', text: 'first second third' },
+          { channel: 'STDERR', text: '' }
+        ]
+      }
+    });
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec_wait',
+        callId: 'fail',
+        input: { processId: 'p1' }
+      })
+    );
+    const failed = normalizer.normalize(
+      toolEvent({
+        type: 'tool.failed',
+        toolName: 'exec_wait',
+        callId: 'fail',
+        code: 'NOT_FOUND',
+        message: 'Wait failed'
+      })
+    );
+    expect(failed[0]?.status).toBe('FAILED');
+    expect(failed[0]?.itemId).not.toBe(original?.itemId);
+    expect(failed[0]?.payload.toolPresentation).toMatchObject({
+      execution: { kind: 'CONTROL', error: { code: 'NOT_FOUND', message: 'Wait failed' } }
+    });
+    expectValidConversationItems([...all, ...failed]);
+  });
+
   it.each([
     [undefined, 'tool.completed', undefined],
     ['poll', 'tool.completed', undefined],
@@ -48,13 +339,13 @@ describe('MAR Agent live tool output projection', () => {
         kind: 'command_execution',
         status: 'IN_PROGRESS',
         payload: {
-          command: 'exec_wait',
+          command: `exec_wait (${action ?? 'poll'})`,
           outputPreview: expect.stringContaining(`Action: ${action ?? 'poll'}`)
         }
       },
       { itemId: 'mar-agent-tool:wait', kind: 'command_execution', status }
     ]);
-    expect(items[1]!.payload.outputPreview).toContain(input.processId);
+    expect(items[1]!.payload.toolPresentation).toMatchObject({ execution: { kind: 'CONTROL' } });
     expect(items[1]!.payload.outputPreview).toContain(
       terminalType === 'tool.completed' ? 'verified' : code!
     );
@@ -67,6 +358,9 @@ describe('MAR Agent live tool output projection', () => {
     expect(history.flatMap((turn) => turn.items)).toMatchObject([
       { id: 'mar-agent-tool:wait', kind: 'command_execution', status, payload: items[1]!.payload }
     ]);
+    expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject({
+      toolPresentation: { execution: { kind: 'CONTROL' } }
+    });
   });
 
   it('updates unlinked exec_wait progress and replaces it with the formal result', () => {
@@ -87,7 +381,10 @@ describe('MAR Agent live tool output projection', () => {
         itemId: 'mar-agent-tool:unlinked-wait',
         kind: 'command_execution',
         status: 'IN_PROGRESS',
-        payload: { command: 'exec_wait', outputPreview: expect.stringContaining('latest snapshot') }
+        payload: {
+          command: 'exec_wait (poll)',
+          outputPreview: expect.stringContaining('latest snapshot')
+        }
       }
     ]);
     expect(second[0]!.payload.outputPreview).not.toContain('first snapshot');
@@ -265,9 +562,8 @@ describe('MAR Agent live tool output projection', () => {
     const nextSnapshot = normalizer.normalize(
       toolOutput('poll-2', 'second poll progress', 'process-1', undefined, 'exec_wait')
     );
-    expect(nextSnapshot[0]?.payload.outputPreview).toBe(
-      'cached formal output\nsecond poll progress'
-    );
+    expect(nextSnapshot[0]?.payload.outputPreview).toBe('second poll progress');
+    expect(nextSnapshot[0]?.itemId).not.toBe(cachedResult[0]?.itemId);
     const nextResult = normalizer.normalize(
       toolEvent({
         type: 'tool.completed',
@@ -422,6 +718,7 @@ describe('MAR Agent live tool output projection', () => {
     });
     expect(replaced[0]?.payload.outputPreview).toContain('first replacement');
     expect(replaced[0]?.payload.outputPreview).toContain('second snapshot');
+    expect(replaced[0]?.payload.toolPresentation).toMatchObject({ execution: { kind: 'CODE' } });
     expect(replaced[0]?.payload.outputPreview).not.toContain('first snapshot');
     expectValidConversationItems([...outerStart, ...replaced]);
 

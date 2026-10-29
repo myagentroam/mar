@@ -8,7 +8,8 @@ import {
   CONVERSATION_SEGMENT_PAGE_SIZE,
   initialConversationRenderItemCount,
   latestConversationItems,
-  limitConversationHistory
+  limitConversationHistory,
+  mergeConversationPayload
 } from '../../src/util/conversation-history.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 
@@ -24,6 +25,64 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe('Conversation History Window and Render State', () => {
+  it('applies generic output deltas and authoritative snapshots without retaining old truncation', () => {
+    let value: unknown = { inputSummary: 'input', truncated: true };
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'one', truncated: false } },
+      'output'
+    );
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'two', truncated: false } },
+      'output'
+    );
+    expect(value).toMatchObject({ output: { text: 'onetwo', truncated: false }, truncated: true });
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'snapshot', truncated: true } },
+      undefined
+    );
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'snapshot', truncated: false } },
+      undefined
+    );
+    value = mergeConversationPayload(value, { output: { text: '!', truncated: false } }, 'output');
+    expect(value).toMatchObject({
+      output: { text: 'snapshot!', truncated: false },
+      truncated: true
+    });
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'x'.repeat(10_001), truncated: false } },
+      'output'
+    );
+    expect(
+      (value as { output: { text: string; truncated: boolean } }).output.text.length
+    ).toBeLessThanOrEqual(10_000);
+    expect((value as { output: { truncated: boolean } }).output.truncated).toBe(true);
+    value = mergeConversationPayload(
+      value,
+      { output: { text: '😀newest', truncated: false } },
+      'output'
+    );
+    value = mergeConversationPayload(
+      value,
+      { output: { text: '-tail', truncated: false } },
+      'output'
+    );
+    expect(value).toMatchObject({
+      output: { text: expect.stringMatching(/😀newest-tail$/u), truncated: true }
+    });
+    expect((value as { output: { text: string } }).output.text).not.toMatch(/^[\uDC00-\uDFFF]/u);
+    value = mergeConversationPayload(
+      value,
+      { output: { text: 'final', truncated: false } },
+      undefined
+    );
+    expect(value).toMatchObject({ output: { text: 'final', truncated: false }, truncated: true });
+  });
   afterEach(() => vi.useRealTimers());
 
   it('Releases the waiter when the render window is replaced or canceled; an old confirmation cannot complete the new window', async () => {

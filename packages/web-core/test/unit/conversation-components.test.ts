@@ -19,6 +19,7 @@ import type { ConversationItem, ConversationTurn, Session } from '../../src/mode
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
 import MarIcon from '../../src/view/common/MarIcon.vue';
@@ -50,6 +51,31 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
 }));
 
 const originalLocale = localePreferenceService().locale.value;
+
+it.each([
+  ['en-US', 'Declined'],
+  ['zh-CN', '已拒绝']
+] as const)('localizes declined execution details in %s', async (locale, expected) => {
+  localePreferenceService().setLocale(locale);
+  try {
+    const item = {
+      ...conversationItem('declined', 'command_execution', {
+        command: 'run',
+        cwd: null,
+        outputPreview: '',
+        exitCode: null,
+        truncated: false,
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
+      }),
+      status: 'DECLINED' as const
+    };
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(expected);
+    expect(html).not.toContain('toolPresentation.detail.DECLINED');
+  } finally {
+    localePreferenceService().setLocale(originalLocale);
+  }
+});
 
 // The custom host renderer has no CSS engine; browser tests cover transition timing.
 vi.mock('vue', async (importOriginal) => {

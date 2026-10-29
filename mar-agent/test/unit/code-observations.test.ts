@@ -12,8 +12,13 @@ import type { ToolExecutionContext, ToolExecutionResult } from '../../src/tools/
 import { boundObservations } from '../../src/tools/code-mode/observations.js';
 import { observationModelParts } from '../../src/session/code-observation-projection.js';
 import { countModelTokens } from '../../src/runtime/token-budget.js';
+import { structuredToolEventData } from '../../src/tools/output-projection.js';
 
-async function run(code: string, invoke: NonNullable<ToolExecutionContext['codeMode']>['invoke']) {
+async function run(
+  code: string,
+  invoke: NonNullable<ToolExecutionContext['codeMode']>['invoke'],
+  toolName = 'read_value'
+) {
   const root = await mkdtemp(join(tmpdir(), 'mar-observe-'));
   const runner = new CodeModeTool(
     new WorkspacePathResolver(root),
@@ -31,7 +36,7 @@ async function run(code: string, invoke: NonNullable<ToolExecutionContext['codeM
         invoke,
         tools: [
           {
-            name: 'read_value',
+            name: toolName,
             description: 'fixture',
             inputSchema: { type: 'object' },
             allowedCallers: ['programmatic']
@@ -46,6 +51,33 @@ async function run(code: string, invoke: NonNullable<ToolExecutionContext['codeM
 }
 
 describe('structured Code Mode observations', () => {
+  it('projects a real Code Mode exec observation into the public completion data', async () => {
+    const output = await run(
+      'observe.result(await tools.exec({}));',
+      async () => ({
+        content: '{"stdout":"hello","exitCode":0}',
+        data: { stdout: 'hello', stderr: 'warning', exitCode: 0 }
+      }),
+      'exec'
+    );
+    const event = structuredToolEventData('code_exec', {
+      cellId: 'fixture',
+      status: 'completed',
+      observations: output.observations
+    });
+    expect(event).toMatchObject({
+      observations: [
+        {
+          type: 'tool_result',
+          source: { toolName: 'exec' },
+          result: { content: '', data: { stdout: 'hello', stderr: 'warning' } }
+        }
+      ]
+    });
+    expect(output.observations?.[0]).toMatchObject({
+      result: { content: '{"stdout":"hello","exitCode":0}' }
+    });
+  });
   it.each([
     { content: 'display source', data: { results: [{ text: 'program source' }] } },
     { content: '{"value":7}', data: { value: 7 } },

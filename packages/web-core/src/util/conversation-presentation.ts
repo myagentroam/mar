@@ -594,18 +594,24 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
   if (kind === 'reasoning') return reasoningSections(value).join('\n\n');
   if (kind === 'tool_call' && isSubagentToolCall(value)) return subagentToolDetail(value);
   if (kind === 'tool_call' && toolPresentation(payload)) return toolPresentationDetails(payload);
-  if (kind === 'tool_call')
+  if (kind === 'tool_call') {
+    const output = conversationPayload(value.output);
     return [
       !isSubagentToolCall(value) && stringField(value, 'title') !== stringField(value, 'toolName')
         ? formatDetail(translate('presentation.detail'), stringField(value, 'title'))
         : '',
       formatDetail(translate('presentation.input'), stringField(value, 'inputSummary')),
-      formatDetail(translate('presentation.output'), stringField(value, 'outputSummary')),
+      formatDetail(
+        translate('presentation.output'),
+        output ? stringField(output, 'text') : stringField(value, 'outputSummary')
+      ),
+      output?.truncated === true ? translate('toolPresentation.detail.truncated') : '',
       formatDetail(translate('presentation.progress'), stringField(value, 'progressLabel')),
       formatDetail(translate('presentation.error'), stringField(value, 'errorCode'))
     ]
       .filter(Boolean)
       .join('\n');
+  }
   if (kind === 'command_execution')
     return [
       formatDetail(translate('presentation.command'), stringField(value, 'command')),

@@ -925,6 +925,37 @@ describe('Codex input, commands, and event projection', () => {
       itemId: 'command-live',
       delta: '/workspace\\n'
     });
+    notify('item/commandExecution/outputDelta', {
+      threadId: 'thread-live',
+      turnId: 'turn-live',
+      itemId: 'command-live',
+      delta: 'second'
+    });
+    const liveCommand = internals.runtime
+      .listConversationTurns({ sessionId: session.id })
+      .turns[0]?.items.find((item) => item.kind === 'command_execution');
+    expect(liveCommand?.payload).toMatchObject({
+      output: { text: '/workspace\\nsecond', truncated: false }
+    });
+    notify('item/commandExecution/outputDelta', {
+      threadId: 'thread-live',
+      turnId: 'turn-live',
+      itemId: 'command-live',
+      delta: `${'x'.repeat(10_100)}😀latest`
+    });
+    notify('item/commandExecution/outputDelta', {
+      threadId: 'thread-live',
+      turnId: 'turn-live',
+      itemId: 'command-live',
+      delta: '-tail'
+    });
+    const longCommand = internals.runtime
+      .listConversationTurns({ sessionId: session.id })
+      .turns[0]?.items.find((item) => item.kind === 'command_execution');
+    expect(longCommand?.payload).toMatchObject({
+      output: { text: expect.stringMatching(/😀latest-tail$/u), truncated: true },
+      outputPreview: expect.stringMatching(/😀latest-tail$/u)
+    });
     notify('item/completed', {
       threadId: 'thread-live',
       turnId: 'turn-live',
@@ -934,7 +965,7 @@ describe('Codex input, commands, and event projection', () => {
         command: 'pwd',
         cwd: '/workspace',
         status: 'completed',
-        aggregatedOutput: '/workspace\\n',
+        aggregatedOutput: 'final',
         exitCode: 0,
         durationMs: 8
       }
@@ -1139,7 +1170,8 @@ describe('Codex input, commands, and event projection', () => {
           kind: 'command_execution',
           payload: expect.objectContaining({
             command: 'pwd',
-            outputPreview: '/workspace\\n',
+            outputPreview: 'final',
+            output: { text: 'final', truncated: false },
             exitCode: 0
           })
         }),

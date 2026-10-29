@@ -44,6 +44,8 @@ interface ManagedProcess {
   stderr: OutputBuffer;
   stdoutHistory: OutputBuffer;
   stderrHistory: OutputBuffer;
+  stdoutDisplay: TailBuffer;
+  stderrDisplay: TailBuffer;
   status: ExecResult['status'];
   exitCode?: number | null;
   timer?: NodeJS.Timeout;
@@ -260,6 +262,8 @@ export class ExecTool {
         stderr: createOutputBuffer(),
         stdoutHistory: createOutputBuffer(),
         stderrHistory: createOutputBuffer(),
+        stdoutDisplay: { value: Buffer.alloc(0), droppedBytes: 0 },
+        stderrDisplay: { value: Buffer.alloc(0), droppedBytes: 0 },
         status: 'running',
         exited: new Promise<void>((resolve) => (resolveExited = resolve)),
         settled: new Promise<void>((resolve) => (resolveSettled = resolve)),
@@ -288,6 +292,7 @@ export class ExecTool {
           child[name].on('data', (chunk: Buffer) => {
             if (managed.finalized) return;
             const decoded = Buffer.from(managed[name].decoder.write(chunk));
+            appendDisplay(managed[name === 'stdout' ? 'stdoutDisplay' : 'stderrDisplay'], decoded);
             appendOutput(managed[name], decoded, this.maxOutputBytes, chunk.length);
             appendOutput(
               managed[name === 'stdout' ? 'stdoutHistory' : 'stderrHistory'],
@@ -332,6 +337,7 @@ export class ExecTool {
           managed.resolveExited();
         } else {
           const message = Buffer.from(error.message);
+          appendDisplay(managed.stderrDisplay, message);
           appendOutput(managed.stderr, message, this.maxOutputBytes);
           appendOutput(managed.stderrHistory, message, this.maxOutputBytes);
           notifyProcessChange(managed);
@@ -546,7 +552,8 @@ export class ExecTool {
         stdoutBytes: process.stdout.totalBytes,
         stderrBytes: process.stderr.totalBytes,
         stdoutDroppedBytes: stdout.droppedBytes,
-        stderrDroppedBytes: stderr.droppedBytes
+        stderrDroppedBytes: stderr.droppedBytes,
+        displayOutput: displayOutput(process)
       }
     });
     while (this.#completed.size > TOOL_EXECUTION_LIMITS.execMaxCompletedResults)
@@ -609,7 +616,8 @@ export class ExecTool {
       stdoutBytes: process.stdout.totalBytes,
       stderrBytes: process.stderr.totalBytes,
       stdoutDroppedBytes: stdout.droppedBytes,
-      stderrDroppedBytes: stderr.droppedBytes
+      stderrDroppedBytes: stderr.droppedBytes,
+      displayOutput: displayOutput(process)
     };
   }
   async dispose() {
@@ -635,6 +643,28 @@ function createOutputBuffer(): OutputBuffer {
   };
 }
 
+interface TailBuffer {
+  value: Buffer;
+  droppedBytes: number;
+}
+
+function appendDisplay(target: TailBuffer, chunk: Buffer): void {
+  const combined = Buffer.concat([target.value, chunk]);
+  let start = Math.max(0, combined.length - TOOL_EXECUTION_LIMITS.execProgressMaxOutputBytes);
+  while (start < combined.length && (combined[start]! & 0xc0) === 0x80) start++;
+  target.droppedBytes += start;
+  target.value = Buffer.from(combined.subarray(start));
+}
+
+function displayOutput(process: ManagedProcess) {
+  return {
+    stdout: process.stdoutDisplay.value.toString('utf8'),
+    stderr: process.stderrDisplay.value.toString('utf8'),
+    stdoutDroppedBytes: process.stdoutDisplay.droppedBytes,
+    stderrDroppedBytes: process.stderrDisplay.droppedBytes
+  };
+}
+
 function finalizeManagedProcess(
   managed: ManagedProcess,
   maximumOutputBytes: number,
@@ -644,6 +674,8 @@ function finalizeManagedProcess(
   managed.finalized = true;
   const stdoutEnd = Buffer.from(managed.stdout.decoder.end());
   const stderrEnd = Buffer.from(managed.stderr.decoder.end());
+  appendDisplay(managed.stdoutDisplay, stdoutEnd);
+  appendDisplay(managed.stderrDisplay, stderrEnd);
   appendOutput(managed.stdout, stdoutEnd, maximumOutputBytes);
   appendOutput(managed.stderr, stderrEnd, maximumOutputBytes);
   appendOutput(managed.stdoutHistory, stdoutEnd, maximumOutputBytes);
@@ -796,7 +828,8 @@ function watchProcessOutput(
           processId,
           stdout: stdout.value,
           stderr: stderr.value,
-          truncated: stdout.droppedBytes > 0 || stderr.droppedBytes > 0
+          truncated: stdout.droppedBytes > 0 || stderr.droppedBytes > 0,
+          displayOutput: displayOutput(managed)
         });
       })
       .catch(() => {

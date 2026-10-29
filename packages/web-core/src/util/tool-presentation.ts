@@ -2,10 +2,14 @@ import type { ToolPresentation } from '@myagentroam/protocol';
 import { translate } from '../service/locale-preference-service.js';
 import { formatDateTime } from './time-presentation.js';
 
-export function toolPresentation(payload: unknown): ToolPresentation | undefined {
+export function toolPresentation(
+  payload: unknown
+): Exclude<ToolPresentation, { kind: 'EXECUTION' }> | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const value = (payload as { toolPresentation?: ToolPresentation }).toolPresentation;
-  return value && ['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'].includes(value.kind)
+  return value &&
+    value.kind !== 'EXECUTION' &&
+    ['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'].includes(value.kind)
     ? value
     : undefined;
 }

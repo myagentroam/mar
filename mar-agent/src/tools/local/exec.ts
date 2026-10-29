@@ -5,7 +5,8 @@ export type { ExecResult } from '../contracts.js';
 
 /** Share the model-facing body across direct calls and original Code Mode observations. */
 export function formatExecResult(result: ExecResult): ToolExecutionResult {
-  const visible: Partial<ExecResult> = { ...result };
+  const { displayOutput, ...modelResult } = result;
+  const visible: Partial<ExecResult> = { ...modelResult };
   if (result.stderr === '') delete visible.stderr;
   if (!result.truncated) {
     delete visible.truncated;
@@ -16,7 +17,12 @@ export function formatExecResult(result: ExecResult): ToolExecutionResult {
   if (result.stdoutDroppedBytes === 0) delete visible.stdoutDroppedBytes;
   if (result.stderrDroppedBytes === 0) delete visible.stderrDroppedBytes;
   if (result.cached === false) delete visible.cached;
-  return { content: JSON.stringify(visible), data: result, truncated: result.truncated };
+  return {
+    content: JSON.stringify(visible),
+    data: displayOutput === undefined ? result : modelResult,
+    ...(displayOutput === undefined ? {} : { eventData: { ...modelResult, displayOutput } }),
+    truncated: result.truncated
+  };
 }
 
 export type ExecInput =

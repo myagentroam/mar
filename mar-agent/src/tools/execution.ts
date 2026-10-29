@@ -16,6 +16,7 @@ import type {
 import {
   boundedModelToolOutput,
   structuredToolArtifacts,
+  publicExtensionToolEventData,
   structuredToolEventData,
   structuredToolFailureData
 } from './output-projection.js';
@@ -177,7 +178,12 @@ export async function executeRoundTools(
             };
       const modelOutput = boundedModelToolOutput(call.name, output.content, output.data);
       const eventSummary = toolEventSummary(output.content);
-      const structuredData = structuredToolEventData(call.name, output.data);
+      const structuredData =
+        call.name === 'exec' || call.name === 'exec_wait'
+          ? structuredToolEventData(call.name, output.eventData ?? output.data)
+          : output.eventData === undefined
+            ? structuredToolEventData(call.name, output.data)
+            : publicExtensionToolEventData(output.eventData);
       const artifacts = structuredToolArtifacts(output.artifacts);
       await scope.emit({
         type: 'tool.completed',

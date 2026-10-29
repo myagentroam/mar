@@ -4,6 +4,76 @@ import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 describe('public tool metadata', () => {
+  it('keeps existing observation kinds while excluding unknown tool results', () => {
+    const observation = (toolName: string) => ({
+      type: 'tool_result',
+      id: toolName,
+      source: { callId: toolName, toolName, input: {} },
+      outcome: 'completed',
+      result: { content: 'existing result' }
+    });
+    const existing = ['apply_patch', 'todo_read', 'todo_write'].map(observation);
+    const result = structuredToolEventData('code_exec', {
+      cellId: 'cell',
+      status: 'completed',
+      observations: [...existing, observation('unknown_tool')]
+    });
+    expect(result).toMatchObject({ observations: existing });
+    expect(JSON.stringify(result)).not.toContain('unknown_tool');
+  });
+  it.each(['code_exec', 'code_exec_wait'])(
+    'publishes bounded explicit %s observations without private result fields',
+    (name) => {
+      const observation = {
+        type: 'tool_result',
+        id: 'one',
+        source: { callId: 'child', toolName: 'exec', input: { command: 'secret input' } },
+        outcome: 'completed',
+        result: {
+          content: '{"stdout":"wrapped"}',
+          data: { stdout: 'hello', stderr: 'warning', private: 'hidden' }
+        }
+      };
+      const result = structuredToolEventData(name, {
+        cellId: 'cell',
+        status: 'completed',
+        observations: [
+          observation,
+          { type: 'value', id: 'two', format: 'json', value: '{"hello":1}' }
+        ]
+      });
+      expect(result).toMatchObject({
+        observations: [
+          {
+            source: { callId: 'child', toolName: 'exec', input: null },
+            result: { content: '', data: { stdout: 'hello', stderr: 'warning' } }
+          },
+          { type: 'value', value: '{"hello":1}' }
+        ]
+      });
+      expect(JSON.stringify(result)).not.toContain('hidden');
+      const long = structuredToolEventData(name, {
+        cellId: 'cell',
+        status: 'completed',
+        observations: [
+          { type: 'value', id: 'long', format: 'text', value: 'a'.repeat(9999) + '😀' }
+        ]
+      });
+      expect(long).toMatchObject({
+        truncated: true,
+        observations: [{ value: 'a'.repeat(9998) + '😀', truncated: true }]
+      });
+      const sourceTruncated = structuredToolEventData(name, {
+        cellId: 'cell',
+        status: 'completed',
+        observations: [{ ...observation, result: { ...observation.result, truncated: true } }]
+      });
+      expect(sourceTruncated).toMatchObject({
+        truncated: true,
+        observations: [{ result: { truncated: true } }]
+      });
+    }
+  );
   it('projects required image dimensions and only validated transform facts', () => {
     const result = structuredToolEventData('view_image', {
       path: 'capture.png',

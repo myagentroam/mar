@@ -197,7 +197,7 @@ type ProjectedConversationItem = {
   readonly status: string;
   readonly payload: Record<string, unknown>;
   readonly merge: boolean;
-  readonly append?: 'sections' | 'outputPreview' | 'outputSummary';
+  readonly append?: 'sections' | 'outputPreview' | 'outputSummary' | 'output';
 };
 
 export function conversationItemFromEvent(
@@ -272,7 +272,10 @@ export function conversationItemFromEvent(
       : {}),
     ...(permissionStop.success ? { permissionStop: permissionStop.data } : {}),
     merge: event.payload.merge === true,
-    ...(append === 'sections' || append === 'outputPreview' || append === 'outputSummary'
+    ...(append === 'sections' ||
+    append === 'outputPreview' ||
+    append === 'outputSummary' ||
+    append === 'output'
       ? { append }
       : {})
   };
@@ -317,7 +320,7 @@ function projectableConversationStatus(value: string): boolean {
   ].includes(value);
 }
 
-function mergeConversationItemPayload(
+export function mergeConversationItemPayload(
   existing: unknown,
   next: ProjectedConversationItem
 ): Record<string, unknown> {
@@ -357,12 +360,37 @@ function mergeConversationItemPayload(
       typeof next.payload.outputSummary === 'string' ? next.payload.outputSummary : '';
     value.outputSummary = appendProjectionText(prior, incoming);
   }
+  if (
+    next.append === 'output' &&
+    isRecord(next.payload.output) &&
+    typeof next.payload.output.text === 'string'
+  ) {
+    const prior =
+      isRecord(base.output) && typeof base.output.text === 'string' ? base.output : undefined;
+    const text = `${prior?.text ?? ''}${next.payload.output.text}`;
+    value.output = {
+      text: boundedOutputTail(text),
+      truncated:
+        prior?.truncated === true || next.payload.output.truncated === true || text.length > 10_000
+    };
+    if (typeof next.payload.outputPreview === 'string') {
+      value.outputPreview = boundedOutputTail(
+        `${typeof base.outputPreview === 'string' ? base.outputPreview : ''}${next.payload.outputPreview}`
+      );
+    }
+  }
   return value;
+}
+
+function boundedOutputTail(text: string): string {
+  if (text.length <= 10_000) return text;
+  const tail = text.slice(-10_000);
+  return /^[\uDC00-\uDFFF]/u.test(tail) ? tail.slice(1) : tail;
 }
 
 function appendProjectionText(previous: string, next: string): string {
   const text = `${previous}${next}`;
-  return text.length <= 10_000 ? text : `${text.slice(0, 9_999)}…`;
+  return text.length <= 10_000 ? text : `${text.slice(0, 9_999).replace(/[\uD800-\uDBFF]$/, '')}…`;
 }
 
 export function activeConversationItem(status: string): boolean {

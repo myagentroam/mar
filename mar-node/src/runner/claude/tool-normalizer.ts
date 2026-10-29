@@ -1,5 +1,6 @@
 import { claudeContentBlocks } from './message-parsers.js';
 import { compactRunnerText, compactRunnerValue } from '../normalization.js';
+import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
 import type {
   NativeTranscriptToolCall,
   NativeTranscriptSubagentResult
@@ -164,7 +165,11 @@ export function normalizeClaudeTool(
         outputRef: null,
         exitCode: null,
         durationMs: null,
-        truncated: outputTruncated
+        truncated: outputTruncated,
+        ...(output === null || output === undefined
+          ? {}
+          : { output: publicOutputSnapshot(output, truncated) }),
+        toolPresentation: shellExecution(output ?? undefined, truncated)
       }
     };
   if (isFileTool(toolName)) {

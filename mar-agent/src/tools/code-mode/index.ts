@@ -498,6 +498,8 @@ export class CodeModeTool {
           };
           const indices = original.result.images?.map(addImage);
           const data = [
+            'exec',
+            'exec_wait',
             'apply_patch',
             'todo_read',
             'todo_write',
