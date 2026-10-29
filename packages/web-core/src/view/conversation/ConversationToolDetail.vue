@@ -72,8 +72,17 @@ const detailText = computed(() => {
     if ((typeof text === 'string' && text.length > 0) || typeof text === 'number')
       lines.push(`${conversationUiEnUS.toolPresentation.detail[key]}: ${text}`);
   };
-  field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
-  if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
+  field('tool', value.toolName ?? payload.value.toolName);
+  if (value.source) {
+    field(value.source.kind === 'CODE' ? 'code' : 'command', value.source.text);
+    if (value.source.truncated) lines.push(translate('toolPresentation.detail.truncated'));
+    field('cwd', value.source.cwd);
+  } else if (value.kind !== 'CONTROL') {
+    field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
+    if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
+  }
+  field('action', value.action);
+  field('target', value.targetId);
   if (value.error)
     field('error', [value.error.code, value.error.message].filter(Boolean).join(': '));
   field('permission', props.item.permissionStop?.reason);

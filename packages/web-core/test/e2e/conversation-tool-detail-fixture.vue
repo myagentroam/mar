@@ -15,6 +15,7 @@ const command = ref<ConversationItem>({
   status: 'IN_PROGRESS',
   segmentId: 'segment-a',
   payload: {
+    toolName: 'exec',
     command: 'printf test',
     cwd: '/fixture',
     outputPreview: 'old',
@@ -199,7 +200,14 @@ const failure: ConversationItem = {
     truncated: false,
     toolPresentation: {
       kind: 'EXECUTION',
-      execution: { kind: 'CONTROL', error: { code: 'NOT_FOUND', message: 'Wait failed' } }
+      execution: {
+        kind: 'CONTROL',
+        toolName: 'exec_wait',
+        action: 'poll',
+        targetId: 'p_fixture',
+        source: { kind: 'SHELL', text: 'pnpm test --filter fixture', truncated: false },
+        error: { code: 'NOT_FOUND', message: 'Wait failed' }
+      }
     }
   }
 };

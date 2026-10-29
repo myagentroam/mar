@@ -5,6 +5,30 @@ import { normalizeClaudeTool } from '../../src/runner/claude/tool-normalizer.js'
 import { normalizeOpenCodeTool } from '../../src/runner/opencode/tool-normalizer.js';
 
 describe('tool presentation runner compatibility', () => {
+  it('preserves the original command tool name through public schema validation', () => {
+    const commands = [
+      ['exec_command', normalizeCodexTool({ name: 'exec_command', rawInput: { cmd: 'verify' } })],
+      ['Bash', normalizeClaudeTool('Bash', { command: 'verify' }, '', false, false)],
+      ['bash', normalizeOpenCodeTool('bash', { input: { command: 'verify' }, status: 'completed' })]
+    ] as const;
+    for (const [toolName, normalized] of commands) {
+      const parsed = conversationItemSchema.parse({
+        id: 'call',
+        kind: normalized.kind,
+        status: 'COMPLETED',
+        payload: normalized.payload,
+        sessionId: 'session',
+        turnId: 'turn',
+        runId: null,
+        parentItemId: null,
+        sourceSequence: null,
+        revision: 1,
+        startedAt: null,
+        completedAt: null
+      });
+      expect(parsed.payload).toHaveProperty('toolName', toolName);
+    }
+  });
   it('projects native reads but never guesses read semantics from a command or MCP tool name', () => {
     const claude = normalizeClaudeTool(
       'Read',

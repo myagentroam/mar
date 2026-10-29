@@ -32,6 +32,7 @@ export function normalizeCodexTool(input: {
       return {
         kind: 'command_execution',
         payload: {
+          toolName: name,
           outputPreview,
           truncated: input.truncated === true || (input.outputSummary?.length ?? 0) > 10_000,
           ...(input.outputSummary == null
@@ -56,6 +57,7 @@ export function normalizeCodexTool(input: {
     return {
       kind: 'command_execution',
       payload: {
+        toolName: name,
         command: compactRunnerText(command, 10_000),
         cwd: typeof values?.cwd === 'string' ? compactRunnerText(values.cwd, 4_096) : null,
         outputPreview,

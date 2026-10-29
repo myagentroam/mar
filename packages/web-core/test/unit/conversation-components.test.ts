@@ -52,6 +52,57 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
 
 const originalLocale = localePreferenceService().locale.value;
 
+it('marks a truncated wait source independently from a head-truncated output tail', async () => {
+  localePreferenceService().setLocale('en-US');
+  try {
+    const item = conversationItem('wait', 'command_execution', {
+      command: '',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CONTROL',
+          toolName: 'exec_wait',
+          source: { kind: 'SHELL', text: 'partial command', truncated: true },
+          output: [{ channel: 'STDOUT', text: 'output tail' }],
+          truncation: { output: 'HEAD' }
+        }
+      }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain('Command: partial command\nTruncated');
+    expect(html).toContain('Output:\n… Truncated\noutput tail');
+  } finally {
+    localePreferenceService().setLocale(originalLocale);
+  }
+});
+
+it.each(['SHELL', 'CODE'] as const)(
+  'shows the original Tool first and the %s wait source separately',
+  async (kind) => {
+    const toolName = kind === 'SHELL' ? 'exec_wait' : 'code_exec_wait';
+    const label = kind === 'SHELL' ? 'Command' : 'Code';
+    const item = conversationItem('wait', 'command_execution', {
+      command: '',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CONTROL',
+          toolName,
+          action: 'poll',
+          targetId: 'target-1',
+          source: { kind, text: 'original input', truncated: false },
+          output: [{ channel: 'TEXT', text: 'result' }]
+        }
+      }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(
+      `Tool: ${toolName}\n${label}: original input\nAction: poll\nTarget: target-1`
+    );
+    expect(html).not.toContain(`Command: ${toolName}`);
+  }
+);
+
 it('places a known head truncation before retained output without guessing source truncation', async () => {
   for (const [truncation, expected] of [
     [{ output: 'HEAD' }, 'Output:\n… Truncated\nretained output'],

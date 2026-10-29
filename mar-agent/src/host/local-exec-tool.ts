@@ -553,7 +553,13 @@ export class ExecTool {
         stderrBytes: process.stderr.totalBytes,
         stdoutDroppedBytes: stdout.droppedBytes,
         stderrDroppedBytes: stderr.droppedBytes,
-        displayOutput: displayOutput(process)
+        displayOutput: displayOutput(process),
+        executionSource: {
+          kind: 'SHELL',
+          text: process.command.slice(0, 10_000),
+          cwd: process.cwd.slice(0, 10_000),
+          truncated: process.command.length > 10_000 || process.cwd.length > 10_000
+        }
       }
     });
     while (this.#completed.size > TOOL_EXECUTION_LIMITS.execMaxCompletedResults)
@@ -617,7 +623,13 @@ export class ExecTool {
       stderrBytes: process.stderr.totalBytes,
       stdoutDroppedBytes: stdout.droppedBytes,
       stderrDroppedBytes: stderr.droppedBytes,
-      displayOutput: displayOutput(process)
+      displayOutput: displayOutput(process),
+      executionSource: {
+        kind: 'SHELL',
+        text: process.command.slice(0, 10_000),
+        cwd: process.cwd.slice(0, 10_000),
+        truncated: process.command.length > 10_000 || process.cwd.length > 10_000
+      }
     };
   }
   async dispose() {

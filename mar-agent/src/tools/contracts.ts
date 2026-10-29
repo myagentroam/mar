@@ -115,6 +115,14 @@ export interface ExecDisplayOutput {
   stderrDroppedBytes: number;
 }
 
+/** Bounded original input for public presentation, never added to model results. */
+export interface ExecutionSource {
+  kind: 'SHELL' | 'CODE';
+  text: string;
+  cwd?: string;
+  truncated: boolean;
+}
+
 export interface ToolExecutionResult {
   calls?: readonly import('../session/code-observation-contract.js').CodeToolCallRecord[];
   content: string;
@@ -133,6 +141,7 @@ export interface ToolExecutionResult {
   resultExtensions?: readonly import('./result-extension-contract.js').ToolResultExtension[];
 }
 export interface CodeCellEventData {
+  executionSource?: ExecutionSource;
   permissionStop?: import('./permission-contract.js').PermissionStop;
   calls?: readonly import('../session/code-observation-contract.js').CodeToolCallRecord[];
   cellId: string;
@@ -145,6 +154,7 @@ export interface CodeCellEventData {
   error?: { code: string; message: string };
 }
 export interface ExecResult {
+  executionSource?: ExecutionSource;
   status: 'running' | 'completed' | 'cancelled';
   waitOutcome?: import('./wait.js').ToolWaitOutcome;
   reason?: 'steer';

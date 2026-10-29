@@ -231,6 +231,19 @@ export function structuredToolEventData(
   )
     return publicCodeObservations(value.observations, {
       cellId: value.cellId,
+      ...(isRecord(value.executionSource) &&
+      value.executionSource.kind === 'CODE' &&
+      typeof value.executionSource.text === 'string'
+        ? {
+            executionSource: {
+              kind: 'CODE' as const,
+              text: value.executionSource.text.slice(0, 10_000),
+              truncated:
+                value.executionSource.truncated === true ||
+                value.executionSource.text.length > 10_000
+            }
+          }
+        : {}),
       status: value.status as CodeCellEventData['status'],
       cached: value.cached === true,
       ...(['snapshot', 'completion', 'timeout', 'yield', 'interrupted'].includes(

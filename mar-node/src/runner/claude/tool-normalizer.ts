@@ -156,6 +156,7 @@ export function normalizeClaudeTool(
     return {
       kind: 'command_execution',
       payload: {
+        toolName: normalizedToolName,
         command: compactRunnerText(
           typeof values?.command === 'string' ? values.command : normalizedToolName,
           10_000

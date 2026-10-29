@@ -2218,6 +2218,18 @@ export const executionPresentationSchema = z
     execution: z
       .object({
         kind: z.enum(['SHELL', 'CODE', 'CONTROL']),
+        toolName: z.string().min(1).max(128).optional(),
+        action: z.string().max(128).optional(),
+        targetId: z.string().max(256).optional(),
+        source: z
+          .object({
+            kind: z.enum(['SHELL', 'CODE']),
+            text: z.string().max(10_000),
+            cwd: z.string().max(10_000).optional(),
+            truncated: z.boolean()
+          })
+          .strict()
+          .optional(),
         output: executionOutputSchema.optional(),
         error: executionErrorSchema.optional(),
         truncation: executionTruncationSchema.optional()
@@ -2309,6 +2321,7 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
 const commandExecutionItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('command_execution'),
   payload: z.object({
+    toolName: z.string().min(1).max(128).optional(),
     title: z.string().min(1).max(128).optional(),
     command: z.string().max(10000),
     cwd: z.string().max(4096).nullable(),

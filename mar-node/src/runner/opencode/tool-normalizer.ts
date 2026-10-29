@@ -19,6 +19,7 @@ export function normalizeOpenCodeTool(
     return {
       kind: 'command_execution',
       payload: {
+        toolName: publicToolName,
         command: compactRunnerText(
           typeof input?.command === 'string'
             ? input.command

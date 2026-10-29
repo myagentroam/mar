@@ -1258,7 +1258,8 @@ function genericToolItem(
               }
             }),
         ...(codeOutput === undefined ? {} : { output: [{ channel: 'TEXT', text: codeOutput }] })
-      }
+      },
+      toolName
     );
   }
   if (toolName === 'code_exec_wait' || toolName === 'exec_wait') {
@@ -1296,7 +1297,7 @@ function genericToolItem(
     return commandItem(
       {
         itemId: id,
-        command: toolName,
+        command: '',
         cwd: null,
         outputPreview:
           status === 'IN_PROGRESS' && outputSummary !== null
@@ -1319,6 +1320,14 @@ function genericToolItem(
       toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait',
       {
         kind: 'CONTROL',
+        toolName,
+        action: compactRunnerText(action, 128),
+        ...(typeof inputRecord?.processId === 'string' || typeof inputRecord?.cellId === 'string'
+          ? {
+              targetId: compactRunnerText(String(inputRecord.processId ?? inputRecord.cellId), 256)
+            }
+          : {}),
+        ...executionSource(resultData?.executionSource),
         ...(display === undefined
           ? {}
           : {
@@ -1465,6 +1474,27 @@ function execDisplayOutput(value: unknown): CommandState['displayOutput'] {
   };
 }
 
+function executionSource(value: unknown): Pick<ExecutionPresentation['execution'], 'source'> {
+  const source = record(value);
+  if (
+    !source ||
+    (source.kind !== 'SHELL' && source.kind !== 'CODE') ||
+    typeof source.text !== 'string'
+  )
+    return {};
+  return {
+    source: {
+      kind: source.kind,
+      text: compactRunnerText(source.text, 10_000),
+      ...(typeof source.cwd === 'string' ? { cwd: compactRunnerText(source.cwd, 10_000) } : {}),
+      truncated:
+        source.truncated === true ||
+        source.text.length > 10_000 ||
+        (typeof source.cwd === 'string' && source.cwd.length > 10_000)
+    }
+  };
+}
+
 function commandItem(
   command: Pick<
     CommandState,
@@ -1473,7 +1503,8 @@ function commandItem(
     Partial<Pick<CommandState, 'displayOutput' | 'error' | 'inputTruncated'>>,
   status: MarAgentNormalizedItem['status'],
   title?: string,
-  execution?: ExecutionPresentation['execution']
+  execution?: ExecutionPresentation['execution'],
+  toolName = 'exec'
 ): MarAgentNormalizedItem {
   const display = command.displayOutput;
   const detail = execution ?? {
@@ -1499,7 +1530,7 @@ function commandItem(
           ]
         })
   };
-  const bounded = boundExecutionPresentation(detail);
+  const bounded = boundExecutionPresentation({ toolName, ...detail });
   return {
     itemId: command.itemId,
     kind: 'command_execution',

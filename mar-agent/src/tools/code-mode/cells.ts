@@ -40,6 +40,7 @@ export class CodeCellExecutionError extends AgentError {
 }
 type Status = 'running' | 'completed' | 'failed' | 'cancelled';
 interface Cell {
+  source: import('../contracts.js').ExecutionSource;
   cellId: string;
   sessionId: string;
   executionId: string;
@@ -142,6 +143,7 @@ export class CodeCells {
       );
     const controller = new AbortController();
     const cell: Cell = {
+      source: { kind: 'CODE', text: source.slice(0, 10_000), truncated: source.length > 10_000 },
       cellId: this.#handles.create(),
       sessionId: context.sessionId,
       executionId: context.executionId,
@@ -342,6 +344,7 @@ export class CodeCells {
             observations: visible.observations.map(visibleObservation)
           }),
           data,
+          eventData: { ...data, executionSource: cell.source },
           truncated: data.truncated
         };
       }
@@ -357,6 +360,7 @@ export class CodeCells {
       return {
         ...cell.terminal,
         data,
+        eventData: { ...data, executionSource: cell.source },
         content: JSON.stringify(data),
         truncated: cell.terminal.truncated || bounded.truncated
       };
@@ -412,6 +416,7 @@ export class CodeCells {
       calls: [...cell.calls.values()],
       observations: remapped,
       data,
+      eventData: { ...data, executionSource: cell.source },
       truncated: cell.truncated || structured.truncated,
       ...(visibleImages.length ? { images: visibleImages } : {})
     };

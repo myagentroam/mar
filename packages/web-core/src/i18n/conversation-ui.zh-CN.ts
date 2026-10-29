@@ -61,6 +61,9 @@ export const conversationUiZhCN = {
   },
   toolPresentation: {
     detail: {
+      tool: '工具',
+      action: '操作',
+      target: '目标',
       copy: '复制公开记录',
       stderr: 'stderr',
       copied: '已复制',

@@ -22,6 +22,7 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}conversation-tool-detail.html`);
       const exec = page.getByTestId('exec');
       await exec.locator('summary').click();
+      await expect(exec.locator('pre')).toHaveText(/^Tool: exec\nCommand: printf test[\s\S]*/);
       await expect(exec).toContainText('visible stdout');
       await expect(exec).toContainText('visible stderr');
       await expect(exec).not.toContainText('combined should not replace streams');
@@ -56,6 +57,9 @@ for (const width of [1280, 390]) {
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
+      await expect(page.getByTestId('wait').locator('pre')).toHaveText(
+        /^Tool: exec_wait\nCommand: pnpm test --filter fixture\nAction: poll\nTarget: p_fixture[\s\S]*/
+      );
       await page.getByTestId('declined').locator('summary').click();
       await expect(page.getByTestId('declined')).toContainText('Declined');
       await expect(page.getByTestId('declined')).not.toContainText(

@@ -90,6 +90,10 @@ describe('exec_wait', () => {
     expect(poll1.eventData).toMatchObject({ displayOutput: { stdout: 'first' } });
     expect(poll2.eventData).toMatchObject({ displayOutput: { stdout: 'first second' } });
     expect(poll2.data).toMatchObject({ stdout: ' second' });
+    expect(poll2.eventData).toMatchObject({
+      executionSource: { kind: 'SHELL', text: 'fixture', truncated: false }
+    });
+    expect(poll2.data).not.toHaveProperty('executionSource');
     child.exitCode = 0;
     child.emit('close', 0, null);
   });

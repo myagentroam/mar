@@ -191,7 +191,10 @@ export async function executeRoundTools(
             : ''
       );
       const structuredData =
-        call.name === 'exec' || call.name === 'exec_wait'
+        call.name === 'exec' ||
+        call.name === 'exec_wait' ||
+        call.name === 'code_exec' ||
+        call.name === 'code_exec_wait'
           ? structuredToolEventData(call.name, output.eventData ?? output.data)
           : output.eventData === undefined
             ? structuredToolEventData(call.name, output.data)
@@ -240,7 +243,7 @@ export async function executeRoundTools(
           ? undefined
           : (structuredToolEventData(
               call.name,
-              partial.data
+              partial.eventData ?? partial.data
             ) as import('./contracts.js').CodeCellEventData));
       await scope.emit({
         type: 'tool.failed',
