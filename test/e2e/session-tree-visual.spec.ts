@@ -28,6 +28,17 @@ for (const width of [390, 1280]) {
       await expect(dialog).toBeVisible();
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
+      const longTitle = rows.last().locator('.session-tree-title');
+      await expect(rows.last()).toHaveAccessibleName(
+        'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()
+      );
+      const titleSize = await longTitle.evaluate((element) => ({
+        height: element.clientHeight,
+        fullHeight: element.scrollHeight,
+        lineHeight: parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(titleSize.height).toBeLessThanOrEqual(titleSize.lineHeight * 2 + 1);
+      expect(titleSize.fullHeight).toBeGreaterThan(titleSize.height);
       await expect(rows.locator('[data-mar-icon="collection"]')).toHaveCount(0);
       const treeRows = dialog.locator('.session-tree-row');
       const childBranch = treeRows.nth(1).locator('.session-tree-branch');
@@ -56,6 +67,7 @@ for (const width of [390, 1280]) {
       expect(ending.border).toBe('1px');
       expect(Math.abs(ending.height - ending.parentHeight / 2)).toBeLessThan(1);
       for (const row of await rows.all()) {
+        await expect(row).not.toContainText(/mar-agent|codex/);
         await expect(row).toHaveCSS('border-top-width', '0px');
         expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
