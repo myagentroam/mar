@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeSessionPrompt,
   personalInstructionsForRunner,
+  resolvedPersonalInstructions,
   withSessionPrompt
 } from '../../src/runner/personal-instructions.js';
 
@@ -31,6 +32,28 @@ describe('Node personal instructions', () => {
     expect(personalInstructionsForRunner({ ...value, codex: '' }, 'codex')).toBe('Shared rule');
     expect(personalInstructionsForRunner(undefined, 'codex')).toBeUndefined();
     expect(() => personalInstructionsForRunner({ common: 1 }, 'codex')).toThrow(
+      'PERSONAL_INSTRUCTION_INVALID'
+    );
+  });
+
+  it('preserves internally resolved instructions without accepting untrusted strings or JSON markers', () => {
+    const merged = personalInstructionsForRunner(
+      { common: 'a'.repeat(20_000), marAgent: 'b'.repeat(20_000) },
+      'mar-agent'
+    )!;
+    expect(personalInstructionsForRunner(resolvedPersonalInstructions(merged), 'mar-agent')).toBe(
+      merged
+    );
+    expect(
+      personalInstructionsForRunner(resolvedPersonalInstructions(''), 'mar-agent')
+    ).toBeUndefined();
+    expect(() => personalInstructionsForRunner(merged, 'mar-agent')).toThrow(
+      'PERSONAL_INSTRUCTION_INVALID'
+    );
+    expect(
+      personalInstructionsForRunner({ resolvedPersonalInstructions: merged }, 'mar-agent')
+    ).toBeUndefined();
+    expect(() => personalInstructionsForRunner({ common: merged }, 'mar-agent')).toThrow(
       'PERSONAL_INSTRUCTION_INVALID'
     );
   });

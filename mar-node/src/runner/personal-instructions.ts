@@ -1,6 +1,12 @@
 import type { RunnerName } from '@myagentroam/protocol';
 
 const MAX_CONTENT_LENGTH = 20_000;
+const RESOLVED_INSTRUCTIONS = Symbol('resolvedPersonalInstructions');
+
+/** Carry Node-owned merged instructions across internal Session operations, never JSON input. */
+export function resolvedPersonalInstructions(value: string): object {
+  return { [RESOLVED_INSTRUCTIONS]: value };
+}
 
 export function normalizeSessionPrompt(value: unknown): string | null {
   if (value === null) return null;
@@ -32,6 +38,8 @@ export function personalInstructionsForRunner(
   if (value === undefined) return undefined;
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('PERSONAL_INSTRUCTION_INVALID');
+  if (RESOLVED_INSTRUCTIONS in value && typeof value[RESOLVED_INSTRUCTIONS] === 'string')
+    return value[RESOLVED_INSTRUCTIONS] || undefined;
   const record = value as Record<string, unknown>;
   const instructions: PersonalInstructionsPayload = {
     common: content(record['common']),
