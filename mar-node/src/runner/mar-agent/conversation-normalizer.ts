@@ -1192,6 +1192,18 @@ function codeObservationOutput(
   return summary ?? undefined;
 }
 
+function codeExecutionError(
+  data: Record<string, unknown> | undefined
+): ExecutionPresentation['execution']['error'] {
+  const error = record(data?.error);
+  if (typeof error?.code !== 'string' || !error.code || typeof error.message !== 'string')
+    return undefined;
+  return {
+    code: compactRunnerText(error.code, 80),
+    message: compactRunnerText(error.message, 1000)
+  };
+}
+
 function genericToolItem(
   id: string,
   toolName: string,
@@ -1211,6 +1223,7 @@ function genericToolItem(
       typeof code === 'string' ? code : compactRunnerValue(input, 10_000).text || toolName;
     const resultData = record(output);
     const codeOutput = codeObservationOutput(resultData, outputSummary);
+    const resultError = codeExecutionError(resultData);
     const preview =
       errorCode === null
         ? (outputSummary ?? '')
@@ -1234,7 +1247,9 @@ function genericToolItem(
         kind: 'CODE',
         ...(source.length > 10_000 ? { truncation: { input: true } } : {}),
         ...(errorCode === null
-          ? {}
+          ? resultError === undefined
+            ? {}
+            : { error: resultError }
           : {
               error: {
                 code: compactRunnerText(errorCode, 80),
@@ -1259,6 +1274,7 @@ function genericToolItem(
     ];
     const codeOutput =
       toolName === 'code_exec_wait' ? codeObservationOutput(resultData, outputSummary) : undefined;
+    const resultError = toolName === 'code_exec_wait' ? codeExecutionError(resultData) : undefined;
     const action = typeof inputRecord?.action === 'string' ? inputRecord.action : 'poll';
     const inputSummary = compactRunnerValue(input, 10_000);
     const result = output === undefined ? null : compactRunnerValue(output, 10_000);
@@ -1332,7 +1348,9 @@ function genericToolItem(
             }
           : {}),
         ...(errorCode === null
-          ? {}
+          ? resultError === undefined
+            ? {}
+            : { error: resultError }
           : {
               error: {
                 code: compactRunnerText(errorCode, 80),

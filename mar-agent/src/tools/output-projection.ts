@@ -238,6 +238,21 @@ export function structuredToolEventData(
       ...(value.waitOutcome === 'interrupted' && value.reason === 'steer'
         ? { reason: 'steer' as const }
         : {}),
+      ...(value.truncated === true ? { truncated: true } : {}),
+      ...(isRecord(value.error) &&
+      typeof value.error.code === 'string' &&
+      value.error.code.length > 0 &&
+      typeof value.error.message === 'string'
+        ? {
+            ...(value.error.code.length > 80 || value.error.message.length > 1000
+              ? { truncated: true }
+              : {}),
+            error: {
+              code: value.error.code.slice(0, 80).replace(/[\uD800-\uDBFF]$/u, ''),
+              message: value.error.message.slice(0, 1000).replace(/[\uD800-\uDBFF]$/u, '')
+            }
+          }
+        : {}),
       ...(isRecord(value.permissionStop)
         ? {
             permissionStop: value.permissionStop as unknown as NonNullable<

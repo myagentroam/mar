@@ -138,6 +138,7 @@ export interface CodeCellEventData {
   cached?: boolean;
   truncated?: boolean;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
+  error?: { code: string; message: string };
 }
 export interface ExecResult {
   status: 'running' | 'completed' | 'cancelled';

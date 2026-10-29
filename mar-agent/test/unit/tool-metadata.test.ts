@@ -4,6 +4,19 @@ import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 describe('public tool metadata', () => {
+  it.each(['code_exec', 'code_exec_wait'])('keeps bounded %s failure facts public', (toolName) => {
+    const result = structuredToolEventData(toolName, {
+      cellId: 'cell',
+      status: 'failed',
+      observations: [],
+      error: { code: 'x'.repeat(79) + '😀', message: 'm'.repeat(999) + '😀', private: 'hidden' }
+    });
+    expect(result).toMatchObject({
+      truncated: true,
+      error: { code: 'x'.repeat(79), message: 'm'.repeat(999) }
+    });
+    expect(JSON.stringify(result)).not.toContain('hidden');
+  });
   it('keeps existing observation kinds while excluding unknown tool results', () => {
     const observation = (toolName: string) => ({
       type: 'tool_result',
