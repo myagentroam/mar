@@ -660,7 +660,9 @@ function stepDuration(item: ConversationItem): string | undefined {
                 >{{ displayItem.preview.text }}</span
               >
             </summary>
-            <p v-if="reasoningDisclosure[displayItem.id]">{{ displayItem.text }}</p>
+            <div v-if="reasoningDisclosure[displayItem.id]" class="conversation-detail-body">
+              <p class="conversation-detail-text">{{ displayItem.text }}</p>
+            </div>
           </details>
         </template>
         <template v-else-if="displayItem.type === 'image_generation'">
@@ -733,10 +735,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 })
               }}</span>
             </summary>
-            <div
-              v-if="groupedItemDisclosure[`group:${displayItem.id}`]"
-              class="conversation-tool-list"
-            >
+            <template v-if="groupedItemDisclosure[`group:${displayItem.id}`]">
               <el-button
                 v-if="props.sessionNavigationEnabled && subagentGroupSessionId(displayItem.items)"
                 link
@@ -759,11 +758,17 @@ function stepDuration(item: ConversationItem): string | undefined {
                     toolPresentationStatus(toolItem.status)
                   }}</span>
                 </summary>
-                <p v-if="conversationItemDetail(toolItem.kind, toolItem.payload)">
-                  {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
-                </p>
+                <ConversationToolDetail
+                  v-if="groupedItemDisclosure[toolItem.id]"
+                  :item="toolItem"
+                  @copy="(text, done) => emit('copy', text, done)"
+                >
+                  <p class="conversation-detail-text">
+                    {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
+                  </p>
+                </ConversationToolDetail>
               </details>
-            </div>
+            </template>
           </details>
         </template>
         <template
@@ -823,17 +828,14 @@ function stepDuration(item: ConversationItem): string | undefined {
                 }}</span>
               </summary>
               <template v-if="groupedItemDisclosure[entry.id]">
-                <p
-                  v-if="conversationItemDetail(entry.item.kind, entry.item.payload)"
-                  class="conversation-record-detail"
-                >
-                  {{ conversationItemDetail(entry.item.kind, entry.item.payload) }}
-                </p>
                 <ConversationToolDetail
                   :item="entry.item"
-                  copy-only
                   @copy="(text, done) => emit('copy', text, done)"
-                />
+                >
+                  <pre class="conversation-detail-text">{{
+                    conversationItemDetail(entry.item.kind, entry.item.payload)
+                  }}</pre>
+                </ConversationToolDetail>
               </template>
             </details>
           </details>
@@ -1455,34 +1457,36 @@ function stepDuration(item: ConversationItem): string | undefined {
                 toolPresentationStatus(displayItem.item.status)
               }}</span>
             </summary>
-            <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
             <ConversationToolDetail
               :item="displayItem.item"
-              copy-only
               @copy="(text, done) => emit('copy', text, done)"
-            />
-            <ul
-              v-if="toolPresentationSources(displayItem.item.payload).length"
-              class="conversation-tool-sources"
             >
-              <li
-                v-for="(source, index) in toolPresentationSources(displayItem.item.payload)"
-                :key="index"
+              <p class="conversation-detail-text">
+                {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
+              </p>
+              <ul
+                v-if="toolPresentationSources(displayItem.item.payload).length"
+                class="conversation-tool-sources"
               >
-                <a
-                  v-if="source.href"
-                  :href="source.href"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >{{ source.title || source.url }}</a
+                <li
+                  v-for="(source, index) in toolPresentationSources(displayItem.item.payload)"
+                  :key="index"
                 >
-                <span v-else>{{ source.title || source.url }}</span>
-                <span v-if="source.host" class="conversation-tool-source-host">{{
-                  source.host
-                }}</span>
-                <p v-if="source.snippet">{{ source.snippet }}</p>
-              </li>
-            </ul>
+                  <a
+                    v-if="source.href"
+                    :href="source.href"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >{{ source.title || source.url }}</a
+                  >
+                  <span v-else>{{ source.title || source.url }}</span>
+                  <span v-if="source.host" class="conversation-tool-source-host">{{
+                    source.host
+                  }}</span>
+                  <p v-if="source.snippet">{{ source.snippet }}</p>
+                </li>
+              </ul>
+            </ConversationToolDetail>
           </details>
         </template>
         <template v-else>
@@ -1500,7 +1504,17 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               }}</span>
             </summary>
-            <p v-if="conversationItemDetail(displayItem.item.kind, displayItem.item.payload)">
+            <ConversationToolDetail
+              v-if="displayItem.item.kind === 'tool_call'"
+              :item="displayItem.item"
+              @copy="(text, done) => emit('copy', text, done)"
+            />
+            <div v-else-if="displayItem.item.kind === 'reasoning'" class="conversation-detail-body">
+              <p class="conversation-detail-text">
+                {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
+              </p>
+            </div>
+            <p v-else-if="conversationItemDetail(displayItem.item.kind, displayItem.item.payload)">
               {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
             </p>
           </details>
@@ -1712,7 +1726,15 @@ function stepDuration(item: ConversationItem): string | undefined {
   background: var(--mar-conversation-process);
 }
 
-.conversation-item:where(.reasoning-group, .tool-group, .command-group, .file-change-group)
+.conversation-item:where(
+    .reasoning,
+    .reasoning-group,
+    .tool_call,
+    .tool-group,
+    .subagent-group,
+    .command-group,
+    .file-change-group
+  )
   > details[open],
 .conversation-item > details.conversation-tool-presentation[open] {
   background: transparent;
@@ -1925,6 +1947,21 @@ details.conversation-record-group[open] > details:last-child {
   padding: 4px var(--conversation-item-inset);
 }
 
+.conversation-item .conversation-detail-body {
+  margin: 0.5rem var(--conversation-item-inset);
+}
+
+.conversation-item .conversation-detail-body > .conversation-detail-text {
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.conversation-item.reasoning-group,
+.conversation-item:has(> .conversation-tool-presentation) {
+  --conversation-detail-start: calc(1em + 1.125rem + 1rem);
+}
+
 .conversation-record-group > details > summary > .mar-disclosure-icon {
   margin-inline: 0;
   color: var(--mar-conversation-muted);
@@ -1966,12 +2003,8 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
-.conversation-item .conversation-tool-presentation > p,
-.conversation-item .conversation-tool-sources {
-  margin-inline-start: 0.5rem;
-}
-
 .conversation-tool-sources {
+  margin: 0.5rem 0 0;
   padding-inline-start: 1rem;
 }
 
