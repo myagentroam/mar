@@ -8,7 +8,6 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
 
 interface TreeNode {
   readonly id: string;
@@ -107,7 +106,6 @@ onBeforeUnmount(() => controller.abort());
               <span class="session-tree-title">{{ row.node.title }}</span>
               <span class="session-tree-runner">{{ row.node.runner }}</span>
             </span>
-            <MarIcon v-if="row.node.id === sessionId" name="check" class="session-tree-current" />
           </button>
         </li>
       </ul>
@@ -144,14 +142,15 @@ onBeforeUnmount(() => controller.abort());
   text-align: start;
 }
 .session-tree-node:hover {
-  background: var(--mar-fill-row-hover);
+  color: var(--mar-color-brand-text);
 }
 .session-tree-node:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
 }
-.session-tree-node[aria-current='true'] {
-  background: var(--mar-color-brand-selected);
+.session-tree-node[aria-current='true'] .session-tree-title {
+  color: var(--mar-color-brand-text);
+  font-weight: 600;
 }
 .session-tree-title {
   min-width: 0;
@@ -174,10 +173,6 @@ onBeforeUnmount(() => controller.abort());
   min-width: 0;
   flex-direction: column;
   gap: 0.25rem;
-}
-.session-tree-current {
-  flex: none;
-  color: var(--mar-color-brand-text);
 }
 .session-tree-branch {
   position: absolute;

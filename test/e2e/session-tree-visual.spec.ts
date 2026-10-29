@@ -60,16 +60,14 @@ for (const width of [390, 1280]) {
         expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       await rows.first().hover();
-      expect(await rows.first().evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
-        'rgba(0, 0, 0, 0)'
-      );
+      await expect(rows.first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const current = dialog.locator('.session-tree-node[aria-current="true"]');
       await current.focus();
       await expect(current).toHaveCSS('outline-width', '2px');
       await expect(current).toContainText('Review BMP');
-      expect(await current.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
-        'rgba(0, 0, 0, 0)'
-      );
+      await expect(current).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(current.locator('.session-tree-title')).toHaveCSS('font-weight', '600');
+      await expect(rows.locator('[data-mar-icon]')).toHaveCount(0);
       const box = (await dialog.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -80,15 +78,11 @@ for (const width of [390, 1280]) {
         fullPage: true
       });
       await current.evaluate((element) => {
-        (element as HTMLElement).style.setProperty('--mar-color-brand-selected', '#e8dff5');
         (element as HTMLElement).style.setProperty('--mar-color-brand-text', '#694198');
       });
       await current.hover();
-      await expect(current).toHaveCSS('background-color', 'rgb(232, 223, 245)');
-      await expect(current.locator('[data-mar-icon="check"]')).toHaveCSS(
-        'color',
-        'rgb(105, 65, 152)'
-      );
+      await expect(current).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(current.locator('.session-tree-title')).toHaveCSS('color', 'rgb(105, 65, 152)');
       await rows.first().press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect(page.getByTestId('selected')).toHaveText('parent');
