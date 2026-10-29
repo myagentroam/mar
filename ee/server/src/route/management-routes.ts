@@ -1,5 +1,6 @@
 import { registerConversationHostingRoutes } from '@myagentroam/server-core/conversation-hosting-routes';
 import { registerComputerUseRoutes } from '@myagentroam/server-core/computer-use-routes';
+import { definiteNodeRejection } from '@myagentroam/server-core/node-request-error';
 import {
   ManagementQueryError,
   managementPageQuery
@@ -15,6 +16,7 @@ import type { NodeControl } from '../node-control.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
 import type { ResourceManagementDirectory } from '../rbac/resource-management-directory.js';
 import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
+import type { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 import type { ServerTrafficMetrics } from '../service/server-traffic-metrics.js';
 import {
   databaseError,
@@ -51,6 +53,7 @@ export function registerManagementRoutes(input: {
   readonly database: ReturnType<typeof openServerDatabase> | MysqlServerDatabase;
   readonly nodeControl: NodeControl;
   readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
+  readonly nodeUpgradeProgress?: NodeUpgradeProgress;
   readonly resources: Pick<ResourceAccessService, 'assertCanHostConversationTemplate'>;
   readonly directory: Pick<ResourceManagementDirectory, 'listManagedResourcePage'>;
   readonly users: {
@@ -228,6 +231,9 @@ export function registerManagementRoutes(input: {
             nodes: await Promise.all(
               overview.nodes.map(async (node) => ({
                 ...node,
+                upgradeProgress: node.disabled
+                  ? null
+                  : ((await input.nodeUpgradeProgress?.snapshot(node.id)) ?? null),
                 upgradeAvailability: await nodeUpgrades.availability(
                   node.nodeAppVersion,
                   node.metadata['supervisedUpgrade'] === true,
@@ -262,6 +268,9 @@ export function registerManagementRoutes(input: {
             };
             return {
               ...projection,
+              upgradeProgress: node.disabled
+                ? null
+                : ((await input.nodeUpgradeProgress?.snapshot(node.id)) ?? null),
               ownerUserId: node.ownerUserId,
               ownerUsername: users.get(node.ownerUserId) ?? null,
               upgradeAvailability: await nodeUpgrades.availability(
@@ -337,9 +346,46 @@ export function registerManagementRoutes(input: {
         );
         if (availability.state !== 'AVAILABLE')
           return sendError(reply, 409, `NODE_UPGRADE_${availability.state}`);
-        const result = await requestUserNode(nodeControl, admin, node.id, 'node.upgrade.request', {
-          targetVersion: availability.targetVersion
-        });
+        const pending = await input.nodeUpgradeProgress?.snapshot(node.id);
+        if (pending?.state === 'WAITING_FOR_RUNS' || pending?.state === 'UPGRADING') {
+          if (pending.targetVersion !== availability.targetVersion)
+            return sendError(reply, 409, 'NODE_UPGRADE_ALREADY_IN_PROGRESS');
+          return reply.code(202).send({
+            status: pending.requestAccepted ? 'ALREADY_PENDING' : 'PENDING_CONFIRMATION',
+            targetVersion: pending.targetVersion,
+            attemptId: pending.attemptId
+          });
+        }
+        const supportsProgress =
+          nodeControl.upgradeCapabilities(node.id)?.metadata?.upgradeProgress?.apiVersion === 1;
+        const attempt = supportsProgress
+          ? await input.nodeUpgradeProgress?.begin(node.id, availability.targetVersion, {
+              userId: admin.userId,
+              sessionHash: admin.sessionHash
+            })
+          : undefined;
+        if (attempt?.existing)
+          return reply.code(202).send({
+            status: (await input.nodeUpgradeProgress!.snapshot(node.id))?.requestAccepted
+              ? 'ALREADY_PENDING'
+              : 'PENDING_CONFIRMATION',
+            targetVersion: availability.targetVersion,
+            attemptId: attempt.attemptId
+          });
+        let result: unknown;
+        try {
+          result = await requestUserNode(nodeControl, admin, node.id, 'node.upgrade.request', {
+            targetVersion: availability.targetVersion,
+            ...(attempt === undefined ? {} : { attemptId: attempt.attemptId })
+          });
+        } catch (error) {
+          const code = definiteNodeRejection(error);
+          if (attempt !== undefined && code !== undefined)
+            await input.nodeUpgradeProgress!.failBeforeHandoff(node.id, attempt.attemptId, code);
+          throw error;
+        }
+        if (attempt !== undefined)
+          await input.nodeUpgradeProgress!.markAccepted(node.id, attempt.attemptId);
         return reply.code(202).send(result);
       } catch (error) {
         return databaseError(reply, error);

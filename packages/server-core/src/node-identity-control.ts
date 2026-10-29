@@ -29,6 +29,7 @@ export class NodeIdentityControl {
   private readonly handshakes = new WeakSet<WebSocket>();
   private readonly wireVersions = new WeakMap<WebSocket, 2 | 3>();
   private readonly businessAdmission = new WeakSet<WebSocket>();
+  private readonly freshCapabilities = new WeakSet<WebSocket>();
   private readonly revokedBusinessAdmission = new WeakSet<WebSocket>();
   private readonly heartbeatSweep: NodeJS.Timeout;
   constructor(
@@ -47,6 +48,13 @@ export class NodeIdentityControl {
   }
   protected onNodeDisconnected(nodeId: string): void {
     void nodeId;
+  }
+  protected async onNodeCapabilities(
+    nodeId: string,
+    capabilities: NodeCapabilities
+  ): Promise<void> {
+    void nodeId;
+    void capabilities;
   }
   protected onBusinessAdmissionRevoked(nodeId: string): void {
     void nodeId;
@@ -174,6 +182,13 @@ export class NodeIdentityControl {
   nodeCapabilities(nodeId: string): NodeCapabilities | undefined {
     const socket = this.sockets.get(nodeId);
     return socket !== undefined && this.businessAdmission.has(socket)
+      ? this.capabilities.get(nodeId)
+      : undefined;
+  }
+
+  upgradeCapabilities(nodeId: string): NodeCapabilities | undefined {
+    const socket = this.sockets.get(nodeId);
+    return socket !== undefined && this.freshCapabilities.has(socket)
       ? this.capabilities.get(nodeId)
       : undefined;
   }
@@ -313,17 +328,29 @@ export class NodeIdentityControl {
               this.onNodeConnected(currentNodeId, false);
             }
             this.capabilities.set(currentNodeId, capabilities);
+            this.freshCapabilities.add(socket);
             await this.identityStore.updateNodeHeartbeat(
               currentNodeId,
               toStoredCapabilities(capabilities)
             );
-            if (this.sockets.get(currentNodeId) === socket)
-              this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
+            if (this.sockets.get(currentNodeId) === socket) {
+              await this.onNodeCapabilities(currentNodeId, capabilities);
+              if (this.sockets.get(currentNodeId) === socket)
+                this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
+            }
           }
         });
         return;
       }
-      if (!this.businessAdmission.has(socket) && envelope.type !== 'node.response') {
+      if (
+        !this.businessAdmission.has(socket) &&
+        envelope.type !== 'node.response' &&
+        !(
+          envelope.type === 'node.upgrade.credential.request' &&
+          this.freshCapabilities.has(socket) &&
+          this.capabilities.get(currentNodeId)?.metadata?.upgradeProgress?.apiVersion === 1
+        )
+      ) {
         this.sendError(socket, 'NODE_UPGRADE_REQUIRED', envelope.id);
         return;
       }
@@ -366,6 +393,7 @@ export class NodeIdentityControl {
     if (this.closed || socket.readyState !== socket.OPEN) return undefined;
     this.sockets.set(result.nodeId, socket);
     this.capabilities.set(result.nodeId, capabilities);
+    this.freshCapabilities.add(socket);
     this.lastHeartbeatAt.set(result.nodeId, Date.now());
 
     this.send(socket, 'registered', { ...result, ...this.connectionFeatures() }, envelope.id);

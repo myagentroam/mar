@@ -16,6 +16,99 @@ import {
 } from './support/component-renderer.js';
 afterEach(() => vi.unstubAllGlobals());
 describe('Public resource management', () => {
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders upgrade facts without claiming unconfirmed acceptance in %s',
+    async (locale) => {
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: false }),
+        location: { search: '', href: 'http://localhost/console' }
+      });
+      i18n.global.locale.value = locale;
+      const messages = commonMessages[locale].generated.resourceSharingPage;
+      const now = Date.now();
+      const base = {
+        attemptId: 'attempt',
+        targetVersion: '1.2.3',
+        installed: false,
+        targetOnline: false,
+        createdAt: now,
+        updatedAt: now
+      };
+      const rows = [
+        {
+          nodeId: 'a',
+          upgradeProgress: { ...base, state: 'WAITING_FOR_RUNS', requestAccepted: false }
+        },
+        {
+          nodeId: 'b',
+          upgradeProgress: {
+            ...base,
+            state: 'UPGRADING',
+            step: 'WAITING_FOR_ONLINE',
+            installed: true,
+            lastReportReceivedAt: now
+          }
+        },
+        { nodeId: 'c', upgradeProgress: { ...base, state: 'UPGRADING', step: 'INSTALLING' } },
+        { nodeId: 'd', upgradeProgress: { ...base, state: 'WAITING_FOR_RUNS' } },
+        {
+          nodeId: 'e',
+          connected: true,
+          metadata: { upgrade: { state: 'WAITING_FOR_RUNS', activeRunCount: 123 } }
+        },
+        {
+          nodeId: 'f',
+          connected: true,
+          upgradeProgress: null,
+          metadata: { upgrade: { state: 'WAITING_FOR_RUNS', activeRunCount: 456 } }
+        }
+      ];
+      const app = createSSRApp({
+        render: () =>
+          h(NodePage, {
+            request: async () => ({}),
+            writable: true,
+            nodeUpgradeProgress: { d: { ...base, state: 'SUCCEEDED', updatedAt: now + 1 }, e: null }
+          })
+      });
+      app.use(i18n).use(ElementPlus);
+      app.provide(ID_INJECTION_KEY, { prefix: 944, current: 0 });
+      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.component(
+        'el-table',
+        defineComponent({
+          setup:
+            (_, { slots }) =>
+            () =>
+              h('div', slots.default?.())
+        })
+      );
+      app.component(
+        'el-table-column',
+        defineComponent({
+          props: ['label'],
+          setup:
+            (props, { slots }) =>
+            () =>
+              h(
+                'section',
+                props.label === messages.upgradeStatus
+                  ? rows.map((row) => h('span', slots.default?.({ row })))
+                  : []
+              )
+        })
+      );
+      const html = await renderToString(app);
+      expect(html).toContain(messages.upgradePendingConfirmation);
+      expect(html).toContain(messages.upgradeInProgressOnline);
+      expect(html).not.toContain(messages.upgradeWaitingLong);
+      expect(html).toContain(messages.upgradeProgressInterrupted);
+      expect(html).toContain(messages.upgradeCompleted);
+      expect(html).toContain('1.2.3');
+      expect(html).not.toContain('123');
+      expect(html).toContain('456');
+    }
+  );
   it('owns resource and hosting flows without enterprise ownership policy', () => {
     const source = readFileSync(
       new URL('../../src/view/settings/ResourceManagementPanel.vue', import.meta.url),

@@ -36,6 +36,7 @@ import { createMobileMenuHistoryService } from './mobile-menu-history-service.js
 import { captureMobileLayerRoute } from './mobile-layer-history-service.js';
 import { createWorkbenchEntityService } from './workbench-entity-service.js';
 import { createWorkbenchEventProjectionService } from './workbench-event-projection-service.js';
+import { parseNodeUpgradeProgress, type NodeUpgradeProgress } from '../model/node-upgrade.js';
 import { createWorkbenchPerformanceService } from './workbench-performance-service.js';
 import { createWorkspaceUploadService } from './workspace-upload-service.js';
 import { createWorkbenchLiveService } from './workbench-live-service.js';
@@ -1348,6 +1349,7 @@ export function createWorkbenchPageController<
     }
   }
 
+  const nodeUpgradeProgress = ref<Readonly<Record<string, NodeUpgradeProgress | null>>>({});
   const workbenchLiveConnection = createWorkbenchLiveService({
     diagnostics: webPerformanceDiagnostics,
     canConnect: () => admin.value.authenticated && !admin.value.mustChangePassword,
@@ -1363,6 +1365,14 @@ export function createWorkbenchPageController<
       updateNodeConnection(nodeId, connected);
       if (!connected) directTransport.nodeInvalidated(nodeId);
       else void refreshNodes().then(() => directTransport.refresh(nodeId, true));
+    },
+    onNodeUpgrade: (nodeId, snapshot) => {
+      const progress = snapshot === null ? null : parseNodeUpgradeProgress(snapshot);
+      if (progress === undefined) return;
+      nodeUpgradeProgress.value = { ...nodeUpgradeProgress.value, [nodeId]: progress };
+      nodes.value = nodes.value.map((node) =>
+        node.id === nodeId ? { ...node, upgradeProgress: progress } : node
+      );
     },
     onNodeReplaced: (nodeId) => {
       directTransport.nodeInvalidated(nodeId);
@@ -1386,6 +1396,7 @@ export function createWorkbenchPageController<
       if (selectedSessionId.value !== undefined) refreshSelectedSessionSnapshot(0, true);
     },
     onConnectionRestored: () => {
+      nodeUpgradeProgress.value = {};
       void refreshNodes();
       void workbenchNotificationService.recover().catch(() => undefined);
     },
@@ -1911,6 +1922,7 @@ export function createWorkbenchPageController<
     directTransport.reset();
     closeWorkbenchLive();
     nodes.value = [];
+    nodeUpgradeProgress.value = {};
     serverVersion.value = '';
     workbenchWorkspaceSelectionService.clear();
     retainNodeManifests(new Set());
@@ -3584,6 +3596,7 @@ export function createWorkbenchPageController<
     nodeManifestLoading,
     nodeReady,
     nodes,
+    nodeUpgradeProgress,
     notice,
     onComposerAttachmentDragEnter,
     onComposerAttachmentDragLeave,

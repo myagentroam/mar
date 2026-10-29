@@ -8,7 +8,7 @@ import {
 } from '@myagentroam/protocol';
 import { safePublicError } from './http-errors.js';
 import type { UserNodeAuthorization } from './node-access-contracts.js';
-import { NodeRequestError } from './node-request-error.js';
+import { NodeRequestAdmissionError, NodeRequestError } from './node-request-error.js';
 
 type RequestObserver = (
   phase: 'requested' | 'completed' | 'failed',
@@ -48,7 +48,7 @@ export class NodeRequestChannel {
     timeoutMs = 15_000,
     observe?: RequestObserver
   ): Promise<unknown> {
-    if (this.closed) return Promise.reject(new Error('NODE_CONTROL_CLOSED'));
+    if (this.closed) return Promise.reject(new NodeRequestAdmissionError('NODE_CONTROL_CLOSED'));
     const modelResourceCapability =
       operation === 'model.resource.read' &&
       user.userId === 0 &&
@@ -57,10 +57,10 @@ export class NodeRequestChannel {
       !modelResourceCapability &&
       (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
     )
-      return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));
+      return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
     const socket = this.socketFor(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN)
-      return Promise.reject(new Error('NODE_OFFLINE'));
+      return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
     const id = randomUUID();
     const issuedAt = Date.now();
     const startedAt = performance.now();

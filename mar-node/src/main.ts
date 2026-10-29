@@ -7,6 +7,7 @@ import { loadNodeConfig, nodeConfigPath, nodeDatabasePath, nodeDataDirectory } f
 import { getNodeHealth } from './health.js';
 import { browserCachePath, removeServiceDefinition, writeServiceDefinition } from './service.js';
 import { superviseNode } from './supervisor.js';
+import { SupervisorUpgradeHandoff } from './service/supervisor-upgrade-handoff.js';
 import { configureNodeLog } from './rotating-log.js';
 import { nodeLog } from './operational.js';
 import {
@@ -35,7 +36,7 @@ if (command === 'run') {
   }
   const { NodeConnector } = await import('./connector.js');
   configureNodeLog(nodeDataDirectory(nodeConfig, config));
-  const connector = new NodeConnector({ configPath: config, config: nodeConfig });
+  let connector: InstanceType<typeof NodeConnector>;
   let shuttingDown = false;
   const shutdown = (handoff = true, exitCode = 0) => {
     if (shuttingDown) return;
@@ -57,6 +58,15 @@ if (command === 'run') {
       }
     );
   };
+  const supervisorHandoff = new SupervisorUpgradeHandoff();
+  const supportsProgress = await supervisorHandoff.handshake();
+  if (!supportsProgress) supervisorHandoff.close();
+  connector = new NodeConnector({
+    configPath: config,
+    config: nodeConfig,
+    upgradeReady: () => shutdown(false, 75),
+    ...(supportsProgress ? { supervisorUpgradeHandoff: supervisorHandoff } : {})
+  });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => shutdown());
   }

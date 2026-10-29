@@ -491,8 +491,8 @@ test('Admin creates a one-use token and Node registers, sends heartbeats, and ca
 
 test('Node management sends the latest npm stable version not exceeding Server to Supervisor-capable Nodes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-upgrade-e2e-'));
-  const nodeUpgrades = new NodeUpgradeService('0.1.8', async (specifier) =>
-    specifier === '@myagentroam/node' ? ['0.1.9', '0.1.7', '0.1.6'] : undefined
+  const nodeUpgrades = new NodeUpgradeService('0.11.40', async (specifier) =>
+    specifier === '@myagentroam/node' ? ['0.11.41', '0.11.39', '0.11.38'] : undefined
   );
   const app = createServerApp({
     databasePath: join(directory, 'server.sqlite'),
@@ -523,6 +523,8 @@ test('Node management sends the latest npm stable version not exceeding Server t
       url: '/api/node-registration-tokens',
       headers: { cookie, 'x-csrf-token': csrf }
     });
+    expect(registration.statusCode).toBe(200);
+    expect(registration.json<{ token?: unknown }>().token).toEqual(expect.any(String));
     const configPath = join(directory, 'node.json');
     await writeFile(
       configPath,
@@ -539,7 +541,7 @@ test('Node management sends the latest npm stable version not exceeding Server t
       const connector = new NodeConnector({
         configPath,
         capabilities: {
-          platform: 'linux', architecture: 'x64', nodeAppVersion: '0.1.6',
+          platform: 'linux', architecture: 'x64', nodeAppVersion: '0.11.38',
           nodeVersion: process.version, codex: { available: false },
           claudeCode: { available: false }, openCode: { available: false }
         },
@@ -575,17 +577,17 @@ test('Node management sends the latest npm stable version not exceeding Server t
       nodes: { id: string; upgradeAvailability: { state: string; targetVersion: string } }[];
     }>().nodes[0]!;
     const nodeId = node.id;
-    expect(node.upgradeAvailability).toEqual({ state: 'AVAILABLE', targetVersion: '0.1.7' });
+    expect(node.upgradeAvailability).toEqual({ state: 'AVAILABLE', targetVersion: '0.11.39' });
     const response = await app.inject({
       method: 'POST',
       url: `/api/nodes/${nodeId}/upgrade`,
       headers: { cookie, 'x-csrf-token': csrf }
     });
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toMatchObject({ status: 'ACCEPTED', targetVersion: '0.1.7' });
+    expect(response.json()).toMatchObject({ status: 'ACCEPTED', targetVersion: '0.11.39' });
     await expect
       .poll(() => readFile(join(directory, 'upgrade-request.json'), 'utf8').catch(() => ''))
-      .toContain('"targetVersion":"0.1.7"');
+      .toContain('"targetVersion":"0.11.39"');
   } finally {
     if (nodeProcess?.exitCode === null) nodeProcess.kill('SIGTERM');
     await app.shutdown();

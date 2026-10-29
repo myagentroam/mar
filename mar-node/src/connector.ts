@@ -97,6 +97,7 @@ import { ScheduledSessionCoordinator } from './service/scheduled-session-coordin
 import { ScheduledSessionStore } from './service/scheduled-session-store.js';
 import { RunAuthorizationControl } from './service/run-authorization-control.js';
 import { PlannedRestartHandoff } from './service/planned-restart-handoff.js';
+import { NodeUpgradeCredentialControl } from './service/node-upgrade-credential-control.js';
 import { RestartSessionRestorer } from './service/restart-session-restorer.js';
 import { ScheduleMcpBridge } from './service/schedule-mcp-bridge.js';
 import { MailNotificationControl } from './service/mail-notification-control.js';
@@ -129,6 +130,7 @@ import { ManagedRunnerSessionService } from './service/managed-runner-session-se
 import { NodeConnectionLifecycleService } from './service/node-connection-lifecycle-service.js';
 import {
   NodeUpgradeCoordinator,
+  upgradeMetadata,
   nodeUpgradeRequestPath
 } from './service/node-upgrade-coordinator.js';
 import {
@@ -196,18 +198,6 @@ export function nextReconnectDelay(attempt: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.min(Math.max(attempt, 0), 16));
 }
 
-function upgradeMetadata(
-  metadata: NodeCapabilities['metadata'],
-  status: ReturnType<NodeUpgradeCoordinator['snapshot']>
-): NonNullable<NodeCapabilities['metadata']> {
-  const next = { ...(metadata ?? {}) };
-  if (process.env['MAR_NODE_SUPERVISED'] === '1') next.supervisedUpgrade = true;
-  else delete next.supervisedUpgrade;
-  if (status.state === 'IDLE') delete next.upgrade;
-  else next.upgrade = status;
-  return next;
-}
-
 export class NodeConnector {
   private usageOutbox: ModelUsageOutbox | undefined;
   private readonly modelUsage = new NodeModelUsageService(
@@ -225,6 +215,9 @@ export class NodeConnector {
   private readonly executionLifecycle: ExecutionLifecycle;
   private readonly pendingSessionGroups = new Map<string, SessionGroupChanged>();
   private readonly mailNotificationControl = new MailNotificationControl((envelope) =>
+    this.sendEnvelope(envelope)
+  );
+  private readonly upgradeCredentials = new NodeUpgradeCredentialControl((envelope) =>
     this.sendEnvelope(envelope)
   );
   private readonly scheduledSessions: ScheduledSessionCoordinator;
@@ -568,18 +561,37 @@ export class NodeConnector {
       (status) => {
         this.capabilities = {
           ...this.capabilities,
-          metadata: upgradeMetadata(this.capabilities.metadata, status)
+          metadata: upgradeMetadata(
+            this.capabilities.metadata,
+            status,
+            options.supervisorUpgradeHandoff !== undefined
+          )
         };
         this.controlChannel?.send('capabilities', this.capabilities);
       },
       options.upgradeReady ??
         (() => {
-          void this.stop().finally(() => process.exit(75));
-        })
+          throw new Error('NODE_UPGRADE_HANDOFF_UNAVAILABLE');
+        }),
+      Date.now,
+      options.supervisorUpgradeHandoff === undefined
+        ? undefined
+        : async (attemptId, targetVersion) => {
+            const credential = await this.upgradeCredentials.request(attemptId);
+            await options.supervisorUpgradeHandoff!.handoff({
+              attemptId,
+              targetVersion,
+              credential
+            });
+          }
     );
     this.capabilities = {
       ...this.capabilities,
-      metadata: upgradeMetadata(this.capabilities.metadata, this.upgradeCoordinator.snapshot())
+      metadata: upgradeMetadata(
+        this.capabilities.metadata,
+        this.upgradeCoordinator.snapshot(),
+        options.supervisorUpgradeHandoff !== undefined
+      )
     };
     const detect = options.capabilityDetector ?? detectCapabilitiesAsync;
     this.capabilityDetector = async () => {
@@ -587,7 +599,11 @@ export class NodeConnector {
       return this.projectComputerUseCapability(
         await this.conversationHosting.project({
           ...capabilities,
-          metadata: upgradeMetadata(capabilities.metadata, this.upgradeCoordinator.snapshot())
+          metadata: upgradeMetadata(
+            capabilities.metadata,
+            this.upgradeCoordinator.snapshot(),
+            options.supervisorUpgradeHandoff !== undefined
+          )
         })
       );
     };
@@ -1387,6 +1403,7 @@ export class NodeConnector {
         this.scheduledRunAuthorization.disconnected();
         this.restartAuthorization.disconnected();
         this.mailNotificationControl.disconnected();
+        this.upgradeCredentials.disconnect();
         this.notificationMcpBridge.revokeAll();
         this.terminalChannel.disconnect();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
@@ -1404,6 +1421,7 @@ export class NodeConnector {
       register: async (nodeId, credential, payload) => {
         await this.configMutations.run(() => this.connectionLifecycle.register(nodeId, credential));
         this.mailNotificationControl.setFeatures(payload);
+        this.upgradeCredentials.setFeatures(payload);
         this.usageOutbox?.connected(payload);
         for (const change of this.pendingSessionGroups.values())
           this.send('session.group.changed', change);
@@ -1436,6 +1454,7 @@ export class NodeConnector {
         for (const change of this.pendingSessionGroups.values())
           this.send('session.group.changed', change);
         this.mailNotificationControl.setFeatures(payload);
+        this.upgradeCredentials.setFeatures(payload);
       },
       close: (code, reason) => this.controlChannel.close(code, reason),
       inspectWorkspace: (envelope) => this.workspaceCoordinator.inspect(envelope),
@@ -1445,6 +1464,7 @@ export class NodeConnector {
         this.scheduledRunAuthorization.handle(envelope) ||
         this.restartAuthorization.handle(envelope),
       handleMailNotificationResponse: (envelope) => this.mailNotificationControl.handle(envelope),
+      handleUpgradeCredentialResponse: (envelope) => this.upgradeCredentials.handle(envelope),
       handleDirectTransfer: (envelope) => this.handleDirectTransfer(envelope),
       handleTerminalDirect: (envelope) => this.handleTerminalDirect(envelope),
       runners: this.runners,
@@ -1511,7 +1531,11 @@ export class NodeConnector {
       setCapabilities: (capabilities) =>
         (this.capabilities = {
           ...capabilities,
-          metadata: upgradeMetadata(capabilities.metadata, this.upgradeCoordinator.snapshot())
+          metadata: upgradeMetadata(
+            capabilities.metadata,
+            this.upgradeCoordinator.snapshot(),
+            options.supervisorUpgradeHandoff !== undefined
+          )
         }),
       control: this.controlChannel,
       terminal: this.terminalChannel,
@@ -1957,6 +1981,7 @@ export class NodeConnector {
     this.scheduledRunAuthorization.close();
     this.restartAuthorization.close();
     this.mailNotificationControl.close();
+    this.upgradeCredentials.disconnect();
     const notificationMcpDrain = this.notificationMcpBridge.close();
     const webToolDrain = this.webToolService.close();
     this.directTransferService?.dispose();

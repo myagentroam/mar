@@ -119,6 +119,25 @@ describe('Controlled Node upgrade version detection', () => {
 });
 
 describe('Node upgrade drain coordinator', () => {
+  it('clears the intent and releases admission when the host cannot hand off', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-node-upgrade-'));
+    temporaryDirectories.push(directory);
+    const requestPath = join(directory, 'upgrade-request.json');
+    const coordinator = new NodeUpgradeCoordinator(
+      () => requestPath,
+      () => 0,
+      () => undefined,
+      () => {
+        throw new Error('NODE_UPGRADE_HANDOFF_UNAVAILABLE');
+      }
+    );
+    coordinator.request({ targetVersion: '0.1.7' });
+    await vi.waitFor(() => expect(coordinator.snapshot().state).toBe('FAILED'));
+    expect(coordinator.snapshot().errorCode).toBe('NODE_UPGRADE_HANDOFF_UNAVAILABLE');
+    expect(coordinator.blocks('terminal.open')).toBe(false);
+    await expect(readFile(requestPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('After active Runs drain, writes upgrade intent atomically and notifies Supervisor', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-node-upgrade-'));
     temporaryDirectories.push(directory);
@@ -156,6 +175,36 @@ describe('Node upgrade drain coordinator', () => {
     expect(ready).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['NODE_UPGRADE_HANDOFF_REJECTED', 'FAILED', false],
+    ['NODE_UPGRADE_HANDOFF_UNCERTAIN', 'READY_TO_RESTART', true]
+  ] as const)('handles %s without unsafe exit or retry', async (code, state, retained) => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-upgrade-handoff-'));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'upgrade-request.json');
+    const ready = vi.fn();
+    const attemptId = '8e601182-89f2-48e2-a885-3327df58c22f';
+    const prepare = vi.fn(async () => {
+      throw new Error(code);
+    });
+    const coordinator = new NodeUpgradeCoordinator(
+      () => path,
+      () => 0,
+      () => undefined,
+      ready,
+      Date.now,
+      prepare
+    );
+    coordinator.request({ targetVersion: '0.1.7', attemptId });
+    await vi.waitFor(() => expect(coordinator.snapshot().errorCode).toBe(code));
+    expect(coordinator.snapshot().state).toBe(state);
+    expect(coordinator.blocks('terminal.open')).toBe(retained);
+    expect(ready).not.toHaveBeenCalled();
+    expect(prepare).toHaveBeenCalledOnce();
+    if (retained) expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ attemptId });
+    else await expect(readFile(path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('Only the waiting phase permits cancellation and same-target requests remain idempotent', () => {
     const coordinator = new NodeUpgradeCoordinator(
       () => '/unused',
@@ -170,6 +219,26 @@ describe('Node upgrade drain coordinator', () => {
     );
     expect(coordinator.cancel()).toEqual({ cancelled: true });
     expect(coordinator.snapshot().state).toBe('IDLE');
+  });
+
+  it('retains the cancelled attempt in IDLE capability until another request', () => {
+    const statuses: unknown[] = [];
+    const coordinator = new NodeUpgradeCoordinator(
+      () => '/unused',
+      () => 1,
+      (status) => statuses.push(status),
+      () => undefined,
+      Date.now,
+      async () => undefined
+    );
+    const attemptId = '8e601182-89f2-48e2-a885-3327df58c22f';
+    coordinator.request({ targetVersion: '0.1.7', attemptId });
+    coordinator.cancel();
+    expect(statuses.at(-1)).toMatchObject({ state: 'IDLE', attemptId });
+    expect(coordinator.snapshot()).toMatchObject({ state: 'IDLE', attemptId });
+    coordinator.request({ targetVersion: '0.1.8' });
+    expect(coordinator.snapshot()).not.toHaveProperty('attemptId');
+    coordinator.cancel();
   });
 
   it('Failed upgrade-intent writes keep the process online and report failure', async () => {

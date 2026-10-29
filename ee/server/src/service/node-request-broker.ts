@@ -2,6 +2,7 @@ import type { ModelUsageGrants } from '@myagentroam/server-core/model-usage-gran
 import { emitAudit, safeAuditMetadata, type AuditObserver } from '@myagentroam/server-core/audit';
 import { randomUUID } from 'node:crypto';
 import { NodeRequestChannel } from '@myagentroam/server-core/node-request-channel';
+import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
 import type { GitExecutionForwarding } from '@myagentroam/server-core/git-execution-forwarding';
 import type { WebSocket } from 'ws';
 import { workbenchNodeOperationSchema, type NodeEnvelope } from '@myagentroam/protocol';
@@ -150,12 +151,12 @@ export class NodeRequestBroker {
   ): Promise<unknown> {
     const socket = this.socketFor(nodeId);
     if (socket !== undefined && !this.connectionPolicy.allows(socket, operation))
-      return Promise.reject(new Error('NODE_UPGRADE_REQUIRED'));
+      return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
     if (
       !FIXED_ADMIN_NODE_OPERATIONS.has(operation) &&
       !workbenchNodeOperationSchema.safeParse(operation).success
     )
-      return Promise.reject(new Error('OPERATION_UNSUPPORTED'));
+      return Promise.reject(new NodeRequestAdmissionError('OPERATION_UNSUPPORTED'));
     if (
       operation === 'model.resource.read' &&
       user.userId === 0 &&
@@ -171,7 +172,7 @@ export class NodeRequestBroker {
         this.socketFor(nodeId)
       );
     if (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
-      return Promise.reject(new Error('USER_AUTHORIZATION_REQUIRED'));
+      return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
     const connection = this.socketFor(nodeId);
     // Cancellation can only address the authenticated caller's page intent on the Node.
     // It reads no resource and must remain possible after Workspace access is revoked.
@@ -211,7 +212,7 @@ export class NodeRequestBroker {
       'NODE_ACCESS_DENIED',
       JSON.stringify({ action: operation })
     );
-    return Promise.reject(new Error('NODE_ACCESS_DENIED'));
+    return Promise.reject(new NodeRequestAdmissionError('NODE_ACCESS_DENIED'));
   }
 
   requestHostedConversation(
@@ -249,7 +250,7 @@ export class NodeRequestBroker {
     connection: WebSocket | undefined
   ): Promise<unknown> {
     if (connection !== undefined && !this.connectionPolicy.allows(connection, operation))
-      throw new Error('NODE_UPGRADE_REQUIRED');
+      throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
     const prepared = await this.services.gitForwarding.prepare(
       nodeId,
       operation,
@@ -284,10 +285,10 @@ export class NodeRequestBroker {
     ) {
       const code = this.closed ? 'NODE_CONTROL_CLOSED' : 'NODE_OFFLINE';
       this.auditRelay(operation, 'failed', randomUUID(), user.userId, context, code, metadata);
-      throw new Error(code);
+      throw new NodeRequestAdmissionError(code);
     }
     if (!this.connectionPolicy.allows(connection, operation))
-      throw new Error('NODE_UPGRADE_REQUIRED');
+      throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
     const observation = observesRelayResources(operation) ? this.scopes.begin(nodeId) : undefined;
     try {
       const result = await this.channel.request(

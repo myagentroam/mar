@@ -22,3 +22,17 @@ export class NodeRequestError extends Error {
     this.upstreamRequestId = upstreamRequestId;
   }
 }
+
+/** A request rejected before it was dispatched to the Node. */
+export class NodeRequestAdmissionError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'NodeRequestAdmissionError';
+  }
+}
+
+export function definiteNodeRejection(error: unknown): string | undefined {
+  if (error instanceof NodeRequestAdmissionError) return error.code;
+  if (error instanceof NodeRequestError && error.source === 'node') return error.code;
+  return undefined;
+}

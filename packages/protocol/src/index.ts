@@ -339,6 +339,7 @@ export const nodeUpgradeStatusSchema = z.object({
     .regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
     .optional(),
   activeRunCount: z.number().int().nonnegative().optional(),
+  attemptId: z.string().uuid().optional(),
   errorCode: z.string().trim().min(1).max(80).optional(),
   updatedAt: z.number().int().nonnegative()
 });
@@ -364,6 +365,11 @@ export const nodeMetadataSchema = z
     marAgent: runnerAvailabilitySchema.optional(),
     runtimeCommands: z.array(runtimeCommandSchema).max(16).optional(),
     supervisedUpgrade: z.boolean().optional(),
+    upgradeProgress: z
+      .object({ apiVersion: z.literal(1) })
+      .strict()
+      .optional(),
+    upgradeAttemptId: z.string().uuid().optional(),
     upgrade: nodeUpgradeStatusSchema.optional()
   })
   .partial()

@@ -24,6 +24,7 @@ interface WorkbenchLiveConnectionOptions {
   readonly onNotificationMessage?: (message: unknown) => boolean;
   readonly onResyncRequired: (nodeId: string) => void;
   readonly onNodeConnection: (nodeId: string, connected: boolean) => void;
+  readonly onNodeUpgrade?: (nodeId: string, snapshot: unknown) => void;
   readonly onNodeReplaced: (nodeId: string) => void;
   readonly onReconnect: () => void;
   readonly onConnectionRestored?: (resumed: boolean) => void;
@@ -172,6 +173,10 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       options.diagnostics?.resetActiveRuns();
       sequences.delete(message.nodeId);
       options.onResyncRequired(message.nodeId);
+      return;
+    }
+    if (message.type === 'node.upgrade' && typeof message.nodeId === 'string') {
+      options.onNodeUpgrade?.(message.nodeId, message.snapshot);
       return;
     }
     if (

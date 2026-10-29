@@ -234,6 +234,11 @@ export class ResourceAccessService {
         (await this.canUseWorkspace(actorUserId, nodeId, workspaceId)) ||
         this.canManageWorkspace(actorUserId, nodeId, workspaceId)
       );
+    if (operation === 'workbench.node.upgrade.receive')
+      return (
+        (await this.canAccessNodeContainer(actorUserId, nodeId)) ||
+        this.canManageNode(actorUserId, nodeId)
+      );
     if (NODE_MANAGEMENT_OPERATIONS.has(operation)) return this.canManageNode(actorUserId, nodeId);
     if (WORKSPACE_REMOVAL_OPERATIONS.has(operation) && workspaceId !== undefined) {
       try {

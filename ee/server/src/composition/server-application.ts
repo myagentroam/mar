@@ -80,6 +80,7 @@ import { ConversationTemplateService } from '../service/conversation-template-se
 import { registerConversationTemplateRoutes } from '../route/conversation-template-routes.js';
 import { registerHostedConversationRoutes } from '../route/hosted-conversation-routes.js';
 import { HostedConversationActivityService } from '../service/hosted-conversation-activity-service.js';
+import { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 const serverVersion = typeof serverPackage.version === 'string' ? serverPackage.version : 'unknown';
 const SERVER_WORKBENCH_CAPABILITIES = serverWorkbenchCapabilities(serverVersion);
 // HTTP paths are request diagnostics, never business audit actions.
@@ -161,6 +162,21 @@ export async function composeServerApplication(
         : { publicKey: process.env['MAR_LICENSE_PUBLIC_KEY'] }),
       ...(options.productUuid === undefined ? {} : { productUuid: options.productUuid })
     });
+    let nodeControl!: ReturnType<typeof createNodeControl>;
+    const nodeUpgradeProgress = new NodeUpgradeProgress(
+      database,
+      now,
+      async (nodeId, userId, sessionHash) => {
+        if (!database.isSessionHashActive(userId, sessionHash)) return false;
+        try {
+          await resources.assertCanManageNode(userId, nodeId);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      (nodeId, snapshot) => nodeControl.broadcastUpgrade(nodeId, snapshot)
+    );
     const authorizeNodeRequest: NodeRequestAuthorization = resources.canRelay.bind(resources);
     const personalGit = new PersonalGitService(database);
     const modelUsage = new ModelUsageStore(
@@ -170,10 +186,11 @@ export async function composeServerApplication(
     );
     let mailNotifications: MailNotificationService;
     let notificationChannels: NotificationChannelService;
-    const nodeControl = createNodeControl(
+    nodeControl = createNodeControl(
       database,
       authorizeNodeRequest,
       {
+        nodeUpgradeProgress,
         authorizeHostedConversation: (userId, nodeId, templateId) =>
           authorizeHostedConversation(userId, nodeId, templateId),
         modelUsage,
@@ -385,6 +402,7 @@ export async function composeServerApplication(
       database,
       nodeControl,
       nodeUpgrades,
+      nodeUpgradeProgress,
       resources,
       directory,
       users: {
@@ -442,6 +460,7 @@ export async function composeServerApplication(
       database,
       nodeControl,
       nodeUpgrades,
+      nodeUpgradeProgress,
       publicOrigin,
       capabilities: SERVER_WORKBENCH_CAPABILITIES,
       secrets: environmentSecrets,
@@ -581,6 +600,7 @@ export async function composeServerApplication(
         grants: new ResourceGrantService(database, authorization, codexCredentials, now),
         nodeControl,
         nodeUpgrades,
+        nodeUpgradeProgress,
         publicOrigin
       });
     }

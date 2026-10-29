@@ -32,7 +32,12 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
         delay: 0
       }),
       visible: () => true,
-      props: ({ request, admin }) => ({ request, writable: admin.managementWritable === true })
+      props: ({ request, admin, nodes, nodeUpgradeProgress }) => ({
+        request,
+        nodes,
+        ...(nodeUpgradeProgress === undefined ? {} : { nodeUpgradeProgress }),
+        writable: admin.managementWritable === true
+      })
     },
     {
       id: 'resource-workspaces',

@@ -9,6 +9,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import type { ResourceOwnership } from '@myagentroam/protocol';
 import type { StoredNode } from './node-identity.js';
+import type { StoredNodeUpgrade } from './node-upgrade-progress.js';
 import { lockMysqlUsers } from './mysql-reference-store.js';
 export interface NodeIdentityAuditEvent extends AuditEvent {
   readonly eventType:
@@ -199,6 +200,46 @@ export class MysqlNodeIdentityStorage {
     )
       return undefined;
     return mysqlStoredNode(row);
+  }
+
+  async updateNodeUpgrade<T>(
+    nodeId: string,
+    update: (current: StoredNodeUpgrade | null) => {
+      readonly next: StoredNodeUpgrade | null;
+      readonly result: T;
+    }
+  ): Promise<T> {
+    const connection = await this.raw.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        'SELECT disabled,upgrade_snapshot FROM nodes WHERE id=? FOR UPDATE',
+        [nodeId]
+      );
+      const row = rows[0];
+      if (!row || Boolean(row['disabled'])) throw new Error('NODE_NOT_FOUND');
+      const rawSnapshot: unknown = row['upgrade_snapshot'];
+      const current =
+        rawSnapshot === null
+          ? null
+          : ((typeof rawSnapshot === 'string'
+              ? JSON.parse(rawSnapshot)
+              : rawSnapshot) as StoredNodeUpgrade);
+      const { next, result } = update(current);
+      if (next !== current) {
+        await connection.execute('UPDATE nodes SET upgrade_snapshot=? WHERE id=?', [
+          next === null ? null : JSON.stringify(next),
+          nodeId
+        ]);
+      }
+      await connection.commit();
+      return result;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async updateNodeHeartbeat(
