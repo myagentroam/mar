@@ -8,7 +8,8 @@ function shutdown(dispose: () => Promise<void> = async () => {}) {
     closeResume: async () => {},
     capture: () => 'snapshot',
     dispose,
-    publish: async (_snapshot: string) => {}
+    publish: async (_snapshot: string) => {},
+    diagnose: vi.fn()
   };
 }
 
@@ -111,5 +112,94 @@ describe('NodeLifecycle', () => {
     await Promise.all([firstStop, secondStop]);
     await expect(restarting).rejects.toThrow('NODE_STOPPED');
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'waitForRecovery',
+    'drainInput',
+    'closeResume',
+    'capture',
+    'dispose',
+    'publish'
+  ] as const)(
+    'reports the failing %s stage without replacing the original error',
+    async (stage) => {
+      const failure = new Error('SHUTDOWN_FIXTURE_FAILED');
+      const hooks = shutdown();
+      const publish = vi.fn(hooks.publish);
+      const dispose = vi.fn(hooks.dispose);
+      const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+        ...hooks,
+        publish,
+        dispose,
+        [stage]: () => {
+          throw failure;
+        }
+      });
+      await expect(lifecycle.stop(true)).rejects.toBe(failure);
+      expect(hooks.diagnose).toHaveBeenCalledExactlyOnceWith(stage, failure);
+      if (stage !== 'dispose') expect(dispose).toHaveBeenCalledOnce();
+      if (stage !== 'publish') expect(publish).not.toHaveBeenCalled();
+    }
+  );
+
+  it('reports secondary cleanup failures while preserving the first failure', async () => {
+    const first = new Error('INPUT_DRAIN_FAILED');
+    const second = new Error('DISPOSE_FAILED');
+    const hooks = shutdown();
+    const publish = vi.fn(hooks.publish);
+    const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+      ...hooks,
+      drainInput: async () => {
+        throw first;
+      },
+      dispose: async () => {
+        throw second;
+      },
+      publish
+    });
+    await expect(lifecycle.stop(true)).rejects.toBe(first);
+    expect(hooks.diagnose.mock.calls).toEqual([
+      ['drainInput', first],
+      ['dispose', second]
+    ]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('never publishes a handoff when a shutdown hook rejects without an error value', async () => {
+    const hooks = shutdown();
+    const publish = vi.fn(hooks.publish);
+    const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+      ...hooks,
+      dispose: async () => Promise.reject(),
+      publish
+    });
+    await expect(lifecycle.stop(true)).rejects.toBeUndefined();
+    expect(hooks.diagnose).toHaveBeenCalledExactlyOnceWith('dispose', undefined);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('still closes and disposes when failure diagnostics throw', async () => {
+    const hooks = shutdown();
+    const closeResume = vi.fn(hooks.closeResume);
+    const dispose = vi.fn(hooks.dispose);
+    const publish = vi.fn(hooks.publish);
+    const failure = new Error('INPUT_DRAIN_FAILED');
+    hooks.diagnose.mockImplementation(() => {
+      throw new Error('LOG_STORAGE_FAILED');
+    });
+    const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+      ...hooks,
+      closeResume,
+      dispose,
+      publish,
+      drainInput: async () => {
+        throw failure;
+      }
+    });
+    await expect(lifecycle.stop(true)).rejects.toBe(failure);
+    expect(closeResume).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(publish).not.toHaveBeenCalled();
   });
 });

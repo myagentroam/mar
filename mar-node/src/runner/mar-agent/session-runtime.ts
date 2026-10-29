@@ -327,24 +327,28 @@ export async function reconfigureSessionRuntime(
 
 export async function releaseSessionRuntime(runtime: MarAgentSessionRuntime): Promise<void> {
   const failures: unknown[] = [];
-  for (const cleanup of [
-    () => runtime.agent.dispose(),
-    () => runtime.releaseNetworkContext?.(),
-    () => runtime.mcpLease.release(),
-    () => runtime.releaseEnvironment?.()
-  ]) {
+  for (const [resource, cleanup] of [
+    ['agent', () => runtime.agent.dispose()],
+    ['network', () => runtime.releaseNetworkContext?.()],
+    ['mcp', () => runtime.mcpLease.release()],
+    ['environment', () => runtime.releaseEnvironment?.()]
+  ] as const) {
     try {
       await cleanup();
     } catch (error) {
       failures.push(error);
+      try {
+        nodeLog('runner.mar-agent.runtime.cleanup_failed', {
+          sessionId: runtime.session.id,
+          code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED',
+          stage: 'resource_release',
+          resource
+        });
+      } catch {
+        // Keep releasing resources even when the diagnostic sink is unavailable.
+      }
     }
   }
-  if (failures.length > 1)
-    nodeLog('runner.mar-agent.runtime.cleanup_failed', {
-      sessionId: runtime.session.id,
-      code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED',
-      stage: 'resource_release'
-    });
   if (failures.length > 0) throw failures[0];
 }
 

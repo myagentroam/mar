@@ -51,10 +51,16 @@ if (command === 'run') {
         releaseOwner();
         process.exit(exitCode);
       },
-      () => {
+      (error: unknown) => {
         clearTimeout(deadline);
-        nodeLog('node.restart.diagnostic', { code: 'RESTART_HANDOFF_SHUTDOWN_FAILED' });
-        process.exit(1);
+        try {
+          nodeLog('node.restart.diagnostic', {
+            code: 'RESTART_HANDOFF_SHUTDOWN_FAILED',
+            errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED')
+          });
+        } finally {
+          process.exit(1);
+        }
       }
     );
   };

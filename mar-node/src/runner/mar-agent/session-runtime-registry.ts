@@ -310,19 +310,23 @@ export class MarAgentSessionRuntimeRegistry {
     runId?: string,
     changedCategories: readonly HostConfigurationCategory[] = []
   ): Promise<void> {
-    nodeLog('runner.mar-agent.runtime.releasing', {
-      runtimeId: runtime.runtimeId,
-      sessionId: runtime.session.id,
-      reason,
-      ...(runId === undefined ? {} : { runId }),
-      ...(changedCategories.length === 0 ? {} : { changedCategories })
-    });
+    try {
+      nodeLog('runner.mar-agent.runtime.releasing', {
+        runtimeId: runtime.runtimeId,
+        sessionId: runtime.session.id,
+        reason,
+        ...(runId === undefined ? {} : { runId }),
+        ...(changedCategories.length === 0 ? {} : { changedCategories })
+      });
+    } catch {
+      // Resource release must not depend on a writable diagnostic sink.
+    }
     const results = await Promise.allSettled([
       this.#releaseComputerAliases(new Set([...aliases, runtime.session.id]))
     ]);
     results.push(...(await Promise.allSettled([releaseSessionRuntime(runtime)])));
     const failures = results.filter((result) => result.status === 'rejected');
-    if (failures.length > 1) this.#logCleanupFailure(runtime.session.id);
+    if (failures.length > 0) this.#logCleanupFailure(runtime.session.id);
     if (failures[0]?.status === 'rejected') throw failures[0].reason;
   }
 
@@ -332,9 +336,13 @@ export class MarAgentSessionRuntimeRegistry {
   }
 
   #logCleanupFailure(sessionId: string | undefined): void {
-    nodeLog('runner.mar-agent.runtime.cleanup_failed', {
-      sessionId,
-      code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED'
-    });
+    try {
+      nodeLog('runner.mar-agent.runtime.cleanup_failed', {
+        sessionId,
+        code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED'
+      });
+    } catch {
+      // Keep the original cleanup error when the diagnostic sink is unavailable.
+    }
   }
 }
