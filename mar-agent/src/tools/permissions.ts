@@ -45,10 +45,7 @@ export const permissionSchema = {
   type: 'object',
   properties: {
     action: { type: 'string', enum: ['allow', 'ask', 'deny'] },
-    reason: {
-      type: 'string',
-      description: 'Brief public reason, required for ask/deny; never include secrets.'
-    }
+    reason: { type: 'string' }
   },
   required: ['action'],
   additionalProperties: false
@@ -84,12 +81,6 @@ export function projectPermissionTool(tool: ClientToolDefinition): ClientToolDef
     ...tool,
     inputMode: 'json',
     ...(parameterless ? { parameterless: true } : {}),
-    description:
-      tool.description +
-      '\nAuto mode: use the declared JSON input. Omit permission (or set null) for routine or already authorized work. Use {action:"ask"|"deny",reason:"brief public reason"} only when required. ' +
-      (flat
-        ? 'Permission is metadata, not a business argument.'
-        : 'Place the unchanged business arguments in input; permission is separate metadata.'),
     inputSchema: flat
       ? {
           ...tool.inputSchema,

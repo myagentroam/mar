@@ -370,6 +370,18 @@ describe('Auto execution and ordinary-message continuation', () => {
     expect(JSON.stringify(f.requests[0]!.messages)).toContain(
       'prefer ask or deny on the OUTER code_exec'
     );
+    const permissionBlocks = f.requests[0]!.messages.filter(
+      (message) => message.contextualBlock?.id === 'core:auto-permission'
+    );
+    expect(permissionBlocks).toHaveLength(1);
+    expect(permissionBlocks[0]!.content).toContain('Permission is separate metadata');
+    expect(permissionBlocks[0]!.content).toContain(
+      'when the schema wraps business arguments in input'
+    );
+    expect(permissionBlocks[0]!.content).toContain('without secrets or hidden reasoning');
+    expect(f.requests[0]!.tools.every((tool) => !tool.description.includes('Auto mode:'))).toBe(
+      true
+    );
   });
 
   it('waits for host approval without effects or extra model requests, then runs the original call once', async () => {

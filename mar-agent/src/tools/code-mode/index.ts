@@ -140,7 +140,7 @@ function projectProgrammaticTool(
 ): Pick<ClientToolDefinition, 'name' | 'description' | 'inputSchema'> {
   return {
     name: tool.name,
-    description: `${allowsDirectTool(tool, true) ? `Call directly or as tools.${tool.name} inside code_exec.` : `Call only as tools.${tool.name} inside code_exec, never as a direct model tool.`}\nInside code_exec, pass a JavaScript value matching inputSchema.\n${tool.description}`,
+    description: `${allowsDirectTool(tool, true) ? `Call directly or as tools.${tool.name} inside code_exec.` : `Call only as tools.${tool.name} inside code_exec, never as a direct model tool.`}\n${tool.description}`,
     inputSchema: stableToolSchema(tool.inputSchema)
   };
 }
@@ -164,7 +164,7 @@ export function projectCodeModeTools(
     callableNames: programmatic.map((tool) => tool.name),
     tools: programmatic.map(projectProgrammaticTool)
   });
-  if (Buffer.byteLength(directory) > 32 * 1024)
+  if (Buffer.byteLength(directory) > 48 * 1024)
     throw new AgentError(
       'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
       'Programmatic tool directory is too large.'

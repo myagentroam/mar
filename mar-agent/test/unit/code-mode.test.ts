@@ -21,6 +21,7 @@ import { allowsToolCaller, toolCallers } from '../../src/tools/callers.js';
 import { BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
 import { execToolDefinition } from '../../src/tools/local/exec.js';
 import { readToolDefinition } from '../../src/tools/local/read.js';
+import { projectPermissionTool } from '../../src/tools/permissions.js';
 import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 import {
   directLocalProcessExecutor,
@@ -769,20 +770,66 @@ describe('QuickJS Code Mode', () => {
     }
   });
 
-  it('rejects a programmatic input directory beyond its byte budget', () => {
-    const oversized = {
-      name: 'oversized_programmatic_tool',
-      description: 'x'.repeat(33 * 1024),
-      inputSchema: { type: 'object' },
-      allowedCallers: ['programmatic'] as const
-    };
-    let failure: unknown;
-    try {
-      projectCodeModeTools([...BUILTIN_TOOL_DEFINITIONS, oversized]);
-    } catch (error) {
-      failure = error;
+  it('fits an Auto directory without repeating shared calling and permission instructions per tool', () => {
+    const tools: ClientToolDefinition[] = Array.from({ length: 22 }, (_, index) => ({
+      name: `host_tool_${index}`,
+      description: 'A bounded host tool. '.repeat(48),
+      allowedCallers: ['direct', 'programmatic'],
+      inputSchema: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        required: ['value'],
+        additionalProperties: false
+      }
+    }));
+    const projected = projectCodeModeTools(
+      [codeModeToolDefinition, ...tools].map(projectPermissionTool)
+    );
+    const description = projected.find((tool) => tool.name === 'code_exec')!.description;
+    expect(description).toContain(
+      'Pass a JavaScript value matching the current catalog inputSchema'
+    );
+    const marker = 'Programmatic tools: ';
+    const serialized = description.slice(description.lastIndexOf(marker) + marker.length);
+    expect(Buffer.byteLength(serialized)).toBeLessThanOrEqual(32 * 1024);
+    const directory = JSON.parse(serialized);
+    expect(directory.callableNames).toEqual(expect.arrayContaining(tools.map((tool) => tool.name)));
+    expect(directory.tools).toHaveLength(tools.length);
+    for (const tool of directory.tools) {
+      expect(tool.description).not.toContain('Inside code_exec, pass a JavaScript value');
+      expect(tool.description).toContain(`Call only as tools.${tool.name} inside code_exec`);
+      expect(tool.inputSchema.properties.permission.properties.action.enum).toEqual([
+        'allow',
+        'ask',
+        'deny'
+      ]);
+      expect(tool.inputSchema.properties.permission.properties.reason).toEqual({ type: 'string' });
     }
-    expect(failure).toMatchObject({ code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT' });
+  });
+
+  it.each([-1, 0, 1])('enforces the 48 KiB directory boundary at offset %i bytes', (offset) => {
+    const tool: ClientToolDefinition = {
+      name: 'bounded_programmatic_tool',
+      description: '',
+      inputSchema: { type: 'object' },
+      allowedCallers: ['programmatic']
+    };
+    const directoryBytes = (tools: ClientToolDefinition[]) => {
+      const description = tools.find((item) => item.name === 'code_exec')!.description;
+      const marker = 'Programmatic tools: ';
+      return Buffer.byteLength(description.slice(description.lastIndexOf(marker) + marker.length));
+    };
+    const tools = [codeModeToolDefinition, tool];
+    const targetBytes = 48 * 1024 + offset;
+    const paddingBytes = targetBytes - directoryBytes(projectCodeModeTools(tools));
+    tool.description = 'é'.repeat(Math.floor(paddingBytes / 2)) + 'x'.repeat(paddingBytes % 2);
+    if (offset > 0) {
+      expect(() => projectCodeModeTools(tools)).toThrowError(
+        expect.objectContaining({ code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT' })
+      );
+    } else {
+      expect(directoryBytes(projectCodeModeTools(tools))).toBe(targetBytes);
+    }
   });
 
   it('returns exec status and exitCode inside data, without adding top-level aliases', async () => {
