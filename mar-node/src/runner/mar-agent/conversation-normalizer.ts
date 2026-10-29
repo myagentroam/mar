@@ -74,6 +74,7 @@ type CodeModeOutputCall = {
 type CodeModeOutputSnapshot = {
   readonly outputPreview: string;
   readonly truncated: boolean;
+  readonly displayOutput: NonNullable<CommandState['displayOutput']>;
 };
 
 type RunningCodeModeCell = {
@@ -537,7 +538,19 @@ export class MarAgentConversationNormalizer {
         target.input,
         bounded.text,
         null,
-        bounded.truncated
+        bounded.truncated,
+        {
+          displayOutput: {
+            stdout: [...snapshots.values()]
+              .map((entry) => entry.displayOutput.stdout)
+              .filter(Boolean)
+              .join('\n'),
+            stderr: [...snapshots.values()]
+              .map((entry) => entry.displayOutput.stderr)
+              .filter(Boolean)
+              .join('\n')
+          }
+        }
       )
     ];
   }
@@ -1165,33 +1178,39 @@ function validCompactAnchor(value: string | undefined): string | undefined {
 function codeObservationOutput(
   data: Record<string, unknown> | undefined,
   summary: string | null
-): string | undefined {
+): ExecutionPresentation['execution']['output'] {
+  const blocks: NonNullable<ExecutionPresentation['execution']['output']>[number][] = [];
+  const add = (channel: 'TEXT' | 'STDOUT' | 'STDERR', text: unknown) => {
+    if (typeof text !== 'string' || text.length === 0) return;
+    const existing = blocks.find((block) => block.channel === channel);
+    if (existing) existing.text += `\n${text}`;
+    else blocks.push({ channel, text });
+  };
+  const streams = (value: Record<string, unknown> | undefined) => {
+    const display = record(value?.displayOutput) ?? value;
+    if (typeof display?.stdout !== 'string' && typeof display?.stderr !== 'string') return false;
+    add('STDOUT', display?.stdout);
+    add('STDERR', display?.stderr);
+    return true;
+  };
+  if (streams(data)) return blocks;
   if (Array.isArray(data?.observations)) {
-    return data.observations
-      .flatMap((entry) => {
-        const observation = record(entry);
-        if (observation?.type === 'value' && typeof observation.value === 'string')
-          return [observation.value];
-        const result = record(observation?.result);
-        const source = record(observation?.source);
-        if (
-          observation?.type === 'tool_result' &&
-          (source?.toolName === 'exec' || source?.toolName === 'exec_wait')
-        ) {
-          const resultData = record(result?.data);
-          const display = record(resultData?.displayOutput) ?? resultData;
-          if (typeof display?.stdout === 'string' || typeof display?.stderr === 'string')
-            return [display?.stdout, display?.stderr].filter(
-              (value): value is string => typeof value === 'string' && value.length > 0
-            );
-        }
-        return observation?.type === 'tool_result' && typeof result?.content === 'string'
-          ? [result.content]
-          : [];
-      })
-      .join('\n');
+    for (const entry of data.observations) {
+      const observation = record(entry);
+      if (observation?.type === 'value') add('TEXT', observation.value);
+      const result = record(observation?.result);
+      const source = record(observation?.source);
+      if (observation?.type !== 'tool_result') continue;
+      if (
+        (source?.toolName === 'exec' || source?.toolName === 'exec_wait') &&
+        streams(record(result?.data))
+      )
+        continue;
+      add('TEXT', result?.content);
+    }
+    return blocks.length ? blocks : [{ channel: 'TEXT', text: '' }];
   }
-  return summary ?? undefined;
+  return summary === null ? undefined : [{ channel: 'TEXT', text: summary }];
 }
 
 function codeExecutionError(
@@ -1258,7 +1277,7 @@ function genericToolItem(
                 message: compactRunnerText(outputSummary ?? '', 1000)
               }
             }),
-        ...(codeOutput === undefined ? {} : { output: [{ channel: 'TEXT', text: codeOutput }] })
+        ...(codeOutput === undefined ? {} : { output: codeOutput })
       },
       toolName
     );
@@ -1338,9 +1357,7 @@ function genericToolItem(
               ]
             }),
         ...(display === undefined && legacyBlocks.length > 0 ? { output: legacyBlocks } : {}),
-        ...(codeOutput === undefined
-          ? {}
-          : { output: [{ channel: 'TEXT' as const, text: codeOutput }] }),
+        ...(codeOutput === undefined ? {} : { output: codeOutput }),
         ...((typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000) ||
         (display !== undefined && (display.stdoutDroppedBytes || display.stderrDroppedBytes)) ||
         (display === undefined && legacyBlocks.length > 0 && truncated)
