@@ -16,7 +16,8 @@ import {
   toolPresentationReadPaths,
   toolPresentationTitle,
   toolPresentationText,
-  toolPresentationDetails
+  toolPresentationDetails,
+  toolOutputDetail
 } from './tool-presentation.js';
 
 export type ConversationDisplayItem =
@@ -603,17 +604,14 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
   if (kind === 'tool_call' && isSubagentToolCall(value)) return subagentToolDetail(value);
   if (kind === 'tool_call' && toolPresentation(payload)) return toolPresentationDetails(payload);
   if (kind === 'tool_call') {
-    const output = conversationPayload(value.output);
     const labels = conversationUiEnUS.presentation;
-    const outputText = output ? rawTextField(output, 'text') : rawTextField(value, 'outputSummary');
     const field = (label: string, text: string) => (text ? `${label}: ${text}` : '');
     return [
       !isSubagentToolCall(value) && stringField(value, 'title') !== stringField(value, 'toolName')
         ? field(labels.detail, stringField(value, 'title'))
         : '',
       field(labels.input, stringField(value, 'inputSummary')),
-      outputText ? `${labels.output}:\n${outputText}` : '',
-      output?.truncated === true ? translate('toolPresentation.detail.truncated') : '',
+      toolOutputDetail(value),
       field(labels.progress, stringField(value, 'progressLabel')),
       field(labels.error, stringField(value, 'errorCode'))
     ]
@@ -757,9 +755,7 @@ function subagentToolDetail(value: Record<string, unknown>): string {
       ? detailField(conversationUiEnUS.presentation.truncated, translate('presentation.yes'))
       : '',
     detailField(conversationUiEnUS.presentation.input, stringField(value, 'inputSummary')),
-    rawTextField(value, 'outputSummary')
-      ? `${conversationUiEnUS.presentation.result}:\n${rawTextField(value, 'outputSummary')}`
-      : '',
+    toolOutputDetail(value, conversationUiEnUS.presentation.result),
     detailField(conversationUiEnUS.presentation.progress, stringField(value, 'progressLabel')),
     detailField(conversationUiEnUS.presentation.error, stringField(value, 'errorCode'))
   ]

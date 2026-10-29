@@ -18,7 +18,8 @@ import {
   type ToolPresentation,
   type ExecutionPresentation
 } from '@myagentroam/protocol';
-import { boundExecutionPresentation, publicOutputSnapshot } from '../execution-presentation.js';
+import { boundExecutionPresentation } from '../execution-presentation.js';
+import { publicOutputSnapshot } from '../normalization.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;
@@ -1390,6 +1391,7 @@ function genericToolItem(
       title: compactRunnerText(toolName, 500) || 'unknown',
       inputSummary: inputSummary.text || null,
       outputSummary: outputSummary === null ? null : compactRunnerText(outputSummary, 10_000),
+      ...(outputSummary === null ? {} : { output: publicOutputSnapshot(outputSummary, truncated) }),
       progressLabel: status === 'IN_PROGRESS' ? 'Running' : null,
       errorCode: errorCode === null ? null : compactRunnerText(errorCode, 80),
       truncated: truncated || inputSummary.truncated || (outputSummary?.length ?? 0) > 10_000,
@@ -1736,9 +1738,18 @@ function marAgentSubagentProjection(
     ...(title.length === 0 ? {} : { title }),
     ...subagentPayload(details),
     ...(typeof details.latestMessage?.text === 'string'
-      ? { outputSummary: boundedToolSummary(details.latestMessage.text) }
+      ? {
+          outputSummary: boundedToolSummary(details.latestMessage.text),
+          output: publicOutputSnapshot(
+            details.latestMessage.text,
+            details.latestMessage.truncated === true
+          )
+        }
       : typeof outputData?.errorMessage === 'string'
-        ? { outputSummary: compactRunnerText(outputData.errorMessage, 10_000) }
+        ? {
+            outputSummary: compactRunnerText(outputData.errorMessage, 10_000),
+            output: publicOutputSnapshot(outputData.errorMessage)
+          }
         : {}),
     ...(typeof outputData?.errorCode === 'string'
       ? { errorCode: compactRunnerText(outputData.errorCode, 80) }

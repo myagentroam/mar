@@ -123,12 +123,34 @@ export function toolPresentationSources(payload: unknown) {
   });
 }
 
+export function toolOutputDetail(
+  payload: Record<string, unknown>,
+  label: string = conversationUiEnUS.presentation.output
+): string {
+  const output =
+    payload.output && typeof payload.output === 'object'
+      ? (payload.output as Record<string, unknown>)
+      : undefined;
+  const text =
+    typeof output?.text === 'string'
+      ? output.text
+      : typeof payload.outputSummary === 'string'
+        ? payload.outputSummary
+        : '';
+  return [
+    text ? `${label}:\n${text}` : '',
+    output?.truncated === true ? translate('toolPresentation.detail.truncated') : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function toolPresentationDetails(payload: unknown): string {
   const value = toolPresentation(payload);
   if (!value) return '';
   const raw = payload as Record<string, unknown>;
-  const line = (label: string, text: unknown, multiline = false): string =>
-    typeof text === 'string' && text.length ? `${label}:${multiline ? '\n' : ' '}${text}` : '';
+  const line = (label: string, text: unknown): string =>
+    typeof text === 'string' && text.length ? `${label}: ${text}` : '';
   const labels = conversationUiEnUS.toolPresentation;
   const details = [line(labels.tool, raw.toolName)];
   if (value.kind === 'WEB_FETCH')
@@ -157,13 +179,7 @@ export function toolPresentationDetails(payload: unknown): string {
       )
     );
   details.push(line(conversationUiEnUS.presentation.input, raw.inputSummary));
-  if (
-    value.kind === 'READ' ||
-    value.kind === 'SKILL' ||
-    value.kind === 'WEB_FETCH' ||
-    raw.errorCode
-  )
-    details.push(line(conversationUiEnUS.presentation.output, raw.outputSummary, true));
+  details.push(toolOutputDetail(raw));
   details.push(line(conversationUiEnUS.presentation.error, raw.errorCode));
   return details.filter(Boolean).join(String.fromCharCode(10));
 }

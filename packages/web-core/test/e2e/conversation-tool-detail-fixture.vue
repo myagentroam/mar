@@ -6,6 +6,8 @@ import ConversationToolDetail from '../../src/view/conversation/ConversationTool
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
+const outputUpdates = new URL(location.href).searchParams.has('updates');
+const detailOutput = ref<{ text: string; truncated: boolean }>();
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
@@ -154,7 +156,14 @@ const turns = computed<ConversationTurn[]>(() => [
       },
       { ...command.value, status: 'COMPLETED', processGroup: { id: 'process', isStart: true } },
       ...(new URL(location.href).searchParams.has('unified')
-        ? detailSamples.map((item) => ({ ...item, processGroup: { id: 'process' } }))
+        ? detailSamples.map((item) => ({
+            ...item,
+            payload:
+              item.kind === 'tool_call' && detailOutput.value
+                ? { ...item.payload, output: detailOutput.value }
+                : item.payload,
+            processGroup: { id: 'process' }
+          }))
         : []),
       {
         id: 'reply',
@@ -242,6 +251,20 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <template v-if="integrated && outputUpdates">
+      <button
+        data-testid="stream-details"
+        @click="detailOutput = { text: '  live output\n\n  next line\n', truncated: false }"
+      >
+        Stream output
+      </button>
+      <button
+        data-testid="finish-details"
+        @click="detailOutput = { text: '  authoritative tail\n', truncated: true }"
+      >
+        Finish output
+      </button>
+    </template>
     <ConversationTimeline
       v-if="integrated"
       :turns="turns"

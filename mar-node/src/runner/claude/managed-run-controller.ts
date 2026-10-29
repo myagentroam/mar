@@ -616,7 +616,8 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
                 result.failed,
                 tool.inputTruncated || result.truncated,
                 knownSubagents,
-                result.claudeResult
+                result.claudeResult,
+                result.truncated
               );
               this.host.emitItem(runId, {
                 itemId: boundedConversationItemId('claude-tool', result.toolUseId),

@@ -1,5 +1,5 @@
-import { compactRunnerText, compactRunnerValue } from '../normalization.js';
-import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
+import { compactRunnerText, compactRunnerValue, publicOutputSnapshot } from '../normalization.js';
+import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeOpenCodeTool(
   toolName: string,
@@ -67,6 +67,7 @@ export function normalizeOpenCodeTool(
             }
           }
         : {}),
+      ...(typeof state?.output === 'string' ? { output: publicOutputSnapshot(state.output) } : {}),
       ...subagent
     }
   };
@@ -95,7 +96,10 @@ function openCodeSubagentProjection(
     ...(title.length === 0 ? {} : { title }),
     ...(nativeResult === undefined
       ? {}
-      : { outputSummary: compactRunnerText(nativeResult.result, 10_000) || null })
+      : {
+          outputSummary: compactRunnerText(nativeResult.result, 10_000) || null,
+          output: publicOutputSnapshot(nativeResult.result)
+        })
   };
 }
 

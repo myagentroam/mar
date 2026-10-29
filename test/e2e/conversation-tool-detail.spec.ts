@@ -9,6 +9,45 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('specialized tool details replace live output with the authoritative result', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1`);
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const read = page.locator('[data-tool-presentation="READ"]');
+  await read.locator(':scope > summary').click();
+  await read.locator('.conversation-tool-detail > summary').click();
+  for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
+    await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
+  const child = page.locator('.subagent-group');
+  await child.locator('.conversation-record-group > summary').click();
+  await child.locator('.conversation-tool-detail > summary').click();
+  const bodies = [
+    read.locator('.conversation-detail-text'),
+    page.locator('[data-tool-presentation="WEB_SEARCH"] .conversation-detail-text'),
+    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text'),
+    child.locator('.conversation-detail-text')
+  ];
+  await page.getByTestId('stream-details').click();
+  for (const body of bodies) {
+    await expect.poll(() => body.textContent()).toContain(':\n  live output\n\n  next line\n');
+    await expect(body).not.toContainText('Truncated');
+  }
+  await page.getByTestId('finish-details').click();
+  for (const body of bodies) {
+    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\nTruncated');
+    await expect(body).not.toContainText('live output');
+    await expect(body).not.toContainText('export const result');
+    await expect(body).not.toContainText('The requested page content.');
+    await expect(body).not.toContainText('Message delivered.');
+  }
+  await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'href',
+    'https://example.com/docs'
+  );
+});
+
 for (const width of [1280, 390]) {
   test(`execution details, copy and terminal replacement at ${width}px`, async ({
     browser

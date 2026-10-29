@@ -7,6 +7,73 @@ import { structuredToolEventData } from '../../../mar-agent/src/tools/output-pro
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 describe('MAR Agent live tool output projection', () => {
+  it.each(['FETCH_FAILED', 'MAR_AGENT_CANCELLED'])(
+    'keeps %s failure output and status independent',
+    (code) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.started',
+          toolName: 'web_fetch',
+          callId: 'failed-fetch',
+          input: {}
+        })
+      );
+      const items = normalizer.normalize(
+        toolEvent({
+          type: 'tool.failed',
+          toolName: 'web_fetch',
+          callId: 'failed-fetch',
+          code,
+          message: '  Request stopped.\n'
+        })
+      );
+      expect(items[0]).toMatchObject({
+        status: code === 'MAR_AGENT_CANCELLED' ? 'CANCELLED' : 'FAILED',
+        payload: { output: { text: '  Request stopped.\n', truncated: false }, errorCode: code }
+      });
+      expectValidConversationItems(items);
+    }
+  );
+
+  it.each(['read', 'web_fetch', 'web_search', 'skill', 'agent_wait'])(
+    'publishes authoritative %s output with matching replay semantics',
+    (toolName) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const started = toolEvent({
+        type: 'tool.started',
+        toolName,
+        callId: 'public-output',
+        input: {}
+      });
+      const text = `${'x'.repeat(10_100)}\nlast line\n`;
+      const completed = toolEvent({
+        type: 'tool.completed',
+        toolName,
+        callId: 'public-output',
+        summary: text
+      });
+      expect(normalizer.normalize(started)[0]?.payload).not.toHaveProperty('output');
+      const items = normalizer.normalize(completed);
+      expect(items[0]?.payload).toMatchObject({
+        output: { text: text.slice(-10_000), truncated: true }
+      });
+      expectValidConversationItems(items);
+      const replay = new MarAgentConversationNormalizer();
+      replay.normalize(started);
+      expect(replay.normalize(completed)).toEqual(items);
+      const empty = normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          toolName,
+          callId: 'public-output',
+          summary: ''
+        })
+      );
+      expect(empty[0]?.payload).toMatchObject({ output: { text: '', truncated: false } });
+    }
+  );
+
   it.each(['code_exec', 'code_exec_wait'] as const)(
     'shows %s result errors without replacing the call status',
     (toolName) => {
@@ -386,7 +453,11 @@ describe('MAR Agent live tool output projection', () => {
         kind: 'command_execution',
         status: 'IN_PROGRESS',
         payload: {
-          command: 'exec_wait',
+          command: '',
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: { kind: 'CONTROL', toolName: 'exec_wait' }
+          },
           outputPreview: expect.stringContaining(`Action: ${action ?? 'poll'}`)
         }
       },
@@ -429,7 +500,11 @@ describe('MAR Agent live tool output projection', () => {
         kind: 'command_execution',
         status: 'IN_PROGRESS',
         payload: {
-          command: 'exec_wait',
+          command: '',
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: { kind: 'CONTROL', toolName: 'exec_wait' }
+          },
           outputPreview: expect.stringContaining('latest snapshot')
         }
       }

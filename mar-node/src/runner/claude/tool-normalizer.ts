@@ -1,6 +1,6 @@
 import { claudeContentBlocks } from './message-parsers.js';
-import { compactRunnerText, compactRunnerValue } from '../normalization.js';
-import { publicOutputSnapshot, shellExecution } from '../execution-presentation.js';
+import { compactRunnerText, compactRunnerValue, publicOutputSnapshot } from '../normalization.js';
+import { shellExecution } from '../execution-presentation.js';
 import type {
   NativeTranscriptToolCall,
   NativeTranscriptSubagentResult
@@ -111,7 +111,17 @@ export function extractClaudeToolResults(message: Record<string, unknown>): read
     (block) => block.type === 'tool_result' && typeof block.tool_use_id === 'string'
   );
   return blocks.map((block) => {
-    const output = compactRunnerValue(block.content, 10_000);
+    const textBlocks = Array.isArray(block.content)
+      ? block.content.flatMap((part) => {
+          const value = record(part);
+          return value?.type === 'text' && typeof value.text === 'string' ? [value.text] : [];
+        })
+      : [];
+    const content =
+      Array.isArray(block.content) && textBlocks.length === block.content.length
+        ? textBlocks.join('\n')
+        : block.content;
+    const output = publicOutputSnapshot(content);
     // A message-level structured result cannot be assigned to multiple calls.
     const structured = blocks.length === 1 ? structuredRecord(message.tool_use_result) : undefined;
     const fields = structured ?? structuredRecord(block.content);
@@ -140,12 +150,13 @@ export function normalizeClaudeTool(
   failed: boolean,
   truncated: boolean,
   knownSubagents: Map<string, string> = new Map(),
-  resultMetadata?: ClaudeToolResultMetadata
+  resultMetadata?: ClaudeToolResultMetadata,
+  sourceOutputTruncated = output === null ? false : truncated
 ): { kind: 'command_execution' | 'file_change' | 'tool_call'; payload: Record<string, unknown> } {
   const values = record(input);
   const normalizedToolName = compactRunnerText(toolName, 128) || 'unknown';
   const normalizedOutput = output === null ? null : compactRunnerText(output, 10_000);
-  const outputTruncated = truncated || (output?.length ?? 0) > 10_000;
+  const outputTruncated = sourceOutputTruncated || (output?.length ?? 0) > 10_000;
   const subagent = claudeSubagentProjection(
     toolName,
     input,
@@ -165,11 +176,11 @@ export function normalizeClaudeTool(
         outputPreview: normalizedOutput ?? '',
         exitCode: null,
         durationMs: null,
-        truncated: outputTruncated,
+        truncated: truncated || outputTruncated,
         ...(output === null || output === undefined
           ? {}
-          : { output: publicOutputSnapshot(output, truncated) }),
-        toolPresentation: shellExecution(output ?? undefined, truncated)
+          : { output: publicOutputSnapshot(output, outputTruncated) }),
+        toolPresentation: shellExecution(output ?? undefined, outputTruncated)
       }
     };
   if (isFileTool(toolName)) {
@@ -207,9 +218,10 @@ export function normalizeClaudeTool(
       title: compactRunnerText(toolName, 500) || normalizedToolName,
       inputSummary: compactRunnerValue(input, 10_000).text || null,
       outputSummary: normalizedOutput,
+      ...(output === null ? {} : { output: publicOutputSnapshot(output, outputTruncated) }),
       progressLabel: null,
       errorCode: failed ? 'TOOL_EXECUTION_FAILED' : null,
-      truncated: outputTruncated,
+      truncated: truncated || outputTruncated,
       ...(toolName === 'Read'
         ? {
             toolPresentation: {
