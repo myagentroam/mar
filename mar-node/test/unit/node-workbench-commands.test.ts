@@ -234,7 +234,7 @@ describe('Node Workbench Manifest and command control', () => {
     }
   });
 
-  it('clears only the parent after SQLite succeeds and makes repeat clears side-effect free', async () => {
+  it('rejects parent detachment and reparenting without side effects', async () => {
     const database = new NodeDatabase(':memory:', 'session-parent-clear');
     const workspace = database.saveWorkspace({
       path: '/workspace/session-parent-clear',
@@ -269,136 +269,71 @@ describe('Node Workbench Manifest and command control', () => {
         workspaceId: workspace.id,
         parentSessionId: 'parent-session'
       });
-      const originalSend = internals.send.bind(connector);
-      const originalPublish = internals.workbenchEventService.publish.bind(
-        internals.workbenchEventService
-      );
       const publish = vi.spyOn(internals.workbenchEventService, 'publish');
       const markStale = vi.spyOn(internals.workspaceSessionService, 'markCacheStale');
       const invalidate = vi
         .spyOn(internals.workspaceWorkbenchService, 'invalidateTopic')
         .mockResolvedValue(undefined);
       const send = vi.spyOn(internals, 'send');
+      const clearParent = vi.spyOn(database, 'clearSessionParent');
+      const saveMetadata = vi.spyOn(database, 'saveNativeSessionMetadata');
 
-      for (const extra of [
-        { clearParent: false },
-        { clearParent: true, customTitle: 'also rename' },
-        { clearParent: true, pinned: true },
-        { clearParent: true, sessionPrompt: 'also change the prompt' },
-        { clearParent: true, parentSessionId: 'another-parent' }
-      ])
-        await expect(
-          operation(connector, 'session.metadata.update', { sessionId: session.id, ...extra })
-        ).rejects.toThrow('SESSION_INVALID');
-
-      const failedClear = vi.spyOn(database, 'clearSessionParent').mockImplementationOnce(() => {
-        throw new Error('PARENT_WRITE_FAILED');
-      });
       await expect(
         operation(connector, 'session.metadata.update', {
           sessionId: session.id,
           clearParent: true
         })
-      ).rejects.toThrow('PARENT_WRITE_FAILED');
+      ).rejects.toThrow('SESSION_PARENT_IMMUTABLE');
+
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          parentSessionId: 'another-parent'
+        })
+      ).rejects.toThrow('SESSION_INVALID');
+
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true,
+          customTitle: 'also rename'
+        })
+      ).rejects.toThrow('SESSION_INVALID');
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true,
+          pinned: true
+        })
+      ).rejects.toThrow('SESSION_INVALID');
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true,
+          sessionPrompt: 'also change the prompt'
+        })
+      ).rejects.toThrow('SESSION_INVALID');
+
       expect(
         database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
       ).toMatchObject({ parentSessionId: 'parent-session' });
-      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe('parent-session');
+      expect(internals.runtime.getAgentSession(session.id)).toMatchObject({
+        id: session.id,
+        parentSessionId: 'parent-session'
+      });
+      expect(clearParent).not.toHaveBeenCalled();
+      expect(saveMetadata).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
       expect(markStale).not.toHaveBeenCalled();
       expect(invalidate).not.toHaveBeenCalled();
       expect(send).not.toHaveBeenCalled();
-      failedClear.mockRestore();
-
-      const phases: string[] = [];
-      const clearParentInDatabase = database.clearSessionParent.bind(database);
-      const clearParent = vi.spyOn(database, 'clearSessionParent').mockImplementation((...args) => {
-        expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe(
-          'parent-session'
-        );
-        clearParentInDatabase(...args);
-        phases.push('sqlite-committed');
-      });
-      send.mockImplementation((type, payload) => {
-        if (type === 'session.group.changed') {
-          expect(
-            database.getNativeSessionMetadata(
-              session.runner,
-              session.externalSessionId!,
-              workspace.id
-            )
-          ).toMatchObject({ parentSessionId: null });
-          expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
-          phases.push('parent-cleared');
-        }
-        originalSend(type, payload);
-      });
-      publish.mockImplementation((event) => {
-        expect(
-          database.getNativeSessionMetadata(
-            session.runner,
-            session.externalSessionId!,
-            workspace.id
-          )
-        ).toMatchObject({ parentSessionId: null });
-        expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
-        phases.push('session-published');
-        originalPublish(event);
-      });
-
-      await expect(
-        operation(connector, 'session.metadata.update', {
-          sessionId: session.id,
-          clearParent: true
-        })
-      ).resolves.toMatchObject({
-        session: { id: session.id, parentSessionId: null, sessionGroup: 'MAIN' }
-      });
-      expect(phases).toEqual(['sqlite-committed', 'parent-cleared', 'session-published']);
-      expect(clearParent).toHaveBeenCalledTimes(1);
-      expect(send).toHaveBeenCalledWith(
-        'session.group.changed',
-        expect.objectContaining({
-          nodeId: session.nodeId,
-          workspaceId: workspace.id,
-          sessionId: session.id,
-          sessionGroup: 'MAIN'
-        })
-      );
-      expect(markStale).toHaveBeenCalledExactlyOnceWith(workspace.id);
-      expect(invalidate).toHaveBeenCalledWith(workspace.id, 'sessions');
-      expect(internals.pendingSessionGroups.size).toBe(1);
-      const pendingChange = internals.pendingSessionGroups.get(session.id);
-      expect(pendingChange).toMatchObject({
-        nodeId: session.nodeId,
-        workspaceId: workspace.id,
-        sessionId: session.id,
-        sessionGroup: 'MAIN'
-      });
-
-      send.mockClear();
-      publish.mockClear();
-      markStale.mockClear();
-      invalidate.mockClear();
-      await expect(
-        operation(connector, 'session.metadata.update', {
-          sessionId: session.id,
-          clearParent: true
-        })
-      ).resolves.toMatchObject({ session: { id: session.id, parentSessionId: null } });
-      expect(clearParent).toHaveBeenCalledTimes(1);
-      expect(send).not.toHaveBeenCalled();
-      expect(publish).not.toHaveBeenCalled();
-      expect(markStale).not.toHaveBeenCalled();
-      expect(invalidate).not.toHaveBeenCalled();
-      expect(internals.pendingSessionGroups.size).toBe(1);
-      expect(internals.pendingSessionGroups.get(session.id)).toBe(pendingChange);
+      expect(internals.pendingSessionGroups.size).toBe(0);
     } finally {
       await connector.stop();
     }
   });
 
-  it('syncs a stale runtime parent from explicit null metadata without reprojecting or interrupting an active run', async () => {
+  it('rejects clearing an immutable parent without interrupting an active run', async () => {
     const database = new NodeDatabase(':memory:', 'session-parent-null-authority');
     const workspace = database.saveWorkspace({
       path: '/workspace/session-parent-null-authority',
@@ -439,26 +374,20 @@ describe('Node Workbench Manifest and command control', () => {
       }).run;
       internals.runtime.transitionRun(activeRun.id, 'RUNNING');
 
-      database.clearSessionParent(session.runner, session.externalSessionId!, workspace.id);
-      expect(
-        database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
-      ).toMatchObject({ parentSessionId: null });
-      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe('parent-session');
-
       const clearParent = vi.spyOn(database, 'clearSessionParent');
       const publish = vi.spyOn(internals.workbenchEventService, 'publish');
       const send = vi.spyOn(internals, 'send');
-      const result = (await operation(connector, 'session.metadata.update', {
-        sessionId: session.id,
-        clearParent: true
-      })) as { session: { id: string; parentSessionId: string | null; sessionGroup: string } };
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true
+        })
+      ).rejects.toThrow('SESSION_PARENT_IMMUTABLE');
 
-      expect(result.session).toMatchObject({
-        id: session.id,
-        parentSessionId: null,
-        sessionGroup: 'MAIN'
-      });
-      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBeNull();
+      expect(
+        database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
+      ).toMatchObject({ parentSessionId: 'parent-session' });
+      expect(internals.runtime.getAgentSession(session.id)?.parentSessionId).toBe('parent-session');
       expect(clearParent).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
       expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toEqual([]);
@@ -473,7 +402,7 @@ describe('Node Workbench Manifest and command control', () => {
     }
   });
 
-  it('replays pending session-group changes on registration and authentication until a matching scoped ACK', async () => {
+  it('does not queue or replay a parent-group change for an immutable relation', async () => {
     const database = new NodeDatabase(':memory:', 'session-group-ack-reconnect');
     const workspace = database.saveWorkspace({
       path: '/workspace/session-group-ack-reconnect',
@@ -511,51 +440,31 @@ describe('Node Workbench Manifest and command control', () => {
       const sendControl = (type: string, payload: unknown) =>
         internals.controlMessages.handle(JSON.stringify(createEnvelope(type, payload)));
 
-      await operation(connector, 'session.metadata.update', {
-        sessionId: session.id,
-        clearParent: true
-      });
-      const change = send.mock.calls.find(([type]) => type === 'session.group.changed')?.[1] as {
-        nodeId: string;
-        workspaceId: string;
-        sessionId: string;
-        sessionGroup: 'MAIN';
-      };
-      expect(change).toMatchObject({
+      await expect(
+        operation(connector, 'session.metadata.update', {
+          sessionId: session.id,
+          clearParent: true
+        })
+      ).rejects.toThrow('SESSION_PARENT_IMMUTABLE');
+      expect(internals.pendingSessionGroups.size).toBe(0);
+      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toEqual([]);
+
+      sendControl('registered', { nodeId: session.nodeId, credential: 'test-credential' });
+      await vi.waitFor(() =>
+        expect(register).toHaveBeenCalledWith(session.nodeId, 'test-credential')
+      );
+      sendControl('authenticated', {});
+      sendControl('session.group.ack', {
         nodeId: session.nodeId,
         workspaceId: workspace.id,
         sessionId: session.id,
         sessionGroup: 'MAIN'
       });
-      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
-
-      for (const mismatch of [
-        { ...change, nodeId: 'different-node' },
-        { ...change, workspaceId: 'different-workspace' },
-        { ...change, sessionId: 'different-session' }
-      ]) {
-        sendControl('session.group.ack', mismatch);
-        expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
-      }
-
-      send.mockClear();
-      sendControl('registered', { nodeId: change.nodeId, credential: 'test-credential' });
-      await vi.waitFor(() =>
-        expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(1)
-      );
-      expect(register).toHaveBeenCalledWith(change.nodeId, 'test-credential');
-      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
-
-      send.mockClear();
-      sendControl('authenticated', {});
-      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(1);
-      expect(internals.pendingSessionGroups.get(session.id)).toEqual(change);
-
-      sendControl('session.group.ack', change);
-      expect(internals.pendingSessionGroups.has(session.id)).toBe(false);
-      send.mockClear();
-      sendControl('authenticated', {});
-      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toHaveLength(0);
+      expect(internals.pendingSessionGroups.size).toBe(0);
+      expect(send.mock.calls.filter(([type]) => type === 'session.group.changed')).toEqual([]);
+      expect(
+        database.getNativeSessionMetadata(session.runner, session.externalSessionId!, workspace.id)
+      ).toMatchObject({ parentSessionId: 'parent-session' });
     } finally {
       await connector.stop();
     }

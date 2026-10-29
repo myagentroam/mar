@@ -23,16 +23,21 @@ describe('Product resource input preparation', () => {
     });
     const origin = { sessionId: 'coordinator', name: 'Coordinator#42 A & <B>' };
     const visible = serializeComposerTag('mar_goal_start', { objective: 'Review' });
-    const input = withSessionMessageOrigin(visible + '\n' + oldTag + '\n' + reference, origin);
+    const input = withSessionMessageOrigin(
+      visible + '\n' + oldTag + '\n' + reference,
+      origin,
+      'coordinator'
+    );
+    const snapshot = { ...origin, relation: 'parent' as const };
     expect(input.startsWith(visible)).toBe(true);
     expect(
       parseComposerTags(input)
         .filter((part) => part.kind === 'mar_session_origin')
         .map((part) => part.payload)
-    ).toEqual([origin]);
+    ).toEqual([snapshot]);
     expect(publicGoalHistoryText(input)).toContain(visible);
     expect(publicGoalHistoryText(input)).toContain(
-      serializeComposerTag('mar_session_origin', origin)
+      serializeComposerTag('mar_session_origin', snapshot)
     );
     expect(sessionTitleFromFirstMessage(withSessionMessageOrigin('Review code', origin))).toBe(
       'Review code'

@@ -471,7 +471,8 @@ describe('MAR Agent managed run projection', () => {
         payload: {
           text: 'Done.',
           format: 'markdown',
-          model: 'Model'
+          model: 'Model',
+          phase: 'final_answer'
         }
       })
     ]);

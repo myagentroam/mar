@@ -149,7 +149,7 @@ describe('Server MySQL installation baselines', () => {
     expect(CORE_MYSQL_BASELINE_VERSION).toBe(9);
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33, 34
+      33, 34, 35, 36
     ]);
     expect(CORE_MYSQL_MIGRATIONS[2]?.name).toBe('mail_templates_and_deliveries');
     expect(CORE_MYSQL_MIGRATIONS[3]?.name).toBe('mail_template_notification_titles');
@@ -192,7 +192,13 @@ describe('Server MySQL installation baselines', () => {
     expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 32)?.name).toBe(
       'mobile_only_web_push_clients'
     );
-    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('model_protocol_settings');
+    expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 34)?.name).toBe(
+      'model_protocol_settings'
+    );
+    expect(CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 35)?.name).toBe(
+      'subagent_model_usage'
+    );
+    expect(CORE_MYSQL_MIGRATIONS.at(-1)?.name).toBe('node_upgrade_snapshot');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('session_shares');
     expect(CORE_MYSQL_SCHEMA.mar_agent_models).not.toContain('high_density_compaction');
     expect(CORE_MYSQL_SCHEMA).toHaveProperty('users');

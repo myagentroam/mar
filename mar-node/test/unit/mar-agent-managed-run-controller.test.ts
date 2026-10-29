@@ -1513,7 +1513,7 @@ describe('MAR Agent managed run projection', () => {
     }
   );
 
-  it('updates the same command item for exec process events by the initial tool call ID', () => {
+  it('keeps exec and exec_wait calls independent with their own process snapshots', () => {
     const normalizer = new MarAgentConversationNormalizer();
     const started = normalizer.normalize({
       ...base,
@@ -1544,14 +1544,14 @@ describe('MAR Agent managed run projection', () => {
     const pollStarted = normalizer.normalize({
       ...base,
       type: 'tool.started',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'poll-call',
       input: { action: 'poll', processId: 'process-1' }
     });
     const completed = normalizer.normalize({
       ...base,
       type: 'tool.completed',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'poll-call',
       summary: 'done',
       truncated: false,
@@ -1574,25 +1574,37 @@ describe('MAR Agent managed run projection', () => {
       kind: 'command_execution',
       status: 'IN_PROGRESS'
     });
-    expect(running[0]?.itemId).toBe('mar-agent-tool:start-call');
-    expect(pollStarted).toEqual([]);
-    expect(completed[0]).toMatchObject({
+    expect(running[0]).toMatchObject({
       itemId: 'mar-agent-tool:start-call',
       kind: 'command_execution',
       status: 'COMPLETED',
-      payload: { command: 'pnpm test', outputPreview: 'first\nok', exitCode: 0 }
+      payload: { command: 'pnpm test', outputPreview: 'first', exitCode: null }
     });
-    normalizer.normalize({
+    expect(pollStarted).toEqual([
+      expect.objectContaining({
+        itemId: 'mar-agent-tool:poll-call',
+        kind: 'command_execution',
+        status: 'IN_PROGRESS',
+        payload: expect.objectContaining({ command: 'exec_wait (poll)' })
+      })
+    ]);
+    expect(completed[0]).toMatchObject({
+      itemId: 'mar-agent-tool:poll-call',
+      kind: 'command_execution',
+      status: 'COMPLETED',
+      payload: { command: 'exec_wait (poll)', outputPreview: 'ok', exitCode: 0 }
+    });
+    const replayStarted = normalizer.normalize({
       ...base,
       type: 'tool.started',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'replay-call',
       input: { action: 'poll', processId: 'process-1' }
     });
     const [replayed] = normalizer.normalize({
       ...base,
       type: 'tool.completed',
-      toolName: 'exec',
+      toolName: 'exec_wait',
       callId: 'replay-call',
       summary: 'cached',
       truncated: false,
@@ -1611,10 +1623,20 @@ describe('MAR Agent managed run projection', () => {
       }
     });
     expect(replayed).toMatchObject({
-      itemId: 'mar-agent-tool:start-call',
+      itemId: 'mar-agent-tool:replay-call',
+      status: 'COMPLETED',
       payload: { outputPreview: 'first\nok', exitCode: 0 }
     });
-    expectNormalizedItemsValid([...started, ...running, ...completed, replayed!]);
+    expect(running[0]?.payload.outputPreview).toBe('first');
+    expect(completed[0]?.payload.outputPreview).toBe('ok');
+    expectNormalizedItemsValid([
+      ...started,
+      ...running,
+      ...pollStarted,
+      ...completed,
+      ...replayStarted,
+      replayed!
+    ]);
   });
 
   it('projects structured Todo state into the shared task-list protocol item', () => {

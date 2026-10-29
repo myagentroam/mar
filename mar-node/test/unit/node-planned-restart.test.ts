@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createSocket } from 'node:dgram';
 import { randomUUID } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -149,6 +150,11 @@ describe('Node CLI orderly restart with the real SDK', () => {
         });
       });
       const config = join(root, 'node.json');
+      const udpSocket = createSocket('udp4');
+      udpSocket.bind(0, '127.0.0.1');
+      await once(udpSocket, 'listening');
+      const udpPort = udpSocket.address().port;
+      await new Promise<void>((resolve) => udpSocket.close(resolve));
       await writeFile(
         config,
         JSON.stringify({
@@ -156,7 +162,8 @@ describe('Node CLI orderly restart with the real SDK', () => {
           nodeId: 'test-node',
           credential: 'synthetic-credential',
           allowedRoots: [root],
-          dataDirectory: data
+          dataDirectory: data,
+          directTransfer: { udpPortRangeBegin: udpPort, udpPortRangeEnd: udpPort }
         })
       );
       let child: ChildProcess | undefined;
@@ -198,6 +205,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
       };
       const operation = async (operation: string, input: Record<string, unknown> = {}) => {
         const envelope = createEnvelope('node.request', {});
+        const issuedAt = Date.now();
         const payload = {
           operation,
           data: input,
@@ -207,8 +215,8 @@ describe('Node CLI orderly restart with the real SDK', () => {
             nodeId: 'test-node',
             operation,
             requestId: envelope.id,
-            issuedAt: Date.now(),
-            expiresAt: Date.now() + 15000
+            issuedAt,
+            expiresAt: issuedAt + 15000
           }
         };
         const result = new Promise<TestOperationResponse>((done, reject) => {
@@ -227,8 +235,8 @@ describe('Node CLI orderly restart with the real SDK', () => {
         return response.result;
       };
       const stop = async (signal: 'SIGTERM' | 'SIGKILL', expectedCode = 0) => {
-        const ended = once(child!, 'exit');
-        if (signal === 'SIGKILL') process.kill(-child!.pid!, signal);
+        const ended = once(child!, 'close');
+        if (signal === 'SIGKILL') killFixtureTree(child!.pid!);
         else {
           child!.kill(signal);
           child!.kill('SIGINT');
@@ -414,8 +422,8 @@ describe('Node CLI orderly restart with the real SDK', () => {
         expect(requests).toHaveLength(resumedRequests + 2);
       } finally {
         if (child && child.exitCode === null) {
-          const ended = once(child, 'exit');
-          process.kill(-child.pid!, 'SIGKILL');
+          const ended = once(child, 'close');
+          killFixtureTree(child.pid!);
           await ended;
         }
         for (const socket of sockets.clients) socket.terminate();
@@ -428,6 +436,26 @@ describe('Node CLI orderly restart with the real SDK', () => {
     60000
   );
 });
+
+function killFixtureTree(pid: number): void {
+  // The supervisor starts Node in its own process group, so killing only the
+  // supervisor group leaves the real runtime alive and holding SQLite ownership.
+  const processes = execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' })
+    .trim()
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/).map(Number));
+  const descendants = new Set([pid]);
+  for (const parent of descendants)
+    for (const [child, ppid] of processes)
+      if (ppid === parent && child !== undefined) descendants.add(child);
+  // Stop the supervisor first so it cannot restart a killed child.
+  for (const target of descendants)
+    try {
+      process.kill(target, 'SIGKILL');
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH') throw error;
+    }
+}
 
 function event(response: ServerResponse, value: unknown): void {
   response.write(`data: ${JSON.stringify(value)}${String.fromCharCode(10, 10)}`);

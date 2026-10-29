@@ -134,7 +134,7 @@ describe('Agent structure boundaries', () => {
       'session/catalog.ts': ['session/store/jsonl/jsonl-store.ts'],
       'session/store/contracts.ts': ['session/context-gc-checkpoint.ts'],
       'sdk/session-execution-factory.ts': ['sdk/session.ts'],
-      'tools/runtime-context.ts': ['host/contracts.ts', 'subagent/session-controller.ts']
+      'tools/runtime-context.ts': ['host/contracts.ts', '../extensions/subagent/src/index.ts']
     };
     for (const [consumer, targets] of Object.entries(forbidden))
       for (const target of targets) expect(dependencies(consumer), consumer).not.toContain(target);
@@ -191,13 +191,15 @@ describe('Agent structure boundaries', () => {
     for (const path of files()) {
       for (const dependency of collectDependencies(path, source(path))) {
         const target = dependency.path;
-        expect(target, `${path} -> ${target}`).not.toMatch(/^subagent\//);
+        expect(target, `${path} -> ${target}`).not.toMatch(
+          /^(?:subagent\/|\.\.\/extensions\/subagent\/)/
+        );
         if (path.startsWith('model/')) {
           expect(target, `${path} -> ${target}`).not.toMatch(
-            /^(host|tools|extensions|sdk|session|runtime|subagent)\//
+            /^(host|tools|extensions|sdk|session|runtime)\//
           );
         }
-        if (path.startsWith('runtime/') && /^(tools|subagent|extensions|sdk|host)\//.test(target)) {
+        if (path.startsWith('runtime/') && /^(tools|extensions|sdk|host)\//.test(target)) {
           expect(dependency.typeOnly && runtimeFacts.has(target), `${path} -> ${target}`).toBe(
             true
           );
@@ -208,10 +210,7 @@ describe('Agent structure boundaries', () => {
             `${path} -> ${target}`
           ).toBe(true);
         }
-        if (
-          path.startsWith('extensions/') &&
-          /^(tools|subagent|sdk|host|session\/store)\//.test(target)
-        ) {
+        if (path.startsWith('extensions/') && /^(tools|sdk|host|session\/store)\//.test(target)) {
           expect(dependency.typeOnly && extensionFacts.has(target), `${path} -> ${target}`).toBe(
             true
           );
@@ -223,7 +222,7 @@ describe('Agent structure boundaries', () => {
           expect(target, `${path} -> ${target}`).not.toMatch(
             /^(host|sdk)\/|^session\/catalog\.ts$/
           );
-          if (/^(tools|extensions|subagent|runtime)\//.test(target)) {
+          if (/^(tools|extensions|runtime)\//.test(target)) {
             const facts = new Set([
               'tools/contracts.ts',
               'tools/result-extension-contract.ts',
@@ -326,12 +325,35 @@ describe('Agent structure boundaries', () => {
       'session-store.ts',
       'shared',
       'storage',
-      'subagent',
       'tools'
     ]);
+    const subagentSourceDirectory = '../extensions/subagent/src';
+    const subagentFiles = files(subagentSourceDirectory);
+    expect(subagentFiles.length).toBeGreaterThan(0);
+    const subagentManifest = JSON.parse(
+      readFileSync(join(packageSourceRoot, '../extensions/subagent/package.json'), 'utf8')
+    ) as { peerDependencies?: Record<string, string> };
+    expect(subagentManifest.peerDependencies?.['@myagentroam/agent']).toBeDefined();
+    for (const path of subagentFiles) {
+      const dependencies = collectDependencies(path, source(path));
+      expect(
+        dependencies.filter(
+          (dependency) => !dependency.path.startsWith(`${subagentSourceDirectory}/`)
+        ),
+        path
+      ).toEqual([]);
+      expect(source(path), path).not.toMatch(/@myagentroam\/agent\/(?:src|dist)\//);
+    }
+    for (const path of files().filter((path) => !path.startsWith('cli/'))) {
+      expect(
+        dependencies(path).filter((dependency) => dependency.startsWith('../extensions/subagent/')),
+        path
+      ).toEqual([]);
+      expect(source(path), path).not.toContain('@myagentroam/agent-extension-subagent');
+    }
     for (const path of files().filter(
       (path) =>
-        /^(sdk|runtime|model|session|extensions|subagent|host|network|storage|process|tools|prompts)\//.test(
+        /^(sdk|runtime|model|session|extensions|host|network|storage|process|tools|prompts)\//.test(
           path
         ) || path === 'error.ts'
     )) {
@@ -388,7 +410,7 @@ describe('Agent structure boundaries', () => {
 
   it('keeps domain modules independent of the SDK facade and root barrel', () => {
     for (const path of files().filter((path) =>
-      /^(host|model|runtime|session|subagent|tools|prompts)\//.test(path)
+      /^(host|model|runtime|session|tools|prompts)\//.test(path)
     )) {
       const imports = dependencies(path);
       expect(

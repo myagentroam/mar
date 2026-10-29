@@ -211,6 +211,7 @@ function runtimeModel() {
     inputCapabilities: ['TEXT' as const],
     outputCapabilities: ['TEXT' as const],
     reasoningEfforts: ['high' as const],
+    subagentModel: false,
     titleGeneration: false,
     conversationModel: true,
     useResourceUrl: false,

@@ -741,17 +741,17 @@ describe('Workbench protocol contracts', () => {
     ).toBe(true);
   });
 
-  it('uses Node protocol v2 and rejects other envelopes', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(2);
+  it('uses Node protocol v3 and rejects other envelopes', () => {
+    expect(NODE_PROTOCOL_VERSION).toBe(3);
     expect(
       nodeEnvelopeSchema.safeParse({
-        version: 2,
+        version: NODE_PROTOCOL_VERSION,
         id: 'node-request',
         type: 'node.request',
         payload: {}
       }).success
     ).toBe(true);
-    for (const version of [1, 3, 4])
+    for (const version of [1, 2, 4])
       expect(
         nodeEnvelopeSchema.safeParse({
           version,

@@ -469,7 +469,10 @@ describe('Workspace parent Git repository support', () => {
     const legacyPath = join(temporaryRoot, 'legacy-workspace');
     const legacyDatabase = new DatabaseSync(databasePath);
     try {
-      migrate(legacyDatabase, NODE_SCHEMA_MIGRATIONS.slice(0, -1));
+      migrate(
+        legacyDatabase,
+        NODE_SCHEMA_MIGRATIONS.filter((migration) => migration.version <= 20)
+      );
       legacyDatabase
         .prepare(
           `INSERT INTO workspaces

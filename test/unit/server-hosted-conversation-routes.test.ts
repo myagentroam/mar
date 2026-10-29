@@ -429,6 +429,7 @@ describe('Server hosted conversation routes', () => {
       conversationModel: true,
       hostedWebSearch: false,
       responsesPreviousResponseId: false,
+      subagentModel: false,
       enabled: true,
       sortOrder: 0,
       apiKeyConfigured: true

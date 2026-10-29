@@ -56,6 +56,9 @@ export function createTestNodeControl(
     restartAuthorizer: async () => {
       throw new Error('TEST_RESTART_NOT_CONFIGURED');
     },
+    marctlExecutionCredential: async () => {
+      throw new Error('TEST_MARCTL_EXECUTION_CREDENTIAL_NOT_CONFIGURED');
+    },
     runtimeCredentials: runtimeCredentials ?? {
       activateNodeConnection: () => {},
       deactivateNodeConnection: () => {},
@@ -79,6 +82,7 @@ export function createTestNodeControl(
       notificationChannels: { send: (...args) => consumers.notificationChannels.send(...args) },
       scheduleAuthorizer: (...args) => consumers.scheduleAuthorizer(...args),
       restartAuthorizer: (...args) => consumers.restartAuthorizer(...args),
+      marctlExecutionCredential: (...args) => consumers.marctlExecutionCredential(...args),
       runtimeCredentials: consumers.runtimeCredentials
     },
     testNodeBrokerServices(),
