@@ -62,8 +62,8 @@ export const conversationUiEnUS = {
   toolPresentation: {
     detail: {
       copy: 'Copy public record',
+      stderr: 'stderr',
       copied: 'Copied',
-      copyNote: 'Copies the current public record; it may be truncated.',
       command: 'Command',
       code: 'Code',
       output: 'Output',
@@ -74,7 +74,7 @@ export const conversationUiEnUS = {
       waiting: 'Waiting for output',
       unavailable: 'Output not provided',
       empty: 'No output',
-      truncated: 'Output or details may be truncated',
+      truncated: 'Truncated',
       permission: 'Not executed',
       PENDING: 'Pending',
       IN_PROGRESS: 'In progress',

@@ -386,7 +386,7 @@ describe('MAR Agent live tool output projection', () => {
         kind: 'command_execution',
         status: 'IN_PROGRESS',
         payload: {
-          command: `exec_wait (${action ?? 'poll'})`,
+          command: 'exec_wait',
           outputPreview: expect.stringContaining(`Action: ${action ?? 'poll'}`)
         }
       },
@@ -429,7 +429,7 @@ describe('MAR Agent live tool output projection', () => {
         kind: 'command_execution',
         status: 'IN_PROGRESS',
         payload: {
-          command: 'exec_wait (poll)',
+          command: 'exec_wait',
           outputPreview: expect.stringContaining('latest snapshot')
         }
       }

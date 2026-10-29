@@ -341,7 +341,7 @@ describe('MAR Agent Node Runner', () => {
       kind: 'command_execution',
       status: 'IN_PROGRESS',
       payload: {
-        command: 'exec_wait (poll)',
+        command: 'exec_wait',
         toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CONTROL' } }
       }
     });
@@ -605,49 +605,49 @@ describe('MAR Agent Node Runner', () => {
     expect(items).toMatchObject([
       {
         payload: {
-          command: 'code_exec_wait (poll)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('poll')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (poll)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (cancel)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('cancel')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (cancel)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('Code cell completed.')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (poll)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('poll')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (poll)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (cancel)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('cancel')
         }
       },
       {
         payload: {
-          command: 'code_exec_wait (cancel)',
+          command: 'code_exec_wait',
           outputPreview: expect.stringContaining('Code cell failed.')
         }
       }

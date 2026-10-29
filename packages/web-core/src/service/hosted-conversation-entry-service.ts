@@ -9,10 +9,11 @@ import {
 import { computed, ref, shallowRef, type Ref } from 'vue';
 import { listAvailableConversationTemplates } from './hosted-conversation-template-client.js';
 import { errorCode } from '../util/api-error.js';
+import { isBmpAttachment, normalizeComposerImage } from '../util/composer-image-compatibility.js';
 
 export interface HostedAttachment {
   readonly id: string;
-  readonly file: File;
+  file: File;
   readonly previewUrl: string | null;
   name: string;
   clientRequestId: string;
@@ -172,6 +173,7 @@ export function createHostedConversationEntryService(
 
   async function uploadAttachment(attachment: HostedAttachment): Promise<void> {
     const workspace = options.submission!.workspace;
+    const expectedGeneration = generation;
     requireReady();
     if (
       attachment.status === 'FAILED' &&
@@ -186,6 +188,14 @@ export function createHostedConversationEntryService(
       if (upload.file !== undefined) attachment.fileId = upload.file.id;
     };
     try {
+      if (isBmpAttachment(attachment.file)) {
+        const file = await normalizeComposerImage(attachment.file);
+        attachment.controller.signal.throwIfAborted();
+        requireActive(expectedGeneration);
+        requireReady();
+        attachment.file = file;
+        attachment.name = file.name;
+      }
       const result = await workspace.uploadFile(
         attachment.file,
         attachment.clientRequestId,

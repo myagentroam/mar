@@ -42,14 +42,16 @@ const rows = computed(() => {
     siblings.push(node);
     children.set(parent, siblings);
   }
-  const flattened: Array<{ node: TreeNode; depth: number }> = [];
-  function visit(parent: string | null, depth: number): void {
-    for (const node of children.get(parent) ?? []) {
-      flattened.push({ node, depth });
-      visit(node.id, depth + 1);
+  const flattened: Array<{ node: TreeNode; branches: boolean[] }> = [];
+  function visit(parent: string | null, branches: boolean[]): void {
+    const siblings = children.get(parent) ?? [];
+    for (const [index, node] of siblings.entries()) {
+      const path = parent === null ? [] : [...branches, index < siblings.length - 1];
+      flattened.push({ node, branches: path });
+      visit(node.id, path);
     }
   }
-  visit(null, 0);
+  visit(null, []);
   return flattened;
 });
 onMounted(async () => {
@@ -84,16 +86,26 @@ onBeforeUnmount(() => controller.abort());
   >
     <div v-loading="loading" class="session-tree" :aria-busy="loading">
       <ul v-if="result" class="session-tree-list">
-        <li v-for="row in rows" :key="row.node.id">
+        <li v-for="row in rows" :key="row.node.id" class="session-tree-row">
+          <span
+            v-for="(continues, level) in row.branches"
+            :key="level"
+            aria-hidden="true"
+            class="session-tree-branch"
+            :class="{ 'is-continuing': continues, 'is-leaf': level === row.branches.length - 1 }"
+            :style="{ insetInlineStart: `${level * 1.25 + 0.75}rem` }"
+          />
           <button
             type="button"
-            class="session-tree-node utility-control"
-            :style="{ paddingInlineStart: `${row.depth * 1.25 + 0.5}rem` }"
+            class="session-tree-node"
+            :style="{ marginInlineStart: `${row.branches.length * 1.25}rem` }"
             :aria-current="row.node.id === sessionId ? 'true' : undefined"
             @click="emit('open', row.node.id)"
           >
-            <span class="session-tree-title">{{ row.node.title }}</span>
-            <span class="session-tree-runner">{{ row.node.runner }}</span>
+            <span class="session-tree-content">
+              <span class="session-tree-title">{{ row.node.title }}</span>
+              <span class="session-tree-runner">{{ row.node.runner }}</span>
+            </span>
           </button>
         </li>
       </ul>
@@ -107,8 +119,6 @@ onBeforeUnmount(() => controller.abort());
 <style scoped>
 .session-tree {
   min-height: 4rem;
-  max-height: min(60vh, 36rem);
-  overflow-y: auto;
 }
 .session-tree-list {
   list-style: none;
@@ -117,23 +127,71 @@ onBeforeUnmount(() => controller.abort());
 }
 .session-tree-node {
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 2.25rem;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  background: transparent;
+  color: var(--mar-text-primary);
+  font: inherit;
+  cursor: pointer;
   text-align: start;
 }
-.session-tree-node[aria-current='true'] {
-  background: var(--mar-surface-hover);
+.session-tree-node:hover {
+  color: var(--mar-color-brand-text);
+}
+.session-tree-node:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+}
+.session-tree-node[aria-current='true'] .session-tree-title {
+  color: var(--mar-color-brand-text);
+  font-weight: 600;
 }
 .session-tree-title {
   min-width: 0;
-  flex: 1;
   overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .session-tree-runner,
 .session-tree-truncated {
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+}
+.session-tree-row {
+  position: relative;
+  display: flex;
+  padding-block: 0.125rem;
+}
+.session-tree-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.session-tree-branch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.5rem;
+  pointer-events: none;
+}
+.session-tree-branch.is-continuing {
+  border-inline-start: 1px solid var(--mar-border-medium);
+}
+.session-tree-branch.is-leaf::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -1px;
+  top: 0;
+  height: 50%;
+  width: 100%;
+  border-inline-start: 1px solid var(--mar-border-medium);
+  border-bottom: 1px solid var(--mar-border-medium);
 }
 </style>

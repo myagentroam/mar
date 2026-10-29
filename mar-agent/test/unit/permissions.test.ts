@@ -73,6 +73,7 @@ describe('Auto tool permissions', () => {
 
   it('projects optional permission and treats omitted/null/allow identically', () => {
     const projected = projectPermissionTool(tool);
+    expect(projected.description).toBe(tool.description);
     expect(projected.inputSchema.properties).toHaveProperty('permission');
     for (const permission of [
       undefined,
@@ -184,7 +185,10 @@ describe('Auto tool permissions', () => {
         additionalProperties: false
       }
     };
-    expect(projectPermissionTool(business).inputSchema.properties).toHaveProperty('input');
+    const projected = projectPermissionTool(business);
+    expect(projected.description).toBe(business.description);
+    expect(projected.inputSchema.properties).toHaveProperty('input');
+    expect(projected.inputSchema.properties).toHaveProperty('permission');
     const policy = new ExecutionToolPermissions('auto', context);
     expect(
       policy.prepare(

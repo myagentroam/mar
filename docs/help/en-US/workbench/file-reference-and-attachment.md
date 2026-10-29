@@ -15,6 +15,8 @@ Use the attachment action for files outside the Workspace. The first message acc
 
 When pasted clipboard text reaches either 100 lines or 10,000 characters, Composer automatically creates a TXT attachment while preserving the existing draft.
 
+In regular Workspaces and hosted conversations, BMP attachments are converted to PNG in the browser before upload, preserving their resolution. The attachment name changes to `.png`; your local source file is unchanged. Both the source and the converted file must fit within 5 MiB, and the image must not exceed 16 megapixels. Images are not automatically resized. If conversion fails or exceeds a limit, save a smaller PNG and add it again. PNG, JPEG, GIF, and WebP are not converted.
+
 Sent image attachments appear as thumbnail cards without filename text or filename tooltips; other attachments appear as file icons and names. Click an image to enlarge it in a dialog, or Ctrl/Cmd+Click to open a separate window. If a thumbnail cannot load, it falls back to an image placeholder; clicking still checks whether the attachment is available. Other files use the normal Workspace preview. Supported images are also supplied through the Agent's native visual input, not just as paths.
 
 ## Attachment retention

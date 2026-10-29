@@ -80,6 +80,31 @@ async function fixture() {
 }
 
 describe('unified Session image resources', () => {
+  it('reports unsupported image formats as invalid input rather than a host limit', async () => {
+    const { store, session } = await fixture();
+    await expect(
+      store.persistResource(session.id, {
+        mimeType: 'image/bmp',
+        dataBase64: Buffer.from('BM').toString('base64')
+      })
+    ).rejects.toMatchObject({
+      code: 'MAR_AGENT_SESSION_INPUT_INVALID',
+      publicMessage: 'Unsupported image resource format. Use PNG, JPEG, GIF, or WebP.'
+    });
+    await expect(
+      store.persistResource(session.id, {
+        mimeType: 'image/png',
+        dataBase64: ''
+      })
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_INPUT_INVALID' });
+    await expect(
+      store.persistResource(session.id, {
+        mimeType: 'image/png',
+        dataBase64: Buffer.alloc(20 * 1024 * 1024 + 1).toString('base64')
+      })
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_HOST_LIMIT_EXCEEDED' });
+  });
+
   it.each(['binary', 'metadata'] as const)(
     'repairs an unavailable resource when the same image bytes are attached again (%s)',
     async (missing) => {

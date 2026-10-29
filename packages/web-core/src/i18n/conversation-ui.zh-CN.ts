@@ -62,8 +62,8 @@ export const conversationUiZhCN = {
   toolPresentation: {
     detail: {
       copy: '复制公开记录',
+      stderr: 'stderr',
       copied: '已复制',
-      copyNote: '复制当前公开记录，内容可能已截断。',
       command: '命令',
       code: '代码',
       output: '输出',
@@ -74,7 +74,7 @@ export const conversationUiZhCN = {
       waiting: '等待输出',
       unavailable: '来源未提供输出',
       empty: '无输出',
-      truncated: '输出或详情可能已截断',
+      truncated: '已截断',
       permission: '未执行',
       PENDING: '待处理',
       IN_PROGRESS: '进行中',

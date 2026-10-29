@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 import { executionPresentationSchema } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
+import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
 
 const props = defineProps<{ item: ConversationItem; copyOnly?: boolean }>();
@@ -43,11 +44,44 @@ const outputs = computed(() => {
     return [{ channel: 'COMBINED' as const, text: payload.value.outputPreview }];
   return undefined;
 });
-const source = computed(() =>
-  typeof payload.value.command === 'string' ? payload.value.command : ''
+const visibleOutputs = computed(
+  () => outputs.value?.filter((block) => block.text.length > 0) ?? []
 );
-const fallback = computed(() => conversationItemDetail(props.item.kind, props.item.payload));
-const detailStatus = (value: string) => translate(`toolPresentation.detail.${value}`);
+const copyLabel = computed(() =>
+  translate(copyState.value ? 'toolPresentation.detail.copied' : 'toolPresentation.detail.copy')
+);
+const detailText = computed(() => {
+  const value = execution.value;
+  if (!value) {
+    const text =
+      genericOutput.value === undefined
+        ? conversationItemDetail(props.item.kind, props.item.payload)
+        : genericOutput.value.text;
+    return [
+      text,
+      genericOutput.value?.truncated ? translate('toolPresentation.detail.truncated') : ''
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  const lines: string[] = [];
+  const field = (key: string, text: unknown) => {
+    if ((typeof text === 'string' && text.length > 0) || typeof text === 'number')
+      lines.push(`${translate(`toolPresentation.detail.${key}`)}: ${text}`);
+  };
+  field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
+  if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
+  field('status', translate(`toolPresentation.detail.${props.item.status}`));
+  if (value.error)
+    field('error', [value.error.code, value.error.message].filter(Boolean).join(': '));
+  field('permission', props.item.permissionStop?.reason);
+  for (const block of visibleOutputs.value)
+    field(block.channel === 'STDERR' ? 'stderr' : 'output', block.text);
+  if (genericOutput.value?.truncated || value.truncation || payload.value.truncated)
+    lines.push(translate('toolPresentation.detail.truncated'));
+  field('exitCode', payload.value.exitCode);
+  return lines.join('\n');
+});
 
 function copyRecord() {
   // Capture the public item before awaiting clipboard access; subsequent snapshots cannot change it.
@@ -68,135 +102,51 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="tool-detail" :aria-label="translate('toolPresentation.detail.output')">
-    <div class="tool-detail-actions">
-      <span>{{ translate('toolPresentation.detail.copyNote') }}</span>
-      <button type="button" class="tool-detail-copy" @click.stop="copyRecord">
-        {{ translate('toolPresentation.detail.copy') }}
-      </button>
-    </div>
-    <span v-if="copyState" role="status" class="tool-detail-feedback">{{
-      translate('toolPresentation.detail.copied')
-    }}</span>
-    <template v-if="!copyOnly && execution">
-      <template v-if="source">
-        <strong>{{
-          translate(
-            execution.kind === 'CODE'
-              ? 'toolPresentation.detail.code'
-              : 'toolPresentation.detail.command'
-          )
-        }}</strong>
-        <pre>{{ source }}</pre>
-      </template>
-      <dl>
-        <template v-if="execution.kind === 'SHELL' && typeof payload.cwd === 'string'"
-          ><dt>{{ translate('toolPresentation.detail.cwd') }}</dt>
-          <dd>{{ payload.cwd }}</dd></template
-        >
-        <template v-if="typeof payload.exitCode === 'number'"
-          ><dt>{{ translate('toolPresentation.detail.exitCode') }}</dt>
-          <dd>{{ payload.exitCode }}</dd></template
-        >
-        <dt>{{ translate('toolPresentation.detail.status') }}</dt>
-        <dd>{{ detailStatus(item.status) }}</dd>
-        <template v-if="execution.error"
-          ><dt>{{ translate('toolPresentation.detail.error') }}</dt>
-          <dd>{{ execution.error.code }} · {{ execution.error.message }}</dd></template
-        >
-        <template v-if="item.permissionStop"
-          ><dt>{{ translate('toolPresentation.detail.permission') }}</dt>
-          <dd>{{ item.permissionStop.reason }}</dd></template
-        >
-      </dl>
-      <strong>{{ translate('toolPresentation.detail.output') }}</strong>
-      <span v-if="outputs === undefined">{{
-        translate(
-          item.status === 'IN_PROGRESS'
-            ? 'toolPresentation.detail.waiting'
-            : 'toolPresentation.detail.unavailable'
-        )
-      }}</span>
-      <span v-else-if="outputs.length === 0 || outputs.every((block) => block.text === '')">{{
-        translate('toolPresentation.detail.empty')
-      }}</span>
-      <div v-for="block in outputs" v-else :key="block.channel" class="tool-detail-output">
-        <span>{{ block.channel }}</span>
-        <pre>{{ block.text }}</pre>
-      </div>
-      <span
-        v-if="genericOutput?.truncated || execution.truncation || payload.truncated"
-        class="tool-detail-note"
-        >{{ translate('toolPresentation.detail.truncated') }}</span
-      >
-    </template>
-    <template v-else-if="!copyOnly">
-      <pre v-if="genericOutput !== undefined">{{ genericOutput.text }}</pre>
-      <pre v-else-if="fallback">{{ fallback }}</pre>
-      <span v-if="genericOutput?.truncated" class="tool-detail-note">{{
-        translate('toolPresentation.detail.truncated')
-      }}</span>
-    </template>
+    <button
+      v-tooltip="copyLabel"
+      type="button"
+      class="tool-detail-copy icon-button utility-control"
+      :aria-label="copyLabel"
+      @click.stop="copyRecord"
+    >
+      <MarIcon :name="copyState ? 'check' : 'copy'" />
+    </button>
+    <pre v-if="!copyOnly && detailText">{{ detailText }}</pre>
   </section>
 </template>
 
 <style scoped>
 .tool-detail {
+  position: relative;
   min-width: 0;
-  display: grid;
-  gap: 6px;
-  padding: 8px 0;
+  padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
+  min-height: var(--mar-utility-control-size);
   color: var(--mar-text-secondary);
 }
-.tool-detail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.tool-detail-actions span,
-.tool-detail-note,
-.tool-detail-feedback {
-  font-size: 0.85em;
-}
 .tool-detail-copy {
-  flex: none;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: var(--mar-radius-control);
-  padding: 4px 8px;
-  cursor: pointer;
-}
-.tool-detail-copy:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
+  position: absolute;
+  top: 0.5rem;
+  right: 0;
+  display: inline-flex;
+  width: var(--mar-utility-control-size);
+  height: var(--mar-utility-control-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0;
 }
 .tool-detail pre {
   margin: 0;
-  padding: 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 20rem;
-  overflow: auto;
-  background: var(--mar-conversation-code);
-  border-radius: var(--mar-radius-control);
-}
-.tool-detail dl {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 12px;
-  margin: 0;
-}
-.tool-detail dt {
-  font-weight: 600;
-}
-.tool-detail dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.tool-detail-output {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
+  overflow: visible;
+  background: transparent;
+  border-radius: 0;
 }
 </style>

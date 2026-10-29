@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
+import * as imageCompatibility from '../../src/util/composer-image-compatibility.js';
 import {
   hostedConversationSnapshotSchema,
   type HostedConversationSnapshot
@@ -104,8 +105,8 @@ function fixture() {
   const upload = (completed = false) => ({
     uploadId: 'u',
     conversationId: 'c',
-    name: 'draft.txt',
-    mimeType: 'text/plain',
+    name: file.displayName,
+    mimeType: file.mimeType,
     size: 5,
     receivedBytes,
     status: completed ? 'COMPLETED' : 'UPLOADING',
@@ -145,9 +146,14 @@ function fixture() {
       return snapshot as never;
     }
     if (path.endsWith('/uploads/preflight'))
-      return { files: [{ name: 'draft.txt', status: 'READY' }] } as never;
+      return {
+        files: (body['files'] as { name: string }[]).map(({ name }) => ({ name, status: 'READY' }))
+      } as never;
     if (path.endsWith('/uploads')) {
       if (failUpload) throw new TypeError('Failed to fetch');
+      file.displayName = String(body['name']);
+      file.mimeType = String(body['mimeType']);
+      file.relativePath = `uploads/${file.displayName}`;
       return { upload: upload() } as never;
     }
     if (path.endsWith('/chunks')) {
@@ -217,6 +223,45 @@ function fixture() {
 }
 
 describe('Hosted first message ownership', () => {
+  it('converts BMP before the hosted upload and uses PNG metadata', async () => {
+    const f = fixture();
+    f.entry.removeAttachment(f.entry.attachments.value[0]!.id);
+    const source = new File(['bmp'], 'scope.bmp', { type: 'image/bmp' });
+    const normalize = vi
+      .spyOn(imageCompatibility, 'normalizeComposerImage')
+      .mockResolvedValue(new File(['png!!'], 'scope.png', { type: 'image/png' }));
+    f.entry.addFiles([source]);
+    await expect(f.entry.submit()).resolves.toBe(true);
+    expect(normalize).toHaveBeenCalledWith(source);
+    expect(f.writes.find((write) => write.path.endsWith('/uploads'))?.body).toMatchObject({
+      name: 'scope.png',
+      mimeType: 'image/png',
+      size: 5
+    });
+  });
+
+  it.each([false, true])(
+    'does not upload after BMP conversion crosses a pause (resumed=%s)',
+    async (resume) => {
+      const f = fixture();
+      f.entry.removeAttachment(f.entry.attachments.value[0]!.id);
+      let finish!: (file: File) => void;
+      const normalize = vi.spyOn(imageCompatibility, 'normalizeComposerImage').mockReturnValue(
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+      );
+      f.entry.addFiles([new File(['bmp'], 'scope.bmp', { type: 'image/bmp' })]);
+      const operation = expect(f.entry.submit()).rejects.toThrow();
+      await vi.waitFor(() => expect(normalize).toHaveBeenCalledOnce());
+      f.entry.suspend();
+      if (resume) f.entry.resume();
+      finish(new File(['png!!'], 'scope.png', { type: 'image/png' }));
+      await operation;
+      expect(f.writes.some((write) => write.path.endsWith('/uploads'))).toBe(false);
+    }
+  );
+
   it('decodes the create response once and installs the accepted snapshot without decoding it again', async () => {
     const decode = vi.spyOn(hostedConversationSnapshotSchema, 'safeParse');
     const f = fixture();

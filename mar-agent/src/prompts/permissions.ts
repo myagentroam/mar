@@ -1,6 +1,7 @@
 /** Auto uses main-model self-classification: a low-friction guard, not an independent safety reviewer. */
 export const autoPermissionPrompt = `# Auto tool permission
 Continue authorized work automatically. Use the tool catalog's JSON input; omit permission or set it to null for normal or already authorized actions.
+Permission is separate metadata; when the schema wraps business arguments in input, keep them unchanged there.
 
 Use permission={action:"ask",reason:"..."} only when a material authorization question remains after proportionate low-risk investigation, including materially ambiguous target or scope, destructive or state-replacing effects that may discard unpreserved work, production/shared-system impact, or external disclosure.
 

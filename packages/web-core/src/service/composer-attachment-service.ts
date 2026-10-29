@@ -6,6 +6,7 @@ import { errorCode } from '../util/api-error.js';
 import { workspaceFileSha256 } from '../util/workspace-file-checksum.js';
 import { errorMessage } from '../util/error-presentation.js';
 import type { DirectTransferDescriptor } from '@myagentroam/protocol';
+import { isBmpAttachment, normalizeComposerImage } from '../util/composer-image-compatibility.js';
 
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -170,6 +171,19 @@ export function createComposerAttachmentService(options: {
 
   async function upload(attachment: ComposerAttachment): Promise<void> {
     try {
+      if (isBmpAttachment(attachment.file)) {
+        const file = await normalizeComposerImage(attachment.file);
+        const current = attachments.value.find((item) => item.id === attachment.id);
+        if (current === undefined) return;
+        const total = attachments.value
+          .filter(
+            (item) => item.nodeId === current.nodeId && item.workspaceId === current.workspaceId
+          )
+          .reduce((size, item) => size + (item.id === current.id ? file.size : item.file.size), 0);
+        if (total > MAX_TOTAL_BYTES) throw new Error('COMPOSER_IMAGE_LIMIT_EXCEEDED');
+        current.file = file;
+        attachment = current;
+      }
       const generation = options.direct?.generation(attachment.nodeId);
       if (generation !== undefined) {
         const controller = new AbortController();

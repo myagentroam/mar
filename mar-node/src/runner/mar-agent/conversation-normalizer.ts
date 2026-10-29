@@ -1296,7 +1296,7 @@ function genericToolItem(
     return commandItem(
       {
         itemId: id,
-        command: `${toolName} (${compactRunnerText(action, 128)})`,
+        command: toolName,
         cwd: null,
         outputPreview:
           status === 'IN_PROGRESS' && outputSummary !== null
