@@ -87,7 +87,7 @@ onBeforeUnmount(() => controller.abort());
         <li v-for="row in rows" :key="row.node.id">
           <button
             type="button"
-            class="session-tree-node utility-control"
+            class="session-tree-node"
             :style="{ paddingInlineStart: `${row.depth * 1.25 + 0.5}rem` }"
             :aria-current="row.node.id === sessionId ? 'true' : undefined"
             @click="emit('open', row.node.id)"
@@ -107,8 +107,6 @@ onBeforeUnmount(() => controller.abort());
 <style scoped>
 .session-tree {
   min-height: 4rem;
-  max-height: min(60vh, 36rem);
-  overflow-y: auto;
 }
 .session-tree-list {
   list-style: none;
@@ -118,13 +116,27 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-node {
   display: flex;
   width: 100%;
+  min-height: 2.25rem;
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  background: transparent;
+  color: var(--mar-text-primary);
+  font: inherit;
+  cursor: pointer;
   text-align: start;
 }
+.session-tree-node:hover {
+  background: var(--mar-fill-row-hover);
+}
+.session-tree-node:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+}
 .session-tree-node[aria-current='true'] {
-  background: var(--mar-surface-hover);
+  background: var(--mar-fill-selection);
 }
 .session-tree-title {
   min-width: 0;
@@ -135,5 +147,8 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-truncated {
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
+}
+.session-tree-runner {
+  flex: none;
 }
 </style>
