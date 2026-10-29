@@ -155,21 +155,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(group).not.toContainText('more files');
         const first = rows.nth(0);
         await first.locator(':scope > summary').click();
-        await expect(first.locator('p')).toContainText('Original batch ranges: offset 2, limit 8');
-        await expect(first.locator('p')).toContainText('Original batch output');
-        await expect(rows.nth(1).locator('p')).toHaveCount(0);
+        await expect(first.locator('.conversation-detail-text')).toContainText(
+          'Original batch ranges: offset 2, limit 8'
+        );
+        await expect(first.locator('.conversation-detail-text')).toContainText(
+          'Original batch output'
+        );
+        await expect(rows.nth(1).locator('.conversation-detail-text')).toHaveCount(0);
         await rows.nth(1).locator(':scope > summary').click();
-        await expect(rows.nth(1).locator('p')).toContainText('Original batch output');
+        await expect(rows.nth(1).locator('.conversation-detail-text')).toContainText(
+          'Original batch output'
+        );
         await rows.nth(1).locator(':scope > summary').click();
-        await expect(rows.nth(1).locator('p')).toHaveCount(0);
+        await expect(rows.nth(1).locator('.conversation-detail-text')).toHaveCount(0);
         await expect(rows.nth(4).locator(':scope > summary')).toContainText('Failed');
         await rows.nth(5).locator(':scope > summary').click();
-        await expect(rows.nth(5).locator('p')).toContainText('Original pathless read failure');
+        await expect(rows.nth(5).locator('.conversation-detail-text')).toContainText(
+          'Original pathless read failure'
+        );
         await page.getByTestId('append-read-file').click();
         await expect(heading).toContainText('6 files');
         await expect(rows).toHaveCount(7);
         await expect(first).toHaveAttribute('open', '');
-        await expect(first.locator('p')).toContainText('Original batch output');
+        await expect(first.locator('.conversation-detail-text')).toContainText(
+          'Original batch output'
+        );
         await page.getByTestId('read-files-chinese').click();
         await expect(heading).toContainText('读取文件');
         await expect(heading).toContainText('6 个文件');
@@ -192,8 +202,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await heading.click();
         await expect(rows).toHaveCount(0);
         await heading.click();
-        await expect(first.locator('p')).toContainText('Original batch output');
-        await expect(first.locator('p')).toBeVisible();
+        await expect(rows).toHaveCount(7);
+        await expect(group.locator(':scope > details[open]')).toHaveCount(0);
+        await expect(group.locator('.conversation-detail-text')).toHaveCount(0);
+        await first.locator(':scope > summary').click();
+        await expect(first.locator('.conversation-detail-text')).toContainText(
+          'Original batch output'
+        );
+        await expect(first.locator('.conversation-detail-text')).toBeVisible();
         await expect
           .poll(() =>
             group.evaluate(
@@ -629,9 +645,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         }
         const child = group.locator(':scope > details').first();
         await child.locator(':scope > summary').click();
-        await expect(child.locator(':scope > p')).toBeVisible();
+        await expect(child.locator('.conversation-detail-body')).toBeVisible();
         await child.locator(':scope > summary').click();
-        await expect(child.locator(':scope > p')).toHaveCount(0);
+        await expect(child.locator('.conversation-detail-body')).toHaveCount(0);
       }
       await page.locator('.conversation-timeline').screenshot({
         path: testInfo.outputPath(`group-spacing-${width}.png`)
