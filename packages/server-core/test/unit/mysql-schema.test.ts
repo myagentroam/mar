@@ -328,6 +328,85 @@ describe('Core MySQL schema', () => {
       "`conversation_model` tinyint(1) NOT NULL DEFAULT '1'"
     );
   });
+  it('adds the node upgrade snapshot repeatably and rejects incompatible columns', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 36)!;
+    let column: Record<string, string> | undefined;
+    const connection = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT')) return [column === undefined ? [] : [column], []];
+        column = { COLUMN_NAME: 'upgrade_snapshot', COLUMN_TYPE: 'json', IS_NULLABLE: 'YES' };
+        return [[], []];
+      })
+    };
+    await migration.up(connection as never, 'personal');
+    await migration.up(connection as never, 'personal');
+    expect(connection.execute.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toHaveLength(
+      1
+    );
+    expect(CORE_MYSQL_SCHEMA.nodes).toContain('`upgrade_snapshot` json DEFAULT NULL');
+    column = { COLUMN_NAME: 'upgrade_snapshot', COLUMN_TYPE: 'text', IS_NULLABLE: 'YES' };
+    await expect(migration.up(connection as never, 'personal')).rejects.toThrow(
+      'SERVER_DATABASE_SCHEMA_INVALID'
+    );
+  });
+  it('adds subagent usage disabled by default without overwriting later changes on retry', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ name }) => name === 'subagent_model_usage')!;
+    let columnExists = false;
+    const rows = [{ id: 'legacy', subagentModel: undefined as boolean | undefined }];
+    const connection = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT'))
+          return [
+            columnExists
+              ? [
+                  {
+                    COLUMN_NAME: 'subagent_model',
+                    COLUMN_TYPE: 'tinyint(1)',
+                    IS_NULLABLE: 'NO',
+                    COLUMN_DEFAULT: '0'
+                  }
+                ]
+              : [],
+            []
+          ];
+        columnExists = true;
+        for (const row of rows) row.subagentModel = false;
+        return [[], []];
+      }),
+      query: vi.fn(async () => [[], []]),
+      release: vi.fn()
+    };
+    await migration.up(connection, 'personal');
+    expect(rows[0]?.subagentModel).toBe(false);
+    rows[0]!.subagentModel = true;
+    await migration.up(connection, 'personal');
+    expect(rows[0]?.subagentModel).toBe(true);
+    expect(connection.execute.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toHaveLength(
+      1
+    );
+    expect(CORE_MYSQL_SCHEMA.mar_agent_models).toContain(
+      "`subagent_model` tinyint(1) NOT NULL DEFAULT '0'"
+    );
+  });
+  it('rejects an incompatible pre-existing subagent model column', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 35)!;
+    const connection = {
+      execute: vi.fn(async () => [
+        [
+          {
+            COLUMN_NAME: 'subagent_model',
+            COLUMN_TYPE: 'tinyint(1)',
+            IS_NULLABLE: 'NO',
+            COLUMN_DEFAULT: '1'
+          }
+        ],
+        []
+      ])
+    };
+    await expect(migration.up(connection as never, 'personal')).rejects.toThrow(
+      'SERVER_DATABASE_SCHEMA_INVALID'
+    );
+  });
   it.each(['personal', 'enterprise'] as const)(
     'preserves the management key while migrating its setting name repeatably for %s',
     async (edition) => {
@@ -598,7 +677,7 @@ describe('Core MySQL schema', () => {
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33, 34
+      33, 34, 35, 36
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');
