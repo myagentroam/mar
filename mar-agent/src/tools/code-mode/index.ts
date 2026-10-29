@@ -377,7 +377,11 @@ export class CodeModeTool {
     const images: NonNullable<ToolExecutionResult['images']>[number][] = [];
     const observations: CodeObservation[] = [];
     let observationBytes = 0;
-    const appendObservation = (value: CodeObservation, originalBytes?: number) => {
+    const appendObservation = (
+      value: CodeObservation,
+      originalBytes?: number,
+      display?: CodeObservation
+    ) => {
       const capture = new BoundedTextOutput(
         Math.max(0, limits.codeMaxOutputBytes - observationBytes),
         ''
@@ -404,7 +408,7 @@ export class CodeModeTool {
               truncated: value.truncated === true || bounded.droppedBytes > 0
             };
       observations.push(observation);
-      output?.observe(observation);
+      output?.observe(observation, display ?? value);
     };
     const toolResults = new Map<
       string,
@@ -488,6 +492,7 @@ export class CodeModeTool {
           return index;
         };
         let observation: CodeObservation;
+        let displayObservation: CodeObservation | undefined;
         if (value.type === 'tool_result' && typeof value.operationId === 'string') {
           const original = toolResults.get(value.operationId);
           if (!original)
@@ -522,6 +527,26 @@ export class CodeModeTool {
               ...(indices?.length ? { imageIndices: indices } : {})
             }
           };
+          const display = original.result.eventData?.displayOutput;
+          if (
+            (original.source.toolName === 'exec' || original.source.toolName === 'exec_wait') &&
+            display !== null &&
+            typeof display === 'object' &&
+            'stdout' in display &&
+            'stderr' in display &&
+            typeof display.stdout === 'string' &&
+            typeof display.stderr === 'string'
+          )
+            displayObservation = {
+              ...observation,
+              result: {
+                content: '',
+                data: { stdout: display.stdout, stderr: display.stderr },
+                truncated:
+                  ('stdoutDroppedBytes' in display && Number(display.stdoutDroppedBytes) > 0) ||
+                  ('stderrDroppedBytes' in display && Number(display.stderrDroppedBytes) > 0)
+              }
+            };
         } else if (value.type === 'image') {
           observation = {
             type: 'value',
@@ -544,12 +569,27 @@ export class CodeModeTool {
               typeof value.originalBytes === 'number' &&
               value.originalBytes > Buffer.byteLength(value.value)
           };
+          if (typeof value.displayValue === 'string') {
+            if (Buffer.byteLength(value.displayValue) > 10_000)
+              throw new AgentError(
+                'MAR_AGENT_CODE_PROTOCOL_ERROR',
+                'Code Mode sent oversized display text.'
+              );
+            displayObservation = {
+              ...observation,
+              value: value.displayValue,
+              truncated:
+                typeof value.originalBytes === 'number' &&
+                value.originalBytes > Buffer.byteLength(value.displayValue)
+            };
+          }
         } else throw new AgentError('MAR_AGENT_CODE_PROTOCOL_ERROR', 'Invalid observation frame.');
         appendObservation(
           observation,
           value.type === 'value' && typeof value.originalBytes === 'number'
             ? value.originalBytes
-            : undefined
+            : undefined,
+          displayObservation
         );
       } else if (frame.kind === 'text' && typeof frame.value === 'string') {
         const originalBytes = frame.originalBytes ?? Buffer.byteLength(frame.value);
@@ -643,11 +683,12 @@ export class CodeModeTool {
                   : undefined
               }
             });
-            const { content, ...structured } = output;
+            const { eventData: _eventData, ...guestOutput } = output;
+            const { content, ...structured } = guestOutput;
             const projected =
               output.data !== undefined && content === JSON.stringify(output.data)
                 ? structured
-                : output;
+                : guestOutput;
             await write({ id, ok: true, output: projected });
           } catch (error) {
             // Serialization/transport failures cannot undo an already completed tool call.

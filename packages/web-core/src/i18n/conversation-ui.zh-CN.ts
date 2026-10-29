@@ -77,7 +77,7 @@ export const conversationUiZhCN = {
       waiting: '等待输出',
       unavailable: '来源未提供输出',
       empty: '无输出',
-      truncated: '已截断',
+      truncated: '...Truncated',
       permission: '未执行',
       PENDING: '待处理',
       IN_PROGRESS: '进行中',

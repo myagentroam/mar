@@ -107,7 +107,10 @@ export function publicToolEventInput(
 }
 
 /** Explicit observations are public, but their event projection must remain bounded. */
-function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeCellEventData {
+export function publicCodeObservations(
+  values: unknown,
+  data: CodeCellEventData
+): CodeCellEventData {
   if (!Array.isArray(values)) return data;
   const retained = new Set<unknown>(data.observations ?? []);
   const selected: NonNullable<CodeCellEventData['observations']>[number][] = [];
@@ -140,6 +143,7 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
       }
       displayedCount++;
       truncated ||= entry.truncated === true;
+      headTruncated ||= entry.truncated === true;
       const value = clip(entry.value);
       selected.unshift({
         type: 'value',
@@ -170,6 +174,7 @@ function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeC
         }
         displayedCount++;
         truncated ||= entry.result.truncated === true;
+        headTruncated ||= entry.result.truncated === true;
         const data = isRecord(entry.result.data) ? entry.result.data : undefined;
         const stderr = typeof data?.stderr === 'string' ? clip(data.stderr) : undefined;
         const stdout = typeof data?.stdout === 'string' ? clip(data.stdout) : undefined;

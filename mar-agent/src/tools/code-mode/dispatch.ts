@@ -89,6 +89,9 @@ export function createCodeToolDispatch(input: {
         const { eventData: _eventData, ...guestResult } = result;
         return {
           ...guestResult,
+          ...((call.name === 'exec' || call.name === 'exec_wait') && data !== undefined
+            ? { eventData: { ...data } }
+            : {}),
           content: bounded.content,
           truncated: result.truncated === true || bounded.truncated
         };

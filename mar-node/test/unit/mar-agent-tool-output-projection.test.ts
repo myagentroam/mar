@@ -493,6 +493,58 @@ describe('MAR Agent live tool output projection', () => {
       expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject(items[0]!.payload);
     }
   );
+  it.each(['code_exec', 'code_exec_wait'] as const)(
+    'keeps SDK source truncation at the head for %s terminal output and history',
+    (toolName) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const started = toolEvent({
+        type: 'tool.started',
+        toolName,
+        callId: 'head-output',
+        input: toolName === 'code_exec' ? { code: 'run()' } : { cellId: 'cell' }
+      });
+      normalizer.normalize(started);
+      const data = structuredToolEventData(toolName, {
+        cellId: 'cell',
+        status: 'completed',
+        truncated: true,
+        observations: [
+          {
+            type: 'value',
+            id: 'tail',
+            format: 'text',
+            value: 'retained tail',
+            truncated: true
+          }
+        ]
+      });
+      const completed = toolEvent({
+        type: 'tool.completed',
+        toolName,
+        callId: 'head-output',
+        data,
+        truncated: true
+      });
+      const items = normalizer.normalize(completed);
+      expect(items[0]?.payload.toolPresentation).toMatchObject({
+        execution: {
+          truncation: { output: 'HEAD' },
+          output: [{ channel: 'TEXT', text: 'retained tail' }]
+        }
+      });
+      expect(items[0]).not.toHaveProperty('append');
+      expectValidConversationItems(items);
+      const history = projectMarAgentHistory(
+        { id: 'session-1' } as NodeAgentSession,
+        [started, completed].map((event) => ({
+          kind: 'event' as const,
+          sequence: event.sequence,
+          event
+        }))
+      );
+      expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject(items[0]!.payload);
+    }
+  );
   it('retains the latest long SDK observations through terminal normalization', () => {
     const normalizer = new MarAgentConversationNormalizer();
     normalizer.normalize(

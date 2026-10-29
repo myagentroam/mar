@@ -69,8 +69,8 @@ it('marks a truncated wait source independently from a head-truncated output tai
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain('Command: partial command\nTruncated');
-    expect(html).toContain('Output:\n… Truncated\noutput tail');
+    expect(html).toContain('Command: partial command\n...Truncated');
+    expect(html).toContain('Output:\n...Truncated\noutput tail');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
@@ -103,28 +103,64 @@ it.each(['SHELL', 'CODE'] as const)(
   }
 );
 
-it('places a known head truncation before retained output without guessing source truncation', async () => {
-  for (const [truncation, expected] of [
-    [{ output: 'HEAD' }, 'Output:\n… Truncated\nretained output'],
-    [{ output: 'SOURCE' }, 'Output:\nretained output\nTruncated']
-  ] as const) {
-    localePreferenceService().setLocale('en-US');
+it.each(['en-US', 'zh-CN'] as const)(
+  'uses the same truncation marker before HEAD and after SOURCE output in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      for (const [truncation, expected] of [
+        [{ output: 'HEAD' }, 'Output:\n...Truncated\nretained output'],
+        [{ output: 'SOURCE' }, 'Output:\nretained output\n...Truncated']
+      ] as const) {
+        const item = conversationItem('output', 'command_execution', {
+          command: 'run',
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: {
+              kind: 'SHELL',
+              output: [{ channel: 'COMBINED', text: 'retained output' }],
+              truncation
+            }
+          }
+        });
+        const html = await render(ConversationToolDetail, { item });
+        expect(html).toContain(expected);
+      }
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
+it.each([
+  [true, true],
+  [false, true],
+  [true, false],
+  [false, false]
+])(
+  'keeps input truncation separate from output (source: %s, HEAD output: %s)',
+  async (withSource, headOutput) => {
     const item = conversationItem('output', 'command_execution', {
-      command: 'run',
+      command: 'original input',
       toolPresentation: {
         kind: 'EXECUTION',
         execution: {
-          kind: 'SHELL',
-          output: [{ channel: 'COMBINED', text: 'retained output' }],
-          truncation
+          kind: 'CODE',
+          ...(withSource
+            ? { source: { kind: 'CODE', text: 'original input', truncated: true } }
+            : {}),
+          output: [{ channel: 'TEXT', text: 'latest tail' }],
+          truncation: { input: true, ...(headOutput ? { output: 'HEAD' } : {}) }
         }
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain(expected);
+    expect(html).toContain(
+      `Code: original input\n...Truncated\nOutput:\n${headOutput ? '...Truncated\n' : ''}latest tail`
+    );
+    expect(html).not.toContain('latest tail\n...Truncated');
   }
-  localePreferenceService().setLocale(originalLocale);
-});
+);
 
 it('preserves newlines and whitespace in execution output after the English label', async () => {
   localePreferenceService().setLocale('zh-CN');

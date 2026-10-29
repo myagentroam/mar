@@ -77,7 +77,7 @@ export const conversationUiEnUS = {
       waiting: 'Waiting for output',
       unavailable: 'Output not provided',
       empty: 'No output',
-      truncated: 'Truncated',
+      truncated: '...Truncated',
       permission: 'Not executed',
       PENDING: 'Pending',
       IN_PROGRESS: 'In progress',
