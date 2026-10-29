@@ -516,7 +516,7 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it('binds native calls to a live Node Execution and its owning user', async () => {
+  it.each([false, true])('binds native actors (promoted: %s)', async (promoted) => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-actor-'));
     const database = new NodeDatabase(':memory:', 'network-actor');
     const workspace = database.saveWorkspace({
@@ -543,11 +543,12 @@ describe('Node Agent Network owner integration', () => {
       agentNetworkService: AgentNetworkService;
       agentNetworkObservations: AgentNetworkObservations;
       externalSessionResumeService: import('../../src/service/external-session-resume-service.js').ExternalSessionResumeService;
+      sessionIdentityService: import('../../src/session/session-identity-service.js').SessionIdentityService;
       sessionMessageService: {
         operations(): Record<string, (input: Record<string, unknown>) => Promise<unknown>>;
       };
     };
-    const parent = core.runtime.createAgentSession({
+    let parent = core.runtime.createAgentSession({
       workspaceId: workspace.id,
       runner: 'codex',
       cwd: workspace.path,
@@ -571,13 +572,27 @@ describe('Node Agent Network owner integration', () => {
       const run = core.runtime.activeSessionRun(parent.id)!;
       await vi.waitFor(() => expect(core.runtime.currentExecutionId(run.id)).toBeTruthy());
       const executionId = core.runtime.currentExecutionId(run.id)!;
+      const callerSessionId = parent.id;
       const invoke = agentNetworkInvoke({
-        sessionId: parent.id,
+        sessionId: callerSessionId,
         runtime: core.runtime,
         coordinator: core.continuousRunCoordinator,
         service: core.agentNetworkService
       });
+      if (promoted) {
+        const bootstrapId = parent.id;
+        core.sessionIdentityService.promote(bootstrapId, 'promoted-actor-parent');
+        core.agentNetworkObservations.promote(bootstrapId, 'promoted-actor-parent');
+        parent = core.runtime.getAgentSessionById(bootstrapId)!;
+        expect(parent.id).toBe('promoted-actor-parent');
+        expect(core.continuousRunCoordinator.pending(executionId)?.sessionId).toBe(parent.id);
+      }
       const context = { signal: new AbortController().signal } as ExtensionOperationContext;
+      await expect(
+        invoke(executionId, 'list', { scope: 'children' }, context)
+      ).resolves.toMatchObject({
+        sessions: []
+      });
       const abortedStart = new AbortController();
       const starting = invoke(executionId, 'start', { title: 'Child', content: 'must not start' }, {
         signal: abortedStart.signal
@@ -732,7 +747,7 @@ describe('Node Agent Network owner integration', () => {
         action: 'list',
         input: { scope: 'children' },
         __requestUserId: 7,
-        __marctlCaller: { type: 'execution', sessionId: parent.id, executionId }
+        __marctlCaller: { type: 'execution', sessionId: callerSessionId, executionId }
       };
       expect(await command(request)).toMatchObject({
         sessions: [expect.objectContaining({ id: created.agentId })]
@@ -788,6 +803,9 @@ describe('Node Agent Network owner integration', () => {
       const childRun = core.runtime.activeSessionRun(created.agentId)!;
       await vi.waitFor(() => expect(core.runtime.currentExecutionId(childRun.id)).toBeTruthy());
       const childExecutionId = core.runtime.currentExecutionId(childRun.id)!;
+      await expect(
+        invoke(childExecutionId, 'list', { scope: 'children' }, context)
+      ).rejects.toThrow('AGENT_ACTOR_NOT_ACTIVE');
       const childInvoke = agentNetworkInvoke({
         sessionId: created.agentId,
         runtime: core.runtime,

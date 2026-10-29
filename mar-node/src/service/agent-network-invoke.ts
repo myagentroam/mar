@@ -36,11 +36,14 @@ export function executionAgentActor(input: {
   readonly runtime: NodeRuntimeState;
   readonly coordinator: ContinuousRunCoordinator<unknown>;
 }): AgentNetworkActor {
-  const { sessionId, executionId } = input;
+  const { executionId } = input;
+  // Warm runtimes and execution credentials may retain the bootstrap Session ID.
+  const sessionId = input.runtime.getAgentSessionById(input.sessionId)?.id;
   const execution = input.runtime.executionSnapshot(executionId);
   const prepared = input.coordinator.pending(executionId);
   const run = execution && input.runtime.getRun(execution.runId);
   if (
+    !sessionId ||
     !execution ||
     !prepared ||
     !run ||

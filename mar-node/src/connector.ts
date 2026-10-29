@@ -806,10 +806,16 @@ export class NodeConnector {
             }),
             resources: async (signal: AbortSignal) => {
               signal.throwIfAborted();
-              const run = this.runtime.activeSessionRun(sessionId);
+              const currentSessionId = this.runtime.getAgentSessionById(sessionId)?.id;
+              if (!currentSessionId) return [];
+              const run = this.runtime.activeSessionRun(currentSessionId);
               if (!run || !run.initiatedByUserId) return [];
               const result = await this.agentNetworkService.list(
-                { sessionId, runId: run.id, requestUserId: run.initiatedByUserId },
+                {
+                  sessionId: currentSessionId,
+                  runId: run.id,
+                  requestUserId: run.initiatedByUserId
+                },
                 { scope: 'children', limit: 100 }
               );
               signal.throwIfAborted();
