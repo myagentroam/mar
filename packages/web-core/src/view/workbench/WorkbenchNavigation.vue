@@ -624,6 +624,17 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 @media (min-width: 768px) {
+  .activity-rail nav {
+    align-self: flex-start;
+    width: calc(100% + 20px);
+    padding-right: 20px;
+    pointer-events: none;
+  }
+
+  .activity-rail nav > * {
+    pointer-events: auto;
+  }
+
   .workbench-brand {
     transition:
       width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),

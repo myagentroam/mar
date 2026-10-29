@@ -608,7 +608,7 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-rail-item-height: 51px;
     --mar-settings-row-height: 37px;
     --sidebar-header-height: var(--mar-workbench-header-height);
-    --mar-activity-rail-width: 68px;
+    --mar-activity-rail-width: 52px;
     --mar-workbench-sidebar-width: 244px;
     --mar-workbench-sidebar-total-width: calc(
       var(--mar-activity-rail-width) + var(--mar-workbench-sidebar-width)
