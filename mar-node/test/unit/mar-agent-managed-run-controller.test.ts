@@ -1585,14 +1585,14 @@ describe('MAR Agent managed run projection', () => {
         itemId: 'mar-agent-tool:poll-call',
         kind: 'command_execution',
         status: 'IN_PROGRESS',
-        payload: expect.objectContaining({ command: 'exec_wait (poll)' })
+        payload: expect.objectContaining({ command: 'exec_wait' })
       })
     ]);
     expect(completed[0]).toMatchObject({
       itemId: 'mar-agent-tool:poll-call',
       kind: 'command_execution',
       status: 'COMPLETED',
-      payload: { command: 'exec_wait (poll)', outputPreview: 'ok', exitCode: 0 }
+      payload: { command: 'exec_wait', outputPreview: 'ok', exitCode: 0 }
     });
     const replayStarted = normalizer.normalize({
       ...base,

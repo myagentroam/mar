@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { ConversationItem } from '../../src/model/workbench.js';
+import { computed, ref } from 'vue';
+import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
 
+import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+
+const integrated = new URL(location.href).searchParams.has('timeline');
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
@@ -30,17 +33,49 @@ const command = ref<ConversationItem>({
     }
   }
 });
+const turns = computed<ConversationTurn[]>(() => [
+  {
+    id: 'turn',
+    sessionId: 'session',
+    runId: 'run',
+    status: 'SUCCEEDED',
+    items: [
+      {
+        id: 'user',
+        kind: 'user_message',
+        status: 'COMPLETED',
+        payload: { text: 'Check the command output' }
+      },
+      { ...command.value, status: 'COMPLETED', processGroup: { id: 'process', isStart: true } },
+      {
+        id: 'reply',
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: { text: 'The command finished.', format: 'markdown' }
+      }
+    ]
+  }
+]);
 const empty: ConversationItem = {
   id: 'empty',
   kind: 'command_execution',
   status: 'COMPLETED',
   payload: {
     command: 'true',
-    cwd: null,
+    cwd: '',
     outputPreview: '',
     exitCode: 0,
     truncated: false,
-    toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL', output: [] } }
+    toolPresentation: {
+      kind: 'EXECUTION',
+      execution: {
+        kind: 'SHELL',
+        output: [
+          { channel: 'STDOUT', text: '' },
+          { channel: 'STDERR', text: '' }
+        ]
+      }
+    }
   }
 };
 const failure: ConversationItem = {
@@ -49,7 +84,7 @@ const failure: ConversationItem = {
   status: 'FAILED',
   segmentId: 'segment-b',
   payload: {
-    command: 'exec_wait (poll)',
+    command: 'exec_wait',
     cwd: null,
     outputPreview: '',
     exitCode: null,
@@ -91,26 +126,46 @@ function finish() {
 
 <template>
   <main class="fixture">
-    <button data-testid="finish" @click="finish">Finish</button>
-    <button data-testid="fail-copy" @click="failed = true">Fail copy</button>
-    <output data-testid="copy-error">{{ copyError }}</output>
-    <output data-testid="copied">{{ copied }}</output>
-    <details data-testid="exec">
-      <summary>Execution</summary>
-      <ConversationToolDetail :item="command" @copy="copy" />
-    </details>
-    <details data-testid="empty">
-      <summary>Empty execution</summary>
-      <ConversationToolDetail :item="empty" @copy="copy" />
-    </details>
-    <details data-testid="wait">
-      <summary>Wait call</summary>
-      <ConversationToolDetail :item="failure" @copy="copy" />
-    </details>
-    <details data-testid="declined">
-      <summary>Declined call</summary>
-      <ConversationToolDetail :item="declined" @copy="copy" />
-    </details>
+    <ConversationTimeline
+      v-if="integrated"
+      :turns="turns"
+      :workspace-root="undefined"
+      :loading="false"
+      :initializing="false"
+      :initial-render-version="0"
+      :capture-render-anchor="() => () => {}"
+      :image-attachments="() => []"
+      :user-input-questions="() => []"
+      :user-input-answer="() => ''"
+      :user-input-submitted="() => false"
+      :plan-continuation="undefined"
+      :node-ready="false"
+      :rewind-enabled="false"
+      :rollback-enabled="false"
+      @copy="copy"
+    />
+    <template v-else>
+      <button data-testid="finish" @click="finish">Finish</button>
+      <button data-testid="fail-copy" @click="failed = true">Fail copy</button>
+      <output data-testid="copy-error">{{ copyError }}</output>
+      <output data-testid="copied">{{ copied }}</output>
+      <details data-testid="exec">
+        <summary>Execution</summary>
+        <ConversationToolDetail :item="command" @copy="copy" />
+      </details>
+      <details data-testid="empty">
+        <summary>Empty execution</summary>
+        <ConversationToolDetail :item="empty" @copy="copy" />
+      </details>
+      <details data-testid="wait">
+        <summary>Wait call</summary>
+        <ConversationToolDetail :item="failure" @copy="copy" />
+      </details>
+      <details data-testid="declined">
+        <summary>Declined call</summary>
+        <ConversationToolDetail :item="declined" @copy="copy" />
+      </details>
+    </template>
   </main>
 </template>
 

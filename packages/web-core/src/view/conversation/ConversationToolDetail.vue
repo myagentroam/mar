@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 import { executionPresentationSchema } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
+import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
 
 const props = defineProps<{ item: ConversationItem; copyOnly?: boolean }>();
@@ -43,6 +44,12 @@ const outputs = computed(() => {
     return [{ channel: 'COMBINED' as const, text: payload.value.outputPreview }];
   return undefined;
 });
+const visibleOutputs = computed(
+  () => outputs.value?.filter((block) => block.text.length > 0) ?? []
+);
+const copyLabel = computed(() =>
+  translate(copyState.value ? 'toolPresentation.detail.copied' : 'toolPresentation.detail.copy')
+);
 const source = computed(() =>
   typeof payload.value.command === 'string' ? payload.value.command : ''
 );
@@ -68,15 +75,15 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="tool-detail" :aria-label="translate('toolPresentation.detail.output')">
-    <div class="tool-detail-actions">
-      <span>{{ translate('toolPresentation.detail.copyNote') }}</span>
-      <button type="button" class="tool-detail-copy" @click.stop="copyRecord">
-        {{ translate('toolPresentation.detail.copy') }}
-      </button>
-    </div>
-    <span v-if="copyState" role="status" class="tool-detail-feedback">{{
-      translate('toolPresentation.detail.copied')
-    }}</span>
+    <button
+      v-tooltip="copyLabel"
+      type="button"
+      class="tool-detail-copy icon-button utility-control"
+      :aria-label="copyLabel"
+      @click.stop="copyRecord"
+    >
+      <MarIcon :name="copyState ? 'check' : 'copy'" />
+    </button>
     <template v-if="!copyOnly && execution">
       <template v-if="source">
         <strong>{{
@@ -89,7 +96,10 @@ onBeforeUnmount(() => {
         <pre>{{ source }}</pre>
       </template>
       <dl>
-        <template v-if="execution.kind === 'SHELL' && typeof payload.cwd === 'string'"
+        <template
+          v-if="
+            execution.kind === 'SHELL' && typeof payload.cwd === 'string' && payload.cwd.length > 0
+          "
           ><dt>{{ translate('toolPresentation.detail.cwd') }}</dt>
           <dd>{{ payload.cwd }}</dd></template
         >
@@ -108,19 +118,14 @@ onBeforeUnmount(() => {
           <dd>{{ item.permissionStop.reason }}</dd></template
         >
       </dl>
-      <strong>{{ translate('toolPresentation.detail.output') }}</strong>
-      <span v-if="outputs === undefined">{{
-        translate(
-          item.status === 'IN_PROGRESS'
-            ? 'toolPresentation.detail.waiting'
-            : 'toolPresentation.detail.unavailable'
-        )
-      }}</span>
-      <span v-else-if="outputs.length === 0 || outputs.every((block) => block.text === '')">{{
-        translate('toolPresentation.detail.empty')
-      }}</span>
-      <div v-for="block in outputs" v-else :key="block.channel" class="tool-detail-output">
-        <span>{{ block.channel }}</span>
+      <div v-for="block in visibleOutputs" :key="block.channel" class="tool-detail-output">
+        <strong>{{
+          translate(
+            block.channel === 'STDERR'
+              ? 'toolPresentation.detail.stderr'
+              : 'toolPresentation.detail.output'
+          )
+        }}</strong>
         <pre>{{ block.text }}</pre>
       </div>
       <span
@@ -130,8 +135,8 @@ onBeforeUnmount(() => {
       >
     </template>
     <template v-else-if="!copyOnly">
-      <pre v-if="genericOutput !== undefined">{{ genericOutput.text }}</pre>
-      <pre v-else-if="fallback">{{ fallback }}</pre>
+      <pre v-if="genericOutput?.text">{{ genericOutput.text }}</pre>
+      <pre v-else-if="genericOutput === undefined && fallback">{{ fallback }}</pre>
       <span v-if="genericOutput?.truncated" class="tool-detail-note">{{
         translate('toolPresentation.detail.truncated')
       }}</span>
@@ -141,45 +146,38 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .tool-detail {
+  position: relative;
   min-width: 0;
   display: grid;
   gap: 6px;
-  padding: 8px 0;
+  padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
+  min-height: var(--mar-utility-control-size);
   color: var(--mar-text-secondary);
 }
-.tool-detail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.tool-detail-actions span,
-.tool-detail-note,
-.tool-detail-feedback {
-  font-size: 0.85em;
+.tool-detail-note {
+  font-size: var(--mar-font-size-meta);
 }
 .tool-detail-copy {
-  flex: none;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: var(--mar-radius-control);
-  padding: 4px 8px;
-  cursor: pointer;
-}
-.tool-detail-copy:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
+  position: absolute;
+  top: 0.5rem;
+  right: 0;
+  display: inline-flex;
+  width: var(--mar-utility-control-size);
+  height: var(--mar-utility-control-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0;
 }
 .tool-detail pre {
   margin: 0;
-  padding: 8px;
+  padding: 0;
+  border: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 20rem;
-  overflow: auto;
-  background: var(--mar-conversation-code);
-  border-radius: var(--mar-radius-control);
+  overflow: visible;
+  background: transparent;
+  border-radius: 0;
 }
 .tool-detail dl {
   display: grid;
