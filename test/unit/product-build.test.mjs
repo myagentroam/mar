@@ -49,6 +49,16 @@ test('Node packages allow only the declared public config type and reject other 
   }
 });
 
+test('the independent subagent peer resolves the unpublished workspace Agent from source', async () => {
+  const extension = JSON.parse(
+    await readFile(join(ossRoot, 'mar-agent/extensions/subagent/package.json'), 'utf8')
+  );
+  assert.equal(extension.peerDependencies['@myagentroam/agent'], 'workspace:*');
+  assert.equal(extension.devDependencies['@myagentroam/agent'], 'workspace:*');
+  const node = JSON.parse(await readFile(join(ossRoot, 'mar-node/package.json'), 'utf8'));
+  assert.equal(Object.hasOwn(node.dependencies, extension.name), false);
+});
+
 test('public product build and version checks remain separate from release orchestration', async () => {
   const packageJson = JSON.parse(await readFile(join(ossRoot, 'package.json'), 'utf8'));
   const scripts = packageJson.scripts;
@@ -129,7 +139,8 @@ test('Code Navigation version is independent and Node pins its exact release', a
         'ee/web',
         'mar-web-console',
         'packages/server-core',
-        'packages/web-core'
+        'packages/web-core',
+        'mar-agent/extensions/subagent'
       ].map((path) => [path, { version: '1.0.0' }]),
       ['packages/protocol', { name: '@myagentroam/protocol', version: '1.0.0' }],
       ['mar-agent', { name: '@myagentroam/agent', version: '1.0.0' }],
