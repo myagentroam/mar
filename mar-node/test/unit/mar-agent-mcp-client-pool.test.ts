@@ -340,7 +340,7 @@ describe('MAR Agent MCP client pool', () => {
             name: 'Coding',
             protocol: 'ANTHROPIC_MESSAGES',
             baseUrl: 'https://example.test',
-            apiKey: 'model-secret',
+            credential: { type: 'INLINE_API_KEY', value: 'model-secret' },
             modelId: 'coding',
             contextWindowTokens: 200_000,
             maxOutputTokens: 4096,

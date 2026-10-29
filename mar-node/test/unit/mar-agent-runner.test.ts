@@ -1565,8 +1565,7 @@ describe('MAR Agent Node Runner', () => {
           reasoningEfforts: ['high'],
           hostedWebSearch: false,
           enabled: true,
-          sortOrder: 0,
-          apiKeyConfigured: true
+          sortOrder: 0
         }
       ]);
 
@@ -1650,8 +1649,7 @@ describe('MAR Agent Node Runner', () => {
           reasoningEfforts: ['high'],
           hostedWebSearch: false,
           enabled: true,
-          sortOrder: 0,
-          apiKeyConfigured: true
+          sortOrder: 0
         }
       ]);
       const session = {
@@ -1763,8 +1761,7 @@ describe('MAR Agent Node Runner', () => {
         defaultReasoningEffort: 'high',
         hostedWebSearch: false,
         enabled: true,
-        sortOrder: 0,
-        apiKeyConfigured: true
+        sortOrder: 0
       },
       {
         id: 'without-reasoning',
@@ -1780,8 +1777,7 @@ describe('MAR Agent Node Runner', () => {
         defaultReasoningEffort: 'medium',
         hostedWebSearch: false,
         enabled: true,
-        sortOrder: 1,
-        apiKeyConfigured: true
+        sortOrder: 1
       },
       {
         id: 'auxiliary',
@@ -1997,8 +1993,7 @@ describe('MAR Agent Node Runner', () => {
         defaultReasoningEffort: 'high',
         hostedWebSearch: false,
         enabled: true,
-        sortOrder: 0,
-        apiKeyConfigured: true
+        sortOrder: 0
       }
     ]);
     const updateAgentSessionConfiguration = vi.fn((input) => input);

@@ -926,7 +926,6 @@ const marAgentModelSummaryShape = {
   ...marAgentModelShape,
   baseUrl: z.string().url().max(2048),
   sortOrder: z.number().int(),
-  apiKeyConfigured: z.boolean().optional(),
   credentialType: z.enum(['INLINE_API_KEY', 'CREDENTIAL_REF']).optional(),
   credentialConfigured: z.boolean().optional(),
   lastTestedAt: z.number().int().nonnegative().nullable().optional(),
@@ -977,7 +976,6 @@ export interface MarAgentModelSummary {
   enabled: boolean;
   sortOrder: number;
   access: 'PUBLIC' | 'RESTRICTED';
-  apiKeyConfigured?: boolean;
   credentialType?: 'INLINE_API_KEY' | 'CREDENTIAL_REF';
   credentialConfigured?: boolean;
   lastTestedAt?: number | null;
@@ -991,9 +989,8 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
     .object({
       ...marAgentModelShape,
       baseUrl: z.string().url().max(2048),
-      apiKey: z.string().min(1).max(16_384).optional(),
       useResourceUrl: z.boolean().default(false),
-      credential: marAgentRuntimeCredentialSchema.optional(),
+      credential: marAgentRuntimeCredentialSchema,
       responsesToolNamespace: z
         .string()
         .regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/u)
@@ -1021,11 +1018,6 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
       code: 'custom',
       path: ['responsesToolNamespace'],
       message: 'Tool namespaces require Standard OpenAI Responses'
-    });
-  if ((configuration.apiKey === undefined) === (configuration.credential === undefined))
-    context.addIssue({
-      code: 'custom',
-      message: 'exactly one runtime model credential is required'
     });
   if (
     configuration.imageGeneration !== undefined &&
@@ -2326,7 +2318,6 @@ const commandExecutionItemSchema = conversationItemBaseSchema.extend({
     command: z.string().max(10000),
     cwd: z.string().max(4096).nullable(),
     outputPreview: z.string().max(10000),
-    outputRef: z.string().min(1).max(128).nullable(),
     exitCode: z.number().int().nullable(),
     durationMs: z.number().int().nonnegative().nullable(),
     truncated: z.boolean(),
@@ -2343,7 +2334,6 @@ const fileChangeItemSchema = conversationItemBaseSchema.extend({
         change: z.enum(['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED']),
         additions: z.number().int().nonnegative().nullable(),
         deletions: z.number().int().nonnegative().nullable(),
-        diffAvailable: z.boolean(),
         changeId: z.string().uuid().optional(),
         diff: fileChangeDiffSchema.optional()
       })

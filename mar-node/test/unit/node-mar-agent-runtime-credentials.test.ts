@@ -183,7 +183,7 @@ describe('Node MAR Agent runtime credentials', () => {
           {
             ...staticModel,
             id: 'static-key',
-            apiKey: 'fixture-only',
+            credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
             responsesConfigurationUpdates: true
           },
           {

@@ -163,7 +163,6 @@ export function normalizeClaudeTool(
         ),
         cwd: null,
         outputPreview: normalizedOutput ?? '',
-        outputRef: null,
         exitCode: null,
         durationMs: null,
         truncated: outputTruncated,
@@ -194,8 +193,7 @@ export function normalizeClaudeTool(
                   path: normalizedPath,
                   change: 'MODIFIED',
                   additions: null,
-                  deletions: null,
-                  diffAvailable: false
+                  deletions: null
                 }
               ]
       }

@@ -1540,7 +1540,6 @@ function commandItem(
       command: command.command,
       cwd: command.cwd,
       outputPreview: command.outputPreview,
-      outputRef: null,
       exitCode: command.exitCode,
       durationMs: null,
       truncated:
@@ -1584,7 +1583,6 @@ function patchChanges(value: unknown, extensions?: unknown): Record<string, unkn
       additions: entry.additions,
       deletions: entry.deletions,
       changeId: entry.changeId,
-      diffAvailable: entry.diff.status === 'available',
       diff:
         entry.diff.status === 'available'
           ? { ...entry.diff, source: 'TOOL_CHANGE' }
@@ -1622,7 +1620,7 @@ function change(
   additions: number | null,
   deletions: number | null
 ) {
-  return { path, change: operation, additions, deletions, diffAvailable: false };
+  return { path, change: operation, additions, deletions };
 }
 
 function execResult(

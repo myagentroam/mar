@@ -97,7 +97,6 @@ async function fixture(parentSessionId?: string) {
       hostedWebSearch: false,
       enabled: true,
       sortOrder: 0,
-      apiKeyConfigured: true,
       conversationModel: true,
       subagentModel: true
     }

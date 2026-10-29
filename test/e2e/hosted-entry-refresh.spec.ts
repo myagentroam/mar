@@ -39,8 +39,7 @@ const models = ['model-1', 'model-2'].map((id) => ({
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   enabled: true,
-  sortOrder: 0,
-  apiKeyConfigured: true
+  sortOrder: 0
 }));
 
 async function openEntry(page: Page, templateName = template.name, theme = 'vscode-dark-2026') {

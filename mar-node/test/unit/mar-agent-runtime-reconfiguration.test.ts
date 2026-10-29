@@ -150,7 +150,7 @@ it.each([
       name: 'Fixture',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://fixture.invalid',
-      apiKey: 'fixture-only',
+      credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
       modelId: 'fixture',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -455,13 +455,12 @@ observe.text("retained fixture result");`
             ? {
                 ...configuration,
                 name: 'Renamed',
-                apiKey: 'fixture-updated',
+                credential: { type: 'INLINE_API_KEY', value: 'fixture-updated' },
                 maxOutputTokens: 2048
               }
             : change === 'credential kind'
               ? {
                   ...configuration,
-                  apiKey: undefined,
                   credential: {
                     type: 'RUNTIME_TICKET',
                     credentialId: 'fixture-credential',

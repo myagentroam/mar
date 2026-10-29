@@ -61,7 +61,6 @@ export function normalizeCodexTool(input: {
         command: compactRunnerText(command, 10_000),
         cwd: typeof values?.cwd === 'string' ? compactRunnerText(values.cwd, 4_096) : null,
         outputPreview,
-        outputRef: null,
         exitCode: null,
         durationMs: null,
         toolPresentation: shellExecution(

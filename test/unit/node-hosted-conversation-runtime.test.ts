@@ -141,8 +141,8 @@ describe('Node hosted conversation runtime', () => {
 
   it('projects runtime credential models without exposing private runtime fields', async () => {
     const fixture = await runtimeFixture();
-    const { apiKey: _apiKey, ...modelConfiguration } = modelOne;
-    void _apiKey;
+    const { credential: _credential, ...modelConfiguration } = modelOne;
+    void _credential;
     const runtimeModel = {
       ...modelConfiguration,
       inputCapabilities: ['TEXT', 'IMAGE'],
@@ -187,8 +187,7 @@ describe('Node hosted conversation runtime', () => {
       expect.objectContaining({
         id: 'model-1',
         modelId: 'model-one',
-        codeMode: false,
-        apiKeyConfigured: true
+        codeMode: false
       })
     ]);
     expect(created.models[0]).not.toHaveProperty('apiKey');
@@ -402,7 +401,10 @@ describe('Node hosted conversation runtime', () => {
     expect(created.systemInstruction).toContain('Network access is disabled.');
     expect(created.systemInstruction).not.toContain('Version one instruction.');
     expect(created.defaultModelId).toBe('model-1');
-    expect(created.models[0]).toMatchObject({ id: 'model-1', apiKey: 'secret-1' });
+    expect(created.models[0]).toMatchObject({
+      id: 'model-1',
+      credential: { type: 'INLINE_API_KEY', value: 'secret-1' }
+    });
     expect(created.models.map((model) => model.id)).toEqual(['model-1']);
     expect(created.pathMounts).toEqual(
       expect.arrayContaining([

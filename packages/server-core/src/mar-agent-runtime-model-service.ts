@@ -319,7 +319,7 @@ function runtimeModel(
     protocol: model.protocol,
     baseUrl: model.baseUrl,
     ...(model.credential.type === 'INLINE_API_KEY'
-      ? { apiKey: model.credential.value }
+      ? { credential: { type: 'INLINE_API_KEY', value: model.credential.value } }
       : {
           credential: {
             type: 'RUNTIME_TICKET',

@@ -9,10 +9,6 @@ import {
 } from '@myagentroam/protocol';
 import type { NodeIdentityStore } from './node-identity.js';
 import { safePublicError } from './http-errors.js';
-import {
-  legacyNodeUpgradeEnvelope,
-  parseLegacyNodeUpgradeEnvelope
-} from './legacy-node-upgrade-wire.js';
 import { compareStableVersions, MIN_NODE_BUSINESS_VERSION } from './node-version.js';
 const NODE_HEARTBEAT_TIMEOUT_MS = 45_000;
 const NODE_HEARTBEAT_SWEEP_MS = 15_000;
@@ -27,7 +23,6 @@ export class NodeIdentityControl {
   private readonly identityWrites = new Map<string, Promise<void>>();
   private readonly controlMessages = new Set<Promise<void>>();
   private readonly handshakes = new WeakSet<WebSocket>();
-  private readonly wireVersions = new WeakMap<WebSocket, 2 | 3>();
   private readonly businessAdmission = new WeakSet<WebSocket>();
   private readonly freshCapabilities = new WeakSet<WebSocket>();
   private readonly revokedBusinessAdmission = new WeakSet<WebSocket>();
@@ -197,10 +192,6 @@ export class NodeIdentityControl {
     return this.businessAdmission.has(socket);
   }
 
-  protected nodeWireVersion(socket: WebSocket): 2 | 3 | undefined {
-    return this.wireVersions.get(socket);
-  }
-
   sendAuthenticatedNode(nodeId: string, type: string, payload: unknown): boolean {
     const socket = this.sockets.get(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN) return false;
@@ -230,19 +221,12 @@ export class NodeIdentityControl {
         typeof parsed === 'object' && parsed !== null && 'version' in parsed
           ? (parsed as { version?: unknown }).version
           : undefined;
-      const previousVersion = this.wireVersions.get(socket);
-      if (
-        (version !== 2 && version !== NODE_PROTOCOL_VERSION) ||
-        (previousVersion !== undefined && previousVersion !== version)
-      ) {
+      if (version !== NODE_PROTOCOL_VERSION) {
         this.sendError(socket, 'PROTOCOL_VERSION_UNSUPPORTED');
+        socket.close(1008, 'PROTOCOL_VERSION_UNSUPPORTED');
         return;
       }
-      this.wireVersions.set(socket, version as 2 | 3);
-      envelope =
-        version === 2
-          ? { ...parseLegacyNodeUpgradeEnvelope(parsed), version: NODE_PROTOCOL_VERSION }
-          : nodeEnvelopeSchema.parse(parsed);
+      envelope = nodeEnvelopeSchema.parse(parsed);
     } catch {
       this.sendError(socket, 'MESSAGE_INVALID');
       return;
@@ -257,10 +241,6 @@ export class NodeIdentityControl {
         }
         this.handshakes.add(socket);
         try {
-          if (this.wireVersions.get(socket) === 2 && envelope.type === 'register') {
-            this.sendError(socket, 'PROTOCOL_VERSION_UNSUPPORTED', envelope.id);
-            return;
-          }
           const identity =
             envelope.type === 'register'
               ? await this.register(socket, envelope)
@@ -292,27 +272,6 @@ export class NodeIdentityControl {
       if (envelope.type === 'capabilities') {
         await this.serializeIdentity(currentNodeId, async () => {
           if (this.closed || this.sockets.get(currentNodeId) !== socket) return;
-          if (this.wireVersions.get(socket) === 2) {
-            const capabilities = envelope.payload as {
-              readonly metadata?: Record<string, unknown>;
-              readonly platform?: string;
-              readonly architecture?: string;
-              readonly nodeAppVersion?: string;
-              readonly nodeVersion?: string;
-            };
-            await this.identityStore.updateNodeHeartbeat(currentNodeId, {
-              metadata: JSON.stringify({
-                ...capabilities.metadata,
-                ...capabilities,
-                metadata: undefined
-              })
-            });
-            if (this.sockets.get(currentNodeId) === socket) {
-              this.capabilities.delete(currentNodeId);
-              this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
-            }
-            return;
-          }
           const capabilities = this.parseCapabilities(socket, envelope);
           if (capabilities !== undefined) {
             const admitted = this.businessAdmission.has(socket);
@@ -473,23 +432,14 @@ export class NodeIdentityControl {
 
   private setBusinessAdmission(socket: WebSocket, version: string | undefined): void {
     const comparison = compareStableVersions(version ?? '', MIN_NODE_BUSINESS_VERSION);
-    if (
-      this.wireVersions.get(socket) === NODE_PROTOCOL_VERSION &&
-      comparison !== undefined &&
-      comparison >= 0
-    )
-      this.businessAdmission.add(socket);
+    if (comparison !== undefined && comparison >= 0) this.businessAdmission.add(socket);
     else this.businessAdmission.delete(socket);
   }
 
   protected send(socket: WebSocket, type: string, payload: unknown, replyTo?: string): void {
     if (socket.readyState === socket.OPEN) {
       const options = replyTo === undefined ? {} : { replyTo };
-      const serialized = JSON.stringify(
-        this.wireVersions.get(socket) === 2
-          ? legacyNodeUpgradeEnvelope(type, payload, options)
-          : createEnvelope(type, payload, options)
-      );
+      const serialized = JSON.stringify(createEnvelope(type, payload, options));
       this.recordTraffic?.('out', Buffer.byteLength(serialized));
       socket.send(serialized);
     }

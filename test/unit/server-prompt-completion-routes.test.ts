@@ -394,7 +394,7 @@ function fixture() {
     protocol: 'OPENAI_RESPONSES',
     modelId: 'fake-model',
     baseUrl: 'https://model.invalid/v1',
-    apiKey: 'fake-fixture-key',
+    credential: { type: 'INLINE_API_KEY', value: 'fake-fixture-key' },
     contextWindowTokens: 32_000,
     maxOutputTokens: 512,
     inputCapabilities: ['TEXT'],

@@ -758,6 +758,9 @@ function runtimeModel(configuration: AgentModelConfiguration): MarAgentRuntimeMo
   return {
     ...rest,
     baseUrl: 'https://compact.invalid',
-    apiKey: apiKey instanceof SecretValue ? 'fixture-only' : apiKey
+    credential: {
+      type: 'INLINE_API_KEY',
+      value: apiKey instanceof SecretValue ? 'fixture-only' : apiKey!
+    }
   };
 }

@@ -785,7 +785,8 @@ describe('MAR Agent model service', () => {
       id: 'coding-id',
       conversationModel: false,
       subagentModel: true,
-      apiKeyConfigured: true,
+      credentialType: 'INLINE_API_KEY',
+      credentialConfigured: true,
       sortOrder: 0,
       access: 'RESTRICTED',
       ownership: { ownerType: 'PERSONAL', ownerUserId: 7 },
@@ -1341,7 +1342,8 @@ describe('MAR Agent model service', () => {
       ])
     );
     const result = await service.runtime('coding-id');
-    expect(result.apiKey).toBe('secret');
+    expect(result.credential).toEqual({ type: 'INLINE_API_KEY', value: 'secret' });
+    expect(result).not.toHaveProperty('apiKey');
     expect(result).not.toHaveProperty('apiKeyConfigured');
     expect(result).not.toHaveProperty('sortOrder');
     expect(result).not.toHaveProperty('access');
@@ -1763,7 +1765,10 @@ describe('MAR Agent model service', () => {
       expect.objectContaining({ id: 'coding-id', access: 'PUBLIC' })
     ]);
     await expect(service.runtimeConfigurationsForUser(8)).resolves.toEqual([
-      expect.objectContaining({ id: 'coding-id', apiKey: 'coding-secret' })
+      expect.objectContaining({
+        id: 'coding-id',
+        credential: { type: 'INLINE_API_KEY', value: 'coding-secret' }
+      })
     ]);
     expect(access.canUseModel).toHaveBeenCalledWith(8, 'review-id');
     expect(access.canUseModel).not.toHaveBeenCalledWith(8, 'disabled-id');
@@ -2735,8 +2740,16 @@ describe('MAR Agent model service', () => {
     );
     const result = await service.runtimeConfigurations();
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ id: 'coding-id', apiKey: 'coding-secret', enabled: true });
-    expect(result[1]).toMatchObject({ id: 'review-id', apiKey: 'review-secret', enabled: true });
+    expect(result[0]).toMatchObject({
+      id: 'coding-id',
+      credential: { type: 'INLINE_API_KEY', value: 'coding-secret' },
+      enabled: true
+    });
+    expect(result[1]).toMatchObject({
+      id: 'review-id',
+      credential: { type: 'INLINE_API_KEY', value: 'review-secret' },
+      enabled: true
+    });
     expect(JSON.stringify(result)).not.toContain('apiKeyConfigured');
   });
 });

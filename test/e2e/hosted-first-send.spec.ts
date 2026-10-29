@@ -57,8 +57,7 @@ const created = hostedConversationSnapshotSchema.parse({
       hostedWebSearch: false,
       responsesPreviousResponseId: false,
       enabled: true,
-      sortOrder: 0,
-      apiKeyConfigured: true
+      sortOrder: 0
     }
   ]
 });

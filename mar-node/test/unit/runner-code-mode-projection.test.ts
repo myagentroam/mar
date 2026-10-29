@@ -801,7 +801,6 @@ describe('Code Mode conversation projection', () => {
                 expect.objectContaining({
                   path: 'created.txt',
                   change: 'ADDED',
-                  diffAvailable: true,
                   diff: expect.objectContaining({
                     status: 'available',
                     source: 'TOOL_CHANGE',
@@ -873,7 +872,6 @@ describe('Code Mode conversation projection', () => {
                   expect.objectContaining({
                     path: 'created.txt',
                     change: 'ADDED',
-                    diffAvailable: true,
                     diff: expect.objectContaining({
                       status: 'available',
                       source: 'TOOL_CHANGE',

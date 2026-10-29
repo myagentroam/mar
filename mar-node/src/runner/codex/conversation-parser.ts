@@ -874,7 +874,6 @@ export function codexOfficialItem(
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
         outputPreview: publicOutputSnapshot(output).text,
-        outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -1072,7 +1071,6 @@ export function codexLiveConversationItem(
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
         outputPreview: publicOutputSnapshot(output).text,
-        outputRef: null,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -1253,8 +1251,7 @@ function normalizeCodexFileChanges(
         path,
         change,
         additions: nonnegativeIntegerOrNull(value.additions),
-        deletions: nonnegativeIntegerOrNull(value.deletions),
-        diffAvailable: value.diffAvailable === true
+        deletions: nonnegativeIntegerOrNull(value.deletions)
       }
     ];
   });

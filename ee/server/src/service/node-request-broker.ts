@@ -125,7 +125,6 @@ export class NodeRequestBroker {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly connectionPolicy: {
       readonly allows: (socket: WebSocket, operation: string) => boolean;
-      readonly encode: (socket: WebSocket, envelope: NodeEnvelope) => unknown;
     },
     private readonly services: {
       readonly usageGrants: Pick<ModelUsageGrants, 'issue'>;
@@ -134,11 +133,8 @@ export class NodeRequestBroker {
     log: (event: string, fields: Record<string, unknown>) => void = () => undefined,
     traffic?: ServerTrafficMetrics
   ) {
-    this.channel = new NodeRequestChannel(
-      socketFor,
-      log,
-      (bytes) => traffic?.record('node', 'out', bytes),
-      connectionPolicy.encode
+    this.channel = new NodeRequestChannel(socketFor, log, (bytes) =>
+      traffic?.record('node', 'out', bytes)
     );
   }
 

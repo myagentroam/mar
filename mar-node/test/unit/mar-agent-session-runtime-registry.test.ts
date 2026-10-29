@@ -78,7 +78,7 @@ async function fixture() {
     name: 'Fixture',
     protocol: 'ANTHROPIC_MESSAGES',
     baseUrl: 'https://fixture.invalid',
-    apiKey: 'fixture-only',
+    credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
     modelId: 'fixture',
     contextWindowTokens: 200_000,
     maxOutputTokens: 4096,

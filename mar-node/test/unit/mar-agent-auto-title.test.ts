@@ -35,7 +35,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   name: 'Current',
   protocol: 'OPENAI_RESPONSES',
   baseUrl: 'https://example.test/v1',
-  apiKey: 'test-key',
+  credential: { type: 'INLINE_API_KEY', value: 'test-key' },
   modelId: 'current',
   contextWindowTokens: 100_000,
   maxOutputTokens: 4096,
@@ -430,13 +430,13 @@ describe('Node host auto title', () => {
         throw new Error('Fixture server did not bind.');
       const baseUrl = `http://127.0.0.1:${address.port}`;
       const models = [
-        { ...model, baseUrl, apiKey: 'main-key' },
+        { ...model, baseUrl, credential: { type: 'INLINE_API_KEY', value: 'main-key' } },
         {
           ...model,
           id: 'title',
           modelId: 'title',
           baseUrl,
-          apiKey: 'title-key',
+          credential: { type: 'INLINE_API_KEY', value: 'title-key' },
           titleGeneration: true
         }
       ];

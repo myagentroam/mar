@@ -1594,7 +1594,7 @@ describe('MAR Agent managed run projection', () => {
       name: 'Coding',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'current-key',
+      credential: { type: 'INLINE_API_KEY', value: 'current-key' },
       modelId: 'coding',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,
@@ -1609,7 +1609,7 @@ describe('MAR Agent managed run projection', () => {
       ...current,
       id: 'review',
       name: 'Review Mini',
-      apiKey: 'review-key',
+      credential: { type: 'INLINE_API_KEY', value: 'review-key' },
       modelId: 'review'
     };
 
@@ -1618,8 +1618,8 @@ describe('MAR Agent managed run projection', () => {
 
     const models = resolveRunModels(current, [extra, current, { id: 'broken' }, 'garbage']);
     expect(models.map((model) => model.id)).toEqual(['review', 'coding']);
-    expect(models[0]?.apiKey).toBe('review-key');
-    expect(models[1]?.apiKey).toBe('current-key');
+    expect(models[0]?.credential).toEqual({ type: 'INLINE_API_KEY', value: 'review-key' });
+    expect(models[1]?.credential).toEqual({ type: 'INLINE_API_KEY', value: 'current-key' });
     expect(resolveRunModels(current, [extra]).map((candidate) => candidate.id)).toEqual([
       'review',
       'coding'

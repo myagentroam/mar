@@ -23,8 +23,7 @@ function fixture() {
     authorize,
     () => socket as never,
     {
-      allows: (_socket, operation) => !upgradeOnly || operation === 'node.upgrade.request',
-      encode: (_socket, envelope) => (upgradeOnly ? { ...envelope, version: 2 } : envelope)
+      allows: (_socket, operation) => !upgradeOnly || operation === 'node.upgrade.request'
     },
     services
   );
@@ -97,7 +96,7 @@ describe('Node broker resource scope lifecycle', () => {
     expect(f.sent).toHaveLength(0);
     const pending = await f.begin('node.upgrade.request', { targetVersion: '0.11.38' }, 'w');
     expect(f.authorize).toHaveBeenCalledOnce();
-    expect(f.sent[0]).toMatchObject({ version: 2, payload: { operation: 'node.upgrade.request' } });
+    expect(f.sent[0]).toMatchObject({ version: 3, payload: { operation: 'node.upgrade.request' } });
     pending.reply({ accepted: true });
     await expect(pending.promise).resolves.toEqual({ accepted: true });
   });

@@ -116,7 +116,6 @@ function model(
     access: 'RESTRICTED',
     credentialType: 'INLINE_API_KEY',
     credentialConfigured: true,
-    apiKeyConfigured: true,
     lastTestedAt: null,
     lastTestStatus: 'UNVERIFIED',
     lastTestCode: null,
@@ -589,14 +588,12 @@ for (const english of [false, true]) {
         baseUrl: 'https://chatgpt.com/backend-api/codex',
         credentialType: 'CREDENTIAL_REF',
         credentialConfigured: true,
-        apiKeyConfigured: false,
         fastMode: true
       }),
       model('chatgpt-speed-model', 'ChatGPT speed model', {
         baseUrl: 'https://api.openai.com/v1',
         credentialType: 'CREDENTIAL_REF',
         credentialConfigured: true,
-        apiKeyConfigured: false,
         serviceTier: 'default'
       }),
       model('inline-responses-model', 'Inline Responses model', {
@@ -791,7 +788,6 @@ for (const english of [false, true]) {
           id: 'source-inline-copy',
           credentialType: 'INLINE_API_KEY',
           credentialConfigured: true,
-          apiKeyConfigured: true,
           lastTestStatus: 'UNVERIFIED',
           lastTestedAt: null
         });
@@ -917,8 +913,7 @@ for (const english of [false, true]) {
           ...body,
           id: 'protocol-switch-model',
           credentialType: 'INLINE_API_KEY',
-          credentialConfigured: true,
-          apiKeyConfigured: true
+          credentialConfigured: true
         });
         models = [created];
         return json(route, { model: created }, 201);
@@ -1029,7 +1024,6 @@ for (const english of [false, true]) {
       baseUrl: 'https://chatgpt.com/backend-api/codex',
       credentialType: 'CREDENTIAL_REF',
       credentialConfigured: true,
-      apiKeyConfigured: false,
       credentialId: 'source-codex-credential',
       sortOrder: 5
     });
@@ -1045,8 +1039,7 @@ for (const english of [false, true]) {
           ...body,
           id: `codex-copy-${duplicateBodies.length}`,
           credentialType: 'CREDENTIAL_REF',
-          credentialConfigured: true,
-          apiKeyConfigured: false
+          credentialConfigured: true
         });
         models = [...models, created];
         return json(route, { model: created }, 201);

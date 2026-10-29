@@ -1204,22 +1204,19 @@ describe('Codex input, commands, and event projection', () => {
                 path: 'src/new.ts',
                 change: 'ADDED',
                 additions: null,
-                deletions: null,
-                diffAvailable: false
+                deletions: null
               },
               {
                 path: 'src/live.ts',
                 change: 'MODIFIED',
                 additions: 2,
-                deletions: 1,
-                diffAvailable: false
+                deletions: 1
               },
               {
                 path: 'src/old.ts',
                 change: 'DELETED',
                 additions: null,
-                deletions: null,
-                diffAvailable: false
+                deletions: null
               }
             ]
           }

@@ -977,7 +977,7 @@ describe('Node Agent Network owner integration', () => {
         name: 'Eligible',
         protocol: 'OPENAI_RESPONSES',
         baseUrl: 'https://example.test',
-        apiKey: 'fixture-only',
+        credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
         modelId: 'fixture',
         contextWindowTokens: 128000,
         maxOutputTokens: 8192,
@@ -992,7 +992,7 @@ describe('Node Agent Network owner integration', () => {
         subagentModel: true,
         sortOrder: 0
       };
-      const { apiKey: _fixtureKey, ...modelSummary } = model;
+      const { credential: _fixtureCredential, ...modelSummary } = model;
       await core.runnerService.operations()['runner.profiles.list']!({
         marAgentModels: [modelSummary]
       });

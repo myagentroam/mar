@@ -31,7 +31,7 @@ export function createNodeControl(
           database,
           authorize,
           transport.socketFor,
-          { allows: transport.allows, encode: transport.encode },
+          { allows: transport.allows },
           brokerServices,
           log,
           traffic

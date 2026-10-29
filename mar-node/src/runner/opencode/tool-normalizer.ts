@@ -31,7 +31,6 @@ export function normalizeOpenCodeTool(
         cwd: typeof input?.cwd === 'string' ? compactRunnerText(input.cwd, 4_096) : null,
         outputPreview:
           typeof state?.output === 'string' ? compactRunnerText(state.output, 10_000) : '',
-        outputRef: null,
         exitCode: typeof state?.exitCode === 'number' ? state.exitCode : null,
         durationMs: null,
         truncated: typeof state?.output === 'string' && state.output.length > 10_000,

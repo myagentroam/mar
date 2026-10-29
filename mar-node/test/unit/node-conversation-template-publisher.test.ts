@@ -1223,7 +1223,7 @@ const hostedModel = {
   name: 'Model One',
   protocol: 'OPENAI_RESPONSES',
   baseUrl: 'https://models.example.test/v1',
-  apiKey: 'test-key',
+  credential: { type: 'INLINE_API_KEY', value: 'test-key' },
   modelId: 'model-1',
   contextWindowTokens: 100_000,
   maxOutputTokens: 4096,

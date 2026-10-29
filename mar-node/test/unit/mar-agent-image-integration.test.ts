@@ -85,7 +85,7 @@ it.each(
       name: 'Text',
       protocol: 'ANTHROPIC_MESSAGES',
       baseUrl: 'https://example.test',
-      apiKey: 'text-key',
+      credential: { type: 'INLINE_API_KEY', value: 'text-key' },
       modelId: 'text',
       contextWindowTokens: 200_000,
       maxOutputTokens: 4096,

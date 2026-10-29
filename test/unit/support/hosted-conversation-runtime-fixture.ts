@@ -33,7 +33,7 @@ export const modelOne: MarAgentRuntimeModelConfiguration = {
   name: 'Model One',
   protocol: 'OPENAI_RESPONSES',
   baseUrl: 'https://models.example.test/v1',
-  apiKey: 'secret-1',
+  credential: { type: 'INLINE_API_KEY', value: 'secret-1' },
   modelId: 'model-one',
   contextWindowTokens: 100_000,
   maxOutputTokens: 4096,
@@ -50,7 +50,7 @@ export const modelTwo: MarAgentRuntimeModelConfiguration = {
   ...modelOne,
   id: 'model-2',
   name: 'Model Two',
-  apiKey: 'secret-2',
+  credential: { type: 'INLINE_API_KEY', value: 'secret-2' },
   modelId: 'model-two',
   reasoningEfforts: ['low']
 };
@@ -59,7 +59,7 @@ export const modelOneAlternative: MarAgentRuntimeModelConfiguration = {
   ...modelOne,
   id: 'model-1-alternative',
   name: 'Model One Alternative',
-  apiKey: 'secret-1-alternative'
+  credential: { type: 'INLINE_API_KEY', value: 'secret-1-alternative' }
 };
 
 export const hostedWebModel: MarAgentRuntimeModelConfiguration = {

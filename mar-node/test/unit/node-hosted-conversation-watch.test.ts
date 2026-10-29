@@ -1455,7 +1455,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   name: 'Model One',
   protocol: 'OPENAI_RESPONSES',
   baseUrl: 'https://models.example.test/v1',
-  apiKey: 'secret',
+  credential: { type: 'INLINE_API_KEY', value: 'secret' },
   modelId: 'model-one',
   contextWindowTokens: 100_000,
   maxOutputTokens: 4096,
@@ -1471,7 +1471,7 @@ const modelTwo: MarAgentRuntimeModelConfiguration = {
   ...model,
   id: 'model-2',
   name: 'Model Two',
-  apiKey: 'secret-2',
+  credential: { type: 'INLINE_API_KEY', value: 'secret-2' },
   modelId: 'model-two'
 };
 
