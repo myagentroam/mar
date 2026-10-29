@@ -1957,7 +1957,10 @@ details.conversation-record-group[open] > details:last-child {
   line-height: inherit;
 }
 
-.conversation-item.reasoning-group,
+.conversation-item.reasoning-group > details > .conversation-detail-body {
+  margin-left: calc(var(--conversation-item-inset) + 1.75rem);
+}
+
 .conversation-item:has(> .conversation-tool-presentation) {
   --conversation-detail-start: calc(1em + 1.125rem + 1rem);
 }

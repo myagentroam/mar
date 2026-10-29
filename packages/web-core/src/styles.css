@@ -1347,9 +1347,9 @@ pre {
   padding: 0.625rem var(--conversation-detail-end, 0.75rem) 0.625rem
     var(--conversation-detail-start, calc(1em + 0.5rem));
   border: 0;
-  border-radius: var(--mar-radius-control);
+  border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-code);
-  color: var(--mar-text-secondary);
+  color: var(--mar-conversation-text);
   font-size: var(--mar-font-size-body);
   font-weight: 400;
   line-height: 1.65;

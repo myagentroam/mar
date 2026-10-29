@@ -9,6 +9,7 @@ import { fileChangeDiffSchema } from '@myagentroam/protocol';
 import { conversationPayload } from './conversation-history.js';
 import type { Approval, ConversationItem } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
+import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
 import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
@@ -129,6 +130,10 @@ export function stringField(value: Record<string, unknown>, key: string): string
   return canonicalKey === undefined ? text : translate(canonicalKey);
 }
 
+function rawTextField(value: Record<string, unknown>, key: string): string {
+  return typeof value[key] === 'string' ? value[key] : '';
+}
+
 function reasoningSections(value: Record<string, unknown>): string[] {
   return (Array.isArray(value.sections) ? value.sections : [])
     .map((section) =>
@@ -137,10 +142,6 @@ function reasoningSections(value: Record<string, unknown>): string[] {
         : ''
     )
     .filter(Boolean);
-}
-
-function formatDetail(label: string, value: string): string {
-  return value.length === 0 ? '' : translate('presentation.detailLine', { label, value });
 }
 
 function groupType(
@@ -603,30 +604,30 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
   if (kind === 'tool_call' && toolPresentation(payload)) return toolPresentationDetails(payload);
   if (kind === 'tool_call') {
     const output = conversationPayload(value.output);
+    const labels = conversationUiEnUS.presentation;
+    const outputText = output ? rawTextField(output, 'text') : rawTextField(value, 'outputSummary');
+    const field = (label: string, text: string) => (text ? `${label}: ${text}` : '');
     return [
       !isSubagentToolCall(value) && stringField(value, 'title') !== stringField(value, 'toolName')
-        ? formatDetail(translate('presentation.detail'), stringField(value, 'title'))
+        ? field(labels.detail, stringField(value, 'title'))
         : '',
-      formatDetail(translate('presentation.input'), stringField(value, 'inputSummary')),
-      formatDetail(
-        translate('presentation.output'),
-        output ? stringField(output, 'text') : stringField(value, 'outputSummary')
-      ),
+      field(labels.input, stringField(value, 'inputSummary')),
+      outputText ? `${labels.output}:\n${outputText}` : '',
       output?.truncated === true ? translate('toolPresentation.detail.truncated') : '',
-      formatDetail(translate('presentation.progress'), stringField(value, 'progressLabel')),
-      formatDetail(translate('presentation.error'), stringField(value, 'errorCode'))
+      field(labels.progress, stringField(value, 'progressLabel')),
+      field(labels.error, stringField(value, 'errorCode'))
     ]
       .filter(Boolean)
       .join('\n');
   }
   if (kind === 'command_execution')
     return [
-      formatDetail(translate('presentation.command'), stringField(value, 'command')),
-      formatDetail(translate('presentation.workingDirectory'), stringField(value, 'cwd')),
-      formatDetail(translate('presentation.output'), stringField(value, 'outputPreview')),
-      typeof value.exitCode === 'number'
-        ? translate('presentation.exitCode', { value: value.exitCode })
-        : ''
+      stringField(value, 'command') ? `Command: ${stringField(value, 'command')}` : '',
+      stringField(value, 'cwd') ? `Working directory: ${stringField(value, 'cwd')}` : '',
+      rawTextField(value, 'outputPreview')
+        ? `Output:\n${rawTextField(value, 'outputPreview')}`
+        : '',
+      typeof value.exitCode === 'number' ? `Exit code: ${value.exitCode}` : ''
     ]
       .filter(Boolean)
       .join('\n');
@@ -729,35 +730,38 @@ export function subagentGroupText(items: readonly ConversationItem[]): string {
 }
 
 function subagentToolDetail(value: Record<string, unknown>): string {
+  const detailField = (label: string, text: string) => (text ? `${label}: ${text}` : '');
   const latestMessage = conversationPayload(value.subagentLatestMessage);
   const phase = latestMessage === undefined ? '' : stringField(latestMessage, 'phase');
   return [
-    formatDetail(translate('presentation.operation'), subagentOperationText(value)),
-    formatDetail(translate('presentation.subagentId'), stringField(value, 'subagentId')),
-    formatDetail(translate('presentation.task'), subagentTaskTitle(value)),
-    formatDetail(translate('presentation.model'), stringField(value, 'subagentModelName')),
-    formatDetail(translate('presentation.modelId'), stringField(value, 'subagentModelId')),
-    formatDetail(
-      translate('presentation.reasoningEffort'),
+    detailField(conversationUiEnUS.presentation.operation, subagentOperationText(value)),
+    detailField(conversationUiEnUS.presentation.subagentId, stringField(value, 'subagentId')),
+    detailField(conversationUiEnUS.presentation.task, subagentTaskTitle(value)),
+    detailField(conversationUiEnUS.presentation.model, stringField(value, 'subagentModelName')),
+    detailField(conversationUiEnUS.presentation.modelId, stringField(value, 'subagentModelId')),
+    detailField(
+      conversationUiEnUS.presentation.reasoningEffort,
       stringField(value, 'subagentReasoningEffort')
     ),
-    formatDetail(
-      translate('presentation.messagePhase'),
+    detailField(
+      conversationUiEnUS.presentation.messagePhase,
       phase === 'commentary' || phase === 'final_answer'
         ? translate(`presentation.subagentMessagePhase.${phase}`)
         : ''
     ),
-    formatDetail(
-      translate('presentation.latestMessage'),
+    detailField(
+      conversationUiEnUS.presentation.latestMessage,
       latestMessage === undefined ? '' : stringField(latestMessage, 'text')
     ),
     latestMessage?.truncated === true
-      ? formatDetail(translate('presentation.truncated'), translate('presentation.yes'))
+      ? detailField(conversationUiEnUS.presentation.truncated, translate('presentation.yes'))
       : '',
-    formatDetail(translate('presentation.input'), stringField(value, 'inputSummary')),
-    formatDetail(translate('presentation.result'), stringField(value, 'outputSummary')),
-    formatDetail(translate('presentation.progress'), stringField(value, 'progressLabel')),
-    formatDetail(translate('presentation.error'), stringField(value, 'errorCode'))
+    detailField(conversationUiEnUS.presentation.input, stringField(value, 'inputSummary')),
+    rawTextField(value, 'outputSummary')
+      ? `${conversationUiEnUS.presentation.result}:\n${rawTextField(value, 'outputSummary')}`
+      : '',
+    detailField(conversationUiEnUS.presentation.progress, stringField(value, 'progressLabel')),
+    detailField(conversationUiEnUS.presentation.error, stringField(value, 'errorCode'))
   ]
     .filter(Boolean)
     .join('\n');

@@ -109,8 +109,8 @@ describe('independent tool presentation', () => {
     ).toBe('tool_group');
   });
   it.each([
-    ['zh-CN', '读取文件', '工具: native-tool\n输入: Original input\n输出: Original output'],
-    ['en-US', 'Read', 'Tool: native-tool\nInput: Original input\nOutput: Original output']
+    ['zh-CN', '读取文件', 'Tool: native-tool\nInput: Original input\nOutput:\nOriginal output'],
+    ['en-US', 'Read', 'Tool: native-tool\nInput: Original input\nOutput:\nOriginal output']
   ] as const)('localizes Read while preserving raw details in %s', (locale, title, details) => {
     localePreferenceService().setLocale(locale);
     const read = payload({ kind: 'READ', paths: ['src/example.ts'] });
@@ -235,7 +235,7 @@ describe('independent tool presentation', () => {
     expect(sources[1]?.href).toBeUndefined();
     localePreferenceService().setLocale('en-US');
     expect(toolPresentationDetails(payload({ kind: 'SKILL', name: 'skill' }))).toContain(
-      'Output: Original output'
+      'Output:\nOriginal output'
     );
     expect(
       toolPresentationDetails(

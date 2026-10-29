@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 import { executionPresentationSchema } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
+import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
 
@@ -67,19 +68,26 @@ const detailText = computed(() => {
       .join('\n');
   }
   const lines: string[] = [];
-  const field = (key: string, text: unknown) => {
+  const field = (key: keyof typeof conversationUiEnUS.toolPresentation.detail, text: unknown) => {
     if ((typeof text === 'string' && text.length > 0) || typeof text === 'number')
-      lines.push(`${translate(`toolPresentation.detail.${key}`)}: ${text}`);
+      lines.push(`${conversationUiEnUS.toolPresentation.detail[key]}: ${text}`);
   };
   field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
   if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
-  field('status', translate(`toolPresentation.detail.${props.item.status}`));
   if (value.error)
     field('error', [value.error.code, value.error.message].filter(Boolean).join(': '));
   field('permission', props.item.permissionStop?.reason);
-  for (const block of visibleOutputs.value)
-    field(block.channel === 'STDERR' ? 'stderr' : 'output', block.text);
-  if (genericOutput.value?.truncated || value.truncation || payload.value.truncated)
+  for (const [index, block] of visibleOutputs.value.entries()) {
+    const label = block.channel === 'STDERR' ? 'stderr' : 'output';
+    const marker = index === 0 && value.truncation?.output === 'HEAD' ? '… Truncated\n' : '';
+    lines.push(`${conversationUiEnUS.toolPresentation.detail[label]}:\n${marker}${block.text}`);
+  }
+  if (
+    (genericOutput.value?.truncated || value.truncation || payload.value.truncated) &&
+    (value.truncation?.output !== 'HEAD' ||
+      visibleOutputs.value.length === 0 ||
+      value.truncation.input)
+  )
     lines.push(translate('toolPresentation.detail.truncated'));
   field('exitCode', payload.value.exitCode);
   return lines.join('\n');

@@ -52,7 +52,7 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
       await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
@@ -106,7 +106,7 @@ for (const width of [1280, 390]) {
         await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
         await expect(detail.locator('pre')).toContainText('Code: observe.result(await tools.exec(');
         await expect(detail.locator('pre')).toContainText(
-          'Status: Completed\nOutput: visible stdout\nstderr: visible stderr'
+          'Output:\nvisible stdout\nstderr:\nvisible stderr'
         );
         await expect(detail).not.toContainText('Working directory:');
         await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -153,11 +153,17 @@ for (const width of [1280, 390]) {
         const reasoning = page.locator('.reasoning-group');
         await reasoning.locator('summary').click();
         const thinking = reasoning.locator('.conversation-detail-text');
+        const thinkingBounds = await thinking.boundingBox();
+        const reasoningTitleBounds = await reasoning.locator('summary strong').boundingBox();
+        expect(Math.abs(thinkingBounds!.x - reasoningTitleBounds!.x)).toBeLessThan(3);
         const thinkingStyle = await thinking.evaluate((element) => ({
           fontSize: getComputedStyle(element).fontSize,
           lineHeight: getComputedStyle(element).lineHeight,
+          color: getComputedStyle(element).color,
+          expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
           background: getComputedStyle(element.parentElement!).backgroundColor
         }));
+        expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
         const read = page.locator('[data-tool-presentation="READ"]');
         await read.locator(':scope > summary').click();
         await read.locator('.conversation-tool-detail > summary').click();
@@ -170,12 +176,16 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
           await expect(surface).toHaveCSS('background-color', thinkingStyle.background);
+          const radius = await surface.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
+          );
+          await expect(surface).toHaveCSS('border-radius', radius);
           await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
             'font-size',
             thinkingStyle.fontSize
