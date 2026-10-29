@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import {
@@ -14,6 +14,7 @@ import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { marctlHostSkill } from '../../src/runner/mar-agent/marctl-skill.js';
+import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
 
 const environment = {
   MAR_CTL_CONTEXT_REQUIRED: '1',
@@ -22,6 +23,22 @@ const environment = {
   MAR_CTL_NODE_ID: 'node',
   MAR_CTL_WORKSPACE_ID: 'workspace'
 };
+
+it('publishes timely communication and deferred queue guidance in the native send tool', () => {
+  const register = vi.fn();
+  agentNetworkExtension(vi.fn(), () => 'execution').attachSession!({
+    tools: { register }
+  } as never);
+  const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
+  expect(send.description).toContain(
+    'Prefer REPLACE_CURRENT for timely communication or course correction'
+  );
+  expect(send.description).toContain(
+    'QUEUE is consumed only after current work and earlier queued inputs finish'
+  );
+  expect(send.description).toContain('Sending to a non-child does not subscribe');
+  expect(send.description).toContain('an active Goal must exit first');
+});
 
 it('publishes paired full MCP and management-only Host guidance without credentials', async () => {
   const [server] = withMarctlGuide([], environment);
@@ -77,6 +94,10 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     ]) {
       expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(guidance) }]);
     }
+    expect(marctlInstructions).toContain('Prefer agents send <id> --steer');
+    expect(marctlInstructions).toContain('timely communication or course correction');
+    expect(marctlInstructions).toContain('consumed after current work and earlier queued inputs');
+    expect(marctlInstructions).toContain('not consumed until that Goal exits');
     expect((await client.callTool({ name: 'load_guide', arguments: {} })).content).toEqual(
       result.content
     );

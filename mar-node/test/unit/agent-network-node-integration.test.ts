@@ -1177,6 +1177,20 @@ describe('Node Agent Network owner integration', () => {
       expect(profile.models).toEqual([expect.objectContaining({ id: 'eligible' })]);
       expect(JSON.stringify(profile)).not.toContain('fixture-only');
       expect(JSON.stringify(profile)).not.toContain('unauthorized');
+      const sessionsBefore = core.runtime.listAgentSessions();
+      await expect(
+        core.sessionLifecycleService.operations()['session.create']!({
+          workspaceId: workspace.id,
+          runner: 'mar-agent',
+          cwd: workspace.path,
+          parentSessionId: parent.id,
+          model: 'eligible',
+          title: 'Rejected child'
+        })
+      ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+      expect(core.runtime.listAgentSessions()).toEqual(sessionsBefore);
+      // Another viewer's empty catalog must not revoke this Execution's resources.
+      await core.runnerService.operations()['runner.profiles.list']!({});
       const started = await request('start', {
         runner: 'mar-agent',
         model: 'eligible',
@@ -1195,6 +1209,33 @@ describe('Node Agent Network owner integration', () => {
         parentSessionId: parent.id,
         runner: 'mar-agent',
         model: 'eligible'
+      });
+      const childBefore = { ...core.runtime.getAgentSession(childId)! };
+      const queueBefore = structuredClone(core.runtime.sessionQueue(childId));
+      await expect(
+        core.sessionLifecycleService.operations()['session.config.update']!({
+          sessionId: childId,
+          model: 'not-authorized'
+        })
+      ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+      await expect(
+        core.sessionMessageService.operations()['session.message']!({
+          sessionId: childId,
+          content: 'Rejected message',
+          clientMessageId: 'rejected-profile-message'
+        })
+      ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+      expect(core.runtime.getAgentSession(childId)).toEqual(childBefore);
+      expect(core.runtime.sessionQueue(childId)).toEqual(queueBefore);
+      await expect(
+        core.sessionLifecycleService.operations()['session.config.update']!({
+          sessionId: childId,
+          model: 'eligible',
+          marAgentModels: [modelSummary]
+        })
+      ).resolves.toMatchObject({ session: { model: 'eligible' } });
+      await core.runnerService.operations()['runner.profiles.list']!({
+        marAgentModels: [{ ...modelSummary, id: 'another-viewer-model' }]
       });
       const sent = await request('send', {
         agentId: childId,

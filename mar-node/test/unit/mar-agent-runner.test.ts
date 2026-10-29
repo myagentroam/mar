@@ -1931,20 +1931,28 @@ describe('MAR Agent Node Runner', () => {
       sortOrder: 0
     };
     const both = { ...base, id: 'both', conversationModel: true, subagentModel: true };
-    runner.configureModels([
+    const models = [
       { ...base, id: 'neither', conversationModel: false, subagentModel: false },
       { ...base, id: 'conversation', conversationModel: true, subagentModel: false },
       { ...base, id: 'subagent', conversationModel: false, subagentModel: true },
       { ...base, id: 'missing-subagent', conversationModel: true },
       { ...base, id: 'disabled', conversationModel: true, subagentModel: true, enabled: false },
       both
-    ]);
+    ];
+    runner.configureModels(models);
+    const context = runner.prepareExecutionContext({ marAgentModels: models });
     expect(runner.childModels().map((model) => model.id)).toEqual(['both']);
-    expect(() => runner.assertChildModel('both')).not.toThrow();
+    expect(() => runner.assertChildModel('both', context)).not.toThrow();
     for (const id of ['neither', 'conversation', 'subagent', 'missing-subagent', 'disabled'])
-      expect(() => runner.assertChildModel(id)).toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
-    runner.configureModels([{ ...both, subagentModel: false }]);
-    expect(() => runner.assertChildModel('both')).toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+      expect(() => runner.assertChildModel(id, context)).toThrow(
+        'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
+      );
+    const revoked = runner.prepareExecutionContext({
+      marAgentModels: [{ ...both, subagentModel: false }]
+    });
+    expect(() => runner.assertChildModel('both', revoked)).toThrow(
+      'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
+    );
   });
 
   it('keeps models with unknown catalog hints but rejects sensitive or invalid model entries', () => {

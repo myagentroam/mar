@@ -82,7 +82,7 @@ async function fixture(parentSessionId?: string) {
     () => directory
   );
   const runner = new MarAgentRunner(directory);
-  runner.configureModels([
+  const authorizedModels = [
     {
       id: 'model',
       name: 'Model',
@@ -100,7 +100,7 @@ async function fixture(parentSessionId?: string) {
       conversationModel: true,
       subagentModel: true
     }
-  ]);
+  ];
   const messages = new SessionMessageService({
     runtime,
     coordinator,
@@ -119,7 +119,7 @@ async function fixture(parentSessionId?: string) {
   });
   const authorize = vi.fn(async (_request: RestartRunAuthorizeRequest) => ({
     secretEnvironment: { FRESH_SECRET: 'new-value' },
-    executionContext: { runner: 'mar-agent' as const }
+    executionContext: runner.prepareExecutionContext({ marAgentModels: authorizedModels })
   }));
   const inputState = vi.fn(
     async () => 'interrupted' as 'interrupted' | 'completed' | 'missing' | 'paused'

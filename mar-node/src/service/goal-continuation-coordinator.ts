@@ -271,6 +271,11 @@ export class GoalContinuationCoordinator {
     attachments,
     attachmentIds
   }: GoalStartInput): Promise<unknown> {
+    if (session.parentSessionId != null)
+      this.options
+        .runners()
+        .require(session.runner)
+        .assertChildModel(session.model, executionContext);
     this.invalidateGoalContinuation(session.id);
     const prepared = this.prepareGoalSession(session);
     const goalSession = prepared.session;

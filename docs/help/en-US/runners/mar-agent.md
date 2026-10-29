@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-30
 ---
 
 # Configure and Use MAR Agent
@@ -128,6 +128,8 @@ Node Agent Network does not impose the old 16-child creation or concurrency limi
 The collaboration tools are `agent_start`, `agent_send`, `agent_wait`, `agent_stop`, `agent_list`, and `agent_view`. `agent_start` requires a nonblank title and returns after registering the child session and its first execution, without waiting for completion; a manual marctl creation may omit the title. Use the returned `agentId` to address the child. `agent_send` can deliver a message, update a Goal, or decide an approval for a direct child; its delivery intent can replace the current execution. `agent_wait` defaults to waiting 30 seconds for direct children to finish; `waitMs=0` reads a snapshot. `agent_stop` stops the specified execution and clears its Goal; list and view discover authorized sessions and their status. Accepted input and input actually applied to context are distinct facts, and application does not mean the task has finished.
 
 Unread public child messages and new terminal results are delivered automatically before the parent's next normal model request, including direct children created through the native Extension API. The parent need not repeatedly use message waits to check progress. Delivery does not wake an idle parent or postpone a normal final answer: join results required for delivery before finishing, and use `agent_wait` when genuinely blocked. Automatic delivery and model waits share their observation position, so subsequent waits do not repeat already delivered message bodies or terminal evidence. Child content is context to verify, not new user instructions or authorization.
+
+For timely communication or course correction, prefer `agent_send` with `deliveryIntent: "REPLACE_CURRENT"`; other Runners use `marctl agents send <id> --steer -m <text>`. Choose `QUEUE` or `--queue` only for deliberately deferred input: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
 
 `sleep({ durationMs })` provides a bounded delay of 1 to 1800000 integer milliseconds (up to 30 minutes). Accepted user input or an unread public subagent message ends the wait early; messages are then automatically injected and marked read through the normal path, without repeated wake-ups. It does not monitor external conditions or wake on process or cell completion; use the corresponding wait for an existing resource. The model always calls `sleep` directly, never inside a Code Mode cell.
 

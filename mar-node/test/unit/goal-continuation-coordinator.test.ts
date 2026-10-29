@@ -73,6 +73,36 @@ afterEach(() => {
 });
 
 describe('Goal transient orchestration', () => {
+  it('rejects an unauthorized child model before changing its Goal or queue', async () => {
+    const f = fixture();
+    const child = f.runtime.createAgentSession({
+      workspaceId: f.session.workspaceId,
+      cwd: f.session.cwd,
+      runner: 'mar-agent',
+      parentSessionId: f.session.id,
+      model: 'not-authorized',
+      access: 'full-access'
+    });
+    const previous = f.goals.start(child.id, 'Keep the existing goal');
+    try {
+      await expect(
+        f.coordinator.start({
+          session: child,
+          objective: 'Must not replace the goal',
+          secretEnvironment: {},
+          executionContext: { runner: 'mar-agent' }
+        })
+      ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+      expect(f.goals.get(child.id)).toEqual(previous);
+      expect(f.runtime.getAgentSession(child.id)?.access).toBe('full-access');
+      expect(f.queue.removeGoalQueue).not.toHaveBeenCalled();
+      expect(f.submit).not.toHaveBeenCalled();
+      expect(f.emitSession).not.toHaveBeenCalled();
+    } finally {
+      f.coordinator.dispose();
+    }
+  });
+
   it('queues an updated Goal behind the active Run without replacing its execution', async () => {
     const f = fixture();
     const run = f.runtime.createMessageRun({

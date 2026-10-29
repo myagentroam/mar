@@ -1,6 +1,9 @@
 import { computed, ref, type Ref } from 'vue';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
-import { runnerLabel as presentRunnerLabel } from '../util/runner-presentation.js';
+import {
+  runnerLabel as presentRunnerLabel,
+  runnerModelCandidates
+} from '../util/runner-presentation.js';
 import { defaultEffortForModel } from './runner-profile-service.js';
 
 export function createComposerConfigurationService(options: {
@@ -17,20 +20,21 @@ export function createComposerConfigurationService(options: {
   const profile = computed(() =>
     options.profiles.value.find((candidate) => candidate.runner === activeRunner.value)
   );
-  const models = computed(() => {
-    const candidates = profile.value?.models ?? [];
-    return activeRunner.value === 'mar-agent' &&
-      options.selectedSession.value?.sessionGroup === 'CHILD'
-      ? candidates.filter((candidate) => candidate.subagentModel === true)
-      : candidates;
-  });
+  const models = computed(() =>
+    runnerModelCandidates(profile.value, options.selectedSession.value)
+  );
   const selectedModel = computed(() =>
     models.value.find((candidate) => candidate.id === model.value)
   );
   const efforts = computed(() => selectedModel.value?.supportedEfforts ?? []);
   const accessOptions = computed(() => profile.value?.accessOptions ?? []);
   const modelEffortLabel = computed(() => {
-    const label = selectedModel.value?.label ?? presentRunnerLabel(activeRunner.value);
+    // The saved model remains displayable even when it is not a selectable candidate.
+    const modelId = model.value || options.selectedSession.value?.model;
+    const label =
+      selectedModel.value?.label ??
+      profile.value?.models.find((candidate) => candidate.id === modelId)?.label ??
+      (modelId || presentRunnerLabel(activeRunner.value));
     const effortLabel = options.effortLabel(effort.value);
     return effortLabel.length === 0 ? label : `${label} ${effortLabel}`;
   });

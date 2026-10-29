@@ -267,11 +267,13 @@ export class SessionMessageService {
           existing.kind === 'queue' ? existing.item.id : undefined
         )
       };
-    if (session.parentSessionId != null)
-      this.options.runners.require(session.runner).assertChildModel(session.model);
     const executionContext =
       input[RUNNER_EXECUTION_CONTEXT] ??
       this.options.runners.require(session.runner).prepareExecutionContext(input);
+    if (session.parentSessionId != null)
+      this.options.runners
+        .require(session.runner)
+        .assertChildModel(session.model, executionContext);
     const sourceContent = withSessionMessageOrigin(
       content,
       input.__marctlOrigin,

@@ -3,6 +3,37 @@ import { ref } from 'vue';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 
 describe('Web Composer Configuration State', () => {
+  it('keeps the saved child model visible without granting it selectable status', () => {
+    const selectedSession = ref({
+      id: 'child',
+      runner: 'mar-agent',
+      sessionGroup: 'CHILD',
+      model: 'configured-model',
+      effort: 'high'
+    });
+    const profiles = ref([
+      {
+        runner: 'mar-agent',
+        models: [{ id: 'configured-model', label: 'Configured model', subagentModel: false }],
+        accessOptions: [],
+        commands: [],
+        capabilities: []
+      }
+    ]);
+    const state = createComposerConfigurationService({
+      selectedSession: selectedSession as never,
+      profiles: profiles as never,
+      effortLabel: (value) => value
+    });
+    state.apply({ runner: 'mar-agent', model: 'configured-model', effort: 'high', access: 'auto' });
+    expect(state.modelEffortLabel.value).toBe('Configured model high');
+    expect(state.models.value).toEqual([]);
+    expect(state.model.value).toBe('');
+    profiles.value = [];
+    expect(state.modelEffortLabel.value).toBe('configured-model high');
+    expect(state.models.value).toEqual([]);
+  });
+
   it('limits MAR child session models to the Subagent-enabled conversation candidates', () => {
     const session = ref({
       id: 'child',

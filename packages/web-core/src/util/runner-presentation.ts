@@ -1,5 +1,15 @@
-import type { Session, RunnerCommandState } from '../model/workbench.js';
+import type { Session, RunnerCommandState, RunnerProfile } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
+
+export function runnerModelCandidates(
+  profile: RunnerProfile | undefined,
+  session: Session | undefined
+): RunnerProfile['models'] {
+  const models = profile?.models ?? [];
+  return profile?.runner === 'mar-agent' && session?.sessionGroup === 'CHILD'
+    ? models.filter((model) => model.subagentModel === true)
+    : models;
+}
 
 export function runnerLabel(runner: Session['runner']): string {
   if (runner === 'mar-agent') return translate('common.marAgent');

@@ -286,7 +286,11 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       const model =
         input.model ??
         database.getRunnerDefaults().find((entry) => entry.runner === runner)?.model ??
-        runnerAdapter.defaultConfiguration(workspace, actor.secretEnvironment ?? {}).model;
+        runnerAdapter.defaultConfiguration(
+          workspace,
+          actor.secretEnvironment ?? {},
+          runnerAdapter.prepareExecutionContext(actor.runnerConfiguration ?? {})
+        ).model;
       const request = {
         ...executionInput(actor, runner, model, parent !== undefined),
         workspaceId: workspace.id,
