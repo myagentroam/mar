@@ -260,7 +260,7 @@ function brokerFixture(
     database as never,
     database.userCanRequestNode,
     () => socket as never,
-    { allows: () => true, encode: (_socket, envelope) => envelope },
+    { allows: () => true },
     { ...testNodeBrokerServices(), usageGrants }
   );
 }

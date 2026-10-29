@@ -77,7 +77,7 @@ describe('Server notification dependency close order', () => {
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: 'v24',
-            nodeAppVersion: '0.11.38',
+            nodeAppVersion: '0.11.39',
             codex: { available: false },
             claudeCode: { available: false },
             marAgentRuntimeCredentials: { apiVersion: 1, websocket: true, httpVersions: ['1.1'] }
@@ -167,7 +167,7 @@ describe('Server notification dependency close order', () => {
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: 'v24',
-            nodeAppVersion: '0.11.38',
+            nodeAppVersion: '0.11.39',
             codex: { available: false },
             claudeCode: { available: false }
           }
@@ -234,7 +234,7 @@ describe('Server notification dependency close order', () => {
           platform: 'linux',
           architecture: 'x64',
           nodeVersion: 'v24',
-          nodeAppVersion: '0.11.38',
+          nodeAppVersion: '0.11.39',
           codex: { available: false },
           claudeCode: { available: false }
         })
@@ -339,7 +339,7 @@ describe('Server notification dependency close order', () => {
           platform: 'linux',
           architecture: 'x64',
           nodeVersion: 'v24',
-          nodeAppVersion: '0.11.38',
+          nodeAppVersion: '0.11.39',
           codex: { available: false },
           claudeCode: { available: false }
         })
