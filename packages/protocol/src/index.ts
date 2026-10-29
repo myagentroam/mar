@@ -2234,6 +2234,61 @@ export const executionPresentationSchema = z
     'Execution presentation exceeds 128 KiB'
   );
 export type ExecutionPresentation = z.infer<typeof executionPresentationSchema>;
+
+/** Append output channels of the same call; snapshots and terminal items replace normally. */
+export function appendExecutionPresentation(previous: unknown, incoming: unknown): unknown {
+  const before = executionPresentationSchema.safeParse(previous);
+  const update = executionPresentationSchema.safeParse(incoming);
+  if (!update.success || !update.data.execution.output) return incoming;
+  const prior = before.success ? before.data.execution : undefined;
+  const next = update.data.execution;
+  const channels = new Map((prior?.output ?? []).map((block) => [block.channel, block.text]));
+  let clipped = false;
+  for (const block of next.output ?? []) {
+    const text = (channels.get(block.channel) ?? '') + block.text;
+    let tail = text.slice(-10_000);
+    if (tail.length < text.length) {
+      clipped = true;
+      if (/^[\uDC00-\uDFFF]/u.test(tail)) tail = tail.slice(1);
+    }
+    channels.set(block.channel, tail);
+  }
+  const output = [...channels].map(([channel, text]) => ({ channel, text }));
+  let head = clipped || prior?.truncation?.output === 'HEAD' || next.truncation?.output === 'HEAD';
+  const make = () => ({
+    kind: 'EXECUTION' as const,
+    execution: {
+      ...prior,
+      ...next,
+      output,
+      ...(head || prior?.truncation || next.truncation
+        ? {
+            truncation: {
+              ...prior?.truncation,
+              ...next.truncation,
+              ...(head ? { output: 'HEAD' as const } : {})
+            }
+          }
+        : {})
+    }
+  });
+  const size = () => new TextEncoder().encode(JSON.stringify(make())).length;
+  for (const block of output) {
+    if (size() <= 128 * 1024) break;
+    head = true;
+    const original = block.text;
+    let low = 0;
+    let high = original.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      block.text = original.slice(middle).replace(/^[\uDC00-\uDFFF]/u, '');
+      if (size() <= 128 * 1024) high = middle;
+      else low = middle + 1;
+    }
+    block.text = original.slice(low).replace(/^[\uDC00-\uDFFF]/u, '');
+  }
+  return make();
+}
 const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('READ'),

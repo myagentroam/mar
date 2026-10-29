@@ -985,7 +985,8 @@ export class MarAgentManagedRunController {
           status: item.status,
           payload: attachments.length === 0 ? item.payload : { ...item.payload, attachments },
           ...(item.permissionStop === undefined ? {} : { permissionStop: item.permissionStop }),
-          ...(item.merge === undefined ? {} : { merge: item.merge })
+          ...(item.merge === undefined ? {} : { merge: item.merge }),
+          ...(item.append === undefined ? {} : { append: item.append })
         });
       }
     }

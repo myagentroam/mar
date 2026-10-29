@@ -1,4 +1,5 @@
 import {
+  appendExecutionPresentation,
   permissionStopSchema,
   type PermissionStop,
   type AgentRunStatus
@@ -365,6 +366,11 @@ export function mergeConversationItemPayload(
     isRecord(next.payload.output) &&
     typeof next.payload.output.text === 'string'
   ) {
+    if (next.payload.toolPresentation !== undefined)
+      value.toolPresentation = appendExecutionPresentation(
+        base.toolPresentation,
+        next.payload.toolPresentation
+      );
     const prior =
       isRecord(base.output) && typeof base.output.text === 'string' ? base.output : undefined;
     const text = `${prior?.text ?? ''}${next.payload.output.text}`;

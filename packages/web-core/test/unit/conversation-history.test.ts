@@ -25,6 +25,66 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe('Conversation History Window and Render State', () => {
+  it('preserves input truncation when an output delta declares source truncation', () => {
+    const frame = (text: string, truncation: Record<string, unknown>) => ({
+      output: { text, truncated: truncation.output !== undefined },
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'SHELL',
+          output: [{ channel: 'STDOUT', text }],
+          truncation
+        }
+      }
+    });
+    const value = mergeConversationPayload(
+      frame('before', { input: true }),
+      frame('after', { output: 'SOURCE' }),
+      'output'
+    );
+    expect(value).toMatchObject({
+      output: { text: 'beforeafter', truncated: true },
+      toolPresentation: {
+        execution: {
+          output: [{ channel: 'STDOUT', text: 'beforeafter' }],
+          truncation: { input: true, output: 'SOURCE' }
+        }
+      }
+    });
+  });
+  it('retains channel tails and replaces execution presentation for terminal snapshots', () => {
+    const frame = (text: string) => ({
+      output: { text, truncated: false },
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'SHELL',
+          output: [
+            { channel: 'STDOUT', text },
+            { channel: 'STDERR', text: 'e' }
+          ]
+        }
+      }
+    });
+    let value = mergeConversationPayload({}, frame('a'.repeat(9999)), 'output');
+    value = mergeConversationPayload(value, frame('😀tail'), 'output');
+    expect(value).toMatchObject({
+      toolPresentation: {
+        execution: {
+          truncation: { output: 'HEAD' },
+          output: [
+            { channel: 'STDOUT', text: expect.stringMatching(/😀tail$/u) },
+            { channel: 'STDERR', text: 'ee' }
+          ]
+        }
+      }
+    });
+    value = mergeConversationPayload(value, frame('done'), undefined);
+    expect(value).toMatchObject({
+      toolPresentation: { execution: { output: [{ text: 'done' }, { text: 'e' }] } }
+    });
+    expect((value as any).toolPresentation.execution.truncation).toBeUndefined();
+  });
   it('applies generic output deltas and authoritative snapshots without retaining old truncation', () => {
     let value: unknown = { inputSummary: 'input', truncated: true };
     value = mergeConversationPayload(

@@ -80,7 +80,8 @@ export async function executeCapturedTool(
     mode: context.mode,
     signal: context.signal,
     waitInterrupt: context.waitInterrupt,
-    ...((name === 'exec' || name === 'exec_wait') && callId !== undefined
+    ...((name === 'exec' || name === 'exec_wait' || name === 'code_exec_wait') &&
+    callId !== undefined
       ? {
           onOutput: (output: import('./contracts.js').ExecOutputSnapshot) =>
             context.emit({

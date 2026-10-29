@@ -58,6 +58,7 @@ interface ManagedProcess {
   terminalResultReturned: boolean;
   terminate?: Promise<void>;
   waiters: Set<() => void>;
+  outputListeners: Set<(channel: 'stdout' | 'stderr', chunk: Buffer) => void>;
 }
 
 interface StartingProcess {
@@ -274,7 +275,8 @@ export class ExecTool {
         ...(child.signalCode == null ? {} : { exitSignal: child.signalCode }),
         finalized: false,
         terminalResultReturned: false,
-        waiters: new Set()
+        waiters: new Set(),
+        outputListeners: new Set()
       };
       this.#processes.set(id, managed);
       if (native) {
@@ -293,6 +295,7 @@ export class ExecTool {
             if (managed.finalized) return;
             const decoded = Buffer.from(managed[name].decoder.write(chunk));
             appendDisplay(managed[name === 'stdout' ? 'stdoutDisplay' : 'stderrDisplay'], decoded);
+            for (const listener of managed.outputListeners) listener(name, decoded);
             appendOutput(managed[name], decoded, this.maxOutputBytes, chunk.length);
             appendOutput(
               managed[name === 'stdout' ? 'stdoutHistory' : 'stderrHistory'],
@@ -338,6 +341,7 @@ export class ExecTool {
         } else {
           const message = Buffer.from(error.message);
           appendDisplay(managed.stderrDisplay, message);
+          for (const listener of managed.outputListeners) listener('stderr', message);
           appendOutput(managed.stderr, message, this.maxOutputBytes);
           appendOutput(managed.stderrHistory, message, this.maxOutputBytes);
           notifyProcessChange(managed);
@@ -688,6 +692,10 @@ function finalizeManagedProcess(
   const stderrEnd = Buffer.from(managed.stderr.decoder.end());
   appendDisplay(managed.stdoutDisplay, stdoutEnd);
   appendDisplay(managed.stderrDisplay, stderrEnd);
+  for (const listener of managed.outputListeners) {
+    listener('stdout', stdoutEnd);
+    listener('stderr', stderrEnd);
+  }
   appendOutput(managed.stdout, stdoutEnd, maximumOutputBytes);
   appendOutput(managed.stderr, stderrEnd, maximumOutputBytes);
   appendOutput(managed.stdoutHistory, stdoutEnd, maximumOutputBytes);
@@ -811,37 +819,40 @@ async function waitForProcessCompletion(
   }
 }
 
-/** Coalesce display snapshots without consuming output or queueing behind a slow observer. */
+/** Coalesce decoded chunks into bounded per-call frames without blocking the process. */
 function watchProcessOutput(
   processId: string,
   managed: ManagedProcess,
   onOutput: (output: ExecOutputSnapshot) => Promise<void>
 ) {
   let stopped = false;
-  let dirty = false;
+  let stdout: TailBuffer = { value: Buffer.alloc(0), droppedBytes: 0 };
+  let stderr: TailBuffer = { value: Buffer.alloc(0), droppedBytes: 0 };
   let timer: NodeJS.Timeout | undefined;
   let inFlight: Promise<void> | undefined;
   let failed = false;
+  let initialSnapshot =
+    managed.stdoutDisplay.value.length > 0 || managed.stderrDisplay.value.length > 0;
   const publish = () => {
-    dirty = false;
-    const preview = (output: OutputBuffer) => {
-      const bounded = createOutputBuffer();
-      for (const chunk of output.chunks)
-        appendOutput(bounded, chunk, TOOL_EXECUTION_LIMITS.execProgressMaxOutputBytes);
-      const result = consumeOutput(bounded);
-      return { ...result, droppedBytes: result.droppedBytes + output.droppedBytes };
-    };
-    const stdout = preview(managed.stdout);
-    const stderr = preview(managed.stderr);
+    const frameOut = stdout;
+    const frameErr = stderr;
+    stdout = { value: Buffer.alloc(0), droppedBytes: 0 };
+    stderr = { value: Buffer.alloc(0), droppedBytes: 0 };
+    const snapshot = displayOutput(managed);
+    const snapshotFrame = initialSnapshot || frameOut.droppedBytes > 0 || frameErr.droppedBytes > 0;
+    initialSnapshot = false;
     inFlight = Promise.resolve()
       .then(() => {
         if (stopped) return;
         return onOutput({
           processId,
-          stdout: stdout.value,
-          stderr: stderr.value,
-          truncated: stdout.droppedBytes > 0 || stderr.droppedBytes > 0,
-          displayOutput: displayOutput(managed)
+          mode: snapshotFrame ? 'snapshot' : 'delta',
+          stdout: snapshotFrame ? snapshot.stdout : frameOut.value.toString('utf8'),
+          stderr: snapshotFrame ? snapshot.stderr : frameErr.value.toString('utf8'),
+          truncated: snapshotFrame
+            ? snapshot.stdoutDroppedBytes > 0 || snapshot.stderrDroppedBytes > 0
+            : frameOut.droppedBytes > 0 || frameErr.droppedBytes > 0,
+          displayOutput: snapshot
         });
       })
       .catch(() => {
@@ -850,7 +861,7 @@ function watchProcessOutput(
       })
       .finally(() => {
         inFlight = undefined;
-        if (dirty) schedule();
+        if (stdout.value.length || stderr.value.length) schedule();
       });
   };
   const schedule = () => {
@@ -861,16 +872,16 @@ function watchProcessOutput(
     }, TOOL_EXECUTION_LIMITS.execProgressIntervalMs);
     timer.unref();
   };
-  const changed = () => {
-    if (managed.stdout.bytes === 0 && managed.stderr.bytes === 0) return;
-    dirty = true;
+  const changed = (channel: 'stdout' | 'stderr', chunk: Buffer) => {
+    if (chunk.length === 0) return;
+    appendDisplay(channel === 'stdout' ? stdout : stderr, chunk);
     schedule();
   };
-  managed.waiters.add(changed);
-  changed();
+  managed.outputListeners.add(changed);
+  if (initialSnapshot) schedule();
   return () => {
     stopped = true;
-    managed.waiters.delete(changed);
+    managed.outputListeners.delete(changed);
     if (timer) clearTimeout(timer);
   };
 }

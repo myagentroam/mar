@@ -40,6 +40,7 @@ export interface ToolExecutionContext {
   modelId?: string;
   recentImages?: readonly { readonly mimeType: string; readonly data: Buffer }[];
   codeMode?: {
+    subscribeToolOutput?(listener: (output: ExecOutputSnapshot) => void): () => void;
     retainSession?(): Promise<() => Promise<void>>;
     onSettled?(result: CodeCellEventData): Promise<void>;
     supportsImages?: boolean;
@@ -101,6 +102,8 @@ export interface AgentToolImageArtifact {
 export type AgentToolArtifact = AgentToolImageArtifact;
 export interface ExecOutputSnapshot {
   processId: string;
+  /** Omitted for legacy snapshot sources; delta is a real decoded process chunk. */
+  mode?: 'delta' | 'snapshot';
   stdout: string;
   stderr: string;
   truncated: boolean;
@@ -150,6 +153,8 @@ export interface CodeCellEventData {
   reason?: 'steer';
   cached?: boolean;
   truncated?: boolean;
+  /** Public output projection discarded older text; not inferred from source truncation. */
+  outputHeadTruncated?: boolean;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
   error?: { code: string; message: string };
 }

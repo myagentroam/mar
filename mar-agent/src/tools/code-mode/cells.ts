@@ -2,7 +2,11 @@ import { permissionStopFromError } from '../permissions.js';
 import { RuntimeResourceHandles } from '../runtime-resource-handles.js';
 import { AgentError, describeAgentError } from '../../error.js';
 import { truncateModelText } from '../../runtime/token-budget.js';
-import type { ToolExecutionContext, ToolExecutionResult } from '../contracts.js';
+import type {
+  ExecOutputSnapshot,
+  ToolExecutionContext,
+  ToolExecutionResult
+} from '../contracts.js';
 import { TOOL_EXECUTION_LIMITS as limits } from '../execution-limits.js';
 import { waitForToolCondition, waitMetadata, type ToolWaitInterrupt } from '../wait.js';
 import { BoundedTextOutput, renderCapturedText } from './text-output.js';
@@ -54,11 +58,127 @@ interface Cell {
   yielded: boolean;
   truncated: boolean;
   listeners: Set<() => void>;
+  outputListeners: Set<(output: ExecOutputSnapshot) => void>;
   done: Promise<void>;
   result?: ToolExecutionResult;
   error?: unknown;
   terminal?: ToolExecutionResult;
   retention?: ReturnType<typeof setTimeout>;
+}
+
+/** A waiting call owns its bounded display window; delivery never delays the cell. */
+function forwardCellOutput(publish: (output: ExecOutputSnapshot) => Promise<void>) {
+  let stopped = false;
+  let failed = false;
+  let inFlight = false;
+  let pending = false;
+  let latest: ExecOutputSnapshot | undefined;
+  // Source metadata is bounded by the cell's tool-call budget; text shares one window.
+  const sources = new Map<
+    string,
+    {
+      stdout: string;
+      stderr: string;
+      stdoutBytes: number;
+      stderrBytes: number;
+      truncated: boolean;
+    }
+  >();
+  const trim = (channel: 'stdout' | 'stderr') => {
+    let excess =
+      [...sources.values()].reduce(
+        (bytes, source) => bytes + Buffer.byteLength(source[channel]),
+        0
+      ) - limits.execProgressMaxOutputBytes;
+    for (const source of sources.values()) {
+      if (excess <= 0) break;
+      const bytes = Buffer.from(source[channel]);
+      let removed = Math.min(excess, bytes.length);
+      while (removed < bytes.length && (bytes[removed]! & 0xc0) === 0x80) removed++;
+      source[channel] = bytes.subarray(removed).toString('utf8');
+      excess -= removed;
+    }
+  };
+  const snapshot = (): ExecOutputSnapshot => {
+    const entries = [...sources.values()];
+    const stdout = entries.map((source) => source.stdout).join('');
+    const stderr = entries.map((source) => source.stderr).join('');
+    const stdoutDroppedBytes =
+      entries.reduce((bytes, source) => bytes + source.stdoutBytes, 0) - Buffer.byteLength(stdout);
+    const stderrDroppedBytes =
+      entries.reduce((bytes, source) => bytes + source.stderrBytes, 0) - Buffer.byteLength(stderr);
+    return {
+      ...latest!,
+      mode: 'snapshot',
+      stdout,
+      stderr,
+      truncated:
+        entries.some((source) => source.truncated) ||
+        stdoutDroppedBytes > 0 ||
+        stderrDroppedBytes > 0,
+      displayOutput: {
+        stdout,
+        stderr,
+        stdoutDroppedBytes,
+        stderrDroppedBytes
+      }
+    };
+  };
+  const send = (output: ExecOutputSnapshot) => {
+    inFlight = true;
+    void Promise.resolve()
+      .then(() => (stopped ? undefined : publish(output)))
+      .catch(() => {
+        failed = true;
+      })
+      .finally(() => {
+        inFlight = false;
+        if (!stopped && !failed && pending) {
+          pending = false;
+          send(snapshot());
+        }
+      });
+  };
+  return {
+    onOutput(output: ExecOutputSnapshot) {
+      if (stopped || failed) return;
+      const isSnapshot = output.mode !== 'delta';
+      const source = sources.get(output.processId) ?? {
+        stdout: '',
+        stderr: '',
+        stdoutBytes: 0,
+        stderrBytes: 0,
+        truncated: false
+      };
+      if (isSnapshot) {
+        source.stdout = output.stdout;
+        source.stderr = output.stderr;
+        source.stdoutBytes =
+          Buffer.byteLength(output.stdout) + (output.displayOutput?.stdoutDroppedBytes ?? 0);
+        source.stderrBytes =
+          Buffer.byteLength(output.stderr) + (output.displayOutput?.stderrDroppedBytes ?? 0);
+        source.truncated = output.truncated;
+      } else {
+        source.stdout += output.stdout;
+        source.stderr += output.stderr;
+        source.stdoutBytes += Buffer.byteLength(output.stdout);
+        source.stderrBytes += Buffer.byteLength(output.stderr);
+        source.truncated ||= output.truncated;
+      }
+      sources.set(output.processId, source);
+      trim('stdout');
+      trim('stderr');
+      latest = output;
+      if (inFlight) pending = true;
+      else send(isSnapshot ? snapshot() : { ...output, displayOutput: snapshot().displayOutput! });
+    },
+    stop() {
+      stopped = true;
+      pending = false;
+      sources.clear();
+      latest = undefined;
+    }
+  };
 }
 
 function options(value: unknown, wait: boolean) {
@@ -157,9 +277,13 @@ export class CodeCells {
       yielded: false,
       truncated: false,
       listeners: new Set(),
+      outputListeners: new Set(),
       done: Promise.resolve()
     };
     this.#cells.set(cell.cellId, cell);
+    const unsubscribeOutput = context.codeMode?.subscribeToolOutput?.((output) => {
+      for (const listener of cell.outputListeners) listener(output);
+    });
     const notify = () => {
       for (const listener of cell.listeners) listener();
     };
@@ -197,6 +321,7 @@ export class CodeCells {
         }
       )
       .then(async () => {
+        unsubscribeOutput?.();
         try {
           await context.codeMode?.onSettled?.({
             cellId: cell.cellId,
@@ -270,14 +395,29 @@ export class CodeCells {
         if (context.signal.aborted) abort();
       });
     }
-    return this.#wait(
-      cell,
-      input,
-      context.signal,
-      false,
-      context.codeMode?.supportsImages === true,
-      input.action === 'poll' ? context.waitInterrupt : undefined
-    );
+    const forward =
+      cell.executionId !== context.executionId &&
+      input.action === 'poll' &&
+      input.yieldMs > 0 &&
+      context.onOutput
+        ? forwardCellOutput(context.onOutput)
+        : undefined;
+    if (forward) cell.outputListeners.add(forward.onOutput);
+    try {
+      return await this.#wait(
+        cell,
+        input,
+        context.signal,
+        false,
+        context.codeMode?.supportsImages === true,
+        input.action === 'poll' ? context.waitInterrupt : undefined
+      );
+    } finally {
+      if (forward) {
+        cell.outputListeners.delete(forward.onOutput);
+        forward.stop();
+      }
+    }
   }
 
   async #wait(

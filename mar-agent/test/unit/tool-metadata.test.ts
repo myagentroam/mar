@@ -93,6 +93,7 @@ describe('public tool metadata', () => {
       });
       expect(long).toMatchObject({
         truncated: true,
+        outputHeadTruncated: true,
         observations: [{ value: 'a'.repeat(9998) + '😀', truncated: true }]
       });
       const sourceTruncated = structuredToolEventData(name, {
@@ -104,6 +105,7 @@ describe('public tool metadata', () => {
         truncated: true,
         observations: [{ result: { truncated: true } }]
       });
+      expect(sourceTruncated).not.toHaveProperty('outputHeadTruncated');
     }
   );
   it('projects required image dimensions and only validated transform facts', () => {

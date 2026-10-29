@@ -73,6 +73,7 @@ export async function createRoundToolRuntimeContext(
   const assertSessionLive = scope.assertLive;
   const assertExecutionLive = scope.assertExecutionLive;
   const emitCodeEvent = scope.emit;
+  const outputListeners = new Set<(output: import('./contracts.js').ExecOutputSnapshot) => void>();
   const retainSession = codeMode.retainSession?.bind(codeMode);
   let retained = 0;
   const assertDispatchLive = () => {
@@ -88,6 +89,10 @@ export async function createRoundToolRuntimeContext(
     signal,
     codeMode: {
       ...codeMode,
+      subscribeToolOutput: (listener) => {
+        outputListeners.add(listener);
+        return () => outputListeners.delete(listener);
+      },
       ...(retainSession === undefined
         ? {}
         : {
@@ -114,7 +119,11 @@ export async function createRoundToolRuntimeContext(
         parentCallId: call.callId,
         schedule: scope.schedule,
         assertLive: assertDispatchLive,
-        emit: (event) => emitCodeEvent(event, assertDispatchLive)
+        emit: (event) => {
+          if (event.type === 'tool.output')
+            for (const listener of outputListeners) listener(event.output);
+          return emitCodeEvent(event, assertDispatchLive);
+        }
       })
     },
     ...(scope.extensionToolNames.has(call.name) && recentImages !== undefined

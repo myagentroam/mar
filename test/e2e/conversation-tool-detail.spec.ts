@@ -224,6 +224,20 @@ for (const width of [1280, 390]) {
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
+          const spacing = await surface.evaluate((element) => {
+            const text = element.querySelector(':scope > .conversation-detail-text')!;
+            const heading = element.parentElement!.querySelector(':scope > summary')!;
+            const title = heading.querySelector(
+              ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
+            )!;
+            return {
+              inset: text.getBoundingClientRect().left - element.getBoundingClientRect().left,
+              expectedInset: parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75,
+              titleOffset: text.getBoundingClientRect().left - title.getBoundingClientRect().left
+            };
+          });
+          expect(Math.abs(spacing.inset - spacing.expectedInset)).toBeLessThan(1);
+          expect(Math.abs(spacing.titleOffset)).toBeLessThan(3);
           await expect(surface).toHaveCSS('background-color', thinkingStyle.background);
           const radius = await surface.evaluate((element) =>
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()

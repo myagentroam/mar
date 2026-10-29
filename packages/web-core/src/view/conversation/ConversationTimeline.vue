@@ -1783,7 +1783,9 @@ function stepDuration(item: ConversationItem): string | undefined {
   box-sizing: border-box;
 }
 
-.conversation-item:has(> details.conversation-tool-presentation) > details > :not(summary),
+.conversation-item:has(> details.conversation-tool-presentation)
+  > details
+  > :not(summary):not(.conversation-detail-body),
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -1792,7 +1794,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     .file-change-group
   )
   > details
-  > :not(summary):not(details) {
+  > :not(summary):not(details):not(.conversation-detail-body) {
   margin: 0 var(--conversation-item-inset) 8px;
 }
 
@@ -1957,6 +1959,9 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item .conversation-detail-body {
   margin: 0.5rem var(--conversation-item-inset);
+  margin-inline-start: calc(
+    var(--conversation-item-inset) + var(--conversation-detail-start, calc(1em + 0.5rem)) - 0.75rem
+  );
 }
 
 .conversation-item .conversation-detail-body > .conversation-detail-text {
@@ -1965,10 +1970,7 @@ details.conversation-record-group[open] > details:last-child {
   line-height: inherit;
 }
 
-.conversation-item.reasoning-group > details > .conversation-detail-body {
-  margin-left: calc(var(--conversation-item-inset) + 1.75rem);
-}
-
+.conversation-item.reasoning-group,
 .conversation-item:has(> .conversation-tool-presentation) {
   --conversation-detail-start: calc(1em + 1.125rem + 1rem);
 }

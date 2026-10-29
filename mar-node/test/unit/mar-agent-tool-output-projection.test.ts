@@ -7,6 +7,378 @@ import { structuredToolEventData } from '../../../mar-agent/src/tools/output-pro
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 describe('MAR Agent live tool output projection', () => {
+  it('retains earlier child output across snapshots and non-adjacent process waits', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'code',
+        input: { code: 'run()' }
+      })
+    );
+    const child = (callId: string) =>
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.started',
+          toolName: 'exec',
+          callId,
+          parentCallId: 'code',
+          input: { command: callId }
+        })
+      );
+    const output = (callId: string, mode: 'delta' | 'snapshot', text: string) =>
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.output',
+          toolName: 'exec',
+          callId,
+          parentCallId: 'code',
+          output: {
+            processId: callId,
+            mode,
+            stdout: text,
+            stderr: '',
+            truncated: false,
+            displayOutput: {
+              stdout: text,
+              stderr: '',
+              stdoutDroppedBytes: 0,
+              stderrDroppedBytes: 0
+            }
+          }
+        })
+      );
+    child('one');
+    output('one', 'delta', 'A');
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.completed',
+        toolName: 'exec',
+        callId: 'one',
+        parentCallId: 'code',
+        summary: 'A'
+      })
+    );
+    child('two');
+    output('two', 'delta', 'B');
+    const result = output('two', 'snapshot', 'BC');
+    expect(result[0]?.payload.output).toMatchObject({
+      text: expect.stringContaining('A'),
+      truncated: false
+    });
+    expect(result[0]?.payload.output).toMatchObject({ text: expect.stringContaining('BC') });
+    expectValidConversationItems(result);
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.completed',
+        toolName: 'exec',
+        callId: 'two',
+        parentCallId: 'code',
+        summary: 'BC'
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec_wait',
+        callId: 'poll',
+        parentCallId: 'code',
+        input: { processId: 'two' }
+      })
+    );
+    const poll = normalizer.normalize(
+      toolEvent({
+        type: 'tool.output',
+        toolName: 'exec_wait',
+        callId: 'poll',
+        parentCallId: 'code',
+        output: {
+          processId: 'two',
+          mode: 'snapshot',
+          stdout: 'BCD',
+          stderr: '',
+          truncated: false,
+          displayOutput: { stdout: 'BCD', stderr: '', stdoutDroppedBytes: 0, stderrDroppedBytes: 0 }
+        }
+      })
+    );
+    expect(poll[0]?.payload.output).toMatchObject({ text: 'ABCD', truncated: false });
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.completed',
+        toolName: 'exec_wait',
+        callId: 'poll',
+        parentCallId: 'code',
+        summary: 'BCD'
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec_wait',
+        callId: 'revisit',
+        parentCallId: 'code',
+        input: { processId: 'one' }
+      })
+    );
+    const revisited = normalizer.normalize(
+      toolEvent({
+        type: 'tool.output',
+        toolName: 'exec_wait',
+        callId: 'revisit',
+        parentCallId: 'code',
+        output: {
+          processId: 'one',
+          mode: 'snapshot',
+          stdout: 'A',
+          stderr: '',
+          truncated: false,
+          displayOutput: { stdout: 'A', stderr: '', stdoutDroppedBytes: 0, stderrDroppedBytes: 0 }
+        }
+      })
+    );
+    expect(revisited[0]?.payload.output).toMatchObject({ text: 'ABCD', truncated: false });
+    expectValidConversationItems(revisited);
+  });
+  it('bounds completed child output and marks discarded head when a later child resynchronizes', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'code',
+        input: { code: 'run()' }
+      })
+    );
+    for (let i = 0; i < 4; i++) {
+      const callId = `child-${i}`;
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.started',
+          toolName: 'exec',
+          callId,
+          parentCallId: 'code',
+          input: { command: callId }
+        })
+      );
+      const text = `${String(i).repeat(5000)}🦊`;
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.output',
+          toolName: 'exec',
+          callId,
+          parentCallId: 'code',
+          output: {
+            processId: callId,
+            mode: 'delta',
+            stdout: text,
+            stderr: '',
+            truncated: false,
+            displayOutput: {
+              stdout: text,
+              stderr: '',
+              stdoutDroppedBytes: 0,
+              stderrDroppedBytes: 0
+            }
+          }
+        })
+      );
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          toolName: 'exec',
+          callId,
+          parentCallId: 'code',
+          summary: ''
+        })
+      );
+    }
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec',
+        callId: 'last',
+        parentCallId: 'code',
+        input: { command: 'last' }
+      })
+    );
+    const result = normalizer.normalize(
+      toolEvent({
+        type: 'tool.output',
+        toolName: 'exec',
+        callId: 'last',
+        parentCallId: 'code',
+        output: {
+          processId: 'last',
+          mode: 'snapshot',
+          stdout: 'TAIL',
+          stderr: '',
+          truncated: false,
+          displayOutput: {
+            stdout: 'TAIL',
+            stderr: '',
+            stdoutDroppedBytes: 0,
+            stderrDroppedBytes: 0
+          }
+        }
+      })
+    );
+    expect(result[0]?.payload.output).toMatchObject({
+      text: expect.stringMatching(/TAIL$/),
+      truncated: true
+    });
+    expect(result[0]?.payload.toolPresentation).toMatchObject({
+      execution: { truncation: { output: 'HEAD' } }
+    });
+    expectValidConversationItems(result);
+  });
+  it('routes a later-execution retained cell frame only to its current wait call', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const old = normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'old',
+        executionId: 'old-execution',
+        input: { code: 'run()' }
+      })
+    )[0];
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        callId: 'old',
+        executionId: 'old-execution',
+        data: { cellId: 'cell', status: 'running' }
+      })
+    );
+    normalizer.normalize(toolEvent({ type: 'execution.started', executionId: 'new-execution' }));
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec_wait',
+        callId: 'wait',
+        executionId: 'new-execution',
+        input: { cellId: 'cell' }
+      })
+    );
+    const items = normalizer.normalize(
+      toolEvent({
+        type: 'tool.output',
+        toolName: 'code_exec_wait',
+        callId: 'wait',
+        executionId: 'new-execution',
+        output: {
+          processId: 'process',
+          mode: 'delta',
+          stdout: 'new',
+          stderr: 'err',
+          truncated: false
+        }
+      })
+    );
+    expect(items).toMatchObject([
+      {
+        itemId: 'mar-agent-tool:wait',
+        append: 'output',
+        payload: {
+          toolPresentation: {
+            execution: {
+              output: [
+                { channel: 'STDOUT', text: 'new' },
+                { channel: 'STDERR', text: 'err' }
+              ]
+            }
+          }
+        }
+      }
+    ]);
+    expect(old?.itemId).toBe('mar-agent-tool:old');
+    expectValidConversationItems(items);
+  });
+  it('routes direct and nested true deltas to their actual call without merging process identities', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec',
+        callId: 'direct',
+        input: { command: 'run' }
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec_wait',
+        callId: 'wait',
+        input: { processId: 'p1' }
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'code',
+        input: { code: 'run()' }
+      })
+    );
+    normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'exec',
+        callId: 'inner',
+        parentCallId: 'code',
+        input: { command: 'run' }
+      })
+    );
+    const delta = (callId: string, toolName: string, parentCallId?: string) =>
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.output',
+          callId,
+          toolName,
+          ...(parentCallId ? { parentCallId } : {}),
+          output: {
+            processId: 'p1',
+            mode: 'delta',
+            stdout: 'new',
+            stderr: 'err',
+            truncated: false,
+            displayOutput: {
+              stdout: 'oldernew',
+              stderr: 'err',
+              stdoutDroppedBytes: 0,
+              stderrDroppedBytes: 0
+            }
+          }
+        })
+      );
+    for (const [items, id] of [
+      [delta('direct', 'exec'), 'direct'],
+      [delta('wait', 'exec_wait'), 'wait'],
+      [delta('inner', 'exec', 'code'), 'code']
+    ] as const) {
+      expect(items).toMatchObject([
+        {
+          itemId: `mar-agent-tool:${id}`,
+          append: 'output',
+          payload: {
+            output: { text: 'new\nerr' },
+            toolPresentation: {
+              execution: {
+                output: [
+                  { channel: 'STDOUT', text: 'new' },
+                  { channel: 'STDERR', text: 'err' }
+                ]
+              }
+            }
+          }
+        }
+      ]);
+      expectValidConversationItems(items);
+    }
+  });
   it.each(['FETCH_FAILED', 'MAR_AGENT_CANCELLED'])(
     'keeps %s failure output and status independent',
     (code) => {
@@ -155,6 +527,7 @@ describe('MAR Agent live tool output projection', () => {
       truncated: true,
       toolPresentation: {
         execution: {
+          truncation: { output: 'HEAD' },
           output: [
             { channel: 'STDOUT', text: expect.stringMatching(/😀TAIL$/u) },
             { channel: 'STDERR', text: 'stderr' },
@@ -216,6 +589,7 @@ describe('MAR Agent live tool output projection', () => {
       outputPreview: expect.stringMatching(/😀tail\nrg: error: unclosed group$/u),
       toolPresentation: {
         execution: {
+          truncation: { output: 'HEAD' },
           output: [
             { channel: 'STDOUT', text: expect.stringMatching(/😀tail$/u) },
             { channel: 'STDERR', text: 'rg: error: unclosed group' }
@@ -936,7 +1310,7 @@ describe('MAR Agent live tool output projection', () => {
       toolOutput('inner-1', 'first replacement', 'process-1', 'outer-call')
     );
     expect(first[0]?.payload.outputPreview).toBe('first snapshot');
-    expect(second[0]?.payload.outputPreview).toBe('first snapshot\nsecond snapshot');
+    expect(second[0]?.payload.outputPreview).toBe('first snapshotsecond snapshot');
     expect(replaced[0]).toMatchObject({
       itemId: 'mar-agent-tool:outer-call',
       kind: 'command_execution',
