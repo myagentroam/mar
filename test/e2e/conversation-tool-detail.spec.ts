@@ -47,7 +47,7 @@ for (const width of [1280, 390]) {
       expect(copied.payload.command).toBe('printf test');
       await expect(exec.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
       await page.getByTestId('empty').locator('summary').click();
-      await expect(page.getByTestId('empty').locator('.tool-detail-output')).toHaveCount(0);
+      await expect(page.getByTestId('empty').locator('pre')).not.toContainText('Output:');
       await expect(page.getByTestId('empty')).not.toContainText('No output');
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('wait').locator('summary').click();
@@ -60,6 +60,7 @@ for (const width of [1280, 390]) {
       await page.getByTestId('finish').click();
       await expect(exec).toContainText('TAIL');
       await expect(exec).toContainText('Truncated');
+      await expect(exec.locator('pre')).toHaveText(/Truncated\nExit code: 0$/);
       await expect(exec).not.toContainText('visible stdout');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
@@ -95,10 +96,17 @@ for (const width of [1280, 390]) {
         const detail = command.locator('.tool-detail');
         await expect(detail).toContainText('visible stdout');
         await expect(detail).toContainText('visible stderr');
+        await expect(detail.locator('pre')).toHaveCount(1);
+        await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
+        await expect(detail.locator('pre')).toHaveText(
+          'Command: printf test\nWorking directory: /fixture\nStatus: Completed\nOutput: visible stdout\nstderr: visible stderr'
+        );
+        await expect(detail.locator('pre')).toHaveCSS('font-weight', '400');
+
         await expect
           .poll(() =>
             detail.evaluate((element) => {
-              const output = element.querySelector('.tool-detail-output:last-of-type');
+              const output = element.querySelector('pre');
               if (!output) return false;
               const bottom = output.getBoundingClientRect().bottom;
               for (let parent = element.parentElement; parent; parent = parent.parentElement) {

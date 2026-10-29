@@ -50,11 +50,38 @@ const visibleOutputs = computed(
 const copyLabel = computed(() =>
   translate(copyState.value ? 'toolPresentation.detail.copied' : 'toolPresentation.detail.copy')
 );
-const source = computed(() =>
-  typeof payload.value.command === 'string' ? payload.value.command : ''
-);
-const fallback = computed(() => conversationItemDetail(props.item.kind, props.item.payload));
-const detailStatus = (value: string) => translate(`toolPresentation.detail.${value}`);
+const detailText = computed(() => {
+  const value = execution.value;
+  if (!value) {
+    const text =
+      genericOutput.value === undefined
+        ? conversationItemDetail(props.item.kind, props.item.payload)
+        : genericOutput.value.text;
+    return [
+      text,
+      genericOutput.value?.truncated ? translate('toolPresentation.detail.truncated') : ''
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  const lines: string[] = [];
+  const field = (key: string, text: unknown) => {
+    if ((typeof text === 'string' && text.length > 0) || typeof text === 'number')
+      lines.push(`${translate(`toolPresentation.detail.${key}`)}: ${text}`);
+  };
+  field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
+  if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
+  field('status', translate(`toolPresentation.detail.${props.item.status}`));
+  if (value.error)
+    field('error', [value.error.code, value.error.message].filter(Boolean).join(': '));
+  field('permission', props.item.permissionStop?.reason);
+  for (const block of visibleOutputs.value)
+    field(block.channel === 'STDERR' ? 'stderr' : 'output', block.text);
+  if (genericOutput.value?.truncated || value.truncation || payload.value.truncated)
+    lines.push(translate('toolPresentation.detail.truncated'));
+  field('exitCode', payload.value.exitCode);
+  return lines.join('\n');
+});
 
 function copyRecord() {
   // Capture the public item before awaiting clipboard access; subsequent snapshots cannot change it.
@@ -84,63 +111,7 @@ onBeforeUnmount(() => {
     >
       <MarIcon :name="copyState ? 'check' : 'copy'" />
     </button>
-    <template v-if="!copyOnly && execution">
-      <template v-if="source">
-        <strong>{{
-          translate(
-            execution.kind === 'CODE'
-              ? 'toolPresentation.detail.code'
-              : 'toolPresentation.detail.command'
-          )
-        }}</strong>
-        <pre>{{ source }}</pre>
-      </template>
-      <dl>
-        <template
-          v-if="
-            execution.kind === 'SHELL' && typeof payload.cwd === 'string' && payload.cwd.length > 0
-          "
-          ><dt>{{ translate('toolPresentation.detail.cwd') }}</dt>
-          <dd>{{ payload.cwd }}</dd></template
-        >
-        <template v-if="typeof payload.exitCode === 'number'"
-          ><dt>{{ translate('toolPresentation.detail.exitCode') }}</dt>
-          <dd>{{ payload.exitCode }}</dd></template
-        >
-        <dt>{{ translate('toolPresentation.detail.status') }}</dt>
-        <dd>{{ detailStatus(item.status) }}</dd>
-        <template v-if="execution.error"
-          ><dt>{{ translate('toolPresentation.detail.error') }}</dt>
-          <dd>{{ execution.error.code }} · {{ execution.error.message }}</dd></template
-        >
-        <template v-if="item.permissionStop"
-          ><dt>{{ translate('toolPresentation.detail.permission') }}</dt>
-          <dd>{{ item.permissionStop.reason }}</dd></template
-        >
-      </dl>
-      <div v-for="block in visibleOutputs" :key="block.channel" class="tool-detail-output">
-        <strong>{{
-          translate(
-            block.channel === 'STDERR'
-              ? 'toolPresentation.detail.stderr'
-              : 'toolPresentation.detail.output'
-          )
-        }}</strong>
-        <pre>{{ block.text }}</pre>
-      </div>
-      <span
-        v-if="genericOutput?.truncated || execution.truncation || payload.truncated"
-        class="tool-detail-note"
-        >{{ translate('toolPresentation.detail.truncated') }}</span
-      >
-    </template>
-    <template v-else-if="!copyOnly">
-      <pre v-if="genericOutput?.text">{{ genericOutput.text }}</pre>
-      <pre v-else-if="genericOutput === undefined && fallback">{{ fallback }}</pre>
-      <span v-if="genericOutput?.truncated" class="tool-detail-note">{{
-        translate('toolPresentation.detail.truncated')
-      }}</span>
-    </template>
+    <pre v-if="!copyOnly && detailText">{{ detailText }}</pre>
   </section>
 </template>
 
@@ -148,14 +119,9 @@ onBeforeUnmount(() => {
 .tool-detail {
   position: relative;
   min-width: 0;
-  display: grid;
-  gap: 6px;
   padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
   min-height: var(--mar-utility-control-size);
   color: var(--mar-text-secondary);
-}
-.tool-detail-note {
-  font-size: var(--mar-font-size-meta);
 }
 .tool-detail-copy {
   position: absolute;
@@ -173,28 +139,14 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 0;
   border: 0;
+  color: inherit;
+  font-family: var(--mar-font-mono);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   overflow: visible;
   background: transparent;
   border-radius: 0;
-}
-.tool-detail dl {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 12px;
-  margin: 0;
-}
-.tool-detail dt {
-  font-weight: 600;
-}
-.tool-detail dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.tool-detail-output {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
 }
 </style>
