@@ -75,10 +75,12 @@ const detailText = computed(() => {
   field('tool', value.toolName ?? payload.value.toolName);
   if (value.source) {
     field(value.source.kind === 'CODE' ? 'code' : 'command', value.source.text);
-    if (value.source.truncated) lines.push(translate('toolPresentation.detail.truncated'));
+    if (value.source.truncated || value.truncation?.input)
+      lines.push(translate('toolPresentation.detail.truncated'));
     field('cwd', value.source.cwd);
   } else if (value.kind !== 'CONTROL') {
     field(value.kind === 'CODE' ? 'code' : 'command', payload.value.command);
+    if (value.truncation?.input) lines.push(translate('toolPresentation.detail.truncated'));
     if (value.kind === 'SHELL') field('cwd', payload.value.cwd);
   }
   field('action', value.action);
@@ -88,14 +90,17 @@ const detailText = computed(() => {
   field('permission', props.item.permissionStop?.reason);
   for (const [index, block] of visibleOutputs.value.entries()) {
     const label = block.channel === 'STDERR' ? 'stderr' : 'output';
-    const marker = index === 0 && value.truncation?.output === 'HEAD' ? '… Truncated\n' : '';
+    const marker =
+      index === 0 && value.truncation?.output === 'HEAD'
+        ? `${translate('toolPresentation.detail.truncated')}\n`
+        : '';
     lines.push(`${conversationUiEnUS.toolPresentation.detail[label]}:\n${marker}${block.text}`);
   }
   if (
-    (genericOutput.value?.truncated || value.truncation || payload.value.truncated) &&
-    (value.truncation?.output !== 'HEAD' ||
-      visibleOutputs.value.length === 0 ||
-      value.truncation.input)
+    (genericOutput.value?.truncated ||
+      value.truncation?.output ||
+      (payload.value.truncated && !value.truncation?.input)) &&
+    (value.truncation?.output !== 'HEAD' || visibleOutputs.value.length === 0)
   )
     lines.push(translate('toolPresentation.detail.truncated'));
   field('exitCode', payload.value.exitCode);

@@ -7,9 +7,10 @@ export class BoundedTextOutput {
   #hasValue = false;
   #sealed = false;
 
-  constructor(maximumBytes, separator = '\n') {
+  constructor(maximumBytes, separator = '\n', retention = 'head') {
     this.maximumBytes = maximumBytes;
     this.separator = separator;
+    this.retention = retention;
   }
 
   append(value, originalBytes = Buffer.byteLength(value)) {
@@ -18,10 +19,20 @@ export class BoundedTextOutput {
     this.#original += Buffer.byteLength(separator) + originalBytes;
     this.#capture(separator);
     this.#capture(value);
-    if (originalBytes > Buffer.byteLength(value)) this.#sealed = true;
+    if (this.retention === 'head' && originalBytes > Buffer.byteLength(value)) this.#sealed = true;
   }
 
   #capture(value) {
+    if (this.retention === 'tail') {
+      let start = Math.max(0, value.length - this.maximumBytes);
+      if (start > 0 && /[\uDC00-\uDFFF]/u.test(value[start])) start++;
+      const bytes = Buffer.from(this.#chunks.join('') + value.slice(start));
+      let offset = Math.max(0, bytes.length - this.maximumBytes);
+      while (offset < bytes.length && (bytes[offset] & 0xc0) === 0x80) offset++;
+      this.#chunks = [bytes.subarray(offset).toString('utf8')];
+      this.#retained = bytes.length - offset;
+      return;
+    }
     const remaining = Math.max(0, this.maximumBytes - this.#used);
     if (this.#sealed || !value.length) return;
     if (!remaining) {

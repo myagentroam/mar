@@ -470,6 +470,15 @@ it('continues resource release after a synchronous disposal failure', async () =
     await expect(f.registry.releaseSession('bootstrap')).rejects.toThrow('DISPOSE_FAILED');
     expect(f.releases[0]).toHaveBeenCalledOnce();
     expect(f.releaseEnvironment).toHaveBeenCalledOnce();
+    expect(operational.nodeLog).toHaveBeenCalledWith(
+      'runner.mar-agent.runtime.cleanup_failed',
+      expect.objectContaining({
+        sessionId: 'native-session',
+        code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED',
+        stage: 'resource_release',
+        resource: 'agent'
+      })
+    );
   } finally {
     await f.close();
   }
@@ -496,6 +505,31 @@ it.each([false, true])(
         'runner.mar-agent.runtime.cleanup_failed',
         expect.objectContaining({ code: 'MAR_AGENT_RUNTIME_CLEANUP_FAILED' })
       );
+    } finally {
+      await f.close();
+    }
+  }
+);
+
+it.each([false, true])(
+  'releases every resource when diagnostics throw (cleanup failure: %s)',
+  async (cleanupFails) => {
+    const f = await fixture();
+    try {
+      const first = f.run('first');
+      const use = await f.registry.acquire(f.request, first);
+      first.finish(use);
+      const failure = new Error('AGENT_DISPOSAL_FAILED');
+      if (cleanupFails) f.agent.dispose.mockRejectedValueOnce(failure);
+      vi.mocked(operational.nodeLog).mockImplementation(() => {
+        throw new Error('LOG_STORAGE_FAILED');
+      });
+      const release = f.registry.releaseSession('native-session');
+      if (cleanupFails) await expect(release).rejects.toBe(failure);
+      else await expect(release).resolves.toBeUndefined();
+      expect(f.computer).toHaveBeenCalled();
+      expect(f.releases[0]).toHaveBeenCalledOnce();
+      expect(f.releaseEnvironment).toHaveBeenCalledOnce();
     } finally {
       await f.close();
     }

@@ -18,19 +18,8 @@ import type { AgentNetworkObservations, ParentObservations } from './agent-netwo
 import { AgentNetworkService, type AgentNetworkActor } from './agent-network-service.js';
 import { isPlainRecord } from '../util/records.js';
 import { safeErrorCode } from '../util/safe-error.js';
-import { withSessionMessageOrigin } from './composer-message-input.js';
 import { SESSION_ADMISSION_SIGNAL } from '../session/operation-admission.js';
 import { assertSessionControlOwner } from './run-ownership-policy.js';
-import type { ExtensionOperationContext } from '@myagentroam/agent/extensions';
-
-type NetworkOperation = 'send' | 'goal' | 'stop' | 'wait';
-const approvedCalls = new WeakMap<
-  AgentNetworkActor,
-  {
-    readonly agentIds: readonly string[];
-    readonly operations: readonly NetworkOperation[];
-  }
->();
 const terminalCalls = new WeakMap<AgentNetworkActor, { readonly workspaceId: string }>();
 
 /** Bind a terminal actor only after the Node request boundary has authenticated its caller. */
@@ -43,18 +32,6 @@ export function actorForAuthenticatedTerminal(
   return authenticated;
 }
 
-/** Bind a Host-approved invocation to its exact target and domain operations. */
-export function actorForApprovedAgentCall(
-  actor: AgentNetworkActor,
-  context: ExtensionOperationContext,
-  agentIds: readonly string[],
-  operations: readonly NetworkOperation[]
-): AgentNetworkActor {
-  if (context.permission?.decision !== 'approved') return actor;
-  const approved = Object.freeze({ ...actor });
-  approvedCalls.set(approved, { agentIds: [...agentIds], operations: [...operations] });
-  return approved;
-}
 import { sessionPage } from '../session/pagination.js';
 import { marctlSessionSummary, marctlSessionDetail } from './session-recent-activity.js';
 import type { RunnerProfile } from '@myagentroam/protocol';
@@ -110,8 +87,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     const workspaceId = terminal?.workspaceId ?? parent?.workspaceId;
     const session =
       options.runtime.getAgentSession(id) ?? (await options.projection.resolve(id, true));
-    if (!session || session.workspaceId !== workspaceId || session.id === parent?.id)
-      throw new Error('SESSION_NOT_FOUND');
+    if (!session || session.workspaceId !== workspaceId) throw new Error('SESSION_NOT_FOUND');
     return session;
   }
   function origin(parent: NodeAgentSession) {
@@ -164,10 +140,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     session: NodeAgentSession,
     input: { readonly approvalId: string }
   ): Promise<void> {
-    if (!terminalCalls.has(actor)) {
-      const parent = await actorSession(actor);
-      if (session.parentSessionId !== parent.id) throw new Error('AGENT_TARGET_NOT_AUTHORIZED');
-    }
+    if (!terminalCalls.has(actor)) await actorSession(actor);
     assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
     const approval = options.runtime.getApproval(input.approvalId);
     if (!approval) throw new Error('APPROVAL_NOT_FOUND');
@@ -187,16 +160,9 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
   return new AgentNetworkService({
     observations: options.observations,
     target,
-    authorize: async (actor, session, operation) => {
+    authorize: async (actor, session) => {
+      if (!terminalCalls.has(actor)) await actorSession(actor);
       assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
-      if (terminalCalls.has(actor)) return;
-      const source = await actorSession(actor);
-      if (session.parentSessionId === source.id) return;
-      if (source.parentSessionId === session.id && operation === 'send') return;
-      const approved = approvedCalls.get(actor);
-      if (approved?.agentIds.includes(session.id) && approved.operations.includes(operation))
-        return;
-      throw new Error('AGENT_TARGET_NOT_AUTHORIZED');
     },
     children: async (actor) => {
       if (terminalCalls.has(actor)) throw new Error('AGENT_TARGET_REQUIRED');
@@ -214,32 +180,6 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     },
     observe: (actor) => {
       options.ensureObservations(actor);
-    },
-    isUpward: async (actor, session) =>
-      !terminalCalls.has(actor) && (await actorSession(actor)).parentSessionId === session.id,
-    reportUpward: async (actor, session, input, signal) => {
-      const child = await actorSession(actor);
-      const runId = actor.runId;
-      const executionId = actor.executionId;
-      if (
-        !runId ||
-        !executionId ||
-        options.runtime.currentExecutionId(runId) !== executionId ||
-        child.parentSessionId !== session.id
-      )
-        throw new Error('AGENT_ACTOR_NOT_ACTIVE');
-      signal?.throwIfAborted();
-      const parent = options.observations.get(session.id);
-      if (
-        !parent?.report({
-          childId: child.id,
-          runId,
-          executionId,
-          value: withSessionMessageOrigin(input.content, origin(child), session.parentSessionId)
-        })
-      )
-        throw new Error('AGENT_PARENT_NOT_WARM');
-      return { delivery: 'reported', clientMessageId: input.clientMessageId };
     },
     freezeExecution: (session) => {
       const snapshot = options.runtime.latestSessionExecution(session.id);

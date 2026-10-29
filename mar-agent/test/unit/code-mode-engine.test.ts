@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCodeModeEngine } from '../../src/tools/code-mode/quickjs-engine.js';
 import type { CodeModeEngine } from '../../src/tools/code-mode/engine.js';
+import { BoundedTextOutput } from '../../src/tools/code-mode/text-output.js';
 
 async function executeFull(
   code: string,
@@ -63,6 +64,35 @@ async function execute(
 }
 
 describe('restricted Code Mode engine', () => {
+  it('retains UTF-8 display tails without replenishing the separate model capture', () => {
+    const display = new BoundedTextOutput(7, '\n', 'tail');
+    const model = new BoundedTextOutput(7);
+    for (const output of [display, model]) {
+      output.append('old😀');
+      output.append('new😀');
+    }
+    expect(display.drain()).toEqual({
+      text: 'new😀',
+      originalBytes: 15,
+      retainedBytes: 7,
+      droppedBytes: 8
+    });
+    expect(model.drain().text).toBe('old😀');
+    display.append('latest😀');
+    model.append('latest😀');
+    expect(display.snapshot()).toEqual({
+      text: 'est😀',
+      originalBytes: 10,
+      retainedBytes: 7,
+      droppedBytes: 3
+    });
+    expect(model.snapshot()).toEqual({
+      text: '',
+      originalBytes: 10,
+      retainedBytes: 0,
+      droppedBytes: 10
+    });
+  });
   describe('WASM memory growth during Promise jobs', () => {
     const limits = {
       memoryBytes: 33_554_432,

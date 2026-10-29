@@ -416,6 +416,26 @@ describe('Node CLI orderly restart with the real SDK', () => {
         // A directory at the target path makes atomic publication fail.
         await mkdir(join(data, 'planned-restart-handoff.json'));
         await stop('SIGTERM', 1);
+        const diagnostics = (await readFile(join(data, 'logs', 'node.log'), 'utf8'))
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line));
+        expect(diagnostics).toContainEqual(
+          expect.objectContaining({
+            event: 'node.shutdown.failed',
+            stage: 'publish',
+            errorCode: 'EISDIR'
+          })
+        );
+        expect(diagnostics).toContainEqual(
+          expect.objectContaining({
+            event: 'node.restart.diagnostic',
+            code: 'RESTART_HANDOFF_SHUTDOWN_FAILED',
+            errorCode: 'EISDIR'
+          })
+        );
+        expect(JSON.stringify(diagnostics)).not.toContain('synthetic-key');
+        expect(JSON.stringify(diagnostics)).not.toContain('synthetic-credential');
         await expect(readFile(join(data, 'planned-restart-handoff.json'))).rejects.toMatchObject({
           code: 'EISDIR'
         });

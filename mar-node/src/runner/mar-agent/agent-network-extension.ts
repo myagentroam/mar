@@ -66,7 +66,7 @@ const tools: readonly {
   {
     action: 'send',
     description:
-      'Send input, decide a child approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Prefer REPLACE_CURRENT for timely communication or course correction. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first. Sending to a non-child does not subscribe to its updates.',
+      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Prefer REPLACE_CURRENT for timely communication or course correction. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first. Sending to a non-child does not subscribe to its updates.',
     properties: {
       agentId: text,
       content: { type: 'string' },

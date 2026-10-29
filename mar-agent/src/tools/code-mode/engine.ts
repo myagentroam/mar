@@ -37,7 +37,14 @@ export interface CodeModeEngine {
     onObserve(
       value:
         | { type: 'tool_result'; operationId: string }
-        | { type: 'value'; format: 'text' | 'json'; value: string; originalBytes: number }
+        | {
+            type: 'value';
+            format: 'text' | 'json';
+            value: string;
+            originalBytes: number;
+            /** Public display tail, independent of the model capture budget. */
+            displayValue?: string;
+          }
         | { type: 'image'; value: unknown }
     ): void;
     onYield(): void;

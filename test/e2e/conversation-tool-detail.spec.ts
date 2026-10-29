@@ -36,7 +36,9 @@ test('specialized tool details replace live output with the authoritative result
   }
   await page.getByTestId('finish-details').click();
   for (const body of bodies) {
-    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\nTruncated');
+    await expect
+      .poll(() => body.textContent())
+      .toContain(':\n  authoritative tail\n\n...Truncated');
     await expect(body).not.toContainText('live output');
     await expect(body).not.toContainText('export const result');
     await expect(body).not.toContainText('The requested page content.');
@@ -46,6 +48,19 @@ test('specialized tool details replace live output with the authoritative result
     'href',
     'https://example.com/docs'
   );
+});
+
+test('places the HEAD marker before authoritative output without repeating it at the end', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?head`);
+  const exec = page.getByTestId('exec');
+  await exec.locator('summary').click();
+  await page.getByTestId('finish').click();
+  const pre = exec.locator('pre');
+  await expect(pre).toHaveText(/Output:\n\.\.\.Truncated\nx+TAIL\nExit code: 0$/);
+  await expect(pre).not.toContainText('TAIL\n...Truncated');
+  await expect(pre).not.toContainText('visible stdout');
 });
 
 for (const width of [1280, 390]) {
@@ -92,7 +107,7 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
       await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
@@ -106,8 +121,8 @@ for (const width of [1280, 390]) {
       );
       await page.getByTestId('finish').click();
       await expect(exec).toContainText('TAIL');
-      await expect(exec).toContainText('Truncated');
-      await expect(exec.locator('pre')).toHaveText(/Truncated\nExit code: 0$/);
+      await expect(exec).toContainText('...Truncated');
+      await expect(exec.locator('pre')).toHaveText(/\.\.\.Truncated\nExit code: 0$/);
       await expect(exec).not.toContainText('visible stdout');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
@@ -219,7 +234,7 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);

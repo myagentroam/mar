@@ -493,6 +493,102 @@ describe('MAR Agent live tool output projection', () => {
       expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject(items[0]!.payload);
     }
   );
+  it.each(['code_exec', 'code_exec_wait'] as const)(
+    'keeps explicit SDK head truncation for %s terminal output and history',
+    (toolName) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const started = toolEvent({
+        type: 'tool.started',
+        toolName,
+        callId: 'head-output',
+        input: toolName === 'code_exec' ? { code: 'run()' } : { cellId: 'cell' }
+      });
+      normalizer.normalize(started);
+      const data = structuredToolEventData(toolName, {
+        cellId: 'cell',
+        status: 'completed',
+        truncated: true,
+        outputHeadTruncated: true,
+        observations: [
+          {
+            type: 'value',
+            id: 'tail',
+            format: 'text',
+            value: 'retained tail',
+            truncated: true
+          }
+        ]
+      });
+      const completed = toolEvent({
+        type: 'tool.completed',
+        toolName,
+        callId: 'head-output',
+        data,
+        truncated: true
+      });
+      const items = normalizer.normalize(completed);
+      expect(items[0]?.payload.toolPresentation).toMatchObject({
+        execution: {
+          truncation: { output: 'HEAD' },
+          output: [{ channel: 'TEXT', text: 'retained tail' }]
+        }
+      });
+      expect(items[0]).not.toHaveProperty('append');
+      expectValidConversationItems(items);
+      const history = projectMarAgentHistory(
+        { id: 'session-1' } as NodeAgentSession,
+        [started, completed].map((event) => ({
+          kind: 'event' as const,
+          sequence: event.sequence,
+          event
+        }))
+      );
+      expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject(items[0]!.payload);
+    }
+  );
+  it.each(['code_exec', 'code_exec_wait'] as const)(
+    'does not infer a discarded head from generic %s source truncation',
+    (toolName) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const started = toolEvent({
+        type: 'tool.started',
+        toolName,
+        callId: 'source-truncation',
+        input: toolName === 'code_exec' ? { code: 'run()' } : { cellId: 'cell' }
+      });
+      normalizer.normalize(started);
+      const data = structuredToolEventData(toolName, {
+        cellId: 'cell',
+        status: 'completed',
+        truncated: true,
+        observations: [
+          { type: 'value', id: 'partial', format: 'text', value: 'partial', truncated: true }
+        ]
+      });
+      const completed = toolEvent({
+        type: 'tool.completed',
+        toolName,
+        callId: 'source-truncation',
+        data,
+        truncated: true
+      });
+      const items = normalizer.normalize(completed);
+      expect(items[0]?.payload.toolPresentation).toMatchObject({
+        execution: { output: [{ channel: 'TEXT', text: 'partial' }] }
+      });
+      expect(items[0]?.payload.toolPresentation).not.toHaveProperty('execution.truncation');
+      expectValidConversationItems(items);
+      const history = projectMarAgentHistory(
+        { id: 'session-1' } as NodeAgentSession,
+        [started, completed].map((event) => ({
+          kind: 'event' as const,
+          sequence: event.sequence,
+          event
+        }))
+      );
+      expect(history.flatMap((turn) => turn.items)[0]?.payload).toMatchObject(items[0]!.payload);
+    }
+  );
   it('retains the latest long SDK observations through terminal normalization', () => {
     const normalizer = new MarAgentConversationNormalizer();
     normalizer.normalize(

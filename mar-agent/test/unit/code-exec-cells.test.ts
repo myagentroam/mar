@@ -37,6 +37,102 @@ async function fixture() {
 }
 
 describe('Code Exec retained cells', () => {
+  it('keeps the public terminal and cached tail independent from the model capture budget', async () => {
+    const host = await fixture();
+    const result = await host.executeTool(
+      {
+        name: 'code_exec',
+        arguments: `observe.text('model head-' + 'x'.repeat(${limits.codeMaxOutputBytes + 32}) + '😀public tail'); observe.text('after budget');`
+      },
+      context()
+    );
+    const expected = {
+      truncated: true,
+      outputHeadTruncated: true,
+      observations: [
+        { value: expect.stringMatching(/😀public tail$/u), truncated: true },
+        { value: 'after budget' }
+      ]
+    };
+    expect(structuredToolEventData('code_exec', result.eventData)).toMatchObject(expected);
+    expect(JSON.stringify(result.observations)).toContain('model head-');
+    expect(JSON.stringify(result.observations)).not.toContain('public tail');
+    expect(JSON.stringify(result.observations)).not.toContain('after budget');
+    expect(result.data).not.toHaveProperty('outputHeadTruncated');
+    const replay = await host.executeTool(
+      { name: 'code_exec_wait', arguments: { cellId: data(result).cellId } },
+      { ...context(), executionId: 'later' }
+    );
+    expect(structuredToolEventData('code_exec_wait', replay.eventData)).toMatchObject({
+      ...expected,
+      cached: true
+    });
+    expect(replay.observations).toEqual(result.observations);
+  });
+  it('uses observed exec display tails without exposing their event metadata to the guest', async () => {
+    const host = await fixture();
+    const ctx = context();
+    ctx.codeMode = {
+      tools: [execToolDefinition],
+      invoke: async () => ({
+        content: 'model head',
+        data: { stdout: 'model head', stderr: '', truncated: true },
+        eventData: {
+          displayOutput: {
+            stdout: 'public tail',
+            stderr: 'public error',
+            stdoutDroppedBytes: 100,
+            stderrDroppedBytes: 0
+          }
+        },
+        truncated: true
+      })
+    };
+    const result = await host.executeTool(
+      {
+        name: 'code_exec',
+        arguments:
+          'const r = await tools.exec({ command: "fixture" }); observe.text("eventData" in r); observe.result(r);'
+      },
+      ctx
+    );
+    expect(structuredToolEventData('code_exec', result.eventData)).toMatchObject({
+      truncated: true,
+      outputHeadTruncated: true,
+      observations: [
+        { type: 'value', value: 'false' },
+        { type: 'tool_result', result: { data: { stdout: 'public tail', stderr: 'public error' } } }
+      ]
+    });
+    expect(JSON.stringify(result.observations)).toContain('model head');
+    expect(JSON.stringify(result.observations)).not.toContain('public tail');
+  });
+  it('does not infer a discarded display head from a source-only truncation', async () => {
+    const host = await fixture();
+    const ctx = context();
+    ctx.codeMode = {
+      tools: [execToolDefinition],
+      invoke: async () => ({
+        content: 'partial',
+        data: { stdout: 'partial', stderr: '' },
+        truncated: true
+      })
+    };
+    const result = await host.executeTool(
+      { name: 'code_exec', arguments: 'observe.result(await tools.exec({ command: "fixture" }));' },
+      ctx
+    );
+    const event = structuredToolEventData('code_exec', result.eventData);
+    expect(event).toMatchObject({ truncated: true });
+    expect(event).not.toHaveProperty('outputHeadTruncated');
+    const replay = await host.executeTool(
+      { name: 'code_exec_wait', arguments: { cellId: data(result).cellId } },
+      { ...context(), executionId: 'later' }
+    );
+    const cached = structuredToolEventData('code_exec_wait', replay.eventData);
+    expect(cached).toMatchObject({ truncated: true, cached: true });
+    expect(cached).not.toHaveProperty('outputHeadTruncated');
+  });
   it('keeps a bounded source on failed cells and cached cancellation without exposing it to the model', async () => {
     const host = await fixture();
     const source = `//${'x'.repeat(10_020)}\nthrow new Error('fixture failure');`;

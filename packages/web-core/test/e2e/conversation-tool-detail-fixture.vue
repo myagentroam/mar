@@ -243,7 +243,15 @@ function finish() {
       exitCode: 0,
       truncated: true,
       output: { text: `${'x'.repeat(10000)}TAIL`, truncated: true },
-      toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'SHELL',
+          ...(new URL(location.href).searchParams.has('head')
+            ? { truncation: { output: 'HEAD' as const } }
+            : {})
+        }
+      }
     }
   };
 }

@@ -55,13 +55,6 @@ interface AgentNetworkServiceOptions {
   readonly children: (actor: AgentNetworkActor) => Promise<readonly NodeAgentSession[]>;
   /** Ensure the caller's automatic channel exists, only for a verified direct child. */
   readonly observe: (actor: AgentNetworkActor, session: NodeAgentSession) => void;
-  readonly isUpward: (actor: AgentNetworkActor, session: NodeAgentSession) => Promise<boolean>;
-  readonly reportUpward: (
-    actor: AgentNetworkActor,
-    session: NodeAgentSession,
-    input: { readonly clientMessageId: string; readonly content: string },
-    signal?: AbortSignal
-  ) => Promise<unknown>;
   readonly freezeExecution: (session: NodeAgentSession) => AgentWaitTarget | undefined;
   readonly start: (
     actor: AgentNetworkActor,
@@ -277,29 +270,6 @@ export class AgentNetworkService {
     if (goal.kind !== 'unchanged') await this.options.authorize(actor, session, 'goal');
     if (input.approval !== undefined)
       await this.options.validateApproval(actor, session, input.approval);
-    signal?.throwIfAborted();
-    if (hasMessage && (await this.options.isUpward(actor, session))) {
-      signal?.throwIfAborted();
-      if (
-        goal.kind !== 'unchanged' ||
-        input.approval !== undefined ||
-        input.deliveryIntent === 'REPLACE_CURRENT' ||
-        input.deliveryIntent === 'QUEUE' ||
-        input.attachments?.length ||
-        input.attachmentIds?.length
-      )
-        throw new Error('AGENT_UPWARD_REPORT_INVALID');
-      const result = await this.options.reportUpward(
-        actor,
-        session,
-        {
-          clientMessageId: input.clientMessageId ?? randomUUID(),
-          content
-        },
-        signal
-      );
-      return { agentId: session.id, message: { status: 'accepted', result } };
-    }
     signal?.throwIfAborted();
     if (session.parentSessionId === actor.sessionId) this.options.observe(actor, session);
     const approvalResult =

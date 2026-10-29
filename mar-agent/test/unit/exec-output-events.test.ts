@@ -11,6 +11,47 @@ import { answer, call, cleanupCoreFixtures, fixture } from './support/core-exten
 afterEach(cleanupCoreFixtures);
 
 describe('exec live output and model observation separation', () => {
+  it('keeps exec display metadata through dispatch but out of the guest and model results', async () => {
+    const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify("process.stdout.write('model head-' + 'x'.repeat(17000) + '😀public tail'); process.stderr.write('public error');")}`;
+    const f = await fixture(
+      [],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', {
+              code: `const r = await tools.exec({ command: ${JSON.stringify(command)} }); observe.text("eventData" in r); observe.result(r);`
+            })
+          : answer(),
+      true
+    );
+    const run = f.session.run({ prompt: 'Observe the command.' });
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    await run.result();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        data: expect.objectContaining({
+          outputHeadTruncated: true,
+          observations: [
+            expect.objectContaining({ type: 'value', value: 'false' }),
+            expect.objectContaining({
+              type: 'tool_result',
+              result: expect.objectContaining({
+                data: { stdout: expect.stringMatching(/😀public tail$/u), stderr: 'public error' }
+              })
+            })
+          ]
+        })
+      })
+    );
+    const model = JSON.stringify(
+      f.adapter.requests.at(-1)!.messages.findLast((m) => m.role === 'tool')
+    );
+    expect(model).toContain('model head-');
+    expect(model).not.toContain('displayOutput');
+    expect(model).not.toContain('outputHeadTruncated');
+  });
   it.each([
     [false, false],
     [true, false],

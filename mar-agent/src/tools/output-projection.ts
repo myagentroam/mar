@@ -107,7 +107,10 @@ export function publicToolEventInput(
 }
 
 /** Explicit observations are public, but their event projection must remain bounded. */
-function publicCodeObservations(values: unknown, data: CodeCellEventData): CodeCellEventData {
+export function publicCodeObservations(
+  values: unknown,
+  data: CodeCellEventData
+): CodeCellEventData {
   if (!Array.isArray(values)) return data;
   const retained = new Set<unknown>(data.observations ?? []);
   const selected: NonNullable<CodeCellEventData['observations']>[number][] = [];

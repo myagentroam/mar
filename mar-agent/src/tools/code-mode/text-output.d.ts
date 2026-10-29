@@ -7,9 +7,10 @@ export interface CapturedText {
 
 /** Source-consumer types for the JS module also loaded by worker processes. */
 export class BoundedTextOutput {
-  constructor(maximumBytes: number, separator?: string);
+  constructor(maximumBytes: number, separator?: string, retention?: 'head' | 'tail');
   maximumBytes: number;
   separator: string;
+  retention: 'head' | 'tail';
   append(value: string, originalBytes?: number): void;
   snapshot(): CapturedText;
   drain(): CapturedText;

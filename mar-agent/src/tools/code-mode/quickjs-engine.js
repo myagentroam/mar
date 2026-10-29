@@ -371,6 +371,7 @@ export async function createCodeModeEngine(options) {
           Math.max(0, input.limits.outputBytes - outputBytes - separatorBytes),
           ''
         );
+        const display = new BoundedTextOutput(10_000, '', 'tail');
         const emit = vm.newFunction('textChunk', (chunk) => {
           if (!chunk || vm.typeof(chunk) !== 'string')
             return {
@@ -389,7 +390,9 @@ export async function createCodeModeEngine(options) {
                 'Text serialization chunk limit exceeded.'
               )
             };
-          capture.append(vm.getString(chunk));
+          const text = vm.getString(chunk);
+          capture.append(text);
+          display.append(text);
           return vm.undefined;
         });
         const result = callGuest(formatText, vm.undefined, handle ?? vm.undefined, emit);
@@ -403,6 +406,7 @@ export async function createCodeModeEngine(options) {
             type: 'value',
             format: handle && vm.typeof(handle) === 'object' ? 'json' : 'text',
             value: captured.text,
+            displayValue: display.snapshot().text,
             originalBytes: captured.originalBytes
           });
         } finally {

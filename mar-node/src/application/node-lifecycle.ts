@@ -1,3 +1,6 @@
+export type NodeShutdownStage =
+  'waitForRecovery' | 'drainInput' | 'closeResume' | 'capture' | 'dispose' | 'publish';
+
 /** Owns application start/stop serialization; domain resources remain owned by their services. */
 export class NodeLifecycle<Snapshot = never> {
   private starting: Promise<void> | undefined;
@@ -15,6 +18,7 @@ export class NodeLifecycle<Snapshot = never> {
       capture(): Snapshot | undefined;
       dispose(): Promise<void>;
       publish(snapshot: Snapshot): Promise<void>;
+      diagnose(stage: NodeShutdownStage, error: unknown): void;
     }
   ) {}
 
@@ -75,25 +79,48 @@ export class NodeLifecycle<Snapshot = never> {
 
   private async stopResources(handoff: boolean): Promise<void> {
     let snapshot: Snapshot | undefined;
-    let failure: unknown;
+    let failure: { error: unknown } | undefined;
+    let stage: NodeShutdownStage = 'waitForRecovery';
+    const failed = (error: unknown): void => {
+      failure ??= { error };
+      try {
+        this.shutdown.diagnose(stage, error);
+      } catch {
+        // Diagnostics must not replace the shutdown failure or prevent cleanup.
+      }
+    };
     try {
       await this.shutdown.waitForRecovery();
+      stage = 'drainInput';
       await this.shutdown.drainInput();
     } catch (error) {
-      failure = error;
+      failed(error);
     }
     try {
+      stage = 'closeResume';
       await this.shutdown.closeResume();
-      if (failure === undefined && handoff) snapshot = this.shutdown.capture();
+      if (failure === undefined && handoff) {
+        stage = 'capture';
+        snapshot = this.shutdown.capture();
+      }
     } catch (error) {
-      failure ??= error;
+      failed(error);
     }
     try {
+      stage = 'dispose';
       await this.shutdown.dispose();
     } catch (error) {
-      failure ??= error;
+      failed(error);
     }
-    if (failure !== undefined) throw failure;
-    if (snapshot !== undefined) await this.shutdown.publish(snapshot);
+    if (failure !== undefined) throw failure.error;
+    if (snapshot !== undefined) {
+      try {
+        await this.shutdown.publish(snapshot);
+      } catch (error) {
+        stage = 'publish';
+        failed(error);
+        throw error;
+      }
+    }
   }
 }

@@ -26,7 +26,7 @@ const executionManagementOperations = new Set([
   'session.schedule.agent.save'
 ]);
 
-/** Prevent execution credentials from reaching legacy writes outside their Session tree. */
+/** Keep execution management within its authenticated Workspace and Run ownership. */
 export async function authorizeMarctlExecutionOperation(input: {
   readonly caller: unknown;
   readonly operation: string;
@@ -40,23 +40,30 @@ export async function authorizeMarctlExecutionOperation(input: {
   if (input.caller.type !== 'execution' || typeof input.caller.sessionId !== 'string')
     throw new Error('MARCTL_EXECUTION_CREDENTIAL_INVALID');
   if (executionReadOperations.has(input.operation)) return;
-  if (
-    !executionManagementOperations.has(input.operation) ||
-    !isPlainRecord(input.data) ||
-    typeof input.data.sessionId !== 'string' ||
-    typeof input.data.workspaceId !== 'string'
-  )
+  if (!isPlainRecord(input.data) || typeof input.data.workspaceId !== 'string')
     throw new Error('MARCTL_AGENT_NETWORK_REQUIRED');
+  let sessionId: string;
+  if (input.operation === 'run.approval.decide') {
+    const run =
+      typeof input.data.runId === 'string' ? input.runtime.getRun(input.data.runId) : undefined;
+    if (!run) throw new Error('RUN_NOT_FOUND');
+    sessionId = run.sessionId;
+  } else {
+    if (
+      !executionManagementOperations.has(input.operation) ||
+      typeof input.data.sessionId !== 'string'
+    )
+      throw new Error('MARCTL_AGENT_NETWORK_REQUIRED');
+    sessionId = input.data.sessionId;
+  }
   const source = input.runtime.getAgentSession(input.caller.sessionId);
   const target =
-    input.runtime.getAgentSession(input.data.sessionId) ??
-    (await input.resolveSession(input.data.sessionId));
+    input.runtime.getAgentSession(sessionId) ?? (await input.resolveSession(sessionId));
   if (
     !source ||
     !target ||
     source.workspaceId !== input.data.workspaceId ||
-    target.workspaceId !== source.workspaceId ||
-    (target.id !== source.id && target.parentSessionId !== source.id)
+    target.workspaceId !== source.workspaceId
   )
     throw new Error('AGENT_TARGET_NOT_AUTHORIZED');
   assertSessionControlOwner(input.runtime, target.id, input.userId);

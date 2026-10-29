@@ -267,7 +267,12 @@ export class NodeConnector {
       closeResume: () => this.externalSessionResumeService.close(),
       capture: () => (this.config?.nodeId ? this.restartHandoff.capture() : undefined),
       dispose: () => this.disposeRuntime(),
-      publish: (snapshot) => this.restartHandoff.publish(snapshot)
+      publish: (snapshot) => this.restartHandoff.publish(snapshot),
+      diagnose: (stage, error) =>
+        nodeLog('node.shutdown.failed', {
+          stage,
+          errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED')
+        })
     }
   );
   private get stopped(): boolean {

@@ -3,6 +3,7 @@ import { RuntimeResourceHandles } from '../runtime-resource-handles.js';
 import { AgentError, describeAgentError } from '../../error.js';
 import { truncateModelText } from '../../runtime/token-budget.js';
 import type {
+  CodeCellEventData,
   ExecOutputSnapshot,
   ToolExecutionContext,
   ToolExecutionResult
@@ -11,6 +12,7 @@ import { TOOL_EXECUTION_LIMITS as limits } from '../execution-limits.js';
 import { waitForToolCondition, waitMetadata, type ToolWaitInterrupt } from '../wait.js';
 import { BoundedTextOutput, renderCapturedText } from './text-output.js';
 import { boundObservations, newObservationId } from './observations.js';
+import { publicCodeObservations } from '../output-projection.js';
 import {
   selectObservationImages,
   visibleObservation
@@ -22,7 +24,7 @@ import type {
 
 export interface CellOutput {
   call(value: CodeToolCallRecord): void;
-  observe(value: CodeObservation): void;
+  observe(value: CodeObservation, display?: CodeObservation, displayHeadTruncated?: boolean): void;
   text(value: string, originalBytes?: number): void;
   image(value: NonNullable<ToolExecutionResult['images']>[number]): void;
   yield(): void;
@@ -53,6 +55,7 @@ interface Cell {
   text: BoundedTextOutput;
   images: NonNullable<ToolExecutionResult['images']>[number][];
   observations: CodeObservation[];
+  display?: CodeCellEventData;
   calls: Map<string, CodeToolCallRecord>;
   imageOffset: number;
   yielded: boolean;
@@ -297,7 +300,18 @@ export class CodeCells {
           { ...context, signal: controller.signal, waitInterrupt: undefined },
           {
             call: (value) => cell.calls.set(value.callId, value),
-            observe: (value) => cell.observations.push(value),
+            observe: (value, display = value, displayHeadTruncated = false) => {
+              cell.observations.push(value);
+              const observations = [...(cell.display?.observations ?? []), display];
+              cell.display = publicCodeObservations(observations, {
+                cellId: cell.cellId,
+                status: cell.status,
+                observations,
+                ...(cell.display?.outputHeadTruncated || displayHeadTruncated
+                  ? { outputHeadTruncated: true }
+                  : {})
+              });
+            },
             text: (text, originalBytes) => cell.text.append(text, originalBytes),
             image: (image) => cell.images.push(image),
             yield: () => {
@@ -484,7 +498,14 @@ export class CodeCells {
             observations: visible.observations.map(visibleObservation)
           }),
           data,
-          eventData: { ...data, executionSource: cell.source },
+          eventData: {
+            ...data,
+            ...cell.display,
+            status: cell.status,
+            cached: true,
+            ...wait,
+            executionSource: cell.source
+          },
           truncated: data.truncated
         };
       }
@@ -556,7 +577,12 @@ export class CodeCells {
       calls: [...cell.calls.values()],
       observations: remapped,
       data,
-      eventData: { ...data, executionSource: cell.source },
+      eventData: {
+        ...data,
+        ...cell.display,
+        status: cell.status,
+        executionSource: cell.source
+      },
       truncated: cell.truncated || structured.truncated,
       ...(visibleImages.length ? { images: visibleImages } : {})
     };
