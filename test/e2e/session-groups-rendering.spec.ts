@@ -9,9 +9,14 @@ test('Session rows keep desktop density without changing mobile height', async (
     await page.setViewportSize({ width: 1280, height: 850 });
     await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
     const row = page.locator('.conversation-sidebar .session-row').first();
-    await expect(row).toHaveCSS('height', '30px');
+    await row.locator('..').evaluate((item) => item.after(item.cloneNode(true)));
+    const nextRow = page.locator('.conversation-sidebar .session-row').nth(1);
+    await expect(row).toHaveCSS('height', '28px');
+    const bounds = (await row.boundingBox())!;
+    const nextBounds = (await nextRow.boundingBox())!;
+    expect(nextBounds.y - (bounds.y + bounds.height)).toBe(2);
     await row.hover();
-    await expect(row).toHaveCSS('height', '30px');
+    await expect(row).toHaveCSS('height', '28px');
     const more = row.locator('.session-more-button');
     await expect(more).toHaveCSS('height', '24px');
     await more.click();

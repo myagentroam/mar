@@ -1141,7 +1141,7 @@ function submitSessionSearch(): void {
 
 @media (min-width: 768px) {
   .session-list li {
-    padding-block: 0;
+    padding-block: 1px;
   }
 
   .session-list li:first-child {
