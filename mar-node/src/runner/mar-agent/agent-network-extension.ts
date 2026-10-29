@@ -66,7 +66,7 @@ const tools: readonly {
   {
     action: 'send',
     description:
-      'Send input, decide a child approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it.',
+      'Send input, decide a child approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Sending to a non-child does not subscribe to its updates.',
     properties: {
       agentId: text,
       content: { type: 'string' },
@@ -87,7 +87,7 @@ const tools: readonly {
   {
     action: 'wait',
     description:
-      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot.',
+      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot. Non-child targets are observed only during this call.',
     properties: {
       agentId: text,
       agentIds: { type: 'array', items: text, minItems: 1, maxItems: 8 },

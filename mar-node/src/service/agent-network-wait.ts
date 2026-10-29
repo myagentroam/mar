@@ -28,7 +28,7 @@ export function validateAgentWaitOptions(input: {
 /** One deadline and one notification subscription, with Session-scoped consumption. */
 export async function waitForAgentTargets(input: {
   readonly targets: readonly AgentWaitTarget[];
-  readonly observations: ParentObservations;
+  readonly observations: Pick<ParentObservations, 'capture' | 'subscribe'>;
   readonly waitFor?: 'message' | 'completion';
   readonly mode?: 'any' | 'all';
   readonly waitMs?: number;

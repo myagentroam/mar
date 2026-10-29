@@ -102,7 +102,7 @@ describe('live Agent Network observations', () => {
     expect(parent.wake.pending()).toBe(true);
     parent.close();
   });
-  it('observes direct children automatically and other Sessions only after explicit targeting', () => {
+  it('keeps non-child waits separate from automatic direct-child observations', async () => {
     const network = new AgentNetworkObservations();
     const parent = network.attach('parent');
     const other = network.attach('other');
@@ -120,10 +120,19 @@ describe('live Agent Network observations', () => {
     expect(parent.capture('direct')).toBeDefined();
     expect(parent.capture('peer')).toBeUndefined();
     expect(other.wake.pending()).toBe(false);
-    parent.observe('peer');
+    const waiter = network.watchExecutions([
+      { agentId: 'peer', runId: 'run-peer', executionId: 'execution-peer' }
+    ]);
     publishChild('peer');
-    expect(parent.capture('peer')).toBeDefined();
+    expect(waiter.capture('peer')).toBeDefined();
+    expect(parent.capture('peer')).toBeUndefined();
+    expect(JSON.stringify(await parent.collect(new AbortController().signal))).not.toContain(
+      'peer'
+    );
     expect(other.wake.pending()).toBe(false);
+    waiter.close();
+    publishChild('peer');
+    expect(waiter.capture('peer')).toBeUndefined();
     parent.close();
     publishChild('peer');
     expect(network.get('parent')).toBeUndefined();

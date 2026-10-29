@@ -33,6 +33,7 @@ export const marctlInstructions = [
   'Use agents send <id> -m <text> [--steer|--queue], agents wait [<id>] [--wait-for message|completion] [--timeout <duration>], agents stop <id> --execution <execution-id>, agents list [--scope children|descendants|workspace|profile], and agents view <id> [--history]. Wait defaults to direct-child completion for 30 seconds; --timeout 0ms takes a snapshot. Stop clears the target Session Goal.',
   'Start and send accept repeated --image <local-path> for PNG, JPEG, GIF or WebP; limits are five images, 5 MiB each and 10 MiB total. Send can update a Goal alone with --goal <objective> or --clear-goal; omitted Goal leaves it unchanged. Decide a direct child approval with send <id> --approval <approval-id> --decision approve|reject.',
   'List accepts --agent <id> for a relation root, --query, --parent, --limit and --cursor. Use --scope profile [--runner <runner>] for Runner models; configured profiles do not guarantee account availability.',
+  'Only direct-child updates are collected automatically. Sending to a non-child never subscribes; an explicit wait observes it only for that call.',
   'Use agents config, rename, prompt and schedule for management. marctl nodes, ssh and scp use authorized Nodes.',
   marctlSafety
 ].join('\n\n');

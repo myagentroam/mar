@@ -7,6 +7,42 @@ import { createToolWaitInterrupt, waitForToolCondition } from '../../src/tools/w
 afterEach(() => vi.useRealTimers());
 
 describe('resumable wait outcomes', () => {
+  it.each(['initial', 'notification', 'deadline'] as const)(
+    'rejects a failed condition check at %s and releases wait resources',
+    async (stage) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const unsubscribe = vi.fn();
+      const unsubscribeInterrupt = vi.fn();
+      const removeAbort = vi.spyOn(controller.signal, 'removeEventListener');
+      let notify = () => {};
+      let fail = stage === 'initial';
+      const failure = new Error('condition failed');
+      const waiting = waitForToolCondition({
+        ready: () => {
+          if (fail) throw failure;
+          return false;
+        },
+        subscribe: (listener) => {
+          notify = listener;
+          return unsubscribe;
+        },
+        interrupt: { pending: () => false, subscribe: () => unsubscribeInterrupt },
+        waitMs: 10,
+        signal: controller.signal
+      });
+      const result = waiting.catch((error: unknown) => error);
+      fail = true;
+      if (stage === 'notification') expect(() => notify()).not.toThrow();
+      if (stage === 'deadline') await vi.advanceTimersByTimeAsync(10);
+      expect(await result).toBe(failure);
+      expect(unsubscribe).toHaveBeenCalledOnce();
+      expect(unsubscribeInterrupt).toHaveBeenCalledOnce();
+      expect(removeAbort).toHaveBeenCalledWith('abort', expect.any(Function));
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
   it('projects only declared wait outcomes and a steer reason for interrupted waits', () => {
     const base = { cellId: 'cell', status: 'running' };
     expect(

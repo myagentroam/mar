@@ -212,7 +212,9 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       );
       return resolved.filter((session): session is NodeAgentSession => session !== undefined);
     },
-    observe: (actor, session) => options.ensureObservations(actor).observe(session.id),
+    observe: (actor) => {
+      options.ensureObservations(actor);
+    },
     isUpward: async (actor, session) =>
       !terminalCalls.has(actor) && (await actorSession(actor)).parentSessionId === session.id,
     reportUpward: async (actor, session, input, signal) => {

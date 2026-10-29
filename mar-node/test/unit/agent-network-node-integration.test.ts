@@ -37,6 +37,109 @@ import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
 
 describe('Node Agent Network owner integration', () => {
+  it.each(['send', 'wait'] as const)(
+    'repairs automatic direct-child observations through %s but never for non-children',
+    async (operation) => {
+      const directory = await mkdtemp(join(tmpdir(), 'mar-network-parent-observation-'));
+      const database = new NodeDatabase(':memory:', 'network-parent-observation');
+      const workspace = database.saveWorkspace({
+        path: directory,
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const connector = new NodeConnector({
+        reconnect: false,
+        database,
+        fakeRunner: new FakeRunner(),
+        capabilities: {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: process.version,
+          codex: { available: true, version: 'codex-cli 0.147.0' },
+          claudeCode: { available: false }
+        }
+      });
+      const core = connector as unknown as {
+        runtime: NodeRuntimeState;
+        agentNetworkService: AgentNetworkService;
+        agentNetworkObservations: AgentNetworkObservations;
+      };
+      const create = (id: string, parentSessionId?: string) => {
+        const session = core.runtime.createAgentSession({
+          workspaceId: workspace.id,
+          runner: 'codex',
+          cwd: directory,
+          externalSessionId: id,
+          model: 'gpt-5.3-codex',
+          effort: 'medium',
+          nativeControl: 'MAR_MANAGED',
+          ...(parentSessionId ? { parentSessionId } : {})
+        });
+        const run = core.runtime.createMessageRun({
+          sessionId: session.id,
+          clientMessageId: id,
+          content: 'work',
+          initiatedByUserId: 7
+        }).run;
+        const execution = core.runtime.createExecution(run.id);
+        core.runtime.transitionRun(run.id, 'RUNNING');
+        return { session, run, execution };
+      };
+      try {
+        const parent = create('parent');
+        const child = create('child', parent.session.id);
+        const unrelated = create('unrelated');
+        const actor = {
+          sessionId: parent.session.id,
+          runId: parent.run.id,
+          executionId: parent.execution.id,
+          requestUserId: 7
+        };
+        const act = (agentId: string) =>
+          operation === 'send'
+            ? core.agentNetworkService.send(
+                actorForApprovedAgentCall(
+                  actor,
+                  { permission: { decision: 'approved' } } as ExtensionOperationContext,
+                  [agentId],
+                  ['goal']
+                ),
+                { agentId, goal: { clear: true } }
+              )
+            : core.agentNetworkService.wait(
+                actorForApprovedAgentCall(
+                  actor,
+                  { permission: { decision: 'approved' } } as ExtensionOperationContext,
+                  [agentId],
+                  ['wait']
+                ),
+                { agentId, waitMs: 0 }
+              );
+        expect(core.agentNetworkObservations.get(parent.session.id)).toBeUndefined();
+        await act(child.session.id);
+        const observations = core.agentNetworkObservations.get(parent.session.id);
+        expect(observations).toBeDefined();
+        core.agentNetworkObservations.publishChild({
+          parentId: parent.session.id,
+          childId: child.session.id,
+          runId: child.run.id,
+          executionId: child.execution.id,
+          kind: 'message',
+          value: 'child update after repair'
+        });
+        expect((await observations!.collect(new AbortController().signal))[0]?.content).toContain(
+          'child update after repair'
+        );
+        observations!.close();
+        await act(unrelated.session.id);
+        expect(core.agentNetworkObservations.get(parent.session.id)).toBeUndefined();
+      } finally {
+        await connector.stop();
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
+
   it('admits an escaped Node observation through the real Core context provider', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-context-budget-'));
     const network = new AgentNetworkObservations();
@@ -1634,8 +1737,6 @@ describe('Node Agent Network owner integration', () => {
             approval: { approvalId, decision: 'approve' }
           })
         ).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
-      expect(observer.observes(sibling.id)).toBe(false);
-      expect(observer.observes(root.id)).toBe(false);
       internals.agentNetworkObservations.publishChild({
         parentId: root.id,
         childId: sibling.id,
@@ -1645,6 +1746,14 @@ describe('Node Agent Network owner integration', () => {
         value: 'unrelated'
       });
       expect(observer.capture(sibling.id)).toBeUndefined();
+      internals.agentNetworkObservations.publishChild({
+        childId: root.id,
+        runId: 'root-run',
+        executionId: 'root-execution',
+        kind: 'message',
+        value: 'unrelated root'
+      });
+      expect(observer.capture(root.id)).toBeUndefined();
       expect(
         await internals.agentNetworkService.send(actor, {
           agentId: child.id,
