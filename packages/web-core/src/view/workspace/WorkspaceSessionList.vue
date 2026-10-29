@@ -1140,6 +1140,18 @@ function submitSessionSearch(): void {
 }
 
 @media (min-width: 768px) {
+  .session-list li {
+    padding-block: 0;
+  }
+
+  .session-list li:first-child {
+    padding-top: 4px;
+  }
+
+  .session-row-actions {
+    padding-block: 0;
+  }
+
   .session-link strong {
     font-size: var(--mar-font-size-body);
   }

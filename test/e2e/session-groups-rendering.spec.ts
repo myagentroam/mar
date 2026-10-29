@@ -3,6 +3,27 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('Session rows keep desktop density without changing mobile height', async ({ page }) => {
+  const fixture = await startCustomThemeFixture();
+  try {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
+    const row = page.locator('.conversation-sidebar .session-row').first();
+    await expect(row).toHaveCSS('height', '30px');
+    await row.hover();
+    await expect(row).toHaveCSS('height', '30px');
+    const more = row.locator('.session-more-button');
+    await expect(more).toHaveCSS('height', '24px');
+    await more.click();
+    await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 390, height: 850 });
+    await expect(row).toHaveCSS('height', '40px');
+  } finally {
+    await fixture.close();
+  }
+});
+
 for (const width of [390, 1280]) {
   test(`Group badges open a session and select its group at ${width}px`, async ({ browser }) => {
     const fixture = await startCustomThemeFixture();
