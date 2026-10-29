@@ -453,11 +453,16 @@ html.console-ui
 }
 
 html.console-ui .el-message-box {
+  --el-messagebox-font-size: var(--mar-font-size-title);
   display: inline-flex;
   flex-direction: column;
   max-height: calc(
     100dvh - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px))
   );
+}
+
+html.console-ui .el-dialog {
+  --el-dialog-title-font-size: var(--mar-font-size-title);
 }
 
 html.console-ui .el-message-box > :is(.el-message-box__header, .el-message-box__btns) {
