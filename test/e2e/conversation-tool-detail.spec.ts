@@ -35,9 +35,9 @@ for (const width of [1280, 390]) {
       }
       const detailBox = await exec.locator('.tool-detail').boundingBox();
       const copyBox = await copyButton.boundingBox();
-      expect(Math.abs(copyBox!.x + copyBox!.width - detailBox!.x - detailBox!.width)).toBeLessThan(
-        2
-      );
+      expect(
+        Math.abs(copyBox!.x + copyBox!.width + 8 - detailBox!.x - detailBox!.width)
+      ).toBeLessThan(2);
       expect(copyBox!.y - detailBox!.y).toBeLessThan(12);
 
       await exec.getByRole('button', { name: 'Copy public record' }).click();
@@ -50,6 +50,10 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty').locator('pre')).not.toContainText('Output:');
       await expect(page.getByTestId('empty')).not.toContainText('No output');
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
+      await page.getByTestId('generic').locator('summary').click();
+      await expect(page.getByTestId('generic').locator('pre')).toHaveText(
+        'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+      );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
       await page.getByTestId('declined').locator('summary').click();
@@ -86,7 +90,9 @@ for (const width of [1280, 390]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       try {
         const page = await context.newPage();
-        await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&theme=${theme}`);
+        await page.goto(
+          `${fixture.url}conversation-tool-detail.html?timeline=1&long=1&unified=1&theme=${theme}`
+        );
         const process = page.locator('.process-heading').first();
         if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
         const group = page.locator('.conversation-record-group').filter({ hasText: 'Command' });
@@ -98,9 +104,15 @@ for (const width of [1280, 390]) {
         await expect(detail).toContainText('visible stderr');
         await expect(detail.locator('pre')).toHaveCount(1);
         await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
-        await expect(detail.locator('pre')).toHaveText(
-          'Command: printf test\nWorking directory: /fixture\nStatus: Completed\nOutput: visible stdout\nstderr: visible stderr'
+        await expect(detail.locator('pre')).toContainText('Code: observe.result(await tools.exec(');
+        await expect(detail.locator('pre')).toContainText(
+          'Status: Completed\nOutput: visible stdout\nstderr: visible stderr'
         );
+        await expect(detail).not.toContainText('Working directory:');
+        await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        const textBounds = await detail.locator('pre').boundingBox();
+        const titleBounds = await command.locator('.conversation-command-preview').boundingBox();
+        expect(Math.abs(textBounds!.x - titleBounds!.x)).toBeLessThan(3);
         await expect(detail.locator('pre')).toHaveCSS('font-weight', '400');
 
         await expect
@@ -126,7 +138,7 @@ for (const width of [1280, 390]) {
         const bounds = await detail.boundingBox();
         const copyBounds = await button.boundingBox();
         expect(
-          Math.abs(copyBounds!.x + copyBounds!.width - bounds!.x - bounds!.width)
+          Math.abs(copyBounds!.x + copyBounds!.width + 8 - bounds!.x - bounds!.width)
         ).toBeLessThan(2);
         for (const pre of await detail.locator('pre').all()) {
           await expect(pre).toHaveCSS('border-top-width', '0px');
@@ -138,6 +150,52 @@ for (const width of [1280, 390]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
           true
         );
+        const reasoning = page.locator('.reasoning-group');
+        await reasoning.locator('summary').click();
+        const thinking = reasoning.locator('.conversation-detail-text');
+        const thinkingStyle = await thinking.evaluate((element) => ({
+          fontSize: getComputedStyle(element).fontSize,
+          lineHeight: getComputedStyle(element).lineHeight,
+          background: getComputedStyle(element.parentElement!).backgroundColor
+        }));
+        const read = page.locator('[data-tool-presentation="READ"]');
+        await read.locator(':scope > summary').click();
+        await read.locator('.conversation-tool-detail > summary').click();
+        for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
+          await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
+        const subagent = page.locator('.subagent-group');
+        await subagent.locator('.conversation-record-group > summary').click();
+        await subagent.locator('.conversation-tool-detail > summary').click();
+        const generic = page.locator('.tool-group:not(:has([data-tool-presentation="READ"]))');
+        await generic.locator('.conversation-record-group > summary').click();
+        await generic.locator('.conversation-tool-detail > summary').click();
+        await expect(generic.locator('.conversation-detail-text')).toHaveText(
+          'Details: Inspect fixture\nInput: Preserved input\nOutput: Partial inspection output\nTruncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        );
+        const surfaces = page.locator('.conversation-detail-body');
+        await expect(surfaces).toHaveCount(7);
+        for (const surface of await surfaces.all()) {
+          await expect(surface).toHaveCSS('background-color', thinkingStyle.background);
+          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
+            'font-size',
+            thinkingStyle.fontSize
+          );
+          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
+            'line-height',
+            thinkingStyle.lineHeight
+          );
+          await expect(surface).toHaveCSS('overflow-y', 'visible');
+        }
+        await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(
+          'href',
+          'https://example.com/docs'
+        );
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true
+        );
+        await page.setViewportSize({ width, height: 1600 });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
         await page.screenshot({
           path: testInfo.outputPath(`timeline-${theme}-${width}.png`),
           fullPage: true

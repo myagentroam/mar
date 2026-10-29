@@ -562,6 +562,10 @@ describe('Node Agent Network owner integration', () => {
         sessionId: parent.id,
         content: 'parent',
         clientMessageId: 'parent-first',
+        personalInstructions: {
+          common: 'Shared rule'.repeat(1200),
+          codex: 'Runner rule'.repeat(1200)
+        },
         __requestUserId: 7
       });
       const run = core.runtime.activeSessionRun(parent.id)!;
@@ -618,6 +622,14 @@ describe('Node Agent Network owner integration', () => {
         context
       )) as { agentId: string };
       expect(core.runtime.getAgentSession(created.agentId)?.parentSessionId).toBe(parent.id);
+      const instructionRun = core.runtime.activeSessionRun(created.agentId)!;
+      await vi.waitFor(() =>
+        expect(core.runtime.currentExecutionId(instructionRun.id)).toBeTruthy()
+      );
+      expect(
+        core.continuousRunCoordinator.pending(core.runtime.currentExecutionId(instructionRun.id)!)
+          ?.personalInstructions
+      ).toBe('Shared rule'.repeat(1200) + '\n\n' + 'Runner rule'.repeat(1200));
       const messageOperations = vi.spyOn(core.sessionMessageService, 'operations');
       const abortedSend = new AbortController();
       const sending = invoke(

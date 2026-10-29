@@ -3,6 +3,7 @@ import {
   marAgentRuntimeModelConfigurationSchema
 } from '@myagentroam/protocol';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
+import { resolvedPersonalInstructions } from '../runner/personal-instructions.js';
 import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NodeAgentSession } from '../session/contracts.js';
@@ -134,7 +135,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       secretEnvironment: childEnvironment(actor),
       ...(actor.personalInstructions === undefined
         ? {}
-        : { personalInstructions: actor.personalInstructions }),
+        : { personalInstructions: resolvedPersonalInstructions(actor.personalInstructions) }),
       ...(actor.requestUserId === undefined ? {} : { __requestUserId: actor.requestUserId }),
       ...(actor.usageGrant === undefined ? {} : { __usageGrant: actor.usageGrant })
     };

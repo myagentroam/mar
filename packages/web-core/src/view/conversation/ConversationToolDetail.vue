@@ -53,6 +53,8 @@ const copyLabel = computed(() =>
 const detailText = computed(() => {
   const value = execution.value;
   if (!value) {
+    if (props.item.kind === 'tool_call')
+      return conversationItemDetail(props.item.kind, props.item.payload);
     const text =
       genericOutput.value === undefined
         ? conversationItemDetail(props.item.kind, props.item.payload)
@@ -101,7 +103,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="tool-detail" :aria-label="translate('toolPresentation.detail.output')">
+  <section
+    class="tool-detail"
+    :class="{ 'conversation-detail-body': !copyOnly && (detailText || $slots.default) }"
+    :aria-label="translate('toolPresentation.detail.output')"
+  >
     <button
       v-tooltip="copyLabel"
       type="button"
@@ -111,7 +117,9 @@ onBeforeUnmount(() => {
     >
       <MarIcon :name="copyState ? 'check' : 'copy'" />
     </button>
-    <pre v-if="!copyOnly && detailText">{{ detailText }}</pre>
+    <slot v-if="!copyOnly">
+      <pre v-if="detailText" class="conversation-detail-text">{{ detailText }}</pre>
+    </slot>
   </section>
 </template>
 
@@ -119,9 +127,16 @@ onBeforeUnmount(() => {
 .tool-detail {
   position: relative;
   min-width: 0;
-  padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
   min-height: var(--mar-utility-control-size);
-  color: var(--mar-text-secondary);
+}
+.tool-detail:not(.conversation-detail-body) {
+  padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
+}
+.tool-detail.conversation-detail-body {
+  --conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
+}
+.conversation-detail-body .tool-detail-copy {
+  right: 0.5rem;
 }
 .tool-detail-copy {
   position: absolute;
@@ -134,19 +149,5 @@ onBeforeUnmount(() => {
   justify-content: center;
   border-radius: 4px;
   padding: 0;
-}
-.tool-detail pre {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  color: inherit;
-  font-family: var(--mar-font-mono);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 400;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  overflow: visible;
-  background: transparent;
-  border-radius: 0;
 }
 </style>

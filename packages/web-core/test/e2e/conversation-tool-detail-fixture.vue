@@ -33,6 +33,111 @@ const command = ref<ConversationItem>({
     }
   }
 });
+if (new URL(location.href).searchParams.has('long')) {
+  command.value.payload = {
+    ...command.value.payload,
+    command:
+      'observe.result(await tools.exec({command: "pnpm --filter @myagentroam/web-core test && pnpm --filter @myagentroam/web-console typecheck", cwd: "/workspace/project", yieldMs: 1000}));',
+    cwd: null,
+    toolPresentation: {
+      kind: 'EXECUTION',
+      execution: {
+        kind: 'CODE',
+        output: [
+          { channel: 'STDOUT', text: 'visible stdout' },
+          { channel: 'STDERR', text: 'visible stderr' }
+        ]
+      }
+    }
+  };
+}
+const detailSamples: ConversationItem[] = [
+  {
+    id: 'generic',
+    kind: 'tool_call',
+    status: 'FAILED',
+    payload: {
+      toolName: 'inspect',
+      title: 'Inspect fixture',
+      inputSummary: 'Preserved input',
+      output: { text: 'Partial inspection output', truncated: true },
+      progressLabel: 'Stopped at the last file',
+      errorCode: 'INSPECTION_FAILED'
+    }
+  },
+  {
+    id: 'thinking',
+    kind: 'reasoning',
+    status: 'COMPLETED',
+    payload: {
+      sections: [
+        { text: 'Inspect the output, then verify the relevant files.\nKeep the changes focused.' }
+      ],
+      representation: 'visible_thinking'
+    }
+  },
+  {
+    id: 'read',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      toolName: 'read',
+      inputSummary: '/fixture/example.ts',
+      outputSummary: '1: export const result = true;',
+      toolPresentation: { kind: 'READ', paths: ['/fixture/example.ts'] }
+    }
+  },
+  {
+    id: 'search',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      toolName: 'web_search',
+      inputSummary: 'documentation',
+      outputSummary: 'Relevant documentation found.',
+      toolPresentation: {
+        kind: 'WEB_SEARCH',
+        query: 'documentation',
+        sources: [
+          {
+            title: 'Example documentation',
+            url: 'https://example.com/docs',
+            snippet: 'A plain-text search summary.'
+          }
+        ]
+      }
+    }
+  },
+  {
+    id: 'fetch',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      toolName: 'web_fetch',
+      inputSummary: 'https://example.com/docs',
+      outputSummary:
+        'The requested page content.\nThe next paragraph remains in the same reading surface.',
+      toolPresentation: {
+        kind: 'WEB_FETCH',
+        url: 'https://example.com/docs',
+        title: 'Example documentation'
+      }
+    }
+  },
+  {
+    id: 'child',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      toolName: 'agent_send',
+      subagentOperation: 'MESSAGE',
+      subagentId: 'child-session',
+      title: 'Review the change',
+      inputSummary: 'Review the relevant files.',
+      outputSummary: 'Message delivered.'
+    }
+  }
+];
 const turns = computed<ConversationTurn[]>(() => [
   {
     id: 'turn',
@@ -47,6 +152,9 @@ const turns = computed<ConversationTurn[]>(() => [
         payload: { text: 'Check the command output' }
       },
       { ...command.value, status: 'COMPLETED', processGroup: { id: 'process', isStart: true } },
+      ...(new URL(location.href).searchParams.has('unified')
+        ? detailSamples.map((item) => ({ ...item, processGroup: { id: 'process' } }))
+        : []),
       {
         id: 'reply',
         kind: 'assistant_message',
@@ -156,6 +264,10 @@ function finish() {
       <details data-testid="empty">
         <summary>Empty execution</summary>
         <ConversationToolDetail :item="empty" @copy="copy" />
+      </details>
+      <details data-testid="generic">
+        <summary>Generic tool</summary>
+        <ConversationToolDetail :item="detailSamples[0]!" @copy="copy" />
       </details>
       <details data-testid="wait">
         <summary>Wait call</summary>

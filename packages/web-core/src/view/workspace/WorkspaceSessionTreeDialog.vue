@@ -100,12 +100,10 @@ onBeforeUnmount(() => controller.abort());
             class="session-tree-node"
             :style="{ marginInlineStart: `${row.branches.length * 1.25}rem` }"
             :aria-current="row.node.id === sessionId ? 'true' : undefined"
+            :aria-label="row.node.title"
             @click="emit('open', row.node.id)"
           >
-            <span class="session-tree-content">
-              <span class="session-tree-title">{{ row.node.title }}</span>
-              <span class="session-tree-runner">{{ row.node.runner }}</span>
-            </span>
+            <span class="session-tree-title">{{ row.node.title }}</span>
           </button>
         </li>
       </ul>
@@ -131,8 +129,7 @@ onBeforeUnmount(() => controller.abort());
   min-width: 0;
   min-height: 2.25rem;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.625rem 0.75rem;
+  padding: 0.375rem 0.75rem;
   border: 0;
   border-radius: var(--mar-radius-control);
   background: transparent;
@@ -153,11 +150,14 @@ onBeforeUnmount(() => controller.abort());
   font-weight: 600;
 }
 .session-tree-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
   line-height: 1.5;
 }
-.session-tree-runner,
 .session-tree-truncated {
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
@@ -165,14 +165,6 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-row {
   position: relative;
   display: flex;
-  padding-block: 0.125rem;
-}
-.session-tree-content {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.25rem;
 }
 .session-tree-branch {
   position: absolute;

@@ -3,7 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
-  fixture = await startCustomThemeFixture('test/e2e/support/session-tree.html');
+  fixture = await startCustomThemeFixture('test/e2e/support/session-*.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
@@ -18,6 +18,16 @@ for (const width of [390, 1280]) {
       const trigger = page.getByRole('button', {
         name: locale === 'en-US' ? 'View session tree' : '查看会话树'
       });
+      const treeIcon = trigger.locator('[data-mar-icon="session-tree"]');
+      await expect(treeIcon).toBeVisible();
+      await expect(trigger.locator('svg')).toHaveCount(1);
+      await expect(treeIcon).toHaveAttribute('aria-hidden', 'true');
+      await expect(treeIcon).toHaveCSS('animation-name', 'none');
+      await expect(treeIcon).toHaveCSS(
+        'stroke',
+        await trigger.evaluate((el) => getComputedStyle(el).color)
+      );
+      await trigger.screenshot({ path: testInfo.outputPath(`tree-trigger-${width}-${theme}.png`) });
       await expect(trigger).toHaveCSS('border-top-width', '0px');
       await trigger.hover();
       await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -28,6 +38,17 @@ for (const width of [390, 1280]) {
       await expect(dialog).toBeVisible();
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
+      const longTitle = rows.last().locator('.session-tree-title');
+      await expect(rows.last()).toHaveAccessibleName(
+        'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()
+      );
+      const titleSize = await longTitle.evaluate((element) => ({
+        height: element.clientHeight,
+        fullHeight: element.scrollHeight,
+        lineHeight: parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(titleSize.height).toBeLessThanOrEqual(titleSize.lineHeight * 2 + 1);
+      expect(titleSize.fullHeight).toBeGreaterThan(titleSize.height);
       await expect(rows.locator('[data-mar-icon="collection"]')).toHaveCount(0);
       const treeRows = dialog.locator('.session-tree-row');
       const childBranch = treeRows.nth(1).locator('.session-tree-branch');
@@ -56,6 +77,7 @@ for (const width of [390, 1280]) {
       expect(ending.border).toBe('1px');
       expect(Math.abs(ending.height - ending.parentHeight / 2)).toBeLessThan(1);
       for (const row of await rows.all()) {
+        await expect(row).not.toContainText(/mar-agent|codex/);
         await expect(row).toHaveCSS('border-top-width', '0px');
         expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
@@ -88,4 +110,26 @@ for (const width of [390, 1280]) {
       await expect(page.getByTestId('selected')).toHaveText('parent');
     });
   }
+}
+
+for (const [width, theme] of [
+  [390, 'daylight'],
+  [1280, 'vscode-dark-2026']
+] as const) {
+  test(`session tree menu icon at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}session-groups.html?theme=${theme}&locale=en-US`);
+    const chats = page.locator('.conversation-sidebar');
+    await chats.getByRole('tab').nth(1).click();
+    await chats.locator('.session-link').hover();
+    await chats.locator('.session-more-button').click();
+    const treeItem = page.getByRole('menuitem', { name: 'View session tree', exact: true });
+    await expect(treeItem.locator('[data-mar-icon="session-tree"]')).toBeVisible();
+    await expect(treeItem.locator('[data-mar-icon="collection"]')).toHaveCount(0);
+    await treeItem.screenshot({ path: testInfo.outputPath('session-tree-menu.png') });
+    await treeItem.click();
+    await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+    await expect(treeItem).not.toBeVisible();
+  });
 }

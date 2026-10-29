@@ -66,7 +66,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           :aria-label="translate('sessionGroups.tree')"
           @click="emit('openTree', session.id)"
         >
-          <MarIcon name="collection" />
+          <MarIcon name="session-tree" />
         </button>
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">

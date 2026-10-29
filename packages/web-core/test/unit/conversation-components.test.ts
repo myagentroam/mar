@@ -811,6 +811,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       session: { ...session, sessionGroup: 'MAIN' }
     });
     expect(child).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
+    expect(child).toContain('data-mar-icon="session-tree"');
+    expect(root).not.toContain('data-mar-icon="session-tree"');
     expect(root).not.toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
   });
 

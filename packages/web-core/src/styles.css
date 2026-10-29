@@ -1342,6 +1342,39 @@ pre {
   }
 }
 
+.conversation-detail-body {
+  min-width: 0;
+  padding: 0.625rem var(--conversation-detail-end, 0.75rem) 0.625rem
+    var(--conversation-detail-start, calc(1em + 0.5rem));
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-conversation-code);
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  font-weight: 400;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.conversation-detail-body > .conversation-detail-text {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  max-height: none;
+}
+
+pre.conversation-detail-text {
+  font-family: var(--mar-font-mono);
+}
+
 .mar-disclosure-summary {
   list-style: none;
 }

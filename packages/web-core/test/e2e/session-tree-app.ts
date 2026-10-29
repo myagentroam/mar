@@ -65,7 +65,9 @@ createTooltipApp({
                   {
                     id: 'sibling',
                     parentSessionId: 'parent',
-                    title: 'Review upload boundary tests',
+                    title: 'Review upload boundary tests and verify image compatibility. '
+                      .repeat(6)
+                      .trim(),
                     runner: 'codex'
                   }
                 ]
