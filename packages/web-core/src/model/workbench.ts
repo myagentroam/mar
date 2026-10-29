@@ -235,7 +235,7 @@ export interface Approval {
 
 export interface ComposerAttachment {
   readonly id: string;
-  readonly file: File;
+  file: File;
   readonly previewUrl: string | null;
   readonly nodeId: string;
   readonly workspaceId: string;

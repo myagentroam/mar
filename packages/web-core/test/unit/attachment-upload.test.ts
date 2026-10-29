@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
+import * as imageCompatibility from '../../src/util/composer-image-compatibility.js';
 
 class FakeXHR {
   static replies: Array<{ status: number; body: object }> = [];
@@ -34,7 +35,7 @@ function fixture() {
   FakeXHR.replies = [];
   vi.stubGlobal('XMLHttpRequest', FakeXHR);
   const csrfToken = ref('old-csrf');
-  const request = vi.fn(async (path: string) =>
+  const request = vi.fn(async (path: string, _init?: RequestInit) =>
     path.endsWith('/uploads')
       ? { upload: { uploadId: 'upload-1', receivedBytes: 0, size: 4 } }
       : undefined
@@ -63,6 +64,53 @@ afterEach(() => {
 });
 
 describe('Public Composer Attachment Upload', () => {
+  it('uploads converted PNG metadata and retains the converted file for submission', async () => {
+    const png = new File(['png!'], 'scope.png', { type: 'image/png' });
+    vi.spyOn(imageCompatibility, 'normalizeComposerImage').mockResolvedValue(png);
+    const f = fixture();
+    FakeXHR.replies.push({ status: 200, body: { upload: { receivedBytes: 4 } } });
+    f.service.add([new File(['bmp'], 'scope.bmp', { type: 'image/bmp' })]);
+    await vi.waitFor(() => expect(f.service.attachments.value[0]?.status).toBe('COMPLETED'));
+    expect(JSON.parse(f.request.mock.calls[0]![1]!.body as string)).toMatchObject({
+      name: 'scope.png',
+      mime: 'image/png',
+      size: 4
+    });
+    expect(f.service.attachments.value[0]?.file).toBe(png);
+  });
+
+  it('does not upload a removed BMP after conversion finishes', async () => {
+    let finish!: (file: File) => void;
+    vi.spyOn(imageCompatibility, 'normalizeComposerImage').mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const f = fixture();
+    f.service.add([new File(['bmp'], 'scope.bmp', { type: 'image/bmp' })]);
+    await f.service.remove(f.service.attachments.value[0]!.id);
+    finish(new File(['png'], 'scope.png', { type: 'image/png' }));
+    await Promise.resolve();
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
+  it('blocks upload when converted PNG would exceed the message total', async () => {
+    vi.stubGlobal('window', { setTimeout: vi.fn() });
+    vi.spyOn(imageCompatibility, 'normalizeComposerImage').mockResolvedValue(
+      new File([new Uint8Array(5 * 1024 * 1024)], 'scope.png', { type: 'image/png' })
+    );
+    const f = fixture();
+    const sibling = new File([new Uint8Array(3 * 1024 * 1024)], 'a.txt');
+    FakeXHR.replies.push(
+      { status: 200, body: { upload: { receivedBytes: sibling.size } } },
+      { status: 200, body: { upload: { receivedBytes: sibling.size } } }
+    );
+    f.service.add([sibling, sibling, new File(['bmp'], 'scope.bmp', { type: 'image/bmp' })]);
+    await vi.waitFor(() => expect(f.service.attachments.value[2]?.status).toBe('FAILED'));
+    expect(f.request.mock.calls.filter((call) => call[0].endsWith('/uploads'))).toHaveLength(2);
+    expect(f.service.attachments.value[2]?.error).toContain('BMP');
+  });
+
   it('includes the shared full-file checksum on the existing Composer direct path', async () => {
     const directUpload = vi.fn(async () => undefined);
     const request = vi.fn();

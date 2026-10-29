@@ -20,6 +20,11 @@ import type {
   createHostedConversationEntryService
 } from '../../service/hosted-conversation-entry-service.js';
 import { errorCode } from '../../util/api-error.js';
+import { errorMessage } from '../../util/error-presentation.js';
+import {
+  isBmpAttachment,
+  normalizeComposerImage
+} from '../../util/composer-image-compatibility.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
@@ -291,6 +296,12 @@ function queueFiles(files: Iterable<File>): void {
 
 async function uploadAttachment(attachment: HostedAttachment): Promise<void> {
   try {
+    if (isBmpAttachment(attachment.file)) {
+      const file = await normalizeComposerImage(attachment.file);
+      attachment.controller.signal.throwIfAborted();
+      attachment.file = file;
+      attachment.name = file.name;
+    }
     const result = await props.workspace.uploadFile(
       attachment.file,
       attachment.clientRequestId,
@@ -583,6 +594,9 @@ function attachmentError(attachment: HostedAttachment): string | undefined {
 
 function hostedErrorMessage(error: unknown): string {
   switch (errorCode(error)) {
+    case 'COMPOSER_IMAGE_CONVERSION_FAILED':
+    case 'COMPOSER_IMAGE_LIMIT_EXCEEDED':
+      return errorMessage(error);
     case 'HOSTED_CONVERSATION_DRAFT_PAUSED':
       return translate('hostedConversations.firstMessagePaused');
     case 'HOSTED_CONVERSATION_DRAFT_DISPOSED':

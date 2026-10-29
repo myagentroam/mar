@@ -1,5 +1,8 @@
 export const errorPresentationZhCN = {
   errors: {
+    COMPOSER_IMAGE_CONVERSION_FAILED: '无法将此 BMP 图片转换为 PNG，请另存为 PNG 后重试。',
+    COMPOSER_IMAGE_LIMIT_EXCEEDED:
+      'BMP 转换超过附件大小限制或 1600 万像素，请另存为较小的 PNG 后重试。',
     HOSTED_CONVERSATION_TEMPLATE_CONFLICT: '对话模板已变更，请等待刷新后重新选择。',
     SESSION_PAGINATION_NO_PROGRESS: '会话分页未推进，无法继续加载。请重试。',
     SESSION_SHARE_CREDENTIAL_INVALID: '密码错误或保存的分享凭据已失效，请重新输入密码。',

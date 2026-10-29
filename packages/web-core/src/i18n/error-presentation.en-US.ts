@@ -1,5 +1,9 @@
 export const errorPresentationEnUS = {
   errors: {
+    COMPOSER_IMAGE_CONVERSION_FAILED:
+      'Could not convert this BMP image to PNG. Save it as PNG and try again.',
+    COMPOSER_IMAGE_LIMIT_EXCEEDED:
+      'BMP conversion exceeds the attachment size limit or 16 megapixels. Save a smaller PNG and try again.',
     HOSTED_CONVERSATION_TEMPLATE_CONFLICT:
       'The conversation template changed. Wait for the refresh, then select again.',
     SESSION_PAGINATION_NO_PROGRESS:

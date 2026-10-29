@@ -70,7 +70,17 @@ export async function persistResource(
       'MAR_AGENT_SESSION_INPUT_INVALID',
       'Image resource data is not canonical base64.'
     );
-  if (!mimeTypes.has(image.mimeType) || data.length === 0 || data.length > 20 * 1024 * 1024)
+  if (!mimeTypes.has(image.mimeType))
+    throw new AgentError(
+      'MAR_AGENT_SESSION_INPUT_INVALID',
+      'Unsupported image resource format. Use PNG, JPEG, GIF, or WebP.'
+    );
+  if (data.length === 0)
+    throw new AgentError(
+      'MAR_AGENT_SESSION_INPUT_INVALID',
+      'Image resource data must not be empty.'
+    );
+  if (data.length > 20 * 1024 * 1024)
     throw new AgentError(
       'MAR_AGENT_HOST_LIMIT_EXCEEDED',
       'Image resource exceeds supported limits.'
