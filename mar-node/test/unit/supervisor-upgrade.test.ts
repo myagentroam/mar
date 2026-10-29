@@ -49,7 +49,7 @@ vi.mock('../../src/operational.js', () => ({
 }));
 import { superviseNode } from '../../src/supervisor.js';
 
-describe('Supervisor after a successful entrypoint switch', () => {
+describe('Supervisor upgrade recovery', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.resetAllMocks();
@@ -83,6 +83,12 @@ describe('Supervisor after a successful entrypoint switch', () => {
     async (outcome) => {
       vi.useFakeTimers();
       mocks.rm.mockResolvedValue(undefined);
+      if (outcome !== 'resolve') {
+        mocks.writeFile.mockRejectedValue(new Error('disk full'));
+        mocks.rm.mockImplementation(async (path: string) => {
+          if (path.endsWith('upgrade-request.json')) throw new Error('request is locked');
+        });
+      }
       let resolveReap!: () => void;
       let rejectReap!: (error: Error) => void;
       mocks.terminate.mockReturnValue(
@@ -141,6 +147,66 @@ describe('Supervisor after a successful entrypoint switch', () => {
           ([event]) => event === 'node.supervisor.upgrade-result-write-failed'
         )
       ).toBe(resultWriteFails);
+    }
+  );
+
+  it.each([
+    { resultWriteFails: true, cleanupFails: false },
+    { resultWriteFails: false, cleanupFails: true },
+    { resultWriteFails: true, cleanupFails: true }
+  ])(
+    'restarts the old entrypoint after an install failure despite $resultWriteFails result write / $cleanupFails cleanup failures',
+    async ({ resultWriteFails, cleanupFails }) => {
+      const attemptId = '11111111-1111-4111-8111-111111111111';
+      const handoff = { attemptId, targetVersion: '1.2.3', credential: 'x'.repeat(43) };
+      mocks.readFile.mockImplementation(async (path: string) => {
+        if (path.endsWith('upgrade-request.json'))
+          return JSON.stringify({ schemaVersion: 1, ...handoff });
+        throw new Error('missing active entrypoint');
+      });
+      mocks.child.mockReset();
+      mocks.child
+        .mockImplementationOnce(async (_entry, _config, accept, accepted) => {
+          expect(await accept(handoff)).toBe(true);
+          accepted(handoff);
+          return { code: 75, signalled: false, handoff };
+        })
+        .mockResolvedValueOnce({ code: 0, signalled: false });
+      mocks.spawn.mockImplementation(() => {
+        const child = new EventEmitter();
+        process.nextTick(() => child.emit('exit', 1));
+        return child;
+      });
+      if (resultWriteFails) mocks.writeFile.mockRejectedValue(new Error('disk full'));
+      if (!cleanupFails) mocks.rm.mockResolvedValue(undefined);
+
+      await superviseNode('/test/config.json', '/old/main.js');
+
+      expect(mocks.spawn).toHaveBeenCalledOnce();
+      expect(mocks.child).toHaveBeenCalledTimes(2);
+      expect(mocks.child.mock.calls[1]?.[0]).toBe('/old/main.js');
+      expect(mocks.finish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attemptId,
+          result: 'FAILED',
+          operationEnded: true,
+          failure: expect.objectContaining({ code: 'NODE_UPGRADE_INSTALL_FAILED' })
+        })
+      );
+      expect(mocks.rename).not.toHaveBeenCalledWith(
+        expect.any(String),
+        '/test/node-active-entrypoint'
+      );
+      expect(
+        mocks.log.mock.calls.some(
+          ([event]) => event === 'node.supervisor.upgrade-result-write-failed'
+        )
+      ).toBe(resultWriteFails);
+      expect(
+        mocks.log.mock.calls.some(
+          ([event]) => event === 'node.supervisor.upgrade-request-cleanup-failed'
+        )
+      ).toBe(cleanupFails);
     }
   );
 

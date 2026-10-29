@@ -257,22 +257,26 @@ export async function superviseNode(
             }
           });
         reporter = undefined;
-        await writeResult(dataDirectory, {
-          state: 'FAILED',
-          errorCode: safeErrorCode(error, 'NODE_UPGRADE_INSTALL_FAILED'),
-          updatedAt: Date.now()
-        });
+        try {
+          await writeResult(dataDirectory, {
+            state: 'FAILED',
+            errorCode: safeErrorCode(error, 'NODE_UPGRADE_INSTALL_FAILED'),
+            updatedAt: Date.now()
+          });
+        } catch {
+          nodeLog('node.supervisor.upgrade-result-write-failed', {
+            code: 'NODE_UPGRADE_RESULT_WRITE_FAILED'
+          });
+        }
       }
     }
-    if (switched) {
-      try {
-        await rm(requestPath, { force: true });
-      } catch {
-        nodeLog('node.supervisor.upgrade-request-cleanup-failed', {
-          code: 'NODE_UPGRADE_REQUEST_CLEANUP_FAILED'
-        });
-      }
-    } else await rm(requestPath, { force: true });
+    try {
+      await rm(requestPath, { force: true });
+    } catch {
+      nodeLog('node.supervisor.upgrade-request-cleanup-failed', {
+        code: 'NODE_UPGRADE_REQUEST_CLEANUP_FAILED'
+      });
+    }
     if (stopping) return;
   }
 }

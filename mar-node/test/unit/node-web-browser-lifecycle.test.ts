@@ -11,7 +11,11 @@ const mocks = vi.hoisted(() => ({
   writeService: vi.fn(),
   log: vi.fn()
 }));
-vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: mocks.spawnSync }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: mocks.spawn,
+  spawnSync: mocks.spawnSync
+}));
 vi.mock('../../src/config.js', () => ({
   loadNodeConfig: mocks.load,
   nodeConfigPath: () => '/fixture/config.json',
@@ -118,6 +122,7 @@ describe('Node browser preparation lifecycle', () => {
             await mkdir(dirname(next), { recursive: true });
             await writeFile(next, 'fixture');
           }
+          child.emit('exit', code);
           child.emit('close', code);
         })();
         return child;
