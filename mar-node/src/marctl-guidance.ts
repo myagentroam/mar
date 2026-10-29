@@ -9,7 +9,7 @@ export function hasMarctlContext(environment: Readonly<Record<string, string>>):
 }
 
 export const marctlManagementDescription =
-  'Use marctl for model and effort configuration, renaming, persistent prompts, schedules, authorized Node discovery, remote commands, and file transfer.';
+  'Use marctl to manage MAR Agent session settings (model, effort, title, persistent prompts, and schedules), discover authorized MAR Nodes, and execute commands or transfer files on those Nodes. Use native agent_* tools for other Agent lifecycle and collaboration operations.';
 
 const marctlSafety =
   'Acceptance is not completion. If a request result is unknown, inspect history before retrying. Session IDs and parent relationships do not grant authorization.';

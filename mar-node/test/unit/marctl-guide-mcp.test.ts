@@ -38,6 +38,9 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     await client.connect(transport);
     const skill = marctlHostSkill(environment)!;
     expect(skill.description).toBe(marctlManagementDescription);
+    expect(skill.description).toContain('MAR Agent session settings');
+    expect(skill.description).toContain('authorized MAR Nodes');
+    expect(skill.description).toContain('native agent_* tools');
     expect(await skill.load()).toBe(marctlManagementInstructions);
     expect(await skill.load()).toContain('native agent_* tools');
     expect(await skill.load()).not.toContain('agents start');
