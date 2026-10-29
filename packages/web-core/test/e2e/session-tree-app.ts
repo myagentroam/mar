@@ -55,7 +55,19 @@ createTooltipApp({
                     title: '图片上传报错: MAR_AGENT_HOST_LIMIT_EXCEEDED',
                     runner: 'mar-agent'
                   },
-                  { id: 'child', parentSessionId: 'parent', title, runner: 'mar-agent' }
+                  { id: 'child', parentSessionId: 'parent', title, runner: 'mar-agent' },
+                  {
+                    id: 'grandchild',
+                    parentSessionId: 'child',
+                    title: 'Verify image decoding and cleanup',
+                    runner: 'mar-agent'
+                  },
+                  {
+                    id: 'sibling',
+                    parentSessionId: 'parent',
+                    title: 'Review upload boundary tests',
+                    runner: 'codex'
+                  }
                 ]
               }) as T,
             onClose: () => {
