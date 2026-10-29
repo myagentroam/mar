@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
+import type { NodeSummary } from '@myagentroam/web-core/node-model';
 import CorePanel from '@myagentroam/web-core/ResourceManagementPanel.vue';
 import NodeDetailsDialogs from './NodeDetailsDialogs.vue';
 import ResourceManagementFilters from './ResourceManagementFilters.vue';
@@ -14,6 +15,9 @@ import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   writable: boolean;
+  nodes?: readonly NodeSummary[] | undefined;
+  nodeUpgradeProgress?:
+    Readonly<Record<string, NonNullable<NodeSummary['upgradeProgress']> | null>> | undefined;
   resourceType: 'NODE' | 'WORKSPACE';
   edition: 'COMMUNITY' | 'ENTERPRISE';
   role: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER' | null;
@@ -52,6 +56,8 @@ function detailsExtension(
   <CorePanel
     :request="request"
     :writable="writable"
+    :nodes="nodes"
+    :node-upgrade-progress="nodeUpgradeProgress"
     :resource-type="resourceType"
     :resource-path="enterpriseAdmin ? '/api/resources?management=all' : '/api/resources'"
     :node-path="enterpriseAdmin ? '/api/management/nodes' : '/api/nodes'"
