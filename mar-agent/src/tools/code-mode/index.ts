@@ -408,7 +408,14 @@ export class CodeModeTool {
               truncated: value.truncated === true || bounded.droppedBytes > 0
             };
       observations.push(observation);
-      output?.observe(observation, display ?? value);
+      output?.observe(
+        observation,
+        display ?? value,
+        display !== undefined &&
+          (display.type === 'tool_result'
+            ? display.result.truncated === true
+            : display.truncated === true)
+      );
     };
     const toolResults = new Map<
       string,

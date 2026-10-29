@@ -106,6 +106,15 @@ describe('public tool metadata', () => {
         observations: [{ result: { truncated: true } }]
       });
       expect(sourceTruncated).not.toHaveProperty('outputHeadTruncated');
+      const valueTruncated = structuredToolEventData(name, {
+        cellId: 'cell',
+        status: 'completed',
+        observations: [
+          { type: 'value', id: 'value', format: 'text', value: 'partial', truncated: true }
+        ]
+      });
+      expect(valueTruncated).toMatchObject({ truncated: true });
+      expect(valueTruncated).not.toHaveProperty('outputHeadTruncated');
     }
   );
   it('projects required image dimensions and only validated transform facts', () => {

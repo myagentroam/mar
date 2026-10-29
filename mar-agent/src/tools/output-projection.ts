@@ -143,7 +143,6 @@ export function publicCodeObservations(
       }
       displayedCount++;
       truncated ||= entry.truncated === true;
-      headTruncated ||= entry.truncated === true;
       const value = clip(entry.value);
       selected.unshift({
         type: 'value',
@@ -174,7 +173,6 @@ export function publicCodeObservations(
         }
         displayedCount++;
         truncated ||= entry.result.truncated === true;
-        headTruncated ||= entry.result.truncated === true;
         const data = isRecord(entry.result.data) ? entry.result.data : undefined;
         const stderr = typeof data?.stderr === 'string' ? clip(data.stderr) : undefined;
         const stdout = typeof data?.stdout === 'string' ? clip(data.stdout) : undefined;

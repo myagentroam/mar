@@ -24,7 +24,7 @@ import type {
 
 export interface CellOutput {
   call(value: CodeToolCallRecord): void;
-  observe(value: CodeObservation, display?: CodeObservation): void;
+  observe(value: CodeObservation, display?: CodeObservation, displayHeadTruncated?: boolean): void;
   text(value: string, originalBytes?: number): void;
   image(value: NonNullable<ToolExecutionResult['images']>[number]): void;
   yield(): void;
@@ -300,14 +300,16 @@ export class CodeCells {
           { ...context, signal: controller.signal, waitInterrupt: undefined },
           {
             call: (value) => cell.calls.set(value.callId, value),
-            observe: (value, display = value) => {
+            observe: (value, display = value, displayHeadTruncated = false) => {
               cell.observations.push(value);
               const observations = [...(cell.display?.observations ?? []), display];
               cell.display = publicCodeObservations(observations, {
                 cellId: cell.cellId,
                 status: cell.status,
                 observations,
-                ...(cell.display?.outputHeadTruncated ? { outputHeadTruncated: true } : {})
+                ...(cell.display?.outputHeadTruncated || displayHeadTruncated
+                  ? { outputHeadTruncated: true }
+                  : {})
               });
             },
             text: (text, originalBytes) => cell.text.append(text, originalBytes),

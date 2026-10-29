@@ -107,6 +107,32 @@ describe('Code Exec retained cells', () => {
     expect(JSON.stringify(result.observations)).toContain('model head');
     expect(JSON.stringify(result.observations)).not.toContain('public tail');
   });
+  it('does not infer a discarded display head from a source-only truncation', async () => {
+    const host = await fixture();
+    const ctx = context();
+    ctx.codeMode = {
+      tools: [execToolDefinition],
+      invoke: async () => ({
+        content: 'partial',
+        data: { stdout: 'partial', stderr: '' },
+        truncated: true
+      })
+    };
+    const result = await host.executeTool(
+      { name: 'code_exec', arguments: 'observe.result(await tools.exec({ command: "fixture" }));' },
+      ctx
+    );
+    const event = structuredToolEventData('code_exec', result.eventData);
+    expect(event).toMatchObject({ truncated: true });
+    expect(event).not.toHaveProperty('outputHeadTruncated');
+    const replay = await host.executeTool(
+      { name: 'code_exec_wait', arguments: { cellId: data(result).cellId } },
+      { ...context(), executionId: 'later' }
+    );
+    const cached = structuredToolEventData('code_exec_wait', replay.eventData);
+    expect(cached).toMatchObject({ truncated: true, cached: true });
+    expect(cached).not.toHaveProperty('outputHeadTruncated');
+  });
   it('keeps a bounded source on failed cells and cached cancellation without exposing it to the model', async () => {
     const host = await fixture();
     const source = `//${'x'.repeat(10_020)}\nthrow new Error('fixture failure');`;
