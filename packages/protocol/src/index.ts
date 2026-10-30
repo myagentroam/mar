@@ -3787,6 +3787,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'workspace.changes.current',
   'workspace.change.diff',
   'workspace.change.restore',
+  'workspace.git.fetch',
   'workspace.git.refs.list',
   'workspace.git.history.list',
   'workspace.git.commit.files',

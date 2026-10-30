@@ -45,6 +45,13 @@ describe('Node Files and Changes fixed-operation handling', () => {
     const connector = connectorFor(database);
 
     await expect(
+      operation(connector, 'workspace.git.fetch', {
+        workspaceId: workspace.id,
+        repositoryPath: ''
+      })
+    ).resolves.toEqual({ fetchFailed: false });
+
+    await expect(
       operation(connector, 'workspace.changes.current', { workspaceId: workspace.id })
     ).resolves.toMatchObject({
       changes: expect.arrayContaining([

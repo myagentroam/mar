@@ -264,12 +264,15 @@ onBeforeUnmount(() => {
         :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
         :aria-busy="historyLoading || undefined"
         type="button"
-        @click="resetHistory"
+        @click="loadHistory(true, true)"
       >
         <MarIcon name="loading-action" v-if="historyLoading" />
         <MarIcon name="refresh" v-else />
       </button>
     </div>
+    <p v-if="service.historyFetchFailed.value" class="git-fetch-notice" role="status">
+      {{ translate('gitSync.fetchFailed') }}
+    </p>
     <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
       {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
     </p>
@@ -431,6 +434,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.git-fetch-notice {
+  margin: 0;
+  padding: 0.2rem 2px 0.25rem;
+  color: var(--mar-color-warning-text);
+  font-size: var(--mar-font-size-meta);
+}
+
 .history-commit-row,
 .history-files :deep(.el-button) {
   border-radius: var(--mar-radius-selection);

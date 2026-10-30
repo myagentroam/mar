@@ -105,6 +105,7 @@ export class WorkspaceWorkbenchService {
       'workspace.files.upload.complete': (data) => this.completeUpload(record(data)),
       'workspace.files.upload.cancel': (data) => this.cancelUpload(record(data)),
       'workspace.changes.current': (data) => this.currentChanges(record(data)),
+      'workspace.git.fetch': (data) => this.gitFetch(record(data)),
       'workspace.change.diff': (data) => this.changeDiff(record(data)),
       'workspace.change.restore': (data) => this.restoreChange(record(data)),
       'workspace.git.refs.list': (data) => this.gitRefs(record(data)),
@@ -341,6 +342,16 @@ export class WorkspaceWorkbenchService {
 
   private async gitRefs(input: Record<string, unknown>): Promise<unknown> {
     return { refs: await listGitHistoryRefs(await this.gitRepository(input)) };
+  }
+
+  private async gitFetch(input: Record<string, unknown>): Promise<unknown> {
+    if (typeof input.workspaceId !== 'string') throw new Error('WORKSPACE_NOT_FOUND');
+    if (input.repositoryPath !== undefined && typeof input.repositoryPath !== 'string')
+      throw new Error('GIT_REPOSITORY_INVALID');
+    return this.options.changes.fetch(
+      this.gitWorkspace(input.workspaceId),
+      input.repositoryPath as string | undefined
+    );
   }
 
   private async gitHistory(input: Record<string, unknown>): Promise<unknown> {

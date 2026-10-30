@@ -24,9 +24,11 @@ describe('Authenticated Git forwarding', () => {
     const forwarding = new GitExecutionForwarding({ getRuntime: async () => configuration });
     for (const operation of [
       'workspace.changes.current',
+      'workspace.git.fetch',
       'workspace.change.diff',
       'workspace.change.restore'
     ]) {
+      expect(workbenchNodeOperationSchema.parse(operation)).toBe(operation);
       expect(await forwarding.prepare('node', operation, { workspaceId: 'workspace' }, 7)).toEqual({
         workspaceId: 'workspace',
         gitConfiguration: configuration

@@ -151,7 +151,7 @@ createTooltipApp({
         codeNavigationPrewarmEnabled: false,
         filesWatchStatus: 'idle',
         changesWatchStatus: 'ready',
-        historyCapability: false,
+        historyCapability: true,
         fileWriteEnabled: false,
         subscriptionSnapshot: subscription.value
       })

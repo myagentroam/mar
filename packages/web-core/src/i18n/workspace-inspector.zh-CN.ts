@@ -112,7 +112,8 @@ export const workspaceInspectorZhCN = {
   },
   gitSync: {
     description:
-      '{upstream}：待拉取 {behind} 个提交，待推送 {ahead} 个提交（本地 upstream 状态，不自动 fetch）'
+      '{upstream}：待拉取 {behind} 个提交，待推送 {ahead} 个提交（本地已知 upstream 状态）',
+    fetchFailed: '远端更新失败，当前显示本地记录'
   },
   gitWorktrees: {
     title: 'Git 工作树',

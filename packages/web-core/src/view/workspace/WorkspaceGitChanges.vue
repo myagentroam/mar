@@ -182,6 +182,9 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 <template>
   <section class="current-changes">
+    <p v-if="service.changesFetchFailed.value" class="git-fetch-notice" role="status">
+      {{ translate('gitSync.fetchFailed') }}
+    </p>
     <div v-if="visibleGitWorktrees.length > 0" class="git-worktrees">
       <div class="git-worktree-heading">
         <strong>{{ translate('gitWorktrees.title') }}</strong>
@@ -263,7 +266,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
                 :aria-busy="changesRefreshing || undefined"
                 type="button"
-                @click="loadChanges()"
+                @click="loadChanges(true)"
               >
                 <MarIcon name="loading-action" v-if="changesRefreshing" />
                 <MarIcon name="refresh" v-else />
@@ -431,6 +434,13 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 </template>
 
 <style scoped>
+.git-fetch-notice {
+  margin: 0;
+  padding: 0.2rem 2px 0.25rem;
+  color: var(--mar-color-warning-text);
+  font-size: var(--mar-font-size-meta);
+}
+
 .change-file-heading {
   display: flex;
   min-width: 0;

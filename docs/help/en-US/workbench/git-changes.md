@@ -1,13 +1,13 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-10-27
+lastUpdated: 2026-10-30
 ---
 
 # Git Changes and Diff
 
 When the Workspace is a repository subdirectory, Git uses the containing repository by default. Paths are relative to each repository root and may include files outside the Workspace. Git current-file previews and downloads use that repository target and remain read-only; they never save a same-named Workspace file. Revert affects the file in the listed repository. For ordinary editing, open files inside the Workspace through Files. Disable **Use parent Git repository** in Workspace details when unnecessary; ordinary Files and sessions remain available.
 
-The repository title, branch, and Refresh button share the first row; status tags appear on the second row. When commits are not synchronized, a tag shows `↓ incoming count ↑ outgoing count`, with the upstream and an explanation on hover. Counts are independent of uncommitted file changes and compare only the locally known upstream. The page never automatically runs fetch, pull, or push. The tag is hidden when there is no available upstream, HEAD is detached, or both counts are zero. To update remote information, run your normal Git fetch in the terminal, then refresh the page.
+The repository title, branch, and Refresh button share the first row; status tags appear on the second row. When commits are not synchronized, a tag shows `↓ incoming count ↑ outgoing count`, with the upstream and an explanation on hover. Counts are independent of uncommitted file changes and compare only the locally known upstream. Opening the tab or refreshing manually first attempts to fetch the root repository and readable initialized submodules, then reads their status. Linked worktrees share the root's remote refs and are not fetched twice. If fetching fails, local records remain available with a subtle orange text notice, cleared after the next successful fetch. The page never pulls, pushes, or switches branches. The tag is hidden when there is no available upstream, HEAD is detached, or both counts are zero.
 
 Git Changes shows the current root repository, initialized submodules, and every linked worktree as peer groups in one list. Tags identify the root, submodules, worktrees, and the current worktree. Each linked worktree group shows its full physical absolute path on the Node, together with its branch or detached HEAD and any locked, prunable, or unavailable status. Every group lists its modified, added, deleted, renamed, and untracked files.
 
@@ -25,4 +25,4 @@ In the Work view, a new Run completion notification for any session in the curre
 
 If a submodule or linked worktree cannot be read, changes from other readable repositories remain available. The affected group shows its unavailable status, reason, and error code. For example, a directory tracked as a gitlink without a matching `.gitmodules` configuration shows `GIT_SUBMODULE_MAPPING_MISSING`. Uninitialized submodules and missing directories are also marked individually, without automatic initialization or deletion. A locked marker alone does not prevent a worktree from being read.
 
-An unreadable root repository, a non-Git root, or a missing Git executable still fails the entire read. Ask the repository maintainer to repair the submodule configuration, directories, or permissions, then refresh. The page does not create `.gitmodules`, modify gitlinks, switch branches, or run fetch.
+An unreadable root repository, a non-Git root, or a missing Git executable still fails the entire read. Ask the repository maintainer to repair the submodule configuration, directories, or permissions, then refresh. The page does not create `.gitmodules`, modify gitlinks, or switch branches. Background status updates and Run completion refreshes do not fetch.
