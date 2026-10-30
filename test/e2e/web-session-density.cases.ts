@@ -271,11 +271,11 @@ for (const locale of ['zh-CN', 'en-US']) {
         expect(desktop[0]!.titleScrollWidth).toBeGreaterThan(desktop[0]!.titleClientWidth);
         for (const sample of mobile) {
           for (const row of sample.rows) {
-            expect(row.minHeight).toBe('40px');
+            expect(row.minHeight).toBe('36px');
             expect(row.fontSize).toBe('13px');
             expect(row.fontWeight).toBe('400');
-            expect(row.row.height).toBeCloseTo(40, 1);
-            expect(row.item.height).toBeCloseTo(row.first ? 46 : 44, 1);
+            expect(row.row.height).toBeCloseTo(36, 1);
+            expect(row.item.height).toBeCloseTo(row.first ? 42 : 40, 1);
           }
         }
       }
