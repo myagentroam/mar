@@ -31,6 +31,13 @@ export interface ToolImageStore extends ResourceStore {
 
 export type ToolRuntimeEvent =
   | {
+      type: 'tool.updated';
+      toolName: string;
+      callId: string;
+      parentCallId?: string;
+      data: Readonly<Record<string, unknown>>;
+    }
+  | {
       type: 'tool.output';
       toolName: 'exec' | 'exec_wait' | 'code_exec_wait';
       callId: string;

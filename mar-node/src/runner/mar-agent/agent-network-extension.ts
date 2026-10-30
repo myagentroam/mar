@@ -1,7 +1,8 @@
 import type { AgentExtension } from '@myagentroam/agent/extensions';
 import type {
   AgentNetworkAction,
-  AgentNetworkInvoke
+  AgentNetworkInvoke,
+  ResolvedTargets
 } from '../../service/agent-network-service.js';
 import { agentNetworkWaitModelOutput } from './agent-network-wait-output.js';
 import { agentOperationEvent } from './agent-operation-presentation.js';
@@ -237,7 +238,24 @@ export function agentNetworkExtension(
                 (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0))
                 ? { ...args, deliveryIntent: 'REPLACE_CURRENT' }
                 : args;
-            const result = await invoke(executionId, tool.action, operationInput, call);
+            const onResolved: ResolvedTargets | undefined = call.publishEventData
+              ? async (sessions) => {
+                  const rows = sessions.map((session) => ({
+                    agentId: session.id,
+                    title: session.customTitle ?? session.runnerTitle ?? undefined
+                  }));
+                  const result =
+                    tool.action === 'wait'
+                      ? { agents: rows }
+                      : tool.action === 'view'
+                        ? { session: rows[0] }
+                        : (rows[0] ?? {});
+                  await call.publishEventData!(
+                    agentOperationEvent(tool.action, {}, result).eventData
+                  );
+                }
+              : undefined;
+            const result = await invoke(executionId, tool.action, operationInput, call, onResolved);
             const modelResult =
               tool.action === 'wait' ? agentNetworkWaitModelOutput(result) : result;
             return {

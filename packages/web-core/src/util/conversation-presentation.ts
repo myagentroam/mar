@@ -304,10 +304,8 @@ export function aggregateConversationDisplayItems(
       result.push(entry);
       continue;
     }
-    // Derived records keep their parent scope without clearing sibling anchors.
     const key = JSON.stringify([
       entry.type,
-      item.parentItemId ?? null,
       entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null,
       entry.type === 'subagent_group' ? agentOperationIdentity(item.payload) : null
     ]);
@@ -749,18 +747,16 @@ function subagentToolDetail(value: Record<string, unknown>): string {
   return [
     detailField(conversationUiEnUS.toolPresentation.detail.tool, stringField(value, 'toolName')),
     detailField(conversationUiEnUS.presentation.operation, subagentOperationText(value)),
-    ...agentOperationTargets(value).map((target) =>
+    ...agentOperationTargets(value).flatMap((target) => [
+      detailField(
+        conversationUiEnUS.presentation.task,
+        'title' in target ? (target.title ?? '') : ''
+      ),
       detailField(conversationUiEnUS.presentation.subagentId, target.agentId)
-    ),
-    detailField(
-      conversationUiEnUS.presentation.task,
-      operation
-        ? operation.targets
-            .map((target) => target.title)
-            .filter(Boolean)
-            .join(', ')
-        : subagentTaskTitle(value)
-    ),
+    ]),
+    ...(operation
+      ? []
+      : [detailField(conversationUiEnUS.presentation.task, subagentTaskTitle(value))]),
     detailField(conversationUiEnUS.presentation.model, stringField(value, 'subagentModelName')),
     detailField(conversationUiEnUS.presentation.modelId, stringField(value, 'subagentModelId')),
     detailField(

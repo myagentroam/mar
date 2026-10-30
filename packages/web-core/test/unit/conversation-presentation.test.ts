@@ -1057,7 +1057,7 @@ describe('Conversation Show Aggregation', () => {
     );
   });
 
-  it('keeps command aggregation stable across derived records without mixing their parents', () => {
+  it('keeps command and read aggregation stable across different parents', () => {
     const processGroup = { id: 'process-derived' } as const;
     const command = (id: string) =>
       item(id, 'command_execution', { command: id }, 'COMPLETED', processGroup);
@@ -1087,7 +1087,9 @@ describe('Conversation Show Aggregation', () => {
       );
       const reads = projected.filter((entry) => entry.type === 'read_group');
       expect(reads.map(({ items }) => items.map(({ parentItemId }) => parentItemId))).toEqual(
-        items.filter(({ kind }) => kind === 'tool_call').map((record) => [record.parentItemId])
+        items.some(({ kind }) => kind === 'tool_call')
+          ? [items.filter(({ kind }) => kind === 'tool_call').map((record) => record.parentItemId)]
+          : []
       );
       expect(
         projected.flatMap((entry) => ('items' in entry ? entry.items : [entry.item]))
@@ -1991,7 +1993,7 @@ describe('Conversation Show Aggregation', () => {
     ).toEqual(['start', 'wait']);
   });
 
-  it('only merges explicit matching agent identities within their process and parent scope', () => {
+  it('only merges explicit matching agent identities within their process regardless of parent', () => {
     const call = (id: string, agentId: string | null, process = 'p', parentItemId?: string) => ({
       ...item(
         id,
@@ -2020,11 +2022,10 @@ describe('Conversation Show Aggregation', () => {
     expect(display.map(({ id }) => id)).toEqual([
       'other-agent',
       'unknown',
-      'parent',
       'first',
       'next-process'
     ]);
-    expect(display[3]).toMatchObject({ items: [first, last] });
+    expect(display[2]).toMatchObject({ items: [first, records[3], last] });
     expect(
       conversationDisplayItems([
         first,
@@ -2094,6 +2095,26 @@ describe('Conversation Show Aggregation', () => {
     );
     expect(subagentOperationText({ subagentOperation: 'STATUS', toolName: 'agent_wait' })).toBe(
       zhPresentation.subagentOperation.STATUS
+    );
+  });
+
+  it('keeps duplicate titles and untitled targets paired with their own IDs', () => {
+    const payload = {
+      toolName: 'agent_wait',
+      agentOperation: {
+        action: 'WAIT',
+        targets: [
+          { agentId: 'first', title: 'Shared task' },
+          { agentId: 'middle' },
+          { agentId: 'last', title: 'Shared task' }
+        ]
+      }
+    };
+    expect(subagentGroupText([item('wait', 'tool_call', payload)])).toBe(
+      'Shared task, middle, Shared task'
+    );
+    expect(conversationItemDetail('tool_call', payload)).toContain(
+      'Task: Shared task\nAgent ID: first\nAgent ID: middle\nTask: Shared task\nAgent ID: last'
     );
   });
 

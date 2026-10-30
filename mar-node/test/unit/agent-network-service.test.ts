@@ -94,6 +94,34 @@ function fixture(parentSessionId: string | null = 'parent') {
 afterEach(() => vi.useRealTimers());
 
 describe('Agent Network model selection', () => {
+  it('publishes only actual implicitly selected wait targets, in selection order', async () => {
+    const f = fixture();
+    const first = { ...f.target, id: 'first', createdAt: 1, customTitle: 'First' };
+    const second = { ...f.target, id: 'second', createdAt: 2, customTitle: 'Second' };
+    const done = { ...f.target, id: 'done', createdAt: 3, customTitle: 'Done' };
+    f.children.mockResolvedValue([first, done, second]);
+    f.freezeExecution.mockImplementation((session) => ({
+      agentId: session.id,
+      runId: 'run',
+      executionId: 'execution',
+      read: () => ({ status: session.id === 'done' ? 'SUCCEEDED' : 'RUNNING' })
+    }));
+    const resolved = vi.fn(async () => {});
+    await f.service.wait(f.actor, { waitMs: 0 }, resolved);
+    expect(resolved).toHaveBeenCalledOnce();
+    expect(resolved).toHaveBeenCalledWith([second, first]);
+    resolved.mockClear();
+    f.freezeExecution.mockImplementation((session) => ({
+      agentId: session.id,
+      runId: 'run',
+      executionId: 'execution',
+      read: () => ({ status: 'SUCCEEDED' })
+    }));
+    await f.service.wait(f.actor, { waitMs: 0 }, resolved);
+    expect(resolved).toHaveBeenCalledOnce();
+    expect(resolved).toHaveBeenCalledWith([done]);
+  });
+
   it('forwards the selected Profile model ID', async () => {
     const f = fixture();
     await f.service.start(f.actor, { content: 'work', modelId: 'internal-id' });

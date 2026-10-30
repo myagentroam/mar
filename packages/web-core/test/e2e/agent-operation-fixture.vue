@@ -5,12 +5,14 @@ import type { ConversationItem, ConversationTurn } from '../../src/model/workben
 function item(
   id: string,
   payload: object,
-  status: ConversationItem['status'] = 'COMPLETED'
+  status: ConversationItem['status'] = 'COMPLETED',
+  parentItemId?: string
 ): ConversationItem {
   return {
     id,
     kind: 'tool_call',
     status,
+    ...(parentItemId === undefined ? {} : { parentItemId }),
     processGroup: { id: 'process', ...(id === 'mar-start' ? { isStart: true } : {}) },
     payload
   };
@@ -22,14 +24,19 @@ const turns: ConversationTurn[] = [
     runId: 'run',
     status: 'SUCCEEDED',
     items: [
-      item('mar-start', {
-        toolName: 'agent_start',
-        agentOperation: {
-          action: 'START',
-          targets: [{ agentId: 'peer', sessionId: 'peer', title: 'Review the implementation' }]
+      item(
+        'mar-start',
+        {
+          toolName: 'agent_start',
+          agentOperation: {
+            action: 'START',
+            targets: [{ agentId: 'peer', sessionId: 'peer', title: 'Review the implementation' }]
+          },
+          output: { blocks: [{ channel: 'TEXT', text: 'Agent created.' }] }
         },
-        output: { blocks: [{ channel: 'TEXT', text: 'Agent created.' }] }
-      }),
+        'COMPLETED',
+        'first-code-cell'
+      ),
       item(
         'mar-send',
         {
@@ -39,7 +46,8 @@ const turns: ConversationTurn[] = [
           output: { blocks: [{ channel: 'TEXT', text: 'Target is unavailable.' }] },
           errorCode: 'AGENT_UNAVAILABLE'
         },
-        'FAILED'
+        'FAILED',
+        'second-code-cell'
       ),
       ...[
         ['codex', 'spawn_agent', 'Inspect persistence'],
@@ -54,17 +62,23 @@ const turns: ConversationTurn[] = [
           output: { blocks: [{ channel: 'TEXT', text: 'Native operation accepted.' }] }
         })
       ),
-      item('wait', {
-        toolName: 'agent_wait',
-        agentOperation: {
-          action: 'WAIT',
-          targets: [
-            { agentId: 'peer', sessionId: 'peer', title: 'Review the implementation' },
-            { agentId: 'other', sessionId: 'other', title: 'Check the final result' }
-          ]
+      item(
+        'wait',
+        {
+          toolName: 'agent_wait',
+          agentOperation: {
+            action: 'WAIT',
+            targets: [
+              { agentId: 'peer', sessionId: 'peer', title: 'Review the implementation' },
+              { agentId: 'other', sessionId: 'other', title: 'Check the final result' }
+            ]
+          },
+          output: {
+            blocks: [{ channel: 'TEXT', text: 'Timeout. Both targets are still running.' }]
+          }
         },
-        output: { blocks: [{ channel: 'TEXT', text: 'Timeout. Both targets are still running.' }] }
-      }),
+        'IN_PROGRESS'
+      ),
       item('list', {
         toolName: 'agent_list',
         agentOperation: { action: 'LIST', scope: 'profile', targets: [] },

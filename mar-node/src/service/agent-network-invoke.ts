@@ -5,7 +5,8 @@ import type {
   AgentNetworkAction,
   AgentNetworkActor,
   AgentNetworkInvoke,
-  AgentNetworkService
+  AgentNetworkService,
+  ResolvedTargets
 } from './agent-network-service.js';
 import { actorForAuthenticatedTerminal } from './agent-network-bindings.js';
 import type { AgentNetworkObservations } from './agent-network-observations.js';
@@ -20,9 +21,17 @@ export function agentNetworkInvoke(input: {
   readonly coordinator: ContinuousRunCoordinator<unknown>;
   readonly service: AgentNetworkService;
 }): AgentNetworkInvoke {
-  return async (executionId, action, payload, context) => {
+  return async (executionId, action, payload, context, onResolved) => {
     const actor = executionAgentActor({ ...input, executionId });
-    return invokeAgentNetwork(input.service, actor, action, payload, context);
+    return invokeAgentNetwork(
+      input.service,
+      actor,
+      action,
+      payload,
+      context,
+      undefined,
+      onResolved
+    );
   };
 }
 
@@ -83,7 +92,8 @@ export async function invokeAgentNetwork(
   action: AgentNetworkAction,
   payload: Record<string, unknown>,
   context?: ExtensionOperationContext,
-  requestSignal?: AbortSignal
+  requestSignal?: AbortSignal,
+  onResolved?: ResolvedTargets
 ): Promise<unknown> {
   const signal = context?.signal ?? requestSignal;
   switch (action) {
@@ -103,7 +113,8 @@ export async function invokeAgentNetwork(
         return service.start(
           actor,
           withoutTitle as Parameters<AgentNetworkService['start']>[1],
-          signal
+          signal,
+          onResolved
         );
       }
       return service.start(
@@ -112,25 +123,35 @@ export async function invokeAgentNetwork(
           ...payload,
           ...(typeof payload.title === 'string' ? { title: payload.title.trim() } : {})
         } as Parameters<AgentNetworkService['start']>[1],
-        signal
+        signal,
+        onResolved
       );
     case 'send':
-      return service.send(actor, payload as Parameters<AgentNetworkService['send']>[1], signal);
+      return service.send(
+        actor,
+        payload as Parameters<AgentNetworkService['send']>[1],
+        signal,
+        onResolved
+      );
     case 'stop':
-      return service.stop(actor, payload as Parameters<AgentNetworkService['stop']>[1]);
+      return service.stop(actor, payload as Parameters<AgentNetworkService['stop']>[1], onResolved);
     case 'wait':
-      return service.wait(actor, {
-        ...payload,
-        ...(context
-          ? { signal: context.signal, interrupt: context.waitInterrupt }
-          : requestSignal
-            ? { signal: requestSignal }
-            : {})
-      } as Parameters<AgentNetworkService['wait']>[1]);
+      return service.wait(
+        actor,
+        {
+          ...payload,
+          ...(context
+            ? { signal: context.signal, interrupt: context.waitInterrupt }
+            : requestSignal
+              ? { signal: requestSignal }
+              : {})
+        } as Parameters<AgentNetworkService['wait']>[1],
+        onResolved
+      );
     case 'list':
       return service.list(actor, payload);
     case 'view':
-      return service.view(actor, payload as Parameters<AgentNetworkService['view']>[1]);
+      return service.view(actor, payload as Parameters<AgentNetworkService['view']>[1], onResolved);
   }
 }
 

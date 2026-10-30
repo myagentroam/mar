@@ -12,11 +12,13 @@ import {
 import type { ExtensionOperationContext, ToolWaitInterrupt } from '@myagentroam/agent/extensions';
 
 export type AgentNetworkAction = 'start' | 'send' | 'wait' | 'stop' | 'list' | 'view';
+export type ResolvedTargets = (sessions: readonly NodeAgentSession[]) => Promise<void>;
 export type AgentNetworkInvoke = (
   executionId: string,
   action: AgentNetworkAction,
   input: Record<string, unknown>,
-  context: ExtensionOperationContext
+  context: ExtensionOperationContext,
+  onResolved?: ResolvedTargets
 ) => Promise<unknown>;
 
 export interface AgentNetworkActor {
@@ -134,7 +136,8 @@ interface AgentNetworkServiceOptions {
       readonly includeHistory?: boolean;
       readonly limit?: number;
       readonly cursor?: string;
-    }
+    },
+    onResolved?: ResolvedTargets
   ) => Promise<unknown>;
 }
 
@@ -153,9 +156,10 @@ export class AgentNetworkService {
       readonly includeHistory?: boolean;
       readonly limit?: number;
       readonly cursor?: string;
-    }
+    },
+    onResolved?: ResolvedTargets
   ): Promise<unknown> {
-    return this.options.view(actor, input);
+    return this.options.view(actor, input, onResolved);
   }
 
   async start(
@@ -172,7 +176,8 @@ export class AgentNetworkService {
       readonly attachmentIds?: readonly string[];
       readonly clientMessageId?: string;
     },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onResolved?: ResolvedTargets
   ): Promise<unknown> {
     signal?.throwIfAborted();
     const goal = parseAgentGoal(input.goal);
@@ -205,6 +210,7 @@ export class AgentNetworkService {
       },
       signal
     );
+    await onResolved?.([created.session]);
     try {
       if (created.session.parentSessionId === actor.sessionId)
         this.options.observe(actor, created.session);
@@ -230,7 +236,8 @@ export class AgentNetworkService {
       readonly clientMessageId?: string;
       readonly approval?: { readonly approvalId: string; readonly decision: 'approve' | 'reject' };
     },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onResolved?: ResolvedTargets
   ): Promise<unknown> {
     signal?.throwIfAborted();
     const goal = parseAgentGoal(input.goal);
@@ -272,6 +279,7 @@ export class AgentNetworkService {
     if (input.approval !== undefined)
       await this.options.validateApproval(actor, session, input.approval);
     signal?.throwIfAborted();
+    await onResolved?.([session]);
     if (session.parentSessionId === actor.sessionId) this.options.observe(actor, session);
     const approvalResult =
       input.approval === undefined
@@ -378,7 +386,8 @@ export class AgentNetworkService {
     input: {
       readonly agentId: string;
       readonly executionId: string;
-    }
+    },
+    onResolved?: ResolvedTargets
   ): Promise<unknown> {
     if (
       typeof input.agentId !== 'string' ||
@@ -389,6 +398,7 @@ export class AgentNetworkService {
       throw new Error('AGENT_STOP_INVALID');
     const session = await this.options.target(actor, input.agentId);
     await this.options.authorize(actor, session, 'stop');
+    await onResolved?.([session]);
     const goalBefore = this.options.goal(session.id);
     try {
       const result = this.options.stop(actor, session, input.executionId);
@@ -424,7 +434,8 @@ export class AgentNetworkService {
       readonly waitMs?: number;
       readonly signal?: AbortSignal;
       readonly interrupt?: ToolWaitInterrupt;
-    }
+    },
+    onResolved?: ResolvedTargets
   ): Promise<unknown> {
     validateAgentWaitOptions(input);
     if (
@@ -471,6 +482,9 @@ export class AgentNetworkService {
     }
     if (!targets.length) throw new Error('AGENT_EXECUTION_NOT_FOUND');
     const selected = new Set(targets.map((target) => target.agentId));
+    await onResolved?.(
+      targets.map((target) => sessions.find((session) => session.id === target.agentId)!)
+    );
     const directChildren = new Set<string>();
     for (const session of sessions)
       if (selected.has(session.id) && session.parentSessionId === actor.sessionId) {

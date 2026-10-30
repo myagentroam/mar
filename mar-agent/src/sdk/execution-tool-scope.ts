@@ -1,5 +1,8 @@
 import { createExecutionCodeModeContext } from './execution-code-mode.js';
-import { currentExecutionImages } from '../tools/output-projection.js';
+import {
+  currentExecutionImages,
+  publicExtensionToolEventData
+} from '../tools/output-projection.js';
 import { requestSmartCompaction, type SmartCompactionInput } from '../runtime/compaction/smart.js';
 import { renderPromptSections } from '../prompts/prompt-sections.js';
 import { withToolPermissions } from '../tools/permissions.js';
@@ -172,7 +175,8 @@ export function createExecutionToolScope(input: {
       waitInterrupt,
       emit,
       skills: skills,
-      invokeTool: (call, context, caller) => {
+      invokeTool: async (call, context, caller) => {
+        let active = true;
         const invoke = () =>
           coreExtensions.withTools(roundBindings, scheduleTool, () =>
             withToolPermissions(permissionPolicy, () =>
@@ -190,13 +194,36 @@ export function createExecutionToolScope(input: {
                   ...(context.waitInterrupt === undefined
                     ? {}
                     : { waitInterrupt: context.waitInterrupt }),
+                  ...(call.callId === undefined
+                    ? {}
+                    : {
+                        publishEventData: async (value: Readonly<Record<string, unknown>>) => {
+                          if (!active) return;
+                          context.signal.throwIfAborted();
+                          const data = publicExtensionToolEventData(value);
+                          if (data === undefined) return;
+                          await context.emit({
+                            type: 'tool.updated',
+                            toolName: call.name,
+                            callId: call.callId!,
+                            ...(context.parentCallId === undefined
+                              ? {}
+                              : { parentCallId: context.parentCallId }),
+                            data
+                          });
+                        }
+                      }),
                   signal: context.signal
                 },
                 (operation) => coreExtensions.invoke(call, operation, roundBindings)
               )
             )
           );
-        return sources.withFrame(context, invoke);
+        try {
+          return await sources.withFrame(context, invoke);
+        } finally {
+          active = false;
+        }
       }
     };
     const recentImages = async () => {
