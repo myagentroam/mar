@@ -92,7 +92,7 @@ for (const [width, theme, locale] of [
           track: color('--mar-bg-subtle'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
-          secondary: color('--mar-text-secondary')
+          primary: color('--mar-text-primary')
         };
         probe.remove();
         return result;
@@ -122,7 +122,8 @@ for (const [width, theme, locale] of [
       await page.emulateMedia({ reducedMotion: 'reduce' });
       const unread = chats.locator('.session-unread-label').first();
       await expect(unread).toBeVisible();
-      await expect(unread).toHaveCSS('color', colors.secondary);
+      await expect(unread).toHaveCSS('color', colors.primary);
+      await expect(unread).toHaveCSS('border-top-width', '1px');
       expect(
         await unread.evaluate((e) => parseFloat(getComputedStyle(e).borderTopRightRadius))
       ).toBeGreaterThan(0);

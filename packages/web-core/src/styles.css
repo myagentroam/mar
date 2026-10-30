@@ -1062,15 +1062,15 @@ pre {
   display: inline-flex;
   flex: none;
   align-items: center;
-  border: 0;
+  border: 1px solid color-mix(in srgb, var(--mar-text-secondary) 45%, var(--mar-bg-panel));
   border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--mar-text-secondary) 14%, var(--mar-bg-panel));
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.2;
   white-space: nowrap;
-  padding: 1px 0.1875rem;
+  padding: 0 0.0625rem;
 }
 
 .utility-control {

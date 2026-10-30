@@ -189,6 +189,11 @@ for (const theme of ['daylight', 'midnight']) {
         await expect(help).toHaveAttribute('href', /getting-started\/overview/);
         await expect(help).toHaveAttribute('target', '_blank');
         await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
+        if (width >= 768) {
+          const bounds = (await help.boundingBox())!;
+          expect(width - bounds.x - bounds.width).toBeGreaterThanOrEqual(8);
+          expect(width - bounds.x - bounds.width).toBeLessThanOrEqual(12);
+        } else await expect(help).toHaveCSS('position', 'static');
         for (const custom of [false, true]) {
           if (custom)
             await page.locator('html').evaluate((element) => {

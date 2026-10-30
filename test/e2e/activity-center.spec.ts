@@ -160,46 +160,68 @@ for (const width of [1280, 390]) {
       await expect(page.locator('output')).toHaveText('session-0');
     });
   }
-  test(`Activity previews stay near the entry without stealing menus or focus at ${width}px`, async ({
-    page
-  }) => {
-    await page.setViewportSize({ width, height: 760 });
-    await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US`);
-    const trigger = page.locator('.activity-center-trigger');
-    const input = page.getByRole('textbox', { name: 'Background input' });
-    await input.focus();
-    await page
-      .getByRole('button', { name: 'Preview notification' })
-      .evaluate((button: HTMLButtonElement) => button.click());
-    const preview = page.locator('.activity-preview:visible');
-    await expect(preview).toContainText('New version');
-    await expect(input).toBeFocused();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    const box = await preview.boundingBox();
-    const anchor = await trigger.boundingBox();
-    if (width >= 768) expect(box!.x).toBeGreaterThan(anchor!.x + anchor!.width);
-    else expect(box!.y).toBeGreaterThan(anchor!.y + anchor!.height);
-    await trigger.tap();
-    await expect(preview).toHaveCount(0);
-    const panel = page.locator('.workbench-activity-panel:visible');
-    await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Preview notification' })
-      .evaluate((button: HTMLButtonElement) => button.click());
-    await expect(preview).toHaveCount(0);
-    await expect(panel.getByRole('tab', { name: 'Recent Sessions', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    await page.keyboard.press('Escape');
-    await expect(panel).toHaveCount(0);
-    if (width < 768) {
-      await page.locator('.nav-menu-button:has([data-mar-icon="workspace"])').tap();
-      await expect(page.locator('.workspace-tree.mobile-open')).toBeVisible();
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Activity previews stay near the entry without stealing menus or focus at ${width}px ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 760 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      const trigger = page.locator('.activity-center-trigger');
+      const input = page.getByRole('textbox', { name: 'Background input' });
+      await input.focus();
+      await page
+        .getByRole('button', { name: 'Preview notification' })
+        .evaluate((button: HTMLButtonElement) => button.click());
+      const preview = page.locator('.activity-preview:visible');
+      await expect(preview).toContainText('New version');
+      await expect(input).toBeFocused();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      const popover = page.locator('.workbench-activity-popover:visible');
+      const radius = await popover.evaluate(
+        (element) => getComputedStyle(element).borderTopLeftRadius
+      );
+      expect(parseFloat(radius)).toBeGreaterThan(0);
+      for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'])
+        await expect(preview).toHaveCSS(`border-${corner}-radius`, radius);
+      await expect(preview).toHaveCSS('overflow', 'hidden');
+      const arrow = popover.locator('.el-popper__arrow');
+      if (width >= 768) {
+        await expect(arrow).toBeVisible();
+        expect((await arrow.boundingBox())!.x).toBeLessThan((await popover.boundingBox())!.x);
+        expect(
+          await arrow.evaluate((element) => getComputedStyle(element, '::before').backgroundColor)
+        ).toBe(await popover.evaluate((element) => getComputedStyle(element).backgroundColor));
+      } else await expect(arrow).toHaveCount(0);
+      await expect(popover).toHaveCSS('opacity', '1');
+      await page.screenshot({
+        path: testInfo.outputPath(`notification-preview-${width}-${theme}.png`),
+        animations: 'disabled'
+      });
+      const box = await preview.boundingBox();
+      const anchor = await trigger.boundingBox();
+      if (width >= 768) expect(box!.x).toBeGreaterThan(anchor!.x + anchor!.width);
+      else expect(box!.y).toBeGreaterThan(anchor!.y + anchor!.height);
+      await trigger.tap();
+      await expect(preview).toHaveCount(0);
+      const panel = page.locator('.workbench-activity-panel:visible');
+      await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
       await page
         .getByRole('button', { name: 'Preview notification' })
         .evaluate((button: HTMLButtonElement) => button.click());
       await expect(preview).toHaveCount(0);
-    }
-  });
+      await expect(
+        panel.getByRole('tab', { name: 'Recent Sessions', exact: true })
+      ).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      if (width < 768) {
+        await page.locator('.nav-menu-button:has([data-mar-icon="workspace"])').tap();
+        await expect(page.locator('.workspace-tree.mobile-open')).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Preview notification' })
+          .evaluate((button: HTMLButtonElement) => button.click());
+        await expect(preview).toHaveCount(0);
+      }
+    });
+  }
 }

@@ -280,13 +280,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           for (const [property, value] of Object.entries(expected))
             await expect(badge).toHaveCSS(property, value);
       }
-      const combinedUnread = page.locator('.session-state-unread:visible');
-      expect(await combinedUnread.count()).toBeGreaterThan(0);
-      for (const badge of await combinedUnread.all())
-        for (const property of ['color', 'font-size', 'font-weight'])
-          await expect(badge).toHaveCSS(property, expected[property]!);
+      await expect(page.locator('.session-state-unread:visible')).toHaveCount(0);
       await page.goto(`${fixture.url}visual-alignment.html?theme=${theme}`);
-      await page.locator('.workbench-notification-center button').first().click();
+      await page.locator('.activity-center-trigger').click();
+      await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
       const notification = page.locator('.notification-unread-label').first();
       await expect(notification).toBeVisible();
       for (const [property, value] of Object.entries(expected))

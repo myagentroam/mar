@@ -32,14 +32,17 @@ async function unreadContrast(tab: Locator) {
       : tabStyle.backgroundColor;
     const foreground = luminance(labelStyle.color);
     const fill = luminance(labelStyle.backgroundColor);
+    const border = luminance(labelStyle.borderTopColor);
     const surface = luminance(background);
     const ratio = (first: number, second: number) =>
       (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
     return {
       textContrast: ratio(foreground, fill),
-      surfaceContrast: ratio(fill, surface),
+      boundaryContrast: ratio(border, surface),
       color: labelStyle.color,
-      width: labelStyle.borderTopWidth,
+      borderWidth: labelStyle.borderTopWidth,
+      height: label.getBoundingClientRect().height,
+      fontSize: parseFloat(labelStyle.fontSize),
       background: labelStyle.backgroundColor
     };
   });
@@ -66,8 +69,9 @@ for (const width of [1280, 390]) {
         const selected = await unreadContrast(first);
         for (const label of [normal, selected]) {
           expect(label.textContrast).toBeGreaterThanOrEqual(4.5);
-          expect(label.surfaceContrast).toBeGreaterThan(1.25);
-          expect(label.width).toBe('0px');
+          expect(label.boundaryContrast).toBeGreaterThan(1.25);
+          expect(label.borderWidth).toBe('1px');
+          expect(label.height).toBeLessThanOrEqual(label.fontSize * 1.2 + 2.1);
           expect(label.background).not.toBe('rgba(0, 0, 0, 0)');
         }
         expect(selected.color).toBe(normal.color);
@@ -76,14 +80,16 @@ for (const width of [1280, 390]) {
           await second.hover();
           const hovered = await unreadContrast(second);
           expect(hovered.textContrast).toBeGreaterThanOrEqual(4.5);
-          expect(hovered.surfaceContrast).toBeGreaterThan(1.25);
+          expect(hovered.boundaryContrast).toBeGreaterThan(1.25);
         }
         await second.getByRole('tab').click();
         await expect(second).toHaveClass(/active/);
         const switched = await unreadContrast(second);
         expect(switched.textContrast).toBeGreaterThanOrEqual(4.5);
-        expect(switched.surfaceContrast).toBeGreaterThan(1.25);
-        await tabs.screenshot({ path: testInfo.outputPath('unread-selected.png') });
+        expect(switched.boundaryContrast).toBeGreaterThan(1.25);
+        await tabs.screenshot({
+          path: testInfo.outputPath(`unread-selected-${width}-${theme}.png`)
+        });
 
         await page.evaluate(() => {
           const style = document.documentElement.style;
@@ -94,8 +100,8 @@ for (const width of [1280, 390]) {
         expect(custom.background).not.toBe(selected.background);
         expect(custom.color).toBe(selected.color);
         expect(custom.textContrast).toBeGreaterThanOrEqual(4.5);
-        expect(custom.surfaceContrast).toBeGreaterThan(1.25);
-        expect(custom.width).toBe('0px');
+        expect(custom.boundaryContrast).toBeGreaterThan(1.25);
+        expect(custom.borderWidth).toBe('1px');
         await tabs.screenshot({ path: testInfo.outputPath('unread-custom-selected.png') });
       });
     }
