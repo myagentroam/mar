@@ -19,7 +19,7 @@ import type { OpenCodeServerClient } from '../../src/runner/opencode/opencode-se
 import { ClaudeChannelGate } from '../../src/runner/claude/claude-channel.js';
 import { capabilities } from './support/codex-connector.js';
 
-async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
+async function fixture(runner: 'codex' | 'claude-code' | 'opencode', modelId?: string) {
   const root = await mkdtemp(join(tmpdir(), 'mar-runner-identity-'));
   const database = new NodeDatabase(':memory:', 'node-identity');
   const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
@@ -54,6 +54,7 @@ async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
   const session = node.runtime.createAgentSession({
     workspaceId: workspace.id,
     runner,
+    ...(modelId === undefined ? {} : { modelId }),
     cwd: root
   });
   const run = node.runtime.createMessageRun({
@@ -65,10 +66,31 @@ async function fixture(runner: 'codex' | 'claude-code' | 'opencode') {
   node.runtime.transitionRun(run.id, 'STARTING');
   node.runtime.transitionRun(run.id, 'RUNNING');
   node.runtime.executionAccepted(execution.id);
-  return { node, session, run, execution, root, interrupt, respond };
+  return { node, database, session, run, execution, root, interrupt, respond };
 }
 
 describe('Runner-owned active execution identity migration', () => {
+  it.each(['codex', 'claude-code', 'opencode'] as const)(
+    'persists the selected modelId when a new %s Session gains its native identity',
+    async (runner) => {
+      const modelId = 'selected-profile-model';
+      const { node, database, session } = await fixture(runner, modelId);
+      const nativeId = `native-${runner}`;
+      expect(
+        database.getNativeSessionMetadata(runner, nativeId, session.workspaceId)
+      ).toBeUndefined();
+
+      node.sessionIdentityService.promote(session.id, nativeId);
+
+      expect(
+        database.getNativeSessionMetadata(runner, nativeId, session.workspaceId)
+      ).toMatchObject({
+        modelId
+      });
+      expect(node.runtime.getAgentSession(nativeId)?.modelId).toBe(modelId);
+    }
+  );
+
   it.each(['complete', 'stop'] as const)(
     'keeps Codex Turn routing, approval and %s bound to the original execution',
     async (terminal) => {

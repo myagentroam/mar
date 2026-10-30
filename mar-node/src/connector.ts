@@ -1171,7 +1171,7 @@ export class NodeConnector {
           runner: session.runner,
           externalSessionId: nativeSessionId,
           workspaceId: session.workspaceId,
-          ...(session.modelId === null ? {} : { model: session.modelId }),
+          ...(session.modelId === null ? {} : { modelId: session.modelId }),
           ...(session.effort === null ? {} : { effort: session.effort }),
           ...(session.access === null ? {} : { access: session.access }),
           ...(session.customTitle === null ? {} : { customTitle: session.customTitle }),
