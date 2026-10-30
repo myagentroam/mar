@@ -1,5 +1,7 @@
 import type { FileReference } from '@myagentroam/code-navigation';
 
+export type WorkspaceNavigationNotice = 'LIMITED' | 'UNAVAILABLE';
+
 export interface FileNavigationRequest {
   readonly reference: FileReference;
   readonly sourceContext: {

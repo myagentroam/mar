@@ -10,9 +10,23 @@ import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFil
 import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import type {
+  WorkspaceNavigationNotice,
+  WorkspaceNavigationTarget
+} from '../../src/model/workspace-navigation.js';
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(location.search);
+const navigationNotice = ref<WorkspaceNavigationNotice | undefined>(
+  query.get('navigationNotice') === 'LIMITED'
+    ? 'LIMITED'
+    : query.get('navigationNotice') === 'UNAVAILABLE'
+      ? 'UNAVAILABLE'
+      : undefined
+);
+const navigationTargets = ref<WorkspaceNavigationTarget[]>(
+  query.has('navigationCandidate') ? [{ source: 'DEFINITION', path: 'src/target.ts', line: 4 }] : []
+);
 themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
 const longContent = query.has('long');
 const handle = ref<{ selectAll(): boolean; openFind(): boolean }>();
@@ -110,6 +124,15 @@ createApp({
             return 'saved-revision';
           },
           downloading: false,
+          navigationNotice: navigationNotice.value,
+          navigationTargets: navigationTargets.value,
+          onOpenNavigationTarget: (target: { readonly path: string }) => {
+            document.documentElement.dataset.openedNavigationTarget = target.path;
+          },
+          onDismissNavigation: () => {
+            navigationNotice.value = undefined;
+            navigationTargets.value = [];
+          },
           targetLine: undefined
         })
       );

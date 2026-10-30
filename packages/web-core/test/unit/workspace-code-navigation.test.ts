@@ -64,11 +64,12 @@ describe('Workspace code navigation', () => {
     references.resolve(
       response({ state: 'STALE', references: [{ ...target, column: 2, path: 'src/use.ts' }] })
     );
-    await Promise.resolve();
-    expect(f.page.navigationTargets.value.map((entry) => entry.source)).toEqual([
-      'DEFINITION',
-      'REFERENCE'
-    ]);
+    await vi.waitFor(() =>
+      expect(f.page.navigationTargets.value.map((entry) => entry.source)).toEqual([
+        'DEFINITION',
+        'REFERENCE'
+      ])
+    );
   });
 
   it('keeps newer navigation when old declarations, references or errors arrive', async () => {
@@ -86,10 +87,13 @@ describe('Workspace code navigation', () => {
     expect(f.page.navigationTargets.value).toEqual([{ ...target, source: 'DEFINITION' }]);
     const references = deferred();
     f.request.mockResolvedValueOnce(response()).mockReturnValueOnce(references.promise);
-    await f.service.navigate(source, { symbol: 'old references' });
+    const pendingReferences = f.service.navigate(source, { symbol: 'old references' });
+    await vi.waitFor(() =>
+      expect(f.request).toHaveBeenLastCalledWith(expect.stringContaining('references=1'))
+    );
     f.service.clear(1);
     references.resolve(response({ references: [{ ...target, column: 2 }] }));
-    await Promise.resolve();
+    await pendingReferences;
     expect(f.page.navigationTargets.value).toEqual([]);
     expect(f.page.navigationNoDefinition.value).toBe(false);
   });
@@ -171,7 +175,141 @@ describe('Workspace code navigation', () => {
     expect(f.onFileTarget).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['FAILED', 'UNAVAILABLE', 'invalid'])(
+  it.each([
+    ['symbol limit', { symbol: 'thing' }, 'FAILED', 'SYMBOL_INDEX_LIMIT_EXCEEDED', 'LIMITED'],
+    ['file limit', fileRequest, 'FAILED', 'SYMBOL_INDEX_LIMIT_EXCEEDED', 'LIMITED'],
+    ['missing Ctags', { symbol: 'thing' }, 'UNAVAILABLE', undefined, 'UNAVAILABLE']
+  ] as const)(
+    'shows %s as a local notice without reporting an error or an empty result',
+    async (_label, input, state, failureCode, notice) => {
+      const f = fixture();
+      f.request.mockResolvedValue(response({ state, failureCode }));
+      await f.service.navigate(source, input);
+      expect(f.page.navigationNotice.value).toBe(notice);
+      expect(f.page.navigationLoading.value).toBe(false);
+      expect(f.page.navigationNoDefinition.value).toBe(false);
+      expect(f.page.navigationTargets.value).toEqual([]);
+      expect(f.onFailure).not.toHaveBeenCalled();
+      expect(f.onFileTarget).not.toHaveBeenCalled();
+      expect(f.request).toHaveBeenCalledOnce();
+
+      f.request.mockResolvedValue(response({ paths: [target] }));
+      await f.service.navigate(source, fileRequest);
+      expect(f.page.navigationNotice.value).toBeUndefined();
+      expect(f.onFileTarget).toHaveBeenCalledWith({ ...target, source: 'FILE' }, 1);
+    }
+  );
+
+  it.each([false, true])(
+    'preserves accepted declarations when references hit the limit (definitions=%s)',
+    async (hasDefinitions) => {
+      const f = fixture();
+      f.request
+        .mockResolvedValueOnce(response({ targets: hasDefinitions ? [target] : [] }))
+        .mockResolvedValueOnce(
+          response({ state: 'FAILED', failureCode: 'SYMBOL_INDEX_LIMIT_EXCEEDED' })
+        );
+      await f.service.navigate(source, { symbol: 'thing' });
+      await Promise.resolve();
+      expect(f.page.navigationTargets.value).toEqual(
+        hasDefinitions ? [{ ...target, source: 'DEFINITION' }] : []
+      );
+      expect(f.page.navigationNotice.value).toBe('LIMITED');
+      expect(f.page.navigationNoDefinition.value).toBe(false);
+      expect(f.page.navigationLoading.value).toBe(false);
+      expect(f.onFailure).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['build failure', false],
+    ['build failure', true],
+    ['invalid response', false],
+    ['request failure', true]
+  ] as const)(
+    'reports a reference %s without pretending it is empty (definitions=%s)',
+    async (failure, hasDefinitions) => {
+      const f = fixture();
+      f.request.mockResolvedValueOnce(response({ targets: hasDefinitions ? [target] : [] }));
+      if (failure === 'request failure') f.request.mockRejectedValueOnce(new Error('offline'));
+      else
+        f.request.mockResolvedValueOnce(
+          failure === 'invalid response' ? {} : response({ state: 'FAILED' })
+        );
+      await f.service.navigate(source, { symbol: 'thing' });
+      await vi.waitFor(() => expect(f.onFailure).toHaveBeenCalledOnce());
+      expect(f.page.navigationTargets.value).toEqual(
+        hasDefinitions ? [{ ...target, source: 'DEFINITION' }] : []
+      );
+      expect(f.page.navigationNoDefinition.value).toBe(false);
+      expect(f.page.navigationLoading.value).toBe(false);
+    }
+  );
+
+  it.each([false, true])(
+    'keeps reference polling separate and cancellable (cancel=%s)',
+    async (cancel) => {
+      vi.useFakeTimers();
+      const f = fixture();
+      f.request
+        .mockResolvedValueOnce(response({ targets: [target] }))
+        .mockResolvedValueOnce(response({ state: 'BUILDING' }))
+        .mockResolvedValueOnce(response({ references: [{ ...target, column: 2 }] }));
+      await f.service.navigate(source, { symbol: 'thing' });
+      expect(f.page.navigationLoading.value).toBe(false);
+      expect(f.page.navigationTargets.value).toEqual([{ ...target, source: 'DEFINITION' }]);
+      if (cancel) f.service.clear(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(f.request).toHaveBeenCalledTimes(cancel ? 2 : 3);
+      expect(f.page.navigationTargets.value.map((entry) => entry.source)).toEqual(
+        cancel ? [] : ['DEFINITION', 'REFERENCE']
+      );
+      expect(f.onFailure).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
+  it('keeps loading visible until references arrive when there are no declarations', async () => {
+    const f = fixture();
+    const references = deferred();
+    f.request
+      .mockResolvedValueOnce(response({ targets: [] }))
+      .mockReturnValueOnce(references.promise);
+    const navigating = f.service.navigate(source, { symbol: 'thing' });
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
+    expect(f.page.navigationLoading.value).toBe(true);
+    references.resolve(response({ references: [{ ...target, column: 2 }] }));
+    await navigating;
+    expect(f.page.navigationLoading.value).toBe(false);
+    expect(f.page.navigationTargets.value).toEqual([
+      {
+        path: target.path,
+        line: target.line,
+        preview: target.preview,
+        column: 2,
+        source: 'REFERENCE'
+      }
+    ]);
+  });
+
+  it('clears local notices and ignores a late limit response after cancellation', async () => {
+    const f = fixture();
+    const limited = response({ state: 'FAILED', failureCode: 'SYMBOL_INDEX_LIMIT_EXCEEDED' });
+    f.request.mockResolvedValueOnce(limited);
+    await f.service.navigate(source, { symbol: 'thing' });
+    f.service.clear(1);
+    expect(f.page.navigationNotice.value).toBeUndefined();
+    const old = deferred();
+    f.request.mockReturnValueOnce(old.promise);
+    const navigating = f.service.navigate(source, { symbol: 'old' });
+    f.service.cancel();
+    old.resolve(limited);
+    await navigating;
+    expect(f.page.navigationNotice.value).toBeUndefined();
+    expect(f.onFailure).not.toHaveBeenCalled();
+  });
+
+  it.each(['FAILED', 'invalid'])(
     'reports %s only for the current foreground query',
     async (state) => {
       const f = fixture();

@@ -144,6 +144,7 @@ function statusText(status: QuickOpenSourceStatus): string {
     BUILDING: 'generated.quickOpenDialog.preparing',
     FAILED: 'generated.quickOpenDialog.failed',
     UNAVAILABLE: 'generated.quickOpenDialog.unavailable',
+    LIMITED: 'fileEditor.navigationLimited',
     TIMED_OUT: 'generated.quickOpenDialog.timedOut',
     INVALID: 'generated.quickOpenDialog.completeSymbolRequired'
   } as const;

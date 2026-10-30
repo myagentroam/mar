@@ -327,6 +327,56 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
+for (const [notice, message, width] of [
+  [
+    'LIMITED',
+    'The symbol index has reached its size limit. Navigation results may be incomplete.',
+    1280
+  ],
+  ['UNAVAILABLE', 'Symbol indexing is unavailable on this Node.', 390]
+] as const) {
+  test(`Code navigation ${notice} notices are local and dismissible`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}file-editor-layout.html?text=code&draft=1&navigationNotice=${notice}${notice === 'LIMITED' ? '&navigationCandidate=1' : ''}`
+    );
+    const editor = page.locator('.cm-content');
+    await expect(editor).toHaveText('Recovered unsaved content');
+    await expect(editor).toHaveAttribute('contenteditable', 'false');
+    const dropdown = page.locator('.file-navigation-dropdown');
+    await expect(dropdown.getByRole('status')).toHaveText(message);
+    await expect(
+      page.getByText('No definitions or references found.', { exact: true })
+    ).toHaveCount(0);
+    await expect(page.locator('.el-message--error')).toHaveCount(0);
+    const bounds = (await dropdown.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    await dropdown.getByRole('status').click();
+    await expect(dropdown).toBeVisible();
+    if (notice === 'LIMITED') {
+      await dropdown.getByRole('option').click();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-opened-navigation-target',
+        'src/target.ts'
+      );
+      await expect(dropdown.getByRole('status')).toHaveText(message);
+    }
+    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await expect(dropdown).toHaveCount(0);
+    await expect(editor).toHaveAttribute('contenteditable', 'true');
+    await editor.fill('Continued editing after navigation notice');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-saved-draft',
+      JSON.stringify({
+        value: 'Continued editing after navigation notice',
+        revision: 'draft-revision'
+      })
+    );
+  });
+}
+
 test('Restored drafts render immediately and preserve their original revision on save', async ({
   page
 }) => {
