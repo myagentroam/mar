@@ -11,6 +11,12 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope, type NodeEnvelope } from '@myagentroam/protocol';
 import type { GoalState } from '../../src/service/goal-runtime.js';
+import { NodeConnector } from '../../src/connector.js';
+import { NodeDatabase } from '../../src/database.js';
+import type { NodeRuntimeState } from '../../src/runtime-state.js';
+import type { GoalRuntime } from '../../src/service/goal-runtime.js';
+import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
+import type { PlannedRestartHandoff } from '../../src/service/planned-restart-handoff.js';
 
 interface TestOperationResponse {
   readonly error?: string;
@@ -22,6 +28,147 @@ interface TestOperationResponse {
     readonly goal: GoalState;
   };
 }
+
+describe('Node capture failure logging', () => {
+  it.each(['identity', 'goal', 'snapshot', 'unknown', 'diagnostic'] as const)(
+    'projects only bounded producer metadata for a %s failure through shutdown logging',
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), 'mar-node-capture-log-'));
+      const sentinel = 'PRIVATE_CAPTURE_SENTINEL';
+      const oversized = sentinel.repeat(1000);
+      const unready = mode === 'identity' || mode === 'diagnostic';
+      const database = new NodeDatabase(join(root, 'node.sqlite'), 'capture-node');
+      database.saveWorkspace({ id: 'workspace', path: root, kind: 'DIRECTORY', gitSummary: null });
+      const connector = new NodeConnector({
+        reconnect: false,
+        database,
+        config: {
+          nodeId: 'capture-node',
+          serverUrl: 'https://server.example.test',
+          allowedRoots: [root],
+          dataDirectory: root,
+          credential: sentinel
+        }
+      });
+      const core = connector as unknown as {
+        runtime: NodeRuntimeState;
+        goalRuntime: GoalRuntime;
+        continuousRunCoordinator: ContinuousRunCoordinator<unknown>;
+        restartHandoff: PlannedRestartHandoff;
+        disposeRuntime(): Promise<void>;
+      };
+      const lines: string[] = [];
+      let originalFailure: unknown;
+      const capture = core.restartHandoff.capture.bind(core.restartHandoff);
+      const dispose = vi.spyOn(core, 'disposeRuntime');
+      const publish = vi.spyOn(core.restartHandoff, 'publish');
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        lines.push(String(chunk));
+        if (mode === 'diagnostic') throw new Error('LOG_STORAGE_FAILED');
+        return true;
+      });
+      try {
+        const session = core.runtime.createAgentSession({
+          workspaceId: 'workspace',
+          runner: 'mar-agent',
+          cwd: root,
+          ...(unready ? {} : { externalSessionId: 'native-session' }),
+          modelId: sentinel,
+          effort: sentinel,
+          access: sentinel
+        });
+        core.goalRuntime.start(session.id, sentinel);
+        core.restartHandoff.rememberUser(session.id, 41);
+        if (mode === 'goal') {
+          const goal = core.goalRuntime.restartState(session.id)!;
+          vi.spyOn(core.goalRuntime, 'restartState').mockReturnValue({
+            ...goal,
+            goal: { ...goal.goal, objective: oversized, [oversized]: sentinel }
+          });
+        }
+        if (mode === 'snapshot') {
+          for (let index = 0; index < 10; index++) {
+            core.continuousRunCoordinator.accept({
+              runId: `input-${index}`,
+              sessionId: session.id,
+              clientMessageId: `client-${index}`,
+              content: sentinel,
+              initiatedByUserId: 41,
+              attachments: [{ name: oversized, mime: oversized, dataBase64: sentinel }]
+            });
+          }
+        }
+        vi.spyOn(core.restartHandoff, 'capture').mockImplementation(() => {
+          try {
+            if (mode === 'unknown')
+              throw Object.assign(new Error(oversized, { cause: sentinel }), {
+                details: { reason: oversized, issues: [{ code: oversized, path: [oversized] }] }
+              });
+            return capture();
+          } catch (error) {
+            originalFailure = error;
+            throw error;
+          }
+        });
+        let rejected = false;
+        await connector.stop({ handoff: true }).catch((error: unknown) => {
+          rejected = true;
+          expect(error).toBe(originalFailure);
+        });
+        expect(rejected).toBe(true);
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(publish).not.toHaveBeenCalled();
+        await expect(readFile(join(root, 'planned-restart-handoff.json'))).rejects.toMatchObject({
+          code: 'ENOENT'
+        });
+        const diagnostics = lines
+          .flatMap((line) => line.trim().split('\n'))
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+          .filter((entry) => entry.event === 'node.shutdown.failed');
+        expect(diagnostics).toHaveLength(1);
+        const diagnostic = diagnostics[0]!;
+        expect(diagnostic).toMatchObject({
+          stage: 'capture',
+          errorCode: unready ? 'RESTART_SESSION_NOT_READY' : 'NODE_SHUTDOWN_FAILED',
+          ...(mode === 'unknown'
+            ? {}
+            : { reason: unready ? 'session_not_ready' : `${mode}_schema_invalid` })
+        });
+        if (mode === 'goal' || mode === 'snapshot') {
+          expect(originalFailure).toMatchObject({ name: 'ZodError' });
+          const issues = diagnostic.issues as { code: string; path: string }[];
+          expect(issues).toContainEqual({
+            code: 'too_big',
+            path: mode === 'goal' ? 'goal.objective' : 'sessions[0].queue[0].attachments[0].name'
+          });
+          expect(issues.length).toBeLessThanOrEqual(12);
+          for (const issue of issues) {
+            expect(Object.keys(issue).sort()).toEqual(['code', 'path']);
+            expect(issue.path.length).toBeLessThanOrEqual(160);
+          }
+          if (mode === 'snapshot') expect(diagnostic.issuesTruncated).toBe(true);
+          if (mode === 'goal') {
+            expect(issues).toContainEqual({ code: 'unrecognized_keys', path: 'goal' });
+            expect(diagnostic.issuesTruncated).toBe(false);
+          }
+        }
+        if (mode === 'unknown') {
+          expect(diagnostic).not.toHaveProperty('reason');
+          expect(diagnostic).not.toHaveProperty('issues');
+        }
+        expect(JSON.stringify(diagnostics)).not.toContain(sentinel);
+        expect(lines.join('')).not.toContain(sentinel);
+        expect(JSON.stringify(diagnostics).length).toBeLessThan(3000);
+        expect(diagnostic).not.toHaveProperty('stack');
+        expect(diagnostic).not.toHaveProperty('cause');
+      } finally {
+        await connector.stop().catch(() => {});
+        vi.restoreAllMocks();
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  );
+});
 
 describe('Node CLI orderly restart with the real SDK', () => {
   it.skipIf(process.platform === 'win32').each(['message', 'goal', 'native-steer'] as const)(

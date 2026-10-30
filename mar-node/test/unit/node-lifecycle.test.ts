@@ -179,27 +179,30 @@ describe('NodeLifecycle', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it('still closes and disposes when failure diagnostics throw', async () => {
-    const hooks = shutdown();
-    const closeResume = vi.fn(hooks.closeResume);
-    const dispose = vi.fn(hooks.dispose);
-    const publish = vi.fn(hooks.publish);
-    const failure = new Error('INPUT_DRAIN_FAILED');
-    hooks.diagnose.mockImplementation(() => {
-      throw new Error('LOG_STORAGE_FAILED');
-    });
-    const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
-      ...hooks,
-      closeResume,
-      dispose,
-      publish,
-      drainInput: async () => {
-        throw failure;
-      }
-    });
-    await expect(lifecycle.stop(true)).rejects.toBe(failure);
-    expect(closeResume).toHaveBeenCalledOnce();
-    expect(dispose).toHaveBeenCalledOnce();
-    expect(publish).not.toHaveBeenCalled();
-  });
+  it.each(['drainInput', 'capture'] as const)(
+    'still closes and disposes when %s failure diagnostics throw',
+    async (stage) => {
+      const hooks = shutdown();
+      const closeResume = vi.fn(hooks.closeResume);
+      const dispose = vi.fn(hooks.dispose);
+      const publish = vi.fn(hooks.publish);
+      const failure = new Error('SHUTDOWN_FIXTURE_FAILED');
+      hooks.diagnose.mockImplementation(() => {
+        throw new Error('LOG_STORAGE_FAILED');
+      });
+      const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+        ...hooks,
+        closeResume,
+        dispose,
+        publish,
+        [stage]: () => {
+          throw failure;
+        }
+      });
+      await expect(lifecycle.stop(true)).rejects.toBe(failure);
+      expect(closeResume).toHaveBeenCalledOnce();
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(publish).not.toHaveBeenCalled();
+    }
+  );
 });

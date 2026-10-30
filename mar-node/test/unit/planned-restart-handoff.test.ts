@@ -188,6 +188,24 @@ function handoff(
 }
 
 describe('PlannedRestartHandoff', () => {
+  it('keeps the application error code when capture rejects an unready Session', async () => {
+    const f = fixture([]);
+    const session = f.runtime.createAgentSession({
+      workspaceId: workspace.id,
+      runner: 'mar-agent',
+      cwd: workspace.path
+    });
+    f.goals.start(session.id, 'Unfinished work');
+    const writer = handoff(f, await temporaryDirectory());
+    expect(() => writer.capture()).toThrow('RESTART_SESSION_NOT_READY');
+    try {
+      writer.capture();
+      expect.unreachable('Capture must reject the unready Session');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'RESTART_SESSION_NOT_READY' });
+    }
+  });
+
   it('retains the initiating identity across consecutive restarts without a new Run', async () => {
     const directory = await temporaryDirectory();
     const first = fixture();
