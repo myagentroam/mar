@@ -1,17 +1,15 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 ---
 
 # Create and Manage Sessions
 
-Group tabs only switch the list; they do not open a session. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session.
-
 On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions with a parent relationship appear under Child Sessions; sessions without one appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. A Node without grouping capability retains the mixed list.
 
-Group tabs have no running or unread badges. Individual session rows retain their running and unread indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
+Group tabs show only their names and selected state, without running counts or unread badges. Clicking a tab only switches the list; it does not open a session. Individual session rows retain their running and unread indicators. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
 
-Agent operation records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
+Agent operations follow the [conversation work-process grouping rules](conversation.md), without splitting by target, operation, or target count. Records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
 When an Agent sends a message or sets a Goal on an ancestor session that has ended or is stopping, the operation returns `AGENT_ANCESTOR_NOT_ACTIVE` without restarting it. Sending works again once the ancestor is running. Users can still resume sessions manually.
 

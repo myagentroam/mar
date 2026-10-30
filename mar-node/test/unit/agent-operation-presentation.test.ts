@@ -235,6 +235,10 @@ describe('public Agent operations', () => {
         session: {
           id: 'peer',
           title: 'Peer',
+          status: 'RUNNING',
+          modelId: 'profile-model',
+          model: 'LEGACY_MODEL',
+          effort: 'high',
           apiKey: 'SECRET',
           configuration: { password: 'SECRET' },
           latestMessage: { text: 'Public view message', truncated: true, secret: 'SECRET' }
@@ -244,9 +248,11 @@ describe('public Agent operations', () => {
       }
     );
     expect(JSON.stringify(result)).not.toMatch(/SECRET|PRIVATE_HISTORY/);
-    expect(JSON.parse(result.eventSummary).latestMessage).toEqual({
-      text: 'Public view message',
-      truncated: true
+    expect(JSON.parse(result.eventSummary)).toEqual({
+      status: 'RUNNING',
+      modelId: 'profile-model',
+      effort: 'high',
+      latestMessage: { text: 'Public view message', truncated: true }
     });
     const listed = agentOperationEvent(
       'list',

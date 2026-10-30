@@ -1,13 +1,11 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 ---
 
 # Conversations, Tools, and Notifications
 
-**Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Each tab shows its active-session count and unread indicator; the entry badge remains the total across both groups. Opening a session also selects its actual group in Chats.
-
-Main / Child tabs only switch the list, without running or unread badges. Opening a notification, recent-session item, or Workspace tab synchronizes the target session's group; individual session indicators stay unchanged.
+**Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Tabs have no running or unread badges and only switch the list, without opening a session; the total running count appears within Recent Sessions. Opening a notification, recent-session item, or Workspace tab synchronizes the target session's group in Chats; individual session indicators stay unchanged.
 
 Conversation groups your messages, Agent replies, reasoning summaries, plans, commands, tools, file changes, approvals, and questions in execution order. Expand supporting cards when details are needed; Agent Markdown is sanitized before display.
 
@@ -15,9 +13,9 @@ Cross-session message headings distinguish parent, child, descendant, and other 
 
 Images in the conversation load as thumbnails. Click one to open an aspect-ratio-preserving preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears at the top right. This loads the original image while still fitting it entirely within the dialog, preserving its aspect ratio without cropping or image scrollbars. Long screenshots also fit as a whole, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
 
-Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Subagents are grouped separately by identity; image generation, plans, approvals, and questions remain separate.
+Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Image generation, plans, approvals, and questions remain separate.
 
-All four Runners use **Agent operations** groups, not limited to parent-child sessions. MAR Agent supports start, send, wait, stop, list, and view; other Runners show their native operations. Calls for the same target within one phase are grouped, while multi-target waits, discovery, and unknown identities stay separate. Expand each call to inspect its original Tool, targets, input, result, and errors. A returned call does not mean the target task has finished, and a wait timeout does not mean it failed. Model metadata and public messages appear only when supplied by the Runner; the target session's internal execution stream is not embedded. Cards do not provide session shortcuts; use the session list or session tree to open a target session.
+All four Runners use **Agent operations** groups, not limited to parent-child sessions. MAR Agent supports start, send, wait, stop, list, and view; other Runners show their native operations. Agent operations within the same work process and aggregation interval share one group positioned at the last call, regardless of target, operation, or target count. The group header shows the call count. Expand it to see each call's original tool name, available task names, and own status in the original order; details retain actual targets, input, result, and errors. A returned call does not mean the target task has finished, and a wait timeout does not mean it failed. Model metadata and public messages appear only when supplied by the Runner; the target session's internal execution stream is not embedded. Cards do not provide session shortcuts; use the session list or session tree to open a target session.
 
 When an Agent request or model call finally fails, the error card shows the HTTP status when available and the returned error message. In an ordinary session, a terminal failure returns the session to Idle and pauses any remaining queued messages until you resume the queue or send a new ordinary message after reviewing the error. MAR Agent may retry eligible transient model failures before its first semantic output; an active Goal may also retry failed executions through bounded automatic continuation before blocking.
 
