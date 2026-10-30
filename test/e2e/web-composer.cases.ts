@@ -1962,15 +1962,20 @@ test('Composer sends a file reference and a Session mention together without loa
   await page.getByRole('option', { name: /App\.vue/ }).click();
   await composer.pressSequentially('@session Target');
   await page.getByRole('option', { name: /Target Session/ }).click();
-  await expect(composer).toHaveValue('检查 <mar-session: Target Session> ');
-  await expect(page.locator('.composer-file-reference-state')).toContainText('App.vue');
+  await expect(composer).toHaveValue('检查 ');
+  await expect(page.locator('.composer-file-reference-state')).toHaveText([
+    'App.vue',
+    'Target Session'
+  ]);
   await composer.press('Enter');
   await expect.poll(() => writes.filter((entry) => entry.url.includes('/start')).length).toBe(1);
   const submitted = JSON.parse(writes.find((entry) => entry.url.includes('/start'))!.body);
-  expect(submitted.content).toContain('<mar-session: Target Session>');
+  expect(submitted.content).not.toContain('<mar-session:');
   expect(submitted.content).toContain('<mar_references>');
   expect(submitted.content).toContain('src/App.vue');
-  expect(submitted.content).not.toContain('target-session');
+  expect(submitted.content).toContain(
+    'type="session" sessionId="target-session" label="Target Session"'
+  );
   expect(candidateReads.length).toBeGreaterThan(0);
   expect(candidateReads.at(-1)).toContain('sessionGroup=MAIN');
   expect(candidateReads.at(-1)).toContain('limit=10');

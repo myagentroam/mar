@@ -8,6 +8,35 @@ import {
 } from '../../src/index.js';
 
 describe('Composer product tags', () => {
+  it('round-trips mixed session and file references with escaped identity snapshots', () => {
+    const references = [
+      { type: 'session' as const, sessionId: 'session-42', label: 'Review & <fix> "now"' },
+      { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' }
+    ];
+    const tag = serializeComposerTag('mar_references', { references });
+    expect(tag).toContain('type="session" sessionId="session-42"');
+    expect(tag).toContain('label="Review &amp; &lt;fix&gt; &quot;now&quot;"');
+    expect(parseComposerTags(tag)).toEqual([
+      { kind: 'mar_references', payload: { references }, raw: tag }
+    ]);
+    expect(composerVisibleText(`Compare\n${tag}`)).toBe('Compare');
+    expect(steerComposerMessage(`Compare\n${tag}`)).toContain(tag);
+  });
+
+  it('preserves malformed session references as text instead of accepting file attributes', () => {
+    for (const attributes of [
+      'sessionId="" label="Review"',
+      'label="Review"',
+      'sessionId="s"',
+      'sessionId="s" label="Review" path="src/main.ts"',
+      'sessionId="s" label="Review" runnerPath="../main.ts"',
+      `sessionId="${'s'.repeat(513)}" label="Review"`
+    ]) {
+      const raw = `<mar_references><reference type="session" ${attributes} /></mar_references>`;
+      expect(composerVisibleText(raw)).toBe(raw);
+    }
+  });
+
   it('round-trips Session origin snapshots beside steering and hides only the metadata', () => {
     const origin = { sessionId: 'source', name: 'Fixer#42 A & <B>' };
     const tag = serializeComposerTag('mar_session_origin', origin);

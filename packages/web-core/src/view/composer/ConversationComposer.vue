@@ -5,7 +5,8 @@ import BusyIndicator from '../common/BusyIndicator.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
-import type { ComposerFileReference } from '@myagentroam/protocol';
+import type { ComposerReference } from '@myagentroam/protocol';
+import { composerReferenceKey } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import PromptCompletionEditor from './PromptCompletionEditor.vue';
 import type { PromptCompletionBinding } from '../../service/prompt-completion-client-service.js';
@@ -63,7 +64,7 @@ const props = withDefaults(
     commandStates: readonly RunnerCommandState[];
     loading: boolean;
     skillTokens: readonly ComposerSkillToken[];
-    fileReferences?: readonly ComposerFileReference[];
+    fileReferences?: readonly ComposerReference[];
     completion?: PromptCompletionBinding | undefined;
     completionBlocked?: boolean;
   }>(),
@@ -94,7 +95,8 @@ function onKeydown(event: KeyboardEvent): void {
     (props.skillTokens.length > 0 || props.fileReferences.length > 0)
   ) {
     event.preventDefault();
-    if (props.fileReferences.length > 0) emit('removeReference', props.fileReferences.at(-1)!.path);
+    if (props.fileReferences.length > 0)
+      emit('removeReference', composerReferenceKey(props.fileReferences.at(-1)!));
     else emit('removeSkill', props.skillTokens.at(-1)!.name);
     return;
   }
@@ -151,7 +153,7 @@ const emit = defineEmits<{
   drop: [event: DragEvent];
   closeCommand: [state: RunnerCommandState];
   removeSkill: [name: string];
-  removeReference: [path: string];
+  removeReference: [key: string];
 }>();
 </script>
 
@@ -228,16 +230,25 @@ const emit = defineEmits<{
             ><MarIcon name="close" />
           </button>
           <button
-            v-tooltip="reference.path"
+            v-tooltip="reference.type === 'session' ? reference.label : reference.path"
             v-for="reference in fileReferences"
-            :key="reference.path"
+            :key="composerReferenceKey(reference)"
             class="composer-command-state composer-file-reference-state"
             type="button"
             :disabled="readonly || loading"
-            :aria-label="translate('composer.removeFileReference', { name: reference.label })"
-            @click="emit('removeReference', reference.path)"
+            :aria-label="
+              translate(
+                reference.type === 'session'
+                  ? 'composer.removeSessionReference'
+                  : 'composer.removeFileReference',
+                { name: reference.label }
+              )
+            "
+            @click="emit('removeReference', composerReferenceKey(reference))"
           >
+            <MarIcon v-if="reference.type === 'session'" name="recent-sessions" />
             <FileTypeIcon
+              v-else
               :name="reference.path"
               :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
             />

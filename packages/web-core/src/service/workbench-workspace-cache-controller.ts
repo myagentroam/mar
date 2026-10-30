@@ -30,7 +30,7 @@ interface WorkbenchWorkspaceCacheControllerOptions {
   readonly draftOpen: Ref<boolean>;
   readonly input: Ref<string>;
   readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
-  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
+  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
   readonly runner: Readonly<Ref<Session['runner']>>;
   readonly modelId: Readonly<Ref<string>>;
   readonly effort: Readonly<Ref<RunnerDefaultConfiguration['effort']>>;

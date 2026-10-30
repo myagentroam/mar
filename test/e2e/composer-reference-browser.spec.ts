@@ -19,7 +19,9 @@ async function placeCursor(page: Page, position: number) {
     }, position);
 }
 
-test('mixed results render once and session insertion is one undoable edit', async ({ page }) => {
+test('mixed results render once and session selection removes the trigger in one undoable edit', async ({
+  page
+}) => {
   page.on('pageerror', (error) => console.error('Fixture page error:', error));
   page.on('console', (message) => {
     if (message.type() === 'error') console.error('Fixture console error:', message.text());
@@ -35,7 +37,10 @@ test('mixed results render once and session insertion is one undoable edit', asy
   await expect(options.nth(1)).toContainText('alpha.ts');
   const before = await page.evaluate(() => (window as any).__referenceHarness.updates);
   await options.nth(0).click();
-  await expect(editor).toHaveValue('before <mar-session: Alpha session> after');
+  await expect(editor).toHaveValue('before  after');
+  await expect(
+    page.getByRole('button', { name: 'Remove Session reference Alpha session' })
+  ).toBeVisible();
   expect(await page.evaluate(() => (window as any).__referenceHarness.updates)).toBe(before + 1);
   await editor.press('Control+z');
   await expect(editor).toHaveValue('before @alphaSuffix after');
@@ -71,7 +76,10 @@ test('session-only queries need no tabs and desktop empty picker does not send',
   await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(2);
   await expect(page.locator('.reference-filters')).toHaveCount(0);
   await editor.press('Enter');
-  await expect(editor).toHaveValue('<mar-session: Alpha session> ');
+  await expect(editor).toHaveValue('');
+  await expect(
+    page.getByRole('button', { name: 'Remove Session reference Alpha session' })
+  ).toBeVisible();
   await editor.press('Control+z');
   await expect(editor).toHaveValue('@al');
   await editor.fill('@session al');
@@ -118,8 +126,49 @@ test('an insertion cancels the old prediction and composition cannot select', as
     element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
   );
   await options.filter({ hasText: 'Alpha session' }).click();
-  await expect(editor).toHaveValue('<mar-session: Alpha session> ');
+  await expect(editor).toHaveValue('');
+  await expect(
+    page.getByRole('button', { name: 'Remove Session reference Alpha session' })
+  ).toBeVisible();
   expect(await page.evaluate(() => (window as any).__referenceHarness.aborted)).toBe(1);
+});
+
+test('mixed reference tags serialize as XML and support click and Backspace removal', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}/composer-reference-browser.html`);
+  const editor = page.locator('textarea.composer-input');
+  await editor.fill('Compare @alpha');
+  await page.getByRole('option').filter({ hasText: 'Alpha session' }).click();
+  await editor.pressSequentially('@alpha');
+  await page.getByRole('option').filter({ hasText: 'alpha.ts' }).click();
+  await expect(editor).toHaveValue('Compare ');
+  const sessionTag = page.getByRole('button', { name: 'Remove Session reference Alpha session' });
+  const fileTag = page.getByRole('button', { name: 'Remove file reference alpha.ts' });
+  await expect(sessionTag).toBeVisible();
+  await expect(fileTag).toBeVisible();
+  await editor.press('Enter');
+  const messages = await page.evaluate(
+    () => (window as any).__referenceHarness.messages as string[]
+  );
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toContain('<mar_references>');
+  expect(messages[0]).toContain(
+    '<reference type="session" sessionId="other-123456" label="Alpha session" />'
+  );
+  expect(messages[0]).toContain('<reference type="file" path="src/alpha.ts" label="alpha.ts" />');
+  expect(messages[0]).not.toContain('<mar-session:');
+  await sessionTag.click();
+  await expect(sessionTag).toHaveCount(0);
+  await expect(fileTag).toBeVisible();
+  await editor.fill('');
+  await editor.press('Backspace');
+  await expect(fileTag).toHaveCount(0);
+  await editor.fill('@alpha');
+  await page.getByRole('option').filter({ hasText: 'Alpha session' }).click();
+  await expect(sessionTag).toBeVisible();
+  await editor.press('Backspace');
+  await expect(sessionTag).toHaveCount(0);
 });
 
 for (const [theme, width] of [

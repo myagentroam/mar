@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
 import type { ComposerSkillToken, WorkspaceTarget } from '../model/workbench.js';
-import type { ComposerFileReference } from '@myagentroam/protocol';
+import type { ComposerReference } from '@myagentroam/protocol';
 import { normalizeComposerReferences } from './file-reference-service.js';
 import {
   COMPOSER_SKILL_TOKEN_PLACEHOLDER,
@@ -13,7 +13,7 @@ export function createSessionDraftService(options: {
 }) {
   const input = ref('');
   const skillTokens = ref<readonly ComposerSkillToken[]>([]);
-  const references = ref<readonly ComposerFileReference[]>([]);
+  const references = ref<readonly ComposerReference[]>([]);
   const storage = options.storage ?? sessionStorage;
 
   function key(): string | undefined {

@@ -1,8 +1,9 @@
 import { computed, ref, watch, type Ref } from 'vue';
-import type { ComposerFileReference } from '@myagentroam/protocol';
+import type { ComposerReference } from '@myagentroam/protocol';
 import type { Session } from '../model/workbench.js';
 import { sessionTitle } from '../util/session-presentation.js';
 import { composerReferenceAtCursor } from '../util/composer-reference-query.js';
+import { composerReferenceKey } from '../util/composer-reference.js';
 import { normalizeComposerReferences, type FileReferenceEntry } from './file-reference-service.js';
 
 export type ComposerReferenceCandidate =
@@ -25,7 +26,7 @@ interface FileReferenceSearchOptions {
 export function createComposerReferenceService(
   input: Ref<string>,
   searchOptions?: FileReferenceSearchOptions,
-  selected: Ref<readonly ComposerFileReference[]> = ref([])
+  selected: Ref<readonly ComposerReference[]> = ref([])
 ) {
   const open = ref(false);
   const cursor = ref(input.value.length);
@@ -263,26 +264,24 @@ export function createComposerReferenceService(
   ): boolean {
     const current = match.value;
     if (!open.value || !current || !candidates.value.includes(candidate)) return false;
-    if (candidate.type === 'file') {
-      const token = {
-        type: candidate.entry.kind === 'DIRECTORY' ? 'directory' : 'file',
-        path: candidate.entry.path,
-        label: candidate.entry.name
-      } as const;
-      const exists = selected.value.some((value) => value.path === token.path);
-      if (!exists && selected.value.length >= 128) return false;
-      if (
-        normalizeComposerReferences([token]).length === 0 ||
-        !edit(current.start, current.end, '')
-      )
-        return false;
-      if (!exists) selected.value = [...selected.value, token];
-    } else {
-      const text = `<mar-session: ${sessionTitle(candidate.session)}>`;
-      const separator =
-        current.end < input.value.length && /\s/u.test(input.value[current.end]!) ? '' : ' ';
-      if (!edit(current.start, current.end, text + separator)) return false;
-    }
+    const token: ComposerReference =
+      candidate.type === 'file'
+        ? {
+            type: candidate.entry.kind === 'DIRECTORY' ? 'directory' : 'file',
+            path: candidate.entry.path,
+            label: candidate.entry.name
+          }
+        : {
+            type: 'session',
+            sessionId: candidate.session.id,
+            label: sessionTitle(candidate.session)
+          };
+    const key = composerReferenceKey(token);
+    const exists = selected.value.some((value) => composerReferenceKey(value) === key);
+    if (!exists && selected.value.length >= 128) return false;
+    if (normalizeComposerReferences([token]).length === 0 || !edit(current.start, current.end, ''))
+      return false;
+    if (!exists) selected.value = [...selected.value, token];
     close();
     return true;
   }
@@ -312,8 +311,8 @@ export function createComposerReferenceService(
     sessionMore,
     match,
     selected,
-    remove: (path: string) => {
-      selected.value = selected.value.filter((value) => value.path !== path);
+    remove: (key: string) => {
+      selected.value = selected.value.filter((value) => composerReferenceKey(value) !== key);
     },
     clear: () => {
       selected.value = [];

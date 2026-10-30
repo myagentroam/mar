@@ -16,6 +16,7 @@ import { displayConversationItem } from '../../src/util/conversation-domain.js';
 import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import { createSessionDraftService } from '../../src/service/session-draft-service.js';
 import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
+import { serializeComposerMessage } from '../../src/service/composer-skill-token-service.js';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
 
 const references = serializeComposerTag('mar_references', {
@@ -45,7 +46,29 @@ afterEach(() => {
 });
 
 describe('Composer product tag presentation', () => {
-  it('retains a session mention as ordinary visible text alongside file references', () => {
+  it('hides mixed session references and preserves their metadata when a queue body is edited', () => {
+    const selected = [
+      { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
+      { type: 'session' as const, sessionId: 'session-42', label: 'Alpha & <review>' }
+    ];
+    const raw = serializeComposerMessage([], 'Compare this work', selected);
+    expect(parseComposerTags(raw).find((part) => part.kind === 'mar_references')).toMatchObject({
+      payload: { references: selected }
+    });
+    expect(composerVisibleText(raw)).toBe('Compare this work');
+    expect(composerMessagePresentation({ text: raw }).text).toBe('Compare this work');
+    expect(conversationItemText('user_message', { text: raw })).toBe('Compare this work');
+    const queue = createComposerQueueService();
+    queue.startEditing({ queueItemId: 'mixed-references', content: raw });
+    expect(queue.editingContent.value).toBe('Compare this work');
+    const edited = queue.serializeEditedContent('Updated request');
+    expect(composerVisibleText(edited)).toBe('Updated request');
+    expect(parseComposerTags(edited).find((part) => part.kind === 'mar_references')).toMatchObject({
+      payload: { references: selected }
+    });
+  });
+
+  it('retains legacy session mention text alongside file references', () => {
     const body = 'Compare <mar-session: Alpha session> with this file';
     const raw = `${body}\n${references}`;
     expect(composerVisibleText(raw)).toContain(body);
@@ -359,11 +382,15 @@ describe('Composer product tag presentation', () => {
         removeItem: (key) => void values.delete(key)
       }
     });
-    draft.references.value = [{ type: 'file', path: 'src/main.ts', label: 'main.ts' }];
+    const selected = [
+      { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
+      { type: 'session' as const, sessionId: 'session-42', label: 'Alpha & <review>' }
+    ];
+    draft.references.value = selected;
     draft.persist();
     draft.references.value = [];
     draft.restore();
-    expect(draft.references.value[0]?.path).toBe('src/main.ts');
+    expect(draft.references.value).toEqual(selected);
     target.value = { nodeId: 'node', workspaceId: 'other' };
     draft.restore();
     expect(draft.references.value).toEqual([]);
@@ -391,7 +418,7 @@ describe('Composer product tag presentation', () => {
     state.entries.value = [{ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' }];
     state.selectCandidate(state.candidates.value[0]!, edit);
     expect(state.selected.value).toHaveLength(1);
-    state.remove('src/main.ts');
+    state.remove('file:src/main.ts');
     expect(state.selected.value).toEqual([]);
   });
 });

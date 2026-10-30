@@ -64,10 +64,17 @@ export function prepareComposerResourceInput(
       if (part.kind === 'text') return part.text;
       if (part.kind !== 'mar_references') return part.raw;
       return serializeComposerTag('mar_references', {
-        references: part.payload.references.map((reference) => ({
-          ...reference,
-          runnerPath: relative(cwd, resolve(workspacePath, reference.path)).replaceAll('\\', '/')
-        }))
+        references: part.payload.references.map((reference) =>
+          reference.type === 'session'
+            ? reference
+            : {
+                ...reference,
+                runnerPath: relative(cwd, resolve(workspacePath, reference.path)).replaceAll(
+                  '\\',
+                  '/'
+                )
+              }
+        )
       });
     })
     .join('');

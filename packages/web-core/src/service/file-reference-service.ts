@@ -1,6 +1,6 @@
-import { composerTagSchemas, type ComposerFileReference } from '@myagentroam/protocol';
+import { composerTagSchemas, type ComposerReference } from '@myagentroam/protocol';
 
-export function normalizeComposerReferences(value: unknown): readonly ComposerFileReference[] {
+export function normalizeComposerReferences(value: unknown): readonly ComposerReference[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 128).flatMap((entry) => {
     const result = composerTagSchemas.mar_references.shape.references.element.safeParse(entry);

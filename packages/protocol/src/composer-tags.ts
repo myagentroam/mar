@@ -100,14 +100,23 @@ export const composerTagSchemas = {
     .object({
       references: z
         .array(
-          z
-            .object({
-              type: z.enum(['file', 'directory']),
-              path: workspacePath,
-              label: name,
-              runnerPath: relativePath.optional()
-            })
-            .strict()
+          z.union([
+            z
+              .object({
+                type: z.enum(['file', 'directory']),
+                path: workspacePath,
+                label: name,
+                runnerPath: relativePath.optional()
+              })
+              .strict(),
+            z
+              .object({
+                type: z.literal('session'),
+                sessionId: z.string().min(1).max(512),
+                label: name
+              })
+              .strict()
+          ])
         )
         .min(1)
         .max(128)
@@ -120,7 +129,8 @@ export type ComposerTagPayloads = {
   [K in ComposerTagName]: z.infer<(typeof composerTagSchemas)[K]>;
 };
 export type ComposerAttachmentFile = ComposerTagPayloads['mar_attachments']['files'][number];
-export type ComposerFileReference = ComposerTagPayloads['mar_references']['references'][number];
+export type ComposerReference = ComposerTagPayloads['mar_references']['references'][number];
+export type ComposerFileReference = Exclude<ComposerReference, { type: 'session' }>;
 export type ComposerTagPart =
   | { readonly kind: 'text'; readonly text: string }
   | {

@@ -1,6 +1,6 @@
 ---
 title: References, Folders, and Attachments
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-30
 ---
 
 # References, Folders, and Attachments
@@ -9,7 +9,7 @@ Type `@` to search Workspace files and folders. Selecting a result adds a remova
 
 In regular work mode, the same `@` picker also offers registered main Sessions in the current Node and Workspace. Matching Sessions appear before files, without type-switching tabs. Type `@session` or `@session keyword` to search only Sessions. A bare `@` shows the first Sessions; enter a path to search files. Each source shows only its first results, so refine the query when more are available. The current Session and child Sessions are excluded. Hosted conversations and shared-session entries do not expose the ordinary Session directory.
 
-Selecting a Session inserts ordinary text, `<mar-session: Session name>`, at the caret. You can edit or undo it. It does not import history, send a message, or automatically read the source Session. Names are not unique: after a rename or when names match, the Agent may need to use existing tools to find the ID. Any actual read remains subject to the Agent's existing permissions. File tags and Session text can be used together in one message.
+Selecting a Session works like selecting a file: it removes the query at the caret and adds a removable Session reference tag without inserting markup into the body. The tag retains the Session ID and its name at selection time. Session and file references are sent together as XML resource inputs and hidden in the displayed message. Selecting the same Session twice does not duplicate it; different Sessions with matching names remain distinct by ID. Up to 128 Session, file, and folder references can be selected together and restored with the current Workspace draft. Click a tag to remove it, or press Backspace with an empty body to remove the last reference. Editing a queued message's body preserves reference metadata. References do not import history, send collaboration messages, or automatically read the source Session. Any actual read still uses the Agent's existing tools and permissions.
 
 Use the attachment action for files outside the Workspace. The first message accepts up to five files, each larger than zero and no larger than 5 MiB, with a combined limit of 10 MiB. Wait for every upload to complete before sending.
 

@@ -4,7 +4,7 @@ import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-servic
 import {
   serializeComposerTag,
   COMPOSER_SKILL_INSTRUCTION,
-  type ComposerFileReference
+  type ComposerReference
 } from '@myagentroam/protocol';
 
 export type { ComposerSkillToken } from '../model/workbench.js';
@@ -62,7 +62,7 @@ export function createComposerSkillTokenService(
 export function serializeComposerMessage(
   tokens: readonly ComposerSkillToken[],
   body: string,
-  references: readonly ComposerFileReference[] = []
+  references: readonly ComposerReference[] = []
 ): string {
   return [
     body,

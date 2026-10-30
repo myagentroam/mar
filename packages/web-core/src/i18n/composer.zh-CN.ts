@@ -99,6 +99,7 @@ export const composerZhCN = {
     skillUnavailableToken: '技能 {name} 已不可用，点击删除',
     removeSkill: '移除技能 {name}',
     removeFileReference: '移除文件引用 {name}',
+    removeSessionReference: '移除会话引用 {name}',
     skillUnavailable: '所选技能已不可用，请删除后重试。'
   },
   generated: {

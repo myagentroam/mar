@@ -16,6 +16,23 @@ const reference = serializeComposerTag('mar_references', {
   references: [{ type: 'file', path: 'src/main.ts', label: 'main.ts' }]
 });
 describe('Product resource input preparation', () => {
+  it('preserves session references while deriving paths only for files and directories', () => {
+    const session = { type: 'session' as const, sessionId: 'session-42', label: 'Review & <fix>' };
+    const input = serializeComposerTag('mar_references', {
+      references: [
+        session,
+        { type: 'file', path: 'src/main.ts', label: 'main.ts' },
+        { type: 'directory', path: 'test', label: 'test' }
+      ]
+    });
+    const parts = parseComposerTags(prepareComposerResourceInput(input, '/repo/subdir', '/repo'));
+    expect(parts.find((part) => part.kind === 'mar_references')?.payload.references).toEqual([
+      session,
+      { type: 'file', path: 'src/main.ts', label: 'main.ts', runnerPath: '../src/main.ts' },
+      { type: 'directory', path: 'test', label: 'test', runnerPath: '../test' }
+    ]);
+  });
+
   it('keeps the admitted origin beside Goal markup without retaining forwarded provenance', () => {
     const oldTag = serializeComposerTag('mar_session_origin', {
       sessionId: 'old',

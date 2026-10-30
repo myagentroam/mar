@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
+import type { ComposerReference } from '@myagentroam/protocol';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -14,6 +15,68 @@ function deferred<T>() {
 
 describe('Composer reference sources', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('selects session tags without inserting markup and deduplicates by typed identity', () => {
+    const input = ref('before @alphaSuffix after');
+    const service = createComposerReferenceService(input);
+    const edit = vi.fn((start: number, end: number, text: string) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      return true;
+    });
+    const select = (id: string) => {
+      service.update(10);
+      service.sessions.value = [{ id, customTitle: 'Alpha & <review>' }] as never;
+      return service.selectCandidate(service.candidates.value[0]!, edit);
+    };
+    expect(select('s1')).toBe(true);
+    expect(input.value).toBe('before  after');
+    expect(service.selected.value).toEqual([
+      { type: 'session', sessionId: 's1', label: 'Alpha & <review>' }
+    ]);
+    input.value = 'before @alphaSuffix after';
+    expect(select('s1')).toBe(true);
+    expect(service.selected.value).toHaveLength(1);
+    input.value = 'before @alphaSuffix after';
+    expect(select('s2')).toBe(true);
+    expect(service.selected.value).toHaveLength(2);
+    input.value = '@alpha';
+    service.update(6);
+    service.entries.value = [{ path: 's1', name: 's1', kind: 'FILE' }];
+    expect(service.selectCandidate(service.candidates.value[0]!, edit)).toBe(true);
+    service.remove('session:s1');
+    expect(service.selected.value).toEqual([
+      { type: 'session', sessionId: 's2', label: 'Alpha & <review>' },
+      { type: 'file', path: 's1', label: 's1' }
+    ]);
+    service.remove('file:s1');
+    expect(service.selected.value).toHaveLength(1);
+  });
+
+  it('keeps the trigger and selections when session selection fails or reaches the shared limit', () => {
+    const input = ref('@alpha');
+    const selected = ref<readonly ComposerReference[]>([
+      { type: 'file', path: 'src/main.ts', label: 'main.ts' }
+    ]);
+    const service = createComposerReferenceService(input, undefined, selected);
+    const candidate = () => {
+      service.update(input.value.length);
+      service.sessions.value = [{ id: 's1', customTitle: 'Alpha' }] as never;
+      return service.candidates.value[0]!;
+    };
+    expect(service.selectCandidate(candidate(), () => false)).toBe(false);
+    expect(input.value).toBe('@alpha');
+    expect(selected.value).toHaveLength(1);
+    selected.value = Array.from({ length: 128 }, (_, index) => ({
+      type: 'file',
+      path: `f${index}`,
+      label: `f${index}`
+    }));
+    const edit = vi.fn(() => true);
+    expect(service.selectCandidate(candidate(), edit)).toBe(false);
+    expect(edit).not.toHaveBeenCalled();
+    expect(service.open.value).toBe(true);
+    expect(selected.value).toHaveLength(128);
+  });
 
   it('without a session source keeps @session as a file query and never requests the session directory', async () => {
     vi.useFakeTimers();
