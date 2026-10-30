@@ -31,10 +31,15 @@ it('publishes default steer and opt-in queue guidance in the native send tool', 
     hooks: { intercept() {} }
   } as never);
   const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
-  expect(send.description).toContain('Messages default to REPLACE_CURRENT (steer)');
+  expect(send.description).toContain('Default to STEER.');
   expect(send.description).toContain(
-    'use QUEUE only when deferred delivery is explicitly requested'
+    'Use QUEUE only when the user or recipient explicitly requests deferred delivery'
   );
+  expect(send.description).toContain('Do not queue merely to avoid interrupting the recipient');
+  expect(send.inputSchema.properties.delivery.enum).toEqual(['STEER', 'QUEUE']);
+  expect(send.inputSchema.properties.delivery.description).toContain('Default to STEER');
+  expect(send.inputSchema.properties).not.toHaveProperty('deliveryIntent');
+  expect(JSON.stringify(send)).not.toContain('REPLACE_CURRENT');
   expect(send.description).toContain(
     'QUEUE is consumed only after current work and earlier queued inputs finish'
   );

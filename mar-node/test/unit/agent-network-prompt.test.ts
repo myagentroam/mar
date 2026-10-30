@@ -132,6 +132,17 @@ it.each([false, true])(
       expect(instructions).toContain('Explicitly wait when you need progress or completion.');
       expect(instructions).toContain('Reuse known Session IDs rather than rediscovering them.');
       expect(instructions).toContain(
+        'do not provide routine progress updates or acknowledgments unless requested'
+      );
+      expect(instructions).toContain(
+        'blockers, scope conflicts, or information that requires the parent to decide or change course'
+      );
+      expect(instructions).toContain('do not also send a duplicate completion message');
+      expect(instructions).toContain(
+        'Send updates only when requested or when the recipient needs to decide or change course'
+      );
+      expect(instructions).not.toContain('Send updates for meaningful progress');
+      expect(instructions).toContain(
         'combine related updates and avoid acknowledgment-only exchanges'
       );
       expect(instructions).not.toContain('subscribe');
@@ -144,6 +155,8 @@ it.each([false, true])(
       expect(JSON.stringify(request.tools)).toContain(
         'Model configuration ID; omit to use the target Runner default.'
       );
+      expect(JSON.stringify(request.tools)).not.toContain('REPLACE_CURRENT');
+      expect(JSON.stringify(request.tools)).not.toContain('deliveryIntent');
     }
     expect(test.invoke).not.toHaveBeenCalled();
   }
@@ -166,6 +179,12 @@ it('selects delegation and lateral guidance independently and omits both during 
       instructions.includes('# Workspace management')
     ]).toEqual(expected);
     expect(instructions.includes('Available subagent models:')).toBe(expected[0]);
+    for (const guidance of [
+      'do not provide routine progress updates or acknowledgments unless requested',
+      'do not also send a duplicate completion message'
+    ]) {
+      expect(instructions.split(guidance)).toHaveLength(expected[1] ? 2 : 1);
+    }
   }
   expect(test.requests).toHaveLength(1);
   expect(test.invoke).not.toHaveBeenCalled();
@@ -246,17 +265,21 @@ it.each([false, true])('defaults native messages to steer with Code Mode %s', as
   }
 });
 
-it.each([false, true])('preserves explicit send intents with Code Mode %s', async (codeMode) => {
-  for (const deliveryIntent of ['SEND', 'QUEUE', 'REPLACE_CURRENT']) {
-    const input = { agentId: 'child', content: 'Task update', deliveryIntent };
+it.each([false, true])('maps public delivery choices with Code Mode %s', async (codeMode) => {
+  for (const [delivery, deliveryIntent] of [
+    ['STEER', 'REPLACE_CURRENT'],
+    ['QUEUE', 'QUEUE']
+  ]) {
+    const input = { agentId: 'child', content: 'Task update', delivery };
     const test = await fixture(codeMode, { name: 'agent_send', input });
     expect(test.invoke).toHaveBeenCalledExactlyOnceWith(
       'execution',
       'send',
-      input,
+      { agentId: 'child', content: 'Task update', deliveryIntent },
       expect.anything(),
       expect.any(Function)
     );
+    expect(input).not.toHaveProperty('deliveryIntent');
     expect(test.failures).toEqual([]);
   }
 });
@@ -264,11 +287,35 @@ it.each([false, true])('preserves explicit send intents with Code Mode %s', asyn
 it.each([false, true])(
   'rejects malformed send input before invoking Node with Code Mode %s',
   async (codeMode) => {
-    const test = await fixture(codeMode, { name: 'agent_send', input: null });
-    expect(test.invoke).not.toHaveBeenCalled();
-    expect(test.failures).toEqual(
-      expect.arrayContaining([{ toolName: 'agent_send', code: 'MAR_AGENT_TOOL_INPUT_INVALID' }])
+    for (const input of [
+      null,
+      { agentId: 'child', content: 'Update', delivery: 'SEND' },
+      { agentId: 'child', content: 'Update', delivery: 'REPLACE_CURRENT' }
+    ]) {
+      const test = await fixture(codeMode, { name: 'agent_send', input });
+      expect(test.invoke).not.toHaveBeenCalled();
+      expect(test.failures).toEqual(
+        expect.arrayContaining([{ toolName: 'agent_send', code: 'MAR_AGENT_TOOL_INPUT_INVALID' }])
+      );
+    }
+  }
+);
+
+it.each([false, true])(
+  'does not interpret internal delivery fields supplied by a model with Code Mode %s',
+  async (codeMode) => {
+    const test = await fixture(codeMode, {
+      name: 'agent_send',
+      input: { agentId: 'child', content: 'Update', deliveryIntent: 'QUEUE' }
+    });
+    expect(test.invoke).toHaveBeenCalledExactlyOnceWith(
+      'execution',
+      'send',
+      { agentId: 'child', content: 'Update', deliveryIntent: 'REPLACE_CURRENT' },
+      expect.anything(),
+      expect.any(Function)
     );
+    expect(test.failures).toEqual([]);
   }
 );
 

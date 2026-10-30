@@ -499,7 +499,7 @@ describe('Node Agent Network owner integration', () => {
     {
       action: 'send' as const,
       nested: true,
-      input: { agentId: 'child', deliveryIntent: 'REPLACE_CURRENT', content: 'Review now' }
+      input: { agentId: 'child', delivery: 'STEER', content: 'Review now' }
     }
   ])(
     'projects real SDK $action events (nested=$nested) without leaking the result or image',
@@ -568,7 +568,9 @@ describe('Node Agent Network owner integration', () => {
         expect(invoke).toHaveBeenCalledWith(
           'execution',
           action,
-          input,
+          'delivery' in input
+            ? { agentId: input.agentId, content: input.content, deliveryIntent: 'REPLACE_CURRENT' }
+            : input,
           expect.anything(),
           expect.any(Function)
         );

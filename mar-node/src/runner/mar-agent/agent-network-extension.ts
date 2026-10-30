@@ -47,6 +47,9 @@ const goal = {
   ]
 } as const;
 
+const deliveryGuidance =
+  'Default to STEER. Use QUEUE only when the user or recipient explicitly requests deferred delivery. Do not queue merely to avoid interrupting the recipient or because the message is a report.';
+
 const tools: readonly {
   action: AgentNetworkAction;
   description: string;
@@ -75,8 +78,7 @@ const tools: readonly {
   },
   {
     action: 'send',
-    description:
-      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Messages default to REPLACE_CURRENT (steer); use QUEUE only when deferred delivery is explicitly requested. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.',
+    description: `Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. ${deliveryGuidance} QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.`,
     properties: {
       agentId: text,
       content: { type: 'string' },
@@ -89,11 +91,10 @@ const tools: readonly {
         required: ['approvalId', 'decision'],
         properties: { approvalId: text, decision: { type: 'string', enum: ['approve', 'reject'] } }
       },
-      deliveryIntent: {
+      delivery: {
         type: 'string',
-        enum: ['SEND', 'QUEUE', 'REPLACE_CURRENT'],
-        description:
-          'Message delivery defaults to REPLACE_CURRENT (steer); explicit SEND remains supported.'
+        enum: ['STEER', 'QUEUE'],
+        description: deliveryGuidance
       },
       clientMessageId: text
     },
@@ -161,7 +162,8 @@ const delegationPrompt = [
 const collaborationPrompt = [
   '# Workspace collaboration',
   "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Explicitly wait when you need progress or completion.",
-  "Reuse known Session IDs rather than rediscovering them. Send updates for meaningful progress, blockers, or changes that affect the recipient's work; combine related updates and avoid acknowledgment-only exchanges."
+  'Reuse known Session IDs rather than rediscovering them. Send updates only when requested or when the recipient needs to decide or change course; combine related updates and avoid acknowledgment-only exchanges.',
+  'For delegated work, do not provide routine progress updates or acknowledgments unless requested. Contact the parent before completion only when requested or for blockers, scope conflicts, or information that requires the parent to decide or change course. Return a concise final handoff; do not also send a duplicate completion message.'
 ].join('\n\n');
 
 const managementPrompt = [
@@ -243,14 +245,21 @@ export function agentNetworkExtension(
             const executionId = currentExecution();
             if (!executionId) throw new Error('AGENT_ACTOR_NOT_ACTIVE');
             const args = input as Record<string, unknown>;
-            const operationInput =
-              tool.action === 'send' &&
-              args.deliveryIntent === undefined &&
-              ((typeof args.content === 'string' && !!args.content.trim()) ||
+            let operationInput = args;
+            if (tool.action === 'send') {
+              const { delivery, ...sendInput } = args;
+              const hasMessage =
+                (typeof args.content === 'string' && !!args.content.trim()) ||
                 (Array.isArray(args.attachments) && args.attachments.length > 0) ||
-                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0))
-                ? { ...args, deliveryIntent: 'REPLACE_CURRENT' }
-                : args;
+                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0);
+              operationInput =
+                delivery !== undefined || hasMessage
+                  ? {
+                      ...sendInput,
+                      deliveryIntent: delivery === 'QUEUE' ? 'QUEUE' : 'REPLACE_CURRENT'
+                    }
+                  : sendInput;
+            }
             const onResolved: ResolvedTargets | undefined = call.publishEventData
               ? async (sessions) => {
                   const rows = sessions.map((session) => ({
