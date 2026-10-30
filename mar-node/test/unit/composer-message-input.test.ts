@@ -16,6 +16,23 @@ const reference = serializeComposerTag('mar_references', {
   references: [{ type: 'file', path: 'src/main.ts', label: 'main.ts' }]
 });
 describe('Product resource input preparation', () => {
+  it('preserves session references while deriving paths only for files and directories', () => {
+    const session = { type: 'session' as const, sessionId: 'session-42', label: 'Review & <fix>' };
+    const input = serializeComposerTag('mar_references', {
+      references: [
+        session,
+        { type: 'file', path: 'src/main.ts', label: 'main.ts' },
+        { type: 'directory', path: 'test', label: 'test' }
+      ]
+    });
+    const parts = parseComposerTags(prepareComposerResourceInput(input, '/repo/subdir', '/repo'));
+    expect(parts.find((part) => part.kind === 'mar_references')?.payload.references).toEqual([
+      session,
+      { type: 'file', path: 'src/main.ts', label: 'main.ts', runnerPath: '../src/main.ts' },
+      { type: 'directory', path: 'test', label: 'test', runnerPath: '../test' }
+    ]);
+  });
+
   it('keeps the admitted origin beside Goal markup without retaining forwarded provenance', () => {
     const oldTag = serializeComposerTag('mar_session_origin', {
       sessionId: 'old',
@@ -53,6 +70,19 @@ describe('Product resource input preparation', () => {
     });
     expect(marked.endsWith(unfinished)).toBe(true);
   });
+  it.each(['child', 'descendant'] as const)(
+    'preserves the admitted %s origin beside Goal markup',
+    (relation) => {
+      const origin = { sessionId: 'source', name: 'Source', relation };
+      const input = withSessionMessageOrigin('Report', origin, 'recipient-parent');
+      expect(parseComposerTags(input)).toMatchObject([
+        { kind: 'mar_session_origin', payload: origin },
+        { kind: 'text', text: '\nReport' }
+      ]);
+      expect(withSessionMessageOrigin('Reply', origin, 'source')).toContain('relation="parent"');
+    }
+  );
+
   it('rechecks effective Skill identity and preserves Node Home paths without reading content into input', async () => {
     const root = await mkdtemp(join(tmpdir(), 'composer-skill-'));
     const workspace = join(root, 'workspace');

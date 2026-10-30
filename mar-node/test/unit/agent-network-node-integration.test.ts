@@ -58,6 +58,7 @@ describe('Node Agent Network owner integration', () => {
         observations: network,
         target: async (_actor, id) => children.find((session) => session.id === id)!,
         authorize: async () => {},
+        validateSend: async () => {},
         observe: () => {},
         freezeExecution: (session) => ({
           agentId: session.id,
@@ -499,7 +500,7 @@ describe('Node Agent Network owner integration', () => {
     {
       action: 'send' as const,
       nested: true,
-      input: { agentId: 'child', deliveryIntent: 'REPLACE_CURRENT', content: 'Review now' }
+      input: { agentId: 'child', delivery: 'STEER', content: 'Review now' }
     }
   ])(
     'projects real SDK $action events (nested=$nested) without leaking the result or image',
@@ -568,7 +569,9 @@ describe('Node Agent Network owner integration', () => {
         expect(invoke).toHaveBeenCalledWith(
           'execution',
           action,
-          input,
+          'delivery' in input
+            ? { agentId: input.agentId, content: input.content, deliveryIntent: 'REPLACE_CURRENT' }
+            : input,
           expect.anything(),
           expect.any(Function)
         );
@@ -883,10 +886,10 @@ describe('Node Agent Network owner integration', () => {
         expect(core.continuousRunCoordinator.pending(executionId)?.sessionId).toBe(parent.id);
       }
       const context = { signal: new AbortController().signal } as ExtensionOperationContext;
-      await expect(
-        invoke(executionId, 'list', { scope: 'children' }, context)
-      ).resolves.toMatchObject({
-        sessions: []
+      await expect(invoke(executionId, 'list', {}, context)).resolves.toMatchObject({
+        currentAgentId: parent.id,
+        sessions: [{ id: parent.id, parentSessionId: null, status: 'RUNNING' }],
+        truncated: false
       });
       const abortedStart = new AbortController();
       const starting = invoke(executionId, 'start', { title: 'Child', content: 'must not start' }, {
@@ -1040,12 +1043,12 @@ describe('Node Agent Network owner integration', () => {
       const request = {
         workspaceId: workspace.id,
         action: 'list',
-        input: { scope: 'children' },
+        input: {},
         __requestUserId: 7,
         __marctlCaller: { type: 'execution', sessionId: callerSessionId, executionId }
       };
       expect(await command(request)).toMatchObject({
-        sessions: [expect.objectContaining({ id: created.agentId })]
+        sessions: expect.arrayContaining([expect.objectContaining({ id: created.agentId })])
       });
       await expect(command({ ...request, __requestUserId: 8 })).rejects.toThrow(
         'MARCTL_EXECUTION_CREDENTIAL_INVALID'
@@ -1068,15 +1071,18 @@ describe('Node Agent Network owner integration', () => {
         'SESSION_NOT_FOUND'
       );
       await expect(
-        command({ ...terminal, action: 'list', input: { scope: 'profile' } })
-      ).rejects.toThrow('RUNNER_REQUIRED');
+        command({ ...terminal, action: 'list', input: { scope: 'tree' } })
+      ).rejects.toThrow('AGENT_TARGET_REQUIRED');
       expect(
         await command({
           ...terminal,
           action: 'list',
-          input: { scope: 'children', agentId: parent.id }
+          input: { scope: 'active' }
         })
-      ).toMatchObject({ sessions: [expect.objectContaining({ id: created.agentId })] });
+      ).toMatchObject({
+        currentAgentId: null,
+        sessions: expect.arrayContaining([expect.objectContaining({ id: parent.id })])
+      });
       await expect(
         invoke('unknown-execution', 'send', { agentId: created.agentId, content: 'no' }, context)
       ).rejects.toThrow('AGENT_ACTOR_NOT_ACTIVE');
@@ -1098,9 +1104,9 @@ describe('Node Agent Network owner integration', () => {
       const childRun = core.runtime.activeSessionRun(created.agentId)!;
       await vi.waitFor(() => expect(core.runtime.currentExecutionId(childRun.id)).toBeTruthy());
       const childExecutionId = core.runtime.currentExecutionId(childRun.id)!;
-      await expect(
-        invoke(childExecutionId, 'list', { scope: 'children' }, context)
-      ).rejects.toThrow('AGENT_ACTOR_NOT_ACTIVE');
+      await expect(invoke(childExecutionId, 'list', {}, context)).rejects.toThrow(
+        'AGENT_ACTOR_NOT_ACTIVE'
+      );
       const childInvoke = agentNetworkInvoke({
         sessionId: created.agentId,
         runtime: core.runtime,
@@ -1348,9 +1354,9 @@ describe('Node Agent Network owner integration', () => {
         expect(response?.error).toBeUndefined();
         return response?.result as Record<string, unknown>;
       };
-      const profile = await request(
+      const listing = await request(
         'list',
-        { scope: 'profile', runner: 'mar-agent' },
+        { scope: 'tree' },
         {
           marAgentModels: [
             modelSummary,
@@ -1360,9 +1366,9 @@ describe('Node Agent Network owner integration', () => {
           ]
         }
       );
-      expect(profile.models).toEqual([expect.objectContaining({ id: 'eligible' })]);
-      expect(JSON.stringify(profile)).not.toContain('fixture-only');
-      expect(JSON.stringify(profile)).not.toContain('unauthorized');
+      expect(listing.sessions).toEqual([expect.objectContaining({ id: parent.id })]);
+      expect(JSON.stringify(listing)).not.toContain('fixture-only');
+      expect(JSON.stringify(listing)).not.toContain('unauthorized');
       const sessionsBefore = core.runtime.listAgentSessions();
       await expect(
         core.sessionLifecycleService.operations()['session.create']!({
@@ -1489,7 +1495,7 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it.each(['parent', 'sibling', 'independent'] as const)(
+  it.each(['parent', 'promoted-parent', 'grandparent', 'sibling', 'independent'] as const)(
     'uses normal native messaging, wait, Goal and stop for %s targets without a relationship grant',
     async (kind) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-upward-'));
@@ -1525,35 +1531,66 @@ describe('Node Agent Network owner integration', () => {
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
-        externalSessionId: 'idle-parent',
+        ...(kind === 'promoted-parent' ? {} : { externalSessionId: 'idle-parent' }),
         modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
+      const childParent =
+        kind === 'grandparent'
+          ? core.runtime.createAgentSession({
+              workspaceId: workspace.id,
+              runner: 'codex',
+              cwd: workspace.path,
+              externalSessionId: 'intermediate-parent',
+              parentSessionId: parent.id,
+              modelId: 'gpt-5.3-codex',
+              effort: 'medium',
+              nativeControl: 'MAR_MANAGED'
+            })
+          : parent;
       const child = core.runtime.createAgentSession({
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: 'active-child',
-        parentSessionId: parent.id,
+        parentSessionId: childParent.id,
         modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
-      const target =
-        kind === 'parent'
-          ? parent
-          : core.runtime.createAgentSession({
-              workspaceId: workspace.id,
-              runner: 'codex',
-              cwd: workspace.path,
-              externalSessionId: `target-${kind}`,
-              ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
-              modelId: 'gpt-5.3-codex',
-              effort: 'medium',
-              nativeControl: 'MAR_MANAGED'
-            });
+      const ancestorTarget =
+        kind === 'parent' || kind === 'promoted-parent' || kind === 'grandparent';
+      const target = ancestorTarget
+        ? kind === 'promoted-parent'
+          ? core.runtime.promoteSessionIdentity(parent.id, 'promoted-parent-native')
+          : parent
+        : core.runtime.createAgentSession({
+            workspaceId: workspace.id,
+            runner: 'codex',
+            cwd: workspace.path,
+            externalSessionId: `target-${kind}`,
+            ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
+            modelId: 'gpt-5.3-codex',
+            effort: 'medium',
+            nativeControl: 'MAR_MANAGED'
+          });
       const observer = core.agentNetworkObservations.attach(child.id);
+      let persistedParentLookup: ReturnType<typeof vi.spyOn> | undefined;
+      if (kind === 'grandparent') {
+        database.saveNativeSessionMetadata({
+          runner: childParent.runner,
+          externalSessionId: childParent.externalSessionId!,
+          workspaceId: workspace.id,
+          parentSessionId: parent.id,
+          initializeParent: true
+        });
+        expect(database.getSessionRecord(childParent.id)?.metadata.parentSessionId).toBe(parent.id);
+        const getAgentSession = core.runtime.getAgentSession.bind(core.runtime);
+        persistedParentLookup = vi
+          .spyOn(core.runtime, 'getAgentSession')
+          .mockImplementation((id) => (id === childParent.id ? undefined : getAgentSession(id)));
+      }
       try {
         await core.sessionMessageService.operations()['session.message']!({
           sessionId: child.id,
@@ -1584,6 +1621,48 @@ describe('Node Agent Network owner integration', () => {
           };
         });
         expect(core.agentNetworkObservations.get(target.id)).toBeUndefined();
+        if (ancestorTarget) {
+          for (const input of [
+            { content: 'report', deliveryIntent: 'SEND' },
+            { content: 'report', deliveryIntent: 'QUEUE' },
+            { content: 'report', deliveryIntent: 'REPLACE_CURRENT' },
+            { attachmentIds: ['image-only'] },
+            { goal: { objective: 'must not restart the ancestor' } }
+          ]) {
+            await expect(
+              invoke(executionId, 'send', { agentId: target.id, ...input }, context)
+            ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          }
+          expect(requests).toEqual([]);
+          expect(core.runtime.activeSessionRun(target.id)).toBeUndefined();
+          expect(await invoke(executionId, 'view', { agentId: target.id }, context)).toMatchObject({
+            goal: null
+          });
+          // A user may resume the ancestor; subsequent Agent messages are then accepted.
+          await core.sessionMessageService.operations()['session.message']!({
+            sessionId: target.id,
+            content: 'user resume',
+            clientMessageId: 'ancestor-user-resume',
+            __requestUserId: 7
+          });
+          const activeSessionRun = core.runtime.activeSessionRun.bind(core.runtime);
+          const cancelling = vi.spyOn(core.runtime, 'activeSessionRun').mockImplementation((id) => {
+            const run = activeSessionRun(id);
+            return id === target.id && run ? { ...run, status: 'CANCELLING' } : run;
+          });
+          try {
+            await expect(
+              invoke(
+                executionId,
+                'send',
+                { agentId: target.id, content: 'stopping report' },
+                context
+              )
+            ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          } finally {
+            cancelling.mockRestore();
+          }
+        }
         for (const deliveryIntent of ['SEND', 'QUEUE', 'REPLACE_CURRENT'] as const) {
           expect(
             await invoke(
@@ -1605,6 +1684,10 @@ describe('Node Agent Network owner integration', () => {
             deliveryIntent,
             __marctlOrigin: { sessionId: child.id }
           });
+          if (ancestorTarget)
+            expect(requests.at(-1)).toMatchObject({
+              __marctlOrigin: { relation: kind === 'grandparent' ? 'descendant' : 'child' }
+            });
         }
         expect(
           await invoke(
@@ -1629,7 +1712,17 @@ describe('Node Agent Network owner integration', () => {
             context
           )
         ).toMatchObject({ cancel: { status: 'accepted' }, goal: { status: 'cleared' } });
+        if (ancestorTarget) {
+          await vi.waitFor(() => expect(core.runtime.activeSessionRun(target.id)).toBeUndefined());
+          const delivered = requests.length;
+          await expect(
+            invoke(executionId, 'send', { agentId: target.id, content: 'late report' }, context)
+          ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          expect(requests).toHaveLength(delivered);
+          expect(core.runtime.activeSessionRun(target.id)).toBeUndefined();
+        }
       } finally {
+        persistedParentLookup?.mockRestore();
         observer.close();
         await connector.stop();
         await rm(directory, { recursive: true, force: true });

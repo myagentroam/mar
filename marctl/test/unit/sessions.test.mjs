@@ -59,10 +59,7 @@ test('maps six Agent operations to the common Node command without inventing a s
     0
   );
   assert.equal(await invoke(['stop', 'child', '--execution', 'exec-1']), 0);
-  assert.equal(
-    await invoke(['list', '--scope', 'descendants', '--agent', 'child', '--limit', '10']),
-    0
-  );
+  assert.equal(await invoke(['list', '--scope', 'active', '--query', 'Task', '--limit', '10']), 0);
   assert.equal(await invoke(['view', 'child', '--history', '--limit', '5']), 0);
   assert.deepEqual(
     calls.map((call) => call.command.operation),
@@ -78,7 +75,7 @@ test('maps six Agent operations to the common Node command without inventing a s
   assert.deepEqual(calls[2].command.input.agentIds, ['child', 'other']);
   assert.equal(calls[2].command.input.waitMs, 0);
   assert.equal(calls[3].command.input.executionId, 'exec-1');
-  assert.deepEqual(calls[4].command.input, { scope: 'descendants', agentId: 'child', limit: 10 });
+  assert.deepEqual(calls[4].command.input, { scope: 'active', query: 'Task', limit: 10 });
   assert.deepEqual(calls[5].command.input, { agentId: 'child', includeHistory: true, limit: 5 });
 });
 
@@ -621,7 +618,7 @@ test('updates model and effort independently and forwards startup effort', async
   assert.equal(JSON.parse(output).error.code, 'MARCTL_OUTCOME_UNKNOWN');
 });
 
-test('forwards parent and graph queries without assigning parents to sends or terminal-created Sessions', async () => {
+test('forwards tree and graph queries without assigning parents to sends or terminal-created Sessions', async () => {
   const calls = [];
   let output = '';
   const client = {
@@ -640,12 +637,12 @@ test('forwards parent and graph queries without assigning parents to sends or te
         }
       }
     });
-  assert.equal(await invoke(['list', '--parent', 'source', '--limit', '1']), 0);
+  assert.equal(await invoke(['list', '--scope', 'tree', '--limit', '1']), 0);
   assert.deepEqual(calls[0], {
     action: 'network',
     command: {
       operation: 'list',
-      input: { parent: 'source', limit: 1 }
+      input: { scope: 'tree', limit: 1 }
     }
   });
   assert.equal(await invoke(['graph', 'source', '--limit', '2']), 0);
@@ -829,7 +826,15 @@ test('wait preserves authorization failure and request IDs when its Watch renewa
   assert.equal(socket.closed, true);
 });
 test('parses closed Session commands including creation and rejects scope overrides', () => {
-  assert.equal(parseArgs(['agents', 'list', '--parent', 'source']).parentSessionId, 'source');
+  for (const flags of [
+    ['--parent', 'source'],
+    ['--agent', 'source'],
+    ['--runner', 'codex'],
+    ['--cursor', 'next'],
+    ...['children', 'descendants', 'workspace', 'profile'].map((scope) => ['--scope', scope])
+  ])
+    assert.throws(() => parseArgs(['agents', 'list', ...flags]));
+  assert.equal(parseArgs(['agents', 'list', '--scope', 'active']).scope, 'active');
   assert.equal(parseArgs(['agents', 'graph', 'source', '--limit', '2']).limit, 2);
   assert.equal(parseArgs(['agents', 'graph']).action, 'graph');
   for (const args of [['graph', 'source', '--limit', '101']])

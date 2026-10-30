@@ -20,7 +20,12 @@ export function withSessionMessageOrigin(
       ? parsed
       : {
           ...parsed,
-          relation: parsed.sessionId === parentSessionId ? ('parent' as const) : ('other' as const)
+          relation:
+            parsed.sessionId === parentSessionId
+              ? ('parent' as const)
+              : parsed.relation === 'child' || parsed.relation === 'descendant'
+                ? parsed.relation
+                : ('other' as const)
         };
   const tag = serializeComposerTag('mar_session_origin', snapshot);
   const parts = parseComposerTags(input);
@@ -64,10 +69,17 @@ export function prepareComposerResourceInput(
       if (part.kind === 'text') return part.text;
       if (part.kind !== 'mar_references') return part.raw;
       return serializeComposerTag('mar_references', {
-        references: part.payload.references.map((reference) => ({
-          ...reference,
-          runnerPath: relative(cwd, resolve(workspacePath, reference.path)).replaceAll('\\', '/')
-        }))
+        references: part.payload.references.map((reference) =>
+          reference.type === 'session'
+            ? reference
+            : {
+                ...reference,
+                runnerPath: relative(cwd, resolve(workspacePath, reference.path)).replaceAll(
+                  '\\',
+                  '/'
+                )
+              }
+        )
       });
     })
     .join('');

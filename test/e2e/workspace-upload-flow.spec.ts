@@ -207,7 +207,8 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       expect(failed.progress[0]).toBe(0);
       expect(failed.grants).toHaveLength(1);
       expect(failed.httpUploadCalls).toBe(0);
-      await page.getByRole('button', { name: 'Open notification center' }).click();
+      await page.getByRole('button', { name: 'Sessions & notifications' }).click();
+      await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
       const row = page.locator('.workbench-notification-upload');
       await expect(row).toContainText('resumed.bin');
       await expect(row.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
@@ -220,7 +221,8 @@ test('Workspace direct upload uses fresh Server grants, real Node offsets, expli
       expect(uploads.status(staged.uploadId).receivedBytes).toBe(resumeOffset);
       await page.evaluate(() => window.uploadFlow.dispose());
       await initialize();
-      await page.getByRole('button', { name: 'Open notification center' }).click();
+      await page.getByRole('button', { name: 'Sessions & notifications' }).click();
+      await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
       await expect(row).toContainText('resumed.bin');
       expect((await page.evaluate(() => window.uploadFlow.snapshot())).tasks[0]?.status).toBe(
         'INTERRUPTED'

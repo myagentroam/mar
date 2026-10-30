@@ -26,7 +26,7 @@ import {
 export interface WorkspaceCacheDraft {
   readonly input: string;
   readonly skillTokens: readonly ComposerSkillToken[];
-  readonly references?: readonly import('@myagentroam/protocol').ComposerFileReference[];
+  readonly references?: readonly import('@myagentroam/protocol').ComposerReference[];
   readonly runner: Session['runner'];
   readonly modelId: string;
   readonly effort: string;

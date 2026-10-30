@@ -135,7 +135,14 @@ Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Suba
 
 Node 原生 `agent_send` 携带正文或图片时，省略 `deliveryIntent` 默认使用 `REPLACE_CURRENT`（steer）；显式 `SEND` 保留既有语义，纯 Goal 更新或审批操作不受影响，公共消息接口和 CLI 的默认值不变。其他 Runner 使用 `marctl agents send <id> --steer -m <text>`。仅明确要延后处理时选择 `QUEUE` 或 `--queue`：输入要等当前工作和前面的队列项结束后才消费，有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
-原生 `agent_list` 默认列出当前会话的直接子会话；查询其他根的 `children` 或 `descendants` 时使用 `agentId`。发现未知会话使用 `workspace` 范围；原生工具不提供 `parent` 参数，marctl 的 Workspace 父会话筛选仍然保留。已知会话可直接复用其 ID。
+原生 `agent_list` 只接受 `scope`、可选标题片段 `query` 和 `limit`。省略 `scope` 或选择 `tree` 时，返回当前会话所在的协作树，包括已登记且获授权的根、祖先、同级及后代；空闲及已结束执行的会话也保留。选择 `active` 时，返回当前 Workspace 内正在运行或睡眠的会话，不把最近聊过、Goal 已启用或队列非空当作活跃。已知会话应直接复用其 ID，不按标题自动选址或派发。
+
+`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认及上限均为 100。结果为 `currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title`、`runner` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。树按根优先的层级顺序返回，活跃会话按最近活动时间倒序；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
+
+```js
+await tools.agent_list({});
+await tools.agent_list({ scope: 'active', query: 'review', limit: 20 });
+```
 
 `sleep({ durationMs })` 提供有界定时等待，时长必须为 1 至 1800000 的整数毫秒（最长 30 分钟）。已接受的用户补充或子 Agent 未读公开消息会提前唤醒；消息随后沿正常路径自动注入并标记已读，不会重复唤醒。它不会监测外部条件，也不会因进程或 cell 完成而唤醒；已有资源应使用对应的 wait。`sleep` 始终由模型直接调用，不可在 Code Mode cell 内调用。
 

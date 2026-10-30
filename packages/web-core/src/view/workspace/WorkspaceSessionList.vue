@@ -16,17 +16,12 @@ import { createMcpCenterService } from '../../service/mcp-center-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { errorMessage } from '../../util/error-presentation.js';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
 
 const props = defineProps<{
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
-  readonly groupState?: Record<
-    import('@myagentroam/protocol').SessionGroup,
-    { running: number; unread: boolean }
-  >;
   readonly sessions: readonly Session[];
   readonly selectedSessionId: string | undefined;
   readonly mobileViewport: boolean;
@@ -64,7 +59,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
-  activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
   openTree: [sessionId: string];
   create: [];
   open: [sessionId: string];
@@ -447,11 +441,9 @@ function submitSessionSearch(): void {
       </el-dropdown>
     </div>
     <SessionGroupTabs
-      v-if="sessionGroup && groupState"
+      v-if="sessionGroup"
       :model-value="sessionGroup"
-      :state="groupState"
       @update:model-value="emit('selectGroup', $event)"
-      @activate-marker="emit('activateGroupMarker', $event)"
     />
     <p v-if="watchStatus === 'loading'" class="watch-status">
       {{ translate('workspaceWatch.loadingSessions') }}
@@ -666,19 +658,21 @@ function submitSessionSearch(): void {
         :aria-busy="loadingMore"
       >
         <span
-          v-if="loadingMore"
+          v-if="loadingMore && !retryingAppend"
           role="status"
           :aria-label="translate('generated.workspaceSessionList.loading')"
           ><BusyIndicator class="read-loading-indicator"
         /></span>
-        <span v-if="loadMoreError !== undefined">{{ errorMessage(loadMoreError) }}</span>
         <el-button
-          v-if="loadMoreError !== undefined || retryingAppend"
+          v-if="retryingAppend || (loadMoreError !== undefined && !loadingMore)"
           link
           :aria-disabled="loadingMore"
+          :aria-busy="loadingMore"
+          :aria-label="loadingMore ? translate('common.loading') : undefined"
           @click="retryAppend"
         >
-          {{ translate('common.retry') }}
+          <BusyIndicator v-if="loadingMore" class="read-loading-indicator" />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
       </li>
     </ul>

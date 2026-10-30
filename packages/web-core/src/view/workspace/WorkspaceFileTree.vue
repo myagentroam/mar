@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import {
   visibleWorkspaceFileTreeRows,
   workspaceFileTreeWindow,
@@ -10,6 +9,7 @@ import {
 } from '../../service/workspace-file-tree-service.js';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import FileTypeIcon from './FileTypeIcon.vue';
+import { errorMessage } from '../../util/error-presentation.js';
 
 const props = defineProps<{
   readonly root: WorkspaceFileTreeNode;
@@ -74,6 +74,21 @@ const windowedRows = computed(() => {
     8
   );
   return { ...window, rows: rows.value.slice(window.start, window.end) };
+});
+watchEffect(() => {
+  if (props.disabled || props.filter.trim() !== '' || viewportHeight.value <= 0) return;
+  const start = Math.floor(scrollTop.value / rowHeight.value);
+  const end = Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value);
+  const boundary = rows.value
+    .slice(start, end)
+    .find(
+      (row) =>
+        row.loadMore &&
+        row.node.expanded &&
+        !row.node.loading &&
+        row.node.failedAppend === undefined
+    );
+  if (boundary) emit('loadMore', boundary.node);
 });
 const hasFilteredResult = computed(
   () => props.filter.trim().length === 0 || rows.value.some((row) => row.node.path !== '.')
@@ -373,6 +388,7 @@ defineExpose({ reveal });
             row.node.kind,
             row.node.expanded,
             row.node.loading,
+            row.node.failedAppend,
             row.depth,
             row.loadMore,
             selectedPath === row.node.path,
@@ -428,14 +444,7 @@ defineExpose({ reveal });
                 :class="{ expanded: row.node.expanded }"
               />
               <span v-else class="tree-chevron"></span>
-              <span
-                v-if="row.node.loading && !row.node.loaded"
-                class="tree-kind"
-                role="status"
-                :aria-label="translate('generated.workspaceFileTree.loading')"
-                ><MarIcon name="loading-action"
-              /></span>
-              <FileTypeIcon v-else class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
+              <FileTypeIcon class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
               <span class="tree-name">{{ row.node.name }}</span>
             </button>
             <el-dropdown
@@ -530,18 +539,31 @@ defineExpose({ reveal });
             </el-dropdown>
             <span v-else class="file-tree-more" aria-hidden="true"></span>
           </div>
-          <el-button
+          <div
             v-else
             class="file-tree-load-more utility-control"
-            link
-            :loading="row.node.loading"
-            :loading-icon="marIcon('loading-action')"
-            :disabled="disabled"
             :style="{ '--tree-depth': row.depth }"
-            @click="emit('loadMore', row.node)"
           >
-            {{ translate('generated.workspaceFileTree.loadMore') }}
-          </el-button>
+            <button
+              v-if="row.node.failedAppend !== undefined"
+              v-tooltip="!row.node.loading ? errorMessage(row.node.failure) : ''"
+              :aria-description="!row.node.loading ? errorMessage(row.node.failure) : undefined"
+              type="button"
+              :aria-disabled="row.node.loading || disabled"
+              :aria-busy="row.node.loading || undefined"
+              @click="!row.node.loading && !disabled && emit('loadMore', row.node)"
+            >
+              <template v-if="row.node.loading"
+                ><MarIcon name="loading-action" />
+                {{ translate('generated.workspaceInspector.loading') }}</template
+              >
+              <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+            </button>
+            <span v-else-if="row.node.loading" role="status"
+              ><MarIcon name="loading-action" />
+              {{ translate('generated.workspaceInspector.loading') }}</span
+            >
+          </div>
         </template>
       </div>
     </div>
@@ -711,13 +733,24 @@ defineExpose({ reveal });
   text-overflow: ellipsis;
 }
 
-.file-tree-load-more.el-button {
+.file-tree-load-more > button,
+.file-tree-load-more > span {
   display: flex;
-  justify-content: flex-start;
-  min-height: var(--mar-compact-row-size);
-  height: var(--mar-compact-row-size);
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   margin: 0;
-  padding: 4px 6px 4px calc(34px + var(--tree-depth) * 8px);
-  font-weight: 400;
+  padding: 0 6px 0 calc(34px + var(--tree-depth) * 8px);
+  text-align: left;
+}
+
+.file-tree-load-more > button {
+  cursor: pointer;
 }
 </style>

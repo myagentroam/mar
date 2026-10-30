@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
+const copied = ref('');
 
 function item(
   id: string,
@@ -70,7 +72,11 @@ const turns: ConversationTurn[] = [
             action: 'WAIT',
             targets: [
               { agentId: 'peer', sessionId: 'peer', title: 'Review the implementation' },
-              { agentId: 'other', sessionId: 'other', title: 'Check the final result' }
+              {
+                agentId: 'other',
+                sessionId: 'other',
+                title: `Check the final result ${'long task '.repeat(30)}END`
+              }
             ]
           },
           output: {
@@ -117,7 +123,14 @@ const turns: ConversationTurn[] = [
       :node-ready="false"
       :rewind-enabled="false"
       :rollback-enabled="false"
+      @copy="
+        (text, done) => {
+          copied = text;
+          done();
+        }
+      "
     />
+    <output data-testid="copied-record" hidden>{{ copied }}</output>
   </main>
 </template>
 

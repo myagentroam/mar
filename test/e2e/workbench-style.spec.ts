@@ -502,6 +502,86 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
+  test(`Git Changes retry and local automatic batches in ${theme}`, async ({ page }) => {
+    let reads = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let releaseFetch: (() => void) | undefined;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const entries = Array.from({ length: 205 }, (_, index) => ({
+      repositoryPath: '',
+      repositoryName: 'root',
+      source: 'ROOT',
+      path: `file-${index}.ts`,
+      state: 'UNSTAGED',
+      change: 'MODIFIED',
+      diffAvailable: true
+    }));
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/changes')) {
+        if (++reads === 1)
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+        else {
+          await gate;
+          await route.fulfill({
+            json: {
+              changes: entries,
+              repositories: [
+                {
+                  repositoryPath: '',
+                  repositoryName: 'root',
+                  source: 'ROOT',
+                  current: true,
+                  status: 'DIRTY',
+                  changes: entries
+                }
+              ]
+            }
+          });
+        }
+      } else if (path.endsWith('/git/fetch')) {
+        await fetchGate;
+        await route.fulfill({ json: { fetchFailed: false, updated: true } });
+      } else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.evaluate((element) => {
+      (element as HTMLElement).style.height = '360px';
+    });
+    await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+    const retry = inspector.locator('.change-append-state button');
+    await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
+    await expect(inspector.locator('.current-changes .empty')).toHaveCount(0);
+    await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    release?.();
+    const list = inspector.locator('.change-list');
+    await expect(list.locator('.change-path')).toHaveCount(200);
+    expect(reads).toBe(2);
+    releaseFetch?.();
+    await expect.poll(() => reads).toBe(3);
+    await expect(
+      inspector.getByRole('button', { name: 'Refresh Git changes', exact: true })
+    ).toBeEnabled();
+    await inspector.locator('.current-changes').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.locator('.change-path')).toHaveCount(205);
+    expect(reads).toBe(3);
+    await expect(inspector.getByRole('button', { name: 'Load more' })).toHaveCount(0);
+  });
+
   test(`Content search uses neutral row feedback without losing match emphasis in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -877,4 +957,284 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(terminal.getByRole('tab').first()).toBeHidden();
     });
   }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Files Watch and refresh share one visible loading feedback in ${theme}`, async ({
+    page
+  }) => {
+    let reads = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/files') && ++reads === 1) await gate;
+      await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&overlapping-watch=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await expect(inspector.locator('.watch-status')).toContainText('Loading…');
+    await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
+    await expect.poll(() => reads).toBe(1);
+    await expect(inspector.locator('.watch-status')).toHaveCount(1);
+    await expect(inspector.locator('.watch-status [data-mar-icon="loading-action"]')).toHaveCount(
+      1
+    );
+    await expect(
+      inspector
+        .getByRole('button', { name: 'Refresh files', exact: true })
+        .locator('[data-mar-icon="loading-action"]')
+    ).toHaveCount(0);
+    release?.();
+    await expect(inspector.locator('.watch-status')).toHaveCount(1);
+  });
+
+  test(`Files retry uses a muted busy state and retains focus in ${theme}`, async ({ page }) => {
+    let reads = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/files')) {
+        if (++reads === 1)
+          return route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+        await gate;
+      }
+      await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&file-root=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
+    const retry = inspector.locator('button.watch-status');
+    await expect(retry).toHaveClass(/failed/);
+    await retry.focus();
+    await retry.press('Enter');
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    await expect(retry).not.toHaveClass(/failed/);
+    const colors = await retry.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-text-muted)';
+      element.append(probe);
+      const value = [getComputedStyle(element).color, getComputedStyle(probe).color];
+      probe.remove();
+      return value;
+    });
+    expect(colors[0]).toBe(colors[1]);
+    release?.();
+    await expect(retry).toHaveCount(0);
+  });
+
+  test(`Git History auto-append and in-place failures in ${theme}`, async ({ page }) => {
+    let historyReads = 0;
+    let fileReads = 0;
+    let releaseHistory: (() => void) | undefined;
+    let releaseFiles: (() => void) | undefined;
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const filesGate = new Promise<void>((resolve) => {
+      releaseFiles = resolve;
+    });
+    const commit = (hash: string) => ({
+      hash,
+      parents: [],
+      subject: `subject ${hash}`,
+      authorName: 'Author',
+      authorEmail: 'a@example.test',
+      committedAt: 1,
+      refs: []
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/git/history')) {
+        historyReads += 1;
+        if (historyReads === 1 || historyReads === 3)
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+        else {
+          if (historyReads === 2) await historyGate;
+          await route.fulfill({
+            json: {
+              commits: [commit(historyReads === 2 ? 'first' : 'second')],
+              nextCursor: historyReads === 2 ? 'cursor' : null
+            }
+          });
+        }
+      } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
+        if (++fileReads === 1)
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+        else {
+          await filesGate;
+          await route.fulfill({ json: { files: [{ path: 'src/main.ts', change: 'MODIFIED' }] } });
+        }
+      } else if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
+      else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
+      else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
+      else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.evaluate((element) => {
+      (element as HTMLElement).style.height = '360px';
+    });
+    await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+    let retry = inspector.locator('button.history-load-more');
+    await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    releaseHistory?.();
+    await expect(inspector.locator('.history-list')).toContainText('subject first');
+    await expect(retry).toBeVisible();
+    await page.waitForTimeout(150);
+    expect(historyReads).toBe(3);
+    await retry.click();
+    await expect(inspector.locator('.history-list')).toContainText('subject second');
+    expect(historyReads).toBe(4);
+    await inspector.locator('.history-commit').filter({ hasText: 'subject first' }).click();
+    retry = inspector.locator('.history-files button');
+    await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    releaseFiles?.();
+    await expect(inspector.locator('.history-files')).toContainText('src');
+    await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
+    expect(fileReads).toBe(2);
+    await inspector
+      .locator('.inspector-tabs button')
+      .filter({ hasText: /^Search$/ })
+      .click();
+    await page.waitForTimeout(150);
+    expect(historyReads).toBe(4);
+    expect(fileReads).toBe(2);
+  });
+
+  test(`History refresh failure does not mislabel pending commit files in ${theme}`, async ({
+    page
+  }) => {
+    let historyReads = 0;
+    let filesStarted = false;
+    let releaseFiles: (() => void) | undefined;
+    const filesGate = new Promise<void>((resolve) => {
+      releaseFiles = resolve;
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/git/history')) {
+        if (++historyReads === 1)
+          await route.fulfill({
+            json: {
+              commits: [
+                {
+                  hash: 'old',
+                  parents: [],
+                  subject: 'old subject',
+                  authorName: 'Author',
+                  authorEmail: 'a@example.test',
+                  committedAt: 1,
+                  refs: []
+                }
+              ],
+              nextCursor: null
+            }
+          });
+        else
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+      } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
+        filesStarted = true;
+        await filesGate;
+        await route.fulfill({
+          json: { files: [{ path: 'still-readable.txt', change: 'MODIFIED' }] }
+        });
+      } else if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
+      else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
+      else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
+      else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+    await inspector.locator('.history-commit-row').filter({ hasText: 'old subject' }).click();
+    await expect.poll(() => filesStarted).toBe(true);
+    const files = inspector.locator('.history-files');
+    await expect(files.getByRole('status')).toContainText('Loading…');
+    await inspector.getByRole('button', { name: 'Refresh Git history', exact: true }).click();
+    await expect(inspector.locator('.history-load-more')).toContainText('Failed to load. Retry');
+    await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
+    await expect(files.getByRole('status')).toContainText('Loading…');
+    releaseFiles?.();
+    await expect(files).toContainText('still-readable.txt');
+    await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
+  });
+
+  test(`Content search failures retry without duplicate notices in ${theme}`, async ({ page }) => {
+    let searches = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      if (!route.request().url().includes('/content/search')) {
+        await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+      } else if (++searches === 2) {
+        await route.fulfill({
+          status: 503,
+          json: {
+            error: { code: 'NODE_OFFLINE', message: 'Node unavailable', requestId: 'test-request' }
+          }
+        });
+      } else {
+        if (searches === 3) await gate;
+        await route.fulfill({
+          json: {
+            search: {
+              matches: [
+                { path: 'src/main.ts', line: 2, column: 7, preview: 'const needle = true;' }
+              ],
+              truncated: false
+            }
+          }
+        });
+      }
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector
+      .locator('.inspector-tabs button')
+      .filter({ hasText: /^Search$/ })
+      .click();
+    const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
+    await input.fill('needle');
+    await input.press('Enter');
+    await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
+    await input.press('Enter');
+    const retry = inspector.locator('button.watch-status');
+    await expect(retry).toBeVisible();
+    await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
+    await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
+    await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    await expect(retry).not.toHaveClass(/failed/);
+    release?.();
+    await expect(retry).toHaveCount(0);
+    await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
+    expect(searches).toBe(3);
+  });
 }

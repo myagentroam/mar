@@ -34,9 +34,15 @@ test('File tree updates rendered rows, permissions and locale while keeping its 
     await expect(actions).not.toHaveAttribute('aria-label', englishLabel!);
     await expect(actions).toHaveAttribute('aria-label', /Renamed.ts/);
     await page.getByRole('button', { name: 'Toggle loading' }).click();
-    await expect(row.getByRole('status')).toBeVisible();
+    await tree.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(tree.locator('.file-tree-load-more [role="status"]')).toBeVisible();
     await page.getByRole('button', { name: 'Toggle loading' }).click();
-    await expect(row.getByRole('status')).toHaveCount(0);
+    await expect(tree.locator('.file-tree-load-more [role="status"]')).toHaveCount(0);
+    await tree.evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await page.getByRole('button', { name: 'Toggle mutations' }).click();
     await expect(row).toHaveAttribute('draggable', 'false');
     await page.getByRole('button', { name: 'Toggle mutations' }).click();

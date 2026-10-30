@@ -15,11 +15,3 @@ export function agentOperationTargets(payload: unknown) {
   if (typeof value?.subagentId !== 'string' || !value.subagentId) return [];
   return [{ agentId: value.subagentId }];
 }
-
-export function agentOperationIdentity(payload: unknown): string {
-  const operation = agentOperation(payload);
-  // Discovery and multi-target operations must not merge with a single Agent's controls.
-  if (operation?.action === 'LIST' || operation?.targetsTruncated) return '';
-  const targets = agentOperationTargets(payload);
-  return targets.length === 1 ? targets[0]!.agentId : '';
-}

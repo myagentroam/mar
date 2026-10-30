@@ -369,9 +369,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         >
           <WorkspaceSessionList
             :session-group="page.workspaceSessionGroup"
-            :group-state="page.workspaceSessionGroupState"
             @select-group="page.selectWorkspaceSessionGroup"
-            @activate-group-marker="page.activateWorkspaceSessionGroupMarker"
             @open-tree="openSessionTree"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
@@ -758,6 +756,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               :direct-git-file-read-range="page.directGitFileReadRange"
               :standalone-file-mode="page.standaloneFileMode"
               @directory="page.changeWorkspaceWatchDirectory"
+              @retry-watch="page.retryWorkspaceWatch"
               @branch="
                 (workspaceId, branch) =>
                   page.updateWorkspaceBranch(

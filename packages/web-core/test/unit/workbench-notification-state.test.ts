@@ -171,76 +171,6 @@ describe('Workspace session unread queries', () => {
     expect(state.hasUnreadSession('node', 'one:workspace', 'session-1')).toBe(false);
   });
 
-  it('derives group unread flags from Server notifications and counts distinct active sessions', async () => {
-    const entries: WorkbenchNotification[] = [
-      { ...notification('main-unread', 'main-session'), source: 'server' },
-      {
-        ...notification('child-unread', 'child-session'),
-        source: 'server',
-        target: { ...notification('child-unread').target, sessionGroup: 'CHILD' }
-      },
-      {
-        ...notification('read-child', 'read-child'),
-        source: 'server',
-        read: true,
-        target: { ...notification('read-child').target, sessionGroup: 'CHILD' }
-      },
-      {
-        ...notification('expired-child', 'expired-child'),
-        source: 'server',
-        expiresAt: Date.now(),
-        target: { ...notification('expired-child').target, sessionGroup: 'CHILD' }
-      },
-      { ...hostedNotification('hosted'), source: 'server' },
-      {
-        ...notification('local-child'),
-        source: 'local',
-        kind: 'upload',
-        target: { nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'local-child' }
-      },
-      {
-        ...notification('other-workspace'),
-        source: 'server',
-        target: {
-          ...notification('other-workspace').target,
-          workspaceId: 'workspace-2',
-          sessionGroup: 'CHILD'
-        }
-      }
-    ];
-    const mainRun = { ...workspaceRun(), runId: 'main-run', sessionId: 'main-session' };
-    const recentRuns: RecentRun[] = [
-      mainRun,
-      { ...mainRun, runId: 'main-run-2' },
-      { ...workspaceRun('CANCELLING'), runId: 'legacy-run', sessionId: 'legacy-session' },
-      {
-        ...workspaceRun(),
-        runId: 'child-run',
-        sessionId: 'child-session',
-        sessionGroup: 'CHILD'
-      },
-      { ...workspaceRun('SUCCEEDED'), runId: 'terminal-run', sessionGroup: 'CHILD' },
-      { ...workspaceRun(), runId: 'other-node', nodeId: 'node-2', sessionGroup: 'CHILD' },
-      {
-        ...workspaceRun(),
-        runId: 'other-workspace',
-        workspaceId: 'workspace-2',
-        sessionGroup: 'CHILD'
-      }
-    ];
-    const request = vi.fn(async () => ({ notifications: [], recentRuns }));
-    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
-      request: request as never
-    });
-    await state.load();
-    state.notifications.value = entries;
-
-    expect(state.sessionGroupState('node-1', 'workspace-1')).toEqual({
-      MAIN: { running: 2, unread: true },
-      CHILD: { running: 1, unread: true }
-    });
-  });
-
   it.each([false, true])(
     'keeps a session unread until its last unread notification expires without a refresh: reversed=%s',
     (reversed) => {
@@ -841,7 +771,7 @@ describe('Web Workbench notification state', () => {
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
   });
 
-  it('chooses unread sessions once each before active tasks in the existing order', async () => {
+  it('chooses remaining unread sessions in order without falling back to active tasks', async () => {
     const f = recoveryFixture([
       { ...notification('expired'), expiresAt: Date.now() },
       { ...notification('already-read'), read: true },
@@ -858,58 +788,10 @@ describe('Web Workbench notification state', () => {
     expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('second');
     expect(f.state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
     await f.state.markSessionRead('node-1', 'workspace-1', 'second');
-    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('session-1');
+    expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
-  it('selects group marker targets with unread priority and workspace scope', async () => {
-    const f = recoveryFixture([
-      {
-        ...notification('child', 'child-unread'),
-        target: { ...notification('child', 'child-unread').target!, sessionGroup: 'CHILD' }
-      },
-      notification('main', 'main-unread')
-    ]);
-    f.server.recentRuns = [
-      { ...workspaceRun(), sessionId: 'main-active' },
-      { ...workspaceRun(), sessionId: 'child-active', sessionGroup: 'CHILD' },
-      { ...workspaceRun(), nodeId: 'node-2', sessionId: 'other', sessionGroup: 'CHILD' }
-    ];
-    await f.state.load();
-    expect(f.state.sessionGroupTarget('CHILD')?.sessionId).toBe('child-unread');
-    expect(
-      f.state.sessionGroupTarget('MAIN', { nodeId: 'node-1', workspaceId: 'workspace-1' })
-        ?.sessionId
-    ).toBe('main-unread');
-    expect(
-      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-2', workspaceId: 'workspace-1' })
-        ?.sessionId
-    ).toBe('other');
-    await f.state.markSessionRead('node-1', 'workspace-1', 'child-unread');
-    expect(
-      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-1', workspaceId: 'workspace-1' })
-        ?.sessionId
-    ).toBe('child-active');
-    expect(
-      f.state.sessionGroupTarget('MAIN', {
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        lastSessionId: 'main-active'
-      })?.sessionId
-    ).toBe('main-unread');
-    await f.state.markSessionRead('node-1', 'workspace-1', 'main-unread');
-    expect(
-      f.state.sessionGroupTarget('MAIN', {
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        lastSessionId: 'main-active'
-      })?.sessionId
-    ).toBe('main-active');
-    expect(
-      f.state.sessionGroupTarget('CHILD', { nodeId: 'node-3', workspaceId: 'workspace-1' })
-    ).toBeUndefined();
-  });
-
-  it('chooses same-identity active Run sessions and follows authoritative terminal changes', async () => {
+  it('keeps active Run signals without treating them as navigation targets', async () => {
     let recentRuns = [
       { ...workspaceRun('SUCCEEDED'), runId: 'terminal', sortAt: 500 },
       { ...workspaceRun(), nodeId: 'node-2', runId: 'other-node', sortAt: 400 },
@@ -935,19 +817,21 @@ describe('Web Workbench notification state', () => {
       request: request as never
     });
     await state.load();
-    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('first-session');
+    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     recentRuns = recentRuns.map((run) =>
       run.sessionId === 'first-session' ? { ...run, status: 'SUCCEEDED' as const } : run
     );
     await state.load();
-    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBe('second-session');
+    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     recentRuns = [];
     await state.load();
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
   it.each(['STARTING', 'RUNNING', 'CANCELLING'] as const)(
-    'keeps the last session with a %s Run unless an unread session takes priority',
+    'does not choose a %s Run without unread notifications',
     async (status) => {
       const f = recoveryFixture([]);
       f.server.recentRuns = [
@@ -955,22 +839,22 @@ describe('Web Workbench notification state', () => {
         { ...workspaceRun(status), runId: 'last', sessionId: 'last', sortAt: 100 }
       ];
       await f.state.load();
-      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('last');
-      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'idle')).toBe('newer');
-      expect(f.state.workspaceTabSession('node-2', 'workspace-1', 'last')).toBeUndefined();
-      expect(f.state.workspaceTabSession('node-1', 'workspace-2', 'last')).toBeUndefined();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
+      expect(f.state.workspaceTabSession('node-2', 'workspace-1')).toBeUndefined();
+      expect(f.state.workspaceTabSession('node-1', 'workspace-2')).toBeUndefined();
 
       f.server.entries = [notification('unread', 'unread-session')];
       await f.state.load();
-      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('unread-session');
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBe('unread-session');
       await f.state.markSessionRead('node-1', 'workspace-1', 'unread-session');
-      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('last');
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
 
       f.server.recentRuns = f.server.recentRuns.map((run) =>
         run.sessionId === 'last' ? { ...run, status: 'SUCCEEDED' as const } : run
       );
       await f.state.load();
-      expect(f.state.workspaceTabSession('node-1', 'workspace-1', 'last')).toBe('newer');
+      expect(f.state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     }
   );
 

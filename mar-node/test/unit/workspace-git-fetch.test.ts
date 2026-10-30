@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceChangeService } from '../../src/workspace/workspace-change-service.js';
-import { fetchGitRepository } from '../../src/workspace/git.js';
+import { fetchGitRepository, readGitRefsSnapshot } from '../../src/workspace/git.js';
 import type { NodeWorkspace } from '../../src/workspace/contracts.js';
 import { GitExecutionService } from '../../src/service/git-execution-service.js';
 import { GitOperationService } from '../../src/service/git-operation-service.js';
@@ -17,6 +17,8 @@ import {
 } from './support/git-test-server.js';
 
 const execFile = promisify(execFileCallback);
+// Real Git and personal-credential helpers perform multiple bounded operations per fixture.
+vi.setConfig({ testTimeout: 30_000 });
 const directories: string[] = [];
 async function git(path: string, ...args: string[]): Promise<string> {
   return (
@@ -105,19 +107,22 @@ describe('Workspace Git fetch', () => {
           },
           () => service.fetch(workspace)
         );
-      expect(await fetchAs(101, 'user-a', secretA)).toEqual({ fetchFailed: false });
+      expect(await fetchAs(101, 'user-a', secretA)).toEqual({ fetchFailed: false, updated: true });
       expect(await git(workspace.path, 'rev-parse', 'origin/main')).toBe(
         await git(join(server.root, 'repositories', 'team', 'fetch.git'), 'rev-parse', 'HEAD')
       );
       const attemptStart = server.attemptsFor('team/fetch').length;
-      expect(await fetchAs(202, 'user-b', randomSecret())).toEqual({ fetchFailed: true });
+      expect(await fetchAs(202, 'user-b', randomSecret())).toEqual({
+        fetchFailed: true,
+        updated: false
+      });
       const attempts = server.attemptsFor('team/fetch').slice(attemptStart);
       expect(attempts.some((attempt) => attempt.username === 'user-b')).toBe(true);
       expect(
         attempts.some((attempt) => attempt.username === 'user-a' || attempt.authenticated)
       ).toBe(false);
       await expect(service.current(workspace)).resolves.toMatchObject({ workspace });
-      expect(await fetchAs(202, 'user-b', secretB)).toEqual({ fetchFailed: false });
+      expect(await fetchAs(202, 'user-b', secretB)).toEqual({ fetchFailed: false, updated: false });
       expect(await git(workspace.path, 'rev-parse', 'HEAD')).toBe(head);
     } finally {
       await execution.close();
@@ -214,7 +219,7 @@ describe('Workspace Git fetch', () => {
     await writeFile(join(child, 'sample.txt'), 'remote child\n');
     await git(child, 'commit', '-am', 'remote child');
     const head = await git(workspace.path, 'rev-parse', 'HEAD');
-    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false });
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: true });
     const result = (await service.current(workspace)) as {
       repositories: { repositoryPath: string; source: string; tracking?: { behind: number } }[];
     };
@@ -238,22 +243,59 @@ describe('Workspace Git fetch', () => {
     await writeFile(join(child, 'sample.txt'), 'child update\n');
     await git(child, 'commit', '-am', 'child update');
     await git(workspace.path, 'remote', 'set-url', 'origin', join(directory, 'missing'));
-    expect(await service.fetch(workspace, 'child')).toEqual({ fetchFailed: false });
+    expect(await service.fetch(workspace, 'child')).toEqual({ fetchFailed: false, updated: true });
     expect(
       await git(join(workspace.path, 'child'), 'rev-list', '--count', 'HEAD..origin/main')
     ).toBe('1');
     await expect(service.fetch(workspace, '../outside')).rejects.toThrow('GIT_REPOSITORY_INVALID');
   });
 
-  it('returns only a failure flag while local Changes remain readable', async () => {
+  it('reports unchanged refs while local Changes remain readable after failure or with no remote', async () => {
     const { directory, workspace, service } = await fixture();
     await git(workspace.path, 'remote', 'set-url', 'origin', join(directory, 'missing'));
-    expect(await service.fetch(workspace)).toEqual({ fetchFailed: true });
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: true, updated: false });
     await expect(service.current(workspace)).resolves.toMatchObject({
       branch: 'main',
       changes: []
     });
     await git(workspace.path, 'remote', 'remove', 'origin');
-    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false });
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: false });
+  });
+
+  it('compares refs snapshots independently of loose or packed storage and preserves unknown results', async () => {
+    const { workspace } = await fixture();
+    const before = await readGitRefsSnapshot(workspace.path, 2_000);
+    expect(before?.toString('utf8')).toContain('refs/remotes/origin/HEAD');
+    await git(workspace.path, 'pack-refs', '--all');
+    expect(await readGitRefsSnapshot(workspace.path, 2_000)).toEqual(before);
+    expect(await readGitRefsSnapshot(workspace.path, 0)).toBeUndefined();
+  });
+
+  it('distinguishes unchanged refs, new tags and updated remote branches', async () => {
+    const { source, workspace, service } = await fixture();
+    const cached = await service.current(workspace);
+    const reads = vi.spyOn(service, 'current');
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: false });
+    expect(await reads.mock.results[0]!.value).toBe(cached);
+    reads.mockRestore();
+    await git(source, 'tag', 'new-tag');
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: true });
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: false });
+    await writeFile(join(source, 'sample.txt'), 'remote update\n');
+    await git(source, 'commit', '-am', 'remote update');
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: true });
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: false, updated: false });
+  });
+
+  it('reports updated refs even when another remote fails', async () => {
+    const { directory, source, workspace, service } = await fixture();
+    await writeFile(join(source, 'sample.txt'), 'remote update\n');
+    await git(source, 'commit', '-am', 'remote update');
+    await git(workspace.path, 'remote', 'add', 'broken', join(directory, 'missing'));
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: true, updated: true });
+    expect(await git(workspace.path, 'rev-parse', 'origin/main')).toBe(
+      await git(source, 'rev-parse', 'HEAD')
+    );
+    expect(await service.fetch(workspace)).toEqual({ fetchFailed: true, updated: false });
   });
 });

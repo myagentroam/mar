@@ -20,6 +20,7 @@ for (const crossNode of [false, true]) {
     page
   }, testInfo) => {
     test.setTimeout(90_000);
+    await page.clock.install();
     const root = await mkdtemp(join(tmpdir(), 'mar-git-target-isolation-'));
     const targets = [
       { nodeId: 'node-a', workspaceId: 'workspace-a' },
@@ -219,6 +220,7 @@ for (const crossNode of [false, true]) {
       await page.getByRole('button', { name: 'Refresh Git history', exact: true }).click();
       await expect(fetchNotice).toHaveCount(0);
       await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await page.clock.fastForward(30_000);
       await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
       await expect(page.locator('.changes-refresh-button')).not.toBeDisabled();
       await expect(fetchNotice).toHaveCount(0);

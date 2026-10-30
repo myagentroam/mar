@@ -67,6 +67,13 @@ describe('shared MAR icons', () => {
     expect(iconShapes['session-tree']).not.toEqual(iconShapes.copy);
   });
 
+  it('renders a separate back card behind the recent-session content strokes', async () => {
+    const html = await renderToString(createSSRApp(MarIcon, { name: 'recent-sessions', size: 24 }));
+    expect(html.match(/<rect\b/g)).toHaveLength(1);
+    expect(html.match(/<path\b/g)).toHaveLength(2);
+    expect(html).not.toContain('mar-icon--spinning');
+  });
+
   it('keeps a disconnected Node distinct from connection actions', async () => {
     expect(iconShapes['connection-off']).toEqual(expect.any(String));
     expect(iconShapes['connection-off']).not.toEqual(iconShapes.connection);

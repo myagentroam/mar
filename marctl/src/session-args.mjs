@@ -4,7 +4,7 @@ import { sessionTarget } from './session-target.mjs';
 
 const commands = {
   current: [],
-  list: ['cursor', 'limit', 'query', 'parent', 'scope', 'agent', 'runner'],
+  list: ['scope', 'query', 'limit'],
   graph: ['limit'],
   show: [],
   view: ['cursor', 'limit', 'history'],
@@ -211,11 +211,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
   if (args.waitFor !== undefined && !['message', 'completion'].includes(args.waitFor))
     throw invalid();
   if (args.mode !== undefined && !['any', 'all'].includes(args.mode)) throw invalid();
-  if (
-    args.scope !== undefined &&
-    !['children', 'descendants', 'workspace', 'profile'].includes(args.scope)
-  )
-    throw invalid();
+  if (args.scope !== undefined && !['tree', 'active'].includes(args.scope)) throw invalid();
   if (
     action === 'approval.decide' &&
     (!args.runId || !args.approvalId || !['approve', 'reject'].includes(args.decision))

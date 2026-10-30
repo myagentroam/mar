@@ -4,7 +4,7 @@ import { agentOperationTargets } from '../../src/util/agent-operation-presentati
 import {
   conversationDisplayItems,
   conversationItemDetail,
-  subagentGroupText,
+  conversationItemText,
   subagentOperationText
 } from '../../src/util/conversation-presentation.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -16,7 +16,7 @@ function item(id: string, payload: object): ConversationItem {
 }
 
 describe('Agent operation presentation', () => {
-  it('groups a single target, but keeps multi-target waits and discovery independent', () => {
+  it('groups all operations in one process regardless of targets and discovery', () => {
     const items = [
       item('start', {
         toolName: 'agent_start',
@@ -47,14 +47,11 @@ describe('Agent operation presentation', () => {
       })
     ];
     const groups = conversationDisplayItems(items);
-    expect(groups.map((group) => group.type)).toEqual([
-      'subagent_group',
-      'subagent_group',
-      'subagent_group'
-    ]);
-    expect(groups[0]).toMatchObject({ items: [{ id: 'start' }, { id: 'send' }] });
-    expect(subagentGroupText(items.slice(0, 2))).toBe('Inspect changes');
-    expect(groups[1]).toMatchObject({ items: [{ id: 'wait-many' }] });
+    expect(groups).toMatchObject([{ type: 'subagent_group', id: 'start', items }]);
+    expect(conversationItemText('tool_call', items[0]!.payload)).toBe(
+      'agent_start Inspect changes'
+    );
+    expect(conversationItemText('tool_call', items[1]!.payload)).toBe('agent_send');
     expect(agentOperationTargets(items[2]!.payload)).toEqual([
       { agentId: 'peer', sessionId: 'peer' },
       { agentId: 'other', sessionId: 'other' }
@@ -74,13 +71,70 @@ describe('Agent operation presentation', () => {
       });
       expect(conversationDisplayItems([entry])[0]?.type).toBe('subagent_group');
       expect(agentOperationTargets(entry.payload)).toEqual([{ agentId: 'native-id' }]);
-      expect(subagentGroupText([entry])).toBe('Native task');
+      expect(conversationItemText('tool_call', entry.payload)).toBe(`${toolName} Native task`);
     }
     const entry = item('failed', {
       toolName: 'agent_send',
       agentOperation: { action: 'SEND', targets: [{ agentId: 'input-only' }] }
     });
     expect(agentOperationTargets(entry.payload)).toEqual([{ agentId: 'input-only' }]);
+  });
+
+  it('preserves independent calls and boundaries across processes and segments', () => {
+    const calls = [
+      item('first', { toolName: 'agent_start', agentOperation: { action: 'START', targets: [] } }),
+      {
+        ...item('failed', {
+          toolName: 'agent_send',
+          agentOperation: { action: 'SEND', targets: [{ agentId: 'unknown' }] }
+        }),
+        status: 'FAILED' as const
+      },
+      item('truncated', {
+        toolName: 'agent_wait',
+        agentOperation: {
+          action: 'WAIT',
+          targetsTruncated: true,
+          targets: [
+            { agentId: 'a', title: 'First' },
+            { agentId: 'b', title: 'Second' }
+          ]
+        }
+      }),
+      item('legacy', { toolName: 'Task', subagentOperation: 'STATUS', title: 'Task' }),
+      item('list', {
+        toolName: 'agent_list',
+        agentOperation: { action: 'LIST', scope: 'profile', targets: [] }
+      })
+    ];
+    const next = {
+      ...item('next', { toolName: 'agent_wait', subagentOperation: 'STATUS' }),
+      processGroup: { id: 'next-process' }
+    };
+    const groups = conversationDisplayItems([...calls, next]);
+    expect(groups).toMatchObject([
+      { type: 'subagent_group', id: 'first', items: calls },
+      { type: 'subagent_group', id: 'next', items: [next] }
+    ]);
+    expect(conversationItemText('tool_call', calls[1]!.payload)).toBe('agent_send');
+    expect(conversationItemText('tool_call', calls[2]!.payload)).toBe('agent_wait First, Second');
+    expect(conversationItemText('tool_call', calls[3]!.payload)).toBe('Task');
+    expect(conversationItemText('tool_call', calls[4]!.payload)).toBe('agent_list');
+    expect(calls.map((call) => call.status)).toEqual([
+      'COMPLETED',
+      'FAILED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED'
+    ]);
+    localePreferenceService().setLocale('zh-CN');
+    expect(
+      conversationItemText('tool_call', {
+        toolName: 'task',
+        subagentOperation: 'START',
+        title: 'Image generated'
+      })
+    ).toBe('task Image generated');
   });
 
   it('renders original Tool, identities, output and error in the shared detail surface', () => {
@@ -108,4 +162,22 @@ describe('Agent operation presentation', () => {
     expect(detail).toContain('Truncated');
     expect(detail).toContain('timeout, target still running');
   });
+
+  it.each(['zh-CN', 'en-US'] as const)(
+    'keeps empty list results beside the actual query and pagination in %s',
+    (language) => {
+      localePreferenceService().setLocale(language);
+      const input = { scope: 'workspace', query: '活跃', limit: 10, cursor: 'next-page' };
+      const payload = {
+        toolName: 'agent_list',
+        inputSummary: JSON.stringify(input),
+        agentOperation: { action: 'LIST', scope: 'workspace', targets: [] },
+        output: { blocks: [{ channel: 'TEXT', text: '{"count":0}' }] }
+      };
+      const detail = conversationItemDetail('tool_call', payload);
+      expect(detail).toContain('agent_list');
+      expect(detail).toContain(JSON.stringify(input));
+      expect(detail).toContain('{"count":0}');
+    }
+  );
 });

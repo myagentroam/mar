@@ -6,6 +6,7 @@ import { nodeLog } from '../operational.js';
 import {
   GitCommandError,
   fetchGitRepository,
+  readGitRefsSnapshot,
   isWorkspaceChangeVisible,
   listGitWorktrees,
   listGitSubmodules,
@@ -57,7 +58,7 @@ export class WorkspaceChangeService {
   async fetch(
     workspace: NodeWorkspace,
     repositoryPath?: string
-  ): Promise<{ fetchFailed: boolean }> {
+  ): Promise<{ fetchFailed: boolean; updated: boolean }> {
     if (workspace.kind !== 'GIT_WORKSPACE') throw new Error('WORKSPACE_NOT_GIT');
     const root = await resolveWorkspaceGitRoot(
       workspace.path,
@@ -69,7 +70,6 @@ export class WorkspaceChangeService {
     let paths: readonly string[];
     if (selected !== undefined) paths = [repositoryPath!];
     else {
-      this.invalidate(workspace.id);
       const current = (await this.current(workspace)) as {
         repositories: readonly { repositoryPath: string; source: string; status: string }[];
       };
@@ -82,17 +82,24 @@ export class WorkspaceChangeService {
     try {
       const results = await mapWithConcurrency(paths, REPOSITORY_READ_CONCURRENCY, async (path) => {
         try {
-          if (performance.now() >= deadline) return false;
+          if (performance.now() >= deadline) return { success: false, updated: false };
           const repository = selected ?? (await resolveGitRepository(root, path));
-          return await fetchGitRepository(
-            repository,
-            Math.max(0, Math.floor(deadline - performance.now()))
-          );
+          const remaining = () => Math.max(0, Math.floor(deadline - performance.now()));
+          const before = await readGitRefsSnapshot(repository, remaining());
+          const success = await fetchGitRepository(repository, remaining());
+          const after = await readGitRefsSnapshot(repository, remaining());
+          return {
+            success,
+            updated: before === undefined || after === undefined || !before.equals(after)
+          };
         } catch {
-          return false;
+          return { success: false, updated: false };
         }
       });
-      return { fetchFailed: results.some((success) => !success) };
+      return {
+        fetchFailed: results.some((result) => !result.success),
+        updated: results.some((result) => result.updated)
+      };
     } finally {
       // Fetch is request/user scoped, never coalesced with another user's credentials.
       // Invalidate even after partial failure: some remotes may already have advanced.

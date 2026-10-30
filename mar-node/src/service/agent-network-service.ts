@@ -36,13 +36,9 @@ export interface AgentNetworkActor {
 }
 
 export interface AgentNetworkListInput {
-  readonly scope?: 'workspace' | 'children' | 'descendants' | 'profile';
-  readonly agentId?: string;
-  readonly parent?: string;
-  readonly runner?: string;
+  readonly scope?: 'tree' | 'active';
   readonly query?: string;
   readonly limit?: number;
-  readonly cursor?: string;
 }
 
 interface AgentNetworkServiceOptions {
@@ -54,6 +50,7 @@ interface AgentNetworkServiceOptions {
     session: NodeAgentSession,
     operation: 'send' | 'goal' | 'stop' | 'wait'
   ) => Promise<void>;
+  readonly validateSend: (actor: AgentNetworkActor, session: NodeAgentSession) => Promise<void>;
   readonly children: (actor: AgentNetworkActor) => Promise<readonly NodeAgentSession[]>;
   /** Ensure the caller's automatic channel exists, only for a verified direct child. */
   readonly observe: (actor: AgentNetworkActor, session: NodeAgentSession) => void;
@@ -276,6 +273,7 @@ export class AgentNetworkService {
     signal?.throwIfAborted();
     if (hasMessage) await this.options.authorize(actor, session, 'send');
     if (goal.kind !== 'unchanged') await this.options.authorize(actor, session, 'goal');
+    if (hasMessage || goal.kind === 'set') await this.options.validateSend(actor, session);
     if (input.approval !== undefined)
       await this.options.validateApproval(actor, session, input.approval);
     signal?.throwIfAborted();

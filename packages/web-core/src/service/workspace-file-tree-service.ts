@@ -27,6 +27,8 @@ export interface WorkspaceFileTreeNode extends WorkspaceFileTreeEntry {
   expanded: boolean;
   loaded: boolean;
   loading: boolean;
+  failedAppend?: boolean | undefined;
+  failure?: unknown;
   nextCursor: string | null;
   placeholder: boolean;
 }
@@ -57,7 +59,9 @@ interface WorkspaceFileTreeOptions {
 export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions) {
   const root = ref(createRoot(options.workspaceName()));
   const selectedPath = ref<string>();
+  const refreshError = ref<{ readonly cause: unknown }>();
   let generation = 0;
+  let rootRevision = 0;
   const pendingLoads = new WeakMap<
     WorkspaceFileTreeNode,
     Promise<WorkspaceFileTreePage | undefined>
@@ -74,7 +78,7 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     try {
       return await request;
     } finally {
-      pendingLoads.delete(node);
+      if (pendingLoads.get(node) === request) pendingLoads.delete(node);
     }
   }
 
@@ -84,23 +88,31 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
   ): Promise<WorkspaceFileTreePage | undefined> {
     if (node.kind !== 'DIRECTORY' || node.loading) return undefined;
     const current = generation;
+    const rootRequest = node === root.value ? rootRevision : undefined;
+    const valid = () =>
+      current === generation && (rootRequest === undefined || rootRequest === rootRevision);
     node.loading = true;
     try {
       const page = await options.list(
         node.path,
         append ? (node.nextCursor ?? undefined) : undefined
       );
-      if (current !== generation) return undefined;
+      if (!valid()) return undefined;
       node.children = mergeChildren(append ? node.children : [], page.entries);
       node.nextCursor = page.nextCursor;
       node.loaded = true;
+      node.failedAppend = undefined;
+      node.failure = undefined;
       node.placeholder = false;
       return page;
-    } catch {
-      // The request adapter owns user-visible errors. Keep the node retryable.
+    } catch (error) {
+      if (valid()) {
+        node.failedAppend = append;
+        node.failure = error;
+      }
       return undefined;
     } finally {
-      if (current === generation) {
+      if (valid()) {
         node.loading = false;
       }
     }
@@ -116,6 +128,7 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     generation += 1;
     root.value = createRoot(options.workspaceName());
     selectedPath.value = undefined;
+    refreshError.value = undefined;
   }
 
   async function refresh(): Promise<WorkspaceFileTreePage | undefined> {
@@ -125,18 +138,23 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     generation += 1;
     const current = generation;
     const nextRoot = createRoot(options.workspaceName());
+    const failed = (node: WorkspaceFileTreeNode) => {
+      if (current === generation) refreshError.value = { cause: node.failure };
+      return undefined;
+    };
     const rootPage = await load(nextRoot);
-    if (rootPage === undefined) return undefined;
-    if (!(await loadToCount(nextRoot, loadedCounts.get('.') ?? 0))) return undefined;
+    if (rootPage === undefined) return failed(nextRoot);
+    if (!(await loadToCount(nextRoot, loadedCounts.get('.') ?? 0))) return failed(nextRoot);
     for (const path of expanded.filter((value) => value !== '.')) {
       const node = findNode(nextRoot, path);
       if (node?.kind !== 'DIRECTORY') continue;
       node.expanded = true;
-      if ((await load(node)) === undefined) return undefined;
-      if (!(await loadToCount(node, loadedCounts.get(path) ?? 0))) return undefined;
+      if ((await load(node)) === undefined) return failed(node);
+      if (!(await loadToCount(node, loadedCounts.get(path) ?? 0))) return failed(node);
     }
     if (current !== generation) return undefined;
     root.value = nextRoot;
+    refreshError.value = undefined;
     selectedPath.value =
       selected !== undefined && findNode(nextRoot, selected) ? selected : undefined;
     return rootPage;
@@ -155,7 +173,13 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     const normalized = workspaceTreePath(path);
     if (normalized === undefined || !needed()) return;
     root.value.expanded = true;
-    if (!root.value.loaded && (await load(root.value)) === undefined) return;
+    const currentRoot = root.value;
+    if (
+      !currentRoot.loaded &&
+      (await load(currentRoot)) === undefined &&
+      (currentRoot !== root.value || !currentRoot.loaded)
+    )
+      return;
     if (!needed()) return;
     const segments = normalized.split('/');
     let parent = root.value;
@@ -186,10 +210,14 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
   }
 
   function applyRootPage(page: WorkspaceFileTreePage): void {
+    rootRevision += 1;
+    pendingLoads.delete(root.value);
     root.value.children = mergeChildren(root.value.children, page.entries);
     root.value.nextCursor = page.nextCursor;
     root.value.loaded = true;
     root.value.loading = false;
+    root.value.failedAppend = undefined;
+    root.value.failure = undefined;
   }
 
   function setRootName(name: string): void {
@@ -218,13 +246,15 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     generation += 1;
     root.value = cloneNode(value.root);
     selectedPath.value = value.selectedPath;
+    refreshError.value = undefined;
   }
 
   return {
     root,
     selectedPath,
+    refreshError,
     applyRootPage,
-    loadMore: (node: WorkspaceFileTreeNode) => load(node, true),
+    loadMore: (node: WorkspaceFileTreeNode) => load(node, node.failedAppend ?? true),
     refresh,
     reset,
     restore,
@@ -252,7 +282,12 @@ export function visibleWorkspaceFileTreeRows(
     rows.push({ node, depth, loadMore: false });
     if (node.kind !== 'DIRECTORY' || !node.expanded) return;
     for (const child of node.children) visit(child, depth + 1);
-    if (node.nextCursor !== null) rows.push({ node, depth: depth + 1, loadMore: true });
+    if (
+      node.nextCursor !== null ||
+      node.failedAppend !== undefined ||
+      (node.loading && !node.loaded)
+    )
+      rows.push({ node, depth: depth + 1, loadMore: true });
   };
   visit(root, 0);
 

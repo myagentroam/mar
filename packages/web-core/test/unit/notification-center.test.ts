@@ -3,7 +3,7 @@ import { renderToString } from 'vue/server-renderer';
 import ElementPlus from 'element-plus';
 import { afterEach, describe, expect, it } from 'vitest';
 import SystemNotificationControl from '../../src/view/settings/SystemNotificationControl.vue';
-import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
+import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -67,15 +67,18 @@ describe('Shared notification center', () => {
       await service.load();
       const app = createSSRApp({
         render: () =>
-          h(WorkbenchNotificationCenter, { service, uploads: [], statusLabel: () => '' })
+          h(WorkbenchActivityCenter, {
+            service,
+            uploads: [],
+            statusLabel: () => '',
+            mobileMode: false
+          })
       });
       app.use(i18n).use(ElementPlus);
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
-      expect(html).toContain(
-        commonMessages[locale].generated.workbenchNotificationCenter.openNotificationCenter
-      );
-      expect(html).toMatch(/workbench-notification-badge[^>]*>1</);
+      expect(html).toContain(commonMessages[locale].activityCenter.title.replaceAll('&', '&amp;'));
+      expect(html).toMatch(/activity-entry-count[^>]*>1</);
       expect(service.unreadCount.value).toBe(1);
       expect(service.notifications.value[0]?.read).toBe(false);
       service.dispose();

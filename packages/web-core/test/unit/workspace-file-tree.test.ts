@@ -8,6 +8,158 @@ import {
 } from '../../src/service/workspace-file-tree-service.js';
 
 describe('Workspace file tree state', () => {
+  it('clears the previous refresh failure when restoring a cached tree', async () => {
+    const tree = createWorkspaceFileTreeService({
+      workspaceName: () => 'project',
+      list: vi.fn().mockRejectedValue(new Error('offline'))
+    });
+    tree.applyRootPage({ entries: [file('ready.ts')], nextCursor: null });
+    const snapshot = tree.snapshot();
+    await tree.refresh();
+    expect(tree.refreshError.value?.cause).toBeInstanceOf(Error);
+
+    tree.restore(snapshot);
+
+    expect(tree.refreshError.value).toBeUndefined();
+    expect(tree.root.value.children.map((node) => node.path)).toEqual(['ready.ts']);
+  });
+
+  it('clears a failed initial root read when a Watch snapshot succeeds', async () => {
+    const list = vi.fn().mockRejectedValue(new Error('offline'));
+    const tree = createWorkspaceFileTreeService({ workspaceName: () => 'project', list });
+    await tree.reveal('ready.ts');
+    expect(tree.root.value.failedAppend).toBe(false);
+    expect(tree.root.value.failure).toBeDefined();
+
+    tree.applyRootPage({ entries: [file('ready.ts')], nextCursor: null });
+
+    expect(tree.root.value.failedAppend).toBeUndefined();
+    expect(tree.root.value.failure).toBeUndefined();
+    expect(tree.root.value.loaded).toBe(true);
+    expect(visibleWorkspaceFileTreeRows(tree.root.value, '').filter((row) => row.loadMore)).toEqual(
+      []
+    );
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the root page failure but preserves unresolved child failures after a Watch snapshot', async () => {
+    const list = vi.fn().mockRejectedValue(new Error('offline'));
+    const tree = createWorkspaceFileTreeService({ workspaceName: () => 'project', list });
+    tree.applyRootPage({ entries: [directory('src'), file('first.ts')], nextCursor: 'next' });
+    const child = tree.root.value.children.find((node) => node.path === 'src')!;
+    await tree.toggle(child);
+    await tree.loadMore(tree.root.value);
+    expect(child.failedAppend).toBe(false);
+    expect(tree.root.value.failedAppend).toBe(true);
+
+    tree.applyRootPage({ entries: [directory('src'), file('ready.ts')], nextCursor: null });
+
+    expect(tree.root.value.failedAppend).toBeUndefined();
+    expect(tree.root.value.failure).toBeUndefined();
+    expect(child.failedAppend).toBe(false);
+    expect(child.failure).toBeDefined();
+    expect(
+      visibleWorkspaceFileTreeRows(tree.root.value, '')
+        .filter((row) => row.loadMore)
+        .map((row) => row.node.path)
+    ).toEqual(['src']);
+  });
+
+  it.each([false, true])(
+    'isolates a root read replaced by a Watch snapshot (late failure=%s)',
+    async (fails) => {
+      let releaseOld!: () => void;
+      let releaseNew!: () => void;
+      const oldGate = new Promise<void>((resolve) => {
+        releaseOld = resolve;
+      });
+      const newGate = new Promise<void>((resolve) => {
+        releaseNew = resolve;
+      });
+      const list = vi.fn(async (_path: string, cursor?: string): Promise<WorkspaceFileTreePage> => {
+        if (cursor === 'old') {
+          await oldGate;
+          if (fails) throw new Error('offline');
+          return { entries: [file('stale.ts')], nextCursor: 'stale' };
+        }
+        await newGate;
+        return { entries: [file('new-page.ts')], nextCursor: null };
+      });
+      const tree = createWorkspaceFileTreeService({ workspaceName: () => 'project', list });
+      tree.applyRootPage({ entries: [file('first.ts')], nextCursor: 'old' });
+      const oldRead = tree.loadMore(tree.root.value);
+      tree.applyRootPage({ entries: [file('current.ts')], nextCursor: 'current' });
+      const newRead = tree.loadMore(tree.root.value);
+      const newRequestStarted = list.mock.calls.some(([, cursor]) => cursor === 'current');
+
+      releaseOld();
+      await oldRead;
+      const loadingAfterOldRead = tree.root.value.loading;
+      releaseNew();
+      await newRead;
+
+      expect(newRequestStarted).toBe(true);
+      expect(loadingAfterOldRead).toBe(true);
+      expect(tree.root.value.failedAppend).toBeUndefined();
+      expect(tree.root.value.failure).toBeUndefined();
+      expect(tree.root.value.nextCursor).toBeNull();
+      expect(tree.root.value.children.map((node) => node.path)).not.toContain('stale.ts');
+      expect(tree.root.value.children.map((node) => node.path)).toContain('new-page.ts');
+      expect(tree.root.value.loading).toBe(false);
+    }
+  );
+
+  it.each([false, true])(
+    'continues reveal after a Watch snapshot replaces its root read (fails=%s)',
+    async (fails) => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const list = vi.fn(async (path: string) => {
+        if (path === '.') {
+          await pending;
+          if (fails) throw new Error('old failure');
+          return { entries: [file('stale.ts')], nextCursor: null };
+        }
+        return { entries: [file('src/ready.ts')], nextCursor: null };
+      });
+      const tree = createWorkspaceFileTreeService({ workspaceName: () => 'project', list });
+      const reveal = tree.reveal('src/ready.ts');
+      tree.applyRootPage({ entries: [directory('src')], nextCursor: null });
+      release();
+      await reveal;
+      const child = tree.root.value.children.find((node) => node.path === 'src')!;
+      expect(child.loaded).toBe(true);
+      expect(child.expanded).toBe(true);
+      expect(child.children.map((node) => node.path)).toEqual(['src/ready.ts']);
+      expect(list).toHaveBeenCalledTimes(2);
+      expect(tree.root.value.failedAppend).toBeUndefined();
+    }
+  );
+
+  it('retains a directory page and cursor after failure and retries the same cursor', async () => {
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        entries: [file('later.ts')],
+        nextCursor: null
+      });
+    const tree = createWorkspaceFileTreeService({ workspaceName: () => 'project', list });
+    tree.applyRootPage({ entries: [file('first.ts')], nextCursor: 'next' });
+    await tree.loadMore(tree.root.value);
+    expect(tree.root.value.failedAppend).toBe(true);
+    expect(tree.root.value.children.map((node) => node.path)).toEqual(['first.ts']);
+    expect(tree.root.value.nextCursor).toBe('next');
+    await tree.loadMore(tree.root.value);
+    expect(list.mock.calls).toEqual([
+      ['.', 'next'],
+      ['.', 'next']
+    ]);
+    expect(tree.root.value.failedAppend).toBeUndefined();
+    expect(tree.root.value.children.map((node) => node.path)).toEqual(['first.ts', 'later.ts']);
+  });
   it.each([false, true])(
     'ignores attachment resources without changing the tree (loaded=%s)',
     async (loaded) => {

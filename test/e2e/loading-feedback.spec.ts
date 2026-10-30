@@ -113,65 +113,72 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
-  test(`File tree Load more uses neutral text and an in-button loading star: ${theme}`, async ({
-    page
-  }) => {
+  test(`File tree automatically loads and retries in place: ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${fixture.url}visual-alignment.html?loading-feedback=1&theme=${theme}`);
-      const tree = page.getByTestId('file-tree-more');
-      const buttons = tree.getByRole('button', { name: 'Load more', exact: true });
-      await expect(buttons).toHaveCount(2);
-      const button = buttons.last();
-      await button.scrollIntoViewIfNeeded();
-      await page.mouse.move(0, 0);
-      const palette = await button.evaluate((element) => {
-        const probe = document.createElement('span');
-        element.parentElement!.append(probe);
-        probe.style.color = 'var(--mar-text-secondary)';
-        const secondary = getComputedStyle(probe).color;
-        probe.style.color = 'var(--mar-text-primary)';
-        const primary = getComputedStyle(probe).color;
-        probe.remove();
-        return { secondary, primary };
-      });
-      await expect(button).toHaveCSS('color', palette.secondary);
-      await expect(button).toHaveCSS('font-weight', '400');
-      await expect(button.locator('[data-mar-icon]')).toHaveCount(0);
-      const height = (await button.boundingBox())!.height;
-      expect((await button.boundingBox())!.x).toBe((await buttons.first().boundingBox())!.x);
-      await button.hover();
-      await expect(button).toHaveCSS('color', palette.primary);
-      await button.press('Enter');
+      const tree = page.getByTestId('real-file-tree');
       await expect(tree).toHaveAttribute('data-request-count', '1');
-      await expect(button).toBeDisabled();
-      await expect(button).toHaveText('Load more');
-      const star = button.locator('[data-mar-icon="loading-action"]');
-      await expect(star).toBeVisible();
-      await expect(star).toHaveCSS(
+      const retry = tree.locator('.file-tree-load-more button');
+      await expect(retry).toBeVisible();
+      const retryHeight = (await retry.boundingBox())!.height;
+      await expect(tree.getByText('first.ts')).toBeVisible();
+      await retry.focus();
+      await retry.press('Enter');
+      await expect(tree).toHaveAttribute('data-request-count', '2');
+      await expect(retry).toBeFocused();
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
+      await expect(retry).toContainText('Loading…');
+      await expect(retry.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+      await expect(retry.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
         'color',
-        await button.evaluate((el) => getComputedStyle(el).color)
+        await retry.evaluate((element) => getComputedStyle(element).color)
       );
-      await expect(button.locator('.el-icon.is-loading')).toBeVisible();
-      expect((await button.boundingBox())!.height).toBe(height);
-      await expect(tree.getByText('README.md', { exact: true })).toBeVisible();
-      await button.dispatchEvent('click');
-      await expect(tree).toHaveAttribute('data-request-count', '1');
-      await page.getByRole('button', { name: 'Finish file page', exact: true }).click();
-      await expect(button).toBeEnabled();
-      await expect(star).toHaveCount(0);
-      await buttons.first().press('Enter');
+      expect((await retry.boundingBox())!.height).toBe(retryHeight);
+      await retry.press('Enter');
       await expect(tree).toHaveAttribute('data-request-count', '2');
-      await expect(buttons.first()).toBeDisabled();
-      await expect(tree.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
-      await expect(tree.getByRole('status')).toHaveCount(0);
-      await page.getByRole('button', { name: 'Finish file page', exact: true }).click();
-      await page.getByRole('button', { name: 'Toggle file tree disabled', exact: true }).click();
-      await expect(button).toBeDisabled();
-      await expect(star).toHaveCount(0);
-      await button.dispatchEvent('click');
-      await expect(tree).toHaveAttribute('data-request-count', '2');
+      await page.getByRole('button', { name: 'Finish tree retry' }).click();
+      await expect(tree.getByText('later.ts')).toBeVisible();
+      await expect(tree.getByText('first.ts')).toBeVisible();
+      await expect(tree.getByRole('button', { name: 'Load more' })).toHaveCount(0);
     }
+  });
+
+  test(`File tree clears a recovered root failure after a Watch snapshot: ${theme}`, async ({
+    page
+  }) => {
+    await page.goto(`${fixture.url}visual-alignment.html?loading-feedback=1&theme=${theme}`);
+    const tree = page.getByTestId('real-file-tree');
+    const retry = tree.locator('.file-tree-load-more button');
+    await expect(tree).toHaveAttribute('data-request-count', '1');
+    await expect(retry).toHaveText('Failed to load. Retry');
+
+    await page.getByRole('button', { name: 'Apply recovered root snapshot', exact: true }).click();
+
+    await expect(tree.getByText('recovered.ts')).toBeVisible();
+    await expect(tree.getByText('first.ts')).toBeVisible();
+    await expect(tree.locator('.file-tree-load-more')).toHaveCount(0);
+    await expect(tree).toHaveAttribute('data-request-count', '1');
+  });
+
+  test(`File tree filtering does not load hidden pages: ${theme}`, async ({ page }) => {
+    await page.goto(`${fixture.url}visual-alignment.html?loading-feedback=1&theme=${theme}`);
+    const tree = page.getByTestId('filter-file-tree');
+    await expect(tree.getByText('file-0.ts')).toBeVisible();
+    await expect(tree).toHaveAttribute('data-request-count', '0');
+    await page.getByRole('textbox', { name: 'Filter fixture' }).fill('file-0.ts');
+    await expect(tree.locator('.file-tree-load-more')).toBeVisible();
+    await page.waitForTimeout(150);
+    await expect(tree).toHaveAttribute('data-request-count', '0');
+    await page.getByRole('button', { name: 'Toggle filtered tree' }).click();
+    await expect(tree.locator('.file-tree-load-more')).toHaveCount(0);
+    await page.getByRole('textbox', { name: 'Filter fixture' }).clear();
+    await expect(tree).toHaveAttribute('data-request-count', '0');
+    await page.getByRole('button', { name: 'Toggle filtered tree' }).click();
+    await tree.locator('.workspace-file-tree').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(tree).toHaveAttribute('data-request-count', '1');
   });
 
   test(`Read loading shares theme colors and distinguishes resource rows: ${theme}`, async ({
@@ -236,39 +243,48 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(star).toHaveCount(0);
       expect((await row.boundingBox())!.height).toBe(rowHeight);
       await page.getByRole('button', { name: 'Finish history load' }).click();
-      const load = history.locator('button[data-history-action="load"]');
-      await load.click();
-      await expect(load).toHaveAttribute('aria-busy', 'true');
-      await expect(load).toBeFocused();
-      await expectReadIndicator(load.locator('.busy-indicator'), 0.875);
+      const boundary = history.locator('.conversation-history-control');
+      const scroll = history.locator('.conversation-scroll');
+      await expect(history).toHaveAttribute('data-request-count', '1');
+      await expect(boundary).toHaveAttribute('aria-busy', 'true');
+      await expect(boundary.getByRole('button')).toHaveCount(0);
+      await expect(boundary).toHaveText('');
+      await expectReadIndicator(boundary.locator('.busy-indicator'), 0.875);
       await expect(history.locator('.busy-indicator')).toHaveCount(1);
       await expect(history.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
-      await expect(load.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
-      await load.dispatchEvent('click');
+      await expect(boundary.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await scroll.dispatchEvent('wheel', { deltaY: -100 });
       await expect(history).toHaveAttribute('data-request-count', '1');
       await expect(history.getByText('Existing message remains readable')).toBeVisible();
       await page.getByRole('button', { name: 'Finish history load' }).click();
-      await expect(load).toHaveAttribute('aria-busy', 'false');
+      await expect(boundary).toHaveAttribute('aria-busy', 'false');
       await expect(history.locator('.busy-indicator')).toHaveCount(0);
       await page.getByRole('button', { name: 'Fail history load', exact: true }).click();
       const retry = history.locator('button[data-history-action="retry"]');
-      await expect(retry).toHaveText('Retry');
-      await retry.click();
+      await expect(retry).toHaveText('Failed to load. Retry');
+      await scroll.dispatchEvent('wheel', { deltaY: -100 });
+      await expect(history).toHaveAttribute('data-request-count', '1');
+      await retry.focus();
+      await retry.press('Enter');
       await expect(retry).toBeFocused();
-      await expect(retry).toHaveText('Retry');
+      await expect(retry).toHaveText('');
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expectReadIndicator(retry.locator('.busy-indicator'), 0.875);
       await expect(history.locator('.busy-indicator')).toHaveCount(1);
       await retry.dispatchEvent('click');
       await expect(history).toHaveAttribute('data-request-count', '2');
       await page.getByRole('button', { name: 'Finish history load' }).click();
       await expect(retry).toHaveCount(0);
-      await expect(load).toBeVisible();
+      await expect(boundary.getByRole('button')).toHaveCount(0);
       await page.getByRole('button', { name: 'Fail initial history load' }).click();
       const initial = page.getByTestId('history-initial');
-      const reload = initial.getByRole('button', { name: 'Reload', exact: true });
-      await reload.click();
+      const reload = initial.locator('button.conversation-reload');
+      await expect(reload).toHaveText('Failed to load. Retry');
+      await reload.focus();
+      await reload.press('Enter');
       await expect(reload).toBeFocused();
+      await expect(reload).toHaveText('');
       await expect(reload).toHaveAttribute('aria-busy', 'true');
       await expectReadIndicator(reload.locator('.busy-indicator'), 0.875);
       await expect(initial.locator('.busy-indicator')).toHaveCount(1);

@@ -83,7 +83,8 @@ createTooltipApp({
         'button',
         {
           onClick: () => {
-            file.loading = !file.loading;
+            root.loading = !root.loading;
+            root.loaded = !root.loading;
           }
         },
         'Toggle loading'

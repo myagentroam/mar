@@ -397,9 +397,9 @@ describe('single shared Web implementation', () => {
       expect(existsSync(`ee/web/src/service/${name}.ts`)).toBe(false);
       expect(manifest.exports[`./${entry}`]).toBe(`./src/service/${name}.ts`);
     }
-    expect(existsSync('ee/web/src/view/workbench/WorkbenchNotificationCenter.vue')).toBe(false);
+    expect(existsSync('ee/web/src/view/workbench/WorkbenchActivityCenter.vue')).toBe(false);
     expect(read(`${root}/src/view/workbench/WorkbenchNavigation.vue`)).toContain(
-      './WorkbenchNotificationCenter.vue'
+      './WorkbenchActivityCenter.vue'
     );
   });
 

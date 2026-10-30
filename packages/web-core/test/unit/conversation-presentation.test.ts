@@ -9,7 +9,6 @@ import {
   conversationItemDetail,
   conversationItemLabel,
   conversationItemText,
-  subagentGroupText,
   subagentOperationText,
   taskListItems,
   reasoningPreview,
@@ -1904,31 +1903,11 @@ describe('Conversation Show Aggregation', () => {
   });
 
   it.each([
-    [
-      'START',
-      'agent_start',
-      `${zhPresentation.subagentOperation.START} Inspect the implementation`
-    ],
-    [
-      'STATUS',
-      'agent_wait',
-      `${zhPresentation.subagentOperation.STATUS} Inspect the implementation`
-    ],
-    [
-      'CANCEL',
-      'agent_cancel',
-      `${zhPresentation.subagentOperation.CANCEL} Inspect the implementation`
-    ],
-    [
-      'MESSAGE',
-      'send_message',
-      `${zhPresentation.subagentOperation.MESSAGE} Inspect the implementation`
-    ],
-    [
-      'RESUME',
-      'resume_agent',
-      `${zhPresentation.subagentOperation.RESUME} Inspect the implementation`
-    ]
+    ['START', 'agent_start', 'agent_start Inspect the implementation'],
+    ['STATUS', 'agent_wait', 'agent_wait Inspect the implementation'],
+    ['CANCEL', 'agent_cancel', 'agent_cancel Inspect the implementation'],
+    ['MESSAGE', 'send_message', 'send_message Inspect the implementation'],
+    ['RESUME', 'resume_agent', 'resume_agent Inspect the implementation']
   ])('Render subagent actions with shared semantics: %s', (operation, toolName, expected) => {
     const payload = {
       namespace: 'mar-agent',
@@ -1947,7 +1926,7 @@ describe('Conversation Show Aggregation', () => {
     expect(conversationItemText('tool_call', payload)).toBe(expected);
   });
 
-  it('Fall back to the subagent ID when a later action has no task title', () => {
+  it('omits a task name when only an ID and tool-name placeholder exist', () => {
     expect(
       conversationItemText('tool_call', {
         namespace: 'mar-agent',
@@ -1956,7 +1935,7 @@ describe('Conversation Show Aggregation', () => {
         subagentOperation: 'STATUS',
         subagentId: 'task-1'
       })
-    ).toBe(`${zhPresentation.subagentOperation.STATUS} task-1`);
+    ).toBe('agent_wait');
   });
 
   it('preserves each subagent operation and its explicit identity', () => {
@@ -1987,13 +1966,13 @@ describe('Conversation Show Aggregation', () => {
     ]);
     expect(display[0]).toMatchObject({ type: 'subagent_group', id: 'start', items: [start] });
     expect(display[4]).toMatchObject({ type: 'subagent_group', id: 'wait', items: [wait] });
-    expect(subagentGroupText([start, wait])).toBe('Review');
+    expect(conversationItemText(start.kind, start.payload)).toBe('control Review');
     expect(
       conversationDisplayItems([start, { ...wait, status: 'FAILED' }]).map(({ id }) => id)
     ).toEqual(['start', 'wait']);
   });
 
-  it('only merges explicit matching agent identities within their process regardless of parent', () => {
+  it('merges operations in the same process regardless of identity and parent', () => {
     const call = (id: string, agentId: string | null, process = 'p', parentItemId?: string) => ({
       ...item(
         id,
@@ -2019,13 +1998,8 @@ describe('Conversation Show Aggregation', () => {
       call('next-process', 'a', 'q')
     ];
     const display = conversationDisplayItems(records);
-    expect(display.map(({ id }) => id)).toEqual([
-      'other-agent',
-      'unknown',
-      'first',
-      'next-process'
-    ]);
-    expect(display[2]).toMatchObject({ items: [first, records[3], last] });
+    expect(display.map(({ id }) => id)).toEqual(['first', 'next-process']);
+    expect(display[0]).toMatchObject({ items: records.slice(0, 5) });
     expect(
       conversationDisplayItems([
         first,
@@ -2076,16 +2050,14 @@ describe('Conversation Show Aggregation', () => {
       { type: 'subagent_group', id: 'start', items: [identified] },
       { type: 'subagent_group', id: 'wait', items: [wait] }
     ]);
-    expect(subagentGroupText([identified, wait])).toBe('Review');
+    expect(conversationItemText(identified.kind, identified.payload)).toBe('agent_start Review');
   });
 
   it.each(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED'] as const)(
     'keeps subagent operation text independent of %s status',
     (status) => {
       const payload = { toolName: 'agent_start', title: 'Review', subagentOperation: 'START' };
-      expect(conversationItemText('tool_call', payload, status)).toBe(
-        `${zhPresentation.subagentOperation.START} Review`
-      );
+      expect(conversationItemText('tool_call', payload, status)).toBe('agent_start Review');
     }
   );
 
@@ -2110,15 +2082,13 @@ describe('Conversation Show Aggregation', () => {
         ]
       }
     };
-    expect(subagentGroupText([item('wait', 'tool_call', payload)])).toBe(
-      'Shared task, middle, Shared task'
-    );
+    expect(conversationItemText('tool_call', payload)).toBe('agent_wait Shared task, Shared task');
     expect(conversationItemDetail('tool_call', payload)).toContain(
       'Task: Shared task\nAgent ID: first\nAgent ID: middle\nTask: Shared task\nAgent ID: last'
     );
   });
 
-  it('uses task identity rather than operation completion for the subagent group label', () => {
+  it('keeps task previews local to each operation', () => {
     const start = item('start', 'tool_call', {
       subagentOperation: 'START',
       subagentId: 'child',
@@ -2132,13 +2102,11 @@ describe('Conversation Show Aggregation', () => {
       title: 'agent_wait',
       toolName: 'agent_wait'
     });
-    expect(subagentGroupText([start, wait])).toBe('Review');
+    expect(conversationItemText(start.kind, start.payload)).toBe('agent_start Review');
     expect(subagentOperationText({ subagentOperation: 'STATUS', subagentWait: false })).toBe(
       zhPresentation.subagentOperation.STATUS
     );
-    expect(subagentGroupText([start, { ...wait, status: 'FAILED' }])).toBe(
-      subagentGroupText([start, wait])
-    );
+    expect(conversationItemText(wait.kind, wait.payload, 'FAILED')).toBe('agent_wait');
   });
 
   it('keeps subagent operations and ordinary tool calls independently displayed', () => {
@@ -2180,7 +2148,7 @@ describe('Conversation Show Aggregation', () => {
         subagentOperation: 'START',
         subagentId: null
       })
-    ).toBe(`${zhPresentation.subagentOperation.START} Troubleshoot authorization logic`);
+    ).toBe('Agent Troubleshoot authorization logic');
     expect(
       conversationItemText('tool_call', {
         namespace: 'collaboration',
@@ -2189,7 +2157,7 @@ describe('Conversation Show Aggregation', () => {
         subagentOperation: 'START',
         subagentId: null
       })
-    ).toBe(`${zhPresentation.subagentOperation.START} review_oauth`);
+    ).toBe('spawn_agent review_oauth');
   });
 
   it('Sub-Agent details show Node-normalized model and latest public message fields', () => {

@@ -2,7 +2,7 @@ import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
   sessionShareVisitorSchema,
-  type ComposerFileReference,
+  type ComposerReference,
   type SessionShareVisitor
 } from '@myagentroam/protocol';
 import type {
@@ -71,7 +71,7 @@ export function createSessionShareConversationService(options: {
   const input = ref('');
   const notice = options.notice;
   const skillTokens = ref<readonly ComposerSkillToken[]>([]);
-  const references = ref<readonly ComposerFileReference[]>([]);
+  const references = ref<readonly ComposerReference[]>([]);
   const skills = ref<readonly EffectiveWorkspaceSkill[]>([]);
   const skillsLoading = ref(false);
   const skillsFailed = ref(false);

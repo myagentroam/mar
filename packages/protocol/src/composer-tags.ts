@@ -32,7 +32,7 @@ export const sessionMessageOriginSchema = z
   .object({
     sessionId: z.string().min(1).max(512).optional(),
     name: name.optional(),
-    relation: z.enum(['parent', 'other']).optional()
+    relation: z.enum(['parent', 'child', 'descendant', 'other']).optional()
   })
   .strict()
   .refine((value) => (value.sessionId === undefined) === (value.name === undefined))
@@ -100,14 +100,23 @@ export const composerTagSchemas = {
     .object({
       references: z
         .array(
-          z
-            .object({
-              type: z.enum(['file', 'directory']),
-              path: workspacePath,
-              label: name,
-              runnerPath: relativePath.optional()
-            })
-            .strict()
+          z.union([
+            z
+              .object({
+                type: z.enum(['file', 'directory']),
+                path: workspacePath,
+                label: name,
+                runnerPath: relativePath.optional()
+              })
+              .strict(),
+            z
+              .object({
+                type: z.literal('session'),
+                sessionId: z.string().min(1).max(512),
+                label: name
+              })
+              .strict()
+          ])
         )
         .min(1)
         .max(128)
@@ -120,7 +129,8 @@ export type ComposerTagPayloads = {
   [K in ComposerTagName]: z.infer<(typeof composerTagSchemas)[K]>;
 };
 export type ComposerAttachmentFile = ComposerTagPayloads['mar_attachments']['files'][number];
-export type ComposerFileReference = ComposerTagPayloads['mar_references']['references'][number];
+export type ComposerReference = ComposerTagPayloads['mar_references']['references'][number];
+export type ComposerFileReference = Exclude<ComposerReference, { type: 'session' }>;
 export type ComposerTagPart =
   | { readonly kind: 'text'; readonly text: string }
   | {
@@ -172,7 +182,7 @@ export function serializeComposerTag<K extends ComposerTagName>(
   if (kind === 'mar_steer') children.unshift(`  <instruction>${STEER_INSTRUCTION}</instruction>`);
   if (kind === 'mar_session_origin')
     children.push(
-      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : value.relation === 'parent' ? 'Message from the parent session.' : value.relation === 'other' ? 'Message from another session.' : 'Message from a session.'}</instruction>`
+      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : value.relation === 'parent' ? 'Message from the parent session.' : value.relation === 'child' ? 'Message from a child session.' : value.relation === 'descendant' ? 'Message from a descendant session.' : value.relation === 'other' ? 'Message from another session.' : 'Message from a session.'}</instruction>`
     );
   const opening = `<${kind}${markupAttributes(attributes)}`;
   const encoded = children.length

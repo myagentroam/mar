@@ -428,6 +428,7 @@ it('automatically appends Git changes after the loading delay and cleans up', as
     worktreesTruncated: ref(false),
     discoveryErrors: ref([]),
     changesRefreshing: ref(false),
+    changesError: ref(undefined),
     changesFetchFailed: ref(false),
     restoringPath: ref(undefined),
     loadChanges: vi.fn()
@@ -444,10 +445,10 @@ it('automatically appends Git changes after the loading delay and cleans up', as
     const rows = () =>
       [...hostNodes].filter((node) => node.parent && node.props.class === 'change-entry').length;
     expect(rows()).toBe(200);
-    const button = [...hostNodes].find(
-      (node) => node.parent && node.props.class === 'change-load-more'
+    const boundary = [...hostNodes].find(
+      (node) => node.parent && node.props.class === 'change-append-state'
     );
-    expect(button).toBeDefined();
+    expect(boundary).toBeDefined();
     expect(intersect).toBeDefined();
     intersect?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -456,8 +457,8 @@ it('automatically appends Git changes after the loading delay and cleans up', as
     await nextTick();
     expect(rows()).toBe(200);
     expect(
-      [...hostNodes].find((node) => node.parent && node.props.class === 'change-load-more')
-    ).toBe(button);
+      [...hostNodes].find((node) => node.parent && node.props.class === 'change-append-state')
+    ).toBe(boundary);
     expect([...hostNodes].some((node) => node.parent && node.props.role === 'status')).toBe(true);
     await vi.advanceTimersByTimeAsync(99);
     expect(rows()).toBe(200);
@@ -629,6 +630,7 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
       worktreesTruncated: ref(false),
       discoveryErrors: ref([]),
       changesRefreshing: ref(false),
+      changesError: ref(undefined),
       changesFetchFailed: ref(false),
       restoringPath: ref(undefined),
       loadChanges: vi.fn(async () => undefined)
@@ -648,7 +650,8 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(html).toContain(i18n.global.t('gitWorktrees.title'));
     expect(html).toContain(i18n.global.t('gitWorktrees.clean'));
     expect(html.match(/class="change-entry"/gu)).toHaveLength(200);
-    expect(html).toContain(i18n.global.t('generated.workspaceInspector.loadMore'));
+    expect(html).toContain('class="change-append-state"');
+    expect(html).not.toContain(i18n.global.t('generated.workspaceInspector.loadMore'));
     expect(html).toContain(i18n.global.t('gitWorktrees.changesTruncated'));
     expect(html).not.toContain(i18n.global.t('generated.workspaceInspector.noUncommittedChanges'));
   });
@@ -673,9 +676,11 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
         ]),
         historyNextCursor: ref(null),
         historyLoading: ref(false),
+        historyError: ref(undefined),
         historyFetchFailed: ref(false),
         historyFiles: ref({}),
         historyFilesLoading: ref([]),
+        historyFilesErrors: ref([]),
         historyRepositoryPath: ref(''),
         selectedHistoryRefs: ref([]),
         historySource: ref({ repositoryPath: '', refs: [] }),
@@ -739,10 +744,10 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
   it('renders per-topic loading and failure status from the host instead of fetching its own initial data', async () => {
     localePreferenceService().setLocale(locale);
     const loading = await render({ filesWatchStatus: 'loading' });
-    expect(loading).toContain(i18n.global.t('workspaceWatch.loadingFiles'));
-    expect(loading).not.toContain(i18n.global.t('workspaceWatch.filesFailed'));
+    expect(loading).toContain(i18n.global.t('generated.workspaceInspector.loading'));
+    expect(loading).not.toContain(i18n.global.t('common.loadFailedRetry'));
     const failed = await render({ filesWatchStatus: 'failed' });
-    expect(failed).toContain(i18n.global.t('workspaceWatch.filesFailed'));
+    expect(failed).toContain(i18n.global.t('common.loadFailedRetry'));
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 });

@@ -32,9 +32,8 @@ export function actorForAuthenticatedTerminal(
   return authenticated;
 }
 
-import { sessionPage } from '../session/pagination.js';
-import { marctlSessionSummary, marctlSessionDetail } from './session-recent-activity.js';
-import type { RunnerProfile } from '@myagentroam/protocol';
+import { marctlSessionDetail } from './session-recent-activity.js';
+import { listAgentNetworkSessions } from './agent-network-list.js';
 
 interface Bindings {
   readonly runtime: NodeRuntimeState;
@@ -50,12 +49,7 @@ interface Bindings {
   readonly observations: AgentNetworkObservations;
   readonly ensureObservations: (actor: AgentNetworkActor) => ParentObservations;
   readonly withGrant: <T>(actor: AgentNetworkActor, work: () => T) => T;
-  readonly listSessions: (input: Record<string, unknown>) => Promise<unknown>;
   readonly history: (input: Record<string, unknown>) => Promise<unknown>;
-  readonly profiles: (
-    environment: Readonly<Record<string, string>>,
-    models: unknown
-  ) => Promise<readonly RunnerProfile[]>;
 }
 
 /** Bind the collaboration use case to the existing Session, Run and Goal owners. */
@@ -90,9 +84,33 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     if (!session || session.workspaceId !== workspaceId) throw new Error('SESSION_NOT_FOUND');
     return session;
   }
-  function origin(parent: NodeAgentSession) {
+  function ancestorDistance(source: NodeAgentSession, targetId: string): number {
+    const seen = new Set([source.id]);
+    let parentId = source.parentSessionId;
+    let distance = 1;
+    while (parentId) {
+      if (seen.has(parentId))
+        throw Object.assign(new Error('Session ancestry contains a cycle.'), {
+          code: 'SESSION_RELATION_INVALID'
+        });
+      seen.add(parentId);
+      if (parentId === targetId) return distance;
+      const parent = options.runtime.getAgentSession(parentId);
+      if (parent?.id === targetId) return distance;
+      parentId = parent
+        ? parent.parentSessionId
+        : options.database()?.getSessionRecord(parentId)?.metadata.parentSessionId;
+      distance++;
+    }
+    return 0;
+  }
+  function origin(parent: NodeAgentSession, targetId?: string) {
+    const distance = targetId === undefined ? 0 : ancestorDistance(parent, targetId);
     return {
       sessionId: parent.id,
+      ...(distance === 0
+        ? {}
+        : { relation: distance === 1 ? ('child' as const) : ('descendant' as const) }),
       name: parent.customTitle?.trim() || parent.runnerTitle?.trim() || parent.id
     };
   }
@@ -177,6 +195,16 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         )
       );
       return resolved.filter((session): session is NodeAgentSession => session !== undefined);
+    },
+    validateSend: async (actor, session) => {
+      if (terminalCalls.has(actor)) return;
+      const source = await actorSession(actor);
+      if (ancestorDistance(source, session.id) === 0) return;
+      const run = options.runtime.activeSessionRun(session.id);
+      if (!run || run.status === 'CANCELLING')
+        throw Object.assign(new Error('Cannot send messages to an inactive ancestor session.'), {
+          code: 'AGENT_ANCESTOR_NOT_ACTIVE'
+        });
     },
     observe: (actor) => {
       options.ensureObservations(actor);
@@ -312,7 +340,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
             : { personalInstructions: actor.personalInstructions }),
           ...(actor.usageGrant === undefined ? {} : { usageGrant: actor.usageGrant }),
           preserveActiveRun: true,
-          ...(parent ? { messageOrigin: origin(parent) } : {}),
+          ...(parent ? { messageOrigin: origin(parent, session.id) } : {}),
           ...(message === undefined
             ? {}
             : {
@@ -343,7 +371,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
           sessionId: session.id,
           __suppressNotifications: true,
-          ...(parent ? { __marctlOrigin: origin(parent) } : {})
+          ...(parent ? { __marctlOrigin: origin(parent, session.id) } : {})
         })
       );
       return publicReceipt(result);
@@ -393,88 +421,12 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       const source = terminal ? undefined : await actorSession(actor);
       const workspaceId = terminal?.workspaceId ?? source?.workspaceId;
       if (!workspaceId) throw new Error('SESSION_INVALID');
-      const current = source ? marctlSessionSummary(options.runtime, source) : null;
-      const scope = input.scope ?? (terminal ? 'workspace' : 'children');
-      if (scope === 'profile') {
-        const runner = input.runner ?? source?.runner;
-        if (!runner) throw new Error('RUNNER_REQUIRED');
-        const profiles = await options.profiles(
-          actor.secretEnvironment ?? {},
-          actor.runnerConfiguration?.marAgentModels
-        );
-        const profile = profiles.find((item) => item.runner === runner);
-        if (!profile) throw new Error('RUNNER_PROFILE_NOT_FOUND');
-        const models =
-          profile.runner !== 'mar-agent'
-            ? profile.models
-            : profile.models.filter((model) => {
-                const configurations = [
-                  actor.runnerConfiguration?.marAgentModel,
-                  ...(Array.isArray(actor.runnerConfiguration?.marAgentModels)
-                    ? actor.runnerConfiguration.marAgentModels
-                    : [])
-                ];
-                return configurations.some(
-                  (value) =>
-                    isPlainRecord(value) &&
-                    value.id === model.id &&
-                    value.enabled === true &&
-                    value.conversationModel === true &&
-                    value.subagentModel === true
-                );
-              });
-        return { current, runner: profile.runner, models, capabilities: profile.capabilities };
-      }
-      if (scope === 'workspace') {
-        const result = await options.listSessions({
-          workspaceId,
-          view: 'marctl',
-          registeredOnly: true,
-          ...(input.query === undefined ? {} : { query: input.query }),
-          ...(input.parent === undefined ? {} : { parentSessionId: input.parent }),
-          ...(input.limit === undefined ? {} : { limit: input.limit }),
-          ...(input.cursor === undefined ? {} : { cursor: input.cursor })
-        });
-        if (!isPlainRecord(result)) throw new Error('SESSION_LIST_INVALID_RESULT');
-        return { ...result, current };
-      }
-      if (scope !== 'children' && scope !== 'descendants') throw new Error('AGENT_LIST_INVALID');
-      const root =
-        input.agentId === undefined || input.agentId === source?.id
-          ? source
-          : await target(actor, input.agentId);
-      if (!root) throw new Error('AGENT_TARGET_REQUIRED');
-      const database = options.database();
-      if (!database) throw new Error('DATABASE_UNAVAILABLE');
-      const records =
-        scope === 'children'
-          ? database.listChildSessionRecords(root.workspaceId, root.id)
-          : database.sessionTreeRecords(root.workspaceId, root.id).slice(1);
-      const sessions = (
-        await Promise.all(
-          records.map(
-            (record) =>
-              options.runtime.getAgentSession(record.id) ??
-              options.projection.resolve(record.id, true)
-          )
-        )
-      )
-        .filter((session): session is NodeAgentSession => session !== undefined)
-        .filter(
-          (session) =>
-            !input.query ||
-            (session.customTitle ?? session.runnerTitle ?? '')
-              .normalize('NFKC')
-              .toLocaleLowerCase()
-              .includes(input.query.normalize('NFKC').toLocaleLowerCase())
-        );
-      const page = sessionPage(sessions, { limit: input.limit, cursor: input.cursor });
-      return {
-        current,
-        sessions: page.sessions.map((session) => marctlSessionSummary(options.runtime, session)),
-        nextCursor: page.nextCursor,
-        truncated: page.nextCursor !== null
-      };
+      return listAgentNetworkSessions(source, input, {
+        workspaceId,
+        runtime: options.runtime,
+        database: options.database(),
+        projection: options.projection
+      });
     },
     view: async (actor, input, onResolved) => {
       const source = terminalCalls.has(actor) ? undefined : await actorSession(actor);

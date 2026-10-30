@@ -36,9 +36,11 @@ for (const width of [1280, 390]) {
       await page.getByTestId('finish-initial').click();
       await expect(requests).toHaveText('2');
       await page.getByTestId('fail-older').click();
-      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Failed to load. Retry' })).toBeVisible();
       await expect(requests).toHaveText('2');
-      await page.getByRole('button', { name: 'Retry' }).click();
+      await page.getByRole('button', { name: 'Failed to load. Retry' }).click();
+      await expect(page.locator('.conversation-history-control')).toHaveText('');
+      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
       await expect(requests).toHaveText('3');
       await page.getByTestId('finish-older').click();
       await page.evaluate(() => new Promise(requestAnimationFrame));
@@ -65,7 +67,9 @@ for (const width of [1280, 390]) {
       const requests = page.getByTestId('older-requests');
       await expect(requests).toHaveText('1');
       await page.getByTestId('finish-older').click();
-      await expect(page.getByRole('button', { name: 'Load earlier messages' })).toBeInViewport();
+      await expect(page.locator('.conversation-history-control')).toBeInViewport();
+      await expect(page.locator('.conversation-history-control')).toHaveText('');
+      await expect(page.getByRole('button', { name: 'Load earlier messages' })).toHaveCount(0);
       expect(await region.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(7);
       await page.evaluate(() => new Promise(requestAnimationFrame));
       await expect(requests).toHaveText('1');
@@ -74,6 +78,119 @@ for (const width of [1280, 390]) {
     }
   });
 }
+
+for (const input of ['wheel', 'touch', 'keyboard']) {
+  test(`Short history remains loadable through ${input} after its one automatic backfill`, async ({
+    browser
+  }) => {
+    const mobile = input === 'touch';
+    const context = await browser.newContext({
+      viewport: { width: mobile ? 390 : 1280, height: 900 },
+      isMobile: mobile,
+      hasTouch: mobile
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&underflow=1`);
+      const requests = page.getByTestId('older-requests');
+      const region = page.locator('.conversation-scroll');
+      await page.getByTestId('finish-initial').click();
+      await expect(requests).toHaveText('1');
+      await page.getByTestId('finish-older').click();
+      expect(await region.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await expect(region.locator('button.conversation-load-older')).toHaveCount(0);
+      const scrollUp = async () => {
+        if (input === 'keyboard') {
+          await region.focus();
+          await region.press('PageUp');
+        } else if (input === 'touch') {
+          await region.evaluate((element) => {
+            const touch = (clientY: number) =>
+              new Touch({ identifier: 1, target: element, clientY });
+            element.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(100)] }));
+            element.dispatchEvent(new TouchEvent('touchmove', { touches: [touch(200)] }));
+          });
+        } else {
+          await region.hover();
+          await page.mouse.wheel(0, -100);
+        }
+      };
+      await scrollUp();
+      await expect(requests).toHaveText('2');
+      await expect(region.locator('.conversation-history-control')).toHaveText('');
+      await expect(region.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
+      await scrollUp();
+      await expect(requests).toHaveText('2');
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test('Scrollbar gutter clicks wait for upward movement before loading earlier history', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&underflow=1`);
+  await page.getByTestId('finish-initial').click();
+  const requests = page.getByTestId('older-requests');
+  await expect(requests).toHaveText('1');
+  await page.getByTestId('finish-older').click();
+  const scroll = page.locator('.conversation-scroll');
+  await scroll.evaluate((element) => {
+    const { right, top } = element.getBoundingClientRect();
+    Object.defineProperty(element, 'offsetWidth', {
+      configurable: true,
+      value: element.clientWidth + 16
+    });
+    element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        button: 0,
+        pointerType: 'mouse',
+        clientX: right - 8,
+        clientY: top + 20
+      })
+    );
+    Reflect.deleteProperty(element, 'offsetWidth');
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(requests).toHaveText('1');
+  await scroll.evaluate((element) =>
+    element.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        buttons: 1,
+        clientY: element.getBoundingClientRect().top + 10
+      })
+    )
+  );
+  await expect(requests).toHaveText('2');
+  await scroll.hover();
+  await page.mouse.wheel(0, -100);
+  await expect(requests).toHaveText('2');
+});
+
+test('Retrying initial history keeps focus and shows one ring without action text', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&underflow=1&initial-failed=1&no-older=1`
+  );
+  await page.getByTestId('finish-initial').click();
+  const retry = page.locator('button.conversation-reload');
+  await expect(retry).toHaveText('Failed to load. Retry');
+  await retry.click();
+  await expect(retry).toBeFocused();
+  await expect(retry).toHaveText('');
+  await expect(retry.locator('.busy-indicator')).toHaveCount(1);
+  await expect(page.locator('.conversation-loading-initial')).toHaveCount(0);
+  await retry.press('Enter');
+  await expect(page.getByTestId('initial-requests')).toHaveText('1');
+  await page.getByTestId('finish-initial').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(retry).toHaveCount(0);
+  await expect(page.locator('.conversation-scroll')).toBeFocused();
+  await expect(page.locator('.conversation-history-start')).toHaveCount(0);
+});
 
 for (const condition of ['no-older', 'initial-failed']) {
   test(`Underfilled initial history does not request a page when ${condition}`, async ({
@@ -740,6 +857,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}`);
+      await expect(page.locator('.process-activity.is-active')).toBeVisible();
       const tokens = await page.locator('html').evaluate((root) => {
         const color = (token: string) => {
           const probe = document.createElement('span');
@@ -854,7 +972,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();
       const treeToggle = page.locator('.workbench-tree-toggle');
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'true');
-      const notificationToggle = page.locator('.workbench-notification-trigger');
+      const notificationToggle = page.locator('.activity-center-trigger');
       const loads = page.getByTestId('notification-loads');
       await notificationToggle.click();
       await expect(loads).toHaveText('1');
@@ -862,7 +980,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await notificationToggle.click();
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await page.getByRole('button', { name: 'Preview notification', exact: true }).click();
-      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('.activity-preview')).toBeVisible();
+      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await notificationToggle.click();
       await expect(loads).toHaveText('2');
       await notificationToggle.click();
@@ -896,12 +1015,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const [selector, edge, size] of [
         ['.task-list-items', 'border-top-width', '1px'],
         ['.task-list-items > li', 'border-bottom-width', '1px'],
-        ['.conversation-tool-list', 'border-left-width', '2px'],
-        ['.conversation-tool-list > .conversation-tool-detail', 'border-top-width', '1px'],
+        ['.conversation-record-group', 'border-left-width', '0px'],
+        ['.conversation-record-group > .conversation-tool-detail', 'padding-top', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'border-top-width', '0px'],
         ['.conversation-record-group > .conversation-command-detail', 'border-top-width', '0px']
       ] as const)
         await expect(page.locator(selector).first()).toHaveCSS(edge, size);
+      const tool = page.locator('.conversation-record-group > .conversation-tool-detail').first();
+      const toolHeading = await tool.locator(':scope > summary').boundingBox();
+      const groupHeading = await tool.locator('..').locator(':scope > summary').boundingBox();
+      expect(toolHeading!.x).toBeGreaterThan(groupHeading!.x);
       await treeToggle.click();
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'false');
       await treeToggle.click();

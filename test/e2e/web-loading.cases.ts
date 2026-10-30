@@ -127,8 +127,10 @@ for (const mobile of [false, true]) {
       await list.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
-      const retry = list.getByRole('button', { name: '重试', exact: true });
+      const retry = list.locator('.list-append-state button');
       await expect(retry).toBeVisible();
+      await expect(retry).toHaveText('加载失败，点击重试');
+      await expect(list.locator('.list-append-state')).not.toContainText('Unable to read');
       await expect(input).toBeFocused();
       await expect(list.locator('.session-row')).toHaveCount(30);
       await list.evaluate((element) => {
@@ -139,6 +141,9 @@ for (const mobile of [false, true]) {
       await retry.click();
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
+      await expect(retry).toHaveText('');
+      await expect(retry).toHaveAccessibleName('正在加载');
+      await expect(list.locator('.list-append-state .busy-indicator')).toHaveCount(1);
       await expect(list.locator('.list-append-state .busy-indicator')).toBeVisible();
       expect(
         await list
@@ -372,12 +377,16 @@ test('Unified loading: hosted history pauses for a local filter and retains retr
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  const retry = list.getByRole('button', { name: '重试', exact: true });
+  const retry = list.locator('.list-append-state button');
   await expect(retry).toBeVisible();
+  await expect(retry).toHaveText('加载失败，点击重试');
   expect(appends).toBe(1);
   await retry.click();
   await expect(retry).toBeFocused();
   await expect(retry).toHaveAttribute('aria-disabled', 'true');
+  await expect(retry).toHaveText('');
+  await expect(retry).toHaveAccessibleName('正在加载');
+  await expect(list.locator('.list-append-state .busy-indicator')).toHaveCount(1);
   await expect(list.locator('.list-append-state .busy-indicator')).toBeVisible();
   retryResponse.release();
   await expect(list.locator('article')).toHaveCount(40);

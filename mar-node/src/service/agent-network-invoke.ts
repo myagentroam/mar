@@ -233,10 +233,8 @@ export function agentNetworkExecutionCommand(input: {
     const session = input.runtime.getAgentSession(actor.sessionId);
     if (actor.requestUserId !== data.__requestUserId || session?.workspaceId !== data.workspaceId)
       throw new Error('MARCTL_EXECUTION_CREDENTIAL_INVALID');
-    const profileQuery =
-      data.action === 'list' && data.input.scope === 'profile' && data.input.runner === 'mar-agent';
     const resources =
-      (['start', 'send'].includes(String(data.action)) || profileQuery) &&
+      ['start', 'send'].includes(String(data.action)) &&
       isPlainRecord(data.__marctlExecutionResources)
         ? data.__marctlExecutionResources
         : undefined;

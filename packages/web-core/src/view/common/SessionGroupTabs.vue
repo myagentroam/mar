@@ -1,29 +1,16 @@
 <script setup lang="ts">
 import type { SessionGroup } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
-import SessionStateBadge from './SessionStateBadge.vue';
 
-const props = defineProps<{
+defineProps<{
   modelValue: SessionGroup;
-  state: Record<SessionGroup, { running: number; unread: boolean }>;
 }>();
 const emit = defineEmits<{
   'update:modelValue': [value: SessionGroup];
-  activateMarker: [value: SessionGroup];
 }>();
 const groups: readonly SessionGroup[] = ['MAIN', 'CHILD'];
 function label(group: SessionGroup): string {
   return translate(group === 'MAIN' ? 'sessionGroups.main' : 'sessionGroups.child');
-}
-function accessibleLabel(group: SessionGroup): string {
-  const state = props.state[group];
-  return [
-    label(group),
-    state.running ? translate('sessionGroups.running', { count: state.running }) : '',
-    state.unread ? translate('sessionGroups.unread') : ''
-  ]
-    .filter(Boolean)
-    .join(', ');
 }
 function navigate(event: KeyboardEvent, group: SessionGroup): void {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -53,19 +40,13 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
         :data-group="group"
         :aria-selected="modelValue === group"
         :tabindex="modelValue === group ? 0 : -1"
-        :aria-label="accessibleLabel(group)"
+        :aria-label="label(group)"
         @click="emit('update:modelValue', group)"
         @keydown="navigate($event, group)"
       >
         <span class="group-label">{{
           translate(group === 'MAIN' ? 'sessionGroups.mainTab' : 'sessionGroups.childTab')
         }}</span>
-        <SessionStateBadge
-          class="group-markers"
-          :running="state[group].running"
-          :unread="state[group].unread"
-          @click.stop="emit('activateMarker', group)"
-        />
       </button>
     </div>
   </div>
@@ -119,8 +100,5 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
 .session-group-tabs button:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
-}
-.group-markers {
-  margin-inline-start: 0.25rem;
 }
 </style>

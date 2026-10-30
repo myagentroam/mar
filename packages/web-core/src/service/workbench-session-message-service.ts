@@ -35,7 +35,7 @@ export interface WorkbenchSessionMessageOptions {
   readonly sessions: Ref<Session[]>;
   readonly input: Ref<string>;
   readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
-  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
+  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
   readonly attachments: Ref<ComposerAttachment[]>;
   readonly attachmentsPending: ComputedRef<boolean>;
   readonly composerOpen: ComputedRef<boolean>;

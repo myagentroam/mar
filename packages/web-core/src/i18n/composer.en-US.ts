@@ -102,6 +102,7 @@ export const composerEnUS = {
     skillUnavailableToken: 'Skill {name} is unavailable; click to remove it',
     removeSkill: 'Remove skill {name}',
     removeFileReference: 'Remove file reference {name}',
+    removeSessionReference: 'Remove Session reference {name}',
     skillUnavailable: 'A selected skill is no longer available. Remove it and try again.'
   },
   generated: {

@@ -141,6 +141,8 @@ export const conversationUiZhCN = {
       goalContinue: '目标继续',
       messageFromSource: '来自 {name}',
       messageFromParentSession: '来自父会话 {name}',
+      messageFromChildSession: '来自子会话 {name}',
+      messageFromDescendantSession: '来自后代会话 {name}',
       messageFromOtherSession: '来自其他会话 {name}',
       messageFromMarctl: '来自 marctl',
       sessionSourceDetails: '来源：会话\n会话 ID：{sessionId}',

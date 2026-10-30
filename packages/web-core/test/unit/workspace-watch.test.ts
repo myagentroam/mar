@@ -3,6 +3,78 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 
 describe('Shared Workspace Watch', () => {
+  it('retries failed topics through the same lease and accepts only the new watch snapshot', async () => {
+    const requests: RequestInit[] = [];
+    const service = createWorkspaceWatchService({
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
+      workspaces: { value: [{ id: 'workspace-1', kind: 'GIT_WORKSPACE' }] } as never,
+      heartbeatMs: 60_000,
+      request: async (_path, init) => {
+        requests.push(init ?? {});
+        return { accepted: true } as never;
+      },
+      onSnapshot: vi.fn()
+    });
+    try {
+      await service.start('workspace-1');
+      const oldId = JSON.parse(String(requests[0]?.body)).watchId;
+      const identity = {
+        workbenchConnectionId: 'local-test-connection',
+        nodeGeneration: 'generation',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1'
+      };
+      service.handleEvent({
+        ...identity,
+        type: 'watch.failed',
+        watchType: 'workspace',
+        topic: 'files',
+        watchId: oldId
+      });
+      service.handleEvent({
+        ...identity,
+        type: 'watch.failed',
+        watchType: 'workspace',
+        topic: 'changes',
+        watchId: oldId
+      });
+      expect(service.topicStatus.files).toBe('failed');
+      expect(service.topicStatus.changes).toBe('failed');
+      await service.retryFailed();
+      expect(service.topicStatus.files).toBe('loading');
+      expect(service.topicStatus.changes).toBe('loading');
+      const newId = JSON.parse(String(requests[1]?.body)).watchId;
+      service.handleEvent({
+        ...identity,
+        type: 'watch.workspace.snapshot',
+        topic: 'files',
+        watchId: oldId,
+        revision: 1,
+        payload: {}
+      });
+      expect(service.topicStatus.files).toBe('loading');
+      service.handleEvent({
+        ...identity,
+        type: 'watch.workspace.snapshot',
+        topic: 'files',
+        watchId: newId,
+        revision: 1,
+        payload: {}
+      });
+      expect(service.topicStatus.files).toBe('ready');
+      service.handleEvent({
+        ...identity,
+        type: 'watch.workspace.snapshot',
+        topic: 'changes',
+        watchId: newId,
+        revision: 1,
+        payload: {}
+      });
+      expect(service.topicStatus.changes).toBe('ready');
+    } finally {
+      service.stop();
+    }
+  });
   it('adds feature-gated prewarm to initial only and not to renew', async () => {
     vi.useFakeTimers();
     const initialBodies: Array<Record<string, unknown>> = [];

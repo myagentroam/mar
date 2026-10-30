@@ -47,6 +47,9 @@ const goal = {
   ]
 } as const;
 
+const deliveryGuidance =
+  'Default to STEER. Use QUEUE only when the user or recipient explicitly requests deferred delivery. Do not queue merely to avoid interrupting the recipient or because the message is a report.';
+
 const tools: readonly {
   action: AgentNetworkAction;
   description: string;
@@ -64,8 +67,7 @@ const tools: readonly {
       runner,
       modelId: {
         ...text,
-        description:
-          'Model ID from the target Runner Profile models[].id, not a display name. For MAR Agent this is an internal configuration ID, not an upstream model ID; omit to use the Runner default.'
+        description: 'Model configuration ID; omit to use the target Runner default.'
       },
       effort: text,
       title: text,
@@ -76,8 +78,7 @@ const tools: readonly {
   },
   {
     action: 'send',
-    description:
-      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Messages default to REPLACE_CURRENT (steer); use QUEUE only when deferred delivery is explicitly requested. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.',
+    description: `Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. ${deliveryGuidance} QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.`,
     properties: {
       agentId: text,
       content: { type: 'string' },
@@ -90,11 +91,10 @@ const tools: readonly {
         required: ['approvalId', 'decision'],
         properties: { approvalId: text, decision: { type: 'string', enum: ['approve', 'reject'] } }
       },
-      deliveryIntent: {
+      delivery: {
         type: 'string',
-        enum: ['SEND', 'QUEUE', 'REPLACE_CURRENT'],
-        description:
-          'Message delivery defaults to REPLACE_CURRENT (steer); explicit SEND remains supported.'
+        enum: ['STEER', 'QUEUE'],
+        description: deliveryGuidance
       },
       clientMessageId: text
     },
@@ -121,20 +121,20 @@ const tools: readonly {
   {
     action: 'list',
     description:
-      'List direct children by default, discover Workspace Sessions, inspect descendants or query a Runner profile.',
+      "List the current Session's collaboration tree by default, or active Workspace Sessions. Active includes running and sleeping. Reuse known Session IDs directly. Returns currentAgentId, flat sessions (id, parentSessionId, title, runner, status) and truncated; no pagination.",
     properties: {
-      scope: { type: 'string', enum: ['workspace', 'children', 'descendants', 'profile'] },
-      agentId: {
-        ...text,
-        description: 'Root for children or descendants; defaults to the current Session.'
+      scope: {
+        type: 'string',
+        enum: ['tree', 'active'],
+        description:
+          'Defaults to tree: the containing tree, including ancestors, peers and descendants.'
       },
-      runner: {
-        ...runner,
-        description: 'Runner for profile scope; defaults to the current Runner, not a model name.'
+      query: {
+        type: 'string',
+        maxLength: 160,
+        description: 'Optional case-insensitive title fragment within the scope.'
       },
-      query: { type: 'string', description: 'Search Sessions; not a model selector.' },
-      limit: { type: 'integer', minimum: 1, maximum: 100 },
-      cursor: text
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 100.' }
     }
   },
   {
@@ -162,7 +162,8 @@ const delegationPrompt = [
 const collaborationPrompt = [
   '# Workspace collaboration',
   "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Explicitly wait when you need progress or completion.",
-  "Reuse known Session IDs rather than rediscovering them. Send updates for meaningful progress, blockers, or changes that affect the recipient's work; combine related updates and avoid acknowledgment-only exchanges."
+  'Reuse known Session IDs rather than rediscovering them. Send updates only when requested or when the recipient needs to decide or change course; combine related updates and avoid acknowledgment-only exchanges.',
+  'For delegated work, do not provide routine progress updates or acknowledgments unless requested. Contact the parent before completion only when requested or for blockers, scope conflicts, or information that requires the parent to decide or change course. Return a concise final handoff; do not also send a duplicate completion message.'
 ].join('\n\n');
 
 const managementPrompt = [
@@ -181,13 +182,27 @@ export function agentNetworkExtension(
       context.hooks.intercept('prompt.sections', (input, _call, next) => {
         const available = new Set(input.facts?.tools);
         const enabled = input.facts?.mode !== 'compact';
+        const delegate = enabled && available.has('agent_start');
+        const models = delegate
+          ? (context.models
+              ?.list()
+              .filter((model) => model.conversationModel && model.subagentModel)
+              .map((model) => ({
+                id: model.id,
+                name: model.name,
+                supportedEfforts: model.reasoningEfforts,
+                defaultEffort: model.defaultReasoningEffort
+              })) ?? [])
+          : [];
         return next({
           ...input,
           sections: [
             ...input.sections,
             {
               id: 'mar.node.agent-network:delegation',
-              text: enabled && available.has('agent_start') ? delegationPrompt : null
+              text: delegate
+                ? `${delegationPrompt}\n\nAvailable subagent models:\n${JSON.stringify({ runner: 'mar-agent', models })}`
+                : null
             },
             {
               id: 'mar.node.agent-network:collaboration',
@@ -218,7 +233,10 @@ export function agentNetworkExtension(
             'effort',
             'waitFor',
             'waitMs',
-            'scope'
+            'scope',
+            'query',
+            'limit',
+            'cursor'
           ],
           inputSchema: {
             type: 'object',
@@ -230,14 +248,21 @@ export function agentNetworkExtension(
             const executionId = currentExecution();
             if (!executionId) throw new Error('AGENT_ACTOR_NOT_ACTIVE');
             const args = input as Record<string, unknown>;
-            const operationInput =
-              tool.action === 'send' &&
-              args.deliveryIntent === undefined &&
-              ((typeof args.content === 'string' && !!args.content.trim()) ||
+            let operationInput = args;
+            if (tool.action === 'send') {
+              const { delivery, ...sendInput } = args;
+              const hasMessage =
+                (typeof args.content === 'string' && !!args.content.trim()) ||
                 (Array.isArray(args.attachments) && args.attachments.length > 0) ||
-                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0))
-                ? { ...args, deliveryIntent: 'REPLACE_CURRENT' }
-                : args;
+                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0);
+              operationInput =
+                delivery !== undefined || hasMessage
+                  ? {
+                      ...sendInput,
+                      deliveryIntent: delivery === 'QUEUE' ? 'QUEUE' : 'REPLACE_CURRENT'
+                    }
+                  : sendInput;
+            }
             const onResolved: ResolvedTargets | undefined = call.publishEventData
               ? async (sessions) => {
                   const rows = sessions.map((session) => ({

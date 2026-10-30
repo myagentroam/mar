@@ -18,7 +18,7 @@ import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { NodeSummary } from '../../src/model/workbench.js';
 
-vi.mock('../../src/view/workbench/WorkbenchNotificationCenter.vue', () => ({
+vi.mock('../../src/view/workbench/WorkbenchActivityCenter.vue', () => ({
   default: { setup: () => () => null }
 }));
 
@@ -195,10 +195,11 @@ describe('Shared workbench shell', () => {
             notificationService: {
               recentRuns: ref([]),
               load: async () => undefined,
-              sessionGroupState: () => ({
-                MAIN: { running: 0, unread: false },
-                CHILD: { running: 0, unread: false }
-              })
+              unreadCount: ref(0),
+              notificationRevision: ref(0),
+              previewNotificationId: ref(undefined),
+              notifications: ref([]),
+              hasUnreadSession: () => false
             } as unknown as WorkbenchNotificationService,
             performanceDiagnostics: {} as ReturnType<typeof createWebPerformanceDiagnostics>,
             uploads: [],

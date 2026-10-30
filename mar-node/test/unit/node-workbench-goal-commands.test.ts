@@ -657,7 +657,9 @@ describe('Node Workbench Manifest and command control', () => {
     expect(
       internals.continuousRunCoordinator.pending(continuationBeforeRetry[0]!)?.executionContext
     ).not.toHaveProperty('runnerInput');
-    expect(internals.commandStates.get(session.id, 'goal')?.goal?.turns).toBe(1);
+    await vi.waitFor(() => {
+      expect(internals.commandStates.get(session.id, 'goal')?.goal?.turns).toBe(1);
+    });
     await operation(connector, 'session.message', {
       sessionId: session.id,
       clientMessageId: 'goal-objective',

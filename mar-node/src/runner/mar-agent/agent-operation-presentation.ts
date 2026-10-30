@@ -116,7 +116,7 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
     receipt.modelCount = value.models.length;
   }
   if (action === 'view' && isPlainRecord(value.session)) {
-    for (const key of ['status', 'model', 'effort']) {
+    for (const key of ['status', 'modelId', 'effort']) {
       const field = text(value.session[key]);
       if (field) receipt[key] = field;
     }

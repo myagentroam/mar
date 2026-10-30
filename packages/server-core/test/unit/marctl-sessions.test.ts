@@ -122,7 +122,7 @@ async function fixture(
 }
 
 describe('Workspace-bound marctl agents', () => {
-  it('supplies only authorized safe MAR model summaries for an Execution profile query', async () => {
+  it('rejects removed Profile list queries before preparing models or contacting Node', async () => {
     const listForUser = vi.fn(async () => [
       {
         id: 'eligible',
@@ -150,18 +150,54 @@ describe('Workspace-bound marctl agents', () => {
         command: { operation: 'list', input: { scope: 'profile', runner: 'mar-agent' } }
       }
     });
-    expect(response.statusCode).toBe(200);
-    expect(listForUser).toHaveBeenCalledExactlyOnceWith(7);
+    expect(response.statusCode).toBe(400);
+    expect(listForUser).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
-    const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
-    expect(network[3]).toMatchObject({
-      marctlExecutionResources: {
-        marAgentModels: [{ id: 'eligible' }, { id: 'disabled' }, { id: 'no-subagent' }]
-      }
-    });
-    expect(JSON.stringify(network[3])).not.toContain('not-for-node');
-    expect(network[2]).not.toHaveProperty('marAgentModels');
+    expect(f.requestNode).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('not-for-node');
   });
+
+  it.each([undefined, 'parent'])(
+    'relays compact list input and output without model resources for caller %s',
+    async (executionSource) => {
+      const f = await fixture(true, false, executionSource ? { executionSource } : {});
+      const result = { currentAgentId: executionSource ?? null, sessions: [], truncated: false };
+      f.requestNode.mockResolvedValue(result);
+      for (const input of [{}, { scope: 'tree' }, { scope: 'active', query: 'Task', limit: 100 }]) {
+        const response = await f.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: f.headers,
+          payload: { action: 'network', command: { operation: 'list', input } }
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual(result);
+        const call = f.requestNode.mock.calls.at(-1)!;
+        expect(call[1]).toBe('agent.network');
+        expect(call[2]).toEqual({ workspaceId: 'workspace', action: 'list', input });
+        expect(call[3]).not.toHaveProperty('marctlExecutionResources');
+      }
+      expect(f.secrets.resolve).not.toHaveBeenCalled();
+      for (const input of [
+        { cursor: 'next' },
+        { parent: 'p' },
+        { agentId: 'p' },
+        { runner: 'codex' },
+        { scope: 'children' },
+        { limit: 101 }
+      ]) {
+        f.requestNode.mockClear();
+        const response = await f.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: f.headers,
+          payload: { action: 'network', command: { operation: 'list', input } }
+        });
+        expect(response.statusCode).toBe(400);
+        expect(f.requestNode).not.toHaveBeenCalled();
+      }
+    }
+  );
 
   it('supplies the authenticated safe model catalog for a MAR configuration update without issuing runtime credentials', async () => {
     const listForUser = vi.fn(async () => [
@@ -560,6 +596,13 @@ describe('Workspace-bound marctl agents', () => {
   it('accepts real CLI subprocess requests over HTTP using the issued Workspace credential', async () => {
     const { app, headers, requestNode } = await fixture(true, false, { executionSource: 'source' });
     const request = requestNode.getMockImplementation()!;
+    const listResult = {
+      currentAgentId: 'source',
+      sessions: [
+        { id: 'source', parentSessionId: null, title: 'Review', runner: 'codex', status: 'RUNNING' }
+      ],
+      truncated: false
+    };
     requestNode.mockImplementation(async (...args) =>
       args[1] === 'agent.network' && args[2].action === 'send'
         ? {
@@ -573,13 +616,16 @@ describe('Workspace-bound marctl agents', () => {
               }
             }
           }
-        : request(...args)
+        : args[1] === 'agent.network' && args[2].action === 'list'
+          ? listResult
+          : request(...args)
     );
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
     try {
       for (const args of [
         ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
+        ['list', '--scope', 'active', '--query', 'Review', '--limit', '1'],
         ['rename', '--title', 'reviewer#42 Updated'],
         ['config', '--effort', 'high'],
         ['schedule', 'list'],
@@ -603,6 +649,7 @@ describe('Workspace-bound marctl agents', () => {
         );
         expect(result.stderr).toBe('');
         expect(JSON.parse(result.stdout)).toBeTypeOf('object');
+        if (args[0] === 'list') expect(JSON.parse(result.stdout)).toEqual(listResult);
         if (args[0] === 'send')
           expect(JSON.parse(result.stdout)).toMatchObject({
             clientMessageId: 'input',
@@ -617,6 +664,16 @@ describe('Workspace-bound marctl agents', () => {
             }
           });
       }
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'agent.network',
+        {
+          workspaceId: 'workspace',
+          action: 'list',
+          input: { scope: 'active', query: 'Review', limit: 1 }
+        },
+        expect.not.objectContaining({ marctlExecutionResources: expect.anything() })
+      );
       expect(requestNode).toHaveBeenCalledWith(
         'node',
         'session.metadata.update',

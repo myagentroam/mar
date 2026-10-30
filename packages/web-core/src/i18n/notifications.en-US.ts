@@ -1,4 +1,10 @@
 export const notificationsEnUS = {
+  activityCenter: {
+    title: 'Sessions & notifications',
+    shortcut: 'Sessions & notifications (Ctrl/Cmd+Shift+E)',
+    runningCount: 'Running {count}',
+    unreadCount: '{count} unread notifications'
+  },
   workbenchNotificationCenter: {
     recentSessions: 'Recent Sessions',
     recentSessionsShortcut: 'Recent Sessions (Ctrl/Cmd+Shift+E)',

@@ -275,9 +275,7 @@ onBeforeUnmount(() => {
             ready && event.dataTransfer?.files && chat.attachments.add(event.dataTransfer.files)
         "
         @remove-skill="(name) => (skillTokens = skillTokens.filter((value) => value.name !== name))"
-        @remove-reference="
-          (path) => (references = references.filter((value) => value.path !== path))
-        "
+        @remove-reference="chat.fileReferences.remove"
       >
         <template #queue
           ><ComposerQueue

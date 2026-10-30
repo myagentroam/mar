@@ -5,7 +5,7 @@ import {
   type MobileWorkspaceSurface
 } from '../util/mobile-workbench.js';
 
-export type MobileUtilityPanel = 'recent-sessions' | 'notifications';
+export type MobileUtilityPanel = 'activity';
 
 export interface WorkbenchNavigationService<
   WorkbenchView extends string,

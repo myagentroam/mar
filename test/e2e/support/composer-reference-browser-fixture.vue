@@ -6,6 +6,7 @@ import ComposerCommandPicker from '../../../packages/web-core/src/view/composer/
 import { createComposerReferenceService } from '../../../packages/web-core/src/service/composer-reference-service.js';
 import { createRunnerInteractionService } from '../../../packages/web-core/src/service/runner-interaction-service.js';
 import { createWorkbenchComposerInteractionController } from '../../../packages/web-core/src/service/workbench-composer-interaction-controller.js';
+import { serializeComposerMessage } from '../../../packages/web-core/src/service/composer-skill-token-service.js';
 
 const input = ref('');
 const mobile = ref(new URLSearchParams(location.search).get('mobile') === '1');
@@ -19,6 +20,7 @@ const harness = reactive({
   calls: [] as string[],
   updates: 0,
   sends: 0,
+  messages: [] as string[],
   aborted: 0,
   pending: false
 });
@@ -101,9 +103,7 @@ const interactions = createWorkbenchComposerInteractionController({
   ensureQuickPrompts: () => {},
   selectSkill: () => {},
   stopActiveRun: async () => {},
-  sendMessage: () => {
-    harness.sends++;
-  },
+  sendMessage,
   loadOlderConversationTurns: async () => {},
   handleConversationScroll: () => {},
   scrollToLatest: () => {},
@@ -113,6 +113,10 @@ const interactions = createWorkbenchComposerInteractionController({
 function updateInput(value: string) {
   input.value = value;
   harness.updates++;
+}
+function sendMessage() {
+  harness.sends++;
+  harness.messages.push(serializeComposerMessage([], input.value, references.selected.value));
 }
 </script>
 
@@ -132,7 +136,8 @@ function updateInput(value: string) {
       @input="interactions.onComposerInput"
       @cursor="interactions.onComposerCursor"
       @keydown="interactions.onComposerKeydown"
-      @submit="harness.sends++"
+      @submit="sendMessage"
+      @remove-reference="references.remove"
     >
       <template #picker>
         <ComposerReferencePicker
