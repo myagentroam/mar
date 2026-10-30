@@ -113,12 +113,9 @@ const networkCommand = z.discriminatedUnion('operation', [
       operation: z.literal('list'),
       input: z
         .object({
-          scope: z.enum(['workspace', 'children', 'descendants', 'profile']).optional(),
-          agentId: id.optional(),
-          parent: id.optional(),
-          runner: runnerNameSchema.optional(),
+          scope: z.enum(['tree', 'active']).optional(),
           query: z.string().max(160).optional(),
-          ...page
+          limit: z.number().int().min(1).max(100).optional()
         })
         .strict()
     })
@@ -422,7 +419,7 @@ export function registerMarctlSessionRoutes(
               (hasMessage || (isObject(arguments_.goal) && 'objective' in arguments_.goal)));
           const resources: Record<string, unknown> = {};
           let executionResources: Record<string, unknown> | undefined;
-          if (caller.type === 'terminal') {
+          if (caller.type === 'terminal' && requiresExecutionResources) {
             const profileContext = await prepareRunnerProfileContext({
               userId: user.userId,
               nodeId: scope.nodeId,
@@ -503,13 +500,7 @@ export function registerMarctlSessionRoutes(
                 );
             }
           } else if (
-            operation === 'list' &&
-            arguments_.scope === 'profile' &&
-            arguments_.runner === 'mar-agent'
-          ) {
-            const models = (await input.marAgentModels?.listForUser?.(user.userId)) ?? [];
-            executionResources = { marAgentModels: models.map(nodeModelSummary) };
-          } else if (
+            caller.type === 'execution' &&
             requiresExecutionResources &&
             (operation !== 'start' ||
               arguments_.parentSessionId === undefined ||

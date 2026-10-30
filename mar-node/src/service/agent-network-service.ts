@@ -36,13 +36,9 @@ export interface AgentNetworkActor {
 }
 
 export interface AgentNetworkListInput {
-  readonly scope?: 'workspace' | 'children' | 'descendants' | 'profile';
-  readonly agentId?: string;
-  readonly parent?: string;
-  readonly runner?: string;
+  readonly scope?: 'tree' | 'active';
   readonly query?: string;
   readonly limit?: number;
-  readonly cursor?: string;
 }
 
 interface AgentNetworkServiceOptions {

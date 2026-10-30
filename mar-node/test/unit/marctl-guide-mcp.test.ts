@@ -47,12 +47,11 @@ it('publishes default steer and opt-in queue guidance in the native send tool', 
   expect(send.description).toContain('an active Goal must exit first');
   const list = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_list');
   expect(new Set(Object.keys(list.inputSchema.properties))).toEqual(
-    new Set(['scope', 'agentId', 'runner', 'query', 'limit', 'cursor'])
+    new Set(['scope', 'query', 'limit'])
   );
-  expect(list.description).toContain('List direct children by default');
-  expect(list.inputSchema.properties.agentId.description).toContain(
-    'Root for children or descendants'
-  );
+  expect(list.description).toContain('tree by default');
+  expect(list.inputSchema.properties.scope.enum).toEqual(['tree', 'active']);
+  expect(list.inputSchema.properties.limit.maximum).toBe(100);
 });
 
 it('publishes paired full MCP and management-only Host guidance without credentials', async () => {
@@ -100,7 +99,7 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       'agents view',
       'default Runner is the current Session Runner',
       '--clear-goal',
-      '--scope profile',
+      '--scope tree|active',
       'agents start --title <title>',
       'manual terminal may omit it',
       'Acceptance is not completion',

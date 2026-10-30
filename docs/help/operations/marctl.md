@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 ---
 
 # 使用 marctl 管理节点
@@ -74,9 +74,9 @@ marctl agents schedule get <session-id> --json
 
 `sessions` 由 MAR 授权绑定当前 Node 和 Workspace，不接受 `--node`、`--workspace` 或其他范围覆盖；已知其他范围的会话 ID 或 cursor 不代表获得访问权。Workspace 终端可能没有当前会话；缺少可信工作区上下文时明确报错。既有 `nodes`、`ssh`、`scp` 的跨 Node 行为不变。
 
-会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。置顶会话优先排序，但仍遵守分页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
+会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。列表按所选范围排序并限量；超出的匹配通过 `truncated` 标记，不提供翻页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
 
-`list` 每个会话只返回 `id`、`title`、`runner`、`status`、`runId` 和一条有界 `latestActivity`。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
+`list` 仅接受 `--scope tree|active`、`--query <标题片段>`、`--limit <1..100>`。有当前会话时默认返回所在协作树，包含空闲会话；独立终端默认 active，显式 tree 需要会话上下文。active 返回当前 Workspace 中运行或睡眠的会话，不按更新时间、Goal 或队列推断。query 在所选范围内按标题过滤，忽略首尾空白、大小写及全角字母等兼容差异，再应用 limit（默认及上限均为 100）。结果仅含 `currentAgentId`（无会话时为 null）、扁平 `sessions` 和 `truncated`；每项仅含 `id`、`parentSessionId`、`title`、`runner`、`status`。无匹配返回空列表，超出 limit 标记截断，无 cursor 或翻页；已知 ID 直接复用。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
 会话 `status` 只有 `RUNNING`、`IDLE`、`SLEEPING`。SLEEPING 必须来自当前 Run 的真实前台 sleep 等待，不按工具名或 Goal 是否 active 推断；工具 `state` 仍为原有 `IN_PROGRESS`、`COMPLETED` 等生命周期。活动会话尚无新公开动作时返回空动态，不借用上一 Run；IDLE 可保留既有内存中的活动及观察时间。摘要最多 100 个 Unicode 字符，工具名最多 128 个，最新消息最多 300 个；`truncated` 标明内容截断，完整证据仍查 history。
 
@@ -93,7 +93,7 @@ marctl help agents
 marctl agents current --json
 marctl agents list --limit 20 --json
 marctl agents list --query fixer#42 --json
-marctl agents list --parent <session-id> --limit 20 --json
+marctl agents list --scope active --limit 20 --json
 marctl agents graph <session-id> --limit 100 --json
 marctl agents start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
 marctl agents show <session-id> --json
@@ -120,7 +120,7 @@ marctl agents goal clear <session-id> --json
 
 `start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model-id` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
-Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
+Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
 
 按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 

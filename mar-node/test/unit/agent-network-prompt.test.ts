@@ -349,35 +349,68 @@ it.each([false, true])(
   }
 );
 
-it.each([false, true])('forwards list scopes and roots with Code Mode %s', async (codeMode) => {
-  for (const input of [
-    {},
-    { scope: 'children', agentId: 'delegate' },
-    { scope: 'descendants', agentId: 'delegate' },
-    { scope: 'workspace', query: 'Task', limit: 10, cursor: 'next' },
-    { scope: 'profile', runner: 'mar-agent' }
-  ]) {
-    const test = await fixture(codeMode, { name: 'agent_list', input });
+it.each([false, true])(
+  'forwards compact list scopes and filters with Code Mode %s',
+  async (codeMode) => {
+    for (const input of [{}, { scope: 'tree' }, { scope: 'active', query: 'Task', limit: 10 }]) {
+      const test = await fixture(codeMode, { name: 'agent_list', input });
+      expect(test.invoke).toHaveBeenCalledExactlyOnceWith(
+        'execution',
+        'list',
+        input,
+        expect.anything(),
+        expect.any(Function)
+      );
+      expect(test.failures).toEqual([]);
+      if ('query' in input) {
+        const normalizer = new MarAgentConversationNormalizer();
+        const items = test.publicEvents.flatMap((event) => normalizer.normalize(event));
+        expect(items).toContainEqual(
+          expect.objectContaining({
+            kind: 'tool_call',
+            payload: expect.objectContaining({
+              toolName: 'agent_list',
+              inputSummary: JSON.stringify(input)
+            })
+          })
+        );
+      }
+    }
+  }
+);
+
+it.each([false, true])(
+  'rejects unsupported list scopes and invalid limits with Code Mode %s',
+  async (codeMode) => {
+    for (const input of [
+      { scope: 'children' },
+      { scope: 'descendants' },
+      { scope: 'workspace' },
+      { scope: 'profile', runner: 'mar-agent' },
+      { limit: 0 },
+      { limit: 101 },
+      { query: 'x'.repeat(161) }
+    ]) {
+      const test = await fixture(codeMode, { name: 'agent_list', input });
+      expect(test.invoke).not.toHaveBeenCalled();
+      expect(test.failures.length).toBeGreaterThan(0);
+    }
+  }
+);
+
+it.each([false, true])(
+  'strips removed list fields before invoking Node with Code Mode %s',
+  async (codeMode) => {
+    const test = await fixture(codeMode, {
+      name: 'agent_list',
+      input: { agentId: 'delegate', runner: 'codex', cursor: 'next' }
+    });
     expect(test.invoke).toHaveBeenCalledExactlyOnceWith(
       'execution',
       'list',
-      input,
+      {},
       expect.anything(),
       expect.any(Function)
     );
-    expect(test.failures).toEqual([]);
-    if ('query' in input) {
-      const normalizer = new MarAgentConversationNormalizer();
-      const items = test.publicEvents.flatMap((event) => normalizer.normalize(event));
-      expect(items).toContainEqual(
-        expect.objectContaining({
-          kind: 'tool_call',
-          payload: expect.objectContaining({
-            toolName: 'agent_list',
-            inputSummary: JSON.stringify(input)
-          })
-        })
-      );
-    }
   }
-});
+);

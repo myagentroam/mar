@@ -121,20 +121,20 @@ const tools: readonly {
   {
     action: 'list',
     description:
-      'List direct children by default, discover Workspace Sessions, inspect descendants or query a Runner profile.',
+      "List the current Session's collaboration tree by default, or active Workspace Sessions. Active includes running and sleeping. Reuse known Session IDs directly. Returns currentAgentId, flat sessions (id, parentSessionId, title, runner, status) and truncated; no pagination.",
     properties: {
-      scope: { type: 'string', enum: ['workspace', 'children', 'descendants', 'profile'] },
-      agentId: {
-        ...text,
-        description: 'Root for children or descendants; defaults to the current Session.'
+      scope: {
+        type: 'string',
+        enum: ['tree', 'active'],
+        description:
+          'Defaults to tree: the containing tree, including ancestors, peers and descendants.'
       },
-      runner: {
-        ...runner,
-        description: 'Runner for profile scope; defaults to the current Runner, not a model name.'
+      query: {
+        type: 'string',
+        maxLength: 160,
+        description: 'Optional case-insensitive title fragment within the scope.'
       },
-      query: { type: 'string', description: 'Search Sessions; not a model selector.' },
-      limit: { type: 'integer', minimum: 1, maximum: 100 },
-      cursor: text
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 100.' }
     }
   },
   {

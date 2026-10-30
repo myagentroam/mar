@@ -886,10 +886,10 @@ describe('Node Agent Network owner integration', () => {
         expect(core.continuousRunCoordinator.pending(executionId)?.sessionId).toBe(parent.id);
       }
       const context = { signal: new AbortController().signal } as ExtensionOperationContext;
-      await expect(
-        invoke(executionId, 'list', { scope: 'children' }, context)
-      ).resolves.toMatchObject({
-        sessions: []
+      await expect(invoke(executionId, 'list', {}, context)).resolves.toMatchObject({
+        currentAgentId: parent.id,
+        sessions: [{ id: parent.id, parentSessionId: null, status: 'RUNNING' }],
+        truncated: false
       });
       const abortedStart = new AbortController();
       const starting = invoke(executionId, 'start', { title: 'Child', content: 'must not start' }, {
@@ -1043,12 +1043,12 @@ describe('Node Agent Network owner integration', () => {
       const request = {
         workspaceId: workspace.id,
         action: 'list',
-        input: { scope: 'children' },
+        input: {},
         __requestUserId: 7,
         __marctlCaller: { type: 'execution', sessionId: callerSessionId, executionId }
       };
       expect(await command(request)).toMatchObject({
-        sessions: [expect.objectContaining({ id: created.agentId })]
+        sessions: expect.arrayContaining([expect.objectContaining({ id: created.agentId })])
       });
       await expect(command({ ...request, __requestUserId: 8 })).rejects.toThrow(
         'MARCTL_EXECUTION_CREDENTIAL_INVALID'
@@ -1071,15 +1071,18 @@ describe('Node Agent Network owner integration', () => {
         'SESSION_NOT_FOUND'
       );
       await expect(
-        command({ ...terminal, action: 'list', input: { scope: 'profile' } })
-      ).rejects.toThrow('RUNNER_REQUIRED');
+        command({ ...terminal, action: 'list', input: { scope: 'tree' } })
+      ).rejects.toThrow('AGENT_TARGET_REQUIRED');
       expect(
         await command({
           ...terminal,
           action: 'list',
-          input: { scope: 'children', agentId: parent.id }
+          input: { scope: 'active' }
         })
-      ).toMatchObject({ sessions: [expect.objectContaining({ id: created.agentId })] });
+      ).toMatchObject({
+        currentAgentId: null,
+        sessions: expect.arrayContaining([expect.objectContaining({ id: parent.id })])
+      });
       await expect(
         invoke('unknown-execution', 'send', { agentId: created.agentId, content: 'no' }, context)
       ).rejects.toThrow('AGENT_ACTOR_NOT_ACTIVE');
@@ -1101,9 +1104,9 @@ describe('Node Agent Network owner integration', () => {
       const childRun = core.runtime.activeSessionRun(created.agentId)!;
       await vi.waitFor(() => expect(core.runtime.currentExecutionId(childRun.id)).toBeTruthy());
       const childExecutionId = core.runtime.currentExecutionId(childRun.id)!;
-      await expect(
-        invoke(childExecutionId, 'list', { scope: 'children' }, context)
-      ).rejects.toThrow('AGENT_ACTOR_NOT_ACTIVE');
+      await expect(invoke(childExecutionId, 'list', {}, context)).rejects.toThrow(
+        'AGENT_ACTOR_NOT_ACTIVE'
+      );
       const childInvoke = agentNetworkInvoke({
         sessionId: created.agentId,
         runtime: core.runtime,
@@ -1351,9 +1354,9 @@ describe('Node Agent Network owner integration', () => {
         expect(response?.error).toBeUndefined();
         return response?.result as Record<string, unknown>;
       };
-      const profile = await request(
+      const listing = await request(
         'list',
-        { scope: 'profile', runner: 'mar-agent' },
+        { scope: 'tree' },
         {
           marAgentModels: [
             modelSummary,
@@ -1363,9 +1366,9 @@ describe('Node Agent Network owner integration', () => {
           ]
         }
       );
-      expect(profile.models).toEqual([expect.objectContaining({ id: 'eligible' })]);
-      expect(JSON.stringify(profile)).not.toContain('fixture-only');
-      expect(JSON.stringify(profile)).not.toContain('unauthorized');
+      expect(listing.sessions).toEqual([expect.objectContaining({ id: parent.id })]);
+      expect(JSON.stringify(listing)).not.toContain('fixture-only');
+      expect(JSON.stringify(listing)).not.toContain('unauthorized');
       const sessionsBefore = core.runtime.listAgentSessions();
       await expect(
         core.sessionLifecycleService.operations()['session.create']!({

@@ -56,10 +56,8 @@ ${configurationHelp}
   {program} wait [<id>] [--agent <id> ...] [--mode any|all]
     [--wait-for message|completion] [--timeout <duration>] [--json]
   {program} stop <id> --execution <execution-id> [--json]
-  {program} list [--scope children|descendants|workspace|profile]
-    [--agent <id>]
-    [--runner <runner>] [--query <title>] [--parent <id>]
-    [--cursor <cursor>] [--limit <1..100>] [--json]
+  {program} list [--scope tree|active] [--query <title>]
+    [--limit <1..100>] [--json]
   {program} view [<id>] [--history] [--cursor <cursor>]
     [--limit <1..100>] [--json]
 
@@ -83,21 +81,25 @@ ${configurationHelp}
 
 输入与结果：
   start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或
-  --parent。profile 显示已配置模型，不代表账号实时可用。start 不等待。
+  --parent。start 不等待。
   send 默认追加；--steer 优先补充，--queue 排队。--goal 设置或替换目标，
   --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
   stop 清除目标会话的 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数小于 10 秒按 10 秒等待，最多 5 分钟。等待不会停止任务。
   可只传图片：最多 5 张，单张 5 MiB、总计 10 MiB。-m 与 --message-file
-  互斥；文件使用 UTF-8，- 从 stdin 读取。list 返回当前身份和分页结果，
-  nextCursor 表示还有后续页面。配置和持久提示从后续执行生效。
+  互斥；文件使用 UTF-8，- 从 stdin 读取。list 默认查询所在会话树，包含空闲会话；
+  没有当前会话时默认 active，显式 tree 须有会话上下文。active 包含当前
+  Workspace 中运行及睡眠的会话。返回 currentAgentId（无会话时为 null）、
+  扁平 sessions 和 truncated。limit 默认及上限均为 100，无 cursor 或分页。
+  配置和持久提示从后续执行生效。
   即时沟通或纠偏优先使用 --steer。
   仅明确要延后处理的输入使用 --queue：当前工作及前面的队列项结束后才消费，
   有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
   show --json 包含 session.status、session.modelId、session.effort、
   session.title、session.runId、session.recentTools、session.queuedCount 和
-  session.latestMessage。list 返回 latestActivity；wait 可能包含 progress；
+  session.latestMessage。list 每项仅含 id、parentSessionId、title、runner 和
+  status；wait 可能包含 progress；
   状态为 RUNNING/IDLE/SLEEPING。历史中 segments[].items[] 的
   kind === "assistant_message" 包含 payload.text。
 

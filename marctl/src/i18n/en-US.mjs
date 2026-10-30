@@ -57,10 +57,8 @@ Usage:
   {program} wait [<id>] [--agent <id> ...] [--mode any|all]
     [--wait-for message|completion] [--timeout <duration>] [--json]
   {program} stop <id> --execution <execution-id> [--json]
-  {program} list [--scope children|descendants|workspace|profile]
-    [--agent <id>]
-    [--runner <runner>] [--query <title>] [--parent <id>]
-    [--cursor <cursor>] [--limit <1..100>] [--json]
+  {program} list [--scope tree|active] [--query <title>]
+    [--limit <1..100>] [--json]
   {program} view [<id>] [--history] [--cursor <cursor>]
     [--limit <1..100>] [--json]
 
@@ -84,8 +82,7 @@ Management:
 
 Input and results:
   Start defaults to the current Session Runner; a terminal without a current
-  Session must specify --runner or --parent. Profile lists configured models,
-  not guaranteed account availability. Start returns without waiting.
+  Session must specify --runner or --parent. Start returns without waiting.
   Send appends by default; --steer provides timely input and --queue defers.
   --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal
   without text; omitted Goal is unchanged. Stop clears the target Session Goal.
@@ -93,7 +90,11 @@ Input and results:
   Positive timeouts below 10s become 10s; maximum is 5m. Waiting does not stop.
   Images may be supplied without text: at most 5, 5 MiB each, 10 MiB total.
   -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
-  List exposes current identity and bounded pages; nextCursor marks more.
+  List defaults to the containing tree, including idle Sessions. Without a
+  current Session it defaults to active; explicit tree requires a Session.
+  Active includes running and sleeping Sessions in the current Workspace.
+  List returns currentAgentId (null without a Session), flat sessions and
+  truncated. Limit defaults to 100, maximum 100; no cursor or pagination.
   Configuration and prompt changes apply to future executions.
   Prefer --steer for timely communication or course correction.
   Use --queue only for deliberately deferred input: it is consumed after
@@ -103,7 +104,8 @@ Input and results:
 
   show --json includes session.status, session.modelId, session.effort,
   session.title, session.runId, session.recentTools, session.queuedCount and
-  session.latestMessage. list reports latestActivity; wait may include progress.
+  session.latestMessage. List entries have id, parentSessionId, title, runner
+  and status; wait may include progress.
   Status is RUNNING/IDLE/SLEEPING. In history, segments[].items[] with
   kind === "assistant_message" expose payload.text.
 

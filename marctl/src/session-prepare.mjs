@@ -21,11 +21,6 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     'executionId'
   ])
     if (args[name] !== undefined) input[name] = args[name];
-  if (args.action === 'list' && input.parentSessionId !== undefined) {
-    input.parent = input.parentSessionId;
-    delete input.parentSessionId;
-  }
-  if (args.action === 'list' && args.agent !== undefined) input.agentId = args.agent;
   if (['send', 'stop', 'view', 'wait'].includes(args.action) && sessionId)
     input.agentId = sessionId;
   if (args.action === 'wait' && args.agentIds?.length) input.agentIds = args.agentIds;

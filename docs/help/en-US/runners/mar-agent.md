@@ -135,7 +135,14 @@ Unread public child messages and new terminal results are delivered automaticall
 
 For Node's native `agent_send`, messages with text or images default to `REPLACE_CURRENT` (steer) when `deliveryIntent` is omitted. Explicit `SEND` retains its existing semantics; Goal-only updates and approval decisions are unaffected, and public message API and CLI defaults remain unchanged. Other Runners use `marctl agents send <id> --steer -m <text>`. Choose `QUEUE` or `--queue` only for deliberately deferred input: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
 
-Native `agent_list` lists the current session's direct children by default; use `agentId` to select another root for `children` or `descendants`. Use workspace scope to discover unknown sessions. The native tool does not expose `parent`; marctl retains its workspace parent filter. Reuse known session IDs directly.
+Native `agent_list` accepts only `scope`, an optional title fragment `query`, and `limit`. Omit `scope` or choose `tree` to list the current session's containing collaboration tree, including registered, authorized roots, ancestors, peers, and descendants; idle sessions and sessions with completed executions remain visible. Choose `active` for running or sleeping sessions in the current Workspace. Recent conversations, enabled Goals, and nonempty queues do not imply activity. Reuse known session IDs directly; titles do not automatically select or route to a target.
+
+`query` filters titles within the selected scope, ignoring surrounding whitespace and case and normalizing compatibility characters such as full-width letters. `limit` defaults to 100 and cannot exceed 100. Results contain `currentAgentId`, flat `sessions`, and `truncated`; each entry contains only `id`, `parentSessionId`, `title`, `runner`, and `status` (`RUNNING`, `SLEEPING`, or `IDLE`). Trees use root-first breadth-first order; active sessions use newest activity first. A parent may be absent because of filtering or authorization. No matches produce an empty list; results exceeding limit are marked truncated, without a cursor or pagination. Narrow the scope with query when needed. Listing does not scan Runners, resume executions, or establish subscriptions. `marctl agents list` uses the same arguments and result fields. Without a current Session, a standalone terminal defaults to active with currentAgentId null; explicit tree requires Session context.
+
+```js
+await tools.agent_list({});
+await tools.agent_list({ scope: 'active', query: 'review', limit: 20 });
+```
 
 `sleep({ durationMs })` provides a bounded delay of 1 to 1800000 integer milliseconds (up to 30 minutes). Accepted user input or an unread public subagent message ends the wait early; messages are then automatically injected and marked read through the normal path, without repeated wake-ups. It does not monitor external conditions or wake on process or cell completion; use the corresponding wait for an existing resource. The model always calls `sleep` directly, never inside a Code Mode cell.
 

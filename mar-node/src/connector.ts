@@ -811,25 +811,26 @@ export class NodeConnector {
             }),
             resources: async (signal: AbortSignal) => {
               signal.throwIfAborted();
-              const currentSessionId = this.runtime.getAgentSessionById(sessionId)?.id;
-              if (!currentSessionId) return [];
+              const currentSession = this.runtime.getAgentSessionById(sessionId);
+              if (!currentSession) return [];
+              const currentSessionId = currentSession.id;
               const run = this.runtime.activeSessionRun(currentSessionId);
               if (!run || !run.initiatedByUserId) return [];
-              const result = await this.agentNetworkService.list(
-                {
-                  sessionId: currentSessionId,
-                  runId: run.id,
-                  requestUserId: run.initiatedByUserId
-                },
-                { scope: 'children', limit: 100 }
-              );
+              const result = await this.sessionCatalogService.operations()['session.list']!({
+                workspaceId: currentSession.workspaceId,
+                registeredOnly: true,
+                view: 'marctl',
+                parentSessionId: currentSessionId,
+                limit: 100
+              });
               signal.throwIfAborted();
-              const data = result as { sessions?: unknown[]; truncated?: boolean };
-              if (!data.sessions?.length && !data.truncated) return [];
+              const data = result as { sessions?: unknown[]; nextCursor?: string | null };
+              const truncated = data.nextCursor != null;
+              if (!data.sessions?.length && !truncated) return [];
               return [
                 `Child Sessions (use agent_list for details): ${JSON.stringify({
                   sessions: data.sessions ?? [],
-                  truncated: data.truncated === true
+                  truncated
                 }).replace(/[<>&]/g, (c) =>
                   c === '<' ? '\\u003c' : c === '>' ? '\\u003e' : '\\u0026'
                 )}`
@@ -1313,37 +1314,7 @@ export class NodeConnector {
       goals: this.goalRuntime,
       runs: this.runWorkbenchService,
       observations: this.agentNetworkObservations,
-      listSessions: async (input) =>
-        this.sessionCatalogService.operations()['session.list']!(input),
       history: async (input) => this.sessionQueryService.operations()['session.turns.list']!(input),
-      profiles: async (environment, models) => {
-        const summaries = Array.isArray(models)
-          ? models.flatMap((model, index) => {
-              if (!isPlainRecord(model)) return [];
-              const {
-                apiKey: _apiKey,
-                credential: _credential,
-                imageGeneration: _images,
-                access: _access,
-                ...summary
-              } = model;
-              return [
-                {
-                  ...summary,
-                  sortOrder: typeof summary.sortOrder === 'number' ? summary.sortOrder : index
-                }
-              ];
-            })
-          : undefined;
-        const result = await this.runnerService.operations()['runner.profiles.list']!({
-          secretEnvironment: environment,
-          marAgentModels: summaries,
-          waitForRefresh: true
-        });
-        if (!isPlainRecord(result) || !Array.isArray(result.profiles))
-          throw new Error('RUNNER_PROFILE_INVALID');
-        return result.profiles as import('@myagentroam/protocol').RunnerProfile[];
-      },
       ensureObservations: (actor) => {
         const existing = this.agentNetworkObservations.get(actor.observationId ?? actor.sessionId);
         if (existing) return existing;
