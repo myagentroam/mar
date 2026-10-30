@@ -11,6 +11,8 @@ Main / Child tabs only switch the list, without running or unread badges. Openin
 
 Conversation groups your messages, Agent replies, reasoning summaries, plans, commands, tools, file changes, approvals, and questions in execution order. Expand supporting cards when details are needed; Agent Markdown is sanitized before display.
 
+Cross-session message headings distinguish parent, child, descendant, and other sessions using the saved sender name. Hover to see the source session ID. Older messages without a saved relationship retain their original source label.
+
 Images in the conversation load as thumbnails. Click one to open an aspect-ratio-preserving preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears at the top right. This loads the original image while still fitting it entirely within the dialog, preserving its aspect ratio without cropping or image scrollbars. Long screenshots also fit as a whole, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
 
 Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Subagents are grouped separately by identity; image generation, plans, approvals, and questions remain separate.

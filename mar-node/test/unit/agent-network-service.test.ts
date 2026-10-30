@@ -24,6 +24,7 @@ function fixture(parentSessionId: string | null = 'parent') {
     result: { approvalId: 'approval', decision: 'approve' }
   }));
   const validateApproval = vi.fn(async () => {});
+  const validateSend = vi.fn(async () => {});
   const stop = vi.fn(() => {
     goal = undefined;
     return { accepted: true };
@@ -55,6 +56,7 @@ function fixture(parentSessionId: string | null = 'parent') {
     message,
     approval,
     validateApproval,
+    validateSend,
     stop,
     goal: () => goal,
     list: async () => ({}),
@@ -81,6 +83,7 @@ function fixture(parentSessionId: string | null = 'parent') {
     message,
     approval,
     validateApproval,
+    validateSend,
     stop,
     goal: () => goal,
     resolveTarget,
@@ -145,6 +148,37 @@ describe('Agent Network model selection', () => {
 });
 
 describe('Agent Network send and stop', () => {
+  it('rejects an inactive ancestor before applying approval, Goal or message side effects', async () => {
+    const f = fixture();
+    f.validateSend.mockRejectedValue(new Error('AGENT_ANCESTOR_NOT_ACTIVE'));
+    await expect(
+      f.service.send(f.actor, {
+        agentId: f.target.id,
+        content: 'report',
+        goal: { objective: 'continue' },
+        approval: { approvalId: 'approval', decision: 'approve' }
+      })
+    ).rejects.toThrow('AGENT_ANCESTOR_NOT_ACTIVE');
+    expect(f.approval).not.toHaveBeenCalled();
+    expect(f.setGoal).not.toHaveBeenCalled();
+    expect(f.message).not.toHaveBeenCalled();
+    expect(f.observe).not.toHaveBeenCalled();
+  });
+
+  it('does not apply the ancestor wake guard to approval-only or Goal clearing operations', async () => {
+    const f = fixture();
+    f.validateSend.mockRejectedValue(new Error('AGENT_ANCESTOR_NOT_ACTIVE'));
+    await f.service.send(f.actor, {
+      agentId: f.target.id,
+      goal: { clear: true },
+      approval: { approvalId: 'approval', decision: 'approve' }
+    });
+    expect(f.validateSend).not.toHaveBeenCalled();
+    expect(f.approval).toHaveBeenCalledOnce();
+    expect(f.setGoal).toHaveBeenCalledOnce();
+    expect(f.message).not.toHaveBeenCalled();
+  });
+
   it.each(['message', 'goal', 'failed message'])(
     'does not subscribe to a non-child after sending %s',
     async (operation) => {

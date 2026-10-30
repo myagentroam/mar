@@ -152,6 +152,8 @@ export const conversationUiEnUS = {
       goalContinue: 'Goal continued',
       messageFromSource: 'From {name}',
       messageFromParentSession: 'From parent session {name}',
+      messageFromChildSession: 'From child session {name}',
+      messageFromDescendantSession: 'From descendant session {name}',
       messageFromOtherSession: 'From another session {name}',
       messageFromMarctl: 'From marctl',
       sessionSourceDetails: 'Source: Session\nSession ID: {sessionId}',

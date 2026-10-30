@@ -90,9 +90,33 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     if (!session || session.workspaceId !== workspaceId) throw new Error('SESSION_NOT_FOUND');
     return session;
   }
-  function origin(parent: NodeAgentSession) {
+  function ancestorDistance(source: NodeAgentSession, targetId: string): number {
+    const seen = new Set([source.id]);
+    let parentId = source.parentSessionId;
+    let distance = 1;
+    while (parentId) {
+      if (seen.has(parentId))
+        throw Object.assign(new Error('Session ancestry contains a cycle.'), {
+          code: 'SESSION_RELATION_INVALID'
+        });
+      seen.add(parentId);
+      if (parentId === targetId) return distance;
+      const parent = options.runtime.getAgentSession(parentId);
+      if (parent?.id === targetId) return distance;
+      parentId = parent
+        ? parent.parentSessionId
+        : options.database()?.getSessionRecord(parentId)?.metadata.parentSessionId;
+      distance++;
+    }
+    return 0;
+  }
+  function origin(parent: NodeAgentSession, targetId?: string) {
+    const distance = targetId === undefined ? 0 : ancestorDistance(parent, targetId);
     return {
       sessionId: parent.id,
+      ...(distance === 0
+        ? {}
+        : { relation: distance === 1 ? ('child' as const) : ('descendant' as const) }),
       name: parent.customTitle?.trim() || parent.runnerTitle?.trim() || parent.id
     };
   }
@@ -177,6 +201,16 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         )
       );
       return resolved.filter((session): session is NodeAgentSession => session !== undefined);
+    },
+    validateSend: async (actor, session) => {
+      if (terminalCalls.has(actor)) return;
+      const source = await actorSession(actor);
+      if (ancestorDistance(source, session.id) === 0) return;
+      const run = options.runtime.activeSessionRun(session.id);
+      if (!run || run.status === 'CANCELLING')
+        throw Object.assign(new Error('Cannot send messages to an inactive ancestor session.'), {
+          code: 'AGENT_ANCESTOR_NOT_ACTIVE'
+        });
     },
     observe: (actor) => {
       options.ensureObservations(actor);
@@ -312,7 +346,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
             : { personalInstructions: actor.personalInstructions }),
           ...(actor.usageGrant === undefined ? {} : { usageGrant: actor.usageGrant }),
           preserveActiveRun: true,
-          ...(parent ? { messageOrigin: origin(parent) } : {}),
+          ...(parent ? { messageOrigin: origin(parent, session.id) } : {}),
           ...(message === undefined
             ? {}
             : {
@@ -343,7 +377,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
           sessionId: session.id,
           __suppressNotifications: true,
-          ...(parent ? { __marctlOrigin: origin(parent) } : {})
+          ...(parent ? { __marctlOrigin: origin(parent, session.id) } : {})
         })
       );
       return publicReceipt(result);

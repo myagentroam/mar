@@ -58,6 +58,7 @@ describe('Node Agent Network owner integration', () => {
         observations: network,
         target: async (_actor, id) => children.find((session) => session.id === id)!,
         authorize: async () => {},
+        validateSend: async () => {},
         observe: () => {},
         freezeExecution: (session) => ({
           agentId: session.id,
@@ -1491,7 +1492,7 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it.each(['parent', 'sibling', 'independent'] as const)(
+  it.each(['parent', 'promoted-parent', 'grandparent', 'sibling', 'independent'] as const)(
     'uses normal native messaging, wait, Goal and stop for %s targets without a relationship grant',
     async (kind) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-upward-'));
@@ -1527,35 +1528,66 @@ describe('Node Agent Network owner integration', () => {
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
-        externalSessionId: 'idle-parent',
+        ...(kind === 'promoted-parent' ? {} : { externalSessionId: 'idle-parent' }),
         modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
+      const childParent =
+        kind === 'grandparent'
+          ? core.runtime.createAgentSession({
+              workspaceId: workspace.id,
+              runner: 'codex',
+              cwd: workspace.path,
+              externalSessionId: 'intermediate-parent',
+              parentSessionId: parent.id,
+              modelId: 'gpt-5.3-codex',
+              effort: 'medium',
+              nativeControl: 'MAR_MANAGED'
+            })
+          : parent;
       const child = core.runtime.createAgentSession({
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: 'active-child',
-        parentSessionId: parent.id,
+        parentSessionId: childParent.id,
         modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
-      const target =
-        kind === 'parent'
-          ? parent
-          : core.runtime.createAgentSession({
-              workspaceId: workspace.id,
-              runner: 'codex',
-              cwd: workspace.path,
-              externalSessionId: `target-${kind}`,
-              ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
-              modelId: 'gpt-5.3-codex',
-              effort: 'medium',
-              nativeControl: 'MAR_MANAGED'
-            });
+      const ancestorTarget =
+        kind === 'parent' || kind === 'promoted-parent' || kind === 'grandparent';
+      const target = ancestorTarget
+        ? kind === 'promoted-parent'
+          ? core.runtime.promoteSessionIdentity(parent.id, 'promoted-parent-native')
+          : parent
+        : core.runtime.createAgentSession({
+            workspaceId: workspace.id,
+            runner: 'codex',
+            cwd: workspace.path,
+            externalSessionId: `target-${kind}`,
+            ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
+            modelId: 'gpt-5.3-codex',
+            effort: 'medium',
+            nativeControl: 'MAR_MANAGED'
+          });
       const observer = core.agentNetworkObservations.attach(child.id);
+      let persistedParentLookup: ReturnType<typeof vi.spyOn> | undefined;
+      if (kind === 'grandparent') {
+        database.saveNativeSessionMetadata({
+          runner: childParent.runner,
+          externalSessionId: childParent.externalSessionId!,
+          workspaceId: workspace.id,
+          parentSessionId: parent.id,
+          initializeParent: true
+        });
+        expect(database.getSessionRecord(childParent.id)?.metadata.parentSessionId).toBe(parent.id);
+        const getAgentSession = core.runtime.getAgentSession.bind(core.runtime);
+        persistedParentLookup = vi
+          .spyOn(core.runtime, 'getAgentSession')
+          .mockImplementation((id) => (id === childParent.id ? undefined : getAgentSession(id)));
+      }
       try {
         await core.sessionMessageService.operations()['session.message']!({
           sessionId: child.id,
@@ -1586,6 +1618,48 @@ describe('Node Agent Network owner integration', () => {
           };
         });
         expect(core.agentNetworkObservations.get(target.id)).toBeUndefined();
+        if (ancestorTarget) {
+          for (const input of [
+            { content: 'report', deliveryIntent: 'SEND' },
+            { content: 'report', deliveryIntent: 'QUEUE' },
+            { content: 'report', deliveryIntent: 'REPLACE_CURRENT' },
+            { attachmentIds: ['image-only'] },
+            { goal: { objective: 'must not restart the ancestor' } }
+          ]) {
+            await expect(
+              invoke(executionId, 'send', { agentId: target.id, ...input }, context)
+            ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          }
+          expect(requests).toEqual([]);
+          expect(core.runtime.activeSessionRun(target.id)).toBeUndefined();
+          expect(await invoke(executionId, 'view', { agentId: target.id }, context)).toMatchObject({
+            goal: null
+          });
+          // A user may resume the ancestor; subsequent Agent messages are then accepted.
+          await core.sessionMessageService.operations()['session.message']!({
+            sessionId: target.id,
+            content: 'user resume',
+            clientMessageId: 'ancestor-user-resume',
+            __requestUserId: 7
+          });
+          const activeSessionRun = core.runtime.activeSessionRun.bind(core.runtime);
+          const cancelling = vi.spyOn(core.runtime, 'activeSessionRun').mockImplementation((id) => {
+            const run = activeSessionRun(id);
+            return id === target.id && run ? { ...run, status: 'CANCELLING' } : run;
+          });
+          try {
+            await expect(
+              invoke(
+                executionId,
+                'send',
+                { agentId: target.id, content: 'stopping report' },
+                context
+              )
+            ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          } finally {
+            cancelling.mockRestore();
+          }
+        }
         for (const deliveryIntent of ['SEND', 'QUEUE', 'REPLACE_CURRENT'] as const) {
           expect(
             await invoke(
@@ -1607,6 +1681,10 @@ describe('Node Agent Network owner integration', () => {
             deliveryIntent,
             __marctlOrigin: { sessionId: child.id }
           });
+          if (ancestorTarget)
+            expect(requests.at(-1)).toMatchObject({
+              __marctlOrigin: { relation: kind === 'grandparent' ? 'descendant' : 'child' }
+            });
         }
         expect(
           await invoke(
@@ -1631,7 +1709,17 @@ describe('Node Agent Network owner integration', () => {
             context
           )
         ).toMatchObject({ cancel: { status: 'accepted' }, goal: { status: 'cleared' } });
+        if (ancestorTarget) {
+          await vi.waitFor(() => expect(core.runtime.activeSessionRun(target.id)).toBeUndefined());
+          const delivered = requests.length;
+          await expect(
+            invoke(executionId, 'send', { agentId: target.id, content: 'late report' }, context)
+          ).rejects.toMatchObject({ code: 'AGENT_ANCESTOR_NOT_ACTIVE' });
+          expect(requests).toHaveLength(delivered);
+          expect(core.runtime.activeSessionRun(target.id)).toBeUndefined();
+        }
       } finally {
+        persistedParentLookup?.mockRestore();
         observer.close();
         await connector.stop();
         await rm(directory, { recursive: true, force: true });

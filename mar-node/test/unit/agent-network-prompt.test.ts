@@ -4,10 +4,15 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { SessionExtensionContext } from '@myagentroam/agent/extensions';
 import { LocalAgentHost } from '../../../mar-agent/dist/host.js';
-import { SecretValue, type AgentModelConfiguration } from '../../../mar-agent/dist/index.js';
+import {
+  SecretValue,
+  type AgentEvent,
+  type AgentModelConfiguration
+} from '../../../mar-agent/dist/index.js';
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
 import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -90,14 +95,17 @@ async function fixture(
   const session = await agent.createSession({ workspace: directory });
   const run = session.run({ prompt: 'Review the task', permissionMode: 'full-access' });
   const failures: Array<{ toolName: string; code: string }> = [];
+  const publicEvents: AgentEvent[] = [];
   const events = (async () => {
-    for await (const event of run)
+    for await (const event of run) {
+      publicEvents.push(event);
       if (event.type === 'tool.failed')
         failures.push({ toolName: event.toolName, code: event.code });
+    }
   })();
   expect((await run.result()).status).toBe('completed');
   await events;
-  return { agent, configuration, session, context, requests, invoke, failures };
+  return { agent, configuration, session, context, requests, invoke, failures, publicEvents };
 }
 
 it.each([false, true])(
@@ -358,5 +366,18 @@ it.each([false, true])('forwards list scopes and roots with Code Mode %s', async
       expect.any(Function)
     );
     expect(test.failures).toEqual([]);
+    if ('query' in input) {
+      const normalizer = new MarAgentConversationNormalizer();
+      const items = test.publicEvents.flatMap((event) => normalizer.normalize(event));
+      expect(items).toContainEqual(
+        expect.objectContaining({
+          kind: 'tool_call',
+          payload: expect.objectContaining({
+            toolName: 'agent_list',
+            inputSummary: JSON.stringify(input)
+          })
+        })
+      );
+    }
   }
 });

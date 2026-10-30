@@ -58,17 +58,25 @@ describe('Composer product tags', () => {
     });
   });
 
-  it.each(['parent', 'other'] as const)('round-trips the admitted %s relationship', (relation) => {
-    const payload = { sessionId: 'source', name: 'Source', relation };
-    const tag = serializeComposerTag('mar_session_origin', payload);
-    expect(tag).toContain(
-      relation === 'parent' ? 'Message from the parent session.' : 'Message from another session.'
-    );
-    expect(parseComposerTags(tag)).toMatchObject([{ kind: 'mar_session_origin', payload }]);
-    expect(() => serializeComposerTag('mar_session_origin', { relation })).toThrow(
-      'COMPOSER_TAG_INVALID'
-    );
-  });
+  it.each(['parent', 'child', 'descendant', 'other'] as const)(
+    'round-trips the admitted %s relationship',
+    (relation) => {
+      const payload = { sessionId: 'source', name: 'Source', relation };
+      const tag = serializeComposerTag('mar_session_origin', payload);
+      expect(tag).toContain(
+        {
+          parent: 'Message from the parent session.',
+          child: 'Message from a child session.',
+          descendant: 'Message from a descendant session.',
+          other: 'Message from another session.'
+        }[relation]
+      );
+      expect(parseComposerTags(tag)).toMatchObject([{ kind: 'mar_session_origin', payload }]);
+      expect(() => serializeComposerTag('mar_session_origin', { relation })).toThrow(
+        'COMPOSER_TAG_INVALID'
+      );
+    }
+  );
 
   it('preserves incomplete and fenced Session origin tags as ordinary text', () => {
     const instruction = '<instruction>Origin context.</instruction>';

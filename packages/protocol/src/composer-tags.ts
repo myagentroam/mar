@@ -32,7 +32,7 @@ export const sessionMessageOriginSchema = z
   .object({
     sessionId: z.string().min(1).max(512).optional(),
     name: name.optional(),
-    relation: z.enum(['parent', 'other']).optional()
+    relation: z.enum(['parent', 'child', 'descendant', 'other']).optional()
   })
   .strict()
   .refine((value) => (value.sessionId === undefined) === (value.name === undefined))
@@ -182,7 +182,7 @@ export function serializeComposerTag<K extends ComposerTagName>(
   if (kind === 'mar_steer') children.unshift(`  <instruction>${STEER_INSTRUCTION}</instruction>`);
   if (kind === 'mar_session_origin')
     children.push(
-      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : value.relation === 'parent' ? 'Message from the parent session.' : value.relation === 'other' ? 'Message from another session.' : 'Message from a session.'}</instruction>`
+      `  <instruction>${value.sessionId === undefined ? 'Message sent via marctl.' : value.relation === 'parent' ? 'Message from the parent session.' : value.relation === 'child' ? 'Message from a child session.' : value.relation === 'descendant' ? 'Message from a descendant session.' : value.relation === 'other' ? 'Message from another session.' : 'Message from a session.'}</instruction>`
     );
   const opening = `<${kind}${markupAttributes(attributes)}`;
   const encoded = children.length

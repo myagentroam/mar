@@ -403,11 +403,14 @@ export function composerMessageSource(input: ReturnType<typeof composerMessagePr
     if (origin.sessionId !== undefined && origin.name !== undefined)
       return {
         label: translate(
-          origin.relation === 'parent'
-            ? 'generated.conversationPresentation.messageFromParentSession'
-            : origin.relation === 'other'
-              ? 'generated.conversationPresentation.messageFromOtherSession'
-              : 'generated.conversationPresentation.messageFromSource',
+          origin.relation === undefined
+            ? 'generated.conversationPresentation.messageFromSource'
+            : {
+                parent: 'generated.conversationPresentation.messageFromParentSession',
+                child: 'generated.conversationPresentation.messageFromChildSession',
+                descendant: 'generated.conversationPresentation.messageFromDescendantSession',
+                other: 'generated.conversationPresentation.messageFromOtherSession'
+              }[origin.relation],
           {
             name: origin.name
           }

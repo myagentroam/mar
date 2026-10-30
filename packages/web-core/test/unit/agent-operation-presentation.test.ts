@@ -162,4 +162,22 @@ describe('Agent operation presentation', () => {
     expect(detail).toContain('Truncated');
     expect(detail).toContain('timeout, target still running');
   });
+
+  it.each(['zh-CN', 'en-US'] as const)(
+    'keeps empty list results beside the actual query and pagination in %s',
+    (language) => {
+      localePreferenceService().setLocale(language);
+      const input = { scope: 'workspace', query: '活跃', limit: 10, cursor: 'next-page' };
+      const payload = {
+        toolName: 'agent_list',
+        inputSummary: JSON.stringify(input),
+        agentOperation: { action: 'LIST', scope: 'workspace', targets: [] },
+        output: { blocks: [{ channel: 'TEXT', text: '{"count":0}' }] }
+      };
+      const detail = conversationItemDetail('tool_call', payload);
+      expect(detail).toContain('agent_list');
+      expect(detail).toContain(JSON.stringify(input));
+      expect(detail).toContain('{"count":0}');
+    }
+  );
 });

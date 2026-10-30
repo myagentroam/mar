@@ -20,7 +20,12 @@ export function withSessionMessageOrigin(
       ? parsed
       : {
           ...parsed,
-          relation: parsed.sessionId === parentSessionId ? ('parent' as const) : ('other' as const)
+          relation:
+            parsed.sessionId === parentSessionId
+              ? ('parent' as const)
+              : parsed.relation === 'child' || parsed.relation === 'descendant'
+                ? parsed.relation
+                : ('other' as const)
         };
   const tag = serializeComposerTag('mar_session_origin', snapshot);
   const parts = parseComposerTags(input);

@@ -719,7 +719,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   );
 
-  it.each(['parent', 'other'] as const)(
+  it.each(['parent', 'child', 'descendant', 'other'] as const)(
     'renders the saved %s Session relationship',
     async (relation) => {
       const origin = serializeComposerTag('mar_session_origin', {
@@ -737,9 +737,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       });
       expect(html).toContain(
         i18n.global.t(
-          relation === 'parent'
-            ? 'generated.conversationPresentation.messageFromParentSession'
-            : 'generated.conversationPresentation.messageFromOtherSession',
+          {
+            parent: 'generated.conversationPresentation.messageFromParentSession',
+            child: 'generated.conversationPresentation.messageFromChildSession',
+            descendant: 'generated.conversationPresentation.messageFromDescendantSession',
+            other: 'generated.conversationPresentation.messageFromOtherSession'
+          }[relation],
           { name: 'Source' }
         )
       );

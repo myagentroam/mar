@@ -233,7 +233,10 @@ export function agentNetworkExtension(
             'effort',
             'waitFor',
             'waitMs',
-            'scope'
+            'scope',
+            'query',
+            'limit',
+            'cursor'
           ],
           inputSchema: {
             type: 'object',

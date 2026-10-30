@@ -13,6 +13,8 @@ Group tabs have no running or unread badges. Individual session rows retain thei
 
 Agent operation records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
+When an Agent sends a message or sets a Goal on an ancestor session that has ended or is stopping, the operation returns `AGENT_ANCESTOR_NOT_ACTIVE` without restarting it. Sending works again once the ancestor is running. Users can still resume sessions manually.
+
 Expand an execution record to inspect the available command or code, output, working directory, exit code, and status. Each call has its own record. **Copy public record** copies that record's available public information, which can be truncated; older Nodes may provide fewer details.
 
 A regular work session must execute in the selected Workspace's valid root or a subdirectory. An independently registered Git worktree uses its own Workspace. Node rejects new execution if the directory disappears, the registered root is replaced, or a link escapes the Workspace; it does not silently switch directories. If queued messages are paused for this reason, restore a valid directory and use **Resume** in the queue. Messages and attachments are retained and can still be removed through the existing queue controls. This check does not make work mode a host filesystem sandbox or change hosted-conversation isolation.

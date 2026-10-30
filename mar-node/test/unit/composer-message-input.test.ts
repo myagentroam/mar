@@ -70,6 +70,19 @@ describe('Product resource input preparation', () => {
     });
     expect(marked.endsWith(unfinished)).toBe(true);
   });
+  it.each(['child', 'descendant'] as const)(
+    'preserves the admitted %s origin beside Goal markup',
+    (relation) => {
+      const origin = { sessionId: 'source', name: 'Source', relation };
+      const input = withSessionMessageOrigin('Report', origin, 'recipient-parent');
+      expect(parseComposerTags(input)).toMatchObject([
+        { kind: 'mar_session_origin', payload: origin },
+        { kind: 'text', text: '\nReport' }
+      ]);
+      expect(withSessionMessageOrigin('Reply', origin, 'source')).toContain('relation="parent"');
+    }
+  );
+
   it('rechecks effective Skill identity and preserves Node Home paths without reading content into input', async () => {
     const root = await mkdtemp(join(tmpdir(), 'composer-skill-'));
     const workspace = join(root, 'workspace');
