@@ -7,7 +7,7 @@ import ConversationTimeline from '../../src/view/conversation/ConversationTimeli
 
 const integrated = new URL(location.href).searchParams.has('timeline');
 const outputUpdates = new URL(location.href).searchParams.has('updates');
-const detailOutput = ref<{ text: string; truncated: boolean }>();
+const detailOutput = ref<{ blocks: { channel: 'TEXT'; text: string }[]; truncation?: 'SOURCE' }>();
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
@@ -20,18 +20,17 @@ const command = ref<ConversationItem>({
     toolName: 'exec',
     command: 'printf test',
     cwd: '/fixture',
-    outputPreview: 'old',
     exitCode: null,
-    truncated: false,
-    output: { text: 'combined should not replace streams', truncated: false },
+    output: {
+      blocks: [
+        { channel: 'STDOUT', text: 'visible stdout' },
+        { channel: 'STDERR', text: 'visible stderr' }
+      ]
+    },
     toolPresentation: {
       kind: 'EXECUTION',
       execution: {
-        kind: 'SHELL',
-        output: [
-          { channel: 'STDOUT', text: 'visible stdout' },
-          { channel: 'STDERR', text: 'visible stderr' }
-        ]
+        kind: 'SHELL'
       }
     }
   }
@@ -45,11 +44,7 @@ if (new URL(location.href).searchParams.has('long')) {
     toolPresentation: {
       kind: 'EXECUTION',
       execution: {
-        kind: 'CODE',
-        output: [
-          { channel: 'STDOUT', text: 'visible stdout' },
-          { channel: 'STDERR', text: 'visible stderr' }
-        ]
+        kind: 'CODE'
       }
     }
   };
@@ -63,7 +58,10 @@ const detailSamples: ConversationItem[] = [
       toolName: 'inspect',
       title: 'Inspect fixture',
       inputSummary: 'Preserved input',
-      output: { text: 'Partial inspection output', truncated: true },
+      output: {
+        blocks: [{ channel: 'TEXT', text: 'Partial inspection output' }],
+        truncation: 'SOURCE'
+      },
       progressLabel: 'Stopped at the last file',
       errorCode: 'INSPECTION_FAILED'
     }
@@ -181,17 +179,12 @@ const empty: ConversationItem = {
   payload: {
     command: 'true',
     cwd: '',
-    outputPreview: '',
     exitCode: 0,
-    truncated: false,
+    output: { blocks: [] },
     toolPresentation: {
       kind: 'EXECUTION',
       execution: {
-        kind: 'SHELL',
-        output: [
-          { channel: 'STDOUT', text: '' },
-          { channel: 'STDERR', text: '' }
-        ]
+        kind: 'SHELL'
       }
     }
   }
@@ -239,18 +232,14 @@ function finish() {
     payload: {
       command: 'printf test',
       cwd: '/fixture',
-      outputPreview: 'final',
       exitCode: 0,
-      truncated: true,
-      output: { text: `${'x'.repeat(10000)}TAIL`, truncated: true },
+      output: {
+        blocks: [{ channel: 'STDOUT', text: `${'x'.repeat(9996)}TAIL` }],
+        truncation: new URL(location.href).searchParams.has('head') ? 'HEAD' : 'SOURCE'
+      },
       toolPresentation: {
         kind: 'EXECUTION',
-        execution: {
-          kind: 'SHELL',
-          ...(new URL(location.href).searchParams.has('head')
-            ? { truncation: { output: 'HEAD' as const } }
-            : {})
-        }
+        execution: { kind: 'SHELL' }
       }
     }
   };
@@ -262,13 +251,20 @@ function finish() {
     <template v-if="integrated && outputUpdates">
       <button
         data-testid="stream-details"
-        @click="detailOutput = { text: '  live output\n\n  next line\n', truncated: false }"
+        @click="
+          detailOutput = { blocks: [{ channel: 'TEXT', text: '  live output\n\n  next line\n' }] }
+        "
       >
         Stream output
       </button>
       <button
         data-testid="finish-details"
-        @click="detailOutput = { text: '  authoritative tail\n', truncated: true }"
+        @click="
+          detailOutput = {
+            blocks: [{ channel: 'TEXT', text: '  authoritative tail\n' }],
+            truncation: 'SOURCE'
+          }
+        "
       >
         Finish output
       </button>

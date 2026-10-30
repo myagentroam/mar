@@ -123,23 +123,46 @@ export function toolPresentationSources(payload: unknown) {
   });
 }
 
+export function readToolOutput(payload: Record<string, unknown>) {
+  const raw = payload.output;
+  if (raw && typeof raw === 'object') {
+    const output = raw as Record<string, unknown>;
+    if (Array.isArray(output.blocks))
+      return {
+        blocks: output.blocks as Array<{
+          channel: 'TEXT' | 'STDOUT' | 'STDERR' | 'COMBINED';
+          text: string;
+        }>,
+        truncation: output.truncation as 'HEAD' | 'SOURCE' | undefined
+      };
+    if (typeof output.text === 'string')
+      return {
+        blocks: [{ channel: 'TEXT' as const, text: output.text }],
+        truncation: output.truncated === true ? ('SOURCE' as const) : undefined
+      };
+  }
+  if (typeof payload.outputSummary === 'string')
+    return {
+      blocks: [{ channel: 'TEXT' as const, text: payload.outputSummary }],
+      truncation: payload.outputSummaryTruncated === true ? ('SOURCE' as const) : undefined
+    };
+  return undefined;
+}
+
 export function toolOutputDetail(
   payload: Record<string, unknown>,
   label: string = conversationUiEnUS.presentation.output
 ): string {
-  const output =
-    payload.output && typeof payload.output === 'object'
-      ? (payload.output as Record<string, unknown>)
-      : undefined;
+  const output = readToolOutput(payload);
   const text =
-    typeof output?.text === 'string'
-      ? output.text
-      : typeof payload.outputSummary === 'string'
-        ? payload.outputSummary
-        : '';
+    output?.blocks
+      .map((block) => block.text)
+      .filter(Boolean)
+      .join('\n') ?? '';
   return [
+    output?.truncation === 'HEAD' ? translate('toolPresentation.detail.truncated') : '',
     text ? `${label}:\n${text}` : '',
-    output?.truncated === true ? translate('toolPresentation.detail.truncated') : ''
+    output?.truncation === 'SOURCE' ? translate('toolPresentation.detail.truncated') : ''
   ]
     .filter(Boolean)
     .join('\n');
@@ -179,7 +202,9 @@ export function toolPresentationDetails(payload: unknown): string {
       )
     );
   details.push(line(conversationUiEnUS.presentation.input, raw.inputSummary));
+  if (raw.inputTruncated === true) details.push(translate('toolPresentation.detail.truncated'));
   details.push(toolOutputDetail(raw));
   details.push(line(conversationUiEnUS.presentation.error, raw.errorCode));
+  if (typeof raw.errorMessage === 'string' && raw.errorMessage) details.push(raw.errorMessage);
   return details.filter(Boolean).join(String.fromCharCode(10));
 }

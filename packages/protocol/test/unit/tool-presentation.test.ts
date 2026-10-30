@@ -1,7 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { conversationItemSchema, toolPresentationSchema } from '../../src/index.js';
+import {
+  appendToolOutput,
+  boundToolOutput,
+  conversationItemSchema,
+  toolOutputSchema,
+  toolPresentationSchema
+} from '../../src/index.js';
 
 describe('tool presentation protocol', () => {
+  it('bounds very large Unicode output without mutating the source or losing SOURCE', () => {
+    const text = `${'😀'.repeat(500_001)}end`;
+    const blocks = [{ channel: 'COMBINED' as const, text }];
+    const result = boundToolOutput(blocks, 'SOURCE');
+    expect(blocks[0]?.text).toBe(text);
+    expect(result.blocks[0]?.text).toBe(`${'😀'.repeat(4_998)}end`);
+    expect(result.truncation).toBe('SOURCE');
+    expect(toolOutputSchema.safeParse(result).success).toBe(true);
+  });
+  it('bounds channel tails and preserves SOURCE across appends', () => {
+    const first = boundToolOutput([{ channel: 'STDOUT', text: 'A'.repeat(10_000) }], 'SOURCE');
+    const second = appendToolOutput(first, { blocks: [{ channel: 'STDOUT', text: '😀TAIL' }] });
+    expect(second.truncation).toBe('SOURCE');
+    expect(second.blocks[0]?.text).toHaveLength(10_000);
+    expect(second.blocks[0]?.text.endsWith('😀TAIL')).toBe(true);
+    expect(appendToolOutput(second, { blocks: [] })).toEqual(second);
+    expect(() =>
+      appendToolOutput(
+        { blocks: [{ channel: 'COMBINED', text: 'x' }] },
+        { blocks: [{ channel: 'STDOUT', text: 'y' }] }
+      )
+    ).toThrow();
+  });
+  it('enforces the aggregate byte budget after per-block bounds', () => {
+    const output = boundToolOutput(
+      ['TEXT', 'STDOUT', 'STDERR'].map((channel) => ({
+        channel: channel as 'TEXT' | 'STDOUT' | 'STDERR',
+        text: '\u0000'.repeat(10_000)
+      }))
+    );
+    expect(new TextEncoder().encode(JSON.stringify(output)).length).toBeLessThanOrEqual(128 * 1024);
+    expect(output.truncation).toBe('HEAD');
+    expect(toolOutputSchema.safeParse(output).success).toBe(true);
+  });
   it('bounds Read paths without treating them as successful file changes', () => {
     expect(
       toolPresentationSchema.parse({ kind: 'READ', paths: ['src/a.ts', '目录/b.ts'] })

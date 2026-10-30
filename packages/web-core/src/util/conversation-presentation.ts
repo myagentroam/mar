@@ -10,6 +10,11 @@ import { conversationPayload } from './conversation-history.js';
 import type { Approval, ConversationItem } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
+import {
+  agentOperation,
+  agentOperationIdentity,
+  agentOperationTargets
+} from './agent-operation-presentation.js';
 import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
@@ -17,7 +22,8 @@ import {
   toolPresentationTitle,
   toolPresentationText,
   toolPresentationDetails,
-  toolOutputDetail
+  toolOutputDetail,
+  readToolOutput
 } from './tool-presentation.js';
 
 export type ConversationDisplayItem =
@@ -284,8 +290,7 @@ export function aggregateConversationDisplayItems(
     // Independent tool rows and task lists do not split categories in the same process.
     if (
       groupId &&
-      ((entry.type === 'subagent_group' &&
-        !stringField(conversationPayload(item.payload) ?? {}, 'subagentId')) ||
+      ((entry.type === 'subagent_group' && !agentOperationIdentity(item.payload)) ||
         (entry.type === 'item' &&
           item.permissionStop === undefined &&
           (item.kind === 'todo_list' ||
@@ -304,9 +309,7 @@ export function aggregateConversationDisplayItems(
       entry.type,
       item.parentItemId ?? null,
       entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null,
-      entry.type === 'subagent_group'
-        ? stringField(conversationPayload(item.payload) ?? {}, 'subagentId')
-        : null
+      entry.type === 'subagent_group' ? agentOperationIdentity(item.payload) : null
     ]);
     const index = anchors.get(key);
     const previous = index === undefined ? undefined : result[index];
@@ -506,8 +509,7 @@ export function conversationItemText(
     if (toolPresentation(payload)) return toolPresentationText(payload, status ?? 'COMPLETED');
     const toolName = stringField(value, 'toolName');
     const title = stringField(value, 'title');
-    const operation = subagentOperation(value);
-    if (operation !== undefined) {
+    if (isSubagentToolCall(value)) {
       const taskTitle = subagentTaskTitle(value);
       return [subagentOperationText(value), taskTitle].filter(Boolean).join(' ');
     }
@@ -518,7 +520,8 @@ export function conversationItemText(
   if (kind === 'command_execution') {
     const command = stringField(value, 'command');
     if (command.length > 0) return command;
-    return stringField(value, 'outputPreview').length > 0 ||
+    return (readToolOutput(value)?.blocks.some((block) => block.text.length > 0) ?? false) ||
+      stringField(value, 'outputPreview').length > 0 ||
       stringField(value, 'cwd').length > 0 ||
       typeof value.exitCode === 'number'
       ? translate('generated.conversationPresentation.commandExecution')
@@ -611,9 +614,11 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
         ? field(labels.detail, stringField(value, 'title'))
         : '',
       field(labels.input, stringField(value, 'inputSummary')),
+      value.inputTruncated === true ? translate('toolPresentation.detail.truncated') : '',
       toolOutputDetail(value),
       field(labels.progress, stringField(value, 'progressLabel')),
-      field(labels.error, stringField(value, 'errorCode'))
+      field(labels.error, stringField(value, 'errorCode')),
+      stringField(value, 'errorMessage')
     ]
       .filter(Boolean)
       .join('\n');
@@ -622,9 +627,11 @@ export function conversationItemDetail(kind: string, payload: unknown): string {
     return [
       stringField(value, 'command') ? `Command: ${stringField(value, 'command')}` : '',
       stringField(value, 'cwd') ? `Working directory: ${stringField(value, 'cwd')}` : '',
-      rawTextField(value, 'outputPreview')
-        ? `Output:\n${rawTextField(value, 'outputPreview')}`
-        : '',
+      value.output !== undefined
+        ? toolOutputDetail(value)
+        : rawTextField(value, 'outputPreview')
+          ? `Output:\n${rawTextField(value, 'outputPreview')}`
+          : '',
       typeof value.exitCode === 'number' ? `Exit code: ${value.exitCode}` : ''
     ]
       .filter(Boolean)
@@ -683,7 +690,7 @@ export function conversationErrorCodeVisible(error: ConversationErrorPresentatio
 }
 
 function isSubagentToolCall(value: Record<string, unknown> | undefined): boolean {
-  return subagentOperation(value) !== undefined;
+  return agentOperation(value) !== undefined || subagentOperation(value) !== undefined;
 }
 
 function isImageGenerationPayload(value: Record<string, unknown>): boolean {
@@ -704,6 +711,8 @@ function subagentOperation(
 }
 
 export function subagentOperationText(payload: unknown): string {
+  const agent = agentOperation(payload);
+  if (agent) return translate(`presentation.agentOperation.${agent.action}`);
   const value = conversationPayload(payload);
   const operation = subagentOperation(value);
   if (operation === undefined) return '';
@@ -718,9 +727,10 @@ export function subagentGroupText(items: readonly ConversationItem[]): string {
   const named = [...items].reverse().find((item) => {
     const value = conversationPayload(item.payload);
     return (
-      value !== undefined &&
-      stringField(value, 'title').length > 0 &&
-      stringField(value, 'title').toLowerCase() !== stringField(value, 'toolName').toLowerCase()
+      agentOperation(value)?.targets.some((target) => Boolean(target.title)) ||
+      (value !== undefined &&
+        stringField(value, 'title').length > 0 &&
+        stringField(value, 'title').toLowerCase() !== stringField(value, 'toolName').toLowerCase())
     );
   });
   const value = conversationPayload((named ?? latest).payload) ?? {};
@@ -729,12 +739,24 @@ export function subagentGroupText(items: readonly ConversationItem[]): string {
 
 function subagentToolDetail(value: Record<string, unknown>): string {
   const detailField = (label: string, text: string) => (text ? `${label}: ${text}` : '');
+  const operation = agentOperation(value);
   const latestMessage = conversationPayload(value.subagentLatestMessage);
   const phase = latestMessage === undefined ? '' : stringField(latestMessage, 'phase');
   return [
+    detailField(conversationUiEnUS.toolPresentation.detail.tool, stringField(value, 'toolName')),
     detailField(conversationUiEnUS.presentation.operation, subagentOperationText(value)),
-    detailField(conversationUiEnUS.presentation.subagentId, stringField(value, 'subagentId')),
-    detailField(conversationUiEnUS.presentation.task, subagentTaskTitle(value)),
+    ...agentOperationTargets(value).map((target) =>
+      detailField(conversationUiEnUS.presentation.subagentId, target.agentId)
+    ),
+    detailField(
+      conversationUiEnUS.presentation.task,
+      operation
+        ? operation.targets
+            .map((target) => target.title)
+            .filter(Boolean)
+            .join(', ')
+        : subagentTaskTitle(value)
+    ),
     detailField(conversationUiEnUS.presentation.model, stringField(value, 'subagentModelName')),
     detailField(conversationUiEnUS.presentation.modelId, stringField(value, 'subagentModelId')),
     detailField(
@@ -755,15 +777,26 @@ function subagentToolDetail(value: Record<string, unknown>): string {
       ? detailField(conversationUiEnUS.presentation.truncated, translate('presentation.yes'))
       : '',
     detailField(conversationUiEnUS.presentation.input, stringField(value, 'inputSummary')),
+    value.inputTruncated === true ? translate('toolPresentation.detail.truncated') : '',
+    operation?.targetsTruncated
+      ? detailField(conversationUiEnUS.presentation.truncated, translate('presentation.yes'))
+      : '',
     toolOutputDetail(value, conversationUiEnUS.presentation.result),
     detailField(conversationUiEnUS.presentation.progress, stringField(value, 'progressLabel')),
-    detailField(conversationUiEnUS.presentation.error, stringField(value, 'errorCode'))
+    detailField(conversationUiEnUS.presentation.error, stringField(value, 'errorCode')),
+    stringField(value, 'errorMessage')
   ]
     .filter(Boolean)
     .join('\n');
 }
 
 function subagentTaskTitle(value: Record<string, unknown>): string {
+  const agent = agentOperation(value);
+  if (agent) {
+    if (agent.action === 'LIST') return agent.scope ?? subagentOperationText(value);
+    if (agent.targets.length > 0)
+      return agent.targets.map((target) => target.title ?? target.agentId).join(', ');
+  }
   const toolName = stringField(value, 'toolName');
   const title = stringField(value, 'title');
   if (title.length > 0 && title.toLowerCase() !== toolName.toLowerCase()) return title;

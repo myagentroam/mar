@@ -1,5 +1,7 @@
 import {
-  appendExecutionPresentation,
+  appendToolOutput,
+  retainExecutionInputTruncation,
+  toolOutputSchema,
   permissionStopSchema,
   type PermissionStop,
   type AgentRunStatus
@@ -364,13 +366,22 @@ export function mergeConversationItemPayload(
   if (
     next.append === 'output' &&
     isRecord(next.payload.output) &&
-    typeof next.payload.output.text === 'string'
+    Array.isArray(next.payload.output.blocks)
   ) {
+    const update = toolOutputSchema.parse(next.payload.output);
+    const prior = base.output === undefined ? undefined : toolOutputSchema.parse(base.output);
+    value.output = appendToolOutput(prior, update);
     if (next.payload.toolPresentation !== undefined)
-      value.toolPresentation = appendExecutionPresentation(
+      value.toolPresentation = retainExecutionInputTruncation(
         base.toolPresentation,
         next.payload.toolPresentation
       );
+  }
+  if (
+    next.append === 'output' &&
+    isRecord(next.payload.output) &&
+    typeof next.payload.output.text === 'string'
+  ) {
     const prior =
       isRecord(base.output) && typeof base.output.text === 'string' ? base.output : undefined;
     const text = `${prior?.text ?? ''}${next.payload.output.text}`;

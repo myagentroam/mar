@@ -95,6 +95,9 @@ export function publicToolEventInput(
             Object.hasOwn(value, key) &&
             (typeof value[key] === 'string' ||
               typeof value[key] === 'boolean' ||
+              (Array.isArray(value[key]) &&
+                value[key].length <= 100 &&
+                value[key].every((item: unknown) => typeof item === 'string')) ||
               (typeof value[key] === 'number' && Number.isFinite(value[key])) ||
               value[key] === null)
         )
@@ -118,6 +121,7 @@ export function publicCodeObservations(
   let remaining = 10_000;
   let truncated = false;
   let headTruncated = data.outputHeadTruncated === true;
+  let sourceTruncated = data.outputSourceTruncated === true;
   const clip = (text: string) => {
     let start = Math.max(0, text.length - remaining);
     if (start > 0 && /[\uDC00-\uDFFF]/u.test(text[start]!)) start++;
@@ -142,6 +146,7 @@ export function publicCodeObservations(
         continue;
       }
       displayedCount++;
+      if (!data.outputSourceKnown && entry.truncated === true) sourceTruncated = true;
       truncated ||= entry.truncated === true;
       const value = clip(entry.value);
       selected.unshift({
@@ -156,10 +161,12 @@ export function publicCodeObservations(
     } else if (entry.type === 'tool_result' && isRecord(entry.source) && isRecord(entry.result)) {
       const name = entry.source.toolName;
       if (name !== 'exec' && name !== 'exec_wait') {
-        if (retained.has(entry))
+        if (retained.has(entry)) {
+          if (!data.outputSourceKnown && entry.result.truncated === true) sourceTruncated = true;
           selected.unshift(
             entry as unknown as NonNullable<CodeCellEventData['observations']>[number]
           );
+        }
       } else if (
         (name === 'exec' || name === 'exec_wait') &&
         typeof entry.id === 'string' &&
@@ -172,10 +179,11 @@ export function publicCodeObservations(
           continue;
         }
         displayedCount++;
+        if (!data.outputSourceKnown && entry.result.truncated === true) sourceTruncated = true;
         truncated ||= entry.result.truncated === true;
-        const data = isRecord(entry.result.data) ? entry.result.data : undefined;
-        const stderr = typeof data?.stderr === 'string' ? clip(data.stderr) : undefined;
-        const stdout = typeof data?.stdout === 'string' ? clip(data.stdout) : undefined;
+        const resultData = isRecord(entry.result.data) ? entry.result.data : undefined;
+        const stderr = typeof resultData?.stderr === 'string' ? clip(resultData.stderr) : undefined;
+        const stdout = typeof resultData?.stdout === 'string' ? clip(resultData.stdout) : undefined;
         const content =
           stdout === undefined && stderr === undefined && typeof entry.result.content === 'string'
             ? clip(entry.result.content)
@@ -197,9 +205,54 @@ export function publicCodeObservations(
   return {
     ...data,
     observations: selected,
+    outputSourceKnown: true,
+    ...(sourceTruncated ? { outputSourceTruncated: true } : {}),
     ...(truncated ? { truncated: true } : {}),
     ...(headTruncated ? { outputHeadTruncated: true } : {})
   };
+}
+
+/** Classify only facts about the public body, never model or summary limits. */
+export function publicOutputTruncation(
+  toolName: string,
+  data: unknown
+): 'HEAD' | 'SOURCE' | undefined {
+  if (!isRecord(data)) return undefined;
+  if (toolName === 'code_exec' || toolName === 'code_exec_wait') {
+    if (data.outputSourceTruncated === true) return 'SOURCE';
+    if (data.outputHeadTruncated === true) return 'HEAD';
+  }
+  if (toolName === 'exec' || toolName === 'exec_wait') {
+    const display = isRecord(data.displayOutput) ? data.displayOutput : undefined;
+    if (display)
+      return Number(display.stdoutDroppedBytes) > 0 || Number(display.stderrDroppedBytes) > 0
+        ? 'HEAD'
+        : undefined;
+    if (data.truncated === true) return 'SOURCE';
+  }
+  return undefined;
+}
+
+/** Remove the internal display direction from published structured data. */
+export function publicEventOutputData<T>(data: T): T {
+  if (!isRecord(data)) return data;
+  const {
+    outputHeadTruncated: _head,
+    outputSourceKnown: _known,
+    outputSourceTruncated: _source,
+    ...rest
+  } = data;
+  return rest as T;
+}
+
+export function liveOutputTruncation(
+  output: import('./contracts.js').ExecOutputSnapshot
+): 'HEAD' | 'SOURCE' | undefined {
+  if (!output.truncated) return undefined;
+  return output.displayOutput &&
+    (output.displayOutput.stdoutDroppedBytes > 0 || output.displayOutput.stderrDroppedBytes > 0)
+    ? 'HEAD'
+    : 'SOURCE';
 }
 
 /** Project only known, validated tool result shapes into public structured events. */
@@ -258,6 +311,8 @@ export function structuredToolEventData(
         : {}),
       status: value.status as CodeCellEventData['status'],
       ...(value.outputHeadTruncated === true ? { outputHeadTruncated: true } : {}),
+      ...(value.outputSourceKnown === true ? { outputSourceKnown: true } : {}),
+      ...(value.outputSourceTruncated === true ? { outputSourceTruncated: true } : {}),
       cached: value.cached === true,
       ...(['snapshot', 'completion', 'timeout', 'yield', 'interrupted'].includes(
         String(value.waitOutcome)

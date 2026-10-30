@@ -617,7 +617,9 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
                 tool.inputTruncated || result.truncated,
                 knownSubagents,
                 result.claudeResult,
-                result.truncated
+                result.truncated,
+                tool.inputTruncated,
+                result.truncated ? 'HEAD' : undefined
               );
               this.host.emitItem(runId, {
                 itemId: boundedConversationItemId('claude-tool', result.toolUseId),
@@ -625,20 +627,13 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
                 status: result.failed ? 'FAILED' : 'COMPLETED',
                 payload:
                   kind === 'command_execution'
-                    ? {
-                        outputPreview: result.output,
-                        exitCode: null,
-                        durationMs: null,
-                        truncated: result.truncated
-                      }
+                    ? normalized.payload
                     : kind === 'file_change'
                       ? {}
                       : {
                           ...normalized.payload,
-                          outputSummary: result.output,
                           progressLabel: null,
-                          errorCode: result.failed ? 'TOOL_EXECUTION_FAILED' : null,
-                          truncated: result.truncated
+                          errorCode: result.failed ? 'TOOL_EXECUTION_FAILED' : null
                         },
                 merge: true
               });

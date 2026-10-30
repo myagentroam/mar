@@ -27,13 +27,15 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
 describe('Conversation History Window and Render State', () => {
   it('preserves input truncation when an output delta declares source truncation', () => {
     const frame = (text: string, truncation: Record<string, unknown>) => ({
-      output: { text, truncated: truncation.output !== undefined },
+      output: {
+        blocks: [{ channel: 'STDOUT', text }],
+        ...(truncation.output ? { truncation: truncation.output } : {})
+      },
       toolPresentation: {
         kind: 'EXECUTION',
         execution: {
           kind: 'SHELL',
-          output: [{ channel: 'STDOUT', text }],
-          truncation
+          truncation: truncation.input ? { input: true } : undefined
         }
       }
     });
@@ -43,47 +45,45 @@ describe('Conversation History Window and Render State', () => {
       'output'
     );
     expect(value).toMatchObject({
-      output: { text: 'beforeafter', truncated: true },
+      output: { blocks: [{ channel: 'STDOUT', text: 'beforeafter' }], truncation: 'SOURCE' },
       toolPresentation: {
         execution: {
-          output: [{ channel: 'STDOUT', text: 'beforeafter' }],
-          truncation: { input: true, output: 'SOURCE' }
+          truncation: { input: true }
         }
       }
     });
   });
   it('retains channel tails and replaces execution presentation for terminal snapshots', () => {
     const frame = (text: string) => ({
-      output: { text, truncated: false },
+      output: {
+        blocks: [
+          { channel: 'STDOUT', text },
+          { channel: 'STDERR', text: 'e' }
+        ]
+      },
       toolPresentation: {
         kind: 'EXECUTION',
         execution: {
-          kind: 'SHELL',
-          output: [
-            { channel: 'STDOUT', text },
-            { channel: 'STDERR', text: 'e' }
-          ]
+          kind: 'SHELL'
         }
       }
     });
     let value = mergeConversationPayload({}, frame('a'.repeat(9999)), 'output');
     value = mergeConversationPayload(value, frame('😀tail'), 'output');
     expect(value).toMatchObject({
-      toolPresentation: {
-        execution: {
-          truncation: { output: 'HEAD' },
-          output: [
-            { channel: 'STDOUT', text: expect.stringMatching(/😀tail$/u) },
-            { channel: 'STDERR', text: 'ee' }
-          ]
-        }
+      output: {
+        truncation: 'HEAD',
+        blocks: [
+          { channel: 'STDOUT', text: expect.stringMatching(/😀tail$/u) },
+          { channel: 'STDERR', text: 'ee' }
+        ]
       }
     });
     value = mergeConversationPayload(value, frame('done'), undefined);
     expect(value).toMatchObject({
-      toolPresentation: { execution: { output: [{ text: 'done' }, { text: 'e' }] } }
+      output: { blocks: [{ text: 'done' }, { text: 'e' }] }
     });
-    expect((value as any).toolPresentation.execution.truncation).toBeUndefined();
+    expect((value as any).output.truncation).toBeUndefined();
   });
   it('applies generic output deltas and authoritative snapshots without retaining old truncation', () => {
     let value: unknown = { inputSummary: 'input', truncated: true };

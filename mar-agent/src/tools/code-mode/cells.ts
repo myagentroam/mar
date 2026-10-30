@@ -307,6 +307,14 @@ export class CodeCells {
                 cellId: cell.cellId,
                 status: cell.status,
                 observations,
+                outputSourceKnown: true,
+                ...(cell.display?.outputSourceTruncated ||
+                (!displayHeadTruncated &&
+                  (display.type === 'value'
+                    ? display.truncated === true
+                    : display.result.truncated === true))
+                  ? { outputSourceTruncated: true }
+                  : {}),
                 ...(cell.display?.outputHeadTruncated || displayHeadTruncated
                   ? { outputHeadTruncated: true }
                   : {})

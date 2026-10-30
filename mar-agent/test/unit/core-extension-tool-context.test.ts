@@ -86,6 +86,11 @@ describe('tool permission and wait context', () => {
   it('drops oversized and throwing public projections without recovering raw values', () => {
     expect(publicExtensionToolEventData({ text: 'x'.repeat(8193) })).toBeUndefined();
     expect(publicToolEventInput({ id: 'x'.repeat(8193), secret: 'private' }, ['id'])).toEqual({});
+    expect(publicToolEventInput({ ids: ['a', 'b'], secret: 'private' }, ['ids'])).toEqual({
+      ids: ['a', 'b']
+    });
+    expect(publicToolEventInput({ ids: [{ secret: 'private' }] }, ['ids'])).toEqual({});
+    expect(publicToolEventInput({ ids: Array(101).fill('a') }, ['ids'])).toEqual({});
     const input = Object.defineProperty({}, 'id', {
       enumerable: true,
       get() {
@@ -94,9 +99,14 @@ describe('tool permission and wait context', () => {
     });
     expect(publicToolEventInput(input, ['id'])).toEqual({});
   });
-  it.each([false, true])(
-    'projects explicit public tool events without changing inputs (invalid=%s)',
-    async (invalid) => {
+  it.each([
+    { invalid: false, nested: false },
+    { invalid: true, nested: false },
+    { invalid: false, nested: true },
+    { invalid: true, nested: true }
+  ])(
+    'projects explicit public tool events without changing inputs (invalid=$invalid, nested=$nested)',
+    async ({ invalid, nested }) => {
       const calls: unknown[] = [];
       const extension: AgentExtension = {
         id: 'public-event',
@@ -129,8 +139,16 @@ describe('tool permission and wait context', () => {
         image: invalid ? 123 : 'secret-image',
         ...(invalid ? { unknown: 'secret-extra' } : {})
       };
-      const { agent, session } = await fixture([extension], (_request, index) =>
-        index === 0 ? call('event_probe', input) : answer()
+      const code = `const image = ${invalid ? '123' : '["secret", "image"].join("-")'}; await tools.event_probe({id:"safe", image${invalid ? ',unknown:["secret", "extra"].join("-")' : ''}});`;
+      const { agent, session } = await fixture(
+        [extension],
+        (_request, index) =>
+          index === 0
+            ? nested
+              ? call('code_exec', { code })
+              : call('event_probe', input)
+            : answer(),
+        nested
       );
       const run = session.run({ prompt: 'inspect projection' });
       const events = [];

@@ -365,6 +365,14 @@ export class SessionExecution {
           missed && full.output.displayOutput
             ? {
                 ...full,
+                ...(full.outputTruncation === 'SOURCE' ||
+                full.output.displayOutput.stdoutDroppedBytes > 0 ||
+                full.output.displayOutput.stderrDroppedBytes > 0
+                  ? {
+                      outputTruncation:
+                        full.outputTruncation === 'SOURCE' ? ('SOURCE' as const) : ('HEAD' as const)
+                    }
+                  : {}),
                 output: {
                   ...full.output,
                   mode: 'snapshot' as const,

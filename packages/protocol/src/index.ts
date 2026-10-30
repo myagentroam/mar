@@ -2164,6 +2164,22 @@ const reasoningItemSchema = conversationItemBaseSchema.extend({
 });
 export const subagentOperationSchema = z.enum(['START', 'STATUS', 'CANCEL', 'MESSAGE', 'RESUME']);
 export type SubagentOperation = z.infer<typeof subagentOperationSchema>;
+/** Agent operations describe calls, not the lifecycle of their target Sessions. */
+export const agentOperationPresentationSchema = z.object({
+  action: z.enum(['START', 'SEND', 'WAIT', 'STOP', 'LIST', 'VIEW']),
+  targets: z
+    .array(
+      z.object({
+        agentId: z.string().min(1).max(128),
+        sessionId: z.string().min(1).max(128).optional(),
+        title: z.string().min(1).max(500).optional()
+      })
+    )
+    .max(100),
+  targetsTruncated: z.literal(true).optional(),
+  scope: z.string().min(1).max(32).optional()
+});
+export type AgentOperationPresentation = z.infer<typeof agentOperationPresentationSchema>;
 export const subagentLatestMessageSchema = z.object({
   itemId: z.string().min(1).max(128),
   turnId: z.string().min(1).max(128),
@@ -2235,60 +2251,6 @@ export const executionPresentationSchema = z
   );
 export type ExecutionPresentation = z.infer<typeof executionPresentationSchema>;
 
-/** Append output channels of the same call; snapshots and terminal items replace normally. */
-export function appendExecutionPresentation(previous: unknown, incoming: unknown): unknown {
-  const before = executionPresentationSchema.safeParse(previous);
-  const update = executionPresentationSchema.safeParse(incoming);
-  if (!update.success || !update.data.execution.output) return incoming;
-  const prior = before.success ? before.data.execution : undefined;
-  const next = update.data.execution;
-  const channels = new Map((prior?.output ?? []).map((block) => [block.channel, block.text]));
-  let clipped = false;
-  for (const block of next.output ?? []) {
-    const text = (channels.get(block.channel) ?? '') + block.text;
-    let tail = text.slice(-10_000);
-    if (tail.length < text.length) {
-      clipped = true;
-      if (/^[\uDC00-\uDFFF]/u.test(tail)) tail = tail.slice(1);
-    }
-    channels.set(block.channel, tail);
-  }
-  const output = [...channels].map(([channel, text]) => ({ channel, text }));
-  let head = clipped || prior?.truncation?.output === 'HEAD' || next.truncation?.output === 'HEAD';
-  const make = () => ({
-    kind: 'EXECUTION' as const,
-    execution: {
-      ...prior,
-      ...next,
-      output,
-      ...(head || prior?.truncation || next.truncation
-        ? {
-            truncation: {
-              ...prior?.truncation,
-              ...next.truncation,
-              ...(head ? { output: 'HEAD' as const } : {})
-            }
-          }
-        : {})
-    }
-  });
-  const size = () => new TextEncoder().encode(JSON.stringify(make())).length;
-  for (const block of output) {
-    if (size() <= 128 * 1024) break;
-    head = true;
-    const original = block.text;
-    let low = 0;
-    let high = original.length;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      block.text = original.slice(middle).replace(/^[\uDC00-\uDFFF]/u, '');
-      if (size() <= 128 * 1024) high = middle;
-      else low = middle + 1;
-    }
-    block.text = original.slice(low).replace(/^[\uDC00-\uDFFF]/u, '');
-  }
-  return make();
-}
 const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('READ'),
@@ -2337,9 +2299,98 @@ export const toolPresentationSchema = z.union([
   executionPresentationSchema
 ]);
 export type ToolPresentation = z.infer<typeof toolPresentationSchema>;
+export const toolOutputSchema = z
+  .object({
+    blocks: executionOutputSchema,
+    truncation: z.enum(['HEAD', 'SOURCE']).optional()
+  })
+  .strict()
+  .refine(
+    (value) => new TextEncoder().encode(JSON.stringify(value)).length <= 128 * 1024,
+    'Tool output exceeds 128 KiB'
+  );
+export type ToolOutput = z.infer<typeof toolOutputSchema>;
+
+/** Bound public channel tails before serialization, retaining SOURCE when its direction is unknown. */
+export function boundToolOutput(
+  blocks: ToolOutput['blocks'],
+  truncation?: ToolOutput['truncation']
+): ToolOutput {
+  let clipped = false;
+  const bounded: ToolOutput['blocks'] = [];
+  for (const { channel, text } of blocks) {
+    const existing = bounded.find((block) => block.channel === channel);
+    const tail = text.slice(-10_000);
+    const joined = (existing?.text ?? '') + tail;
+    const value = joined.slice(-10_000).replace(/^[\uDC00-\uDFFF]/u, '');
+    clipped ||= tail.length < text.length || value.length < joined.length;
+    if (existing) existing.text = value;
+    else bounded.push({ channel, text: value });
+  }
+  const make = (): ToolOutput => ({
+    blocks: bounded,
+    ...(truncation === 'SOURCE'
+      ? { truncation: 'SOURCE' }
+      : clipped || truncation === 'HEAD'
+        ? { truncation: 'HEAD' }
+        : {})
+  });
+  const size = () => new TextEncoder().encode(JSON.stringify(make())).length;
+  for (const block of bounded) {
+    if (size() <= 128 * 1024) break;
+    clipped = true;
+    const original = block.text;
+    let low = 0;
+    let high = original.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      block.text = original.slice(middle).replace(/^[\uDC00-\uDFFF]/u, '');
+      if (size() <= 128 * 1024) high = middle;
+      else low = middle + 1;
+    }
+    block.text = original.slice(low).replace(/^[\uDC00-\uDFFF]/u, '');
+  }
+  return toolOutputSchema.parse(make());
+}
+
+/** Append only true deltas; incompatible channel representations require a real snapshot. */
+export function appendToolOutput(
+  previous: ToolOutput | undefined,
+  incoming: ToolOutput
+): ToolOutput {
+  const channels = new Map((previous?.blocks ?? []).map(({ channel, text }) => [channel, text]));
+  for (const block of incoming.blocks)
+    channels.set(block.channel, (channels.get(block.channel) ?? '') + block.text);
+  const source = previous?.truncation === 'SOURCE' || incoming.truncation === 'SOURCE';
+  return boundToolOutput(
+    [...channels].map(([channel, text]) => ({ channel, text })),
+    source ? 'SOURCE' : (previous?.truncation ?? incoming.truncation)
+  );
+}
+
+/** An output delta must not erase independent input clipping facts. */
+export function retainExecutionInputTruncation(previous: unknown, incoming: unknown): unknown {
+  const before = executionPresentationSchema.safeParse(previous);
+  const after = executionPresentationSchema.safeParse(incoming);
+  if (
+    !before.success ||
+    !after.success ||
+    before.data.execution.truncation?.input !== true ||
+    after.data.execution.truncation?.input !== undefined
+  )
+    return incoming;
+  return {
+    ...after.data,
+    execution: {
+      ...after.data.execution,
+      truncation: { ...after.data.execution.truncation, input: true }
+    }
+  };
+}
 const toolOutputSnapshotSchema = z
   .object({ text: z.string().max(10000), truncated: z.boolean() })
   .strict();
+const readableToolOutputSchema = z.union([toolOutputSchema, toolOutputSnapshotSchema]);
 const toolCallItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('tool_call'),
   payload: z.object({
@@ -2350,10 +2401,14 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
     outputSummary: z.string().max(10000).nullable(),
     progressLabel: z.string().max(500).nullable(),
     errorCode: z.string().max(80).nullable(),
-    truncated: z.boolean(),
-    output: toolOutputSnapshotSchema.optional(),
+    errorMessage: z.string().max(1000).optional(),
+    truncated: z.boolean().optional(),
+    inputTruncated: z.literal(true).optional(),
+    outputSummaryTruncated: z.literal(true).optional(),
+    output: readableToolOutputSchema.optional(),
     toolCategory: z.enum(['IMAGE_GENERATION']).optional(),
     toolPresentation: toolCallPresentationSchema.optional(),
+    agentOperation: agentOperationPresentationSchema.optional(),
     subagentOperation: subagentOperationSchema.optional(),
     subagentWait: z.boolean().optional(),
     subagentId: z.string().min(1).max(128).nullable().optional(),
@@ -2372,11 +2427,13 @@ const commandExecutionItemSchema = conversationItemBaseSchema.extend({
     title: z.string().min(1).max(128).optional(),
     command: z.string().max(10000),
     cwd: z.string().max(4096).nullable(),
-    outputPreview: z.string().max(10000),
+    outputPreview: z.string().max(10000).optional(),
+    outputSummary: z.string().max(10000).nullable().optional(),
+    outputSummaryTruncated: z.literal(true).optional(),
     exitCode: z.number().int().nullable(),
     durationMs: z.number().int().nonnegative().nullable(),
-    truncated: z.boolean(),
-    output: toolOutputSnapshotSchema.optional(),
+    truncated: z.boolean().optional(),
+    output: readableToolOutputSchema.optional(),
     toolPresentation: executionPresentationSchema.optional()
   })
 });

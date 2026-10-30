@@ -124,7 +124,7 @@ test('subagent controls group by identity and phase with expandable results and 
   await heading.click();
   const operations = group.locator('.conversation-tool-detail');
   await expect(operations).toHaveCount(3);
-  await expect(group.getByRole('button', { name: '打开子会话' })).toHaveCount(0);
+  await expect(group.getByRole('button', { name: '打开会话' })).toHaveCount(0);
   await expect(operations.locator('summary')).toHaveText([
     '启动执行中',
     '等待失败',
@@ -309,11 +309,11 @@ test('opens only an explicitly mapped child Session through the existing coordin
   const groups = page.locator('.subagent-group');
   await expect(groups).toHaveCount(3);
   await groups.nth(1).locator(':scope > details > summary').click();
-  await expect(groups.nth(1).getByRole('button', { name: '打开子会话' })).toHaveCount(0);
+  await expect(groups.nth(1).getByRole('button', { name: '打开会话' })).toHaveCount(0);
   await groups.nth(2).locator(':scope > details > summary').click();
-  await expect(groups.nth(2).getByRole('button', { name: '打开子会话' })).toHaveCount(0);
+  await expect(groups.nth(2).getByRole('button', { name: '打开会话' })).toHaveCount(0);
   await groups.nth(0).locator(':scope > details > summary').click();
-  await expect(groups.nth(0).getByRole('button', { name: '打开子会话' })).toBeVisible();
+  await expect(groups.nth(0).getByRole('button', { name: '打开会话' })).toBeVisible();
   const connection = (connected: boolean) =>
     page.evaluate((value) => {
       (
@@ -326,7 +326,7 @@ test('opens only an explicitly mapped child Session through the existing coordin
     }, connected);
   await connection(false);
   await expect(page.locator('.workspace-offline-placeholder')).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开子会话' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开会话' })).toHaveCount(0);
   await connection(true);
   await expect(page.locator('.workspace-offline-placeholder')).toHaveCount(0);
   await expect(process).toHaveCount(1);
@@ -335,7 +335,7 @@ test('opens only an explicitly mapped child Session through the existing coordin
   const mappedDetails = mapped.locator(':scope > details');
   if ((await mappedDetails.getAttribute('open')) === null)
     await mappedDetails.locator('summary').click();
-  await mapped.getByRole('button', { name: '打开子会话' }).click();
+  await mapped.getByRole('button', { name: '打开会话' }).click();
   await expect(page.getByText('Mapped child conversation')).toBeVisible();
   const input = page.getByRole('textbox', { name: '输入消息' });
   await input.fill('User intervention in child');

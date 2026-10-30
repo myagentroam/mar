@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { AGENT_TOOL_HANDLERS, BUILTIN_TOOL_DEFINITIONS } from './registry.js';
 import { normalizeToolInput } from './input.js';
 import type { ToolRuntimeContext } from './runtime-context.js';
-import { validateToolResult } from './output-projection.js';
+import { liveOutputTruncation, validateToolResult } from './output-projection.js';
 import { withToolResultExtensions } from './result-extensions.js';
 import { viewResourceImage } from './local/view-image.js';
 
@@ -89,6 +89,9 @@ export async function executeCapturedTool(
               toolName: name,
               callId,
               ...(context.parentCallId === undefined ? {} : { parentCallId: context.parentCallId }),
+              ...(liveOutputTruncation(output)
+                ? { outputTruncation: liveOutputTruncation(output)! }
+                : {}),
               output
             })
         }

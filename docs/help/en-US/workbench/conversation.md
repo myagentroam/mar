@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-30
 ---
 
 # Conversations, Tools, and Notifications
@@ -15,7 +15,7 @@ Images in the conversation load as thumbnails. Click one to open an aspect-ratio
 
 Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Subagents are grouped separately by identity; image generation, plans, approvals, and questions remain separate.
 
-When MAR Agent, Codex, Claude Code, or OpenCode starts or controls a subagent, operations for the same subagent within one phase share a group at the last invocation's position. The heading shows the task name, latest operation, and operation count, without status badges such as Running; failed calls remain clearly marked. Expand the group to inspect each actual start, wait, status check, message, cancel, or resume operation in invocation order, with its own inputs and results. Calls with unknown identities or multiple targets stay separate, and matching task names do not merge different agents. Model metadata and newly observed public messages appear only when supplied by the Runner, with explicit truncation for long messages. The child session's full message stream, tool calls, and internal reasoning are not expanded into the parent conversation. A returned operation does not mean the child task has finished, and a wait timeout does not mean the task failed.
+All four Runners use **Agent operations** groups, not limited to parent-child sessions. MAR Agent supports start, send, wait, stop, list, and view; other Runners show their native operations. Calls for the same target within one phase are grouped, while multi-target waits, discovery, and unknown identities stay separate. Expand each call to inspect its original Tool, input, result, and errors. A returned call does not mean the target task has finished, and a wait timeout does not mean it failed. Model metadata and public messages appear only when supplied by the Runner; the target session's internal execution stream is not embedded. Choose **Open session** only when Node supplies an official mapping; multi-target operations offer a separate entry for each mapped session.
 
 When an Agent request or model call finally fails, the error card shows the HTTP status when available and the returned error message. In an ordinary session, a terminal failure returns the session to Idle and pauses any remaining queued messages until you resume the queue or send a new ordinary message after reviewing the error. MAR Agent may retry eligible transient model failures before its first semantic output; an active Goal may also retry failed executions through bounded automatic continuation before blocking.
 

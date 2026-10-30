@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { directLocalProcessExecutor } from '../../src/host/local-process-executor.js';
 import type { AgentEvent } from '../../src/runtime/events.js';
+import type { AgentExtension } from '../../src/extensions/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import { answer, call, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
@@ -11,6 +12,127 @@ import { answer, call, cleanupCoreFixtures, fixture } from './support/core-exten
 afterEach(cleanupCoreFixtures);
 
 describe('exec live output and model observation separation', () => {
+  it('preserves SOURCE when another observation is locally clipped', async () => {
+    const extension: AgentExtension = {
+      id: 'source-truncation-probe',
+      apiVersion: '1.0',
+      attachSession(context) {
+        context.tools.register({
+          name: 'source_probe',
+          description: 'Return incomplete source text.',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          async execute() {
+            return { content: 'incomplete source', truncated: true };
+          }
+        });
+      }
+    };
+    const f = await fixture(
+      [extension],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', {
+              code: 'observe.result(await tools.source_probe({})); observe.text("x".repeat(11000) + "TAIL");'
+            })
+          : answer(),
+      true
+    );
+    const run = f.session.run({ prompt: 'Observe source.' });
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    await run.result();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        outputTruncation: 'SOURCE'
+      })
+    );
+    const history = await f.agent.sessionHistory(f.session.id);
+    expect(history.entries).toContainEqual(
+      expect.objectContaining({
+        kind: 'event',
+        event: expect.objectContaining({
+          type: 'tool.completed',
+          toolName: 'code_exec',
+          outputTruncation: 'SOURCE'
+        })
+      })
+    );
+  });
+  it('keeps a truncated event summary separate from complete public observations', async () => {
+    const f = await fixture(
+      [],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', {
+              code: 'observe.text("a".repeat(1200)); observe.text("b".repeat(1200)); observe.text("c".repeat(1200));'
+            })
+          : answer(),
+      true
+    );
+    const run = f.session.run({ prompt: 'Observe text.' });
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    await run.result();
+    const complete = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'code_exec'
+    );
+    expect(complete).toMatchObject({
+      summaryTruncated: true,
+      data: {
+        observations: [
+          expect.objectContaining({ value: 'a'.repeat(1200) }),
+          expect.objectContaining({ value: 'b'.repeat(1200) }),
+          expect.objectContaining({ value: 'c'.repeat(1200) })
+        ]
+      }
+    });
+    expect(complete).not.toHaveProperty('outputTruncation');
+    const model = JSON.stringify(
+      f.adapter.requests.at(-1)!.messages.findLast((message) => message.role === 'tool')
+    );
+    expect(model).toContain('a'.repeat(1200));
+    const history = await f.agent.sessionHistory(f.session.id);
+    const persisted = history.entries.find(
+      (entry) =>
+        entry.kind === 'event' &&
+        entry.event.type === 'tool.completed' &&
+        entry.event.toolName === 'code_exec'
+    );
+    expect(persisted).toMatchObject({ kind: 'event', event: { summaryTruncated: true } });
+    expect(persisted?.kind === 'event' && 'outputTruncation' in persisted.event).toBe(false);
+  });
+  it('preserves a real public HEAD through event publication and Catalog history', async () => {
+    const f = await fixture(
+      [],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', { code: 'observe.text("x".repeat(12000) + "TAIL")' })
+          : answer(),
+      true
+    );
+    const run = f.session.run({ prompt: 'Observe text.' });
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    await run.result();
+    const live = events.find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'code_exec'
+    );
+    expect(live).toMatchObject({ outputTruncation: 'HEAD' });
+    expect(JSON.stringify(live?.type === 'tool.completed' ? live.data : null)).toContain('TAIL');
+    const history = await f.agent.sessionHistory(f.session.id);
+    expect(history.entries).toContainEqual(
+      expect.objectContaining({
+        kind: 'event',
+        event: expect.objectContaining({
+          type: 'tool.completed',
+          toolName: 'code_exec',
+          outputTruncation: 'HEAD'
+        })
+      })
+    );
+  });
   it('keeps exec display metadata through dispatch but out of the guest and model results', async () => {
     const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify("process.stdout.write('model head-' + 'x'.repeat(17000) + '😀public tail'); process.stderr.write('public error');")}`;
     const f = await fixture(
@@ -31,8 +153,8 @@ describe('exec live output and model observation separation', () => {
       expect.objectContaining({
         type: 'tool.completed',
         toolName: 'code_exec',
+        outputTruncation: 'HEAD',
         data: expect.objectContaining({
-          outputHeadTruncated: true,
           observations: [
             expect.objectContaining({ type: 'value', value: 'false' }),
             expect.objectContaining({

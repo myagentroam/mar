@@ -361,7 +361,7 @@ describe('Runner subagent lifecycle tool projection', () => {
       }).payload
     ).toMatchObject({
       title: 'Inspect the parsing path',
-      outputSummary: 'Inspection completed'
+      output: { blocks: [{ channel: 'TEXT', text: 'Inspection completed' }] }
     });
     const [marAgent] = new MarAgentConversationNormalizer().normalize({
       ...base,
@@ -464,7 +464,7 @@ describe('Runner subagent lifecycle tool projection', () => {
       expect(completed?.payload).toMatchObject({
         subagentModelId: 'review',
         subagentLatestMessage: latestMessage,
-        outputSummary: latestMessage.text
+        outputSummary: null
       });
       normalizer.normalize({
         ...base,
@@ -770,7 +770,7 @@ describe('Runner subagent lifecycle tool projection', () => {
         phase: 'commentary',
         truncated: true
       },
-      outputSummary: 'Still checking.'
+      outputSummary: null
     });
   });
 
@@ -947,7 +947,7 @@ describe('Runner subagent lifecycle tool projection', () => {
     });
   });
 
-  it('keeps a code-point-bounded latest message while bounding the duplicated output summary', () => {
+  it('keeps a code-point-bounded latest message without duplicating its text', () => {
     const text = '\u{1F680}'.repeat(10_000);
     const normalizer = new MarAgentConversationNormalizer();
     normalizer.normalize({
@@ -988,9 +988,8 @@ describe('Runner subagent lifecycle tool projection', () => {
     });
 
     expect(completed?.payload.subagentLatestMessage).toMatchObject({ text, truncated: false });
-    expect(String(completed?.payload.outputSummary).length).toBeLessThanOrEqual(10_000);
-    expect(String(completed?.payload.outputSummary)).toMatch(/…$/u);
-    expect(String(completed?.payload.outputSummary)).not.toMatch(/[\uD800-\uDFFF]/u);
+    expect(completed?.payload.outputSummary).toBeNull();
+    expect(completed?.payload.output).toBeUndefined();
   });
 
   it('projects the effective model name on completed MAR Agent messages', () => {

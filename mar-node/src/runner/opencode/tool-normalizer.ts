@@ -1,4 +1,4 @@
-import { compactRunnerText, compactRunnerValue, publicOutputSnapshot } from '../normalization.js';
+import { compactRunnerText, compactRunnerValue, publicToolOutput } from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeOpenCodeTool(
@@ -29,16 +29,15 @@ export function normalizeOpenCodeTool(
           10_000
         ),
         cwd: typeof input?.cwd === 'string' ? compactRunnerText(input.cwd, 4_096) : null,
-        outputPreview:
-          typeof state?.output === 'string' ? compactRunnerText(state.output, 10_000) : '',
         exitCode: typeof state?.exitCode === 'number' ? state.exitCode : null,
         durationMs: null,
-        truncated: typeof state?.output === 'string' && state.output.length > 10_000,
         ...(typeof state?.output === 'string'
-          ? { output: publicOutputSnapshot(state.output) }
+          ? { output: publicToolOutput(state.output, undefined, 'COMBINED') }
           : {}),
         toolPresentation: shellExecution(
-          typeof state?.output === 'string' ? state.output : undefined
+          (typeof input?.command === 'string' && input.command.length > 10_000) ||
+            (typeof input?.cmd === 'string' && input.cmd.length > 10_000) ||
+            (typeof input?.cwd === 'string' && input.cwd.length > 4_096)
         )
       }
     };
@@ -51,11 +50,10 @@ export function normalizeOpenCodeTool(
         compactRunnerText(typeof state?.title === 'string' ? state.title : toolName, 500) ||
         publicToolName,
       inputSummary: compactRunnerValue(state?.input, 10_000).text || null,
-      outputSummary:
-        typeof state?.output === 'string' ? compactRunnerText(state.output, 10_000) : null,
+      outputSummary: null,
       progressLabel: null,
       errorCode: status === 'FAILED' ? 'OPENCODE_TOOL_FAILED' : null,
-      truncated: false,
+      ...(compactRunnerValue(state?.input, 10_000).truncated ? { inputTruncated: true } : {}),
       ...(normalizedName === 'read'
         ? {
             toolPresentation: {
@@ -67,7 +65,7 @@ export function normalizeOpenCodeTool(
             }
           }
         : {}),
-      ...(typeof state?.output === 'string' ? { output: publicOutputSnapshot(state.output) } : {}),
+      ...(typeof state?.output === 'string' ? { output: publicToolOutput(state.output) } : {}),
       ...subagent
     }
   };
@@ -97,8 +95,8 @@ function openCodeSubagentProjection(
     ...(nativeResult === undefined
       ? {}
       : {
-          outputSummary: compactRunnerText(nativeResult.result, 10_000) || null,
-          output: publicOutputSnapshot(nativeResult.result)
+          outputSummary: null,
+          output: publicToolOutput(nativeResult.result)
         })
   };
 }

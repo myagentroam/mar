@@ -13,6 +13,41 @@ import {
 import type { NodeConversationItem } from '../../src/runtime-model.js';
 
 describe('tool presentation runner compatibility', () => {
+  it('retains Claude locally clipped output as HEAD, and unknown source truncation as SOURCE', () => {
+    const [result] = extractClaudeToolResults({
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'call',
+            content: `${'x'.repeat(11_000)}TAIL`
+          }
+        ]
+      }
+    });
+    expect(result).toMatchObject({ truncated: true });
+    const live = normalizeClaudeTool(
+      'Read',
+      {},
+      result!.output,
+      false,
+      true,
+      new Map(),
+      undefined,
+      result!.truncated,
+      false,
+      'HEAD'
+    );
+    expect(live.payload.output).toEqual({
+      blocks: [{ channel: 'TEXT', text: `${'x'.repeat(9_996)}TAIL` }],
+      truncation: 'HEAD'
+    });
+    const source = normalizeClaudeTool('Read', {}, 'partial', false, true);
+    expect(source.payload.output).toEqual({
+      blocks: [{ channel: 'TEXT', text: 'partial' }],
+      truncation: 'SOURCE'
+    });
+  });
   it.each(['read', 'web_search', 'web_fetch', 'skill', 'task', 'inspect'])(
     'normalizes %s output before summary clipping',
     (name) => {
@@ -38,7 +73,7 @@ describe('tool presentation runner compatibility', () => {
           payload: normalized.payload
         });
         expect(item.payload).toMatchObject({
-          output: { text: text.slice(-10_000), truncated: true }
+          output: { blocks: [{ channel: 'TEXT', text: text.slice(-10_000) }], truncation: 'HEAD' }
         });
       }
     }
@@ -47,11 +82,17 @@ describe('tool presentation runner compatibility', () => {
   it('keeps input truncation separate from an explicitly complete or empty output', () => {
     for (const started of [
       normalizeClaudeTool('Bash', { command: 'verify' }, null, false, true),
-      normalizeCodexTool({ name: 'exec_command', rawInput: { cmd: 'verify' }, truncated: true })
+      normalizeCodexTool({
+        name: 'exec_command',
+        rawInput: { cmd: 'verify' },
+        inputTruncated: true
+      })
     ]) {
       expect(started.payload).not.toHaveProperty('output');
       expect(started.payload).not.toHaveProperty('toolPresentation.execution.truncation.output');
-      expect(started.payload.truncated).toBe(true);
+      expect(started.payload.toolPresentation).toMatchObject({
+        execution: { truncation: { input: true } }
+      });
     }
     for (const text of ['  complete\n', '']) {
       const values = [
@@ -82,7 +123,11 @@ describe('tool presentation runner compatibility', () => {
         normalizeOpenCodeTool('read', { input: { path: 'x'.repeat(10_100) }, output: text })
       ];
       for (const value of values) {
-        expect(value.payload.output).toEqual({ text, truncated: false });
+        expect(value.payload.output).toEqual({
+          blocks: text
+            ? [{ channel: value.kind === 'command_execution' ? 'COMBINED' : 'TEXT', text }]
+            : []
+        });
         expect(value.payload).not.toHaveProperty('toolPresentation.execution.truncation.output');
       }
     }
@@ -102,7 +147,18 @@ describe('tool presentation runner compatibility', () => {
       }
     });
     expect(result).toMatchObject({ output: text.slice(-10_000), truncated: true });
-    const claude = normalizeClaudeTool('Read', {}, result!.output, false, result!.truncated);
+    const claude = normalizeClaudeTool(
+      'Read',
+      {},
+      result!.output,
+      false,
+      false,
+      undefined,
+      undefined,
+      result!.truncated,
+      false,
+      result!.truncated ? 'HEAD' : undefined
+    );
     const codex = codexLiveConversationItem(
       {
         type: 'dynamicToolCall',
@@ -112,8 +168,13 @@ describe('tool presentation runner compatibility', () => {
       },
       true
     );
-    expect(claude.payload.output).toEqual({ text: text.slice(-10_000), truncated: true });
-    expect(codex?.payload).toMatchObject({ output: claude.payload.output });
+    expect(claude.payload.output).toEqual({
+      blocks: [{ channel: 'TEXT', text: text.slice(-10_000) }],
+      truncation: 'HEAD'
+    });
+    expect(codex?.payload).toMatchObject({
+      output: { blocks: [{ channel: 'TEXT', text: text.slice(-10_000) }], truncation: 'HEAD' }
+    });
   });
 
   it('unwraps OpenCode task results only in the owning task adapter', () => {
@@ -121,11 +182,10 @@ describe('tool presentation runner compatibility', () => {
     const task = normalizeOpenCodeTool('task', { status: 'completed', input: {}, output });
     expect(task.payload).toMatchObject({
       subagentId: 'child',
-      output: { text: 'Child result', truncated: false }
+      output: { blocks: [{ channel: 'TEXT', text: 'Child result' }] }
     });
     expect(normalizeOpenCodeTool('read', { input: {}, output }).payload.output).toEqual({
-      text: output,
-      truncated: false
+      blocks: [{ channel: 'TEXT', text: output }]
     });
   });
 
@@ -160,7 +220,12 @@ describe('tool presentation runner compatibility', () => {
           id: invocation.id,
           kind: invocation.kind,
           status: 'COMPLETED',
-          payload: { output: { text: text.slice(-10_000), truncated: text.length > 10_000 } }
+          payload: {
+            output: {
+              blocks: text ? [{ channel: 'TEXT', text: text.slice(-10_000) }] : [],
+              ...(text.length > 10_000 ? { truncation: 'HEAD' } : {})
+            }
+          }
         });
         expect(() => conversationItemSchema.parse(merged)).not.toThrow();
       }
@@ -206,8 +271,8 @@ describe('tool presentation runner compatibility', () => {
     });
     expect(claude.payload.toolPresentation).toEqual({ kind: 'READ', paths: ['src/a.ts'] });
     expect(opencode.payload.toolPresentation).toEqual({ kind: 'READ', paths: ['src/b.ts'] });
-    expect(claude.payload.outputSummary).toBe('content');
-    expect(opencode.payload.outputSummary).toBe('content');
+    expect(claude.payload.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'content' }] });
+    expect(opencode.payload.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'content' }] });
     expect(
       normalizeCodexTool({ name: 'exec_command', rawInput: { cmd: 'cat src/a.ts' } }).kind
     ).toBe('command_execution');
@@ -274,7 +339,10 @@ describe('tool presentation runner compatibility', () => {
         payload: normalized.payload
       });
       expect(parsed.kind).toBe('tool_call');
-      expect(parsed.payload).toMatchObject({ toolName: name, outputSummary: 'Original output' });
+      expect(parsed.payload).toMatchObject({
+        toolName: name,
+        output: { blocks: [{ channel: 'TEXT', text: 'Original output' }] }
+      });
       expect(parsed.payload).not.toHaveProperty('toolPresentation');
     }
   );

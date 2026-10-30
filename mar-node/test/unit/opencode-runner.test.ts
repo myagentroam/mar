@@ -127,7 +127,7 @@ describe('OpenCode Runner', () => {
       })
     ).toMatchObject({
       kind: 'command_execution',
-      payload: { command: 'pwd', outputPreview: '/workspace' }
+      payload: { command: 'pwd', output: { blocks: [{ channel: 'COMBINED', text: '/workspace' }] } }
     });
     expect(normalizeOpenCodeTool('patch', { status: 'completed' })).toMatchObject({
       kind: 'tool_call',

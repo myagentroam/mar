@@ -4,6 +4,7 @@ import type {
   AgentNetworkInvoke
 } from '../../service/agent-network-service.js';
 import { agentNetworkWaitModelOutput } from './agent-network-wait-output.js';
+import { agentOperationEvent } from './agent-operation-presentation.js';
 
 const text = { type: 'string', minLength: 1 } as const;
 const attachmentIds = {
@@ -143,6 +144,7 @@ export function agentNetworkExtension(
           allowedCallers: ['direct', 'programmatic'],
           eventInputFields: [
             'agentId',
+            'agentIds',
             'title',
             'executionId',
             'runner',
@@ -167,25 +169,12 @@ export function agentNetworkExtension(
               input as Record<string, unknown>,
               call
             );
-            const value =
-              result !== null && typeof result === 'object' && !Array.isArray(result)
-                ? (result as Record<string, unknown>)
-                : undefined;
-            const id = value?.agentId;
-            const eventData =
-              ['start', 'send', 'stop', 'wait'].includes(tool.action) &&
-              typeof id === 'string' &&
-              id.length > 0 &&
-              id.length <= 128
-                ? { agentId: id, productSessionId: id }
-                : undefined;
             const modelResult =
               tool.action === 'wait' ? agentNetworkWaitModelOutput(result) : result;
             return {
               data: result,
               content: JSON.stringify(modelResult),
-              eventSummary: JSON.stringify(eventData ?? {}),
-              eventData: eventData ?? {}
+              ...agentOperationEvent(tool.action, input, result)
             };
           }
         });

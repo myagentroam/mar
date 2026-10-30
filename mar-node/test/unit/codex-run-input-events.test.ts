@@ -224,6 +224,51 @@ describe('Codex input, commands, and event projection', () => {
     ).toBe('IN_PROGRESS');
   });
 
+  it('restores an in-progress command snapshot and marks clipped MCP input in official history', () => {
+    const session = { id: 'session' } as never;
+    const command = codexOfficialItem(
+      session,
+      'turn',
+      {
+        id: 'command',
+        type: 'commandExecution',
+        status: 'inProgress',
+        command: 'echo test',
+        aggregatedOutput: 'already emitted'
+      },
+      0,
+      0,
+      null,
+      null
+    );
+    expect(command).toMatchObject({
+      status: 'IN_PROGRESS',
+      payload: {
+        output: { blocks: [{ channel: 'COMBINED', text: 'already emitted' }] }
+      }
+    });
+    const mcp = codexOfficialItem(
+      session,
+      'turn',
+      {
+        id: 'mcp',
+        type: 'mcpToolCall',
+        status: 'inProgress',
+        server: 's',
+        tool: 't',
+        arguments: { query: 'x'.repeat(11_000) }
+      },
+      0,
+      1,
+      null,
+      null
+    );
+    expect(mcp?.payload).toMatchObject({ inputTruncated: true, inputSummary: expect.any(String) });
+    expect(
+      String((mcp?.payload as Record<string, unknown>).inputSummary).length
+    ).toBeLessThanOrEqual(10_000);
+  });
+
   it.each(['started', 'completed', 'interacted', 'interrupted'])(
     'does not invent a control call from child activity %s',
     (kind) => {
@@ -329,7 +374,7 @@ describe('Codex input, commands, and event projection', () => {
         kind: 'command_execution',
         payload: expect.objectContaining({
           command: 'git status --short',
-          outputPreview: ' M src/a.ts\n'
+          output: { blocks: [{ channel: 'TEXT', text: ' M src/a.ts\n' }] }
         })
       }),
       expect.objectContaining({ kind: 'file_change' }),

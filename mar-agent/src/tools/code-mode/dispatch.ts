@@ -8,6 +8,10 @@ import { allowsToolCaller } from '../callers.js';
 import type { McpToolCallContext, ToolCall, ToolExecutionResult } from '../contracts.js';
 import {
   boundedModelToolOutput,
+  publicToolEventInput,
+  publicExtensionToolEventData,
+  publicEventOutputData,
+  publicOutputTruncation,
   structuredToolEventData,
   structuredToolFailureData
 } from '../output-projection.js';
@@ -49,7 +53,14 @@ export function createCodeToolDispatch(input: {
       signal.throwIfAborted();
       const callId = call.callId ?? randomUUID();
       const identity = { toolName: call.name, callId, parentCallId: input.parentCallId };
-      await input.emit({ type: 'tool.started', ...identity, input: call.arguments });
+      await input.emit({
+        type: 'tool.started',
+        ...identity,
+        input:
+          definition.eventInputFields === undefined
+            ? call.arguments
+            : publicToolEventInput(call.arguments, definition.eventInputFields)
+      });
       try {
         input.assertLive();
         signal.throwIfAborted();
@@ -69,20 +80,29 @@ export function createCodeToolDispatch(input: {
           'programmatic'
         );
         const bounded = boundedModelToolOutput(call.name, result.content, result.data);
-        const data = structuredToolEventData(
-          call.name,
+        const data =
           call.name === 'exec' || call.name === 'exec_wait'
-            ? (result.eventData ?? result.data)
-            : result.data
+            ? structuredToolEventData(call.name, result.eventData ?? result.data)
+            : result.eventData === undefined
+              ? structuredToolEventData(call.name, result.data)
+              : publicExtensionToolEventData(result.eventData);
+        const preview = toolEventSummary(
+          result.eventSummary === undefined
+            ? result.content
+            : typeof result.eventSummary === 'string'
+              ? result.eventSummary
+              : ''
         );
-        const preview = toolEventSummary(result.content);
+        const outputTruncation = publicOutputTruncation(call.name, data);
         input.assertLive();
         await input.emit({
           type: 'tool.completed',
           ...(result.resultExtensions ? { resultExtensions: result.resultExtensions } : {}),
           ...identity,
           summary: preview.summary,
-          ...(data === undefined ? {} : { data }),
+          ...(preview.truncated ? { summaryTruncated: true } : {}),
+          ...(outputTruncation ? { outputTruncation } : {}),
+          ...(data === undefined ? {} : { data: publicEventOutputData(data) }),
           truncated: result.truncated === true || bounded.truncated || preview.truncated,
           ...(result.artifacts ? { artifacts: result.artifacts } : {})
         });

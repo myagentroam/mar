@@ -41,6 +41,84 @@ async function fixture(runner: 'codex' | 'claude-code', id: string, cwd = '/work
 
 describe('native transcript ownership and lazy page projection', () => {
   it.each(['codex', 'claude-code'] as const)(
+    'preserves %s locally clipped output through native history',
+    async (runner) => {
+      const f = await fixture(runner, 'tails');
+      const tail = `${'x'.repeat(11_000)}TAIL`;
+      await f.write(
+        runner === 'codex'
+          ? [
+              { type: 'session_meta', payload: { id: 'tails', cwd: f.cwd } },
+              {
+                type: 'response_item',
+                payload: {
+                  type: 'function_call',
+                  call_id: 'long',
+                  name: 'exec_command',
+                  arguments: JSON.stringify({ command: 'run' })
+                }
+              },
+              {
+                type: 'response_item',
+                payload: { type: 'function_call_output', call_id: 'long', output: tail }
+              },
+              {
+                type: 'response_item',
+                payload: {
+                  type: 'function_call',
+                  call_id: 'input',
+                  name: 'exec_command',
+                  arguments: JSON.stringify({ command: 'x'.repeat(11_000) })
+                }
+              },
+              {
+                type: 'response_item',
+                payload: { type: 'function_call_output', call_id: 'input', output: 'complete' }
+              }
+            ]
+          : [
+              { type: 'user', sessionId: 'tails', cwd: f.cwd, message: { content: 'Start' } },
+              {
+                type: 'assistant',
+                message: {
+                  content: [
+                    { type: 'tool_use', id: 'long', name: 'Bash', input: { command: 'run' } }
+                  ]
+                }
+              },
+              {
+                type: 'user',
+                message: { content: [{ type: 'tool_result', tool_use_id: 'long', content: tail }] }
+              }
+            ]
+      );
+      expect(await discoverNativeSessions(runner, f.cwd)).toHaveLength(1);
+      const history = await readNativeSession(runner, f.cwd, 'tails');
+      expect(history).toBeDefined();
+      const page = nativeConversationPage({ id: 'managed', runner } as NodeAgentSession, history!, {
+        limit: 10
+      });
+      const commands = page.turns
+        .flatMap((turn) => turn.items)
+        .filter((item) => item.kind === 'command_execution');
+      expect(commands[0]?.payload).toMatchObject({
+        output: {
+          blocks: [{ channel: 'COMBINED', text: expect.stringMatching(/TAIL$/u) }],
+          truncation: 'HEAD'
+        }
+      });
+      if (runner === 'codex') {
+        expect(commands[1]?.payload).toMatchObject({
+          output: { blocks: [{ channel: 'COMBINED', text: 'complete' }] },
+          toolPresentation: { execution: { truncation: { input: true } } }
+        });
+        expect(
+          (commands[1]?.payload as { output: { truncation?: string } }).output.truncation
+        ).toBeUndefined();
+      }
+    }
+  );
+  it.each(['codex', 'claude-code'] as const)(
     'shares the %s facade parse/cache path and only normalizes the requested page',
     async (runner) => {
       const f = await fixture(runner, 'mixed');
@@ -172,8 +250,12 @@ describe('native transcript ownership and lazy page projection', () => {
       const tool = page.turns[0]?.items.at(-1);
       expect(tool?.payload).toMatchObject(
         runner === 'codex'
-          ? { outputPreview: 'done' }
-          : { title: 'Review', subagentId: 'child', outputSummary: 'done' }
+          ? { output: { blocks: [{ channel: 'COMBINED', text: 'done' }] } }
+          : {
+              title: 'Review',
+              subagentId: 'child',
+              output: { blocks: [{ channel: 'TEXT', text: 'done' }] }
+            }
       );
       const usage =
         runner === 'codex'

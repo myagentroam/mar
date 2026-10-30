@@ -52,6 +52,35 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
 
 const originalLocale = localePreferenceService().locale.value;
 
+it.each(['HEAD', 'SOURCE'] as const)(
+  'clears legacy %s truncation for complete and empty public snapshots',
+  async (direction) => {
+    localePreferenceService().setLocale('en-US');
+    try {
+      for (const blocks of [[{ channel: 'COMBINED', text: 'complete' }], []]) {
+        const item = conversationItem('output', 'command_execution', {
+          command: 'run',
+          output: { blocks },
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: {
+              kind: 'SHELL',
+              output: [{ channel: 'COMBINED', text: 'old' }],
+              truncation: { output: direction }
+            }
+          }
+        });
+        const html = await render(ConversationToolDetail, { item });
+        expect(html).not.toContain('Truncated');
+        expect(html).not.toContain('old');
+        if (blocks.length) expect(html).toContain('complete');
+      }
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
 it('marks a truncated wait source independently from a head-truncated output tail', async () => {
   localePreferenceService().setLocale('en-US');
   try {

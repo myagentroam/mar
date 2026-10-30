@@ -72,8 +72,7 @@ export function publicHostedToolEvents(
       ),
       hostedToolKind: event.kind
     },
-    ...(input === undefined ? {} : { input }),
-    ...(truncated ? { truncated: true } : {})
+    ...(input === undefined ? {} : { input })
   };
   if (event.status === 'RUNNING') return [started];
   if (event.status === 'FAILED')
@@ -96,6 +95,7 @@ export function publicHostedToolEvents(
       callId: event.itemId,
       summary,
       truncated,
+      ...(preview.truncated || event.truncated === true ? { summaryTruncated: true } : {}),
       data: started.data!
     }
   ];
