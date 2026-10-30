@@ -1,42 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  conversationDisplayItems,
-  subagentGroupSessionId
-} from '@myagentroam/web-core/conversation-presentation';
+import { conversationDisplayItems } from '@myagentroam/web-core/conversation-presentation';
 
 const item = (id: string, kind: string) => ({ id, kind, status: 'COMPLETED', payload: {} });
 
 describe('Web Conversation Segment', () => {
-  it('navigates only an explicit, unambiguous product Session mapping', () => {
-    const native = {
-      ...item('native', 'tool_call'),
-      payload: {
-        subagentId: 'native-child',
-        inputSummary: '{"sessionId":"guessed"}'
-      }
-    };
-    const mapped = {
-      ...item('mapped', 'tool_call'),
-      payload: {
-        subagentId: 'native-child',
-        subagentSessionId: 'product-session'
-      }
-    };
-    expect(subagentGroupSessionId([native])).toBeUndefined();
-    expect(subagentGroupSessionId([native, mapped])).toBe('product-session');
-    expect(
-      subagentGroupSessionId([
-        mapped,
-        {
-          ...mapped,
-          payload: {
-            ...mapped.payload,
-            subagentSessionId: 'other-session'
-          }
-        }
-      ])
-    ).toBeUndefined();
-  });
   it('keeps ungrouped historical items independent', () => {
     const display = conversationDisplayItems([
       item('command-1', 'command_execution'),

@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 
-const opened = ref('');
 function item(
   id: string,
   payload: object,
@@ -90,7 +88,6 @@ const turns: ConversationTurn[] = [
 
 <template>
   <main>
-    <output data-testid="opened" hidden>{{ opened }}</output>
     <ConversationTimeline
       :turns="turns"
       :workspace-root="undefined"
@@ -106,8 +103,6 @@ const turns: ConversationTurn[] = [
       :node-ready="false"
       :rewind-enabled="false"
       :rollback-enabled="false"
-      :session-navigation-enabled="true"
-      @open-session="opened = $event"
     />
   </main>
 </template>

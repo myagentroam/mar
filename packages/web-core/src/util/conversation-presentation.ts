@@ -803,17 +803,6 @@ function subagentTaskTitle(value: Record<string, unknown>): string {
   return stringField(value, 'subagentId') || toolName || translate('presentation.subagentTask');
 }
 
-/** Only an explicit Node-provided product Session mapping is navigable. */
-export function subagentGroupSessionId(items: readonly ConversationItem[]): string | undefined {
-  const ids = new Set(
-    items.flatMap((item) => {
-      const id = conversationPayload(item.payload)?.subagentSessionId;
-      return typeof id === 'string' && id.trim().length > 0 && id.length <= 128 ? [id] : [];
-    })
-  );
-  return ids.size === 1 ? [...ids][0] : undefined;
-}
-
 export interface TaskListEntry {
   readonly text: string;
   readonly status: string;
