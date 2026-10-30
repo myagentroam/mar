@@ -222,6 +222,7 @@ const emit = defineEmits<{
   branch: [workspaceId: string, value: string | null];
   workspace: [value: WorkspaceFileTreeWorkspace];
   directory: [path: string];
+  retryWatch: [];
   uploads: [
     value: readonly {
       readonly file: File;
@@ -382,18 +383,10 @@ const git = createWorkspaceGitService({
   historyEnabled: () => historyAvailable.value,
   onWorkspace: (workspace) => emit('workspace', workspace),
   onBranch: (workspaceId, branch) => emit('branch', workspaceId, branch),
-  onFailure: (error, operation) =>
-    markFailure(
-      error,
-      translate(
-        {
-          CHANGES: 'generated.workspaceInspector.gitChanges',
-          HISTORY: 'generated.workspaceInspector.gitHistory',
-          FILES: 'generated.workspaceInspector.commitFiles',
-          RESTORE: 'generated.workspaceInspector.revertingChanges'
-        }[operation]
-      )
-    )
+  onFailure: (error, operation) => {
+    if (operation === 'RESTORE' || errorCode(error) === 'CAPABILITY_UNAVAILABLE')
+      markFailure(error, translate('generated.workspaceInspector.revertingChanges'));
+  }
 });
 const changes = git.changes;
 const unavailable = ref(false);
@@ -405,12 +398,16 @@ const contentQuery = ref('');
 const contentUseRegex = ref(false);
 const contentSearch = createWorkspaceContentSearchService({
   http,
-  onFailure: (error) => markFailure(error, translate('generated.workspaceInspector.contentSearch'))
+  onFailure: (error) => {
+    if (errorCode(error) === 'CAPABILITY_UNAVAILABLE')
+      markFailure(error, translate('generated.workspaceInspector.contentSearch'));
+  }
 });
 const contentAppliedQuery = contentSearch.appliedQuery;
 const contentAppliedUseRegex = contentSearch.appliedUseRegex;
 const contentMatches = contentSearch.matches;
 const contentSearchLoading = contentSearch.loading;
+const contentSearchError = contentSearch.error;
 const contentSearchTruncated = contentSearch.truncated;
 const contentSearchInput = ref<HTMLInputElement>();
 const codeNavigation = createWorkspaceCodeNavigationService({
@@ -637,7 +634,7 @@ async function listTreeDirectory(path: string, cursor?: string): Promise<Workspa
     if (
       generation === inspectorGeneration &&
       requestBase === base.value &&
-      errorCode(error) !== 'FILE_NOT_FOUND'
+      errorCode(error) === 'CAPABILITY_UNAVAILABLE'
     )
       markFailure(error, 'Files');
     throw error;
@@ -1970,32 +1967,38 @@ onBeforeUnmount(() => filePreviews.reset());
           {{ translate('generated.workspaceInspector.gitHistory') }}
         </el-button>
       </div>
-      <p
+      <button
         v-if="
-          (activeSection === 'files' && filesWatchStatus === 'loading') ||
-          (activeSection === 'changes' && changesWatchStatus === 'loading')
+          ((activeSection === 'files' &&
+            (filesWatchStatus === 'loading' || filesWatchStatus === 'failed')) ||
+            (activeSection === 'changes' &&
+              (changesWatchStatus === 'loading' || changesWatchStatus === 'failed'))) &&
+          !(
+            (activeSection === 'files' && (filesBusy || fileTree.refreshError.value)) ||
+            (activeSection === 'changes' && (git.changesRefreshing.value || git.changesError.value))
+          )
         "
         class="watch-status"
-      >
-        {{
-          activeSection === 'files'
-            ? translate('workspaceWatch.loadingFiles')
-            : translate('workspaceWatch.loadingChanges')
-        }}
-      </p>
-      <p
-        v-else-if="
-          (activeSection === 'files' && filesWatchStatus === 'failed') ||
-          (activeSection === 'changes' && changesWatchStatus === 'failed')
+        type="button"
+        :aria-disabled="
+          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'
         "
-        class="watch-status failed"
+        :aria-busy="
+          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading' ||
+          undefined
+        "
+        @click="
+          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed' &&
+          emit('retryWatch')
+        "
       >
-        {{
-          activeSection === 'files'
-            ? translate('workspaceWatch.filesFailed')
-            : translate('workspaceWatch.changesFailed')
-        }}
-      </p>
+        <template
+          v-if="(activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'"
+          ><MarIcon name="loading-action" />
+          {{ translate('generated.workspaceInspector.loading') }}</template
+        >
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </button>
       <template v-if="activeSection === 'files'">
         <section class="file-explorer">
           <div class="explorer-toolbar">
@@ -2026,8 +2029,7 @@ onBeforeUnmount(() => filePreviews.reset());
               type="button"
               @click="refreshFiles"
             >
-              <MarIcon name="loading-action" v-if="filesBusy" />
-              <MarIcon name="refresh" v-else />
+              <MarIcon name="refresh" />
             </button>
             <button
               v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
@@ -2042,6 +2044,29 @@ onBeforeUnmount(() => filePreviews.reset());
               <MarIcon name="document-add" v-else />
             </button>
           </div>
+          <button
+            v-if="fileTree.refreshError.value"
+            v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
+            :aria-description="
+              !filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined
+            "
+            type="button"
+            class="watch-status"
+            :class="{ failed: !filesBusy }"
+            :aria-disabled="filesBusy"
+            :aria-busy="filesBusy || undefined"
+            @click="!filesBusy && refreshFiles()"
+          >
+            <template v-if="filesBusy"
+              ><MarIcon name="loading-action" />
+              {{ translate('generated.workspaceInspector.loading') }}</template
+            >
+            <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+          </button>
+          <p v-else-if="filesBusy" class="watch-status" role="status">
+            <MarIcon name="loading-action" />
+            {{ translate('generated.workspaceInspector.loading') }}
+          </p>
           <WorkspaceFileTree
             ref="fileTreeView"
             :root="fileTree.root.value"
@@ -2093,10 +2118,28 @@ onBeforeUnmount(() => filePreviews.reset());
             :aria-busy="contentSearchLoading || undefined"
             type="submit"
           >
-            <MarIcon name="loading-action" v-if="contentSearchLoading" />
-            <MarIcon name="search" v-else />
+            <MarIcon name="search" />
           </button>
         </form>
+        <button
+          v-if="contentSearchError !== undefined"
+          v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
+          :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
+          type="button"
+          class="watch-status"
+          :class="{ failed: !contentSearchLoading }"
+          :aria-disabled="contentSearchLoading"
+          :aria-busy="contentSearchLoading || undefined"
+          @click="contentSearch.retry()"
+        >
+          <template v-if="contentSearchLoading"
+            ><MarIcon name="loading-action" />
+            {{ translate('generated.workspaceInspector.loading') }}</template
+          ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </button>
+        <p v-else-if="contentSearchLoading" class="watch-status" role="status">
+          <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
+        </p>
         <p v-if="contentSearchTruncated" class="content-search-warning">
           {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
         </p>
@@ -2134,7 +2177,10 @@ onBeforeUnmount(() => filePreviews.reset());
           </li>
           <li
             v-if="
-              contentAppliedQuery !== '' && contentMatches.length === 0 && !contentSearchLoading
+              contentAppliedQuery !== '' &&
+              contentMatches.length === 0 &&
+              !contentSearchLoading &&
+              contentSearchError === undefined
             "
             class="file-search-empty"
           >

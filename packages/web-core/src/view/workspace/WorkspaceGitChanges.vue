@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
@@ -237,10 +236,15 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     >
       {{ gitGroupErrorMessage(error) }}
     </p>
-    <p v-if="visibleChangeRepositories.length === 0" class="empty">
+    <p
+      v-if="
+        visibleChangeRepositories.length === 0 && !changesRefreshing && !service.changesError.value
+      "
+      class="empty"
+    >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </p>
-    <ul v-else class="change-list">
+    <ul v-else-if="visibleChangeRepositories.length > 0" class="change-list">
       <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
@@ -268,8 +272,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 type="button"
                 @click="loadChanges(true)"
               >
-                <MarIcon name="loading-action" v-if="changesRefreshing" />
-                <MarIcon name="refresh" v-else />
+                <MarIcon name="refresh" />
               </button>
             </div>
             <div class="repository-tags-row">
@@ -408,27 +411,37 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         </li>
       </template>
     </ul>
+    <div v-if="service.changesError.value" class="change-append-state">
+      <button
+        v-tooltip="!changesRefreshing ? errorMessage(service.changesFailureCause.value) : ''"
+        :aria-description="
+          !changesRefreshing ? errorMessage(service.changesFailureCause.value) : undefined
+        "
+        type="button"
+        :aria-disabled="changesRefreshing"
+        :aria-busy="changesRefreshing || undefined"
+        @click="!changesRefreshing && service.retryChanges()"
+      >
+        <template v-if="changesRefreshing"
+          ><MarIcon name="loading-action" />
+          {{ translate('generated.workspaceInspector.loading') }}</template
+        >
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </button>
+    </div>
+    <div v-else-if="changesRefreshing" class="change-append-state" role="status">
+      <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
+    </div>
     <div
       v-if="hasMoreChanges"
       ref="loadMoreElement"
       class="change-append-state"
       :aria-busy="loadingMore"
     >
-      <el-button
-        class="change-load-more"
-        link
-        :aria-disabled="loadingMore"
-        @click="showMoreChanges"
+      <span v-if="loadingMore" role="status"
+        ><MarIcon name="loading-action" />
+        {{ translate('generated.workspaceInspector.loading') }}</span
       >
-        <span
-          v-if="loadingMore"
-          role="status"
-          :aria-label="translate('generated.workspaceSessionList.loading')"
-        >
-          <BusyIndicator class="read-loading-indicator" />
-        </span>
-        <template v-else>{{ translate('generated.workspaceInspector.loadMore') }}</template>
-      </el-button>
     </div>
   </section>
 </template>

@@ -23,6 +23,28 @@ function fixture() {
 const input = { nodeId: 'node-1', workspaceId: 'workspace / 1', query: 'thing', useRegex: false };
 
 describe('Workspace content search', () => {
+  it('retries the exact failed query and keeps accepted results while pending', async () => {
+    const f = fixture();
+    f.request.mockResolvedValueOnce(result('accepted')).mockRejectedValueOnce(new Error('offline'));
+    await f.service.search(input);
+    const draft = { ...input, query: 'failed', useRegex: true };
+    await f.service.search(draft);
+    draft.query = 'edited';
+    const response = deferred();
+    f.request.mockReturnValueOnce(response.promise);
+    const retry = f.service.retry();
+    await f.service.retry();
+    expect(f.request).toHaveBeenCalledTimes(3);
+    expect(new URL(f.request.mock.calls[2]![0], 'http://test.local').searchParams.get('q')).toBe(
+      'failed'
+    );
+    expect(f.service.matches.value[0]?.preview).toBe('accepted');
+    expect(f.service.loading.value).toBe(true);
+    response.resolve(result('retried'));
+    await retry;
+    expect(f.service.error.value).toBeUndefined();
+    expect(f.service.appliedQuery.value).toBe('failed');
+  });
   it('captures query and regex together, including edits made while the request is pending', async () => {
     const f = fixture();
     const response = deferred();

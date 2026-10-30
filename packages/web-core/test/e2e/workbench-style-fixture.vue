@@ -20,6 +20,7 @@ const managedSessionOnly = new URL(location.href).searchParams.has('managed-sess
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
+const overlappingWatchFixture = new URL(location.href).searchParams.has('overlapping-watch');
 const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
@@ -28,6 +29,7 @@ const fileRootPath = ref('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
 const inspectorFixture =
   fileRootFixture ||
+  overlappingWatchFixture ||
   contentSearchFixture ||
   new URL(location.href).searchParams.has('git-previews');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
@@ -341,14 +343,14 @@ if (composerFixture) {
         :content-search-enabled="true"
         :code-navigation-enabled="false"
         :code-navigation-prewarm-enabled="false"
-        files-watch-status="idle"
+        :files-watch-status="overlappingWatchFixture ? 'loading' : 'idle'"
         changes-watch-status="idle"
         :history-capability="true"
         :file-write-enabled="false"
         @notice="(message, type) => (fileFeedback = { message, type: type ?? 'info' })"
       />
       <output
-        v-if="fileRootFixture"
+        v-if="inspectorFixture"
         aria-label="File operation feedback"
         :data-type="fileFeedback.type"
       >

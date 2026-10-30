@@ -41,20 +41,24 @@ export function createWorkspaceContentSearchService(options: {
   const appliedUseRegex = ref(false);
   const loading = ref(false);
   const error = shallowRef<unknown>();
+  let failedInput: Parameters<typeof search>[0] | undefined;
   let generation = 0;
 
-  async function search(input: {
-    readonly nodeId: string;
-    readonly workspaceId: string;
-    readonly query: string;
-    readonly useRegex: boolean;
-  }): Promise<void> {
+  async function search(
+    input: {
+      readonly nodeId: string;
+      readonly workspaceId: string;
+      readonly query: string;
+      readonly useRegex: boolean;
+    },
+    retrying = false
+  ): Promise<void> {
     if (input.query === '') return;
     const request = ++generation;
     // Capture both applied conditions before awaiting any response.
     const { nodeId, workspaceId, query, useRegex } = input;
     loading.value = true;
-    error.value = undefined;
+    if (!retrying) error.value = undefined;
     try {
       const parameters = new URLSearchParams({ nodeId, q: query });
       if (useRegex) parameters.set('regex', 'true');
@@ -67,9 +71,12 @@ export function createWorkspaceContentSearchService(options: {
       truncated.value = result.search.truncated;
       appliedQuery.value = query;
       appliedUseRegex.value = useRegex;
+      error.value = undefined;
+      failedInput = undefined;
     } catch (failure) {
       if (request !== generation) return;
       error.value = failure;
+      failedInput = { nodeId, workspaceId, query, useRegex };
       options.onFailure(failure);
     } finally {
       if (request === generation) loading.value = false;
@@ -84,6 +91,7 @@ export function createWorkspaceContentSearchService(options: {
     appliedUseRegex.value = false;
     loading.value = false;
     error.value = undefined;
+    failedInput = undefined;
   }
 
   function restore(input: {
@@ -112,6 +120,8 @@ export function createWorkspaceContentSearchService(options: {
     loading: readonly(loading),
     error: readonly(error),
     search,
+    retry: () =>
+      failedInput === undefined || loading.value ? Promise.resolve() : search(failedInput, true),
     restore,
     reset
   };

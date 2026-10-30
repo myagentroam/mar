@@ -909,4 +909,103 @@ describe('Workspace Git service', () => {
     expect(service.applyWatch(watchSnapshot, 1)).toBe(false);
     expect(onWorkspace).toHaveBeenLastCalledWith(directorySnapshot.workspace);
   });
+  it.each(['refresh', 'branch'] as const)(
+    'keeps old commit files loading without inventing a failure when %s fails',
+    async (operation) => {
+      const pendingFiles = deferred<unknown>();
+      const commit = historyCommit('old-commit');
+      let histories = 0;
+      const { service, onFailure } = createGitHarness(async (path) => {
+        const url = requestUrl(path);
+        if (url.pathname.endsWith('/git/refs'))
+          return { refs: [historyRef('main'), historyRef('other')] };
+        if (url.pathname.endsWith('/git/history')) {
+          if (++histories > 1) throw new Error('HISTORY_FAILED');
+          return { commits: [commit], nextCursor: null };
+        }
+        if (url.pathname.endsWith('/git/commits/old-commit/files')) return pendingFiles.promise;
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      await service.selectHistory('', ['main']);
+      const files = service.loadHistoryFiles(commit);
+      const next =
+        operation === 'refresh' ? service.loadHistory(true) : service.selectHistory('', ['other']);
+      expect(service.historyFilesLoading.value).toEqual(['old-commit']);
+      expect(service.historyFilesErrors.value).toEqual([]);
+      await next;
+      expect(service.historyCommits.value).toEqual([commit]);
+      expect(service.historyFilesErrors.value).toEqual([]);
+      expect(service.historyFilesLoading.value).toEqual(['old-commit']);
+      pendingFiles.resolve({ files: [historyFile('still-readable.txt')] });
+      await expect(files).resolves.toBe(true);
+      expect(service.historyFiles.value['old-commit']).toEqual([historyFile('still-readable.txt')]);
+      expect(service.historyFilesErrors.value).toEqual([]);
+      expect(onFailure).toHaveBeenCalledTimes(1);
+      expect(onFailure).toHaveBeenCalledWith(expect.any(Error), 'HISTORY');
+    }
+  );
+  it('ignores an old commit-file result after a replacement history page succeeds', async () => {
+    const pendingFiles = deferred<unknown>();
+    const old = historyCommit('old');
+    const next = historyCommit('new');
+    let histories = 0;
+    const { service, onFailure } = createGitHarness(async (path) => {
+      const url = requestUrl(path);
+      if (url.pathname.endsWith('/git/refs')) return { refs: [] };
+      if (url.pathname.endsWith('/git/history'))
+        return { commits: [++histories === 1 ? old : next], nextCursor: null };
+      if (url.pathname.endsWith('/git/commits/old/files')) return pendingFiles.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    await service.loadHistory(true);
+    const files = service.loadHistoryFiles(old);
+    await service.loadHistory(true);
+    pendingFiles.resolve({ files: [historyFile('stale.txt')] });
+    await expect(files).resolves.toBe(false);
+    expect(service.historyCommits.value).toEqual([next]);
+    expect(service.historyFiles.value).toEqual({});
+    expect(service.historyFilesErrors.value).toEqual([]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+  it('keeps the history cursor and files on failed reads and retries their actual operations', async () => {
+    let historyCalls = 0;
+    let fileCalls = 0;
+    const first = historyCommit('a'.repeat(40));
+    const second = historyCommit('b'.repeat(40));
+    const { service, request } = createGitHarness(async (path) => {
+      const url = requestUrl(path);
+      if (url.pathname.endsWith('/git/refs')) return { refs: [] };
+      if (url.pathname.endsWith('/git/history')) {
+        historyCalls++;
+        if (historyCalls === 1) return { commits: [first], nextCursor: 'cursor-1' };
+        if (historyCalls === 2) throw new Error('offline');
+        return { commits: [second], nextCursor: null };
+      }
+      if (url.pathname.endsWith('/files')) {
+        if (++fileCalls === 1) throw new Error('offline');
+        return { files: [historyFile('a.ts')] };
+      }
+      return { changes: [] };
+    });
+    await service.loadHistory(true);
+    await service.loadHistory(false);
+    expect(service.historyError.value).toEqual({ resetPage: false, fetch: false });
+    expect(service.historyCommits.value).toEqual([first]);
+    expect(service.historyNextCursor.value).toBe('cursor-1');
+    await service.loadHistory(false);
+    expect(service.historyError.value).toBeUndefined();
+    expect(service.historyCommits.value).toEqual([first, second]);
+    const historyRequests = request.mock.calls
+      .map(([path]) => requestUrl(path))
+      .filter((url) => url.pathname.endsWith('/git/history'));
+    expect(historyRequests.slice(1).map((url) => url.searchParams.get('cursor'))).toEqual([
+      'cursor-1',
+      'cursor-1'
+    ]);
+    await service.loadHistoryFiles(first);
+    expect(service.historyFilesErrors.value).toEqual([first.hash]);
+    await service.loadHistoryFiles(first);
+    expect(service.historyFilesErrors.value).toEqual([]);
+    expect(service.historyFiles.value[first.hash]).toEqual([historyFile('a.ts')]);
+  });
 });

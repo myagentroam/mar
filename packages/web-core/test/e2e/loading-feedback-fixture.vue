@@ -8,6 +8,7 @@ import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import WorkspaceSessionCleanupDialog from '../../src/view/workspace/WorkspaceSessionCleanupDialog.vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
+import { createWorkspaceFileTreeService } from '../../src/service/workspace-file-tree-service.js';
 
 const previewLoading = ref(true);
 const loadingInitial = ref(true);
@@ -60,7 +61,7 @@ const root = ref<WorkspaceFileTreeNode>({
       name: 'src',
       kind: 'DIRECTORY',
       size: null,
-      expanded: false,
+      expanded: true,
       loaded: false,
       loading: true,
       nextCursor: null,
@@ -70,6 +71,49 @@ const root = ref<WorkspaceFileTreeNode>({
   ]
 });
 const moreRequests = ref(0);
+const realTreeRequests = ref(0);
+let finishTreeRetry: (() => void) | undefined;
+const treeFilter = ref('');
+const filteredTreeRequests = ref(0);
+const filteredTree = createWorkspaceFileTreeService({
+  workspaceName: () => 'filter-root',
+  list: async () => {
+    filteredTreeRequests.value += 1;
+    return { entries: [], nextCursor: null };
+  }
+});
+filteredTree.root.value.loaded = true;
+filteredTree.root.value.nextCursor = 'next';
+filteredTree.root.value.children = Array.from({ length: 40 }, (_, index) => ({
+  path: `file-${index}.ts`,
+  name: `file-${index}.ts`,
+  kind: 'FILE' as const,
+  size: null,
+  children: [],
+  expanded: false,
+  loaded: false,
+  loading: false,
+  nextCursor: null,
+  placeholder: false
+}));
+const realTree = createWorkspaceFileTreeService({
+  workspaceName: () => 'project',
+  list: async () => {
+    realTreeRequests.value++;
+    if (realTreeRequests.value === 1) throw new Error('offline');
+    return new Promise((resolve) => {
+      finishTreeRetry = () =>
+        resolve({
+          entries: [{ path: 'later.ts', name: 'later.ts', kind: 'FILE', size: null }],
+          nextCursor: null
+        });
+    });
+  }
+});
+realTree.applyRootPage({
+  entries: [{ path: 'first.ts', name: 'first.ts', kind: 'FILE', size: null }],
+  nextCursor: 'next'
+});
 const treeDisabled = ref(false);
 const moreRoot = ref<WorkspaceFileTreeNode>({
   ...root.value,
@@ -96,6 +140,51 @@ const moreRoot = ref<WorkspaceFileTreeNode>({
 
 <template>
   <main class="loading-fixture">
+    <section
+      data-testid="real-file-tree"
+      class="tree-surface"
+      :data-request-count="realTreeRequests"
+    >
+      <WorkspaceFileTree
+        :root="realTree.root.value"
+        filter=""
+        :selected-path="undefined"
+        :disabled="false"
+        :mutations-enabled="false"
+        :mobile-viewport="false"
+        @load-more="realTree.loadMore"
+      />
+    </section>
+    <button @click="finishTreeRetry?.()">Finish tree retry</button>
+    <button
+      @click="
+        realTree.applyRootPage({
+          entries: [{ path: 'recovered.ts', name: 'recovered.ts', kind: 'FILE', size: null }],
+          nextCursor: null
+        })
+      "
+    >
+      Apply recovered root snapshot
+    </button>
+    <label>Filter fixture <input v-model="treeFilter" aria-label="Filter fixture" /></label>
+    <button @click="filteredTree.root.value.expanded = !filteredTree.root.value.expanded">
+      Toggle filtered tree
+    </button>
+    <section
+      data-testid="filter-file-tree"
+      class="tree-surface"
+      :data-request-count="filteredTreeRequests"
+    >
+      <WorkspaceFileTree
+        :root="filteredTree.root.value"
+        :filter="treeFilter"
+        :selected-path="undefined"
+        :disabled="false"
+        :mutations-enabled="false"
+        :mobile-viewport="false"
+        @load-more="filteredTree.loadMore"
+      />
+    </section>
     <section
       data-testid="cleanup-controls"
       :data-request-count="cleanupRequests"

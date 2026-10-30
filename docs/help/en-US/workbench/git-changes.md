@@ -11,7 +11,7 @@ The repository title, branch, and Refresh button share the first row; status tag
 
 Git Changes shows the current root repository, initialized submodules, and every linked worktree as peer groups in one list. Tags identify the root, submodules, worktrees, and the current worktree. Each linked worktree group shows its full physical absolute path on the Node, together with its branch or detached HEAD and any locked, prunable, or unavailable status. Every group lists its modified, added, deleted, renamed, and untracked files.
 
-Each read returns at most 1,000 changes across all groups. Affected repositories show a notice if that limit or the Git output limit is reached. Scroll to the bottom to progressively display the returned changes, or use Load more; this does not retrieve files beyond the limit.
+Each read returns at most 1,000 changes across all groups. Affected repositories show a notice if that limit or the Git output limit is reached. Scroll to the bottom to progressively display the returned changes, without a manual load-more control; this does not retrieve files beyond the limit.
 
 On mobile, drag anywhere on the minimap to move through the file. The bottom-right action group uses two rows: file and change navigation above, then find, download, and close below.
 

@@ -238,6 +238,17 @@ export function createWorkspaceWatchService(options: {
     await establish(workspaceId, directory, true);
   }
 
+  function retryFailed(): Promise<void> {
+    const current = context;
+    if (current === undefined || !Object.values(topicStatus).includes('failed'))
+      return Promise.resolve();
+    topicFailures.sessions = 0;
+    topicFailures.files = 0;
+    topicFailures.changes = 0;
+    leaseFailures = 0;
+    return establish(current.workspaceId, current.directory, false);
+  }
+
   function pause(): void {
     paused = true;
     if (topicRetryTimer !== undefined) clearTimeout(topicRetryTimer);
@@ -355,6 +366,7 @@ export function createWorkspaceWatchService(options: {
   return {
     start,
     restart,
+    retryFailed,
     pause,
     stop,
     topicStatus: readonly(topicStatus),

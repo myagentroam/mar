@@ -3,7 +3,7 @@ import type { MessageType } from '../../model/message-feedback.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -26,10 +26,37 @@ const {
   historyCommits,
   historyNextCursor,
   historyLoading,
+  historyError,
   historyFiles,
   historyFilesLoading,
+  historyFilesErrors,
   loadHistory
 } = props.service;
+const historyBoundary = ref<HTMLElement>();
+const historyContainer = ref<HTMLElement>();
+watchEffect(
+  (onCleanup) => {
+    const boundary = historyBoundary.value;
+    const root = historyContainer.value;
+    if (
+      !boundary ||
+      !root ||
+      historyLoading.value ||
+      historyError.value ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadHistory(false);
+      },
+      { root, rootMargin: '0px 0px 96px 0px' }
+    );
+    observer.observe(boundary);
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: 'post' }
+);
 const historyRepositoryPath = ref(props.service.historyRepositoryPath.value);
 const selectedHistoryRefs = ref([...props.service.selectedHistoryRefs.value]);
 const expandedHistoryCommits = ref<string[]>([]);
@@ -83,17 +110,10 @@ async function toggleHistoryCommit(commit: HistoryCommit): Promise<void> {
     );
     return;
   }
-  const source = props.service.historySource.value;
   expandedHistoryCommits.value = [...expandedHistoryCommits.value, commit.hash];
   if (expandedHistoryDirectories.value[commit.hash] === undefined)
     expandedHistoryDirectories.value = { ...expandedHistoryDirectories.value, [commit.hash]: [] };
-  const loaded = await props.service.loadHistoryFiles(commit);
-  if (loaded || source !== props.service.historySource.value) return;
-  expandedHistoryCommits.value = expandedHistoryCommits.value.filter(
-    (hash) => hash !== commit.hash
-  );
-  const { [commit.hash]: _removed, ...directories } = expandedHistoryDirectories.value;
-  expandedHistoryDirectories.value = directories;
+  await props.service.loadHistoryFiles(commit);
 }
 function historyTime(value: number): string {
   return Number.isFinite(value) ? managementDateTime(value) : '-';
@@ -207,7 +227,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="git-history">
+  <section ref="historyContainer" class="git-history">
     <div class="history-toolbar">
       <el-select
         v-model="historyRepositorySelection"
@@ -266,14 +286,13 @@ onBeforeUnmount(() => {
         type="button"
         @click="loadHistory(true, true)"
       >
-        <MarIcon name="loading-action" v-if="historyLoading" />
-        <MarIcon name="refresh" v-else />
+        <MarIcon name="refresh" />
       </button>
     </div>
     <p v-if="service.historyFetchFailed.value" class="git-fetch-notice" role="status">
       {{ translate('gitSync.fetchFailed') }}
     </p>
-    <p v-if="!historyLoading && historyCommits.length === 0" class="empty">
+    <p v-if="!historyLoading && !historyError && historyCommits.length === 0" class="empty">
       {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
     </p>
     <ul v-else class="history-list">
@@ -347,9 +366,42 @@ onBeforeUnmount(() => {
             />
           </svg>
           <ul class="history-files">
-            <li v-if="historyFilesLoading.includes(commit.hash)" class="empty" role="status">
+            <li
+              v-if="
+                historyFilesLoading.includes(commit.hash) &&
+                !historyFilesErrors.includes(commit.hash)
+              "
+              class="empty"
+              role="status"
+            >
               <MarIcon name="loading-action" />
-              {{ translate('generated.workspaceInspector.loadingCommitFiles') }}
+              {{ translate('generated.workspaceInspector.loading') }}
+            </li>
+            <li v-if="historyFilesErrors.includes(commit.hash)" class="empty">
+              <button
+                v-tooltip="
+                  !historyFilesLoading.includes(commit.hash)
+                    ? errorMessage(service.historyFilesFailureCauses.value[commit.hash])
+                    : ''
+                "
+                :aria-description="
+                  !historyFilesLoading.includes(commit.hash)
+                    ? errorMessage(service.historyFilesFailureCauses.value[commit.hash])
+                    : undefined
+                "
+                type="button"
+                :aria-disabled="historyFilesLoading.includes(commit.hash)"
+                :aria-busy="historyFilesLoading.includes(commit.hash) || undefined"
+                @click="
+                  !historyFilesLoading.includes(commit.hash) && service.loadHistoryFiles(commit)
+                "
+              >
+                <template v-if="historyFilesLoading.includes(commit.hash)"
+                  ><MarIcon name="loading-action" />
+                  {{ translate('generated.workspaceInspector.loading') }}</template
+                >
+                <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+              </button>
             </li>
             <li
               v-for="row in historyFileRows(
@@ -419,21 +471,40 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </Teleport>
-    <el-button
-      v-if="historyNextCursor !== null"
+    <button
+      v-if="historyError"
+      v-tooltip="!historyLoading ? errorMessage(service.historyFailureCause.value) : ''"
+      :aria-description="
+        !historyLoading ? errorMessage(service.historyFailureCause.value) : undefined
+      "
+      type="button"
       class="history-load-more"
-      link
-      :loading="historyLoading"
-      :loading-icon="marIcon('loading-action')"
-      :disabled="historyLoading"
-      @click="loadHistory(false)"
+      :aria-disabled="historyLoading"
+      :aria-busy="historyLoading || undefined"
+      @click="!historyLoading && loadHistory(historyError.resetPage, historyError.fetch)"
     >
-      {{ translate('generated.workspaceInspector.loadMore') }}
-    </el-button>
+      <template v-if="historyLoading"
+        ><MarIcon name="loading-action" />
+        {{ translate('generated.workspaceInspector.loading') }}</template
+      >
+      <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+    </button>
+    <div v-else-if="historyLoading" class="history-load-more" role="status">
+      <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
+    </div>
+    <div
+      v-if="historyNextCursor !== null && !historyError"
+      ref="historyBoundary"
+      class="history-boundary"
+      aria-hidden="true"
+    />
   </section>
 </template>
 
 <style scoped>
+.history-boundary {
+  min-height: 1px;
+}
 .git-fetch-notice {
   margin: 0;
   padding: 0.2rem 2px 0.25rem;
