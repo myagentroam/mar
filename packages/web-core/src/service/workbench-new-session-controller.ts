@@ -76,7 +76,7 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
       runner: options.newSessionRunner.value,
       nativeControl: 'MAR_MANAGED',
       runnerTitle: title,
-      model: options.newSessionModel.value ?? null,
+      modelId: options.newSessionModel.value ?? null,
       effort: options.newSessionEffort.value ?? null,
       access: options.newSessionAccess.value ?? null,
       activity: 'IDLE'

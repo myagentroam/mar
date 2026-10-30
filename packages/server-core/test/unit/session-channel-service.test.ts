@@ -30,7 +30,7 @@ describe('Session Channel entry', () => {
       content: 'Continue',
       attachmentIds: ['attachment-one'],
       deliveryIntent: 'REPLACE_CURRENT' as const,
-      model: 'selected-model'
+      modelId: 'selected-model'
     };
     expect(await service.submitMessage(context, { origin, message })).toBe(receipt);
     const [target, submitted] = submitMessage.mock.calls[0]!;

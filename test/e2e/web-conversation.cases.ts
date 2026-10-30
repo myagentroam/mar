@@ -2547,7 +2547,7 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       externalSessionId: 'mar-agent-session-1',
       nativeControl: 'MAR_MANAGED',
       runnerTitle: 'Rollback 会话',
-      model: 'coding',
+      modelId: 'coding',
       effort: 'high',
       access: 'full-access',
       activity: 'IDLE',

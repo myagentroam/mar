@@ -1437,7 +1437,7 @@ function session(id: string, runner: NodeAgentSession['runner']): NodeAgentSessi
     nativeControl: 'EXTERNAL',
     channelToken: null,
     cwd: '/workspace',
-    model: null,
+    modelId: null,
     effort: null,
     access: null,
     customTitle: null,

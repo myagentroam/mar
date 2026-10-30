@@ -1054,7 +1054,7 @@ export class NodeConnector {
             prompt: item.content,
             modelText: prepared.input,
             clientMessageId: item.clientMessageId,
-            model: prepared.model,
+            modelId: prepared.modelId,
             effort: prepared.effort,
             access: prepared.access,
             collaborationMode: prepared.collaborationMode,
@@ -1171,7 +1171,7 @@ export class NodeConnector {
           runner: session.runner,
           externalSessionId: nativeSessionId,
           workspaceId: session.workspaceId,
-          ...(session.model === null ? {} : { model: session.model }),
+          ...(session.modelId === null ? {} : { model: session.modelId }),
           ...(session.effort === null ? {} : { effort: session.effort }),
           ...(session.access === null ? {} : { access: session.access }),
           ...(session.customTitle === null ? {} : { customTitle: session.customTitle }),
@@ -1784,7 +1784,7 @@ export class NodeConnector {
           workspaceId: task.workspaceId,
           ownerUserId: task.ownerUserId,
           runner: task.runner,
-          model: configuredSession.model
+          modelId: configuredSession.modelId
         });
         return {
           secretEnvironment: context.secretEnvironment,

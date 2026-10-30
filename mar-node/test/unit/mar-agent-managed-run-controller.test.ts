@@ -80,7 +80,7 @@ describe('MAR Agent managed run projection', () => {
         cwd: '/workspace',
         externalSessionId: 'native-session',
         nativeControl: 'MAR_MANAGED',
-        model: 'coding',
+        modelId: 'coding',
         effort: null,
         access: 'full-access'
       } as NodeAgentSession,
@@ -1921,7 +1921,7 @@ describe('MAR Agent managed run projection', () => {
         id: 'node-session',
         runner: 'mar-agent',
         externalSessionId: 'session',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -2043,7 +2043,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,

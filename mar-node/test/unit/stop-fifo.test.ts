@@ -89,7 +89,7 @@ async function fixture(native = false) {
       attachmentPaths: [],
       cwd: '/workspace',
       externalSessionId: null,
-      model: null,
+      modelId: null,
       effort: null,
       access: null,
       collaborationMode: 'default',

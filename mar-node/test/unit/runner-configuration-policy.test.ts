@@ -49,14 +49,14 @@ async function fixture() {
   const session = (
     runner: RunnerName,
     access: string | null,
-    missing?: 'externalSessionId' | 'model' | 'effort'
+    missing?: 'externalSessionId' | 'modelId' | 'effort'
   ) =>
     internals.runtime.createAgentSession({
       workspaceId: workspace.id,
       cwd: root,
       runner,
       ...(access === null ? {} : { access }),
-      ...(missing === 'model' ? {} : { model: 'stored-model' }),
+      ...(missing === 'modelId' ? {} : { modelId: 'stored-model' }),
       ...(missing === 'effort' ? {} : { effort: 'high' }),
       ...(missing === 'externalSessionId' ? {} : { externalSessionId: `native-${runner}` }),
       nativeControl: 'MAR_MANAGED'
@@ -75,13 +75,13 @@ describe('Runner configuration ownership through Connector', () => {
       const restore = vi.spyOn(runner, 'restoreStoredAccess');
       const configuration = {
         runner: 'mar-agent' as const,
-        model: 'saved',
+        modelId: 'saved',
         effort: 'high',
         access
       };
       const foreign = {
         runner: 'codex' as const,
-        model: 'foreign',
+        modelId: 'foreign',
         effort: '',
         access: 'custom-mode'
       };
@@ -189,7 +189,7 @@ describe('Runner configuration ownership through Connector', () => {
           runner: name,
           externalSessionId: session.externalSessionId,
           workspaceId: f.workspace.id,
-          model: 'stored-model',
+          modelId: 'stored-model',
           effort: 'high',
           access
         });
@@ -235,7 +235,7 @@ describe('Runner configuration ownership through Connector', () => {
           expect.objectContaining({
             sessionId: session.id,
             access,
-            model: 'stored-model',
+            modelId: 'stored-model',
             effort: 'high',
             executionContext: expect.objectContaining({ runner: name })
           })
@@ -245,7 +245,7 @@ describe('Runner configuration ownership through Connector', () => {
     }
   );
 
-  it.each(['externalSessionId', 'model', 'effort'] as const)(
+  it.each(['externalSessionId', 'modelId', 'effort'] as const)(
     'does not persist Goal metadata without %s',
     async (field) => {
       const f = await fixture();
@@ -270,7 +270,7 @@ describe('Runner configuration ownership through Connector', () => {
       const restore = vi.spyOn(runner, 'restoreStoredAccess');
       const saved = {
         runner: name,
-        model: 'saved-model',
+        modelId: 'saved-model',
         effort: 'saved-effort',
         access: 'saved-access'
       };
@@ -297,7 +297,7 @@ describe('Runner configuration ownership through Connector', () => {
         expect(
           projection.resumedConfiguration({
             ...session,
-            model: null,
+            modelId: null,
             effort: null,
             access: current
           })
@@ -319,7 +319,7 @@ describe('Runner configuration ownership through Connector', () => {
       expect(save).not.toHaveBeenCalled();
       f.database.saveRunnerDefaults({
         runner: name === 'codex' ? 'claude-code' : 'codex',
-        model: 'foreign',
+        modelId: 'foreign',
         effort: '',
         access: 'foreign'
       });
@@ -327,7 +327,7 @@ describe('Runner configuration ownership through Connector', () => {
         .spyOn(f.database, 'getRunnerDefaults')
         .mockReturnValue(f.database.getRunnerDefaults().filter((value) => value.runner !== name));
       expect(
-        projection.resumedConfiguration({ ...session, model: null, effort: null }).access
+        projection.resumedConfiguration({ ...session, modelId: null, effort: null }).access
       ).toBe(
         name === 'mar-agent' ? 'full-access' : runner.defaultConfiguration(f.workspace).access
       );

@@ -113,7 +113,7 @@ describe('Node session records and external discovery merge', () => {
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
         runners: { require(name: string): { configureModels(value: unknown): void } };
       };
-      const configuration = { model: 'worker-model', effort: 'low', access: 'full-access' };
+      const configuration = { modelId: 'worker-model', effort: 'low', access: 'full-access' };
       const marAgentModels: unknown[] = [];
       const create = (fields: Record<string, unknown>) =>
         node.executeNodeOperation('session.create', {
@@ -152,7 +152,7 @@ describe('Node session records and external discovery merge', () => {
 
         const defaults = {
           runner,
-          model: 'composer-model',
+          modelId: 'composer-model',
           effort: 'high',
           access: runner === 'mar-agent' ? 'auto' : 'read-only'
         };
@@ -172,12 +172,12 @@ describe('Node session records and external discovery merge', () => {
         expect(database.getRunnerDefaults()).toEqual([defaults]);
 
         await expect(create({ __marctlOrigin: {} })).resolves.toMatchObject({
-          session: { model: defaults.model, effort: defaults.effort }
+          session: { modelId: defaults.modelId, effort: defaults.effort }
         });
         expect(database.getRunnerDefaults()).toEqual([defaults]);
 
         const webConfiguration = {
-          model: 'new-composer-model',
+          modelId: 'new-composer-model',
           effort: 'medium',
           access: 'full-access'
         };
@@ -211,7 +211,7 @@ describe('Node session records and external discovery merge', () => {
         runner,
         cwd: workspace.path,
         externalSessionId: 'native-partial-config',
-        model: 'original-model',
+        modelId: 'original-model',
         effort: 'high',
         access
       });
@@ -223,34 +223,34 @@ describe('Node session records and external discovery merge', () => {
         });
       const defaults = database.getRunnerDefaults();
       try {
-        await expect(update({ model: 'next-model' })).resolves.toMatchObject({
-          session: { model: 'next-model', effort: 'high', access }
+        await expect(update({ modelId: 'next-model' })).resolves.toMatchObject({
+          session: { modelId: 'next-model', effort: 'high', access }
         });
         await expect(update({ effort: '' })).resolves.toMatchObject({
-          session: { model: 'next-model', effort: '', access }
+          session: { modelId: 'next-model', effort: '', access }
         });
         expect(database.getSessionRecord(session.id)?.metadata).toMatchObject({
-          model: 'next-model',
+          modelId: 'next-model',
           effort: '',
           access
         });
         internals.runtime.removeAgentSession(session.id);
         await expect(update({ effort: 'low' })).resolves.toMatchObject({
-          session: { model: 'next-model', effort: 'low', access }
+          session: { modelId: 'next-model', effort: 'low', access }
         });
         expect(database.getRunnerDefaults()).toEqual(defaults);
         for (const fields of [
           {},
-          { model: '' },
+          { modelId: '' },
           { effort: null },
-          { model: 'x'.repeat(121) },
-          { workspaceId: 'foreign', model: 'denied' },
+          { modelId: 'x'.repeat(121) },
+          { workspaceId: 'foreign', modelId: 'denied' },
           ...(runner === 'mar-agent' ? [{ access: 'read-only' }] : [])
         ]) {
           await expect(update(fields)).rejects.toThrow();
         }
         expect(database.getSessionRecord(session.id)?.metadata).toMatchObject({
-          model: 'next-model',
+          modelId: 'next-model',
           effort: 'low',
           access
         });
@@ -262,9 +262,9 @@ describe('Node session records and external discovery merge', () => {
         await expect(
           internals.executeNodeOperation('session.config.update', {
             sessionId: bootstrap.id,
-            model: 'chosen'
+            modelId: 'chosen'
           })
-        ).resolves.toMatchObject({ session: { model: 'chosen', effort: null, access: null } });
+        ).resolves.toMatchObject({ session: { modelId: 'chosen', effort: null, access: null } });
       } finally {
         await connector.stop();
       }
@@ -363,7 +363,7 @@ describe('Node session records and external discovery merge', () => {
             workspaceId: workspace.id,
             runner,
             cwd: root,
-            model: 'test-model',
+            modelId: 'test-model',
             effort: 'high',
             access: 'auto',
             parentSessionId: 'parent'
@@ -397,7 +397,7 @@ describe('Node session records and external discovery merge', () => {
           workspaceId: workspace.id,
           runner,
           cwd: root,
-          model: 'test-model',
+          modelId: 'test-model',
           effort: 'high',
           access: runner === 'mar-agent' ? 'auto' : 'read-only',
           marAgentModels,
@@ -470,7 +470,7 @@ describe('Node session records and external discovery merge', () => {
           workspaceId: workspace.id,
           runner: 'codex',
           cwd: workspace.path,
-          model: 'test-model',
+          modelId: 'test-model',
           effort: 'high',
           access: 'read-only',
           parentSessionId
@@ -589,7 +589,7 @@ describe('Node session records and external discovery merge', () => {
         customTitle: 'User title',
         sessionPrompt: 'User instructions',
         pinned: true,
-        model: 'model',
+        modelId: 'model',
         effort: 'high',
         access: 'on-request'
       });
@@ -601,7 +601,7 @@ describe('Node session records and external discovery merge', () => {
           runnerTitle: title,
           customTitle: 'User title',
           sessionPrompt: 'User instructions',
-          model: 'model',
+          modelId: 'model',
           effort: 'high',
           access: 'on-request'
         }
@@ -928,7 +928,7 @@ describe('Node session records and external discovery merge', () => {
           runner,
           externalSessionId: id,
           workspaceId: workspace.id,
-          model: 'saved-model',
+          modelId: 'saved-model',
           ...(id === 'custom-title' ? { customTitle: 'New Session' } : {}),
           ...(id === 'native-title' ? { runnerTitle: 'Stale native title', pinned: true } : {})
         });
@@ -983,7 +983,7 @@ describe('Node session records and external discovery merge', () => {
           runnerTitle: 'Actual Runner title',
           titleSource: 'RUNNER',
           pinOrder: 0,
-          model: 'saved-model',
+          modelId: 'saved-model',
           externalDiscovered: true
         });
         expect(next.sessions.find((session) => session.id === 'custom-title')).toMatchObject({
@@ -1052,7 +1052,7 @@ describe('Node session records and external discovery merge', () => {
               index === 0
                 ? {
                     sessionId: native.id,
-                    model: 'replacement-model',
+                    modelId: 'replacement-model',
                     effort: 'low',
                     access: 'full-access'
                   }
@@ -1253,7 +1253,7 @@ describe('Node session records and external discovery merge', () => {
           nativeControl: 'EXTERNAL',
           channelToken: null,
           cwd: workspace.path,
-          model: null,
+          modelId: null,
           effort: null,
           access: null,
           customTitle: null,
@@ -1274,7 +1274,7 @@ describe('Node session records and external discovery merge', () => {
           nativeControl: 'EXTERNAL',
           channelToken: null,
           cwd: workspace.path,
-          model: null,
+          modelId: null,
           effort: null,
           access: null,
           customTitle: null,
@@ -1463,7 +1463,7 @@ describe('Node session records and external discovery merge', () => {
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: 'thread-created',
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'medium',
         access: 'on-request'
       })) as { session: NodeAgentSession };

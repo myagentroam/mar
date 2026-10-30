@@ -33,13 +33,13 @@ it('migrates existing Git policies and Runner defaults into settings without ret
     try {
       expect(database.getNodeSettings()).toEqual({
         runnerDefaults: {
-          codex: { model: 'retained-model', effort: 'high', access: 'full-access' },
-          opencode: { model: 'provider/model', effort: '', access: 'default' }
+          codex: { modelId: 'retained-model', effort: 'high', access: 'full-access' },
+          opencode: { modelId: 'provider/model', effort: '', access: 'default' }
         }
       });
       expect(database.getRunnerDefaults()).toEqual([
-        { runner: 'codex', model: 'retained-model', effort: 'high', access: 'full-access' },
-        { runner: 'opencode', model: 'provider/model', effort: '', access: 'default' }
+        { runner: 'codex', modelId: 'retained-model', effort: 'high', access: 'full-access' },
+        { runner: 'opencode', modelId: 'provider/model', effort: '', access: 'default' }
       ]);
       for (const [id, preserveGitConfig] of [
         ['preserve', true],
@@ -82,8 +82,8 @@ it('patches only owned settings and keeps new defaults and unrelated configurati
   expect(database.getRunnerDefaults()).toEqual([]);
   database.raw.prepare('UPDATE node_settings SET settings=? WHERE id=1').run(
     JSON.stringify({
-      future: { enabled: false },
-      runnerDefaults: { codex: { model: 'old', effort: 'low', access: 'auto', extra: 'keep' } }
+      future: { enabled: false, extra: 'keep' },
+      runnerDefaults: { codex: { modelId: 'old', effort: 'low', access: 'auto' } }
     })
   );
   database.raw
@@ -94,13 +94,13 @@ it('patches only owned settings and keeps new defaults and unrelated configurati
     );
   database.saveRunnerDefaults({
     runner: 'codex',
-    model: 'new',
+    modelId: 'new',
     effort: 'high',
     access: 'full-access'
   });
   database.saveRunnerDefaults({
     runner: 'opencode',
-    model: 'second',
+    modelId: 'second',
     effort: '',
     access: 'default'
   });
@@ -113,10 +113,10 @@ it('patches only owned settings and keeps new defaults and unrelated configurati
   const reopened = new NodeDatabase(path, 'node-settings');
   try {
     expect(reopened.getNodeSettings()).toEqual({
-      future: { enabled: false },
+      future: { enabled: false, extra: 'keep' },
       runnerDefaults: {
-        codex: { model: 'new', effort: 'high', access: 'full-access', extra: 'keep' },
-        opencode: { model: 'second', effort: '', access: 'default' }
+        codex: { modelId: 'new', effort: 'high', access: 'full-access' },
+        opencode: { modelId: 'second', effort: '', access: 'default' }
       }
     });
     expect(reopened.getWorkspace(workspace.id)?.settings).toEqual({
@@ -125,8 +125,8 @@ it('patches only owned settings and keeps new defaults and unrelated configurati
     });
     expect(reopened.getWorkspace(workspace.id)?.includeParentRepository).toBe(false);
     expect(reopened.getRunnerDefaults()).toEqual([
-      { runner: 'codex', model: 'new', effort: 'high', access: 'full-access' },
-      { runner: 'opencode', model: 'second', effort: '', access: 'default' }
+      { runner: 'codex', modelId: 'new', effort: 'high', access: 'full-access' },
+      { runner: 'opencode', modelId: 'second', effort: '', access: 'default' }
     ]);
   } finally {
     reopened.close();
@@ -168,7 +168,7 @@ it('rolls back settings DDL, copied data and migration history together on failu
     const before = database.prepare('SELECT settings FROM node_settings').get();
     migrate(database);
     expect(database.prepare('SELECT settings FROM node_settings').get()).toEqual(before);
-    expect(JSON.parse(String(before?.settings)).runnerDefaults.codex.model).toBe('keep');
+    expect(JSON.parse(String(before?.settings)).runnerDefaults.codex.modelId).toBe('keep');
   } finally {
     database.close();
   }

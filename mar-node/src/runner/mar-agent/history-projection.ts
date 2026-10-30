@@ -40,7 +40,7 @@ export function projectMarAgentHistory(
       runId: null,
       userItemId: null,
       status: 'INTERRUPTED',
-      model: session.model,
+      model: session.modelId,
       effort: session.effort,
       access: session.access,
       rewind: { before: previous?.id ?? null, after: turnId },

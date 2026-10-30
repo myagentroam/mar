@@ -62,7 +62,7 @@ export interface Session {
   readonly customTitle?: string | null;
   readonly sessionPrompt?: string | null;
   readonly runnerTitle?: string | null;
-  readonly model?: string | null;
+  readonly modelId?: string | null;
   readonly effort?: string | null;
   readonly access?: string | null;
   readonly lastActivityAt?: number;
@@ -120,7 +120,7 @@ export interface RunnerProfile {
 
 export interface RunnerDefaultConfiguration {
   readonly runner: Session['runner'];
-  readonly model: string;
+  readonly modelId: string;
   readonly effort: string;
   readonly access: string;
 }

@@ -47,7 +47,7 @@ async function fixture() {
       workspaceId: workspace.id,
       runner: 'mar-agent',
       cwd: root,
-      model: 'model-1',
+      modelId: 'model-1',
       effort: '',
       ...(access ? { access } : {})
     });
@@ -64,7 +64,7 @@ describe('MAR Auto session boundaries', () => {
     await expect(f.create('on-request')).rejects.toThrow('SESSION_INVALID');
     await f.internals.executeNodeOperation('session.config.update', {
       sessionId: full.session.id,
-      model: 'model-1',
+      modelId: 'model-1',
       effort: '',
       access: 'auto'
     });
@@ -143,7 +143,7 @@ describe('MAR Auto session boundaries', () => {
       attachmentPaths: [],
       cwd: stored.cwd,
       externalSessionId: null,
-      model: 'model-1',
+      modelId: 'model-1',
       effort: '',
       access: 'auto',
       collaborationMode: 'default',

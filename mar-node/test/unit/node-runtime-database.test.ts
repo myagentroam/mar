@@ -148,7 +148,8 @@ describe('Node SQLite session records', () => {
       { version: 19 },
       { version: 20 },
       { version: 21 },
-      { version: 22 }
+      { version: 22 },
+      { version: 23 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -198,19 +199,19 @@ describe('Node SQLite session records', () => {
     expect(
       database.saveRunnerDefaults({
         runner: 'opencode',
-        model: 'opencode/model',
+        modelId: 'opencode/model',
         effort: '',
         access: 'default'
       })
-    ).toMatchObject({ runner: 'opencode', effort: '' });
+    ).toMatchObject({ runner: 'opencode', modelId: 'opencode/model', effort: '' });
     expect(
       database.saveRunnerDefaults({
         runner: 'mar-agent',
-        model: 'coding',
+        modelId: 'coding',
         effort: 'medium',
         access: 'full-access'
       })
-    ).toMatchObject({ runner: 'mar-agent', access: 'full-access' });
+    ).toMatchObject({ runner: 'mar-agent', modelId: 'coding', access: 'full-access' });
     const workspace = database.saveWorkspace({
       path: '/mar-agent-workspace',
       kind: 'DIRECTORY',
@@ -238,7 +239,7 @@ describe('Node SQLite session records', () => {
     database.close();
   });
 
-  it('reopens the current v22 database after a Node restart', async () => {
+  it('reopens the current v23 database after a Node restart', async () => {
     const { path } = await databasePath('current-reopen');
     const first = new NodeDatabase(path, 'node-a');
     const workspace = first.saveWorkspace({
@@ -261,7 +262,8 @@ describe('Node SQLite session records', () => {
       { version: 19 },
       { version: 20 },
       { version: 21 },
-      { version: 22 }
+      { version: 22 },
+      { version: 23 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -310,12 +312,14 @@ describe('Node SQLite session records', () => {
       { version: 19 },
       { version: 20 },
       { version: 21 },
-      { version: 22 }
+      { version: 22 },
+      { version: 23 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
         customTitle: 'Preserved title',
         runnerTitle: 'Preserved Runner title',
+        modelId: null,
         sessionPrompt: null,
         pinnedAt: 1,
         pinOrder: 0
@@ -325,7 +329,13 @@ describe('Node SQLite session records', () => {
       .prepare('SELECT metadata FROM agent_sessions WHERE id=?')
       .get('legacy-thread') as { readonly metadata: string };
     expect(JSON.parse(migratedMetadata.metadata)).toEqual({
-      ...legacyMetadata,
+      version: 1,
+      customTitle: 'Preserved title',
+      runnerTitle: 'Preserved Runner title',
+      runnerTitlePending: false,
+      modelId: null,
+      effort: null,
+      access: null,
       sessionPrompt: null
     });
     expect(upgraded.getSessionRecord('legacy-thread')?.metadata.parentSessionId).toBeNull();
@@ -361,7 +371,8 @@ describe('Node SQLite session records', () => {
       { version: 19 },
       { version: 20 },
       { version: 21 },
-      { version: 22 }
+      { version: 22 },
+      { version: 23 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -637,7 +648,8 @@ describe('Node SQLite session records', () => {
       { version: 19 },
       { version: 20 },
       { version: 21 },
-      { version: 22 }
+      { version: 22 },
+      { version: 23 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -825,7 +837,8 @@ describe('Node SQLite session records', () => {
         { version: 19 },
         { version: 20 },
         { version: 21 },
-        { version: 22 }
+        { version: 22 },
+        { version: 23 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -864,7 +877,8 @@ describe('Node SQLite session records', () => {
         { version: 19 },
         { version: 20 },
         { version: 21 },
-        { version: 22 }
+        { version: 22 },
+        { version: 23 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(

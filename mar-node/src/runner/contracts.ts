@@ -28,7 +28,7 @@ export interface RunnerSteerInput {
   readonly prompt: string;
   readonly modelText: string;
   readonly clientMessageId: string;
-  readonly model: string | null;
+  readonly modelId: string | null;
   readonly effort: string | null;
   readonly access: string | null;
   readonly collaborationMode: 'default' | 'plan';

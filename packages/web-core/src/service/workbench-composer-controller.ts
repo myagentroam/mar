@@ -25,10 +25,10 @@ export function createWorkbenchComposerController(options: {
   readonly loading: Ref<boolean>;
   readonly configurationAvailable?: () => boolean;
   readonly runner: Readonly<Ref<Session['runner']>>;
-  readonly model: Readonly<Ref<string>>;
+  readonly modelId: Readonly<Ref<string>>;
   readonly effort: Readonly<Ref<string>>;
   readonly access: Readonly<Ref<string>>;
-  readonly setModel: (model: string, effort: string) => void;
+  readonly setModel: (modelId: string, effort: string) => void;
   readonly setEffort: (effort: string) => void;
   readonly setAccess: (access: string) => void;
   readonly clearModelEffortSelection: () => void;
@@ -135,7 +135,7 @@ export function createWorkbenchComposerController(options: {
     if (nodeId !== undefined)
       options.profileService.save(nodeId, {
         runner: options.runner.value,
-        model: options.model.value,
+        modelId: options.modelId.value,
         effort: options.effort.value,
         access: options.access.value
       });
@@ -145,7 +145,7 @@ export function createWorkbenchComposerController(options: {
     const fallback = runnerDefaultFor(session.runner);
     options.apply({
       runner: session.runner,
-      model: session.model ?? fallback.model,
+      modelId: session.modelId ?? fallback.modelId,
       effort: session.effort ?? fallback.effort,
       access: session.access ?? fallback.access
     });
@@ -178,7 +178,7 @@ export function createWorkbenchComposerController(options: {
       return;
     const profile = options.profiles.value.find((candidate) => candidate.runner === session.runner);
     const candidates = runnerModelCandidates(profile, session);
-    if (candidates.length === 0 || candidates.some((candidate) => candidate.id === session.model))
+    if (candidates.length === 0 || candidates.some((candidate) => candidate.id === session.modelId))
       return;
     const firstModel = candidates[0]!;
     options.setModel(firstModel.id, defaultEffortForModel(firstModel));
@@ -219,7 +219,7 @@ export function createWorkbenchComposerController(options: {
           body: JSON.stringify({
             nodeId,
             workspaceId: session.workspaceId,
-            model: options.model.value,
+            modelId: options.modelId.value,
             effort: options.effort.value,
             access: options.access.value
           })
@@ -307,7 +307,7 @@ export function createWorkbenchComposerController(options: {
     const selected = Array.isArray(value) ? value.at(-1) : value;
     if (typeof selected !== 'string') return;
     if (selected.startsWith('effort:')) selectEffortValue(selected.slice(7));
-    else if (selected.startsWith('model:')) selectModelValue(selected.slice(6));
+    else if (selected.startsWith('modelId:')) selectModelValue(selected.slice(6));
     else return;
     void nextTick(() => {
       options.clearModelEffortSelection();

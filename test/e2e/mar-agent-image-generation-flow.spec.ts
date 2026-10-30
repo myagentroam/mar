@@ -170,7 +170,7 @@ for (const provider of ['CODEX', 'BYTED_ARK'] as const) {
           cwd: workspacePath,
           clientMessageId: 'image-generation-real-flow',
           content: `Load the ${toolPrefix}-imagegen skill, then call ${toolPrefix}_image_gen exactly once to generate a simple blue square on a white background, no text. Do not use other tools. Report the generated path.`,
-          model: modelId,
+          modelId: modelId,
           effort: '',
           access: 'full-access'
         }
@@ -209,7 +209,7 @@ for (const provider of ['CODEX', 'BYTED_ARK'] as const) {
           nodeId,
           workspaceId,
           clientMessageId: 'image-edit-flow',
-          model: modelId,
+          modelId: modelId,
           content: `Load ${toolPrefix}-imagegen if needed. Use ${toolPrefix}_image_gen once with referenced_image_paths=[${JSON.stringify(imagePath)}] to change the blue square to a red square, preserve white background. Do not use view_image or other tools. Return saved path.`
         }
       });

@@ -68,7 +68,7 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
       cwd: smoke.workspace,
       clientMessageId: 'release-smoke-start',
       content: 'Reply briefly.',
-      model: modelId,
+      modelId: modelId,
       effort: 'high',
       access: 'full-access'
     },
@@ -107,7 +107,7 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
       workspaceId,
       clientMessageId: 'release-smoke-followup',
       content: 'Reply again.',
-      model: modelId
+      modelId: modelId
     },
     202
   );

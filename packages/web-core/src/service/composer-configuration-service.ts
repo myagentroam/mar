@@ -30,7 +30,7 @@ export function createComposerConfigurationService(options: {
   const accessOptions = computed(() => profile.value?.accessOptions ?? []);
   const modelEffortLabel = computed(() => {
     // The saved model remains displayable even when it is not a selectable candidate.
-    const modelId = model.value || options.selectedSession.value?.model;
+    const modelId = model.value || options.selectedSession.value?.modelId;
     const label =
       selectedModel.value?.label ??
       profile.value?.models.find((candidate) => candidate.id === modelId)?.label ??
@@ -64,7 +64,7 @@ export function createComposerConfigurationService(options: {
 
   function apply(configuration: RunnerDefaultConfiguration): void {
     runner.value = configuration.runner;
-    model.value = configuration.model;
+    model.value = configuration.modelId;
     effort.value = configuration.effort;
     access.value = configuration.access;
     normalize();
@@ -77,7 +77,7 @@ export function createComposerConfigurationService(options: {
 
   return {
     runner: runner as Readonly<Ref<Session['runner']>>,
-    model: model as Readonly<Ref<string>>,
+    modelId: model as Readonly<Ref<string>>,
     effort: effort as Readonly<Ref<string>>,
     access: access as Readonly<Ref<string>>,
     modelEffortSelection: modelEffortSelection as Readonly<Ref<string | undefined>>,

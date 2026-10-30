@@ -229,7 +229,7 @@ function sessionSignature(sessions: readonly NodeAgentSession[]): string {
       session.runner,
       session.externalSessionId,
       session.nativeControl,
-      session.model,
+      session.modelId,
       session.effort,
       session.access,
       session.runnerTitle,

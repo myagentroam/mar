@@ -383,7 +383,7 @@ describe('Node process cache cleanup', () => {
     const session = {
       id: 'session-1',
       externalSessionId: 'native-1',
-      model: 'model-1'
+      modelId: 'model-1'
     } as NodeAgentSession;
     const service = new SessionContextService({
       runners: {

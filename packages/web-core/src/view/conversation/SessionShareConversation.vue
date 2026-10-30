@@ -346,8 +346,8 @@ onBeforeUnmount(() => {
             hide-model-selection
             hide-access-selection
             :model-effort-selection="undefined"
-            :model-effort-label="selectedSession?.model ?? ''"
-            :selected-model="selectedSession?.model ?? ''"
+            :model-effort-label="selectedSession?.modelId ?? ''"
+            :selected-model="selectedSession?.modelId ?? ''"
             :selected-effort="selectedSession?.effort ?? ''"
             :models="profile?.models ?? []"
             :efforts="[]"

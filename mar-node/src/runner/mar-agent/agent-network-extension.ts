@@ -61,7 +61,11 @@ const tools: readonly {
       attachments,
       attachmentIds,
       runner,
-      model: text,
+      modelId: {
+        ...text,
+        description:
+          'Model ID from the target Runner Profile models[].id, not a display name. For MAR Agent this is an internal configuration ID, not an upstream model ID; omit to use the Runner default.'
+      },
       effort: text,
       title: text,
       goal,
@@ -209,7 +213,7 @@ export function agentNetworkExtension(
             'title',
             'executionId',
             'runner',
-            'model',
+            'modelId',
             'effort',
             'waitFor',
             'waitMs',

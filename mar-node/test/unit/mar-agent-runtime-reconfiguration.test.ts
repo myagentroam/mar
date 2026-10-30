@@ -423,7 +423,7 @@ observe.text("retained fixture result");`
               externalSessionId: nativeId,
               nativeControl: 'MAR_MANAGED',
               cwd: root,
-              model: configuration.id,
+              modelId: configuration.id,
               effort: ''
             } as NodeAgentSession,
             { id: 'compact' } as RunnerCommandDescriptor,

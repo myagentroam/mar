@@ -126,7 +126,7 @@ describe('Server MAR Agent model authorization routes', () => {
         workspaceId: 'workspace-1',
         runner: 'mar-agent',
         cwd: '/workspace',
-        model: 'coding-id',
+        modelId: 'coding-id',
         effort: 'high',
         access: 'on-request',
         clientMessageId: 'message-1',
@@ -218,7 +218,7 @@ describe('Server MAR Agent model authorization routes', () => {
         workspaceId: 'workspace-1',
         runner: 'mar-agent',
         cwd: '/workspace',
-        model: 'coding-id',
+        modelId: 'coding-id',
         clientMessageId: 'message-1',
         content: 'Implement the change.'
       }
@@ -254,7 +254,7 @@ describe('Server MAR Agent model authorization routes', () => {
       payload: {
         nodeId: 'node-1',
         workspaceId: 'workspace-1',
-        model: 'coding-id',
+        modelId: 'coding-id',
         commandId: 'compact',
         input: '/compact'
       }
@@ -317,7 +317,7 @@ describe('Server MAR Agent model authorization routes', () => {
           workspaceId: 'workspace-1',
           runner: 'mar-agent',
           cwd: '/workspace',
-          model: 'restricted-id',
+          modelId: 'restricted-id',
           clientMessageId: 'message-1',
           content: 'Start.'
         }
@@ -328,7 +328,7 @@ describe('Server MAR Agent model authorization routes', () => {
         payload: {
           nodeId: 'node-1',
           workspaceId: 'workspace-1',
-          model: 'restricted-id',
+          modelId: 'restricted-id',
           clientMessageId: 'message-2',
           content: 'Continue.'
         }
@@ -338,13 +338,21 @@ describe('Server MAR Agent model authorization routes', () => {
         url: '/api/agent-sessions/session-1/commands',
         payload: {
           nodeId: 'node-1',
-          model: 'restricted-id',
+          modelId: 'restricted-id',
           commandId: 'compact',
           input: '/compact'
         }
       }
     ];
     for (const request of requests) {
+      const { modelId, ...payload } = request.payload;
+      for (const legacy of [
+        { ...payload, model: modelId },
+        { ...request.payload, model: modelId }
+      ]) {
+        const rejected = await app.inject({ ...request, payload: legacy, headers });
+        expect(rejected.statusCode).toBe(400);
+      }
       const response = await app.inject({ ...request, headers });
       expect(response.statusCode).toBe(403);
       expect(response.json()).toMatchObject({

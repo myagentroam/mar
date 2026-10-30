@@ -67,7 +67,7 @@ describe('Node Agent Network owner integration', () => {
           runner: 'codex',
           cwd: directory,
           externalSessionId: id,
-          model: 'gpt-5.3-codex',
+          modelId: 'gpt-5.3-codex',
           effort: 'medium',
           nativeControl: 'MAR_MANAGED',
           ...(parentSessionId ? { parentSessionId } : {})
@@ -660,7 +660,7 @@ describe('Node Agent Network owner integration', () => {
       runner: 'codex',
       cwd: workspace.path,
       externalSessionId: 'actor-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED'
     });
@@ -1029,7 +1029,7 @@ describe('Node Agent Network owner integration', () => {
       runner: 'codex',
       cwd: workspace.path,
       externalSessionId: 'cross-runner-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED'
     });
@@ -1103,7 +1103,7 @@ describe('Node Agent Network owner integration', () => {
           action: 'start',
           input: {
             runner: 'mar-agent',
-            model: 'eligible',
+            modelId: 'eligible',
             title: 'Child',
             content: 'forged parent',
             parentSessionId: 'someone-else'
@@ -1182,7 +1182,7 @@ describe('Node Agent Network owner integration', () => {
           runner: 'mar-agent',
           cwd: workspace.path,
           parentSessionId: parent.id,
-          model: 'eligible',
+          modelId: 'eligible',
           title: 'Rejected child'
         })
       ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
@@ -1191,7 +1191,7 @@ describe('Node Agent Network owner integration', () => {
       await core.runnerService.operations()['runner.profiles.list']!({});
       const started = await request('start', {
         runner: 'mar-agent',
-        model: 'eligible',
+        modelId: 'eligible',
         title: 'Child',
         content: 'first',
         clientMessageId: 'cross-start'
@@ -1209,14 +1209,14 @@ describe('Node Agent Network owner integration', () => {
       expect(core.runtime.getAgentSession(childId)).toMatchObject({
         parentSessionId: parent.id,
         runner: 'mar-agent',
-        model: 'eligible'
+        modelId: 'eligible'
       });
       const childBefore = { ...core.runtime.getAgentSession(childId)! };
       const queueBefore = structuredClone(core.runtime.sessionQueue(childId));
       await expect(
         core.sessionLifecycleService.operations()['session.config.update']!({
           sessionId: childId,
-          model: 'not-authorized'
+          modelId: 'not-authorized'
         })
       ).rejects.toThrow('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
       await expect(
@@ -1231,10 +1231,10 @@ describe('Node Agent Network owner integration', () => {
       await expect(
         core.sessionLifecycleService.operations()['session.config.update']!({
           sessionId: childId,
-          model: 'eligible',
+          modelId: 'eligible',
           marAgentModels: [modelSummary]
         })
-      ).resolves.toMatchObject({ session: { model: 'eligible' } });
+      ).resolves.toMatchObject({ session: { modelId: 'eligible' } });
       await core.runnerService.operations()['runner.profiles.list']!({
         marAgentModels: [{ ...modelSummary, id: 'another-viewer-model' }]
       });
@@ -1338,7 +1338,7 @@ describe('Node Agent Network owner integration', () => {
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: 'idle-parent',
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
@@ -1348,7 +1348,7 @@ describe('Node Agent Network owner integration', () => {
         cwd: workspace.path,
         externalSessionId: 'active-child',
         parentSessionId: parent.id,
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
@@ -1361,7 +1361,7 @@ describe('Node Agent Network owner integration', () => {
               cwd: workspace.path,
               externalSessionId: `target-${kind}`,
               ...(kind === 'sibling' ? { parentSessionId: parent.id } : {}),
-              model: 'gpt-5.3-codex',
+              modelId: 'gpt-5.3-codex',
               effort: 'medium',
               nativeControl: 'MAR_MANAGED'
             });
@@ -1502,7 +1502,7 @@ describe('Node Agent Network owner integration', () => {
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: 'image-parent',
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
@@ -1512,7 +1512,7 @@ describe('Node Agent Network owner integration', () => {
         cwd: workspace.path,
         externalSessionId: 'image-child',
         parentSessionId: parent.id,
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED'
       });
@@ -1659,7 +1659,7 @@ describe('Node Agent Network owner integration', () => {
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: id,
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED',
         ...(parentSessionId ? { parentSessionId } : {})
@@ -1713,7 +1713,7 @@ describe('Node Agent Network owner integration', () => {
         runner: 'codex',
         cwd: foreignWorkspace.path,
         externalSessionId: 'foreign-session',
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         nativeControl: 'MAR_MANAGED'
       });
       await expect(
@@ -1763,7 +1763,7 @@ describe('Node Agent Network owner integration', () => {
         runner: 'codex',
         cwd: workspace.path,
         externalSessionId: id,
-        model: 'gpt-5.3-codex',
+        modelId: 'gpt-5.3-codex',
         effort: 'medium',
         nativeControl: 'MAR_MANAGED',
         ...(parentSessionId ? { parentSessionId } : {})
@@ -1925,7 +1925,7 @@ describe('Node Agent Network owner integration', () => {
       runner: 'codex',
       cwd: workspace.path,
       externalSessionId: 'idle-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED'
     });
@@ -1935,7 +1935,7 @@ describe('Node Agent Network owner integration', () => {
       cwd: workspace.path,
       externalSessionId: 'idle-child',
       parentSessionId: parent.id,
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED'
     });
@@ -1997,7 +1997,7 @@ describe('Node Agent Network owner integration', () => {
     });
     database.saveRunnerDefaults({
       runner: 'codex',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       access: 'auto'
     });
@@ -2031,7 +2031,7 @@ describe('Node Agent Network owner integration', () => {
       runner: 'codex',
       cwd: workspace.path,
       externalSessionId: 'network-parent',
-      model: 'parent-non-default',
+      modelId: 'parent-non-default',
       effort: 'high',
       nativeControl: 'MAR_MANAGED'
     });
@@ -2050,7 +2050,7 @@ describe('Node Agent Network owner integration', () => {
       expect(JSON.stringify(started)).not.toContain('test-secret-value');
       const child = internals.runtime.getAgentSession(started.agentId)!;
       expect(child.parentSessionId).toBe(parent.id);
-      expect(child.model).toBe('gpt-5.3-codex');
+      expect(child.modelId).toBe('gpt-5.3-codex');
       expect(child.effort).toBe('medium');
       expect(internals.goalRuntime.get(child.id)?.objective).toBe('Complete the child task');
       const run = internals.runtime.activeSessionRun(child.id)!;
@@ -2152,7 +2152,7 @@ describe('Node Agent Network owner integration', () => {
       runner: 'codex',
       cwd: workspace.path,
       externalSessionId: 'fanout-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED'
     });

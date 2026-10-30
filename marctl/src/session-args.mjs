@@ -11,7 +11,7 @@ const commands = {
   history: ['cursor', 'limit'],
   start: [
     'runner',
-    'model',
+    'model-id',
     'effort',
     'title',
     'message',
@@ -22,7 +22,7 @@ const commands = {
     'goal',
     'clear-goal'
   ],
-  config: ['model', 'effort'],
+  config: ['model-id', 'effort'],
   rename: ['title'],
   'prompt.get': [],
   'prompt.set': ['message', 'message-file'],
@@ -51,6 +51,7 @@ const commands = {
   wait: ['timeout', 'wait-for', 'mode', 'agent', 'run', 'until']
 };
 const fieldNames = {
+  'model-id': 'modelId',
   parent: 'parentSessionId',
   'expected-revision': 'expectedRevision',
   'message-file': 'messageFile',
@@ -225,10 +226,11 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     );
   if (action === 'rename' && args.title !== undefined) args.title = args.title.trim();
   if (args.title !== undefined && args.title.length > 160) throw invalid();
-  if (args.model !== undefined && (args.model.trim().length === 0 || args.model.length > 120))
+  if (args.modelId !== undefined && (args.modelId.trim().length === 0 || args.modelId.length > 120))
     throw invalid();
   if (args.effort !== undefined && args.effort.length > 120) throw invalid();
-  if (action === 'config' && args.model === undefined && args.effort === undefined) throw invalid();
+  if (action === 'config' && args.modelId === undefined && args.effort === undefined)
+    throw invalid();
   if (action === 'rename') {
     if (args.title === undefined || args.title.trim().length === 0) throw invalid();
   }

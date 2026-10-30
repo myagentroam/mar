@@ -112,7 +112,7 @@ describe('Runner execution input boundary', () => {
       );
       await expect(
         controller.executeCommand(
-          { id: 'session', model: 'coding', nativeControl: 'MAR_MANAGED' } as NodeAgentSession,
+          { id: 'session', modelId: 'coding', nativeControl: 'MAR_MANAGED' } as NodeAgentSession,
           { id: 'compact' } as never,
           '/compact',
           { secretEnvironment: {}, executionContext }

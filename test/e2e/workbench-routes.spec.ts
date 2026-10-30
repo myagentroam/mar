@@ -248,11 +248,15 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     expect(profileCommand.payload).toMatchObject({ operation: 'runner.profiles.list', data: {} });
     respond(socket, profileCommand, {
       profiles: [],
-      defaults: [{ runner: 'codex', model: 'gpt-5.6-sol', effort: 'medium', access: 'on-request' }]
+      defaults: [
+        { runner: 'codex', modelId: 'gpt-5.6-sol', effort: 'medium', access: 'on-request' }
+      ]
     });
     expect((await profileRequest).json()).toEqual({
       profiles: [],
-      defaults: [{ runner: 'codex', model: 'gpt-5.6-sol', effort: 'medium', access: 'on-request' }]
+      defaults: [
+        { runner: 'codex', modelId: 'gpt-5.6-sol', effort: 'medium', access: 'on-request' }
+      ]
     });
 
     expect(
@@ -264,7 +268,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
           payload: {
             nodeId,
             runner: 'codex',
-            model: 'gpt-5.6-sol',
+            modelId: 'gpt-5.6-sol',
             effort: 'medium',
             access: 'on-request'
           }
@@ -278,7 +282,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       payload: {
         nodeId,
         runner: 'codex',
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       }
@@ -288,7 +292,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       operation: 'runner.defaults.save',
       data: {
         runner: 'codex',
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       }
@@ -296,7 +300,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     respond(socket, defaultsCommand, {
       defaults: {
         runner: 'codex',
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       }
@@ -310,7 +314,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
           method: 'PUT',
           url: '/api/runner-defaults',
           headers,
-          payload: { nodeId, runner: 'unknown', model: 'any', effort: 'medium', access: 'any' }
+          payload: { nodeId, runner: 'unknown', modelId: 'any', effort: 'medium', access: 'any' }
         })
       ).json()
     ).toMatchObject({ error: { code: 'RUNNER_DEFAULT_INVALID', message: expect.any(String) } });
@@ -482,7 +486,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
         headers,
         payload: {
           nodeId,
-          model: 'gpt-5.6-terra',
+          modelId: 'gpt-5.6-terra',
           effort: '',
           access: 'workspace-write'
         }
@@ -493,14 +497,14 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       operation: 'session.config.update',
       data: {
         sessionId: 'session-1',
-        model: 'gpt-5.6-terra',
+        modelId: 'gpt-5.6-terra',
         effort: '',
         access: 'workspace-write'
       }
     });
-    respond(socket, configCommand, { session: { id: 'session-1', model: 'gpt-5.6-terra' } });
+    respond(socket, configCommand, { session: { id: 'session-1', modelId: 'gpt-5.6-terra' } });
     expect((await configRequest).json()).toMatchObject({
-      session: { id: 'session-1', model: 'gpt-5.6-terra' }
+      session: { id: 'session-1', modelId: 'gpt-5.6-terra' }
     });
 
     const turnsRequest = app.inject({

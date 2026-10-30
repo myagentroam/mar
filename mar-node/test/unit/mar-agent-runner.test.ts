@@ -1320,7 +1320,7 @@ describe('MAR Agent Node Runner', () => {
         runner: 'mar-agent',
         externalSessionId: native.id,
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession;
@@ -1396,7 +1396,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL',
         channelToken: null,
         cwd: workspace.path,
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'full-access',
         customTitle: 'User-edited title',
@@ -1450,7 +1450,7 @@ describe('MAR Agent Node Runner', () => {
         workspaceId: workspace.id,
         customTitle: 'Persisted user title',
         runnerTitle: 'Persisted generated title',
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'full-access'
       });
@@ -1483,7 +1483,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL',
         channelToken: null,
         cwd: workspace.path,
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'full-access',
         customTitle: 'Persisted user title',
@@ -1498,7 +1498,7 @@ describe('MAR Agent Node Runner', () => {
         external.id
       );
       expect(projected).toMatchObject({
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'full-access'
       });
@@ -1574,7 +1574,7 @@ describe('MAR Agent Node Runner', () => {
           nativeControl: 'EXTERNAL',
           channelToken: null,
           cwd: '/workspace',
-          model: 'coding',
+          modelId: 'coding',
           effort: 'high',
           access: 'full-access',
           customTitle: null,
@@ -1656,7 +1656,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL',
         channelToken: null,
         cwd: '/workspace',
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'full-access',
         customTitle: null,
@@ -1805,7 +1805,7 @@ describe('MAR Agent Node Runner', () => {
     expect(
       runner.supportsConfiguration({
         runner: 'mar-agent',
-        model: 'without-reasoning',
+        modelId: 'without-reasoning',
         effort: '',
         access: 'full-access'
       })
@@ -1813,7 +1813,7 @@ describe('MAR Agent Node Runner', () => {
     expect(
       runner.supportsConfiguration({
         runner: 'mar-agent',
-        model: 'without-reasoning',
+        modelId: 'without-reasoning',
         effort: 'high',
         access: 'full-access'
       })
@@ -1838,14 +1838,14 @@ describe('MAR Agent Node Runner', () => {
     );
     expect(profile?.accessOptions.map((access) => access.id)).toEqual(['auto', 'full-access']);
     expect(runner.defaultConfiguration()).toMatchObject({
-      model: 'coding',
+      modelId: 'coding',
       effort: 'high',
       access: 'auto'
     });
     expect(
       runner.supportsConfiguration({
         runner: 'mar-agent',
-        model: 'coding',
+        modelId: 'coding',
         effort: 'high',
         access: 'auto'
       })
@@ -1865,7 +1865,7 @@ describe('MAR Agent Node Runner', () => {
           nativeControl: 'MAR_MANAGED',
           channelToken: null,
           cwd: '/workspace',
-          model: 'coding',
+          modelId: 'coding',
           effort: 'high',
           access: 'full-access',
           customTitle: null,
@@ -1890,7 +1890,7 @@ describe('MAR Agent Node Runner', () => {
           nativeControl: 'MAR_MANAGED',
           channelToken: null,
           cwd: '/workspace',
-          model: 'coding',
+          modelId: 'coding',
           effort: 'high',
           access: 'full-access',
           customTitle: null,
@@ -2004,7 +2004,7 @@ describe('MAR Agent Node Runner', () => {
       id: 'session',
       workspaceId: 'workspace',
       runner: 'mar-agent',
-      model: 'coding',
+      modelId: 'coding',
       effort: 'high',
       access: 'on-request'
     } as NodeAgentSession;
@@ -2053,7 +2053,7 @@ describe('MAR Agent Node Runner', () => {
           workspaceId: 'workspace',
           runner: 'mar-agent',
           cwd: workspacePath,
-          model: 'coding',
+          modelId: 'coding',
           effort: 'high',
           access
         })
@@ -2069,11 +2069,16 @@ describe('MAR Agent Node Runner', () => {
       try {
         const configuration = {
           runner: 'mar-agent' as const,
-          model: 'coding',
+          modelId: 'coding',
           effort: 'medium',
           access
         };
-        const other = { runner: 'codex' as const, model: 'codex', effort: '', access: 'read-only' };
+        const other = {
+          runner: 'codex' as const,
+          modelId: 'codex',
+          effort: '',
+          access: 'read-only'
+        };
         database.saveRunnerDefaults(other);
         database.saveRunnerDefaults(configuration);
         const saveRunnerDefaults = vi.spyOn(database, 'saveRunnerDefaults');
@@ -2096,7 +2101,7 @@ describe('MAR Agent Node Runner', () => {
         }
         expect(saveRunnerDefaults).not.toHaveBeenCalled();
 
-        const updated = { ...configuration, model: 'updated-model', effort: 'high' };
+        const updated = { ...configuration, modelId: 'updated-model', effort: 'high' };
         expect(service.operations()['runner.defaults.save']?.(updated)).toEqual({
           defaults: updated
         });
@@ -2115,7 +2120,7 @@ describe('MAR Agent Node Runner', () => {
     const runner = new MarAgentRunner();
     const saved = {
       runner: 'mar-agent' as const,
-      model: 'coding',
+      modelId: 'coding',
       effort: 'high',
       access: 'on-request'
     };
@@ -2201,7 +2206,7 @@ describe('MAR Agent Node Runner', () => {
           nativeControl: 'MAR_MANAGED',
           channelToken: null,
           cwd: '/workspace',
-          model: 'coding',
+          modelId: 'coding',
           effort: 'high',
           access: 'full-access',
           customTitle: null,
@@ -2263,7 +2268,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL',
         channelToken: null,
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null,
         customTitle: null,
@@ -2321,7 +2326,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL',
         channelToken: null,
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null,
         customTitle: null,
@@ -2468,7 +2473,7 @@ describe('MAR Agent Node Runner', () => {
             nativeControl: 'EXTERNAL',
             channelToken: null,
             cwd: input.cwd,
-            model: null,
+            modelId: null,
             effort: null,
             access: null,
             customTitle: null,
@@ -2485,7 +2490,7 @@ describe('MAR Agent Node Runner', () => {
         expect.objectContaining({
           externalSessionId: native.id,
           runnerTitle: 'Persisted',
-          model: 'shared-model',
+          modelId: 'shared-model',
           effort: 'high'
         })
       ]);
@@ -2625,7 +2630,7 @@ describe('MAR Agent Node Runner', () => {
         nativeControl: 'EXTERNAL' as const,
         channelToken: null,
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null,
         customTitle: null,

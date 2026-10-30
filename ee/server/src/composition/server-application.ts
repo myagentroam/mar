@@ -320,7 +320,7 @@ export async function composeServerApplication(
         request.workspaceId
       );
       if (!allowed) throw new Error('WORKSPACE_ACCESS_DENIED');
-      if (request.runner === 'mar-agent' && request.model === null)
+      if (request.runner === 'mar-agent' && request.modelId === null)
         throw new Error(unavailableCode);
       const modelPayload =
         request.runner === 'mar-agent'
@@ -329,7 +329,7 @@ export async function composeServerApplication(
               nodeId,
               workspaceId: request.workspaceId,
               sessionId: request.sessionId,
-              selectedModelId: request.model!,
+              selectedModelId: request.modelId!,
               marAgentModels,
               marAgentRuntimeModels
             })

@@ -22,7 +22,7 @@ function createTestComposerController(
   return createWorkbenchComposerController({
     ...options,
     setModel: (model, effort) => {
-      (options.model as { value: string }).value = model;
+      (options.modelId as { value: string }).value = model;
       (options.effort as { value: string }).value = effort;
     },
     setEffort: (effort) => ((options.effort as { value: string }).value = effort),
@@ -35,7 +35,7 @@ const sessionA: Session = { id: 'session-a', workspaceId: 'workspace-a', runner:
 const sessionB: Session = { id: 'session-b', workspaceId: 'workspace-a', runner: 'codex' };
 const defaultConfiguration: RunnerDefaultConfiguration = {
   runner: 'codex',
-  model: 'gpt-5.6-sol',
+  modelId: 'gpt-5.6-sol',
   effort: 'medium',
   access: 'on-request'
 };
@@ -59,7 +59,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(true) as never,
       loading: ref(false) as never,
       runner: ref('codex') as never,
-      model: ref('') as never,
+      modelId: ref('') as never,
       effort: ref('') as never,
       access: ref('') as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -68,7 +68,7 @@ describe('Workbench Composer Controller', () => {
         load: async () => undefined,
         defaultFor: () => ({
           runner: 'mar-agent',
-          model: 'dev-coding',
+          modelId: 'dev-coding',
           effort: 'medium',
           access: 'on-request'
         }),
@@ -104,7 +104,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(true) as never,
       loading: ref(false) as never,
       runner: ref('codex') as never,
-      model: ref('') as never,
+      modelId: ref('') as never,
       effort: ref('') as never,
       access: ref('') as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -156,7 +156,7 @@ describe('Workbench Composer Controller', () => {
         draftOpen: ref(true) as never,
         loading: ref(false) as never,
         runner: ref('codex') as never,
-        model: ref('') as never,
+        modelId: ref('') as never,
         effort: ref('') as never,
         access: ref('') as never,
         modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -204,7 +204,7 @@ describe('Workbench Composer Controller', () => {
         draftOpen: ref(false) as never,
         loading: ref(false) as never,
         runner: ref('codex') as never,
-        model: ref('gpt-5.6-sol') as never,
+        modelId: ref('gpt-5.6-sol') as never,
         effort: ref('high') as never,
         access: ref('full-access') as never,
         modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -247,7 +247,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(true) as never,
       loading: ref(false) as never,
       runner: ref('codex') as never,
-      model: model as never,
+      modelId: model as never,
       effort: effort as never,
       access: ref('on-request') as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -320,7 +320,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(false) as never,
       loading: ref(false) as never,
       runner: ref('codex') as never,
-      model: ref('gpt-5.6-sol') as never,
+      modelId: ref('gpt-5.6-sol') as never,
       effort: ref('high') as never,
       access: ref('read-only') as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -355,7 +355,7 @@ describe('Workbench Composer Controller', () => {
         id: 'session-mar',
         workspaceId: 'workspace-a',
         runner: 'mar-agent',
-        model: 'revoked-model',
+        modelId: 'revoked-model',
         effort: 'high',
         access: 'on-request'
       };
@@ -396,14 +396,14 @@ describe('Workbench Composer Controller', () => {
       });
       const apply = vi.fn((configuration: RunnerDefaultConfiguration) => {
         runner.value = configuration.runner;
-        model.value = configuration.model;
+        model.value = configuration.modelId;
         effort.value = configuration.effort;
         access.value = configuration.access;
         normalize();
       });
       const updated = {
         ...staleSession,
-        model: 'allowed-model',
+        modelId: 'allowed-model',
         effort: 'low'
       };
       const request = vi.fn(async () => ({ session: updated }));
@@ -416,7 +416,7 @@ describe('Workbench Composer Controller', () => {
         draftOpen: ref(false) as never,
         loading: ref(false) as never,
         runner: runner as never,
-        model: model as never,
+        modelId: model as never,
         effort: effort as never,
         access: access as never,
         modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -428,7 +428,7 @@ describe('Workbench Composer Controller', () => {
           },
           defaultFor: () => ({
             runner: 'mar-agent',
-            model: 'allowed-model',
+            modelId: 'allowed-model',
             effort: 'low',
             access: 'on-request'
           }),
@@ -459,7 +459,7 @@ describe('Workbench Composer Controller', () => {
           body: JSON.stringify({
             nodeId: 'node-a',
             workspaceId: staleSession.workspaceId,
-            model: 'allowed-model',
+            modelId: 'allowed-model',
             effort: 'low',
             access: 'on-request'
           })
@@ -479,7 +479,7 @@ describe('Workbench Composer Controller', () => {
       workspaceId: 'workspace-a',
       runner: 'mar-agent',
       sessionGroup: 'CHILD',
-      model: 'revoked-model',
+      modelId: 'revoked-model',
       effort: 'high',
       access: 'auto'
     };
@@ -521,7 +521,7 @@ describe('Workbench Composer Controller', () => {
       profiles,
       effortLabel: String
     });
-    const updated = { ...stale, model: 'child-allowed', effort: 'low' };
+    const updated = { ...stale, modelId: 'child-allowed', effort: 'low' };
     const request = vi.fn(async () => ({ session: updated }));
     const save = vi.fn();
     const controller = createWorkbenchComposerController({
@@ -532,7 +532,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: reactiveRef(false),
       loading: reactiveRef(false),
       runner: state.runner,
-      model: state.model,
+      modelId: state.modelId,
       effort: state.effort,
       access: state.access,
       setModel: state.selectModel,
@@ -547,7 +547,7 @@ describe('Workbench Composer Controller', () => {
         },
         defaultFor: () => ({
           runner: 'mar-agent',
-          model: 'parent-only',
+          modelId: 'parent-only',
           effort: 'high',
           access: 'auto'
         }),
@@ -572,19 +572,19 @@ describe('Workbench Composer Controller', () => {
         body: JSON.stringify({
           nodeId: 'node-a',
           workspaceId: 'workspace-a',
-          model: 'child-allowed',
+          modelId: 'child-allowed',
           effort: 'low',
           access: 'auto'
         })
       });
       expect(sessions.value).toEqual([updated]);
-      expect(state.model.value).toBe('child-allowed');
+      expect(state.modelId.value).toBe('child-allowed');
       expect(state.modelEffortLabel.value).toBe('Child low');
     } else {
       expect(request).not.toHaveBeenCalled();
       expect(sessions.value).toEqual([stale]);
       expect(state.models.value).toEqual([]);
-      expect(state.model.value).toBe('');
+      expect(state.modelId.value).toBe('');
       expect(state.modelEffortLabel.value).toBe('revoked-model high');
     }
   });
@@ -594,13 +594,13 @@ describe('Workbench Composer Controller', () => {
       id: 'session-mar',
       workspaceId: 'workspace-a',
       runner: 'mar-agent',
-      model: null,
+      modelId: null,
       effort: null,
       access: 'full-access'
     };
     const authoritativeSession: Session = {
       ...provisionalSession,
-      model: 'model-b',
+      modelId: 'model-b',
       effort: 'high'
     };
     const selectedSession = ref<Session | undefined>(provisionalSession);
@@ -637,7 +637,7 @@ describe('Workbench Composer Controller', () => {
     });
     const apply = vi.fn((configuration: RunnerDefaultConfiguration) => {
       runner.value = configuration.runner;
-      model.value = configuration.model;
+      model.value = configuration.modelId;
       effort.value = configuration.effort;
       access.value = configuration.access;
       normalize();
@@ -651,7 +651,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(false) as never,
       loading: ref(false) as never,
       runner: runner as never,
-      model: model as never,
+      modelId: model as never,
       effort: effort as never,
       access: access as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,
@@ -663,7 +663,7 @@ describe('Workbench Composer Controller', () => {
         },
         defaultFor: () => ({
           runner: 'mar-agent',
-          model: 'model-a',
+          modelId: 'model-a',
           effort: 'medium',
           access: 'full-access'
         }),
@@ -716,7 +716,7 @@ describe('Workbench Composer Controller', () => {
       draftOpen: ref(false) as never,
       loading: loading as never,
       runner: ref('codex') as never,
-      model: ref('gpt-5.6-sol') as never,
+      modelId: ref('gpt-5.6-sol') as never,
       effort: ref('high') as never,
       access: ref('full-access') as never,
       modelEffortSelection: ref<string | undefined>(undefined) as never,

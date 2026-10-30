@@ -274,7 +274,7 @@ export class MarAgentManagedRunController {
       execution?.runner === 'mar-agent'
         ? (execution.runnerInput as MarAgentExecutionInput | undefined)
         : undefined,
-      session.model ?? ''
+      session.modelId ?? ''
     );
     if (resolved === undefined) throw new Error('RUNNER_COMMAND_UNAVAILABLE');
     const runId = randomUUID();
@@ -632,7 +632,7 @@ export class MarAgentManagedRunController {
         this.#steerTargets.set(input.runId, async (request) => {
           if (
             controller.signal.aborted ||
-            (request.model && request.model !== input.model.id) ||
+            (request.modelId && request.modelId !== input.model.id) ||
             (request.effort &&
               request.effort !==
                 (reasoningEffort ??

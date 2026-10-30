@@ -706,7 +706,7 @@ export function createWorkbenchPageController<
 
   const {
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     modelEffortSelection: composerModelEffortSelection,
@@ -1168,7 +1168,7 @@ export function createWorkbenchPageController<
     skillTokens: composerSkillTokens,
     references: composerFileReferences,
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     workspaceTarget,
@@ -2121,7 +2121,7 @@ export function createWorkbenchPageController<
     draftOpen: draftSessionOpen,
     loading,
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     setModel: composerConfigurationService.selectModel,

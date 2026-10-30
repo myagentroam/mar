@@ -224,13 +224,13 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       const workspace = workspaceId === undefined ? undefined : database?.getWorkspace(workspaceId);
       if (!runnerAdapter || !database || !workspace) throw new Error('SESSION_INVALID');
       const model =
-        input.model ??
-        database.getRunnerDefaults().find((entry) => entry.runner === runner)?.model ??
+        input.modelId ??
+        database.getRunnerDefaults().find((entry) => entry.runner === runner)?.modelId ??
         runnerAdapter.defaultConfiguration(
           workspace,
           actor.secretEnvironment ?? {},
           runnerAdapter.prepareExecutionContext(actor.runnerConfiguration ?? {})
-        ).model;
+        ).modelId;
       const request = {
         ...executionInput(actor, runner, model, parent !== undefined),
         workspaceId: workspace.id,
@@ -243,7 +243,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         __suppressNotifications: true,
         ...(!terminal && parent ? { __marctlOrigin: origin(parent) } : {}),
         ...(input.title === undefined ? {} : { title: input.title }),
-        ...(model ? { model } : {}),
+        ...(model ? { modelId: model } : {}),
         ...(input.effort === undefined ? {} : { effort: input.effort }),
         ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
         ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds })
@@ -296,7 +296,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       const executionContext = options.runners
         .require(current.runner)
         .prepareExecutionContext(
-          executionInput(actor, current.runner, current.model, current.parentSessionId != null)
+          executionInput(actor, current.runner, current.modelId, current.parentSessionId != null)
         );
       signal?.throwIfAborted();
       const result = await options.withGrant(actor, () =>
@@ -333,7 +333,12 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       signal?.throwIfAborted();
       const result = await options.withGrant(actor, () =>
         options.messages.operations()['session.message']!({
-          ...executionInput(actor, session.runner, session.model, session.parentSessionId != null),
+          ...executionInput(
+            actor,
+            session.runner,
+            session.modelId,
+            session.parentSessionId != null
+          ),
           ...input,
           ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
           sessionId: session.id,

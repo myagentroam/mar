@@ -204,6 +204,7 @@ export class SessionMessageService {
   private async prepareMessage(input: MessageInput): Promise<unknown> {
     checkSessionAdmission(input);
     if (
+      Object.hasOwn(input, 'model') ||
       typeof input.sessionId !== 'string' ||
       typeof input.clientMessageId !== 'string' ||
       input.clientMessageId.length === 0 ||
@@ -273,7 +274,7 @@ export class SessionMessageService {
     if (session.parentSessionId != null)
       this.options.runners
         .require(session.runner)
-        .assertChildModel(session.model, executionContext);
+        .assertChildModel(session.modelId, executionContext);
     const sourceContent = withSessionMessageOrigin(
       content,
       input.__marctlOrigin,
@@ -466,7 +467,7 @@ export class SessionMessageService {
             cwd,
             workspacePath,
             externalSessionId: currentSession.externalSessionId,
-            model: currentSession.model,
+            modelId: currentSession.modelId,
             effort: currentSession.effort,
             access: currentSession.access,
             collaborationMode: planActive ? 'plan' : 'default',

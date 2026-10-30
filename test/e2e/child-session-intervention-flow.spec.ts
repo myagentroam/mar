@@ -29,7 +29,7 @@ test('opens a child from the session list and carries user intervention back to 
   const database = new NodeDatabase(':memory:', 'child-intervention');
   database.saveRunnerDefaults({
     runner: 'codex',
-    model: 'gpt-5.3-codex',
+    modelId: 'gpt-5.3-codex',
     effort: 'medium',
     access: 'auto'
   });
@@ -122,7 +122,7 @@ test('opens a child from the session list and carries user intervention back to 
       runner: 'codex',
       cwd: workspacePath,
       externalSessionId: 'child-intervention-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED',
       customTitle: 'Intervention parent'

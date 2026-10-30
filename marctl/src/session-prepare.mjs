@@ -8,7 +8,7 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
   const input = {};
   for (const name of [
     'runner',
-    'model',
+    'modelId',
     'effort',
     'title',
     'cursor',
@@ -55,7 +55,7 @@ export async function prepareSessionRequest({ args, env, stdin, translate, sessi
     'sessionId',
     'parentSessionId',
     'runner',
-    'model',
+    'modelId',
     'effort',
     'title',
     'cursor',

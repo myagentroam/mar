@@ -136,7 +136,7 @@ export function registerRunnerRoutes(input: {
     Body: {
       nodeId?: unknown;
       runner?: unknown;
-      model?: unknown;
+      modelId?: unknown;
       effort?: unknown;
       access?: unknown;
     };
@@ -148,11 +148,11 @@ export function registerRunnerRoutes(input: {
     const body = request.body ?? {};
     const parsed = runnerDefaultConfigurationSchema.safeParse({
       runner: body.runner,
-      model: body.model,
+      modelId: body.modelId,
       effort: body.effort,
       access: body.access
     });
-    if (!isNonEmptyString(body.nodeId) || !parsed.success)
+    if (Object.hasOwn(body, 'model') || !isNonEmptyString(body.nodeId) || !parsed.success)
       return sendError(reply, 400, 'RUNNER_DEFAULT_INVALID');
     try {
       await requireMarAgentAutoSupport({

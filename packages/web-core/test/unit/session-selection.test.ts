@@ -1098,11 +1098,11 @@ describe('Shared session selection', () => {
       id: 'session-1',
       workspaceId: 'workspace-1',
       runner: 'mar-agent',
-      model: null
+      modelId: null
     };
     const authoritative: Session = {
       ...provisional,
-      model: 'model-b',
+      modelId: 'model-b',
       effort: 'high',
       access: 'full-access'
     };

@@ -275,7 +275,7 @@ export class GoalContinuationCoordinator {
       this.options
         .runners()
         .require(session.runner)
-        .assertChildModel(session.model, executionContext);
+        .assertChildModel(session.modelId, executionContext);
     this.invalidateGoalContinuation(session.id);
     const prepared = this.prepareGoalSession(session);
     const goalSession = prepared.session;
@@ -706,14 +706,14 @@ export class GoalContinuationCoordinator {
     if (
       changed &&
       prepared.externalSessionId !== null &&
-      prepared.model !== null &&
+      prepared.modelId !== null &&
       prepared.effort !== null
     )
       this.options.database()?.saveNativeSessionMetadata({
         runner: prepared.runner,
         externalSessionId: prepared.externalSessionId,
         workspaceId: prepared.workspaceId,
-        model: prepared.model,
+        modelId: prepared.modelId,
         effort: prepared.effort,
         access
       });

@@ -134,7 +134,7 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
         input,
         cwd: session.cwd,
         externalSessionId: session.externalSessionId,
-        model: session.model,
+        model: session.modelId,
         effort: session.effort,
         access: session.access,
         secretEnvironment

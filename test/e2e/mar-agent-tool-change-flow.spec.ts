@@ -149,7 +149,7 @@ test('real Server and Node resume captured Auto calls after online approval and 
         cwd: workspace,
         clientMessageId: randomUUID(),
         content: 'Change A to B.',
-        model: modelId,
+        modelId: modelId,
         effort: ''
       }
     });
@@ -230,7 +230,7 @@ test('real Server and Node resume captured Auto calls after online approval and 
       payload: {
         nodeId,
         workspaceId,
-        model: modelId,
+        modelId: modelId,
         clientMessageId: randomUUID(),
         content: 'Change B to C.'
       }

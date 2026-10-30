@@ -15,7 +15,7 @@ function session(): NodeAgentSession {
     nativeControl: 'MAR_MANAGED',
     channelToken: null,
     cwd: '/workspace',
-    model: null,
+    modelId: null,
     effort: null,
     access: null,
     customTitle: null,

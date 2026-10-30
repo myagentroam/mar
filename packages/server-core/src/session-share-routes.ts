@@ -35,7 +35,7 @@ const messageSchema = z
     content: z.string().max(100_000),
     attachmentIds: z.array(z.string().uuid()).max(5).optional(),
     deliveryIntent: z.enum(['SEND', 'QUEUE', 'REPLACE_CURRENT']).optional(),
-    model: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional(),
     computerUse: z.boolean().optional()
   })
   .strict()
@@ -225,7 +225,7 @@ export function registerSessionShareRoutes(input: {
               ...(message.deliveryIntent === undefined
                 ? {}
                 : { deliveryIntent: message.deliveryIntent }),
-              ...(message.model === undefined ? {} : { model: message.model }),
+              ...(message.modelId === undefined ? {} : { modelId: message.modelId }),
               ...(message.computerUse === undefined ? {} : { computerUse: message.computerUse })
             }
           });
@@ -285,17 +285,17 @@ export function registerSessionShareRoutes(input: {
             .object({
               commandId: z.literal('compact'),
               input: z.string().min(2).max(20_000),
-              model: z.string().min(1).optional()
+              modelId: z.string().min(1).optional()
             })
             .strict()
             .safeParse(request.body);
           if (!parsed.success) return sendError(reply, 400, 'RUNNER_COMMAND_INVALID');
-          const { commandId, input: commandInput, model } = parsed.data;
+          const { commandId, input: commandInput, modelId } = parsed.data;
           return reply.code(202).send(
             await channels.executeCommand(resolved.get(request)!.context, {
               commandId,
               input: commandInput,
-              ...(model === undefined ? {} : { model })
+              ...(modelId === undefined ? {} : { modelId })
             })
           );
         }

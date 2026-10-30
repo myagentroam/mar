@@ -85,7 +85,7 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   defaultConfiguration(): RunnerDefaultConfiguration {
     return {
       runner: this.name,
-      model: claudeDefaultModel(this.environment),
+      modelId: claudeDefaultModel(this.environment),
       effort: 'medium',
       access: 'default'
     };

@@ -153,7 +153,7 @@ export class OpenCodeManagedRunController {
   ): unknown {
     if (
       session.externalSessionId === null ||
-      session.model === null ||
+      session.modelId === null ||
       session.nativeControl !== 'MAR_MANAGED' ||
       this.host.hasActiveSessionLease(session.id)
     )
@@ -186,7 +186,7 @@ export class OpenCodeManagedRunController {
     });
     this.host.emit(runId, 'run.started', { command: 'compact' }, 'STARTING');
     this.host.emitItem(runId, openCodeCompactionItem('opencode-compact', runId, false));
-    void this.runCompact(runId, session.model);
+    void this.runCompact(runId, session.modelId);
     return {
       command: 'compact',
       run: this.host.run(runId),

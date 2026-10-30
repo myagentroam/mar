@@ -43,7 +43,7 @@ async function fixture(parentSessionId?: string) {
       runner: 'mar-agent',
       externalSessionId: parentSessionId,
       cwd: directory,
-      model: 'model',
+      modelId: 'model',
       effort: 'high',
       access: 'auto'
     });
@@ -53,7 +53,7 @@ async function fixture(parentSessionId?: string) {
     externalSessionId: 'session',
     ...(parentSessionId ? { parentSessionId } : {}),
     cwd: directory,
-    model: 'model',
+    modelId: 'model',
     effort: 'high',
     access: 'auto'
   });
@@ -146,7 +146,7 @@ async function fixture(parentSessionId?: string) {
       id: session.id,
       workspaceId: session.workspaceId,
       cwd: directory,
-      model: 'model',
+      modelId: 'model',
       effort: 'high',
       access: 'auto'
     },
@@ -213,7 +213,7 @@ describe('Orderly restart input reconstruction', () => {
       workspaceId: 'workspace',
       ownerUserId: 7,
       runner: 'mar-agent',
-      model: 'model'
+      modelId: 'model'
     });
     expect(f.control.mock.calls[0]).toMatchObject([
       'run.start',

@@ -390,7 +390,7 @@ export function registerRunControlRoutes(input: {
       workspaceId?: unknown;
       commandId?: unknown;
       input?: unknown;
-      model?: unknown;
+      modelId?: unknown;
     };
   }>('/api/agent-sessions/:sessionId/commands', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -405,7 +405,8 @@ export function registerRunControlRoutes(input: {
       typeof body.input !== 'string' ||
       body.input.length < 2 ||
       body.input.length > 20_000 ||
-      (typeof body.model === 'string' &&
+      Object.hasOwn(body, 'model') ||
+      (typeof body.modelId === 'string' &&
         marAgentRuntimeModels !== undefined &&
         typeof body.workspaceId !== 'string')
     )
@@ -422,7 +423,7 @@ export function registerRunControlRoutes(input: {
           {
             commandId: body.commandId,
             input: body.input,
-            ...(typeof body.model === 'string' ? { model: body.model } : {})
+            ...(typeof body.modelId === 'string' ? { modelId: body.modelId } : {})
           }
         )
       );

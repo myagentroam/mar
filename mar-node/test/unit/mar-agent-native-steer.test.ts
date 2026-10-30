@@ -124,7 +124,7 @@ describe('MAR native steer integration', () => {
         prompt: entry.text,
         modelText: 'model guidance',
         clientMessageId: entry.clientMessageId,
-        model: 'test',
+        modelId: 'test',
         effort: 'low',
         access: 'full-access',
         collaborationMode: 'default',
@@ -132,7 +132,7 @@ describe('MAR native steer integration', () => {
       };
       for (const override of [
         { expectedExecutionId: 'other' },
-        { model: 'other' },
+        { modelId: 'other' },
         { effort: 'high' },
         { access: 'auto' },
         { collaborationMode: 'plan' as const }
@@ -152,7 +152,7 @@ describe('MAR native steer integration', () => {
         clientMessageId: entry.clientMessageId,
         images: []
       });
-      for (const inherited of [{ model: '' }, { effort: '' }])
+      for (const inherited of [{ modelId: '' }, { effort: '' }])
         expect(await controller.steer({ ...request, ...inherited })).toMatchObject({
           status: 'accepted'
         });

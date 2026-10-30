@@ -67,7 +67,7 @@ async function fixture(
             id: data.sessionId,
             workspaceId: 'workspace',
             runner: 'codex',
-            model: 'test-model',
+            modelId: 'test-model',
             ...options.session
           }
         };
@@ -137,7 +137,7 @@ describe('Workspace-bound marctl agents', () => {
     const prepare = vi.fn();
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'codex', model: 'parent-model' },
+      session: { runner: 'codex', modelId: 'parent-model' },
       marAgentModels: { listForUser } as unknown as MarAgentModelService,
       marAgentRuntimeModels: { prepare }
     });
@@ -177,7 +177,7 @@ describe('Workspace-bound marctl agents', () => {
     const prepare = vi.fn();
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', parentSessionId: 'someone-else', model: 'old' },
+      session: { runner: 'mar-agent', parentSessionId: 'someone-else', modelId: 'old' },
       marAgentModels: { listForUser } as unknown as MarAgentModelService,
       marAgentRuntimeModels: { prepare }
     });
@@ -185,7 +185,7 @@ describe('Workspace-bound marctl agents', () => {
       method: 'POST',
       url: '/api/marctl/sessions',
       headers: f.headers,
-      payload: { action: 'config', sessionId: 'unrelated', model: 'eligible', effort: 'high' }
+      payload: { action: 'config', sessionId: 'unrelated', modelId: 'eligible', effort: 'high' }
     });
     expect(response.statusCode).toBe(200);
     expect(listForUser).toHaveBeenCalledExactlyOnceWith(7);
@@ -195,7 +195,7 @@ describe('Workspace-bound marctl agents', () => {
     )!;
     expect(configured[2]).toMatchObject({
       sessionId: 'unrelated',
-      model: 'eligible',
+      modelId: 'eligible',
       effort: 'high',
       marAgentModels: [
         { id: 'eligible', enabled: true, conversationModel: true, subagentModel: true },
@@ -213,7 +213,7 @@ describe('Workspace-bound marctl agents', () => {
     });
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', model: 'unavailable-model' },
+      session: { runner: 'mar-agent', modelId: 'unavailable-model' },
       marAgentRuntimeModels: { prepare }
     });
     const response = await f.app.inject({
@@ -244,7 +244,7 @@ describe('Workspace-bound marctl agents', () => {
     }));
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', model: 'goal-model' },
+      session: { runner: 'mar-agent', modelId: 'goal-model' },
       marAgentRuntimeModels: { prepare }
     });
     const response = await f.app.inject({
@@ -275,10 +275,10 @@ describe('Workspace-bound marctl agents', () => {
     }));
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', model: 'parent-non-default' },
+      session: { runner: 'mar-agent', modelId: 'parent-non-default' },
       profiles: {
         profiles: [{ runner: 'mar-agent', models: [] }],
-        defaults: [{ runner: 'mar-agent', model: 'runner-default' }]
+        defaults: [{ runner: 'mar-agent', modelId: 'runner-default' }]
       },
       marAgentRuntimeModels: { prepare }
     });
@@ -299,7 +299,7 @@ describe('Workspace-bound marctl agents', () => {
       expect.objectContaining({ selectedModelId: 'runner-default' })
     );
     const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
-    expect(network[2]).toMatchObject({ input: { model: 'runner-default' } });
+    expect(network[2]).toMatchObject({ input: { modelId: 'runner-default' } });
   });
 
   it.each(['start', 'send'] as const)(
@@ -314,8 +314,8 @@ describe('Workspace-bound marctl agents', () => {
         executionSource: 'parent',
         session:
           operation === 'send'
-            ? { runner: 'mar-agent', model: 'eligible', parentSessionId: 'parent' }
-            : { runner: 'codex', model: 'codex-model' },
+            ? { runner: 'mar-agent', modelId: 'eligible', parentSessionId: 'parent' }
+            : { runner: 'codex', modelId: 'codex-model' },
         marAgentRuntimeModels: { prepare } as unknown as Pick<
           MarAgentRuntimeModelService,
           'prepare'
@@ -323,7 +323,7 @@ describe('Workspace-bound marctl agents', () => {
       });
       const input =
         operation === 'start'
-          ? { content: 'Start work', runner: 'mar-agent', model: 'eligible' }
+          ? { content: 'Start work', runner: 'mar-agent', modelId: 'eligible' }
           : { agentId: 'child', content: 'Continue work' };
       const response = await f.app.inject({
         method: 'POST',
@@ -364,7 +364,7 @@ describe('Workspace-bound marctl agents', () => {
     }));
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', model: 'eligible', parentSessionId: 'someone-else' },
+      session: { runner: 'mar-agent', modelId: 'eligible', parentSessionId: 'someone-else' },
       marAgentRuntimeModels: { prepare } as unknown as Pick<MarAgentRuntimeModelService, 'prepare'>
     });
     const response = await f.app.inject({
@@ -397,14 +397,19 @@ describe('Workspace-bound marctl agents', () => {
     const prepare = vi.fn();
     const f = await fixture(true, false, {
       executionSource: 'parent',
-      session: { runner: 'mar-agent', model: 'eligible', workspaceId: 'other-workspace' },
+      session: { runner: 'mar-agent', modelId: 'eligible', workspaceId: 'other-workspace' },
       marAgentRuntimeModels: { prepare } as unknown as Pick<MarAgentRuntimeModelService, 'prepare'>
     });
     for (const [operation, input] of [
       ['send', { agentId: 'unrelated', content: 'work' }],
       [
         'start',
-        { parentSessionId: 'someone-else', runner: 'mar-agent', model: 'eligible', content: 'work' }
+        {
+          parentSessionId: 'someone-else',
+          runner: 'mar-agent',
+          modelId: 'eligible',
+          content: 'work'
+        }
       ]
     ] as const) {
       const response = await f.app.inject({
@@ -1210,7 +1215,7 @@ describe('Workspace-bound marctl agents', () => {
       );
     }
   );
-  it.each([{ model: 'next-model' }, { effort: 'high' }, { model: 'next-model', effort: '' }])(
+  it.each([{ modelId: 'next-model' }, { effort: 'high' }, { modelId: 'next-model', effort: '' }])(
     'forwards partial configuration without changing omitted fields: %j',
     async (configuration) => {
       const { app, headers, requestNode, secrets, instructions } = await fixture();
@@ -1236,10 +1241,12 @@ describe('Workspace-bound marctl agents', () => {
     const local = await fixture();
     for (const extra of [
       {},
-      { model: '' },
+      { model: 'old' },
+      { modelId: 'next', model: 'old' },
+      { modelId: '' },
       { effort: 'x'.repeat(121) },
-      { model: 'x'.repeat(121) },
-      { model: 'next', access: 'full-access' }
+      { modelId: 'x'.repeat(121) },
+      { modelId: 'next', access: 'full-access' }
     ]) {
       const response = await local.app.inject({
         method: 'POST',
@@ -1254,7 +1261,7 @@ describe('Workspace-bound marctl agents', () => {
       method: 'POST',
       url: '/api/marctl/sessions',
       headers: foreign.headers,
-      payload: { action: 'config', sessionId: 'target', model: 'next' }
+      payload: { action: 'config', sessionId: 'target', modelId: 'next' }
     });
     expect(response.statusCode).toBe(403);
     expect(
@@ -1299,7 +1306,7 @@ describe('Workspace-bound marctl agents', () => {
       runner: 'codex',
       status: 'IDLE',
       runId: null,
-      model: null,
+      modelId: null,
       effort: null,
       queuedCount: 0,
       latestMessage: null,
@@ -1561,7 +1568,7 @@ describe('Workspace-bound marctl agents', () => {
             id: data.sessionId,
             workspaceId: 'workspace',
             runner: 'codex',
-            model: 'test-model'
+            modelId: 'test-model'
           }
         };
       if (
@@ -1635,8 +1642,8 @@ describe('Workspace-bound marctl agents', () => {
             { runner: 'claude-code', models: [{ id: 'other-runner-default', isDefault: true }] }
           ],
           defaults: [
-            { runner: 'codex', model: 'codex-workspace-default' },
-            { runner: 'claude-code', model: 'claude-workspace-default' }
+            { runner: 'codex', modelId: 'codex-workspace-default' },
+            { runner: 'claude-code', modelId: 'claude-workspace-default' }
           ]
         }
       }
@@ -1673,7 +1680,7 @@ describe('Workspace-bound marctl agents', () => {
       cwd: '/fixture',
       runner: 'codex',
       content: 'Develop fixture',
-      model: 'codex-workspace-default',
+      modelId: 'codex-workspace-default',
       effort: 'high',
       customTitle: 'fixer#17 Add importer retries',
       personalInstructions: { common: 'Account rule' }
@@ -1725,10 +1732,10 @@ describe('Workspace-bound marctl agents', () => {
       models: []
     }));
     const { app, headers, requestNode } = await fixture(true, true, {
-      session: { runner: 'mar-agent', model: 'target-session-model' },
+      session: { runner: 'mar-agent', modelId: 'target-session-model' },
       profiles: {
         profiles: [{ runner: 'mar-agent', models: [{ id: 'profile-model', isDefault: true }] }],
-        defaults: [{ runner: 'mar-agent', model: 'workspace-default-model' }]
+        defaults: [{ runner: 'mar-agent', modelId: 'workspace-default-model' }]
       },
       marAgentRuntimeModels: { prepare }
     });
@@ -1782,7 +1789,7 @@ describe('Workspace-bound marctl agents', () => {
     expect(
       requestNode.mock.calls.find(([, operation]) => operation === 'session.start')?.[2]
     ).toMatchObject({
-      model: 'workspace-default-model',
+      modelId: 'workspace-default-model',
       marAgentRuntimeScopeId: 'runtime-workspace-default-model'
     });
     expect(
@@ -1805,7 +1812,7 @@ describe('Workspace-bound marctl agents', () => {
   it('does not prepare a MAR runtime model for a non-MAR Session continuation', async () => {
     const prepare = vi.fn(async () => ({ runtimeScopeId: 'unexpected-scope', models: [] }));
     const { app, headers, requestNode } = await fixture(true, true, {
-      session: { runner: 'codex', model: 'codex-session-model' },
+      session: { runner: 'codex', modelId: 'codex-session-model' },
       marAgentRuntimeModels: { prepare }
     });
     const response = await app.inject({
@@ -2058,7 +2065,7 @@ describe('Workspace-bound marctl agents', () => {
             id: data.sessionId,
             workspaceId: 'workspace',
             runner: 'codex',
-            model: 'test-model'
+            modelId: 'test-model'
           }
         };
       if (operation === 'session.runs')
@@ -2148,7 +2155,7 @@ describe('Workspace-bound marctl agents', () => {
 
   it('allows goal.clear on a Session without an effective model', async () => {
     const { app, headers, requestNode } = await fixture(true, true, {
-      session: { id: 'model-less-agent', runner: 'mar-agent', model: null }
+      session: { id: 'model-less-agent', runner: 'mar-agent', modelId: null }
     });
     const response = await app.inject({
       method: 'POST',

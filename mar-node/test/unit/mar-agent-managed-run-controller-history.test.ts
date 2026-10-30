@@ -319,7 +319,7 @@ describe('MAR Agent managed run projection', () => {
     const session = {
       id: 'session',
       runner: 'mar-agent',
-      model: null,
+      modelId: null,
       effort: null,
       access: null
     } as NodeAgentSession;
@@ -355,7 +355,7 @@ describe('MAR Agent managed run projection', () => {
     const session = {
       id: 'session',
       runner: 'mar-agent',
-      model: null,
+      modelId: null,
       effort: null,
       access: null
     } as NodeAgentSession;
@@ -431,7 +431,7 @@ describe('MAR Agent managed run projection', () => {
     const session = {
       id: 'session',
       runner: 'mar-agent',
-      model: null,
+      modelId: null,
       effort: null,
       access: null
     } as NodeAgentSession;
@@ -546,7 +546,7 @@ describe('MAR Agent managed run projection', () => {
         {
           id: 'session',
           runner: 'mar-agent',
-          model: null,
+          modelId: null,
           effort: null,
           access: null
         } as NodeAgentSession,
@@ -673,7 +673,7 @@ describe('MAR Agent managed run projection', () => {
         {
           id: 'session',
           runner: 'mar-agent',
-          model: null,
+          modelId: null,
           effort: null,
           access: null
         } as NodeAgentSession,
@@ -753,7 +753,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -832,7 +832,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -895,7 +895,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -920,7 +920,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -975,7 +975,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -1377,7 +1377,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
@@ -1489,7 +1489,7 @@ describe('MAR Agent managed run projection', () => {
       {
         id: 'session',
         runner: 'mar-agent',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession,
