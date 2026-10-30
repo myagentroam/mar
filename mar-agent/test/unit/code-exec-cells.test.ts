@@ -425,43 +425,113 @@ describe('Code Exec retained cells', () => {
     }
   });
 
-  it('waits thirty seconds initially but only ten seconds on subsequent default waits', async () => {
-    vi.useFakeTimers();
-    const cells = new CodeCells();
-    let finish!: () => void;
+  it('polls the same retained cell for omitted, null and explicit poll actions without re-executing it', async () => {
+    const host = await fixture();
+    const release = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const input = context();
+    const invoke = vi.fn(async () => {
+      entered.resolve();
+      await release.promise;
+      return { content: 'done' };
+    });
+    input.codeMode!.tools = [applyPatchToolDefinition];
+    input.codeMode!.invoke = invoke;
     try {
-      let settled = false;
-      const starting = cells
-        .start('1', context(), async () => {
-          await new Promise<void>((resolve) => {
-            finish = resolve;
-          });
-          return { content: '' };
-        })
-        .then((result) => {
-          settled = true;
-          return result;
-        });
-      await vi.advanceTimersByTimeAsync(29999);
-      expect(settled).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      const started = await starting;
-      expect(data(started).status).toBe('running');
-      settled = false;
-      const waiting = cells.wait({ cellId: data(started).cellId }, context()).then((result) => {
-        settled = true;
-        return result;
+      const started = await host.executeTool(
+        {
+          name: 'code_exec',
+          arguments:
+            'observe.text("started"); await cell.yield_control(); await tools.apply_patch("fixture"); observe.text("finished");'
+        },
+        input
+      );
+      await entered.promise;
+      const cellId = data(started).cellId;
+      const later = { ...input, executionId: 'later' };
+      for (const action of [{}, { action: null }, { action: 'poll' }]) {
+        const result = await host.executeTool(
+          { name: 'code_exec_wait', arguments: { cellId, yieldMs: 0, ...action } },
+          later
+        );
+        expect(result.data).toMatchObject({ cellId, status: 'running', waitOutcome: 'snapshot' });
+        expect(invoke).toHaveBeenCalledOnce();
+        expect((await host.listSessionResources('session')).codeCells).toMatchObject([
+          { cellId, status: 'running' }
+        ]);
+      }
+      release.resolve();
+      const completed = await host.executeTool(
+        { name: 'code_exec_wait', arguments: { cellId, action: null } },
+        later
+      );
+      expect(completed.data).toMatchObject({
+        cellId,
+        status: 'completed',
+        output: 'finished',
+        cached: false,
+        waitOutcome: 'completion'
       });
-      await vi.advanceTimersByTimeAsync(9999);
-      expect(settled).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(data(await waiting).status).toBe('running');
+      for (const action of [{}, { action: null }, { action: 'poll' }]) {
+        const replay = await host.executeTool(
+          { name: 'code_exec_wait', arguments: { cellId, ...action } },
+          later
+        );
+        expect(replay.data).toMatchObject({ cellId, status: 'completed', cached: true });
+        expect(replay.observations).toEqual(completed.observations);
+      }
+      expect(invoke).toHaveBeenCalledOnce();
     } finally {
-      finish?.();
-      await cells.dispose();
-      vi.useRealTimers();
+      release.resolve();
     }
   });
+
+  it.each([
+    { label: 'omitted', options: {} },
+    { label: 'null', options: { action: null } },
+    { label: 'poll', options: { action: 'poll' } }
+  ])(
+    'waits thirty seconds initially and ten seconds for a $label poll action',
+    async ({ options }) => {
+      vi.useFakeTimers();
+      const cells = new CodeCells();
+      let finish!: () => void;
+      try {
+        let settled = false;
+        const starting = cells
+          .start('1', context(), async () => {
+            await new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+            return { content: '' };
+          })
+          .then((result) => {
+            settled = true;
+            return result;
+          });
+        await vi.advanceTimersByTimeAsync(29999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        const started = await starting;
+        expect(data(started).status).toBe('running');
+        settled = false;
+        const waiting = cells
+          .wait({ cellId: data(started).cellId, ...options }, context())
+          .then((result) => {
+            settled = true;
+            return result;
+          });
+        await vi.advanceTimersByTimeAsync(9999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(data(await waiting).status).toBe('running');
+      } finally {
+        finish?.();
+        await cells.dispose();
+        vi.useRealTimers();
+      }
+    }
+  );
 
   it('returns a nested ten-second wait result without an intermediate cell wait', async () => {
     vi.useFakeTimers();
@@ -825,7 +895,15 @@ describe('Code Exec retained cells', () => {
     ).rejects.toMatchObject({ code: 'MAR_AGENT_CODE_CELL_NOT_FOUND' });
     expect(data(await host.executeTool(wait, context())).status).toBe('failed');
     for (const arguments_ of [
+      {},
+      { action: null },
+      { cellId: null, action: null },
+      { cellId: 1, action: null },
+      { cellId: '', action: null },
       { cellId: data(started).cellId, yieldMs: -1 },
+      { cellId: data(started).cellId, yieldMs: limits.codeMaxWaitYieldMs + 1, action: null },
+      { cellId: data(started).cellId, yieldMs: 0.5, action: null },
+      { cellId: data(started).cellId, action: false },
       { cellId: data(started).cellId, action: 'unknown' }
     ])
       await expect(
