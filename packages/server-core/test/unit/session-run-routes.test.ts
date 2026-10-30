@@ -731,7 +731,7 @@ describe('shared ordinary Session and Run routes', () => {
         cwd: '/workspace',
         clientMessageId: 'auto-start',
         content: 'private request',
-        model: 'selected-model',
+        modelId: 'selected-model',
         access: 'auto'
       }
     });
@@ -837,7 +837,7 @@ describe('shared ordinary Session and Run routes', () => {
       payload: {
         nodeId: 'node-one',
         workspaceId: 'workspace-one',
-        model: 'gpt-5.6-terra',
+        modelId: 'gpt-5.6-terra',
         effort: '',
         access: 'workspace-write'
       }
@@ -850,7 +850,7 @@ describe('shared ordinary Session and Run routes', () => {
       'session.config.update',
       expect.objectContaining({
         sessionId: 'session-one',
-        model: 'gpt-5.6-terra',
+        modelId: 'gpt-5.6-terra',
         effort: '',
         access: 'workspace-write',
         secretEnvironment: { FIXTURE_TOKEN: 'private-value' }
@@ -951,7 +951,7 @@ describe('shared ordinary Session and Run routes', () => {
       method: 'POST',
       url: commandUrl,
       headers,
-      payload: { nodeId: 'node-one', commandId: 'compact', input: '/compact', model: 'selected' }
+      payload: { nodeId: 'node-one', commandId: 'compact', input: '/compact', modelId: 'selected' }
     });
     expect(modelWithoutWorkspace.statusCode).toBe(400);
     expect(modelWithoutWorkspace.json().error.code).toBe('RUNNER_COMMAND_INVALID');
@@ -968,7 +968,7 @@ describe('shared ordinary Session and Run routes', () => {
         workspaceId: 'workspace-one',
         commandId: 'compact',
         input: '/compact',
-        model: 'selected'
+        modelId: 'selected'
       }
     });
     expect(withWorkspace.statusCode).toBe(202);
@@ -1144,7 +1144,7 @@ describe('MAR Agent runtime model payload forwarding', () => {
         cwd: '/workspace',
         clientMessageId: 'client-1',
         content: 'begin the task',
-        model: 'main-model'
+        modelId: 'main-model'
       }
     });
     expect(response.statusCode).toBe(201);
@@ -1182,7 +1182,7 @@ describe('MAR Agent runtime model payload forwarding', () => {
         cwd: '/workspace',
         clientMessageId: 'client-2',
         content: 'begin the task',
-        model: 'main-model'
+        modelId: 'main-model'
       }
     });
     expect(response.statusCode).toBe(201);
