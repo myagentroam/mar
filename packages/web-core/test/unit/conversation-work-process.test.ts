@@ -676,6 +676,34 @@ describe('Conversation work process blocks', () => {
     });
   });
 
+  it('keeps Agent calls independent under one stable category across segments', () => {
+    const groupId = 'agent-process';
+    const first = item('agent-first', 'tool_call', {
+      processGroup: { id: groupId, isStart: true },
+      status: 'IN_PROGRESS',
+      payload: { toolName: 'agent_start', agentOperation: { action: 'START', targets: [] } }
+    });
+    const second = item('agent-second', 'tool_call', {
+      processGroup: { id: groupId },
+      status: 'FAILED',
+      payload: {
+        toolName: 'agent_wait',
+        agentOperation: { action: 'WAIT', targets: [{ agentId: 'other' }] }
+      }
+    });
+    const blocks = conversationWorkProcessBlocks([
+      turn([first]),
+      turn([second], { id: 'segment-2', segmentIndex: 1 })
+    ]);
+    const entries = processBlock(blocks, groupId).entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.displayItem).toMatchObject({
+      type: 'subagent_group',
+      id: 'agent-first',
+      items: [first, second]
+    });
+  });
+
   it('keeps an unknown prefix without process metadata flat instead of inferring membership', () => {
     const blocks = conversationWorkProcessBlocks([
       turn([

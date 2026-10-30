@@ -10,11 +10,7 @@ import { conversationPayload } from './conversation-history.js';
 import type { Approval, ConversationItem } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
-import {
-  agentOperation,
-  agentOperationIdentity,
-  agentOperationTargets
-} from './agent-operation-presentation.js';
+import { agentOperation, agentOperationTargets } from './agent-operation-presentation.js';
 import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
@@ -290,11 +286,10 @@ export function aggregateConversationDisplayItems(
     // Independent tool rows and task lists do not split categories in the same process.
     if (
       groupId &&
-      ((entry.type === 'subagent_group' && !agentOperationIdentity(item.payload)) ||
-        (entry.type === 'item' &&
-          item.permissionStop === undefined &&
-          (item.kind === 'todo_list' ||
-            (item.kind === 'tool_call' && toolPresentation(item.payload) !== undefined))))
+      entry.type === 'item' &&
+      item.permissionStop === undefined &&
+      (item.kind === 'todo_list' ||
+        (item.kind === 'tool_call' && toolPresentation(item.payload) !== undefined))
     ) {
       result.push(entry);
       continue;
@@ -306,8 +301,7 @@ export function aggregateConversationDisplayItems(
     }
     const key = JSON.stringify([
       entry.type,
-      entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null,
-      entry.type === 'subagent_group' ? agentOperationIdentity(item.payload) : null
+      entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null
     ]);
     const index = anchors.get(key);
     const previous = index === undefined ? undefined : result[index];
@@ -504,13 +498,13 @@ export function conversationItemText(
         return translate('generated.conversationPresentation.stopped');
       return translate('nodeMessages.imageGenerationCompleted');
     }
-    if (toolPresentation(payload)) return toolPresentationText(payload, status ?? 'COMPLETED');
     const toolName = stringField(value, 'toolName');
     const title = stringField(value, 'title');
     if (isSubagentToolCall(value)) {
       const taskTitle = subagentTaskTitle(value);
-      return [subagentOperationText(value), taskTitle].filter(Boolean).join(' ');
+      return [rawTextField(value, 'toolName').trim(), taskTitle].filter(Boolean).join(' ');
     }
+    if (toolPresentation(payload)) return toolPresentationText(payload, status ?? 'COMPLETED');
     if (toolName.length > 0) return toolName;
     if (title.length > 0) return title;
     return stringField(value, 'namespace');
@@ -723,22 +717,6 @@ export function subagentOperationText(payload: unknown): string {
   );
 }
 
-export function subagentGroupText(items: readonly ConversationItem[]): string {
-  const latest = items.at(-1);
-  if (latest === undefined) return '';
-  const named = [...items].reverse().find((item) => {
-    const value = conversationPayload(item.payload);
-    return (
-      agentOperation(value)?.targets.some((target) => Boolean(target.title)) ||
-      (value !== undefined &&
-        stringField(value, 'title').length > 0 &&
-        stringField(value, 'title').toLowerCase() !== stringField(value, 'toolName').toLowerCase())
-    );
-  });
-  const value = conversationPayload((named ?? latest).payload) ?? {};
-  return subagentTaskTitle(value);
-}
-
 function subagentToolDetail(value: Record<string, unknown>): string {
   const detailField = (label: string, text: string) => (text ? `${label}: ${text}` : '');
   const operation = agentOperation(value);
@@ -792,15 +770,15 @@ function subagentToolDetail(value: Record<string, unknown>): string {
 
 function subagentTaskTitle(value: Record<string, unknown>): string {
   const agent = agentOperation(value);
-  if (agent) {
-    if (agent.action === 'LIST') return agent.scope ?? subagentOperationText(value);
-    if (agent.targets.length > 0)
-      return agent.targets.map((target) => target.title ?? target.agentId).join(', ');
-  }
-  const toolName = stringField(value, 'toolName');
-  const title = stringField(value, 'title');
+  if (agent)
+    return agent.targets
+      .map((target) => target.title?.trim() ?? '')
+      .filter(Boolean)
+      .join(', ');
+  const toolName = rawTextField(value, 'toolName').trim();
+  const title = rawTextField(value, 'title').trim();
   if (title.length > 0 && title.toLowerCase() !== toolName.toLowerCase()) return title;
-  return stringField(value, 'subagentId') || toolName || translate('presentation.subagentTask');
+  return '';
 }
 
 export interface TaskListEntry {

@@ -59,8 +59,6 @@ import {
   conversationItemLabel,
   composerMessageSource,
   conversationItemText,
-  subagentGroupText,
-  subagentOperationText,
   conversationErrorCodeVisible,
   conversationErrorPresentation,
   planSteps,
@@ -725,9 +723,6 @@ function stepDuration(item: ConversationItem): string | undefined {
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
-              <span class="conversation-record-preview">{{
-                subagentGroupText(displayItem.items)
-              }}</span>
               <span class="conversation-group-meta">{{
                 translate('presentation.subagentOperationCount', {
                   count: displayItem.items.length
@@ -746,7 +741,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 <summary class="mar-disclosure-summary">
                   <MarIcon class="mar-disclosure-icon" name="chevron-right" />
                   <span class="conversation-tool-preview">{{
-                    subagentOperationText(toolItem.payload)
+                    conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)
                   }}</span>
                   <span class="conversation-record-meta">{{
                     toolPresentationStatus(toolItem.status)

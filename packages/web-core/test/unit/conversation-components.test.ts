@@ -790,7 +790,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       runs: [{ id: 'run-1', status: 'RUNNING' }]
     });
     expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(1);
-    expect(html).toContain('Review integration');
+    expect(html).not.toContain('Review integration');
     expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
     expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
     for (const status of ['running', 'failed', 'completed'])
