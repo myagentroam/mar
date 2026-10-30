@@ -121,6 +121,6 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   outline-offset: -2px;
 }
 .group-markers {
-  margin-inline-start: 0.125rem;
+  margin-inline-start: 0.25rem;
 }
 </style>

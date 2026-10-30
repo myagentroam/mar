@@ -7,8 +7,6 @@ import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
-import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
-import { showMessage } from '../../src/service/message-feedback-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 
 const mobile = matchMedia('(max-width: 767px)').matches;
@@ -97,28 +95,6 @@ function openTarget(sessionId: string): void {
 const shown = computed(() =>
   sessions.value.filter((session) => session.sessionGroup === group.value)
 );
-const actions = createWorkbenchEntityService({
-  loading: ref(false),
-  workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
-  renewCsrfToken: async () => 'fixture',
-  sessionPathId: encodeURIComponent,
-  nodeLabel: () => 'Node',
-  sessionTitle: (session) => session.id,
-  errorMessage: String,
-  notice: (text, type) => showMessage(text, type),
-  request: async <T,>(path: string, init?: RequestInit) => {
-    if (path.includes('/metadata') && JSON.parse(String(init?.body)).clearParent === true) {
-      const session = { ...sessions.value[1]!, sessionGroup: 'MAIN' as const };
-      return { session } as T;
-    }
-    return {} as T;
-  }
-});
-async function move(session: Session) {
-  const updated = await actions.moveSessionToMain(session);
-  if (updated)
-    sessions.value = sessions.value.map((item) => (item.id === updated.id ? updated : item));
-}
 const props = {
   mobileViewport: mobile,
   canLoadMore: false,
@@ -168,7 +144,6 @@ const props = {
         @activate-group-marker="activateMarker"
         @open="selected = $event"
         @open-tree="treeSession = $event"
-        @move-to-main="move"
       />
     </aside>
     <section class="conversation">
