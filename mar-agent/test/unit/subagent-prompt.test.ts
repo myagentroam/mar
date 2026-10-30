@@ -27,6 +27,8 @@ it.each([false, true])(
       expect(instructions.match(/# Delegation and coordination/gu)).toHaveLength(1);
       expect(instructions).toContain('Keep simple or tightly coupled work local.');
       expect(instructions).toContain('a read-only boundary or non-overlapping write scope');
+      expect(instructions).toContain('Follow up through the direct delegate by default');
+      expect(instructions).toContain('only when a concrete issue needs independent verification');
       expect(instructions).toContain('Do not redo delegated work.');
       expect(instructions).toContain('Wait only when the next step needs the result.');
       expect(instructions).toContain('retain responsibility for the final result');

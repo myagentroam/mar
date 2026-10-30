@@ -31,9 +31,7 @@ it('publishes default steer and opt-in queue guidance in the native send tool', 
     hooks: { intercept() {} }
   } as never);
   const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
-  expect(send.description).toContain(
-    'explicitly set deliveryIntent to REPLACE_CURRENT (steer) by default'
-  );
+  expect(send.description).toContain('Messages default to REPLACE_CURRENT (steer)');
   expect(send.description).toContain(
     'use QUEUE only when deferred delivery is explicitly requested'
   );
@@ -42,6 +40,14 @@ it('publishes default steer and opt-in queue guidance in the native send tool', 
   );
   expect(send.description).not.toContain('subscribe');
   expect(send.description).toContain('an active Goal must exit first');
+  const list = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_list');
+  expect(new Set(Object.keys(list.inputSchema.properties))).toEqual(
+    new Set(['scope', 'agentId', 'runner', 'query', 'limit', 'cursor'])
+  );
+  expect(list.description).toContain('List direct children by default');
+  expect(list.inputSchema.properties.agentId.description).toContain(
+    'Root for children or descendants'
+  );
 });
 
 it('publishes paired full MCP and management-only Host guidance without credentials', async () => {
