@@ -177,7 +177,7 @@ describe('bounded marctl Session views', () => {
         'runner',
         'status',
         'runId',
-        'model',
+        'modelId',
         'effort',
         'queuedCount',
         'latestMessage',

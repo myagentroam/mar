@@ -86,7 +86,7 @@ describe('Workspace execution directory admission', () => {
         const result = (await node.executeNodeOperation('session.create', {
           workspaceId: workspace.id,
           runner,
-          model: 'test-model',
+          modelId: 'test-model',
           cwd: join(a, 'sub')
         })) as { session: { cwd: string; workspaceId: string } };
         expect(result.session).toMatchObject({ cwd: join(a, 'sub'), workspaceId: workspace.id });

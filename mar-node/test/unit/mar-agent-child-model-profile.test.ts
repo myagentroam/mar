@@ -41,7 +41,7 @@ describe('MAR Agent child model profile', () => {
       runner.configureModels(display);
       expect(() => runner.assertChildModel('allowed', authorized)).not.toThrow();
       expect(runner.defaultConfiguration(undefined, undefined, authorized)).toMatchObject({
-        model: 'allowed',
+        modelId: 'allowed',
         effort: 'high'
       });
       expect(() => runner.assertChildModel('allowed', runner.prepareExecutionContext({}))).toThrow(
@@ -93,7 +93,7 @@ describe('MAR Agent child model profile', () => {
     });
     runner.configureModels([parent]);
     expect(runner.defaultConfiguration(undefined, undefined, context)).toMatchObject({
-      model: 'target-default',
+      modelId: 'target-default',
       effort: 'medium'
     });
     expect(() => runner.assertChildModel('target-default', context)).toThrow(
