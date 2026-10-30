@@ -21,6 +21,8 @@ const parameters = new URL(location.href).searchParams;
 const underflow = parameters.has('underflow');
 const historyHeight = ref(underflow ? 80 : 4000);
 const initialPending = ref(underflow);
+const initialFailed = ref(parameters.has('initial-failed'));
+const initialRequests = ref(0);
 const olderPending = ref(false);
 const olderError = ref('');
 const contextKey = ref(0);
@@ -229,13 +231,14 @@ onMounted(async () => {
     <output data-testid="loading">{{ loading }}</output>
     <output data-testid="opened">{{ opened }}</output>
     <output data-testid="older-requests">{{ olderRequests }}</output>
+    <output data-testid="initial-requests">{{ initialRequests }}</output>
     <output data-testid="guarded-interruption">{{ guardedAtInterruption }}</output>
     <section class="scroll-fixture">
       <ConversationScroll
         :context-key="String(contextKey)"
         :has-older="!parameters.has('no-older')"
         :loading-initial="initialPending"
-        :initial-load-failed="parameters.has('initial-failed')"
+        :initial-load-failed="initialFailed"
         :loading-older="olderPending"
         :older-error="olderError"
         :has-turns="true"
@@ -249,6 +252,11 @@ onMounted(async () => {
           olderError = '';
         "
         @latest="scroll.scrollToLatest"
+        @reload="
+          initialRequests++;
+          initialPending = true;
+          initialFailed = false;
+        "
       >
         <div ref="history" class="history" :style="{ height: `${historyHeight}px` }">
           <p>Latest cached message</p>

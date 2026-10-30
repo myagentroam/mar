@@ -16,7 +16,6 @@ import { createMcpCenterService } from '../../service/mcp-center-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { errorMessage } from '../../util/error-presentation.js';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
@@ -666,19 +665,21 @@ function submitSessionSearch(): void {
         :aria-busy="loadingMore"
       >
         <span
-          v-if="loadingMore"
+          v-if="loadingMore && !retryingAppend"
           role="status"
           :aria-label="translate('generated.workspaceSessionList.loading')"
           ><BusyIndicator class="read-loading-indicator"
         /></span>
-        <span v-if="loadMoreError !== undefined">{{ errorMessage(loadMoreError) }}</span>
         <el-button
-          v-if="loadMoreError !== undefined || retryingAppend"
+          v-if="retryingAppend || (loadMoreError !== undefined && !loadingMore)"
           link
           :aria-disabled="loadingMore"
+          :aria-busy="loadingMore"
+          :aria-label="loadingMore ? translate('common.loading') : undefined"
           @click="retryAppend"
         >
-          {{ translate('common.retry') }}
+          <BusyIndicator v-if="loadingMore" class="read-loading-indicator" />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
       </li>
     </ul>

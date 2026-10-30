@@ -4,7 +4,12 @@ export const workbenchPageEnUS = {
     closeSidebar: 'Close sidebar',
     closeWorkspaceTools: 'Close workspace tools'
   },
-  common: { loading: 'Loading…', retry: 'Retry', webReady: 'Web Console ready' },
+  common: {
+    loading: 'Loading…',
+    retry: 'Retry',
+    loadFailedRetry: 'Failed to load. Retry',
+    webReady: 'Web Console ready'
+  },
   navigation: {
     nodeManagement: 'Nodes',
     workspaceManagement: 'Workspaces',

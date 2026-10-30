@@ -1693,13 +1693,14 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     .toBeLessThanOrEqual(28);
 
   const loadEarlier = page.getByRole('button', { name: '加载更早记录' });
-  await expect(loadEarlier).toBeVisible();
+  await expect(loadEarlier).toHaveCount(0);
   await conversationScroll.evaluate((element) => {
     element.scrollTop = 0;
     element.dispatchEvent(new Event('scroll'));
   });
   const retryOlder = conversationScroll.locator('[data-history-action="retry"]');
   await expect(retryOlder).toBeVisible();
+  await expect(retryOlder).toHaveText('加载失败，点击重试');
   await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
   await expect(retryOlder).toBeEnabled();
   expect(olderHistoryReads).toBe(1);
@@ -1994,7 +1995,9 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     .toBeLessThanOrEqual(28);
 
   await page.getByPlaceholder('发送消息给 MAR Agent').fill('继续检查测试结果。');
-  await expect(page.getByLabel('已加载对话模板“代码审查”')).toContainText('代码审查');
+  await expect(page.getByRole('button', { name: '加载模板', exact: true })).toContainText(
+    '代码审查'
+  );
   await page.getByPlaceholder('发送消息给 MAR Agent').press('Control+Enter');
 
   await expect

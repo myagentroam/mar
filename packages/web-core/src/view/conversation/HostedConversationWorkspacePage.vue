@@ -1113,21 +1113,30 @@ onBeforeUnmount(() => {
           :aria-busy="workspace.loadingMoreConversations.value"
         >
           <span
-            v-if="workspace.loadingMoreConversations.value"
+            v-if="workspace.loadingMoreConversations.value && !retryingDirectory"
             role="status"
             :aria-label="translate('common.loading')"
             ><BusyIndicator class="read-loading-indicator"
           /></span>
-          <span v-if="workspace.loadMoreConversationsError.value" role="status">{{
-            hostedErrorMessage(workspace.loadMoreConversationsError.value)
-          }}</span>
           <el-button
-            v-if="workspace.loadMoreConversationsError.value || retryingDirectory"
+            v-if="
+              retryingDirectory ||
+              (workspace.loadMoreConversationsError.value &&
+                !workspace.loadingMoreConversations.value)
+            "
             link
             :aria-disabled="workspace.loadingMoreConversations.value"
+            :aria-busy="workspace.loadingMoreConversations.value"
+            :aria-label="
+              workspace.loadingMoreConversations.value ? translate('common.loading') : undefined
+            "
             @click="retryDirectoryAppend"
           >
-            {{ translate('common.retry') }}
+            <BusyIndicator
+              v-if="workspace.loadingMoreConversations.value"
+              class="read-loading-indicator"
+            />
+            <template v-else>{{ translate('common.loadFailedRetry') }}</template>
           </el-button>
         </div>
       </div>

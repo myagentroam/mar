@@ -3382,7 +3382,7 @@ for (const mobile of [false, true]) {
       hasTouch: mobile
     });
 
-    test('Retains retry focus and updates pending history labels across locales', async ({
+    test('Keeps retries focused and shows only rings while history loads across locales', async ({
       page
     }, testInfo) => {
       await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -3450,6 +3450,7 @@ for (const mobile of [false, true]) {
       await retry.press('Enter');
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-busy', 'true');
+      await expect(retry).toHaveText('');
       await expect(retry.locator('.busy-indicator')).toHaveCount(1);
       await expect(page.locator('.conversation-loading-initial .busy-indicator')).toHaveCount(0);
       await expect.poll(() => initialAttempts).toBe(2);
@@ -3476,19 +3477,16 @@ for (const mobile of [false, true]) {
       await expect(page.getByText('Short history', { exact: true })).toBeVisible();
       await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
       await expect.poll(() => olderAttempts).toBe(1);
-      const older = page.locator('.conversation-history-control button');
-      await expect(older).toBeVisible();
-      await expect(older).toHaveAttribute('aria-disabled', 'false');
       const scroll = page.locator('.conversation-scroll');
+      const history = scroll.locator('.conversation-history-control');
+      await expect(history).toHaveText('');
+      await expect(history.locator('button')).toHaveCount(0);
       expect(await scroll.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
         true
       );
-      if (mobile) await older.tap();
-      else {
-        await older.focus();
-        await older.press('Enter');
-      }
-      await expect(older).toHaveAttribute('aria-disabled', 'true');
+      await scroll.focus();
+      await scroll.press('PageUp');
+      await expect(history).toHaveAttribute('aria-busy', 'true');
       // Reproduce the supported cross-tab locale update without reloading the pending request.
       await page.evaluate(() =>
         window.dispatchEvent(
@@ -3498,31 +3496,25 @@ for (const mobile of [false, true]) {
           })
         )
       );
-      await expect(older).toHaveText('Load earlier messages');
-      if (!mobile) await expect(older).toBeFocused();
-      await expect(
-        page.locator('.conversation-history-control > [role="status"] .busy-indicator')
-      ).toHaveCount(0);
-      await expect(older.locator('.busy-indicator')).toHaveCount(1);
+      await expect(history).toHaveText('');
+      await expect(scroll.getByRole('status', { name: 'Loading earlier messages…' })).toBeVisible();
+      await expect(scroll).toBeFocused();
+      await expect(history.locator('.busy-indicator')).toHaveCount(1);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      await expect(older.locator('.busy-indicator')).toHaveCSS(
+      await expect(history.locator('.busy-indicator')).toHaveCSS(
         'animation-name',
         'busy-indicator-spin'
       );
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await expect(older.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(history.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await expect.poll(() => olderAttempts).toBe(2);
       await page.screenshot({ path: testInfo.outputPath('history-pending.png') });
-      if (mobile) {
-        const bounds = await older.boundingBox();
-        if (!bounds) throw new Error('Pending history action is not visible');
-        await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-      } else await older.press('Enter');
+      await scroll.press('PageUp');
       expect(olderAttempts).toBe(2);
       releaseOlder();
-      await expect(older).toHaveCount(0);
-      await expect(page.locator('.conversation-history-start')).toBeVisible();
+      await expect(history).toHaveCount(0);
+      await expect(page.locator('.conversation-history-start')).toHaveCount(0);
       await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
     });
   });
@@ -3675,18 +3667,20 @@ test('Opening a session loads only the latest window without initial scroll back
       await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
     }
   });
-  const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
-  await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
-  await loadOlderButton.press('Enter');
-  await expect(loadOlderButton.locator('.busy-indicator')).toBeVisible();
+  await expect(page.getByRole('button', { name: '加载更早记录' })).toHaveCount(0);
+  await conversationScroll.focus();
+  await conversationScroll.press('Home');
+  const historyLoading = page.locator('.conversation-history-control .busy-indicator');
+  await expect(historyLoading).toBeVisible();
+  await expect(page.locator('.conversation-history-control')).toHaveText('');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect(loadOlderButton.locator('.busy-indicator')).not.toHaveCSS('animation-name', 'none');
+  await expect(historyLoading).not.toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(loadOlderButton.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+  await expect(historyLoading).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
   expect(
-    await loadOlderButton.locator('.busy-indicator').evaluate((element) => {
+    await historyLoading.evaluate((element) => {
       const reference = document.createElement('span');
       reference.style.color = 'var(--mar-color-brand-text)';
       element.append(reference);
@@ -3695,18 +3689,20 @@ test('Opening a session loads only the latest window without initial scroll back
       return getComputedStyle(element).color === expected;
     })
   ).toBe(true);
-  await expect(loadOlderButton).toBeFocused();
-  await expect(loadOlderButton).toHaveAttribute('aria-disabled', 'true');
-  await loadOlderButton.press('Enter');
+  await expect(conversationScroll).toBeFocused();
+  await expect(page.locator('.conversation-history-control')).toHaveAttribute('aria-busy', 'true');
+  await conversationScroll.press('Home');
   expect(olderAttempts).toBe(1);
   releaseOlder();
-  await expect(page.locator('.conversation-history-error')).toContainText('无法加载更早会话记录');
+  await expect(page.locator('.conversation-history-error')).toHaveText('加载失败，点击重试');
   await conversationScroll.evaluate((element) => element.dispatchEvent(new Event('scroll')));
-  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeFocused();
+  const retryOlder = page.locator('.conversation-history-control button');
+  await expect(retryOlder).toBeVisible();
   expect(olderAttempts).toBe(1);
-  await page.getByRole('button', { name: '重试', exact: true }).click();
-  await expect(page.getByText('已到最早消息', { exact: true })).toBeVisible();
+  await retryOlder.click();
+  await expect(page.locator('.conversation-history-control')).toHaveCount(0);
+  await expect(page.getByText('已到最早消息', { exact: true })).toHaveCount(0);
+  await expect(conversationScroll).toBeFocused();
   expect(olderAttempts).toBe(2);
   await expect(page.locator('.conversation-history-error')).toHaveCount(0);
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
@@ -3737,6 +3733,9 @@ test('Switching from a paginated session to a new draft hides history backfill',
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await page.route('**/api/agent-sessions/session-1/turns*', (route) =>
+    json(route, { segments: [], nextCursor: 'older-page', snapshotSequence: 2 })
+  );
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(
       page,
@@ -3773,13 +3772,14 @@ test('Switching from a paginated session to a new draft hides history backfill',
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  const loadEarlier = page.getByRole('button', { name: '加载更早记录' });
-  await expect(loadEarlier).toBeVisible();
-  await expect(loadEarlier).toHaveClass(/\bis-link\b/u);
+  const historyTrigger = page.locator('.conversation-history-control');
+  await expect(historyTrigger).toBeVisible();
+  await expect(historyTrigger.locator('button')).toHaveCount(0);
 
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();
+  await expect(historyTrigger).toHaveCount(0);
   await expect(page.getByRole('button', { name: '加载更早记录' })).toHaveCount(0);
 });
 

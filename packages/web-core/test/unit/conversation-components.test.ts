@@ -1070,9 +1070,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loading).not.toContain(
       i18n.global.t('generated.conversationScroll.loadEarlierMessages')
     );
-    expect(failed).toContain(
-      i18n.global.t('generated.conversationScroll.reloadConversationHistory')
-    );
+    expect(loading).not.toContain(i18n.global.t('common.loadFailedRetry'));
+    expect(failed).toContain(i18n.global.t('common.loadFailedRetry'));
     expect(failed).not.toContain(i18n.global.t('generated.conversationScroll.loadEarlierMessages'));
   });
 
@@ -1108,7 +1107,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       /<button(?=[^>]*class="[^"]*\bel-button\b)(?=[^>]*class="[^"]*\bis-round\b)(?=[^>]*class="[^"]*\bconversation-latest\b)[^>]*>/u
     );
     expect(following).not.toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
-    expect(following).toContain(i18n.global.t('conversationActivity.historyStart'));
+    expect(following).not.toContain(i18n.global.t('conversationActivity.historyStart'));
   });
 
   it('renders older-page retry inline without confusing it with initial loading', async () => {
@@ -1121,12 +1120,28 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       following: false,
       olderError: 'PAGE_FAILED <details>'
     });
-    expect(html).toContain('PAGE_FAILED &lt;details&gt;');
-    expect(html).toContain(i18n.global.t('conversationActivity.retry'));
+    expect(html).not.toContain('PAGE_FAILED');
+    expect(html).toContain(i18n.global.t('common.loadFailedRetry'));
     expect(html).not.toContain(
       i18n.global.t('generated.conversationScroll.reloadConversationHistory')
     );
     expect(html).not.toContain(i18n.global.t('conversationActivity.historyStart'));
+  });
+
+  it('keeps the idle history trigger silent without a load button or beginning notice', async () => {
+    const html = await render(ConversationScroll, {
+      hasOlder: true,
+      loadingInitial: false,
+      initialLoadFailed: false,
+      loadingOlder: false,
+      hasTurns: true,
+      following: true
+    });
+    expect(html).toContain('conversation-history-control');
+    expect(html).not.toContain(i18n.global.t('generated.conversationScroll.loadEarlierMessages'));
+    expect(html).not.toContain(i18n.global.t('common.loadFailedRetry'));
+    expect(html).not.toContain(i18n.global.t('conversationActivity.historyStart'));
+    expect(html).not.toContain('busy-indicator');
   });
 
   it('renders the same completed round duration with and without runtime Run metadata', async () => {
@@ -1203,12 +1218,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(partial).not.toContain('class="conversation-run-duration"');
   });
 
-  it('uses a standard link button only when earlier history and displayed turns exist', async () => {
+  it('uses a retry link only for a failed page with earlier history and displayed turns', async () => {
     const props = {
       hasOlder: true,
       loadingInitial: false,
       initialLoadFailed: false,
       loadingOlder: false,
+      olderError: 'PAGE_FAILED',
       hasTurns: true,
       following: true
     };
@@ -1218,9 +1234,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
     for (const state of [{ hasOlder: false }, { hasTurns: false }]) {
       const hidden = await render(ConversationScroll, { ...props, ...state });
-      expect(hidden).not.toContain(
-        i18n.global.t('generated.conversationScroll.loadEarlierMessages')
-      );
+      expect(hidden).not.toContain(i18n.global.t('common.loadFailedRetry'));
     }
   });
 

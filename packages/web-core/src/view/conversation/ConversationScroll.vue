@@ -37,6 +37,7 @@ const emit = defineEmits<{
 const region = ref<HTMLElement>();
 const element = ref<HTMLElement>();
 const content = ref<HTMLElement>();
+const historyMarker = ref<HTMLElement>();
 let contentObserver: ResizeObserver | undefined;
 let renderedEmpty = false;
 let previousComposerRect: DOMRect | undefined;
@@ -48,6 +49,15 @@ let touchY: number | undefined;
 let scrollbarPointerY: number | undefined;
 let initialLayoutChecked = false;
 let initialLayoutFrame: number | undefined;
+
+function historyMarkerVisible(): boolean {
+  const current = element.value;
+  const marker = historyMarker.value;
+  if (current === undefined || current.clientHeight === 0 || marker === undefined) return false;
+  const markerRect = marker.getBoundingClientRect();
+  const viewport = current.getBoundingClientRect();
+  return markerRect.bottom > viewport.top && markerRect.top < viewport.bottom;
+}
 
 function scheduleInitialHistoryCheck(): void {
   if (initialLayoutChecked || initialLayoutFrame !== undefined) return;
@@ -65,18 +75,17 @@ function scheduleInitialHistoryCheck(): void {
     )
       return;
     initialLayoutChecked = true;
-    const button = current.querySelector(
-      '.conversation-history-control button[data-history-action="load"]'
-    );
-    const buttonRect = button?.getBoundingClientRect();
-    const viewport = current.getBoundingClientRect();
-    if (buttonRect && buttonRect.bottom > viewport.top && buttonRect.top < viewport.bottom)
-      emit('loadOlder');
+    if (!props.olderError && historyMarkerVisible()) void loadOlder();
   });
 }
 
+function onUpwardIntent(): void {
+  emit('scrollIntent');
+  if (!props.olderError && historyMarkerVisible()) void loadOlder();
+}
+
 function onWheel(event: WheelEvent): void {
-  if (event.deltaY < 0) emit('scrollIntent');
+  if (event.deltaY < 0) onUpwardIntent();
 }
 
 function onTouchStart(event: TouchEvent): void {
@@ -85,7 +94,7 @@ function onTouchStart(event: TouchEvent): void {
 
 function onTouchMove(event: TouchEvent): void {
   const nextY = event.touches[0]?.clientY;
-  if (nextY !== undefined && touchY !== undefined && nextY > touchY) emit('scrollIntent');
+  if (nextY !== undefined && touchY !== undefined && nextY > touchY) onUpwardIntent();
   touchY = nextY;
 }
 
@@ -98,7 +107,7 @@ function onScrollKeydown(event: KeyboardEvent): void {
   )
     return;
   if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey))
-    emit('scrollIntent');
+    onUpwardIntent();
 }
 
 function onScrollbarPointerdown(event: PointerEvent): void {
@@ -121,12 +130,15 @@ function onScrollbarPointerdown(event: PointerEvent): void {
       scrollbarPointerY = event.clientY;
     return;
   }
-  if (event.clientX >= right - scrollbarWidth && event.clientX < right) emit('scrollIntent');
+  if (event.clientX >= right - scrollbarWidth && event.clientX < right) {
+    scrollbarPointerY = event.clientY;
+    emit('scrollIntent');
+  }
 }
 
 function onScrollbarPointermove(event: PointerEvent): void {
   if (scrollbarPointerY === undefined) return;
-  if (event.buttons === 1 && event.clientY < scrollbarPointerY) emit('scrollIntent');
+  if (event.buttons === 1 && event.clientY < scrollbarPointerY) onUpwardIntent();
   scrollbarPointerY = event.buttons === 1 ? event.clientY : undefined;
 }
 
@@ -152,20 +164,23 @@ watch(
   () => props.loadingInitial,
   (loading) => {
     if (loading) initialLayoutChecked = false;
-    if (!loading) reloading.value = false;
+    if (!loading) {
+      const button = element.value?.querySelector('.conversation-reload');
+      if (reloading.value && !props.initialLoadFailed && button === document.activeElement)
+        element.value?.focus({ preventScroll: true });
+      reloading.value = false;
+    }
   }
 );
 watch(
   () => props.loadingOlder,
   (loading) => {
     if (loading) initialLayoutChecked = true;
-    if (!loading) olderAction.value = undefined;
-    else if (typeof document !== 'undefined') {
+    if (!loading) {
       const button = element.value?.querySelector('.conversation-history-control button');
-      // Focusing an offscreen button can scroll to the automatic pagination boundary.
-      if (button && button === document.activeElement)
-        olderAction.value ??=
-          button.getAttribute('data-history-action') === 'retry' ? 'retry' : 'load';
+      if (!props.olderError && button === document.activeElement)
+        element.value?.focus({ preventScroll: true });
+      olderAction.value = undefined;
     }
   }
 );
@@ -179,7 +194,14 @@ async function reload(): Promise<void> {
 }
 
 async function loadOlder(): Promise<void> {
-  if (props.loadingOlder || olderAction.value !== undefined) return;
+  if (
+    props.loadingInitial ||
+    props.initialLoadFailed ||
+    !props.hasOlder ||
+    props.loadingOlder ||
+    olderAction.value !== undefined
+  )
+    return;
   olderAction.value = props.olderError ? 'retry' : 'load';
   emit('loadOlder');
   await nextTick();
@@ -267,6 +289,7 @@ onBeforeUnmount(() => {
     <div
       ref="element"
       class="conversation-scroll"
+      tabindex="0"
       @scroll="emit('scroll')"
       @wheel.passive="onWheel"
       @touchstart.passive="onTouchStart"
@@ -283,7 +306,7 @@ onBeforeUnmount(() => {
         :class="{ 'is-empty': showEmptyPrompt }"
       >
         <div
-          v-if="loadingInitial && !reloading"
+          v-if="loadingInitial && !initialLoadFailed && !reloading"
           class="conversation-load-older conversation-loading-initial"
           role="status"
           aria-live="polite"
@@ -299,21 +322,33 @@ onBeforeUnmount(() => {
           native-type="button"
           :aria-disabled="loadingInitial || reloading"
           :aria-busy="loadingInitial || reloading"
+          :aria-label="
+            loadingInitial || reloading
+              ? translate('generated.conversationScroll.loadingConversationHistory')
+              : undefined
+          "
           @click="reload"
         >
-          <template v-if="loadingInitial || reloading" #icon>
-            <BusyIndicator class="history-busy-indicator read-loading-indicator" />
-          </template>
-          {{ translate('generated.conversationScroll.reloadConversationHistory') }}
+          <BusyIndicator
+            v-if="loadingInitial || reloading"
+            class="history-busy-indicator read-loading-indicator"
+          />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
         <div
-          v-if="!loadingInitial && !initialLoadFailed && !reloading && hasOlder && hasTurns"
+          v-if="
+            !loadingInitial &&
+            !initialLoadFailed &&
+            !reloading &&
+            (hasOlder || olderAction === 'retry') &&
+            hasTurns
+          "
+          ref="historyMarker"
           class="conversation-history-control"
-          :aria-busy="loadingOlder"
+          :aria-busy="loadingOlder || olderAction !== undefined"
         >
-          <p v-if="olderError" class="conversation-history-error" role="status">{{ olderError }}</p>
           <div
-            v-if="loadingOlder && olderAction === undefined"
+            v-if="(loadingOlder || olderAction !== undefined) && olderAction !== 'retry'"
             class="conversation-load-older"
             role="status"
             :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
@@ -321,32 +356,28 @@ onBeforeUnmount(() => {
             <BusyIndicator class="history-busy-indicator read-loading-indicator" />
           </div>
           <el-button
-            v-if="!loadingOlder || olderAction !== undefined"
-            class="conversation-load-older"
+            v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
+            class="conversation-load-older conversation-history-error"
             link
             size="small"
             native-type="button"
             :aria-disabled="loadingOlder"
             :aria-busy="loadingOlder"
-            :data-history-action="olderAction ?? (olderError ? 'retry' : 'load')"
+            :aria-label="
+              loadingOlder || olderAction !== undefined
+                ? translate('generated.conversationScroll.loadingEarlierMessages')
+                : undefined
+            "
+            data-history-action="retry"
             @click="loadOlder"
           >
-            <template v-if="loadingOlder" #icon>
-              <BusyIndicator class="history-busy-indicator read-loading-indicator" />
-            </template>
-            {{
-              (olderAction ?? (olderError ? 'retry' : 'load')) === 'retry'
-                ? translate('conversationActivity.retry')
-                : translate('generated.conversationScroll.loadEarlierMessages')
-            }}
+            <BusyIndicator
+              v-if="loadingOlder || olderAction !== undefined"
+              class="history-busy-indicator read-loading-indicator"
+            />
+            <template v-else>{{ translate('common.loadFailedRetry') }}</template>
           </el-button>
         </div>
-        <p
-          v-else-if="!loadingInitial && !initialLoadFailed && !reloading && hasTurns"
-          class="conversation-history-start"
-        >
-          {{ translate('conversationActivity.historyStart') }}
-        </p>
         <section v-if="showEmptyPrompt" class="conversation-empty">
           <h2>{{ translate(`conversationEmpty.${emptyPrompt}.title`) }}</h2>
           <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
@@ -378,8 +409,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.conversation-history-control,
-.conversation-history-start {
+.conversation-history-control {
+  min-height: 1px;
   text-align: center;
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
@@ -404,6 +435,11 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
   background: var(--mar-conversation-canvas);
+}
+
+.conversation-scroll:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
 }
 
 :where(.conversation-scroll-region:not(.is-empty)) .conversation-scroll {
