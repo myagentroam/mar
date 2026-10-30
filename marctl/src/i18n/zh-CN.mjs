@@ -95,7 +95,7 @@ ${configurationHelp}
   仅明确要延后处理的输入使用 --queue：当前工作及前面的队列项结束后才消费，
   有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
-  show --json 包含 session.status、session.model、session.effort、
+  show --json 包含 session.status、session.modelId、session.effort、
   session.title、session.runId、session.recentTools、session.queuedCount 和
   session.latestMessage。list 返回 latestActivity；wait 可能包含 progress；
   状态为 RUNNING/IDLE/SLEEPING。历史中 segments[].items[] 的

@@ -11,22 +11,25 @@ test('Session rows keep their desktop and mobile density', async ({ page }) => {
     const row = page.locator('.conversation-sidebar .session-row').first();
     await row.locator('..').evaluate((item) => item.after(item.cloneNode(true)));
     const nextRow = page.locator('.conversation-sidebar .session-row').nth(1);
-    await expect(row).toHaveCSS('height', '28px');
+    await expect(row).toHaveCSS('height', '32px');
     const bounds = (await row.boundingBox())!;
     const nextBounds = (await nextRow.boundingBox())!;
     expect(nextBounds.y - (bounds.y + bounds.height)).toBe(2);
     await row.hover();
-    await expect(row).toHaveCSS('height', '28px');
+    await expect(row).toHaveCSS('height', '32px');
     const more = row.locator('.session-more-button');
     await expect(more).toHaveCSS('height', '24px');
     await more.click();
     await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
-    await expect(row).toHaveCSS('height', '36px');
+    await expect(row).toHaveCSS('height', '32px');
     const mobileBounds = (await row.boundingBox())!;
     const nextMobileBounds = (await nextRow.boundingBox())!;
-    expect(nextMobileBounds.y - (mobileBounds.y + mobileBounds.height)).toBe(4);
+    expect(nextMobileBounds.y - (mobileBounds.y + mobileBounds.height)).toBe(2);
+    await row.hover();
+    await expect(row).toHaveCSS('height', '32px');
+    await expect(row.locator('.session-link')).toHaveCSS('height', '32px');
   } finally {
     await fixture.close();
   }
@@ -44,7 +47,7 @@ test('Mobile session rows remain selectable by touch', async ({ browser }) => {
     const sidebar = page.locator('.conversation-sidebar');
     await sidebar.getByRole('tab').nth(1).tap();
     const row = sidebar.locator('.session-row').first();
-    await expect(row).toHaveCSS('height', '36px');
+    await expect(row).toHaveCSS('height', '32px');
     await row.locator('.session-link').tap();
     await expect(page.locator('.conversation')).toContainText('child');
   } finally {
@@ -118,7 +121,7 @@ for (const [width, theme, locale] of [
   [1280, 'vscode-dark-2026', 'zh-CN'],
   [390, 'vscode-dark-2026', 'zh-CN']
 ] as const) {
-  test(`Session group tabs preserve badges, keyboard and move interaction at ${width}px ${theme} ${locale}`, async ({
+  test(`Session group tabs preserve badges, keyboard and tree interaction at ${width}px ${theme} ${locale}`, async ({
     page
   }) => {
     const fixture = await startCustomThemeFixture();
@@ -212,7 +215,7 @@ for (const [width, theme, locale] of [
         expect(markerBounds.y + markerBounds.height).toBeLessThanOrEqual(
           bounds!.y + bounds!.height
         );
-        expect(markerBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width);
+        expect(markerBounds.x - (labelBounds.x + labelBounds.width)).toBeCloseTo(4, 0);
         expect(markerBounds.x + markerBounds.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
         const badge = tab.locator('.session-state-count');
         await expect(tab.locator('.session-state-badge')).toHaveCSS('border-top-width', '0px');
@@ -316,21 +319,22 @@ for (const [width, theme, locale] of [
       await expect(page.locator('.conversation')).toContainText('child');
       await chats.locator('.session-link').hover();
       await chats.locator('.session-more-button').click();
-      await page
-        .getByRole('menuitem', {
+      await expect(
+        page.getByRole('menuitem', {
           name: locale === 'zh-CN' ? '移动到主会话' : 'Move to Main Sessions'
         })
+      ).toHaveCount(0);
+      await page
+        .getByRole('menuitem', {
+          name: locale === 'zh-CN' ? '查看会话树' : 'View session tree'
+        })
         .click();
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toContainText(locale === 'zh-CN' ? '分组关系' : 'group relationship');
-      await dialog
-        .getByRole('button', { name: locale === 'zh-CN' ? '移动' : 'Move', exact: true })
-        .click();
-      await expect(chats.locator('.session-link')).toHaveCount(0);
+      await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+      await expect(chats.locator('.session-link')).toHaveCount(1);
       await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('.conversation')).toContainText('child');
       await tabs.nth(0).locator('.group-label').click();
-      await expect(chats.locator('.session-link')).toHaveCount(2);
+      await expect(chats.locator('.session-link')).toHaveCount(1);
       if (width === 1280) await page.locator('.recent-sessions-trigger').click();
       const recent = page.locator('.recent-sessions-panel');
       await expect(recent.getByRole('tab').nth(1)).toHaveCSS(
@@ -401,7 +405,7 @@ for (const [width, theme, locale] of [
             0
           );
           expect(markers.y).toBeGreaterThanOrEqual(bounds.y);
-          expect(markers.x).toBeGreaterThanOrEqual(label.x + label.width);
+          expect(markers.x - (label.x + label.width)).toBeCloseTo(4, 0);
           expect(markers.x + markers.width).toBeLessThanOrEqual(bounds.x + bounds.width);
           expect(markers.y + markers.height).toBeLessThanOrEqual(bounds.y + bounds.height);
         }

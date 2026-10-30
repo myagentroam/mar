@@ -295,7 +295,7 @@ html.console-ui,
   --mar-primary-control-size: 28px;
   --mar-utility-control-size: 28px;
   --mar-compact-row-size: 24px;
-  --mar-session-row-min-height: 36px;
+  --mar-session-row-min-height: 32px;
   --mar-session-row-padding-block: 0.3rem;
   --mar-brand-logo-size: 32px;
   --mar-rail-item-height: 46px;
@@ -607,7 +607,7 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-primary-control-size: 30px;
     --mar-utility-control-size: 31px;
     --mar-compact-row-size: 27px;
-    --mar-session-row-min-height: 28px;
+    --mar-session-row-min-height: 32px;
     --mar-session-row-padding-block: 0.2rem;
     --mar-brand-logo-size: 35px;
     --mar-rail-item-height: 51px;
@@ -1585,7 +1585,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
     --mar-primary-control-size: 28px;
     --mar-utility-control-size: 28px;
     --mar-compact-row-size: 24px;
-    --mar-session-row-min-height: 36px;
+    --mar-session-row-min-height: 32px;
     --mar-session-row-padding-block: 0.3rem;
     --mar-brand-logo-size: 32px;
     --mar-rail-item-height: 46px;

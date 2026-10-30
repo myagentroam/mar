@@ -6,6 +6,54 @@ import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 
 describe('native session metadata ownership', () => {
+  it('discovers unregistered children for cleanup without registering them or accepting invalid relationships', async () => {
+    const database = new NodeDatabase(':memory:', 'native-cleanup-children');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/workspace',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const runner = new CodexRunner();
+      const runners = new RunnerRegistry();
+      runners.register(runner);
+      vi.spyOn(runner, 'available').mockReturnValue(true);
+      vi.spyOn(runner, 'discoverSessions').mockImplementation(async (context) =>
+        [
+          ['root', undefined],
+          ['child', 'root'],
+          ['grandchild', 'child'],
+          ['orphan', 'missing'],
+          ['too-deep', 'grandchild']
+        ].map(([id, parent]) =>
+          context.createProjection({
+            workspace,
+            runner: 'codex',
+            externalSessionId: id!,
+            cwd: workspace.path,
+            ...(parent === undefined ? {} : { parentSessionId: parent })
+          })
+        )
+      );
+      const service = new NativeSessionProjectionService({
+        database: () => database,
+        nodeId: () => 'node',
+        runners,
+        capabilities: () => ({})
+      } as unknown as ConstructorParameters<typeof NativeSessionProjectionService>[0]);
+      const sessions = await service.discover('codex', workspace.id, true);
+      expect(sessions.map(({ id, parentSessionId }) => [id, parentSessionId])).toEqual([
+        ['root', null],
+        ['child', 'root'],
+        ['grandchild', 'child']
+      ]);
+      expect(database.listSessionRecords(workspace.id)).toEqual([]);
+      expect(service.cachedNative()).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
   it('imports a native parent snapshot once without replacing a Node relationship', () => {
     const database = new NodeDatabase(':memory:', 'native-parent-test');
     try {

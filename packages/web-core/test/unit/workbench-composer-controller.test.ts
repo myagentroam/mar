@@ -1,6 +1,6 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
-import { ref as reactiveRef } from 'vue';
+import { nextTick, ref as reactiveRef } from 'vue';
 import { createWorkbenchComposerController } from '../../src/service/workbench-composer-controller.js';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 import type {
@@ -236,79 +236,91 @@ describe('Workbench Composer Controller', () => {
     }
   );
 
-  it("switches to the target model's default reasoning effort even when the previous effort remains supported", () => {
-    const model = ref('model-a');
-    const effort = ref('high');
-    const controller = createTestComposerController({
-      workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
-      selectedSession: ref<Session | undefined>(undefined) as never,
-      sessions: ref<Session[]>([]) as never,
-      profiles: ref([]) as never,
-      draftOpen: ref(true) as never,
-      loading: ref(false) as never,
-      runner: ref('codex') as never,
-      modelId: model as never,
-      effort: effort as never,
-      access: ref('on-request') as never,
-      modelEffortSelection: ref<string | undefined>(undefined) as never,
-      codexFastEnabled: ref(false) as never,
-      profileService: {
-        load: async () => undefined,
-        defaultFor: () => defaultConfiguration,
-        save: vi.fn()
-      },
-      normalize: vi.fn(),
-      apply: vi.fn(),
-      ensureDraftSupported: vi.fn(),
-      clearRunnerCommand: vi.fn(),
-      request: vi.fn(async () => ({})) as never,
-      sessionPathId: String,
-      notice: vi.fn(),
-      errorMessage: String
-    });
+  it.each([{ selection: 'model:model-b' }, { selection: ['models', 'model:model-b'] }])(
+    'switches model and default reasoning effort through the Composer menu: $selection',
+    async ({ selection }) => {
+      const model = ref('model-a');
+      const effort = ref('high');
+      const modelEffortSelection = ref<string | undefined>('model:model-b');
+      const save = vi.fn();
+      const controller = createTestComposerController({
+        workspaceTarget: workspaceTargetRef(ref<string | undefined>('node-a')),
+        selectedSession: ref<Session | undefined>(undefined) as never,
+        sessions: ref<Session[]>([]) as never,
+        profiles: ref([]) as never,
+        draftOpen: ref(true) as never,
+        loading: ref(false) as never,
+        runner: ref('codex') as never,
+        modelId: model as never,
+        effort: effort as never,
+        access: ref('on-request') as never,
+        modelEffortSelection,
+        codexFastEnabled: ref(false) as never,
+        profileService: {
+          load: async () => undefined,
+          defaultFor: () => defaultConfiguration,
+          save
+        },
+        normalize: vi.fn(),
+        apply: vi.fn(),
+        ensureDraftSupported: vi.fn(),
+        clearRunnerCommand: vi.fn(),
+        request: vi.fn(async () => ({})) as never,
+        sessionPathId: String,
+        notice: vi.fn(),
+        errorMessage: String
+      });
 
-    controller.selectModel('model-b', [
-      {
-        id: 'model-a',
-        supportedEfforts: ['low', 'high'],
-        defaultEffort: 'high'
-      },
-      {
-        id: 'model-b',
-        supportedEfforts: ['low', 'medium', 'high'],
-        defaultEffort: 'low'
-      },
-      {
-        id: 'model-c',
-        supportedEfforts: [],
-        defaultEffort: 'medium'
-      }
-    ]);
+      const models = [
+        {
+          id: 'model-a',
+          supportedEfforts: ['low', 'high'],
+          defaultEffort: 'high'
+        },
+        {
+          id: 'model-b',
+          supportedEfforts: ['low', 'medium', 'high'],
+          defaultEffort: 'low'
+        },
+        {
+          id: 'model-c',
+          supportedEfforts: [],
+          defaultEffort: 'medium'
+        }
+      ];
+      const selectModel = (value: string) => controller.selectModel(value, models);
+      const selectEffort = (value: string) =>
+        controller.selectEffort(value, ['low', 'medium', 'high']);
+      controller.selectModelEffort(selection, selectEffort, selectModel);
 
-    expect(model.value).toBe('model-b');
-    expect(effort.value).toBe('low');
+      expect(model.value).toBe('model-b');
+      expect(effort.value).toBe('low');
+      expect(save).toHaveBeenLastCalledWith('node-a', {
+        runner: 'codex',
+        modelId: 'model-b',
+        effort: 'low',
+        access: 'on-request'
+      });
+      await nextTick();
+      expect(modelEffortSelection.value).toBeUndefined();
 
-    controller.selectModel('model-c', [
-      {
-        id: 'model-a',
-        supportedEfforts: ['low', 'high'],
-        defaultEffort: 'high'
-      },
-      {
-        id: 'model-b',
-        supportedEfforts: ['low', 'medium', 'high'],
-        defaultEffort: 'low'
-      },
-      {
-        id: 'model-c',
-        supportedEfforts: [],
-        defaultEffort: 'medium'
-      }
-    ]);
+      controller.selectModelEffort('effort:high', selectEffort, selectModel);
+      expect(model.value).toBe('model-b');
+      expect(effort.value).toBe('high');
 
-    expect(model.value).toBe('model-c');
-    expect(effort.value).toBe('medium');
-  });
+      controller.selectModelEffort('model:model-c', selectEffort, selectModel);
+
+      expect(model.value).toBe('model-c');
+      expect(effort.value).toBe('medium');
+
+      save.mockClear();
+      controller.selectModelEffort('model:unavailable', selectEffort, selectModel);
+      controller.selectModelEffort('effort:unsupported', selectEffort, selectModel);
+      expect(model.value).toBe('model-c');
+      expect(effort.value).toBe('medium');
+      expect(save).not.toHaveBeenCalled();
+    }
+  );
 
   it('synchronizes Composer options after an external session configuration update', () => {
     const apply = vi.fn();

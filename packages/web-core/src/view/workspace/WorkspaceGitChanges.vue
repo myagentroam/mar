@@ -600,6 +600,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   overflow: hidden;
   min-width: 0;
   max-width: 60%;
+  padding-block: 0.125rem;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

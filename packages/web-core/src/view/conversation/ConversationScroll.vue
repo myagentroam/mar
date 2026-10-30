@@ -14,6 +14,7 @@ import {
 } from 'vue';
 
 const props = defineProps<{
+  readonly contextKey?: string | undefined;
   readonly hasOlder: boolean;
   readonly loadingInitial: boolean;
   readonly initialLoadFailed: boolean;
@@ -45,6 +46,34 @@ const reloading = ref(false);
 const olderAction = ref<'retry' | 'load'>();
 let touchY: number | undefined;
 let scrollbarPointerY: number | undefined;
+let initialLayoutChecked = false;
+let initialLayoutFrame: number | undefined;
+
+function scheduleInitialHistoryCheck(): void {
+  if (initialLayoutChecked || initialLayoutFrame !== undefined) return;
+  initialLayoutFrame = requestAnimationFrame(() => {
+    initialLayoutFrame = undefined;
+    const current = element.value;
+    if (
+      initialLayoutChecked ||
+      current === undefined ||
+      current.clientHeight === 0 ||
+      props.loadingInitial ||
+      props.initialLoadFailed ||
+      props.loadingOlder ||
+      !props.hasTurns
+    )
+      return;
+    initialLayoutChecked = true;
+    const button = current.querySelector(
+      '.conversation-history-control button[data-history-action="load"]'
+    );
+    const buttonRect = button?.getBoundingClientRect();
+    const viewport = current.getBoundingClientRect();
+    if (buttonRect && buttonRect.bottom > viewport.top && buttonRect.top < viewport.bottom)
+      emit('loadOlder');
+  });
+}
 
 function onWheel(event: WheelEvent): void {
   if (event.deltaY < 0) emit('scrollIntent');
@@ -114,14 +143,22 @@ const showEmptyPrompt = computed(
 );
 
 watch(
+  () => props.contextKey,
+  () => {
+    initialLayoutChecked = false;
+  }
+);
+watch(
   () => props.loadingInitial,
   (loading) => {
+    if (loading) initialLayoutChecked = false;
     if (!loading) reloading.value = false;
   }
 );
 watch(
   () => props.loadingOlder,
   (loading) => {
+    if (loading) initialLayoutChecked = true;
     if (!loading) olderAction.value = undefined;
     else if (typeof document !== 'undefined') {
       const button = element.value?.querySelector('.conversation-history-control button');
@@ -179,6 +216,7 @@ onBeforeUpdate(() => {
 });
 
 onUpdated(() => {
+  scheduleInitialHistoryCheck();
   renderedEmpty = showEmptyPrompt.value;
   const previous = previousComposerRect;
   previousComposerRect = undefined;
@@ -205,12 +243,18 @@ onMounted(() => {
   motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
   motionPreference.addEventListener('change', updateMotionPreference);
   emit('scrollElement', element.value);
+  scheduleInitialHistoryCheck();
   if (content.value && typeof ResizeObserver !== 'undefined') {
-    contentObserver = new ResizeObserver(() => emit('scroll'));
+    contentObserver = new ResizeObserver(() => {
+      emit('scroll');
+      scheduleInitialHistoryCheck();
+    });
     contentObserver.observe(content.value);
+    if (element.value) contentObserver.observe(element.value);
   }
 });
 onBeforeUnmount(() => {
+  if (initialLayoutFrame !== undefined) cancelAnimationFrame(initialLayoutFrame);
   contentObserver?.disconnect();
   motionPreference?.removeEventListener('change', updateMotionPreference);
   cancelComposerMotion();

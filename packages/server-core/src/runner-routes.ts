@@ -162,10 +162,7 @@ export function registerRunnerRoutes(input: {
           requestUserNode(nodeControl, admin, body.nodeId as string, operation, data)
       });
       return reply.send(
-        await requestUserNode(nodeControl, admin, body.nodeId, 'runner.defaults.save', {
-          ...parsed.data,
-          secretEnvironment: await secrets.resolve(admin.userId, body.nodeId)
-        })
+        await requestUserNode(nodeControl, admin, body.nodeId, 'runner.defaults.save', parsed.data)
       );
     } catch (error) {
       return databaseError(reply, error);

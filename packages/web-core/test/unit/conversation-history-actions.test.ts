@@ -66,6 +66,11 @@ it.each(['initial', 'older'] as const)(
       matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
     });
     vi.stubGlobal('HTMLElement', class {});
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1)
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
     app.component('ElButton', {
       setup:
         (_: unknown, { slots }: SetupContext) =>

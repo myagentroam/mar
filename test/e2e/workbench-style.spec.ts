@@ -328,7 +328,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }, testInfo) => {
     const change = {
       repositoryPath: '',
-      repositoryName: 'project',
+      repositoryName: 'my-agent-roam',
       source: 'ROOT',
       path: 'src/main.ts',
       state: 'UNSTAGED',
@@ -343,7 +343,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               repositories: [
                 {
                   repositoryPath: '',
-                  repositoryName: 'project',
+                  repositoryName: 'my-agent-roam',
                   physicalPath: '/home/example/project',
                   source: 'ROOT',
                   current: true,
@@ -392,6 +392,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(headings).toHaveCount(3);
       const root = headings.first();
       const titleRows = headings.locator('.repository-title-row');
+      await page.evaluate(() => document.fonts.ready);
+      for (const name of await titleRows.locator('strong').all()) {
+        const clearance = await name.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const text = range.getBoundingClientRect();
+          const clip = element.getBoundingClientRect();
+          return { top: text.top - clip.top, bottom: clip.bottom - text.bottom };
+        });
+        expect(clearance.top).toBeGreaterThanOrEqual(1);
+        expect(clearance.bottom).toBeGreaterThanOrEqual(1);
+      }
       const compactSize = await root.evaluate((element) =>
         Number.parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
       );

@@ -122,8 +122,9 @@ describe('tool permission and wait context', () => {
               required: ['id', 'image'],
               additionalProperties: false
             },
-            execute(input) {
+            async execute(input, operation) {
               calls.push(input);
+              await operation.publishEventData?.({ id: 'running' });
               return {
                 content: 'private model result',
                 data: { private: 'secret-result' },
@@ -170,6 +171,14 @@ describe('tool permission and wait context', () => {
         expect(calls).toEqual([input]);
         expect(toolEvents).toContainEqual(
           expect.objectContaining({
+            type: 'tool.updated',
+            data: { id: 'running' },
+            ...(nested ? { parentCallId: 'call' } : {})
+          })
+        );
+        expect(JSON.stringify(await agent.sessionHistory(session.id))).toContain('running');
+        expect(toolEvents).toContainEqual(
+          expect.objectContaining({
             type: 'tool.completed',
             summary: 'public receipt',
             data: { id: 'safe' }
@@ -178,6 +187,55 @@ describe('tool permission and wait context', () => {
       }
     }
   );
+
+  it('does not publish retained tool metadata after that call completes', async () => {
+    let publish: ((data: Readonly<Record<string, unknown>>) => Promise<void>) | undefined;
+    const extension: AgentExtension = {
+      id: 'publisher-lifetime',
+      apiVersion: '1.0',
+      attachSession(context) {
+        context.tools.register({
+          name: 'retain_publisher',
+          description: 'Retain publisher',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          async execute(_input, operation) {
+            publish = operation.publishEventData;
+            await publish?.({ phase: 'running' });
+            return { content: 'done' };
+          }
+        });
+        context.tools.register({
+          name: 'use_publisher',
+          description: 'Use retained publisher',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          async execute() {
+            await publish?.({ phase: 'late' }).catch(() => {});
+            return { content: 'done' };
+          }
+        });
+      }
+    };
+    const { session, agent } = await fixture(
+      [extension],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', {
+              code: 'await tools.retain_publisher({}); await tools.use_publisher({});'
+            })
+          : answer(),
+      true
+    );
+    const run = session.run({ prompt: 'exercise lifetime' });
+    const events = [];
+    for await (const event of run) events.push(event);
+    expect((await run.result()).status).toBe('completed');
+    expect(
+      events
+        .filter((event) => event.type === 'tool.updated' && event.toolName === 'retain_publisher')
+        .map((event) => event.data)
+    ).toEqual([{ phase: 'running' }]);
+    expect(JSON.stringify(await agent.sessionHistory(session.id))).not.toContain('late');
+  });
 
   it.each(['auto', 'full-access'] as const)(
     'exposes the actual tool execution permission mode: %s',

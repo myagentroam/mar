@@ -177,7 +177,8 @@ it.each([false, true])('defaults native messages to steer with Code Mode %s', as
       'execution',
       'send',
       { ...input, deliveryIntent: 'REPLACE_CURRENT' },
-      expect.anything()
+      expect.anything(),
+      expect.any(Function)
     );
     expect(input).not.toHaveProperty('deliveryIntent');
     expect(test.failures).toEqual([]);
@@ -192,7 +193,8 @@ it.each([false, true])('preserves explicit send intents with Code Mode %s', asyn
       'execution',
       'send',
       input,
-      expect.anything()
+      expect.anything(),
+      expect.any(Function)
     );
     expect(test.failures).toEqual([]);
   }
@@ -223,7 +225,8 @@ it.each([false, true])(
         'execution',
         'send',
         input,
-        expect.anything()
+        expect.anything(),
+        expect.any(Function)
       );
       expect(test.failures).toEqual([]);
     }
@@ -243,7 +246,8 @@ it.each([false, true])('forwards list scopes and roots with Code Mode %s', async
       'execution',
       'list',
       input,
-      expect.anything()
+      expect.anything(),
+      expect.any(Function)
     );
     expect(test.failures).toEqual([]);
   }

@@ -17,6 +17,45 @@ const base = {
 };
 
 describe('Runner subagent lifecycle tool projection', () => {
+  it('keeps resolved wait targets from a running update through partial completion', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const targets = [
+      { agentId: 'a', sessionId: 'a', title: 'First task' },
+      { agentId: 'b', sessionId: 'b', title: 'Second task' }
+    ];
+    normalizer.normalize({
+      ...base,
+      type: 'tool.started',
+      toolName: 'agent_wait',
+      callId: 'wait',
+      input: { agentIds: ['a', 'b'] }
+    });
+    const [running] = normalizer.normalize({
+      ...base,
+      type: 'tool.updated',
+      toolName: 'agent_wait',
+      callId: 'wait',
+      data: { agentOperation: { action: 'WAIT', targets } }
+    });
+    expect(running).toMatchObject({
+      status: 'IN_PROGRESS',
+      payload: { agentOperation: { targets } }
+    });
+    const [done] = normalizer.normalize({
+      ...base,
+      type: 'tool.completed',
+      toolName: 'agent_wait',
+      callId: 'wait',
+      summary: '{}',
+      data: {
+        agentOperation: {
+          action: 'WAIT',
+          targets: [{ agentId: 'a', sessionId: 'a' }, { agentId: 'b' }]
+        }
+      }
+    });
+    expect(done).toMatchObject({ status: 'COMPLETED', payload: { agentOperation: { targets } } });
+  });
   it('projects only an explicit, identity-matched product Session mapping', () => {
     for (const [data, expected] of [
       [{ agentId: 'child', sessionId: 'child' }, undefined],

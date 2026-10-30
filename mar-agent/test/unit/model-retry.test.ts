@@ -442,7 +442,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             mode === 'compact' ? session.compact() : session[mode]({ prompt: 'Continue.' });
           const result = execution.result();
           await vi.waitFor(() => expect(signals).toHaveLength(1));
-          await vi.advanceTimersByTimeAsync(300_000);
+          await vi.advanceTimersByTimeAsync(180_000);
           expect(cancellations).toHaveLength(1);
           expect(cancellations[0]).toMatchObject({
             code: 'MAR_AGENT_MODEL_TIMEOUT',
@@ -450,7 +450,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             details: { reason: 'MODEL_PROGRESS_TIMEOUT' }
           });
           await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(8));
-          if (exhausted) await vi.advanceTimersByTimeAsync(300_000);
+          if (exhausted) await vi.advanceTimersByTimeAsync(180_000);
           expect(await result).toMatchObject({
             status: exhausted ? 'failed' : 'completed',
             ...(exhausted ? { errorCode: 'MAR_AGENT_MODEL_TIMEOUT' } : {})

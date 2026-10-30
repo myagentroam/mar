@@ -15,6 +15,7 @@ import {
 import { runnerErrorProjection } from '../runner-error.js';
 import {
   toolPresentationSchema,
+  agentOperationPresentationSchema,
   type ToolPresentation,
   type ExecutionPresentation
 } from '@myagentroam/protocol';
@@ -328,6 +329,38 @@ export class MarAgentConversationNormalizer {
       return [
         ...withPermissionStop(outerItems, permissionStop),
         ...this.#codeModeToolResults(event)
+      ];
+    }
+    if (event.type === 'tool.updated') {
+      const state = this.#tools.get(event.callId);
+      if (
+        !state?.active ||
+        state.toolName !== event.toolName ||
+        !agentOperationAction(event.toolName)
+      )
+        return [];
+      const operation = agentOperationPresentationSchema.safeParse(
+        record(event.data)?.agentOperation
+      );
+      if (!operation.success || operation.data.action !== agentOperationAction(event.toolName))
+        return [];
+      this.#tools.set(event.callId, { ...state, presentationData: event.data });
+      return [
+        genericToolItem(
+          state.itemId,
+          state.toolName,
+          'IN_PROGRESS',
+          state.input,
+          null,
+          null,
+          false,
+          event.data,
+          state.subagentTitle,
+          state.subagentDetails,
+          undefined,
+          undefined,
+          state.inputTruncated
+        )
       ];
     }
     if (event.type === 'sleep.started') {
@@ -970,7 +1003,7 @@ export class MarAgentConversationNormalizer {
         : generatedImages.map((image) => image.name).join(', '),
       null,
       event.outputTruncation !== undefined,
-      event.data,
+      mergeAgentOperationData(event.toolName, state?.presentationData, event.data),
       agentId === undefined ? state?.subagentTitle : this.#subagentTitles.get(agentId),
       details,
       state?.sleepStartedAt,
@@ -1021,7 +1054,11 @@ export class MarAgentConversationNormalizer {
         event.message ?? event.code,
         event.code,
         event.truncated === true,
-        event.data === undefined ? state?.presentationData : event.data,
+        agentOperationAction(event.toolName)
+          ? mergeAgentOperationData(event.toolName, state?.presentationData, event.data)
+          : event.data === undefined
+            ? state?.presentationData
+            : event.data,
         state?.subagentTitle,
         state?.subagentDetails,
         state?.sleepStartedAt,
@@ -1413,6 +1450,27 @@ function codeExecutionError(
   return {
     code: compactRunnerText(error.code, 80),
     message: compactRunnerText(error.message, 1000)
+  };
+}
+
+function mergeAgentOperationData(toolName: string, previous: unknown, current: unknown): unknown {
+  if (!agentOperationAction(toolName)) return current;
+  const before = agentOperationPresentationSchema.safeParse(record(previous)?.agentOperation);
+  if (!before.success || before.data.action !== agentOperationAction(toolName)) return current;
+  const after = agentOperationPresentationSchema.safeParse(record(current)?.agentOperation);
+  if (!after.success || after.data.action !== before.data.action) {
+    return { ...record(current), agentOperation: before.data };
+  }
+  return {
+    ...record(current),
+    agentOperation: {
+      ...after.data,
+      targets: before.data.targets.map((target) => ({
+        ...after.data.targets.find((candidate) => candidate.agentId === target.agentId),
+        ...target
+      })),
+      ...(before.data.targetsTruncated ? { targetsTruncated: true } : {})
+    }
   };
 }
 

@@ -10,6 +10,85 @@ test.afterAll(async () => {
 });
 
 for (const width of [1280, 390]) {
+  test(`Underfilled initial history loads one extra page without chaining at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&underflow=1`);
+      const requests = page.getByTestId('older-requests');
+      const scroll = page.locator('.conversation-scroll');
+      await expect(requests).toHaveText('0');
+      await page.getByTestId('finish-initial').click();
+      await expect(requests).toHaveText('1');
+      expect(await scroll.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await page.getByTestId('finish-older').click();
+      await page.getByTestId('grow-content').click();
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      await expect(requests).toHaveText('1');
+      await page.getByTestId('next-context').click();
+      await expect(requests).toHaveText('1');
+      await page.getByTestId('finish-initial').click();
+      await expect(requests).toHaveText('2');
+      await page.getByTestId('fail-older').click();
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+      await expect(requests).toHaveText('2');
+      await page.getByRole('button', { name: 'Retry' }).click();
+      await expect(requests).toHaveText('3');
+      await page.getByTestId('finish-older').click();
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      await expect(requests).toHaveText('3');
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`Visible earlier-history controls trigger one backfill with seven pixels of overflow at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&small-overflow=1`);
+      const region = page.locator('.conversation-scroll');
+      const requests = page.getByTestId('older-requests');
+      await expect(requests).toHaveText('1');
+      await page.getByTestId('finish-older').click();
+      await expect(page.getByRole('button', { name: 'Load earlier messages' })).toBeInViewport();
+      expect(await region.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(7);
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      await expect(requests).toHaveText('1');
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const condition of ['no-older', 'initial-failed']) {
+  test(`Underfilled initial history does not request a page when ${condition}`, async ({
+    page
+  }) => {
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&underflow=1&${condition}=1`
+    );
+    await page.getByTestId('finish-initial').click();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    await expect(page.getByTestId('older-requests')).toHaveText('0');
+  });
+}
+
+for (const width of [1280, 390]) {
   test(`Cached conversation restoration follows layout changes and preserves manual reading at ${width}px`, async ({
     browser
   }) => {

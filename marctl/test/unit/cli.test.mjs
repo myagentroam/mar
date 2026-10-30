@@ -205,32 +205,38 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
       ]
     ]
   ]) {
-    let output = '';
-    assert.equal(
-      await main(['help', 'agents'], {
-        env: { LC_ALL: locale, MAR_CTL_CONTEXT_REQUIRED: '1' },
-        stdout: { write: (value) => (output += value) },
-        stderr: { write: (value) => assert.fail(value) }
-      }),
-      0
-    );
-    for (const field of [
-      'session.status',
-      'session.model',
-      'session.effort',
-      'session.title',
-      'session.runId',
-      'session.recentTools',
-      'session.queuedCount',
-      'session.latestMessage',
-      'latestActivity',
-      'progress',
-      'segments[].items[]',
-      'kind === "assistant_message"',
-      'payload.text',
-      ...descriptions
-    ])
-      assert.ok(output.includes(field), field);
+    for (const args of [
+      ['help', 'agents'],
+      ['agents', '--help']
+    ]) {
+      let output = '';
+      assert.equal(
+        await main(args, {
+          env: { LC_ALL: locale, MAR_CTL_CONTEXT_REQUIRED: '1' },
+          stdout: { write: (value) => (output += value) },
+          stderr: { write: (value) => assert.fail(value) }
+        }),
+        0
+      );
+      for (const field of [
+        'session.status',
+        'session.modelId',
+        'session.effort',
+        'session.title',
+        'session.runId',
+        'session.recentTools',
+        'session.queuedCount',
+        'session.latestMessage',
+        'latestActivity',
+        'progress',
+        'segments[].items[]',
+        'kind === "assistant_message"',
+        'payload.text',
+        ...descriptions
+      ])
+        assert.ok(output.includes(field), field);
+      assert.doesNotMatch(output, /\bsession\.model\b/u);
+    }
   }
 });
 

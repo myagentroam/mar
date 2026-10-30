@@ -38,6 +38,8 @@ for (const theme of ['light', 'dark']) {
       await expect(wait).toContainText('Tool: agent_wait');
       await expect(wait).toContainText('Agent ID: peer');
       await expect(wait).toContainText('Agent ID: other');
+      await expect(wait).toContainText('Task: Review the implementation');
+      await expect(wait).toContainText('Task: Check the final result');
       await expect(wait).toContainText('Timeout. Both targets are still running.');
       await expect(wait.locator('.conversation-detail-text')).toBeVisible();
       await expect(groups.nth(5)).toContainText('List');

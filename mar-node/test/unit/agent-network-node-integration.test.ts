@@ -7,12 +7,15 @@ import { NodeDatabase } from '../../src/database.js';
 import * as executionPaths from '../../src/workspace/path-access.js';
 import { FakeRunner } from '../../src/fake-runner.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { AgentNetworkService } from '../../src/service/agent-network-service.js';
+import { AgentNetworkService } from '../../src/service/agent-network-service.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
+import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
 import type { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { actorForAuthenticatedTerminal } from '../../src/service/agent-network-bindings.js';
 import {
   agentNetworkExecutionCommand,
-  agentNetworkInvoke
+  agentNetworkInvoke,
+  invokeAgentNetwork
 } from '../../src/service/agent-network-invoke.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import {
@@ -34,6 +37,184 @@ import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
 
 describe('Node Agent Network owner integration', () => {
+  it.each([false, true])(
+    'publishes resolved wait titles before completion and replays history (nested=%s)',
+    async (nested) => {
+      const directory = await mkdtemp(join(tmpdir(), 'mar-network-wait-titles-'));
+      const network = new AgentNetworkObservations();
+      const observer = network.attach('parent');
+      const children = ['a', 'b'].map(
+        (id, index) =>
+          ({
+            id,
+            parentSessionId: 'parent',
+            customTitle: index ? null : 'First task',
+            runnerTitle: index ? 'Second task' : null,
+            createdAt: index
+          }) as NodeAgentSession
+      );
+      let completed = false;
+      const service = new AgentNetworkService({
+        observations: network,
+        target: async (_actor, id) => children.find((session) => session.id === id)!,
+        authorize: async () => {},
+        observe: () => {},
+        freezeExecution: (session) => ({
+          agentId: session.id,
+          runId: `run-${session.id}`,
+          executionId: `exec-${session.id}`,
+          read: () => ({ status: completed && session.id === 'a' ? 'SUCCEEDED' : 'RUNNING' })
+        })
+      } satisfies Partial<
+        ConstructorParameters<typeof AgentNetworkService>[0]
+      > as unknown as ConstructorParameters<typeof AgentNetworkService>[0]);
+      const configuration: AgentModelConfiguration = {
+        id: 'fixture',
+        name: 'Fixture',
+        protocol: 'OPENAI_RESPONSES',
+        baseUrl: 'https://example.test',
+        apiKey: new SecretValue('fixture-secret'),
+        modelId: 'fixture',
+        contextWindowTokens: 200000,
+        maxOutputTokens: 4096,
+        inputCapabilities: ['TEXT'],
+        outputCapabilities: ['TEXT'],
+        reasoningEfforts: [],
+        titleGeneration: false,
+        codeMode: nested,
+        hostedWebSearch: false,
+        responsesPreviousResponseId: false,
+        enabled: true
+      };
+      let requests = 0;
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'node',
+          host: new LocalAgentHost({
+            mode: 'node',
+            homeDirectory: directory,
+            workspace: directory
+          }),
+          models: [configuration],
+          extensions: [
+            agentNetworkExtension(
+              (_execution, action, input, context, onResolved) =>
+                invokeAgentNetwork(
+                  service,
+                  { sessionId: 'parent' },
+                  action,
+                  input,
+                  context,
+                  undefined,
+                  onResolved
+                ),
+              () => 'execution'
+            )
+          ]
+        },
+        () => ({
+          configuration,
+          async *start(): AsyncIterable<ModelEvent> {
+            if (requests++ === 0) {
+              const input = { agentIds: ['a', 'b'], mode: 'any', waitMs: 30000 };
+              yield {
+                type: 'client_tool.call',
+                callId: 'wait-call',
+                name: nested ? 'code_exec' : 'agent_wait',
+                arguments: nested
+                  ? { code: `await tools.agent_wait(${JSON.stringify(input)});` }
+                  : input
+              };
+              yield { type: 'completed', reason: 'tool_use' };
+            } else {
+              yield { type: 'text.completed', itemId: 'answer', text: 'done' };
+              yield { type: 'completed', reason: 'completed' };
+            }
+          }
+        })
+      );
+      try {
+        const session = await agent.createSession({ workspace: directory });
+        const run = session.run({ prompt: 'wait for both' });
+        const normalizer = new MarAgentConversationNormalizer();
+        const targets = [
+          { agentId: 'a', sessionId: 'a', title: 'First task' },
+          { agentId: 'b', sessionId: 'b', title: 'Second task' }
+        ];
+        let running = false;
+        let finished = false;
+        for await (const event of run) {
+          const items = normalizer.normalize(event);
+          if (event.type === 'tool.updated' && event.toolName === 'agent_wait') {
+            running = true;
+            expect(completed).toBe(false);
+            expect(items[0]).toMatchObject({
+              status: 'IN_PROGRESS',
+              payload: { agentOperation: { targets } }
+            });
+            const history = await agent.sessionHistory(session.id);
+            const projected = projectMarAgentHistory(
+              {
+                id: session.id,
+                modelId: null,
+                effort: null,
+                access: null
+              } as unknown as NodeAgentSession,
+              history.entries
+            );
+            expect(projected.flatMap((turn) => turn.items)).toContainEqual(
+              expect.objectContaining({
+                status: 'IN_PROGRESS',
+                payload: expect.objectContaining({
+                  agentOperation: expect.objectContaining({ targets })
+                })
+              })
+            );
+            completed = true;
+            network.publishChild({
+              parentId: 'parent',
+              childId: 'a',
+              runId: 'run-a',
+              executionId: 'exec-a',
+              kind: 'terminal',
+              value: 'SUCCEEDED'
+            });
+          }
+          if (event.type === 'tool.completed' && event.toolName === 'agent_wait') {
+            finished = true;
+            expect(items[0]).toMatchObject({
+              status: 'COMPLETED',
+              payload: { agentOperation: { targets } }
+            });
+          }
+        }
+        expect({ running, finished }).toEqual({ running: true, finished: true });
+        expect(await run.result()).toMatchObject({ status: 'completed' });
+        const history = await agent.sessionHistory(session.id);
+        const projected = projectMarAgentHistory(
+          {
+            id: session.id,
+            modelId: null,
+            effort: null,
+            access: null
+          } as unknown as NodeAgentSession,
+          history.entries
+        );
+        expect(projected.flatMap((turn) => turn.items)).toContainEqual(
+          expect.objectContaining({
+            status: 'COMPLETED',
+            payload: expect.objectContaining({
+              agentOperation: expect.objectContaining({ targets })
+            })
+          })
+        );
+      } finally {
+        observer.close();
+        await agent.dispose();
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
   it.each(['send', 'wait'] as const)(
     'repairs automatic direct-child observations through %s but never for non-children',
     async (operation) => {
@@ -384,7 +565,13 @@ describe('Node Agent Network owner integration', () => {
           items.push(...normalizer.normalize(event));
         }
         expect(await run.result()).toMatchObject({ status: 'completed' });
-        expect(invoke).toHaveBeenCalledWith('execution', action, input, expect.anything());
+        expect(invoke).toHaveBeenCalledWith(
+          'execution',
+          action,
+          input,
+          expect.anything(),
+          expect.any(Function)
+        );
         expect(events).toContainEqual(
           expect.objectContaining({
             type: 'tool.completed',
@@ -613,7 +800,8 @@ describe('Node Agent Network owner integration', () => {
         'execution',
         'start',
         expect.objectContaining({ title: 'Cell child', content: 'work' }),
-        expect.anything()
+        expect.anything(),
+        expect.any(Function)
       );
       expect(observed.eligible).toEqual(expect.arrayContaining(names));
       expect(observed.read).toBe(true);

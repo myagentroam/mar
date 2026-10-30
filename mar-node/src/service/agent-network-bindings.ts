@@ -476,10 +476,11 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         truncated: page.nextCursor !== null
       };
     },
-    view: async (actor, input) => {
+    view: async (actor, input, onResolved) => {
       const source = terminalCalls.has(actor) ? undefined : await actorSession(actor);
       const session = input.agentId === source?.id ? source : await target(actor, input.agentId);
       assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
+      await onResolved?.([session]);
       return {
         session: marctlSessionDetail(
           options.runtime,

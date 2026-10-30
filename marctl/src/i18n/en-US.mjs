@@ -101,7 +101,7 @@ Input and results:
   not consumed until that Goal exits.
   Acceptance does not guarantee immediate processing.
 
-  show --json includes session.status, session.model, session.effort,
+  show --json includes session.status, session.modelId, session.effort,
   session.title, session.runId, session.recentTools, session.queuedCount and
   session.latestMessage. list reports latestActivity; wait may include progress.
   Status is RUNNING/IDLE/SLEEPING. In history, segments[].items[] with

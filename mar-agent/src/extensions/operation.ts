@@ -13,6 +13,8 @@ export interface ExtensionOperationContext {
   /** Correlation with the actual enclosing tool call; not an authority token. */
   readonly toolCallId?: string;
   readonly parentToolCallId?: string;
+  /** Publish bounded public metadata for this tool invocation, without changing its result. */
+  readonly publishEventData?: (data: Readonly<Record<string, unknown>>) => Promise<void>;
   /** Wakes a foreground tool wait when its Execution receives a steering input. */
   readonly waitInterrupt?: import('../runtime/wait.js').ToolWaitInterrupt;
   /** Present only for the exact tool invocation explicitly approved by the Host. */

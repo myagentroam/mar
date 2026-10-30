@@ -62,7 +62,7 @@ import {
   type ResponsesSessionState
 } from './responses-session-cache.js';
 
-const WEBSOCKET_IDLE_TIMEOUT_MS = 300_000;
+const WEBSOCKET_IDLE_TIMEOUT_MS = 180_000;
 const WEBSOCKET_SEND_FRAME_BYTES = 1024 * 1024;
 export const OPENAI_RESPONSES_EARLY_EOF_REASON = 'OPENAI_RESPONSES_EARLY_EOF';
 export const OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT_REASON =
@@ -139,6 +139,13 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
     const maxAttempts = modelRetryMaxAttempts(retryState);
     let resetOutputTiming = false;
     while (retryState.attempts < maxAttempts) {
+      signal.throwIfAborted();
+      if (retryState.attempts > 0) {
+        // Adapter retries and Runtime recovery share this counter, but not Provider Turn state.
+        turn.restartProviderTurn();
+        useContinuation = false;
+        requestBody = prepared.fullBody;
+      }
       if (resetOutputTiming) yield { type: 'output.reset' };
       resetOutputTiming = false;
       const attempt = retryState.attempts++;
@@ -250,8 +257,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           invalidContinuationFallbackUsed = true;
           useContinuation = false;
           requestBody = prepared.fullBody;
-          turn.resetContinuation();
-          turn.invalidateWebSocket();
+          turn.restartProviderTurn();
           retryState.attempts = Math.max(0, retryState.attempts - 1);
           credentialReason = 'RECONNECT';
           await reportFailure(true, {
@@ -271,8 +277,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           invalidContinuationFallbackUsed = true;
           useContinuation = false;
           requestBody = prepared.fullBody;
-          turn.resetContinuation();
-          turn.invalidateWebSocket();
+          turn.restartProviderTurn();
           credentialReason = 'RECONNECT';
           await reportFailure(true, {
             retryDelayMs: 0,
@@ -940,7 +945,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       clearResponsesContinuation(this.state);
       throw error;
     } finally {
-      if (!finished) invalidateResponsesWebSocket(this.state, true);
+      if (!finished) this.restartProviderTurn();
       this.#completedResponseId = undefined;
       this.#active = undefined;
       this.#abort = undefined;
@@ -967,6 +972,12 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
 
   resetContinuation(): void {
     clearResponsesContinuation(this.state);
+  }
+
+  restartProviderTurn(): void {
+    this.#turnState = undefined;
+    this.#completedResponseId = undefined;
+    invalidateResponsesWebSocket(this.state, true);
   }
 
   continuationInputCount(): number {
