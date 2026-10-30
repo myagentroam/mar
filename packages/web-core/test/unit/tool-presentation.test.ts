@@ -59,7 +59,7 @@ describe('independent tool presentation', () => {
         undefined
       );
       const terminal = conversationItemDetail('tool_call', current);
-      expect(terminal).toContain(`${label}:\n  final tail\n\nTruncated`);
+      expect(terminal).toContain(`${label}:\n  final tail\n\n...Truncated`);
       expect(terminal).not.toContain('live');
       expect(terminal).not.toContain('Original output');
       const empty = detail({ text: '', truncated: false });
