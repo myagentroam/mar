@@ -49,6 +49,32 @@ for (const width of [1280, 390]) {
   });
 }
 
+for (const width of [1280, 390]) {
+  test(`Visible earlier-history controls trigger one backfill with seven pixels of overflow at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&small-overflow=1`);
+      const region = page.locator('.conversation-scroll');
+      const requests = page.getByTestId('older-requests');
+      await expect(requests).toHaveText('1');
+      await page.getByTestId('finish-older').click();
+      await expect(page.getByRole('button', { name: 'Load earlier messages' })).toBeInViewport();
+      expect(await region.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(7);
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      await expect(requests).toHaveText('1');
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const condition of ['no-older', 'initial-failed']) {
   test(`Underfilled initial history does not request a page when ${condition}`, async ({
     page

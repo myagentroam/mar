@@ -188,13 +188,18 @@ async function restore(): Promise<void> {
 
 onMounted(async () => {
   await nextTick();
+  if (parameters.has('small-overflow')) {
+    const element = scroll.element.value!;
+    historyHeight.value += element.clientHeight - element.scrollHeight + 7;
+    await nextTick();
+  }
   scroll.scrollToLatest();
 });
 </script>
 
 <template>
   <main>
-    <template v-if="underflow">
+    <template v-if="underflow || parameters.has('small-overflow')">
       <button data-testid="finish-initial" @click="initialPending = false">Finish initial</button>
       <button data-testid="finish-older" @click="olderPending = false">Finish older</button>
       <button

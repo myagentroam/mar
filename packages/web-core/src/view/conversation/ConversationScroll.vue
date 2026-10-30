@@ -65,7 +65,12 @@ function scheduleInitialHistoryCheck(): void {
     )
       return;
     initialLayoutChecked = true;
-    if (props.hasOlder && !props.olderError && current.scrollHeight <= current.clientHeight + 1)
+    const button = current.querySelector(
+      '.conversation-history-control button[data-history-action="load"]'
+    );
+    const buttonRect = button?.getBoundingClientRect();
+    const viewport = current.getBoundingClientRect();
+    if (buttonRect && buttonRect.bottom > viewport.top && buttonRect.top < viewport.bottom)
       emit('loadOlder');
   });
 }
