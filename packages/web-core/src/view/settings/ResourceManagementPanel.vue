@@ -193,8 +193,7 @@ const pagination = createManagementPageService<Row>({
       props.queryExtension,
       sortBy.value,
       sortOrder.value
-    ]),
-  reportError: (error) => showMessage(errorMessage(error), 'error', error)
+    ])
 });
 const resources = pagination.items;
 const loading = pagination.loading;
@@ -816,7 +815,7 @@ onUnmounted(() => {
 </script>
 <template>
   <section
-    v-loading="loading && !pageReady"
+    v-loading="loading && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
     class="management-page resource-management-panel"
   >
@@ -861,7 +860,11 @@ onUnmounted(() => {
     </div>
     <el-table
       v-loading="
-        pagination.loading.value && pageReady && !pagination.loadingMore.value && !refreshLoading
+        pagination.loading.value &&
+        pageReady &&
+        !pagination.loadingMore.value &&
+        !refreshLoading &&
+        !pagination.failure.value
       "
       class="clickable-rows"
       :data="displayedResources"
@@ -959,6 +962,10 @@ onUnmounted(() => {
       :mobile="pagination.mobileViewport.value"
       :mobile-visible-count="pagination.mobileVisibleCount.value"
       @page="pagination.setPage"
+      :failed="pagination.failure.value !== undefined"
+      :error="pagination.failure.value?.error"
+      :context-key="pagination.contextKey.value"
+      @retry="pagination.retry"
       @load-more="pagination.loadMore"
     />
     <el-dialog

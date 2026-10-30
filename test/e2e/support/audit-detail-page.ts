@@ -54,7 +54,8 @@ window.auditDetailFixture = {
   }
 };
 const request = async <T>(path: string): Promise<T> => {
-  if (path.includes('?')) return { events, total: events.length, page: 1 } as T;
+  if (path.includes('?'))
+    return { events, total: events.length, page: 1, pageSize: 20, hasMore: false } as T;
   return new Promise<T>((resolve, reject) => {
     pending.push({
       id: decodeURIComponent(path.split('/').at(-1)!),

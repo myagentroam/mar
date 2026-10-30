@@ -138,6 +138,99 @@ afterEach(() => {
 });
 
 describe('usage statistics service', () => {
+  it('keeps a failed append paused through automatic overview refresh until explicit retry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+    let fail = true;
+    const paths: URL[] = [];
+    const request = vi.fn(async (path: string): Promise<unknown> => {
+      const url = new URL(path, 'http://test');
+      paths.push(url);
+      if (url.pathname.endsWith('/overview')) return overview({ asOf: Date.now() });
+      const page = Number(url.searchParams.get('page'));
+      if (page === 2 && fail) throw new Error('offline');
+      return { records: [record(`page-${page}`)], total: '40', page, nextCursor: null };
+    });
+    const visibility = {
+      visibilityState: 'visible' as const,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
+    const original = query();
+    await service.load(original, { rolling: true });
+    service.startAutoRefresh(visibility);
+    await service.loadMore(true);
+    const failure = service.pagination.failure.value;
+    expect(failure?.page).toBe(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(paths.filter((url) => url.pathname.endsWith('/overview'))).toHaveLength(2);
+    expect(paths.filter((url) => url.pathname.endsWith('/records'))).toHaveLength(2);
+    expect(service.pagination.failure.value).toBe(failure);
+    expect(service.state.records.map((item) => item.recordId)).toEqual(['page-1']);
+    expect(service.state.recordsStale).toBe(true);
+    await service.loadMore(true);
+    expect(paths.filter((url) => url.pathname.endsWith('/records'))).toHaveLength(2);
+    fail = false;
+    await service.retryPage();
+    const last = paths.at(-1)!;
+    expect(last.searchParams.get('page')).toBe('2');
+    expect(last.searchParams.get('from')).toBe(String(original.from));
+    expect(last.searchParams.get('to')).toBe(String(original.to));
+    expect(service.pagination.failure.value).toBeUndefined();
+    expect(service.state.records.map((item) => item.recordId)).toEqual(['page-1', 'page-2']);
+    service.dispose();
+  });
+
+  it('clears the personal projection on disposal and ignores an aborted late page', async () => {
+    const pending = deferred<PersonalUsageRecords>();
+    let signal: AbortSignal | undefined;
+    const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
+      if (path.includes('/overview')) return overview();
+      if (new URL(path, 'http://test').searchParams.get('page') === '2') {
+        signal = init?.signal as AbortSignal;
+        return pending.promise;
+      }
+      return { records: [record('first')], total: '40', page: 1, nextCursor: null };
+    });
+    const service = new UsageStatisticsService(request as Requester, vi.fn());
+    await service.load(query());
+    const loading = service.loadMore();
+    expect(service.state.loadingPage).toBe(true);
+    service.dispose();
+    expect(signal?.aborted).toBe(true);
+    expect(service.state.records).toEqual([]);
+    expect(service.state.total).toBe('0');
+    expect(service.state.loadingPage).toBe(false);
+    pending.resolve({ records: [record('late')], total: '40', page: 2, nextCursor: null });
+    await loading;
+    expect(service.state.records).toEqual([]);
+    expect(service.pagination.failure.value).toBeUndefined();
+  });
+
+  it('rejects an unsafe total without truncating it or replacing existing records', async () => {
+    let unsafe = false;
+    const error = vi.fn();
+    const request = vi.fn(async (path: string): Promise<unknown> => {
+      if (path.includes('/overview')) return overview();
+      return {
+        records: [record(unsafe ? 'bad' : 'original')],
+        total: unsafe ? '9007199254740992' : '1',
+        page: 1,
+        nextCursor: null
+      };
+    });
+    const service = new UsageStatisticsService(request as Requester, error);
+    await service.load(query());
+    unsafe = true;
+    expect(await service.load(query(), { reset: false })).toBe(false);
+    expect(service.state.records.map((item) => item.recordId)).toEqual(['original']);
+    expect(service.state.total).toBe('1');
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'USAGE_PAGE_RESPONSE_INVALID' })
+    );
+    service.dispose();
+  });
   it('uses the real total for direct unvisited page jumps instead of discovering pages incrementally', async () => {
     const request = vi.fn(async (path: string): Promise<unknown> => {
       if (path.includes('/overview')) return overview();
@@ -280,8 +373,9 @@ describe('usage statistics service', () => {
     await service.goToPage(1);
     expect(service.state.page).toBe(2);
     expect(service.state.records[0]?.recordId).toBe('second');
-    expect(report).toHaveBeenCalledOnce();
-    await service.goToPage(1);
+    expect(report).not.toHaveBeenCalled();
+    expect(service.pagination.failure.value?.error).toEqual(new Error('page unavailable'));
+    await service.retryPage();
     expect(service.state.page).toBe(1);
     expect(request.mock.calls.at(-1)?.[0]).toContain('page=1');
     await service.goToPage(2);
@@ -758,7 +852,7 @@ describe('usage statistics settings contract', () => {
       disabled: false
     },
     {
-      props: { total: 41, mobile: true, mobileVisibleCount: 20 },
+      props: { total: 41, mobile: true, mobileVisibleCount: 20, hasMore: true },
       total: false,
       pages: 0,
       disabled: false
@@ -770,23 +864,29 @@ describe('usage statistics settings contract', () => {
       disabled: true
     },
     {
-      props: { page: 2, pageSize: 20, cursor: { hasNext: true } },
-      total: false,
-      pages: 3,
+      props: { page: 2, pageSize: 20, total: 61, hasMore: true },
+      total: true,
+      pages: 4,
       disabled: false
     },
     {
-      props: { page: 2, pageSize: 20, cursor: { hasNext: false }, loading: true },
-      total: false,
+      props: { page: 2, pageSize: 20, total: 40, hasMore: false, loading: true },
+      total: true,
       pages: 2,
       disabled: true
     }
   ])(
-    'renders the shared management pager without invented cursor totals: $props',
+    'renders the shared management pager with real page totals: $props',
     async ({ props, total, pages, disabled }) => {
       const app = createSSRApp({
         render: () =>
-          h(ManagementPagination, { page: 1, mobile: false, mobileVisibleCount: 0, ...props })
+          h(ManagementPagination, {
+            page: 1,
+            mobile: false,
+            mobileVisibleCount: 0,
+            hasMore: false,
+            ...props
+          })
       });
       app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
@@ -799,9 +899,7 @@ describe('usage statistics settings contract', () => {
       if (pages === 0) {
         expect(next).toBeUndefined();
         expect(html).toContain('management-mobile-status');
-        expect(html).toContain(
-          commonMessages[localePreferenceService().locale.value].common.loadMore
-        );
+        expect(html).not.toContain('<button');
         return;
       }
       expect(next).toBeDefined();
@@ -829,11 +927,17 @@ describe('usage statistics settings contract', () => {
         }),
         availableModels: [
           { ...overview().models[0]!, key: 'initial-model', label: 'Initial choice' }
-        ],
-        records: [
+        ]
+      });
+      service.pagination.replace({
+        items: [
           record('shared-record', { ledgerId: 'ledger-one', state: 'failed' }),
           record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
-        ]
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        hasMore: false
       });
       vi.spyOn(usageStatisticsServiceModule, 'UsageStatisticsService').mockImplementation(
         function () {
@@ -869,11 +973,17 @@ describe('usage statistics settings contract', () => {
           commonMessages[locale].usageStatistics.states.succeeded
         ]);
         expect(statuses.map((node) => node.props['type'])).toEqual(['danger', 'info']);
-        service.state.records = [
-          record('running', { state: 'running' }),
-          record('cancelled', { state: 'cancelled' }),
-          record('interrupted', { state: 'interrupted' })
-        ];
+        service.pagination.replace({
+          items: [
+            record('running', { state: 'running' }),
+            record('cancelled', { state: 'cancelled' }),
+            record('interrupted', { state: 'interrupted' })
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 3,
+          hasMore: false
+        });
         await flushComponent();
         expect(
           view
@@ -881,10 +991,16 @@ describe('usage statistics settings contract', () => {
             .filter((node) => node.props['role'] === 'status')
             .map((node) => node.props['type'])
         ).toEqual(['primary', 'info', 'warning']);
-        service.state.records = [
-          record('shared-record', { ledgerId: 'ledger-one', state: 'failed' }),
-          record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
-        ];
+        service.pagination.replace({
+          items: [
+            record('shared-record', { ledgerId: 'ledger-one', state: 'failed' }),
+            record('shared-record', { ledgerId: 'ledger-two', state: 'succeeded' })
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          hasMore: false
+        });
         await flushComponent();
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']

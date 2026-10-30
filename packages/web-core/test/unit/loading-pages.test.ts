@@ -32,6 +32,7 @@ async function render(
     render: () => h(component, props, content ? () => h('input', { value: content }) : undefined)
   });
   app.use(ElementPlus);
+  app.directive('tooltip', { getSSRProps: () => ({}) });
   app.provide(ID_INJECTION_KEY, { prefix: 700, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -64,47 +65,76 @@ describe('shared loading presentation', () => {
     expect(html).not.toMatch(/\b(?:tabindex|role)=/u);
   });
 
-  it('uses one inline ring for automatic management append and leaves the action label intact', async () => {
+  it('uses one accessible ring without a manual action for automatic management append', async () => {
     const html = await render(ManagementPagination, {
       total: 60,
       page: 1,
       mobile: true,
       mobileVisibleCount: 20,
       loading: true,
-      loadingMore: true
+      loadingMore: true,
+      hasMore: true
     });
     expect(html.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
     expect(html).toContain('role="status"');
-    expect(html).toContain('disabled');
+    expect(html).not.toContain('<button');
     expect(html).not.toMatch(/\bis-loading\b/u);
   });
 
-  it('does not apply incremental feedback to desktop or cursor pagination', async () => {
-    for (const props of [{ mobile: false }, { mobile: true, cursor: { hasNext: true } }]) {
-      const html = await render(ManagementPagination, {
-        total: 60,
-        page: 1,
-        mobileVisibleCount: 20,
-        loading: true,
-        ...props
-      });
-      expect(html).not.toContain('busy-indicator');
-      expect(html).toContain('el-pagination');
-    }
+  it('disables desktop page controls without incremental feedback during a page request', async () => {
+    const html = await render(ManagementPagination, {
+      total: 60,
+      page: 1,
+      mobile: false,
+      mobileVisibleCount: 20,
+      loading: true,
+      hasMore: true
+    });
+    expect(html).not.toContain('busy-indicator');
+    expect(html).toContain('el-pagination');
+    const controls = html.match(/<button\b[^>]*>/gu) ?? [];
+    expect(controls).toHaveLength(2);
+    for (const control of controls) expect(control).toMatch(/\sdisabled(?:[=>\s])/u);
   });
 
-  it('disables pagination without an append ring while the loaded directory is refreshing', async () => {
+  it('does not duplicate mobile refresh feedback or expose a manual append action', async () => {
     const html = await render(ManagementPagination, {
       total: 60,
       page: 1,
       mobile: true,
       mobileVisibleCount: 20,
       loading: true,
-      loadingMore: false
+      loadingMore: false,
+      hasMore: true
     });
-    expect(html).toContain('disabled');
+    expect(html).not.toContain('<button');
     expect(html).not.toContain('busy-indicator');
     expect(html).not.toMatch(/\bis-loading\b/u);
+  });
+
+  it.each([true, false])('keeps only the retry ring while busy on mobile=%s', async (mobile) => {
+    i18n.global.locale.value = 'en-US';
+    const props = {
+      total: 60,
+      page: 1,
+      mobile,
+      mobileVisibleCount: 20,
+      hasMore: true,
+      failed: true,
+      error: new Error('List request failed')
+    };
+    const failed = await render(ManagementPagination, props);
+    expect(failed).toContain('Failed to load. Retry');
+    expect(failed).not.toContain('busy-indicator');
+    const retrying = await render(ManagementPagination, {
+      ...props,
+      loading: true,
+      loadingMore: true
+    });
+    expect(retrying.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
+    expect(retrying).toContain('aria-label="Loading"');
+    expect(retrying).toContain('aria-busy="true"');
+    expect(retrying).not.toContain('Failed to load. Retry');
   });
 
   it.each(['success', 'failure'] as const)(

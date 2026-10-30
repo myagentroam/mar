@@ -21,7 +21,6 @@ import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/usage-statistics-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
-import { createManagementPaginationService } from '../../service/management-pagination-service.js';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
@@ -30,7 +29,7 @@ const service = new UsageStatisticsService(props.request, (error) =>
 );
 const state = service.state;
 const pageLoading = computed(() => state.loading && !state.overview);
-const pagination = createManagementPaginationService(20);
+const pagination = service.pagination;
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
 const draft = reactive({
@@ -218,7 +217,6 @@ onMounted(() => {
   service.startAutoRefresh(document);
 });
 onUnmounted(() => {
-  pagination.dispose();
   service.dispose();
 });
 </script>
@@ -776,12 +774,16 @@ onUnmounted(() => {
           :total="Number(state.total)"
           :mobile="pagination.mobileViewport.value"
           :mobile-visible-count="state.records.length"
-          :has-more="state.page < Math.ceil(Number(state.total) / 20)"
+          :has-more="pagination.hasMore.value"
           :loading="state.loading || state.loadingPage"
-          :loading-more="state.loadingPage"
+          :loading-more="pagination.loadingMore.value"
+          :failed="pagination.failure.value !== undefined"
+          :error="pagination.failure.value?.error"
+          :context-key="pagination.contextKey.value"
           :aria-label="t('usageStatistics.pagination')"
           @page="service.goToPage($event)"
           @load-more="service.loadMore($event)"
+          @retry="service.retryPage()"
         />
       </template>
       <p v-else-if="state.failed">{{ t('usageStatistics.retry') }}</p>

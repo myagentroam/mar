@@ -1,11 +1,13 @@
 ---
 title: Audit Events and Export
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-31
 ---
 
 # Audit Events and Export
 
 Enterprise audit records are available to authorized administrators in **Admin → Audit Log**. ADMIN can query all events; ORG_ADMIN is restricted to the managed organization subtree, and MEMBER has no audit entry. They cover authentication and management actions, plus accepted user input in organization-shared sessions. Filter by time, event type, outcome, actor, or resource, then open an event for permitted context and error details. An authorized detail can show the plaintext input accepted by a regular Workspace session on an organization-shared Node.
+
+Use page numbers on desktop. On mobile, more events load automatically near the list bottom; if loading fails, retry in place.
 
 Audit records organization-resource writes, controls and execution, including configuration, resource grants, ordinary Workspace session controls, file/Git changes, and writable terminal open. One terminal open produces a single event; authorization, attach and close phases are not recorded separately. Accepted first and follow-up user messages in ordinary organization Workspace sessions are available only in authorized details. Reads, previews, downloads, exports, Watch and heartbeats are not audited. Hosted conversations and personal internal resources are excluded; personal registration, removal and revocation that affect Server registration or identity trust are retained.
 

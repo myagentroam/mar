@@ -123,8 +123,7 @@ const pagination = createManagementPageService<Secret>({
       keyword.value,
       sortBy.value,
       sortOrder.value
-    ]),
-  reportError: (error) => showMessage(message(error), 'error', error)
+    ])
 });
 const loading = computed(
   () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
@@ -448,6 +447,10 @@ function message(error: unknown): string {
       :loading="loading"
       :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
+      :failed="pagination.failure.value !== undefined"
+      :error="pagination.failure.value?.error"
+      :context-key="pagination.contextKey.value"
+      @retry="pagination.retry"
       @load-more="pagination.loadMore"
     />
     <el-dialog

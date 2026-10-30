@@ -21,10 +21,11 @@ import {
   classifyAuditEvent,
   namedAuditIdentifier
 } from '@/util/audit-presentation';
+import { MANAGEMENT_PAGE_SIZE } from '@myagentroam/web-core/management-pagination';
 import {
-  createManagementPaginationService,
-  MANAGEMENT_PAGE_SIZE
-} from '@myagentroam/web-core/management-pagination';
+  createManagementPageService,
+  parseManagementPage
+} from '@myagentroam/web-core/management-page';
 import ManagementPagination from '@myagentroam/web-core/ManagementPagination.vue';
 
 interface AuditEvent {
@@ -75,24 +76,10 @@ const range = ref<[Date, Date] | null>(
     ? [new Date(parsedFrom), new Date(parsedTo)]
     : defaultRange
 );
-const events = ref<readonly AuditEvent[]>([]);
-const total = ref(0);
-const nextCursor = ref<string>();
 const selected = ref<AuditEventDetail>();
 const detailLoading = ref(false);
-const loading = ref(false);
-const pageReady = ref(false);
-const appendLoading = ref(false);
 const refreshLoading = ref(false);
-const pagination = createManagementPaginationService();
-let loadGeneration = 0;
 let detailGeneration = 0;
-watch(
-  () => pagination.mobileViewport.value,
-  () => {
-    void load(1);
-  }
-);
 watch(range, (value) => {
   const [from, to] = value ?? defaultRange;
   replaceManagementUrlValues('audit', { from: from.getTime(), to: to.getTime() });
@@ -180,6 +167,21 @@ const query = computed(() => {
   value.set('to', String(to.getTime()));
   return value;
 });
+const pagination = createManagementPageService<AuditEvent>({
+  context: () => query.value.toString(),
+  key: (event) => event.id,
+  read: async (page) => {
+    const params = new URLSearchParams(query.value);
+    params.set('page', String(page));
+    return parseManagementPage<AuditEvent>(
+      await props.request(`/api/audit-events?${params}`),
+      'events'
+    );
+  }
+});
+const events = pagination.items;
+const loading = pagination.loading;
+const pageReady = computed(() => pagination.result.value !== undefined);
 const exportUrl = computed(() => {
   const value = new URLSearchParams(query.value);
   value.delete('limit');
@@ -338,50 +340,8 @@ function closeDetail(): void {
   selected.value = undefined;
   detailLoading.value = false;
 }
-async function load(page = 1, append = false): Promise<void> {
-  if (append && nextCursor.value === undefined) return;
-  const generation = ++loadGeneration;
-  loading.value = true;
-  appendLoading.value = append;
-  try {
-    const params = new URLSearchParams(query.value);
-    if (append) params.set('cursor', nextCursor.value ?? '');
-    else params.set('page', String(page));
-    const result = await props.request<{
-      events: readonly AuditEvent[];
-      total?: number;
-      page?: number;
-      nextCursor?: string;
-    }>(`/api/audit-events?${params}`);
-    if (generation !== loadGeneration) return;
-    if (append) {
-      const seen = new Set(events.value.map((event) => event.id));
-      events.value = [...events.value, ...result.events.filter((event) => !seen.has(event.id))];
-    } else {
-      events.value = result.events;
-      if (result.total !== undefined) total.value = result.total;
-      if (result.page !== undefined) pagination.setPage(result.page);
-    }
-    nextCursor.value = result.nextCursor;
-    pageReady.value = true;
-  } catch (error) {
-    if (generation !== loadGeneration) return;
-    showMessage(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.auditManagementPage.unableToLoadAuditEvents'),
-      'error',
-      error
-    );
-  } finally {
-    if (generation !== loadGeneration) return;
-    loading.value = false;
-    appendLoading.value = false;
-  }
-}
-function loadMore(): void {
-  if (loading.value || nextCursor.value === undefined) return;
-  void load(pagination.page.value, true);
+function load(): Promise<void> {
+  return pagination.load(true);
 }
 async function refresh(): Promise<void> {
   refreshLoading.value = true;
@@ -390,10 +350,6 @@ async function refresh(): Promise<void> {
   } finally {
     refreshLoading.value = false;
   }
-}
-function changePage(value: number): void {
-  if (value === pagination.page.value || loading.value) return;
-  void load(value);
 }
 onMounted(() => {
   pagination.start();
@@ -405,7 +361,7 @@ onBeforeUnmount(closeDetail);
 
 <template>
   <section
-    v-loading="loading && !pageReady"
+    v-loading="loading && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
     class="management-page audit-management"
   >
@@ -442,7 +398,13 @@ onBeforeUnmount(closeDetail);
       }}</el-button>
     </div>
     <el-table
-      v-loading="loading && pageReady && !appendLoading && !refreshLoading"
+      v-loading="
+        loading &&
+        pageReady &&
+        !pagination.loadingMore.value &&
+        !refreshLoading &&
+        !pagination.failure.value
+      "
       class="clickable-rows"
       :data="events"
       row-key="id"
@@ -473,16 +435,20 @@ onBeforeUnmount(closeDetail);
       >
     </el-table>
     <ManagementPagination
-      :total="total"
+      :total="pagination.total.value"
       :page="pagination.page.value"
       :page-size="MANAGEMENT_PAGE_SIZE"
       :mobile="pagination.mobileViewport.value"
       :mobile-visible-count="events.length"
-      :has-more="nextCursor !== undefined"
+      :has-more="pagination.hasMore.value"
       :loading="loading"
-      :loading-more="appendLoading"
-      @page="changePage"
-      @load-more="loadMore"
+      :loading-more="pagination.loadingMore.value"
+      :failed="pagination.failure.value !== undefined"
+      :error="pagination.failure.value?.error"
+      :context-key="pagination.contextKey.value"
+      @retry="pagination.retry"
+      @page="pagination.setPage"
+      @load-more="pagination.loadMore"
     />
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"

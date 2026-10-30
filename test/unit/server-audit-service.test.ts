@@ -161,11 +161,18 @@ describe('Server structured audit', () => {
   });
 
   it('filters ORG_ADMIN reads to managed organizations and paginates stably', async () => {
-    const query = vi.fn(async (sql: string, params: readonly unknown[]) => {
-      void sql;
-      void params;
-      return [[auditRow('b', 20, 2), auditRow('a', 10, 3), auditRow('overflow', 5, 2)], []];
-    });
+    const query = vi.fn(async (sql: string, _params: readonly unknown[]) =>
+      sql.includes('COUNT(*)')
+        ? [[{ total: 3 }], []]
+        : [[auditRow('b', 20, 2), auditRow('a', 10, 3)], []]
+    );
+    const connection = {
+      query,
+      beginTransaction: vi.fn(),
+      commit: vi.fn(),
+      rollback: vi.fn(),
+      release: vi.fn()
+    };
     const execute = vi.fn(async (sql: string) =>
       sql.includes('SELECT role') ? [[{ role: 'ORG_ADMIN' }], []] : [[], []]
     );
@@ -174,15 +181,23 @@ describe('Server structured audit', () => {
       authorize: vi.fn(async () => ({ allowed: true }))
     };
     const service = new AuditService(
-      { raw: { execute }, auditRaw: { query } } as unknown as MysqlServerDatabase,
+      {
+        raw: { execute },
+        auditRaw: { getConnection: vi.fn(async () => connection) }
+      } as unknown as MysqlServerDatabase,
       authorization as unknown as AuthorizationService
     );
     const result = await service.query(7, { limit: 2, from: 8, to: 21 });
     expect(result.events).toHaveLength(2);
-    expect(result.nextCursor).toBeTruthy();
-    const queryCall = query.mock.calls[0] as unknown as [string, readonly unknown[]];
+    expect(result).toMatchObject({ page: 1, pageSize: 2, total: 3, hasMore: true });
+    expect(query.mock.calls[0]?.[0]).toContain('REPEATABLE READ');
+    const countCall = query.mock.calls[1] as unknown as [string, readonly unknown[]];
+    const queryCall = query.mock.calls[2] as unknown as [string, readonly unknown[]];
+    expect(countCall[1]).toEqual([[2, 3], 8, 21]);
     expect(queryCall[0]).not.toContain('user_message');
-    expect(queryCall[1]).toEqual([[2, 3], 8, 21, 3]);
+    expect(queryCall[0]).toContain('ORDER BY occurred_at DESC,id DESC');
+    expect(queryCall[0]).toContain('LIMIT 2 OFFSET 0');
+    expect(queryCall[1]).toEqual([[2, 3], 8, 21]);
   });
 
   it('returns the requested server page and real total without a client batch', async () => {
@@ -194,7 +209,7 @@ describe('Server structured audit', () => {
       query: vi.fn(async (sql: string) =>
         sql.includes('COUNT(*)')
           ? [[{ total: 45 }], []]
-          : [[auditRow('page-2', 30, 2), auditRow('older', 20, 2), auditRow('overflow', 10, 2)], []]
+          : [[auditRow('page-2', 30, 2), auditRow('older', 20, 2)], []]
       )
     };
     const service = new AuditService(
@@ -209,31 +224,43 @@ describe('Server structured audit', () => {
 
     expect(result).toMatchObject({ total: 45, page: 2 });
     expect(result.events.map((event) => (event as { id: string }).id)).toEqual(['page-2', 'older']);
-    expect(result.nextCursor).toBeTruthy();
-    const countCall = connection.query.mock.calls[0] as unknown as [string, readonly unknown[]];
-    const listCall = connection.query.mock.calls[1] as unknown as [string, readonly unknown[]];
+    expect(result).toMatchObject({ pageSize: 2, hasMore: true });
+    expect(result).not.toHaveProperty('nextCursor');
+    expect(connection.query.mock.calls[0]?.[0]).toContain('REPEATABLE READ');
+    const countCall = connection.query.mock.calls[1] as unknown as [string, readonly unknown[]];
+    const listCall = connection.query.mock.calls[2] as unknown as [string, readonly unknown[]];
     expect(countCall[0]).toContain('COUNT(*)');
     expect(countCall[0]).not.toContain('user_message');
     expect(countCall[1]).toEqual([8, 40]);
-    expect(listCall[0]).toContain('OFFSET');
-    expect(listCall[1]).toEqual([8, 40, 3, 2]);
+    expect(listCall[0]).toContain('LIMIT 2 OFFSET 2');
+    expect(listCall[1]).toEqual([8, 40]);
     expect(AUDIT_PAGE_SIZE).toBe(20);
   });
 
   it('defaults an omitted audit page size to 20', async () => {
-    const query = vi.fn(async () => [[], []]);
+    const query = vi.fn(async (sql: string) =>
+      sql.includes('COUNT(*)') ? [[{ total: 0 }], []] : [[], []]
+    );
+    const connection = {
+      query,
+      beginTransaction: vi.fn(),
+      commit: vi.fn(),
+      rollback: vi.fn(),
+      release: vi.fn()
+    };
     const service = new AuditService(
       {
         raw: { execute: vi.fn(async () => [[{ role: 'ADMIN' }], []]) },
-        auditRaw: { query }
+        auditRaw: { getConnection: vi.fn(async () => connection) }
       } as unknown as MysqlServerDatabase,
       { managedOrganizationIds: vi.fn(), authorize: vi.fn() } as unknown as AuthorizationService
     );
 
     await service.query(1);
 
-    const params = (query.mock.calls[0] as unknown as [string, readonly unknown[]])[1];
-    expect(params).toEqual([AUDIT_PAGE_SIZE + 1]);
+    const listCall = query.mock.calls[2] as unknown as [string, readonly unknown[]];
+    expect(listCall[0]).toContain(`LIMIT ${AUDIT_PAGE_SIZE} OFFSET 0`);
+    expect(listCall[1]).toEqual([]);
   });
 
   it('reads conversation text only from an authorized detail query', async () => {

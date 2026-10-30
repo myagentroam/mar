@@ -57,6 +57,7 @@ describe('Public source discovery and catalog management', () => {
         const request = vi.fn(async <T>() => ({}) as T);
         const app = createSSRApp({ render: () => h(component, { request, writable: false }) });
         app.use(i18n).use(ElementPlus);
+        app.directive('tooltip', { getSSRProps: () => ({}) });
         app.provide(ID_INJECTION_KEY, { prefix: 923, current: 0 });
         app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);

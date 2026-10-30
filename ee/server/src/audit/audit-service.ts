@@ -8,6 +8,7 @@ import type { SharedConversationAuditInput } from './audit-contracts.js';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { AuthorizationProvider } from '../product/product-policy.js';
 import { withMysqlTransaction } from '@myagentroam/server-core/mysql-reference-store';
+import { readManagementPage } from '@myagentroam/server-core/management-pagination';
 
 const DEFAULT_RETENTION_DAYS = 180;
 const DEFAULT_CLEANUP_BATCH_SIZE = 1_000;
@@ -126,7 +127,6 @@ export class AuditService {
   async query(
     actorUserId: number,
     input: {
-      readonly cursor?: string;
       readonly limit?: number;
       readonly page?: number;
       readonly from?: number;
@@ -134,18 +134,22 @@ export class AuditService {
     } = {}
   ): Promise<{
     readonly events: readonly object[];
-    readonly nextCursor?: string;
-    readonly total?: number;
-    readonly page?: number;
+    readonly total: number;
+    readonly page: number;
+    readonly pageSize: number;
+    readonly hasMore: boolean;
   }> {
     const scope = await this.readScope(actorUserId, 'AUDIT_READ');
-    const limit = Math.min(Math.max(input.limit ?? AUDIT_PAGE_SIZE, 1), MAX_AUDIT_QUERY_LIMIT);
-    if (input.page !== undefined) {
-      if (!Number.isSafeInteger(input.page) || input.page < 1)
-        throw new Error('AUDIT_QUERY_INVALID');
-      return this.queryPage(scope, input.page, limit, input.from, input.to);
-    }
-    const cursor = decodeCursor(input.cursor);
+    const limit = input.limit ?? AUDIT_PAGE_SIZE;
+    const page = input.page ?? 1;
+    if (
+      !Number.isSafeInteger(page) ||
+      page < 1 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > MAX_AUDIT_QUERY_LIMIT
+    )
+      throw new Error('AUDIT_QUERY_INVALID');
     const params: unknown[] = [];
     const conditions: string[] = [];
     if (scope !== null) {
@@ -160,73 +164,16 @@ export class AuditService {
       conditions.push('occurred_at<=?');
       params.push(input.to);
     }
-    if (cursor !== undefined) {
-      conditions.push('(occurred_at<? OR (occurred_at=? AND id<?))');
-      params.push(cursor.occurredAt, cursor.occurredAt, cursor.id);
-    }
-    params.push(limit + 1);
-    const [rows] = await this.database.auditRaw.query<RowDataPacket[]>(
-      `${auditListSql(conditions)} LIMIT ?`,
-      params
-    );
-    const page = rows.slice(0, limit);
-    const last = page.at(-1);
-    return {
-      events: page.map(publicAuditEvent),
-      ...(rows.length > limit && last !== undefined
-        ? { nextCursor: encodeCursor(Number(last['occurred_at']), String(last['id'])) }
-        : {})
-    };
-  }
-
-  private async queryPage(
-    scope: readonly number[] | null,
-    requestedPage: number,
-    limit: number,
-    from?: number,
-    to?: number
-  ): Promise<{
-    readonly events: readonly object[];
-    readonly total: number;
-    readonly page: number;
-    readonly nextCursor?: string;
-  }> {
-    const params: unknown[] = [];
-    const conditions: string[] = [];
-    if (scope !== null) {
-      conditions.push('organization_id IN (?)');
-      params.push(scope);
-    }
-    if (from !== undefined) {
-      conditions.push('occurred_at>=?');
-      params.push(from);
-    }
-    if (to !== undefined) {
-      conditions.push('occurred_at<=?');
-      params.push(to);
-    }
-    return withMysqlTransaction(this.database.auditRaw, async (connection) => {
-      const [counts] = await connection.query<RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM audit_events${auditWhere(conditions)}`,
+    const { rows, ...metadata } = await readManagementPage(
+      this.database.auditRaw,
+      { page, limit },
+      {
+        countSql: `SELECT COUNT(*) AS total FROM audit_events${auditWhere(conditions)}`,
+        rowsSql: auditListSql(conditions),
         params
-      );
-      const total = Number(counts[0]?.['total'] ?? 0);
-      const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / limit)));
-      const [rows] = await connection.query<RowDataPacket[]>(
-        `${auditListSql(conditions)} LIMIT ? OFFSET ?`,
-        [...params, limit + 1, (page - 1) * limit]
-      );
-      const events = rows.slice(0, limit);
-      const last = events.at(-1);
-      return {
-        events: events.map(publicAuditEvent),
-        total,
-        page,
-        ...(rows.length > limit && last !== undefined
-          ? { nextCursor: encodeCursor(Number(last['occurred_at']), String(last['id'])) }
-          : {})
-      };
-    });
+      }
+    );
+    return { events: rows.map(publicAuditEvent), ...metadata };
   }
 
   async export(
@@ -481,27 +428,6 @@ function sharedConversationIdempotencyKey(
       `${nodeId}\u0000${workspaceId}\u0000${sessionId}\u0000${messageOrQueueId}\u0000${eventType}`
     )
     .digest('hex');
-}
-
-function encodeCursor(occurredAt: number, id: string): string {
-  return Buffer.from(JSON.stringify({ occurredAt, id })).toString('base64url');
-}
-
-function decodeCursor(value: string | undefined): { occurredAt: number; id: string } | undefined {
-  if (value === undefined) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      Number.isSafeInteger((parsed as { occurredAt?: unknown }).occurredAt) &&
-      typeof (parsed as { id?: unknown }).id === 'string'
-    )
-      return parsed as { occurredAt: number; id: string };
-  } catch {
-    // Rejected below.
-  }
-  throw new Error('AUDIT_CURSOR_INVALID');
 }
 
 function csv(value: unknown): string {

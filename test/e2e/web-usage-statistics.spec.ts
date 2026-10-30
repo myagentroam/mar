@@ -26,8 +26,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         ? {
             title: 'Usage statistics',
             refresh: 'Refresh',
-            more: 'Load more',
-            noMore: 'No more',
             next: 'Go to next page',
             previous: 'Go to previous page',
             notes: 'About these statistics',
@@ -50,8 +48,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         : {
             title: '用量统计',
             refresh: '刷新',
-            more: '加载更多',
-            noMore: '没有更多了',
             next: '下一页',
             previous: '上一页',
             notes: '统计说明',
@@ -416,7 +412,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
       await expect(pager.getByRole('status', { name: '正在加载', exact: true })).toBeVisible();
-      await expect(pager.getByRole('button', { name: labels.more, exact: true })).toBeDisabled();
+      await expect(pager.getByRole('button')).toHaveCount(0);
       await expect(rows).toHaveCount(60);
       finishPageRead();
       await page.clock.runFor(500);
@@ -427,7 +423,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
           .filter((url) => url.pathname.endsWith('/records'))
           .map((url) => url.searchParams.get('page'))
       ).toEqual(['1', '2', '3', '4']);
-      await expect(pager).toContainText(labels.noMore);
+      await expect(pager.getByRole('status')).toHaveCount(0);
+      await expect(pager.getByRole('button')).toHaveCount(0);
     } else {
       await expect(
         panel.getByRole('button', { name: labels.previous, exact: true })

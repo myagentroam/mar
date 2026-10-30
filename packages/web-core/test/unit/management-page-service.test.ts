@@ -4,6 +4,7 @@ import {
   createManagementPageService,
   parseManagementPage
 } from '../../src/service/management-page-service.js';
+import { createCatalogPageService } from '../../src/service/catalog-page-service.js';
 
 interface Item {
   readonly id: string;
@@ -98,6 +99,48 @@ describe('management page response parser', () => {
 });
 
 describe('management page service lifecycle', () => {
+  it('exposes catalog initial, refresh and append failures through the same page owner', async () => {
+    const initialError = new Error('initial');
+    const refreshError = new Error('refresh');
+    const appendError = new Error('append');
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(initialError)
+      .mockResolvedValueOnce({
+        entries: [{ id: 'first' }],
+        page: 1,
+        pageSize: 20,
+        total: 21,
+        hasMore: true
+      })
+      .mockRejectedValueOnce(refreshError)
+      .mockRejectedValueOnce(appendError)
+      .mockResolvedValueOnce({
+        entries: [{ id: 'second' }],
+        page: 2,
+        pageSize: 20,
+        total: 21,
+        hasMore: false
+      });
+    const service = createCatalogPageService<Item>(request, '/catalog', 'entries');
+    await service.load();
+    expect(service.error.value).toBe(initialError);
+    expect(service.failure.value).toMatchObject({ page: 1, append: false });
+    await service.retry();
+    expect(service.error.value).toBeUndefined();
+    await expect(service.refresh()).rejects.toBe(refreshError);
+    expect(service.items.value).toEqual([{ id: 'first' }]);
+    expect(service.failure.value).toMatchObject({ page: 1, append: false });
+    await service.loadMore();
+    expect(service.error.value).toBe(appendError);
+    expect(service.failure.value).toMatchObject({ page: 2, append: true });
+    await service.loadMore(true);
+    expect(request).toHaveBeenCalledTimes(4);
+    await service.retry();
+    expect(service.error.value).toBeUndefined();
+    expect(service.items.value).toEqual([{ id: 'first' }, { id: 'second' }]);
+    service.dispose();
+  });
   it('ignores stale generations and contexts without letting them clear the current loading state', async () => {
     let context = 'first';
     const requests = [
@@ -110,8 +153,7 @@ describe('management page service lifecycle', () => {
     const service = createManagementPageService({
       read,
       key: (item) => item.id,
-      context: () => context,
-      reportError: vi.fn()
+      context: () => context
     });
 
     const oldGeneration = service.load();
@@ -151,18 +193,16 @@ describe('management page service lifecycle', () => {
         ? page([{ id: 'a' }, { id: 'b' }], 1, 3, true)
         : page([{ id: 'b' }, { id: 'c' }], 2, 3, false);
     });
-    const reportError = vi.fn();
     const service = createManagementPageService({
       read,
       key: (item) => item.id,
-      context: () => 'mobile-list',
-      reportError
+      context: () => 'mobile-list'
     });
 
     await service.load();
     await service.loadMore(true);
     expect(service.items.value).toEqual([{ id: 'a' }, { id: 'b' }]);
-    expect(reportError).toHaveBeenCalledOnce();
+    expect(service.failure.value?.error).toBeInstanceOf(Error);
     expect(service.loading.value).toBe(false);
     expect(service.loadingMore.value).toBe(false);
     const callsAfterFailure = read.mock.calls.length;
@@ -170,7 +210,7 @@ describe('management page service lifecycle', () => {
     await service.loadMore(true);
     expect(read).toHaveBeenCalledTimes(callsAfterFailure);
     failNextPage = false;
-    await service.loadMore();
+    await service.retry();
     await service.loadMore();
     expect(read).toHaveBeenCalledTimes(callsAfterFailure + 1);
     expect(service.items.value).toEqual([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
@@ -183,7 +223,6 @@ describe('management page service lifecycle', () => {
     async (outcome) => {
       let context = 'current';
       const response = deferred<ManagementPage<Item>>();
-      const reportError = vi.fn();
       const read = vi
         .fn()
         .mockResolvedValueOnce(page([{ id: 'a' }], 1, 3, true))
@@ -193,8 +232,7 @@ describe('management page service lifecycle', () => {
       const service = createManagementPageService<Item>({
         read,
         key: (item) => item.id,
-        context: () => context,
-        reportError
+        context: () => context
       });
       await service.load();
       await service.loadMore();
@@ -216,7 +254,7 @@ describe('management page service lifecycle', () => {
         expect(service.items.value).toBe(items);
         expect(service.result.value).toBe(metadata);
         expect(service.page.value).toBe(2);
-        expect(reportError).toHaveBeenCalledOnce();
+        expect(service.failure.value?.error).toBeInstanceOf(Error);
       }
       context = 'next';
       const switching = service.load(true);
@@ -234,7 +272,6 @@ describe('management page service lifecycle', () => {
       const stale = deferred<ManagementPage<Item>>();
       const refreshResponse = deferred<ManagementPage<Item>>();
       const current = deferred<ManagementPage<Item>>();
-      const reportError = vi.fn();
       const read = vi
         .fn()
         .mockResolvedValueOnce(page([{ id: 'initial' }], 1, 40, true))
@@ -244,8 +281,7 @@ describe('management page service lifecycle', () => {
       const service = createManagementPageService<Item>({
         read,
         key: (item) => item.id,
-        context: () => 'same-directory',
-        reportError
+        context: () => 'same-directory'
       });
       await service.load();
       const oldAppend = service.loadMore();
@@ -262,7 +298,7 @@ describe('management page service lifecycle', () => {
       expect(service.loading.value).toBe(true);
       expect(service.loadingMore.value).toBe(true);
       expect(service.items.value).toEqual([{ id: 'refreshed' }]);
-      expect(reportError).not.toHaveBeenCalled();
+      expect(service.failure.value).toBeUndefined();
       current.resolve(page([{ id: 'current' }], 2, 40, false));
       await newAppend;
       expect(service.loading.value).toBe(false);
@@ -288,8 +324,7 @@ describe('management page service lifecycle', () => {
     const service = createManagementPageService<Item>({
       read,
       key: (item) => item.id,
-      context: () => 'clamped-list',
-      reportError: vi.fn()
+      context: () => 'clamped-list'
     });
 
     await service.load();
@@ -303,7 +338,6 @@ describe('management page service lifecycle', () => {
   });
 
   it('retains the loaded page when a clamped append cannot reload page one', async () => {
-    const reportError = vi.fn();
     const read = vi
       .fn()
       .mockResolvedValueOnce(page([{ id: 'retained' }], 1, 40, true))
@@ -312,8 +346,7 @@ describe('management page service lifecycle', () => {
     const service = createManagementPageService<Item>({
       read,
       key: (item) => item.id,
-      context: () => 'clamped-list',
-      reportError
+      context: () => 'clamped-list'
     });
     await service.load();
     const items = service.items.value;
@@ -324,7 +357,7 @@ describe('management page service lifecycle', () => {
     expect(service.page.value).toBe(1);
     expect(service.loading.value).toBe(false);
     expect(service.loadingMore.value).toBe(false);
-    expect(reportError).toHaveBeenCalledOnce();
+    expect(service.failure.value?.error).toBeInstanceOf(Error);
     service.dispose();
   });
 
@@ -337,8 +370,7 @@ describe('management page service lifecycle', () => {
     const service = createManagementPageService({
       read,
       key: (item) => item.id,
-      context: () => 'desktop-list',
-      reportError: vi.fn()
+      context: () => 'desktop-list'
     });
 
     await service.load();

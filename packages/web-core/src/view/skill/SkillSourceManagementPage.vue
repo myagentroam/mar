@@ -129,18 +129,6 @@ const selectedSource = computed(() =>
 );
 const catalogTags = pagination.tags;
 const filteredFavorites = service.favorites;
-watch(pagination.error, (error) => {
-  if (error !== undefined)
-    showMessage(
-      skillErrorMessage(
-        error,
-        translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
-      ),
-      'error',
-      error
-    );
-});
-
 onMounted(() => {
   pagination.start();
   void loadPage();
@@ -682,7 +670,12 @@ function scopeLabel(scope: string): string {
           </div>
         </div>
         <div
-          v-loading="pagination.loading.value && !initialLoading && !pagination.loadingMore.value"
+          v-loading="
+            pagination.loading.value &&
+            !initialLoading &&
+            !pagination.loadingMore.value &&
+            !pagination.failure.value
+          "
           class="skill-table-section"
         >
           <el-table
@@ -818,6 +811,10 @@ function scopeLabel(scope: string): string {
             :loading-more="pagination.loadingMore.value"
             :has-more="pagination.hasMore.value"
             @page="pagination.setPage"
+            :failed="pagination.failure.value !== undefined"
+            :error="pagination.failure.value?.error"
+            :context-key="pagination.contextKey.value"
+            @retry="pagination.retry"
             @load-more="pagination.loadMore"
           />
         </div>

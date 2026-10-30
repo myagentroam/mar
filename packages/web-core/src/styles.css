@@ -1221,6 +1221,10 @@ pre {
     padding: 12px;
   }
 
+  .management-page .el-table {
+    flex-shrink: 0;
+  }
+
   .management-page > header {
     flex-wrap: wrap;
   }
