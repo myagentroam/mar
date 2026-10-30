@@ -152,7 +152,9 @@ const tools: readonly {
 
 const delegationPrompt = [
   '# Delegation and coordination',
-  'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local.',
+  'Handle focused or tightly coupled work locally by default.',
+  'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+  'Do not split work merely because agents are available.',
   'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
   'Follow up through the direct delegate by default; inspect deeper Sessions only when a concrete issue needs independent verification.',
   'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',

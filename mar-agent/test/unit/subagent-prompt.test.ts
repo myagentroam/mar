@@ -25,7 +25,14 @@ it.each([false, true])(
     for (const request of setup.adapter.requests) {
       const instructions = effectiveInstructions(request);
       expect(instructions.match(/# Delegation and coordination/gu)).toHaveLength(1);
-      expect(instructions).toContain('Keep simple or tightly coupled work local.');
+      expect(instructions).toContain(
+        [
+          '# Delegation and coordination',
+          'Handle focused or tightly coupled work locally by default.',
+          'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+          'Do not split work merely because agents are available.'
+        ].join('\n\n')
+      );
       expect(instructions).toContain('a read-only boundary or non-overlapping write scope');
       expect(instructions).toContain('Follow up through the direct delegate by default');
       expect(instructions).toContain('only when a concrete issue needs independent verification');
