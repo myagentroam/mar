@@ -1193,6 +1193,7 @@ onBeforeUnmount(() => {
       <template v-else>
         <ConversationScroll
           class="hosted-timeline-scroll"
+          :context-key="selectedConversationKey"
           :has-older="workspace.historyNextCursor.value !== null"
           :loading-initial="false"
           :initial-load-failed="false"

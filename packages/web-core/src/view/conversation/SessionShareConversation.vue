@@ -191,6 +191,7 @@ onBeforeUnmount(() => {
         >
       </header>
       <ConversationScroll
+        :context-key="chat.target.sessionId"
         :has-older="nextCursor !== null"
         :loading-initial="loadingInitial"
         :initial-load-failed="initialLoadFailed"

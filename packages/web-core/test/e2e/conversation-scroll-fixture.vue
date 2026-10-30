@@ -17,7 +17,13 @@ const conversation = createConversationStateService(() => undefined);
 const run = createRunService(selectedSessionId);
 const turns = conversation.turns;
 const history = ref<HTMLElement>();
-const historyHeight = ref(4000);
+const parameters = new URL(location.href).searchParams;
+const underflow = parameters.has('underflow');
+const historyHeight = ref(underflow ? 80 : 4000);
+const initialPending = ref(underflow);
+const olderPending = ref(false);
+const olderError = ref('');
+const contextKey = ref(0);
 const loading = ref(false);
 const opened = ref(false);
 const olderRequests = ref(0);
@@ -188,6 +194,28 @@ onMounted(async () => {
 
 <template>
   <main>
+    <template v-if="underflow">
+      <button data-testid="finish-initial" @click="initialPending = false">Finish initial</button>
+      <button data-testid="finish-older" @click="olderPending = false">Finish older</button>
+      <button
+        data-testid="fail-older"
+        @click="
+          olderPending = false;
+          olderError = 'Unavailable';
+        "
+      >
+        Fail older
+      </button>
+      <button
+        data-testid="next-context"
+        @click="
+          contextKey++;
+          initialPending = true;
+        "
+      >
+        Next conversation
+      </button>
+    </template>
     <button data-testid="restore-cache" @click="restore">Restore cached conversation</button>
     <button data-testid="finish-watch" @click="releaseWatch?.()">Finish Watch</button>
     <button data-testid="grow-content" @click="historyHeight += 240">Append content</button>
@@ -199,15 +227,22 @@ onMounted(async () => {
     <output data-testid="guarded-interruption">{{ guardedAtInterruption }}</output>
     <section class="scroll-fixture">
       <ConversationScroll
-        :has-older="true"
-        :loading-initial="false"
-        :initial-load-failed="false"
-        :loading-older="false"
+        :context-key="String(contextKey)"
+        :has-older="!parameters.has('no-older')"
+        :loading-initial="initialPending"
+        :initial-load-failed="parameters.has('initial-failed')"
+        :loading-older="olderPending"
+        :older-error="olderError"
         :has-turns="true"
         :following="following"
         @scroll-element="scroll.setElement"
         @scroll="scroll.handleScroll(() => olderRequests++)"
         @scroll-intent="scroll.stopFollowing"
+        @load-older="
+          olderRequests++;
+          olderPending = true;
+          olderError = '';
+        "
         @latest="scroll.scrollToLatest"
       >
         <div ref="history" class="history" :style="{ height: `${historyHeight}px` }">

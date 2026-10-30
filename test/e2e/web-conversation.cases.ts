@@ -3432,7 +3432,7 @@ for (const mobile of [false, true]) {
       await page.goto('/console');
       await page.getByRole('button', { name: '进入控制台' }).click();
       const work = page.getByRole('button', { name: '工作', exact: true });
-      await work.click();
+      if (!mobile || (await work.getAttribute('aria-expanded')) !== 'true') await work.click();
       await page
         .locator('.workspace-tree')
         .getByRole('button', { name: /node-1/ })
@@ -3440,7 +3440,7 @@ for (const mobile of [false, true]) {
       const project = page
         .locator('.workspace-tree')
         .getByRole('button', { name: 'project', exact: true });
-      if (mobile && !(await project.isVisible())) await work.click();
+      if (mobile && (await work.getAttribute('aria-expanded')) !== 'true') await work.click();
       await project.click();
       if (mobile) await page.getByRole('button', { name: '打开会话列表' }).click();
       await page.locator('.session-list .session-link').first().click();
@@ -3450,7 +3450,7 @@ for (const mobile of [false, true]) {
       await retry.press('Enter');
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-busy', 'true');
-      await expect(retry.locator('.is-loading')).toHaveCount(1);
+      await expect(retry.locator('.busy-indicator')).toHaveCount(1);
       await expect(page.locator('.conversation-loading-initial .busy-indicator')).toHaveCount(0);
       await expect.poll(() => initialAttempts).toBe(2);
       await retry.press('Enter');
@@ -3458,10 +3458,6 @@ for (const mobile of [false, true]) {
       releaseRetry();
       await expect(retry).toHaveAttribute('aria-busy', 'false');
       await expect(retry).toBeFocused();
-      await retry.press('Enter');
-      await expect(page.getByText('Short history', { exact: true })).toBeVisible();
-      await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
-
       let olderAttempts = 0;
       let releaseOlder!: () => void;
       const olderReady = new Promise<void>((resolve) => {
@@ -3469,11 +3465,20 @@ for (const mobile of [false, true]) {
       });
       await page.route('**/api/agent-sessions/session-1/turns*', async (route) => {
         olderAttempts += 1;
+        if (olderAttempts === 1) {
+          await json(route, { segments: [], nextCursor: 'manual-older-page', snapshotSequence: 2 });
+          return;
+        }
         await olderReady;
         await json(route, { segments: [], nextCursor: null, snapshotSequence: 2 });
       });
+      await retry.press('Enter');
+      await expect(page.getByText('Short history', { exact: true })).toBeVisible();
+      await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
+      await expect.poll(() => olderAttempts).toBe(1);
       const older = page.locator('.conversation-history-control button');
       await expect(older).toBeVisible();
+      await expect(older).toHaveAttribute('aria-disabled', 'false');
       const scroll = page.locator('.conversation-scroll');
       expect(await scroll.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
         true
@@ -3495,21 +3500,26 @@ for (const mobile of [false, true]) {
       );
       await expect(older).toHaveText('Load earlier messages');
       if (!mobile) await expect(older).toBeFocused();
-      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
-      await expect(older.locator('.is-loading')).toHaveCount(1);
+      await expect(
+        page.locator('.conversation-history-control > [role="status"] .busy-indicator')
+      ).toHaveCount(0);
+      await expect(older.locator('.busy-indicator')).toHaveCount(1);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'rotating');
+      await expect(older.locator('.busy-indicator')).toHaveCSS(
+        'animation-name',
+        'busy-indicator-spin'
+      );
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await expect(older.locator('.is-loading')).toHaveCSS('animation-name', 'none');
+      await expect(older.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      await expect.poll(() => olderAttempts).toBe(1);
+      await expect.poll(() => olderAttempts).toBe(2);
       await page.screenshot({ path: testInfo.outputPath('history-pending.png') });
       if (mobile) {
         const bounds = await older.boundingBox();
         if (!bounds) throw new Error('Pending history action is not visible');
         await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
       } else await older.press('Enter');
-      expect(olderAttempts).toBe(1);
+      expect(olderAttempts).toBe(2);
       releaseOlder();
       await expect(older).toHaveCount(0);
       await expect(page.locator('.conversation-history-start')).toBeVisible();

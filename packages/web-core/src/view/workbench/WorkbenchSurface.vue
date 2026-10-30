@@ -461,6 +461,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 @open-tree="openSessionTree"
               />
               <ConversationScroll
+                :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
                 :has-older="page.conversationNextCursor !== null"
                 :loading-initial="page.loadingInitialConversation"
                 :initial-load-failed="page.initialConversationLoadFailed"
