@@ -401,7 +401,10 @@ describe('Server Workbench notification service', () => {
   });
 
   it('Failed template authorization rejects hosted notifications and bulk read updates synchronize only real changes', async () => {
-    const execute = vi.fn(async () => [{ affectedRows: 2 }, []]);
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ affectedRows: 2 }, []])
+      .mockResolvedValueOnce([[{ id: 'notification-1' }, { id: 'notification-2' }], []]);
     const push = vi.fn();
     const service = new WorkbenchNotificationService(
       { raw: { execute } } as never,
@@ -436,6 +439,7 @@ describe('Server Workbench notification service', () => {
       type: 'notification.conversation-read',
       nodeId: 'node-1',
       conversationId: 'conversation-1',
+      notificationIds: ['notification-1', 'notification-2'],
       readAt: 1_000
     });
   });
@@ -446,6 +450,7 @@ describe('Server Workbench notification service', () => {
       .mockResolvedValueOnce([{ affectedRows: 0 }, []])
       .mockResolvedValueOnce([{ affectedRows: 0 }, []])
       .mockResolvedValueOnce([{ affectedRows: 2 }, []])
+      .mockResolvedValueOnce([[{ id: 'notification-1' }, { id: 'notification-2' }], []])
       .mockResolvedValueOnce([{ affectedRows: 3 }, []]);
     const push = vi.fn();
     const service = new WorkbenchNotificationService(
@@ -465,7 +470,10 @@ describe('Server Workbench notification service', () => {
     expect(push).toHaveBeenNthCalledWith(
       1,
       7,
-      expect.objectContaining({ type: 'notification.session-read' })
+      expect.objectContaining({
+        type: 'notification.session-read',
+        notificationIds: ['notification-1', 'notification-2']
+      })
     );
     expect(push).toHaveBeenNthCalledWith(
       2,

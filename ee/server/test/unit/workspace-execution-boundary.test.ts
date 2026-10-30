@@ -106,7 +106,7 @@ describe('Workspace execution boundary across Server and Node', () => {
       expect(await access.canUseWorkspace(7, context.nodeId, workspaceB.id)).toBe(false);
       const input = {
         runner: 'codex',
-        model: 'test-model',
+        modelId: 'test-model',
         content: 'Run the fixture',
         cwd: b,
         clientMessageId: 'foreign-cwd'
