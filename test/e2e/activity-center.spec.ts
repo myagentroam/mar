@@ -72,6 +72,31 @@ for (const width of [1280, 390]) {
       await trigger.screenshot({ path: testInfo.outputPath('activity-entry-stacked-cards.png') });
       await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
       await expect(trigger.locator('.activity-entry-running')).toHaveCount(1);
+      const colors = await trigger.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          unread: color('--mar-color-brand'),
+          running: color('--el-color-success'),
+          runningText: color('--mar-color-success-text'),
+          completed: color('--el-color-info')
+        };
+        probe.remove();
+        return result;
+      });
+      expect(colors.running).not.toBe(colors.unread);
+      await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
+        'background-color',
+        colors.unread
+      );
+      await expect(trigger.locator('.activity-entry-running')).toHaveCSS(
+        'background-color',
+        colors.running
+      );
       await expect(page.locator('.workbench-notification-trigger')).toHaveCount(0);
       await trigger.tap();
       await expect(panel.getByRole('tab', { name: /通知/ })).toHaveAttribute(
@@ -117,6 +142,11 @@ for (const width of [1280, 390]) {
       await expect(panel.locator('.activity-running-count')).toHaveText('运行中 1');
       await expect(panel.locator('.session-state-badge')).toHaveCount(0);
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
+      const statuses = panel.locator('.recent-sessions-list .el-tag');
+      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      await expect(statuses.first()).toHaveCSS('color', colors.runningText);
+      await expect(statuses.nth(1)).toHaveClass(/el-tag--info/);
+      await expect(statuses.nth(1)).toHaveCSS('color', colors.completed);
       await page.screenshot({
         path: testInfo.outputPath(`activity-${width}-${theme}-recent.png`),
         animations: 'disabled'

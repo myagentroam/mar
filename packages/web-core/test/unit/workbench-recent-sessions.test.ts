@@ -83,7 +83,7 @@ describe('Workbench recent session groups', () => {
     }
   );
 
-  it('uses primary for ongoing runs, success for completion, and preserves other status semantics', () => {
+  it('uses success for ongoing runs, neutral for completion, and preserves other status semantics', () => {
     localePreferenceService().setLocale('en-US');
     const statuses: RecentRun['status'][] = [
       'STARTING',
@@ -108,9 +108,9 @@ describe('Workbench recent session groups', () => {
     )[0]!;
     const tags = list.findAll((node) => node.type === 'span' && node.props.has('type'));
     expect(tags.map((node) => node.props.get('type'))).toEqual([
-      'primary',
-      'primary',
       'success',
+      'success',
+      'info',
       'danger',
       'warning',
       'warning',

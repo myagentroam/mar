@@ -88,7 +88,7 @@ for (const [width, theme, locale] of [
           return getComputedStyle(probe).color;
         };
         const result = {
-          brand: color('--mar-color-brand'),
+          running: color('--el-color-success'),
           track: color('--mar-bg-subtle'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
@@ -112,7 +112,7 @@ for (const [width, theme, locale] of [
       await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
       await expect(dots).toHaveCount(2);
       for (const dot of await dots.all()) {
-        await expect(dot).toHaveCSS('background-color', colors.brand);
+        await expect(dot).toHaveCSS('background-color', colors.running);
         await expect(dot).toHaveCSS('width', '5px');
         await expect(dot).toHaveCSS('animation-name', 'none');
       }
@@ -158,8 +158,8 @@ for (const [width, theme, locale] of [
         await unread.evaluate((e) => getComputedStyle(e).backgroundColor)
       );
       const statuses = recent.locator('.recent-sessions-list .el-tag');
-      await expect(statuses.first()).toHaveClass(/el-tag--success/);
-      await expect(statuses.last()).toHaveClass(/el-tag--primary/);
+      await expect(statuses.first()).toHaveClass(/el-tag--info/);
+      await expect(statuses.last()).toHaveClass(/el-tag--success/);
       await recent.screenshot({
         path: testInfo.outputPath(`plain-groups-${width}-${theme}-${locale}.png`)
       });

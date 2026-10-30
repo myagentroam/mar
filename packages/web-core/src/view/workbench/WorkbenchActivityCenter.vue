@@ -326,7 +326,7 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--mar-color-brand);
+  background: var(--el-color-success);
   box-shadow: 0 0 0 1.5px var(--activity-marker-surface);
   pointer-events: none;
 }

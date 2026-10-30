@@ -31,11 +31,11 @@ function runDisplayStatus(run: RecentRun): RecentRun['status'] {
     : run.status;
 }
 
-function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warning' | 'info' {
+function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info' {
   const status = runDisplayStatus(run);
-  if (status === 'SUCCEEDED') return 'success';
+  if (status === 'SUCCEEDED') return 'info';
   if (status === 'FAILED') return 'danger';
-  if (status === 'STARTING' || status === 'RUNNING') return 'primary';
+  if (status === 'STARTING' || status === 'RUNNING') return 'success';
   if (status === 'CANCELLING' || status === 'INTERRUPTED') return 'warning';
   return 'info';
 }
