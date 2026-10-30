@@ -67,7 +67,7 @@ const tools: readonly {
   {
     action: 'send',
     description:
-      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Prefer REPLACE_CURRENT for timely communication or course correction. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first. Sending to a non-child does not subscribe to its updates.',
+      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. For messages, explicitly set deliveryIntent to REPLACE_CURRENT (steer) by default; use QUEUE only when deferred delivery is explicitly requested. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.',
     properties: {
       agentId: text,
       content: { type: 'string' },
@@ -88,7 +88,7 @@ const tools: readonly {
   {
     action: 'wait',
     description:
-      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot. Non-child targets are observed only during this call.',
+      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot.',
     properties: {
       agentId: text,
       agentIds: { type: 'array', items: text, minItems: 1, maxItems: 8 },
@@ -139,7 +139,7 @@ const delegationPrompt = [
 
 const collaborationPrompt = [
   '# Workspace collaboration',
-  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Sending to a non-child does not subscribe to its updates; explicitly wait when you need its progress or completion."
+  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Explicitly wait when you need progress or completion."
 ].join('\n\n');
 
 const managementPrompt = [

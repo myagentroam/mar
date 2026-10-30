@@ -24,7 +24,7 @@ const environment = {
   MAR_CTL_WORKSPACE_ID: 'workspace'
 };
 
-it('publishes timely communication and deferred queue guidance in the native send tool', () => {
+it('publishes default steer and opt-in queue guidance in the native send tool', () => {
   const register = vi.fn();
   agentNetworkExtension(vi.fn(), () => 'execution').attachSession!({
     tools: { register },
@@ -32,12 +32,15 @@ it('publishes timely communication and deferred queue guidance in the native sen
   } as never);
   const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
   expect(send.description).toContain(
-    'Prefer REPLACE_CURRENT for timely communication or course correction'
+    'explicitly set deliveryIntent to REPLACE_CURRENT (steer) by default'
+  );
+  expect(send.description).toContain(
+    'use QUEUE only when deferred delivery is explicitly requested'
   );
   expect(send.description).toContain(
     'QUEUE is consumed only after current work and earlier queued inputs finish'
   );
-  expect(send.description).toContain('Sending to a non-child does not subscribe');
+  expect(send.description).not.toContain('subscribe');
   expect(send.description).toContain('an active Goal must exit first');
 });
 

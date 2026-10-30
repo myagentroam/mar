@@ -101,7 +101,8 @@ it.each([false, true])(
       expect(instructions).toContain('Keep simple or tightly coupled work local.');
       expect(instructions).toContain('avoid unnecessary cross-Session coordination');
       expect(instructions).toContain('do not treat them as task-owned children');
-      expect(instructions).toContain('Sending to a non-child does not subscribe to its updates');
+      expect(instructions).toContain('Explicitly wait when you need progress or completion.');
+      expect(instructions).not.toContain('subscribe');
       expect(instructions).toContain(
         "selecting a child's model or effort at creation use native agent_* tools"
       );
