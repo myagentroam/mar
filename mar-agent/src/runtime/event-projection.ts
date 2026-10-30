@@ -72,7 +72,8 @@ export function publicHostedToolEvents(
       ),
       hostedToolKind: event.kind
     },
-    ...(input === undefined ? {} : { input })
+    ...(input === undefined ? {} : { input }),
+    ...(truncated ? { truncated: true } : {})
   };
   if (event.status === 'RUNNING') return [started];
   if (event.status === 'FAILED')

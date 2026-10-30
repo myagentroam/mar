@@ -1186,14 +1186,18 @@ describe('native session history adapter', () => {
       .filter((item) => item.kind === 'tool_call');
     expect(tools).toMatchObject([
       {
-        payload: { subagentId: 'child', subagentOperation: 'START', outputSummary: 'Agent started' }
+        payload: {
+          subagentId: 'child',
+          subagentOperation: 'START',
+          output: { blocks: [{ channel: 'TEXT', text: 'Agent started' }] }
+        }
       },
       {
         payload: {
           subagentId: 'child',
           subagentOperation: 'STATUS',
           title: 'Review',
-          outputSummary: 'Wait timed out'
+          output: { blocks: [{ channel: 'TEXT', text: 'Wait timed out' }] }
         }
       }
     ]);

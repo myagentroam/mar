@@ -290,7 +290,14 @@ describe('Node Workbench Codex tool history projection', () => {
           kind: 'command_execution',
           payload: expect.objectContaining({
             command: 'sed -n "1,4p" README.md',
-            outputPreview: expect.stringContaining('{"image_url":"[Image content extracted]"}')
+            output: {
+              blocks: [
+                {
+                  channel: 'TEXT',
+                  text: expect.stringContaining('{"image_url":"[Image content extracted]"}')
+                }
+              ]
+            }
           })
         })
       );

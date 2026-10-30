@@ -122,7 +122,7 @@ describe('MAR Agent error projection', () => {
         payload: expect.objectContaining({
           toolName: 'read',
           errorCode: 'EACCES',
-          outputSummary: 'EACCES: Failed to open AGENTS.md: access denied.'
+          errorMessage: 'EACCES: Failed to open AGENTS.md: access denied.'
         })
       })
     );
@@ -192,7 +192,9 @@ describe('MAR Agent error projection', () => {
           toolName: 'agent_wait',
           subagentOperation: 'STATUS',
           errorCode: 'EACCES',
-          outputSummary: 'EACCES: Failed to open AGENTS.md: access denied.'
+          output: {
+            blocks: [{ channel: 'TEXT', text: 'EACCES: Failed to open AGENTS.md: access denied.' }]
+          }
         })
       })
     );

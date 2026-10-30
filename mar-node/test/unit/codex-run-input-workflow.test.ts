@@ -935,7 +935,7 @@ describe('Codex input, commands, and event projection', () => {
       .listConversationTurns({ sessionId: session.id })
       .turns[0]?.items.find((item) => item.kind === 'command_execution');
     expect(liveCommand?.payload).toMatchObject({
-      output: { text: '/workspace\\nsecond', truncated: false }
+      output: { blocks: [{ channel: 'COMBINED', text: '/workspace\\nsecond' }] }
     });
     notify('item/commandExecution/outputDelta', {
       threadId: 'thread-live',
@@ -953,8 +953,10 @@ describe('Codex input, commands, and event projection', () => {
       .listConversationTurns({ sessionId: session.id })
       .turns[0]?.items.find((item) => item.kind === 'command_execution');
     expect(longCommand?.payload).toMatchObject({
-      output: { text: expect.stringMatching(/😀latest-tail$/u), truncated: true },
-      outputPreview: expect.stringMatching(/😀latest-tail$/u)
+      output: {
+        blocks: [{ channel: 'COMBINED', text: expect.stringMatching(/😀latest-tail$/u) }],
+        truncation: 'HEAD'
+      }
     });
     notify('item/completed', {
       threadId: 'thread-live',
@@ -1170,8 +1172,7 @@ describe('Codex input, commands, and event projection', () => {
           kind: 'command_execution',
           payload: expect.objectContaining({
             command: 'pwd',
-            outputPreview: 'final',
-            output: { text: 'final', truncated: false },
+            output: { blocks: [{ channel: 'COMBINED', text: 'final' }] },
             exitCode: 0
           })
         }),
@@ -1247,7 +1248,14 @@ describe('Codex input, commands, and event projection', () => {
           kind: 'command_execution',
           payload: expect.objectContaining({
             command: 'pwd',
-            outputPreview: '"/workspace\\n"{"image_url":"[Image content extracted]"}',
+            output: {
+              blocks: [
+                {
+                  channel: 'COMBINED',
+                  text: '"/workspace\\n"{"image_url":"[Image content extracted]"}'
+                }
+              ]
+            },
             attachments: [
               expect.objectContaining({
                 name: 'generated-image-1.png',
