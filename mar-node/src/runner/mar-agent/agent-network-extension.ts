@@ -129,6 +129,24 @@ const tools: readonly {
   }
 ];
 
+const delegationPrompt = [
+  '# Delegation and coordination',
+  'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local.',
+  'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
+  'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
+].join('\n\n');
+
+const collaborationPrompt = [
+  '# Workspace collaboration',
+  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Sending to a non-child does not subscribe to its updates; explicitly wait when you need its progress or completion."
+].join('\n\n');
+
+const managementPrompt = [
+  '# Workspace management',
+  "Load marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Ordinary Agent collaboration and selecting a child's model or effort at creation use native agent_* tools. Do not switch to marctl when a native operation fails."
+].join('\n\n');
+
 export function agentNetworkExtension(
   invoke: AgentNetworkInvoke,
   currentExecution: () => string | undefined
@@ -137,6 +155,31 @@ export function agentNetworkExtension(
     id: 'mar.node.agent-network',
     apiVersion: '1.0',
     attachSession(context) {
+      context.hooks.intercept('prompt.sections', (input, _call, next) => {
+        const available = new Set(input.facts?.tools);
+        const enabled = input.facts?.mode !== 'compact';
+        return next({
+          ...input,
+          sections: [
+            ...input.sections,
+            {
+              id: 'mar.node.agent-network:delegation',
+              text: enabled && available.has('agent_start') ? delegationPrompt : null
+            },
+            {
+              id: 'mar.node.agent-network:collaboration',
+              text: enabled && available.has('agent_send') ? collaborationPrompt : null
+            },
+            {
+              id: 'mar.node.agent-network:management',
+              text:
+                enabled && tools.some((tool) => available.has(`agent_${tool.action}`))
+                  ? managementPrompt
+                  : null
+            }
+          ]
+        });
+      });
       for (const tool of tools)
         context.tools.register({
           name: `agent_${tool.action}`,
