@@ -117,6 +117,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       let recentRuns: ReturnType<typeof run>[] = [];
       const reads: string[] = [];
       const controls: string[] = [];
+      let notificationLists = 0;
       page.on('request', (request) => {
         if (
           request.method() === 'POST' &&
@@ -126,9 +127,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         )
           controls.push(request.url());
       });
-      await page.route('**/api/notifications', (route) =>
-        json(route, { notifications, recentRuns })
-      );
+      await page.route('**/api/notifications', (route) => {
+        notificationLists += 1;
+        return json(route, { notifications, recentRuns });
+      });
       await page.route('**/api/notifications/session/read', (route) => {
         const target = route.request().postDataJSON() as {
           nodeId: string;
@@ -199,6 +201,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       reads.length = 0;
+      const listsBeforeSwitching = notificationLists;
       await first.getByRole('tab').click();
       await expect(header).toContainText('Priority outside-1');
       await expect.poll(() => notifications[0]?.read).toBe(true);
@@ -218,6 +221,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       const opened = identityReads.length;
       await first.getByRole('tab').click();
       expect(identityReads).toHaveLength(opened);
+      expect(notificationLists).toBe(listsBeforeSwitching);
       recentRuns = [
         run('active-first', 'SUCCEEDED', now + 2),
         run('active-second', 'RUNNING', now + 1)

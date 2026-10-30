@@ -87,6 +87,32 @@ function tabSessionFixture() {
 }
 
 describe('Synchronous Session handoff', () => {
+  it.each([false, true])(
+    'finishes selection without waiting for notification read acknowledgement: alreadyOpen=%s',
+    async (alreadyOpen) => {
+      const f = tabSessionFixture();
+      if (alreadyOpen) f.options.selectedSessionId.value = f.session.id;
+      let releaseRead!: () => void;
+      const pendingRead = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
+      const read = vi.spyOn(f.options, 'markSessionRead').mockImplementation(() => pendingRead);
+      let opened = false;
+      const opening = f.service.selectSession(f.session.id).then(() => {
+        opened = true;
+      });
+      try {
+        await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(opened).toBe(true));
+        expect(f.options.loadingInitial.value).toBe(false);
+        expect(f.options.initialLoadFailed.value).toBe(false);
+      } finally {
+        releaseRead();
+        await opening;
+      }
+    }
+  );
+
   it.each(['uncached', 'cached'] as const)(
     'never exposes a new Session with the previous %s window to synchronous observers',
     async (mode) => {

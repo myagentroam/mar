@@ -553,7 +553,7 @@ export class NodeConnector {
     emitPage: (session, page) =>
       this.emitWorkbenchEvent('conversation', {
         sessionId: session.id,
-        snapshot: this.conversationSegmentService.projectInitial(session, page, 10)
+        snapshot: this.conversationSegmentService.projectInitial(session, page, 3)
       }),
     nodeId: () => this.config?.nodeId ?? 'runtime-node',
     nodeGeneration: () => this.nodeGeneration,

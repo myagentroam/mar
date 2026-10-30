@@ -434,7 +434,11 @@ for (const recovery of [
     }));
     let notifications: typeof entries = [];
     const readTargets: { nodeId: string; workspaceId: string; sessionId: string }[] = [];
-    await page.route('**/api/notifications', (route) => json(route, { notifications }));
+    let listReads = 0;
+    await page.route('**/api/notifications', (route) => {
+      listReads += 1;
+      return json(route, { notifications });
+    });
     const singleReads: string[] = [];
     await page.route(/\/api\/notifications\/current-[12]\/read$/, (route) => {
       const id = new URL(route.request().url()).pathname.split('/')[3]!;
@@ -467,11 +471,12 @@ for (const recovery of [
       .click();
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
     const selectedSession = page.locator('.session-list button').first();
-    const readResponse = page.waitForResponse('**/api/notifications/session/read');
-    const initialSnapshot = page.waitForResponse('**/api/notifications');
+    const listsBeforeSelection = listReads;
     await selectedSession.click();
-    await readResponse;
-    await initialSnapshot;
+    await expect(selectedSession).toHaveClass(/selected/);
+    await expect(page.getByRole('status', { name: '正在加载会话记录…' })).toHaveCount(0);
+    expect(readTargets).toHaveLength(0);
+    expect(listReads).toBe(listsBeforeSelection);
     if (recovery.action === 'notification')
       await page.getByRole('button', { name: '新建会话', exact: true }).click();
     if (recovery.action === 'focus' || recovery.action === 'late-focus') {

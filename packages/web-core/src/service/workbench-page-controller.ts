@@ -1137,10 +1137,6 @@ export function createWorkbenchPageController<
   }
 
   async function openSessionFromList(sessionId: string): Promise<void> {
-    const nodeId = workspaceNodeId.value;
-    const workspaceId = activeWorkspaceId.value;
-    if (nodeId !== undefined && workspaceId !== undefined)
-      workbenchNotificationService.markSessionRead(nodeId, workspaceId, sessionId);
     await workbenchSessionSelectionService.selectSession(sessionId);
   }
 

@@ -1,5 +1,6 @@
 import {
   notificationCreatedSchema,
+  notificationTargetReadSchema,
   serverNotificationSchema,
   type ServerNotification,
   type NotificationTarget
@@ -191,6 +192,11 @@ export function createWorkbenchNotificationService(
   const notificationRevision = ref(0);
   const previewNotificationId = ref<string>();
   const pendingScenes = new Map<string, boolean>();
+  const pendingTargetReads = new Map<
+    string,
+    { promise: Promise<void>; retry: { isCurrent: (() => boolean) | undefined } }
+  >();
+  let snapshotReadProjections: Array<(notification: ServerNotification) => boolean> | undefined;
 
   function preview(id: string): void {
     previewNotificationId.value = id;
@@ -345,12 +351,22 @@ export function createWorkbenchNotificationService(
     return false;
   }
 
-  function applyServerSnapshot(result: { notifications: unknown[]; recentRuns?: unknown[] }): void {
+  function applyServerSnapshot(
+    result: { notifications: unknown[]; recentRuns?: unknown[] },
+    confirmedReads: ReadonlyArray<(notification: ServerNotification) => boolean>
+  ): void {
     const local = notifications.value.filter((notification) => notification.source !== 'server');
     notifications.value = [
       ...result.notifications.flatMap((value) => {
         const parsed = serverNotificationSchema.safeParse(value);
-        return parsed.success ? [{ ...parsed.data, source: 'server' as const }] : [];
+        if (!parsed.success) return [];
+        return [
+          {
+            ...parsed.data,
+            read: parsed.data.read || confirmedReads.some((matches) => matches(parsed.data)),
+            source: 'server' as const
+          }
+        ];
       }),
       ...local
     ].sort((left, right) => right.createdAt - left.createdAt);
@@ -397,6 +413,8 @@ export function createWorkbenchNotificationService(
   async function drainRefreshes(generation: number): Promise<void> {
     while (generation === loadGeneration && refreshRequested) {
       refreshRequested = false;
+      const readProjections: Array<(notification: ServerNotification) => boolean> = [];
+      snapshotReadProjections = readProjections;
       let result: {
         notifications: unknown[];
         recentRuns?: unknown[];
@@ -410,9 +428,11 @@ export function createWorkbenchNotificationService(
         if (generation !== loadGeneration) return;
         if (refreshRequested) continue;
         throw error;
+      } finally {
+        if (snapshotReadProjections === readProjections) snapshotReadProjections = undefined;
       }
       if (generation !== loadGeneration) return;
-      applyServerSnapshot(result);
+      applyServerSnapshot(result, readProjections);
       applicationBadge.reconcile();
       if (!refreshRequested) confirmPendingCreatedNotifications();
     }
@@ -539,6 +559,22 @@ export function createWorkbenchNotificationService(
   }
 
   function projectServerMessage(value: unknown): boolean {
+    const read = notificationTargetReadSchema.safeParse(value);
+    if (read.success) {
+      const message = read.data;
+      const notificationIds = new Set(message.notificationIds);
+      projectConfirmedRead((notification) => {
+        const target = notification.target;
+        if (!notificationIds.has(notification.id) || target.nodeId !== message.nodeId) return false;
+        return message.type === 'notification.session-read'
+          ? target.targetType === 'WORKSPACE_SESSION' &&
+              target.workspaceId === message.workspaceId &&
+              target.sessionId === message.sessionId
+          : target.targetType === 'HOSTED_CONVERSATION' &&
+              target.conversationId === message.conversationId;
+      });
+      return true;
+    }
     if (isRecord(value) && typeof value.type === 'string' && value.type.startsWith('recent-run.')) {
       refreshQuietly();
       return true;
@@ -804,15 +840,75 @@ export function createWorkbenchNotificationService(
       return Promise.resolve();
     const { nodeId } = target;
     const workspace = target.targetType === 'WORKSPACE_SESSION';
+    const unread = workspace
+      ? hasUnreadSession(nodeId, target.workspaceId, target.sessionId)
+      : hasUnreadConversation(nodeId, target.conversationId);
+    if (!unread || options.request === undefined) return Promise.resolve();
     const body = workspace
       ? { nodeId, workspaceId: target.workspaceId, sessionId: target.sessionId }
       : { nodeId, conversationId: target.conversationId };
-    return requestAndRefresh(
-      `/api/notifications/${workspace ? 'session' : 'conversation'}/read`,
-      { method: 'POST', body: JSON.stringify(body) },
-      retryOnFailure,
-      isCurrent
+    const key = JSON.stringify([target.targetType, body]);
+    const pending = pendingTargetReads.get(key);
+    if (pending !== undefined) {
+      if (retryOnFailure) pending.retry.isCurrent = isCurrent ?? (() => true);
+      return pending.promise;
+    }
+    const retry = { isCurrent: retryOnFailure ? (isCurrent ?? (() => true)) : undefined };
+    const covered = new Map(
+      notifications.value.flatMap((notification) => {
+        if (notification.source !== 'server' || notification.read) return [];
+        const current = notification.target;
+        const matches =
+          current.nodeId === nodeId &&
+          (workspace
+            ? current.targetType === 'WORKSPACE_SESSION' &&
+              current.workspaceId === target.workspaceId &&
+              current.sessionId === target.sessionId
+            : current.targetType === 'HOSTED_CONVERSATION' &&
+              current.conversationId === target.conversationId);
+        return matches ? [[notification.id, notification.updatedAt] as const] : [];
+      })
     );
+    const generation = loadGeneration;
+    const operation = (async () => {
+      const path = `/api/notifications/${workspace ? 'session' : 'conversation'}/read`;
+      const init = { method: 'POST', body: JSON.stringify(body) };
+      try {
+        try {
+          await options.request!(path, init);
+        } catch (error) {
+          if (
+            generation !== loadGeneration ||
+            retry.isCurrent?.() !== true ||
+            errorCode(error) === 'UNAUTHENTICATED' ||
+            (error instanceof Error && error.name === 'AbortError')
+          )
+            return;
+          await options.request!(path, init);
+        }
+        if (generation === loadGeneration)
+          projectConfirmedRead(
+            (notification) => covered.get(notification.id) === notification.updatedAt
+          );
+      } catch {
+        // Retain unread state; connection or focus recovery can retry the target.
+      }
+    })();
+    const tracked = operation.finally(() => {
+      if (pendingTargetReads.get(key)?.promise === tracked) pendingTargetReads.delete(key);
+    });
+    pendingTargetReads.set(key, { promise: tracked, retry });
+    return tracked;
+  }
+
+  function projectConfirmedRead(matches: (notification: ServerNotification) => boolean): void {
+    snapshotReadProjections?.push(matches);
+    notifications.value = notifications.value.map((notification) =>
+      notification.source === 'server' && !notification.read && matches(notification)
+        ? { ...notification, read: true }
+        : notification
+    );
+    applicationBadge.reconcile();
   }
 
   function remove(id: string): void {
@@ -853,6 +949,8 @@ export function createWorkbenchNotificationService(
     refreshPromise = undefined;
     recoveryPromise = undefined;
     pendingRecovery = undefined;
+    pendingTargetReads.clear();
+    snapshotReadProjections = undefined;
     pendingCreatedNotificationIds.clear();
     pendingScenes.clear();
     previewNotificationId.value = undefined;

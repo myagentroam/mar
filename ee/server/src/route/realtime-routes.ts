@@ -25,7 +25,16 @@ export function registerRealtimeRoutes(input: {
 }): void {
   const { app, database, nodeControl, publicOrigin } = input;
   app.register(async (routes) => {
-    await routes.register(websocket);
+    await routes.register(websocket, {
+      options: {
+        perMessageDeflate: {
+          clientNoContextTakeover: true,
+          serverNoContextTakeover: true,
+          threshold: 1024,
+          zlibDeflateOptions: { level: 3 }
+        }
+      }
+    });
     if (input.sessionShares !== undefined)
       registerSessionShareRealtimeRoute({
         app: routes,

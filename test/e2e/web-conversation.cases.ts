@@ -3668,20 +3668,22 @@ test('Opening a session loads only the latest window without initial scroll back
   const loadOlderButton = page.getByRole('button', { name: '加载更早记录' });
   await loadOlderButton.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
   await loadOlderButton.press('Enter');
-  await expect(loadOlderButton.locator('svg')).toBeVisible();
+  await expect(loadOlderButton.locator('.busy-indicator')).toBeVisible();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect(loadOlderButton.locator('svg')).not.toHaveCSS('animation-name', 'none');
+  await expect(loadOlderButton.locator('.busy-indicator')).not.toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(loadOlderButton.locator('svg')).toHaveCSS('animation-name', 'none');
+  await expect(loadOlderButton.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+  await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
   expect(
-    await loadOlderButton
-      .locator('svg')
-      .evaluate(
-        (element) =>
-          getComputedStyle(element).color === getComputedStyle(element.closest('button')!).color
-      )
+    await loadOlderButton.locator('.busy-indicator').evaluate((element) => {
+      const reference = document.createElement('span');
+      reference.style.color = 'var(--mar-color-brand-text)';
+      element.append(reference);
+      const expected = getComputedStyle(reference).color;
+      reference.remove();
+      return getComputedStyle(element).color === expected;
+    })
   ).toBe(true);
   await expect(loadOlderButton).toBeFocused();
   await expect(loadOlderButton).toHaveAttribute('aria-disabled', 'true');

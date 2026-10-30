@@ -13,6 +13,7 @@ import {
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { capabilities, captureSocket } from './support/codex-connector.js';
+import { createTestSessionWatch } from './support/conversation-watch.js';
 
 function item(id: string, kind: string) {
   const payload: Record<string, unknown> =
@@ -54,6 +55,67 @@ function turn(id: string, kinds: readonly string[]) {
 }
 
 describe('Node Conversation Segment', () => {
+  it.each([false, true])(
+    'sends three complete Segments on initial Watch and revisit, with three more per cursor: running=%s',
+    async (running) => {
+      const session = { id: 'session-1', workspaceId: 'workspace-1' } as never;
+      const page = {
+        turns: Array.from({ length: 7 }, (_, index) =>
+          turn(`turn-${index}`, ['user_message', 'assistant_message'])
+        ),
+        nextCursor: null,
+        snapshotSequence: 0,
+        source: running ? ('runtime' as const) : ('native' as const),
+        readAt: 1,
+        latestVisibleAt: 1
+      };
+      const segments = new ConversationSegmentService(async () => page);
+      const snapshots: ReturnType<typeof segments.projectInitial>[] = [];
+      const service = createTestSessionWatch({
+        resolve: async () => session,
+        managedActive: () => running,
+        refreshActivity: async () => undefined,
+        present: () => ({ activity: running ? 'MANAGED_ACTIVE' : 'IDLE' }),
+        readPage: async () => page,
+        projectInitialPage: (selected, history, _unit, limit) =>
+          segments.projectInitial(selected, history, limit),
+        emitSession: vi.fn(),
+        emitPage: vi.fn(),
+        emitWatchEvent: (event) => {
+          const envelope = event as { type: string; payload: unknown };
+          if (envelope.type === 'watch.session.snapshot') snapshots.push(envelope.payload as never);
+        },
+        nodeGeneration: () => 'test-generation'
+      });
+      try {
+        for (const [index, watchId] of ['initial', 'revisit'].entries()) {
+          await service.operations()['session.watch']!({
+            sessionId: 'session-1',
+            workspaceId: 'workspace-1',
+            workbenchConnectionId: 'connection-1',
+            watchId,
+            mode: 'initial',
+            unit: 'SEGMENT'
+          });
+          await vi.waitFor(() => expect(snapshots).toHaveLength(index + 1));
+          expect(snapshots[index]?.segments.map((entry) => entry.turnId)).toEqual([
+            'turn-4',
+            'turn-5',
+            'turn-6'
+          ]);
+          expect(snapshots[index]?.segments.every((entry) => entry.items.length === 2)).toBe(true);
+        }
+        const older = await segments.read(session, { cursor: snapshots[0]!.nextCursor!, limit: 3 });
+        expect(older.segments.map((entry) => entry.turnId)).toEqual(['turn-1', 'turn-2', 'turn-3']);
+        const oldest = await segments.read(session, { cursor: older.nextCursor!, limit: 3 });
+        expect(oldest.segments.map((entry) => entry.turnId)).toEqual(['turn-0']);
+        expect(oldest.nextCursor).toBeNull();
+      } finally {
+        service.clear();
+      }
+    }
+  );
+
   it('preserves the final Turn completion time without changing earlier segment boundaries', () => {
     const original = turn('finished', [
       'user_message',

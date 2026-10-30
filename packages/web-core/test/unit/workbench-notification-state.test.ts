@@ -281,7 +281,7 @@ describe('Workspace session unread queries', () => {
     expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(true);
     f.state.dispose();
     expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false);
-    expect(f.request.mock.calls.filter(([path]) => path === '/api/notifications')).toHaveLength(3);
+    expect(f.request.mock.calls.filter(([path]) => path === '/api/notifications')).toHaveLength(2);
   });
 
   it.each([false, true])(
@@ -1867,7 +1867,7 @@ describe('Web Workbench notification state', () => {
     }
   );
 
-  it('silently marks the active hosted conversation read and converges conversation-wide reads from snapshots', async () => {
+  it('silently marks the active hosted conversation read and skips target reads without known unread', async () => {
     const current = hostedNotification('hosted-current', 'conversation-current');
     const background = hostedNotification('hosted-background', 'conversation-background');
     let serverNotifications: ServerNotification[] = [];
@@ -1929,14 +1929,9 @@ describe('Web Workbench notification state', () => {
         conversationId: 'conversation-background'
       })
     });
+    const requests = request.mock.calls.length;
     state.markConversationRead('node-1', 'conversation-not-loaded');
-    expect(request).toHaveBeenCalledWith('/api/notifications/conversation/read', {
-      method: 'POST',
-      body: JSON.stringify({
-        nodeId: 'node-1',
-        conversationId: 'conversation-not-loaded'
-      })
-    });
+    expect(request).toHaveBeenCalledTimes(requests);
   });
 
   it('still toasts after authoritative refresh when the session remains selected outside Workbench', async () => {
@@ -1954,19 +1949,13 @@ describe('Web Workbench notification state', () => {
     expect(state.notificationRevision.value).toBe(1);
   });
 
-  it('converges Server read, session-read, and delete messages only through list refresh', async () => {
+  it('projects target-read confirmations while retaining list refresh for individual reads and deletes', async () => {
     const one = notification('one');
     const two = notification('two', 'session-2');
     const request = vi
       .fn()
       .mockResolvedValueOnce({ notifications: [one, two] })
       .mockResolvedValueOnce({ notifications: [{ ...one, read: true }, two] })
-      .mockResolvedValueOnce({
-        notifications: [
-          { ...one, read: true },
-          { ...two, read: true }
-        ]
-      })
       .mockResolvedValueOnce({ notifications: [{ ...two, read: true }] });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never
@@ -1982,12 +1971,12 @@ describe('Web Workbench notification state', () => {
       type: 'notification.session-read',
       nodeId: 'node-1',
       workspaceId: 'workspace-1',
-      sessionId: 'session-2'
+      sessionId: 'session-2',
+      notificationIds: ['two'],
+      readAt: Date.now()
     });
-    expect(state.notifications.value.find((item) => item.id === 'two')?.read).toBe(false);
-    await vi.waitFor(() =>
-      expect(state.notifications.value.find((item) => item.id === 'two')?.read).toBe(true)
-    );
+    expect(state.notifications.value.find((item) => item.id === 'two')?.read).toBe(true);
+    expect(request).toHaveBeenCalledTimes(2);
     expect(state.notifications.value.find((item) => item.id === 'one')?.read).toBe(true);
     state.projectServerMessage({ type: 'notification.deleted', id: 'one' });
     expect(state.notifications.value.map((item) => item.id)).toEqual(['one', 'two']);
@@ -2033,7 +2022,7 @@ describe('Web Workbench notification state', () => {
     );
   });
 
-  it('always writes mark-all and session-read to Server without optimistic Server-notification updates', async () => {
+  it('always writes mark-all but skips session-read without known unread notifications', async () => {
     const server = notification('server');
     let serverNotifications: ServerNotification[] = [];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
@@ -2071,17 +2060,9 @@ describe('Web Workbench notification state', () => {
       expect(state.notifications.value.find((item) => item.id === 'server')?.read).toBe(true)
     );
 
-    state.markSessionRead('node-1', 'workspace-1', 'session-not-loaded');
-    await vi.waitFor(() =>
-      expect(request).toHaveBeenCalledWith('/api/notifications/session/read', {
-        method: 'POST',
-        body: JSON.stringify({
-          nodeId: 'node-1',
-          workspaceId: 'workspace-1',
-          sessionId: 'session-not-loaded'
-        })
-      })
-    );
+    const requests = request.mock.calls.length;
+    await state.markSessionRead('node-1', 'workspace-1', 'session-not-loaded');
+    expect(request).toHaveBeenCalledTimes(requests);
   });
 
   it('keeps file notifications on the browser-local path', () => {
