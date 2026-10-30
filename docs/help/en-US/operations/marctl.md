@@ -68,7 +68,7 @@ For `history --json`, select `kind === "assistant_message"` in `segments[].items
 
 Use `marctl agents config <session-id> --model-id <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `agents start` also accepts `--effort`.
 
-Both `agents start` and `agents config` select a model with `--model-id <id>`, using an ID from the target Runner Profile's `models[].id`. For MAR Agent this is the internal configuration ID, not the display name or upstream model ID. Requests and Session summaries use `modelId`; the old `--model` option and request field `model` are rejected.
+Both `agents start` and `agents config` select a model with `--model-id <id>`, using an ID from the target Runner configuration's `models[].id`. For MAR Agent this is the internal configuration ID, not the display name or upstream model ID. Requests and Session summaries use `modelId`; the old `--model` option and request field `model` are rejected.
 
 Tasks dispatched with `start`, `send`, or `goal set` suppress automatic notifications to avoid repeated pushes from collaborating Sessions. This applies to subsequent task turns and Goal continuation; status and history remain available. Later manual input restores normal notification rules. Explicit notification tools can still send authorized notifications.
 

@@ -68,7 +68,7 @@ marctl agents schedule get <session-id> --json
 
 已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
 
-`--model-id` 使用目标 Runner Profile 中的 `models[].id`。MAR Agent 对应内部模型配置 ID，不是显示名或上游模型 ID。请求和会话摘要使用 `modelId`；旧 `--model` 选项及请求字段 `model` 均拒绝。
+`--model-id` 使用目标 Runner 配置中的 `models[].id`。MAR Agent 对应内部模型配置 ID，不是显示名或上游模型 ID。请求和会话摘要使用 `modelId`；旧 `--model` 选项及请求字段 `model` 均拒绝。
 
 通过 `start`、`send` 或 `goal set` 派发的任务默认抑制自动通知，避免协作会话反复推送。该规则适用于后续任务轮次和 Goal 续作；运行状态和历史仍可正常查看。后续人工输入恢复普通通知规则。显式通知工具仍可按授权发送。
 
