@@ -1707,7 +1707,7 @@ describe('Node Workbench history projection and pagination', () => {
                 kind: 'command_execution',
                 payload: expect.objectContaining({
                   command: 'pwd',
-                  outputPreview: '/workspace/native-tools\n'
+                  output: { blocks: [{ channel: 'COMBINED', text: '/workspace/native-tools\n' }] }
                 })
               })
             ]

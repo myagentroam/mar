@@ -96,6 +96,7 @@ export function publicHostedToolEvents(
       callId: event.itemId,
       summary,
       truncated,
+      ...(preview.truncated || event.truncated === true ? { summaryTruncated: true } : {}),
       data: started.data!
     }
   ];

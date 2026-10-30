@@ -1,4 +1,4 @@
-import { compactRunnerText, publicOutputSnapshot } from '../normalization.js';
+import { compactRunnerText, publicToolOutput } from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeCodexApproval(method: string) {
@@ -17,9 +17,11 @@ export function normalizeCodexTool(input: {
   readonly namespace?: string;
   readonly rawInput?: unknown;
   readonly inputSummary?: string | null;
+  readonly inputTruncated?: boolean;
   readonly outputSummary?: string | null;
   readonly truncated?: boolean;
   readonly outputTruncated?: boolean;
+  readonly outputDirection?: 'HEAD' | 'SOURCE';
   readonly outputOnly?: boolean;
   readonly attachments?: readonly unknown[];
 }): CodexNormalizedTool {
@@ -28,20 +30,18 @@ export function normalizeCodexTool(input: {
   const attachments = input.attachments ?? [];
   const outputTruncated =
     input.outputTruncated ?? (input.outputSummary != null && input.truncated === true);
+  const outputDirection = input.outputDirection ?? (outputTruncated ? 'SOURCE' : undefined);
   const subagent = codexSubagentProjection(input.namespace, name, rawInput, input.outputSummary);
   if (isCommandTool(name)) {
-    const outputPreview = compactRunnerText(input.outputSummary ?? '', 10_000);
     if (input.outputOnly === true)
       return {
         kind: 'command_execution',
         payload: {
           toolName: name,
-          outputPreview,
-          truncated: input.truncated === true || (input.outputSummary?.length ?? 0) > 10_000,
           ...(input.outputSummary == null
             ? {}
-            : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
-          toolPresentation: shellExecution(input.outputSummary ?? undefined, outputTruncated),
+            : { output: publicToolOutput(input.outputSummary, outputDirection, 'COMBINED') }),
+          toolPresentation: shellExecution(),
           ...(attachments.length === 0 ? {} : { attachments })
         }
       };
@@ -60,17 +60,16 @@ export function normalizeCodexTool(input: {
         toolName: name,
         command: compactRunnerText(command, 10_000),
         cwd: typeof values?.cwd === 'string' ? compactRunnerText(values.cwd, 4_096) : null,
-        outputPreview,
         exitCode: null,
         durationMs: null,
-        toolPresentation: shellExecution(input.outputSummary ?? undefined, outputTruncated),
+        toolPresentation: shellExecution(
+          input.inputTruncated === true ||
+            command.length > 10_000 ||
+            (typeof values?.cwd === 'string' && values.cwd.length > 4_096)
+        ),
         ...(input.outputSummary == null
           ? {}
-          : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
-        truncated:
-          input.truncated === true ||
-          command.length > 10_000 ||
-          (input.outputSummary?.length ?? 0) > 10_000,
+          : { output: publicToolOutput(input.outputSummary, outputDirection, 'COMBINED') }),
         ...(attachments.length === 0 ? {} : { attachments })
       }
     };
@@ -79,11 +78,10 @@ export function normalizeCodexTool(input: {
     return {
       kind: 'tool_call',
       payload: {
-        outputSummary:
-          input.outputSummary == null ? null : compactRunnerText(input.outputSummary, 10_000),
+        outputSummary: null,
         ...(input.outputSummary == null
           ? {}
-          : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
+          : { output: publicToolOutput(input.outputSummary, outputDirection) }),
         ...subagent,
         ...(attachments.length === 0 ? {} : { attachments })
       }
@@ -95,14 +93,13 @@ export function normalizeCodexTool(input: {
       namespace: compactRunnerText(input.namespace ?? 'codex', 128),
       toolName: name,
       inputSummary: input.inputSummary ?? null,
-      outputSummary:
-        input.outputSummary == null ? null : compactRunnerText(input.outputSummary, 10_000),
+      outputSummary: null,
       ...(input.outputSummary == null
         ? {}
-        : { output: publicOutputSnapshot(input.outputSummary, outputTruncated) }),
+        : { output: publicToolOutput(input.outputSummary, outputDirection) }),
       progressLabel: null,
       errorCode: null,
-      truncated: input.truncated === true,
+      ...(input.inputTruncated ? { inputTruncated: true } : {}),
       ...subagent,
       ...(attachments.length === 0 ? {} : { attachments })
     }

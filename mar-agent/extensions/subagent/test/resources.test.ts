@@ -41,7 +41,8 @@ it('projects all live children before at most sixteen recent terminal children',
         if (value.resources) provider = value;
       }
     },
-    tools: { register() {} }
+    tools: { register() {} },
+    hooks: { intercept() {} }
   } as unknown as SessionExtensionContext;
   const dispose = (await createSubagentExtension({ agent: () => agent }).attachSession!(
     context

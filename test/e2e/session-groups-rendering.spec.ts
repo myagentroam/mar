@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
-test('Session rows keep desktop density without changing mobile height', async ({ page }) => {
+test('Session rows keep their desktop and mobile density', async ({ page }) => {
   const fixture = await startCustomThemeFixture();
   try {
     await page.setViewportSize({ width: 1280, height: 850 });
@@ -23,8 +23,32 @@ test('Session rows keep desktop density without changing mobile height', async (
     await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
-    await expect(row).toHaveCSS('height', '40px');
+    await expect(row).toHaveCSS('height', '36px');
+    const mobileBounds = (await row.boundingBox())!;
+    const nextMobileBounds = (await nextRow.boundingBox())!;
+    expect(nextMobileBounds.y - (mobileBounds.y + mobileBounds.height)).toBe(4);
   } finally {
+    await fixture.close();
+  }
+});
+
+test('Mobile session rows remain selectable by touch', async ({ browser }) => {
+  const fixture = await startCustomThemeFixture();
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 850 },
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
+    const sidebar = page.locator('.conversation-sidebar');
+    await sidebar.getByRole('tab').nth(1).tap();
+    const row = sidebar.locator('.session-row').first();
+    await expect(row).toHaveCSS('height', '36px');
+    await row.locator('.session-link').tap();
+    await expect(page.locator('.conversation')).toContainText('child');
+  } finally {
+    await context.close();
     await fixture.close();
   }
 });

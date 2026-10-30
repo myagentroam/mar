@@ -8,6 +8,15 @@ import { registerQueryTools } from './query.js';
 import { nativeSubagentService, SUBAGENT_NATIVE_SERVICE } from './native.js';
 import { childResources } from './resources.js';
 import { sharedSessionHistory } from './history.js';
+
+const delegationPrompt = [
+  '# Delegation and coordination',
+  'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local.',
+  'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
+  'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
+].join('\n\n');
+
 export { SUBAGENT_NATIVE_SERVICE } from './native.js';
 export type {
   NativeAgentGroup,
@@ -107,6 +116,21 @@ export function createSubagentExtension(options: SubagentExtensionOptions): Agen
         registerControlTools(context, agent, observations, warmObservations, admission);
         registerWait(context, agent, observations, history);
         registerQueryTools(context, agent);
+        context.hooks.intercept('prompt.sections', (input, _call, next) =>
+          next({
+            ...input,
+            sections: [
+              ...input.sections,
+              {
+                id: 'subagent:delegation',
+                text:
+                  input.facts?.mode !== 'compact' && input.facts?.tools?.includes('agent_start')
+                    ? delegationPrompt
+                    : null
+              }
+            ]
+          })
+        );
       } catch (error) {
         disposed = true;
         void native.close().catch(() => {});

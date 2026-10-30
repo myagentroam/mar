@@ -223,7 +223,14 @@ describe('MAR Agent Node Runner', () => {
         firstItems.filter((item) => item.itemId === 'mar-agent-tool:start-command').at(-1)
       ).toMatchObject({
         kind: 'command_execution',
-        payload: { outputPreview: 'RETAINED' }
+        payload: {
+          output: {
+            blocks: [
+              { channel: 'STDOUT', text: 'RETAINED' },
+              { channel: 'STDERR', text: '' }
+            ]
+          }
+        }
       });
 
       const resumed = session.run({ prompt: 'Check the previous command.' });
@@ -251,7 +258,12 @@ describe('MAR Agent Node Runner', () => {
         itemId: 'mar-agent-tool:poll-command',
         status: 'COMPLETED',
         payload: expect.objectContaining({
-          outputPreview: 'RETAINED',
+          output: {
+            blocks: [
+              { channel: 'STDOUT', text: 'RETAINED' },
+              { channel: 'STDERR', text: '' }
+            ]
+          },
           exitCode: 0,
           toolPresentation: {
             kind: 'EXECUTION',
@@ -286,8 +298,22 @@ describe('MAR Agent Node Runner', () => {
         ]);
         expect(commands[0]?.turnId).not.toBe(commands[1]?.turnId);
         expect(commands.map(({ item }) => item.payload)).toEqual([
-          expect.objectContaining({ outputPreview: 'RETAINED' }),
-          expect.objectContaining({ outputPreview: 'RETAINED' })
+          expect.objectContaining({
+            output: {
+              blocks: [
+                { channel: 'STDOUT', text: 'RETAINED' },
+                { channel: 'STDERR', text: '' }
+              ]
+            }
+          }),
+          expect.objectContaining({
+            output: {
+              blocks: [
+                { channel: 'STDOUT', text: 'RETAINED' },
+                { channel: 'STDERR', text: '' }
+              ]
+            }
+          })
         ]);
       } finally {
         await catalog.close();
@@ -363,7 +389,7 @@ describe('MAR Agent Node Runner', () => {
     expect(completed).toMatchObject({
       itemId: 'mar-agent-tool:start',
       status: 'COMPLETED',
-      payload: { outputPreview: 'passed' }
+      payload: { output: { blocks: [{ channel: 'COMBINED', text: 'passed' }] } }
     });
     expect(failed).toMatchObject({
       itemId: 'mar-agent-tool:expired-poll',
@@ -652,57 +678,26 @@ describe('MAR Agent Node Runner', () => {
       ['mar-agent-tool:cancel-failed', 'command_execution', 'IN_PROGRESS'],
       ['mar-agent-tool:cancel-failed', 'command_execution', 'FAILED']
     ]);
-    expect(items).toMatchObject([
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('poll')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('Code cell completed.')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('cancel')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('Code cell completed.')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('poll')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('Code cell failed.')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('cancel')
-        }
-      },
-      {
-        payload: {
-          command: '',
-          outputPreview: expect.stringContaining('Code cell failed.')
-        }
-      }
-    ]);
-    expect(items[1]?.payload.outputPreview).toMatch(/Action: poll\nInput: /);
+    for (const [index, action] of [
+      'poll',
+      'poll',
+      'cancel',
+      'cancel',
+      'poll',
+      'poll',
+      'cancel',
+      'cancel'
+    ].entries()) {
+      expect(items[index]).toMatchObject({
+        payload: { command: '', toolPresentation: { execution: { kind: 'CONTROL', action } } }
+      });
+    }
+    for (const index of [1, 3])
+      expect(items[index]?.payload.output).toEqual({ blocks: [{ channel: 'TEXT', text: '' }] });
+    for (const index of [5, 7])
+      expect(items[index]?.payload.toolPresentation).toMatchObject({
+        execution: { error: { message: 'Code cell failed.' } }
+      });
 
     const historical = projectMarAgentHistory(
       { id: 'node-session', runner: 'mar-agent' } as NodeAgentSession,

@@ -116,6 +116,8 @@ for (const crossNode of [false, true]) {
         });
         await route.fulfill({ json: value });
       });
+      let failFetch = true;
+      const fetchRequests: string[] = [];
       await page.route('**/api/workspaces/**', async (route) => {
         const url = new URL(route.request().url());
         const workspaceId = decodeURIComponent(url.pathname.split('/')[3]!);
@@ -123,6 +125,39 @@ for (const crossNode of [false, true]) {
         const workspace = registrations.get(`${nodeId}:${workspaceId}`);
         expect(workspace).toBeDefined();
         const operations = services.get(nodeId)!.operations();
+        if (url.pathname.endsWith('/git/fetch')) {
+          const body = route.request().postDataJSON() as Record<string, unknown>;
+          fetchRequests.push(workspaceId);
+          const failing = failFetch;
+          if (failing)
+            await execute('git', ['remote', 'add', 'origin', join(root, 'missing-remote')], {
+              cwd: workspace!.path
+            });
+          let result: unknown;
+          try {
+            result = await operations['workspace.git.fetch']!({ ...body, workspaceId });
+          } finally {
+            if (failing)
+              await execute('git', ['remote', 'remove', 'origin'], { cwd: workspace!.path });
+          }
+          await route.fulfill({ json: result });
+          return;
+        }
+        if (url.pathname.endsWith('/git/refs')) {
+          await route.fulfill({
+            json: await operations['workspace.git.refs.list']!({ workspaceId })
+          });
+          return;
+        }
+        if (url.pathname.endsWith('/git/history')) {
+          await route.fulfill({
+            json: await operations['workspace.git.history.list']!({
+              workspaceId,
+              refs: url.searchParams.getAll('refs')
+            })
+          });
+          return;
+        }
         if (url.pathname.endsWith('/changes/restore')) {
           const body = route.request().postDataJSON() as Record<string, unknown>;
           requests.push({ url: url.href, body });
@@ -159,6 +194,35 @@ for (const crossNode of [false, true]) {
       await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
       const changes = page.locator('.change-list');
       await expect(changes).toContainText('b-only.txt');
+      const fetchNotice = page.locator('.git-fetch-notice');
+      await expect(fetchNotice).toHaveText('Could not update remotes; showing local records');
+      await expect(fetchNotice.locator('svg')).toHaveCount(0);
+      await expect(fetchNotice).toHaveCSS(
+        'font-size',
+        await changes
+          .locator('.change-path')
+          .first()
+          .evaluate((element) => getComputedStyle(element).fontSize)
+      );
+      await page.screenshot({
+        path: testInfo.outputPath('changes-fetch-failed.png'),
+        animations: 'disabled'
+      });
+      await page.getByRole('tab', { name: 'Git History', exact: true }).click();
+      await expect(page.locator('.history-list')).toContainText('fixture');
+      await expect(fetchNotice).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath('history-fetch-failed.png'),
+        animations: 'disabled'
+      });
+      failFetch = false;
+      await page.getByRole('button', { name: 'Refresh Git history', exact: true }).click();
+      await expect(fetchNotice).toHaveCount(0);
+      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      await expect(page.locator('.changes-refresh-button')).not.toBeDisabled();
+      await expect(fetchNotice).toHaveCount(0);
+      expect(fetchRequests.length).toBeGreaterThanOrEqual(4);
       await page.getByRole('button', { name: 'Select A', exact: true }).click();
       await page.getByRole('button', { name: 'Watch A:3', exact: true }).click();
       await expect(status).toHaveText('watch-0-3');

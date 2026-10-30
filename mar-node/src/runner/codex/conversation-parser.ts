@@ -160,7 +160,7 @@ import type {
 import { parseCodexComposerImageMarkers } from './composer-image-markers.js';
 import { normalizeCodexTool } from './tool-normalizer.js';
 import { shellExecution } from '../execution-presentation.js';
-import { publicOutputSnapshot } from '../normalization.js';
+import { publicToolOutput } from '../normalization.js';
 import { publicGoalHistoryText } from '../../service/goal-runtime.js';
 const MAX_COMPOSER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_COMPOSER_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
@@ -679,14 +679,9 @@ export function mergeCodexCustomToolItems(
       completedAt: result.completedAt,
       payload: {
         ...invocationPayload,
-        outputPreview:
-          resultPayload.outputPreview ??
-          resultPayload.outputSummary ??
-          invocationPayload.outputPreview,
         ...(resultPayload.output === undefined ? {} : { output: resultPayload.output }),
         exitCode: resultPayload.exitCode ?? invocationPayload.exitCode,
         durationMs: resultPayload.durationMs ?? invocationPayload.durationMs,
-        truncated: invocationPayload.truncated === true || resultPayload.truncated === true,
         ...(resultPayload.attachments === undefined
           ? {}
           : { attachments: resultPayload.attachments })
@@ -703,7 +698,6 @@ export function mergeCodexCustomToolItems(
       outputSummary: resultPayload.outputSummary ?? invocationPayload.outputSummary,
       ...(resultPayload.output === undefined ? {} : { output: resultPayload.output }),
       errorCode: resultPayload.errorCode ?? invocationPayload.errorCode,
-      truncated: invocationPayload.truncated === true || resultPayload.truncated === true,
       ...(resultPayload.attachments === undefined ? {} : { attachments: resultPayload.attachments })
     }
   };
@@ -876,7 +870,6 @@ export function codexOfficialItem(
             ? compactRunnerText(value.command, 10_000)
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
-        outputPreview: publicOutputSnapshot(output).text,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -887,24 +880,18 @@ export function codexOfficialItem(
           value.durationMs >= 0
             ? value.durationMs
             : null,
-        truncated: output.length > 10_000,
-        ...(base.status !== 'IN_PROGRESS'
-          ? {
-              output:
-                typeof value.aggregatedOutput === 'string'
-                  ? publicOutputSnapshot(output)
-                  : undefined
-            }
+        ...(typeof value.aggregatedOutput === 'string'
+          ? { output: publicToolOutput(output, undefined, 'COMBINED') }
           : {}),
         toolPresentation: shellExecution(
-          base.status === 'IN_PROGRESS' || typeof value.aggregatedOutput !== 'string'
-            ? undefined
-            : output
+          (typeof value.command === 'string' && value.command.length > 10_000) ||
+            (typeof value.cwd === 'string' && value.cwd.length > 4_096)
         )
       }
     };
   }
-  if (value.type === 'mcpToolCall')
+  if (value.type === 'mcpToolCall') {
+    const input = compactRunnerValue(value.arguments, 10_000);
     return {
       ...base,
       kind: 'tool_call',
@@ -917,12 +904,14 @@ export function codexOfficialItem(
           .join('.'),
         namespace: typeof value.server === 'string' ? value.server : '',
         toolName: typeof value.tool === 'string' ? value.tool : '',
-        inputSummary: codexCompactJson(value.arguments),
-        outputSummary: codexCompactJson(value.result),
-        ...(value.result == null ? {} : { output: publicOutputSnapshot(value.result) }),
+        inputSummary: input.text,
+        ...(input.truncated ? { inputTruncated: true } : {}),
+        outputSummary: null,
+        ...(value.result == null ? {} : { output: publicToolOutput(value.result) }),
         ...(value.error === undefined ? {} : { errorCode: codexCompactJson(value.error) })
       }
     };
+  }
   if (value.type === 'webSearch')
     return {
       ...base,
@@ -969,16 +958,17 @@ export function codexOfficialItem(
           ? value.name
           : 'tool';
     const outputValue = value.contentItems ?? value.output;
-    const output =
-      outputValue == null ? undefined : publicOutputSnapshot(codexToolOutput(outputValue));
+    const output = outputValue == null ? undefined : codexToolOutput(outputValue);
+    const input = compactRunnerValue(value.arguments ?? value.input, 10_000);
     const normalized = normalizeCodexTool({
       name,
       namespace: typeof value.namespace === 'string' ? value.namespace : 'codex',
       rawInput: value.arguments ?? value.input,
-      inputSummary: codexCompactJson(value.arguments ?? value.input),
-      outputSummary: output?.text ?? null,
-      outputTruncated: output?.truncated ?? false,
-      truncated: output?.truncated ?? false,
+      inputSummary: input.text || null,
+      inputTruncated: input.truncated,
+      outputSummary:
+        output === undefined ? null : typeof output === 'string' ? output : JSON.stringify(output),
+      outputTruncated: false,
       outputOnly:
         value.type === 'custom_tool_call_output' ||
         value.type === 'function_call_output' ||
@@ -1079,7 +1069,6 @@ export function codexLiveConversationItem(
             ? compactRunnerText(value.command, 10_000)
             : '(No command provided)',
         cwd: typeof value.cwd === 'string' ? compactRunnerText(value.cwd, 4_096) : null,
-        outputPreview: publicOutputSnapshot(output).text,
         exitCode:
           typeof value.exitCode === 'number' && Number.isInteger(value.exitCode)
             ? value.exitCode
@@ -1090,24 +1079,23 @@ export function codexLiveConversationItem(
           value.durationMs >= 0
             ? value.durationMs
             : null,
-        truncated: output.length > 10_000,
         ...(completed
           ? {
               output:
                 typeof value.aggregatedOutput === 'string'
-                  ? publicOutputSnapshot(output)
+                  ? publicToolOutput(output, undefined, 'COMBINED')
                   : undefined
             }
           : {}),
         toolPresentation: shellExecution(
-          !completed || typeof value.aggregatedOutput !== 'string' ? undefined : output
+          (typeof value.command === 'string' && value.command.length > 10_000) ||
+            (typeof value.cwd === 'string' && value.cwd.length > 4_096)
         )
       }
     };
   }
   if (value.type === 'mcpToolCall') {
     const input = compactRunnerValue(value.arguments, 10_000);
-    const output = compactRunnerValue(value.result, 10_000);
     const error = compactRunnerValue(value.error, 80);
     const server = typeof value.server === 'string' ? value.server : 'mcp';
     const tool = typeof value.tool === 'string' ? value.tool : 'tool';
@@ -1120,11 +1108,11 @@ export function codexLiveConversationItem(
         toolName: compactRunnerText(tool, 128),
         title: compactRunnerText(`${server}.${tool}`, 500),
         inputSummary: input.text || null,
-        outputSummary: output.text || null,
-        ...(value.result == null ? {} : { output: publicOutputSnapshot(value.result) }),
+        outputSummary: null,
+        ...(value.result == null ? {} : { output: publicToolOutput(value.result) }),
         progressLabel: null,
         errorCode: error.text || null,
-        truncated: input.truncated || output.truncated || error.truncated
+        ...(input.truncated ? { inputTruncated: true } : {})
       }
     };
   }
@@ -1204,8 +1192,7 @@ export function codexLiveConversationItem(
           : 'tool';
     const input = compactRunnerValue(value.arguments ?? value.input, 10_000);
     const outputValue = value.contentItems ?? value.output;
-    const output =
-      outputValue == null ? undefined : publicOutputSnapshot(codexToolOutput(outputValue));
+    const output = outputValue == null ? undefined : codexToolOutput(outputValue);
     const outputOnly =
       value.type === 'custom_tool_call_output' ||
       value.type === 'function_call_output' ||
@@ -1216,9 +1203,11 @@ export function codexLiveConversationItem(
       namespace: typeof value.namespace === 'string' ? value.namespace : 'codex',
       rawInput: value.arguments ?? value.input,
       inputSummary: input.text || null,
-      outputSummary: output?.text ?? null,
-      truncated: input.truncated || output?.truncated === true,
-      outputTruncated: output?.truncated ?? false,
+      inputTruncated: input.truncated,
+      outputSummary:
+        output === undefined ? null : typeof output === 'string' ? output : JSON.stringify(output),
+      truncated: input.truncated,
+      outputTruncated: false,
       outputOnly,
       attachments: imageAttachments
     });

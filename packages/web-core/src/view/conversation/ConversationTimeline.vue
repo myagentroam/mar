@@ -60,7 +60,6 @@ import {
   composerMessageSource,
   conversationItemText,
   subagentGroupText,
-  subagentGroupSessionId,
   subagentOperationText,
   conversationErrorCodeVisible,
   conversationErrorPresentation,
@@ -72,6 +71,7 @@ import {
   approvalReason,
   permissionStopDetail
 } from '../../util/conversation-presentation.js';
+import { agentGroupSessions } from '../../util/agent-operation-presentation.js';
 import type {
   ConversationItem,
   ConversationTurn,
@@ -738,12 +738,17 @@ function stepDuration(item: ConversationItem): string | undefined {
               }}</span>
             </summary>
             <template v-if="groupedItemDisclosure[`group:${displayItem.id}`]">
-              <el-button
-                v-if="props.sessionNavigationEnabled && subagentGroupSessionId(displayItem.items)"
-                link
-                @click="emit('openSession', subagentGroupSessionId(displayItem.items)!)"
-                >{{ translate('presentation.openSubagentSession') }}</el-button
-              >
+              <div v-if="props.sessionNavigationEnabled" class="agent-session-links">
+                <el-button
+                  v-for="target in agentGroupSessions(displayItem.items)"
+                  :key="target.sessionId"
+                  class="agent-session-link"
+                  link
+                  @click="emit('openSession', target.sessionId)"
+                  >{{ translate('presentation.openSubagentSession') }} ·
+                  {{ target.title }}</el-button
+                >
+              </div>
               <details
                 v-for="toolItem in displayItem.items"
                 :key="toolItem.id"
@@ -765,11 +770,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                   v-if="groupedItemDisclosure[toolItem.id]"
                   :item="toolItem"
                   @copy="(text, done) => emit('copy', text, done)"
-                >
-                  <p class="conversation-detail-text">
-                    {{ conversationItemDetail(toolItem.kind, toolItem.payload) }}
-                  </p>
-                </ConversationToolDetail>
+                />
               </details>
             </template>
           </details>
@@ -1929,6 +1930,19 @@ function stepDuration(item: ConversationItem): string | undefined {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-session-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+.agent-session-link {
+  margin: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .conversation-record-group > .conversation-tool-detail,

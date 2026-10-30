@@ -10,7 +10,7 @@ import type { NodeMessageAttachmentInput } from '../../runtime-model.js';
 import type { CodexComposerInput, CodexRunConfiguration } from './codex-app-server.js';
 import type { RunnerExecutionStatus } from '../contracts.js';
 import { extractId } from './conversation-parser.js';
-import { publicOutputSnapshot } from '../normalization.js';
+import { publicToolOutput } from '../normalization.js';
 import { normalizeCodexApproval } from './tool-normalizer.js';
 import { parseSecretEnvironment } from '../../mcp/secret-environment.js';
 import { safeErrorCode } from '../../util/safe-error.js';
@@ -453,14 +453,14 @@ export class CodexManagedRunController<TAttachment> {
       typeof params.itemId === 'string' &&
       typeof params.delta === 'string'
     ) {
-      const output = publicOutputSnapshot(params.delta);
+      const output = publicToolOutput(params.delta, undefined, 'COMBINED');
       this.emitItem(runId, {
         itemId: boundedConversationItemId('codex', params.itemId),
         kind: 'command_execution',
         status: 'IN_PROGRESS',
-        payload: { outputPreview: output.text, output },
+        payload: { output },
         merge: true,
-        append: 'output'
+        ...(output.truncation === 'HEAD' ? {} : { append: 'output' as const })
       });
       return;
     }

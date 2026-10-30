@@ -1579,7 +1579,11 @@ describe('MAR Agent managed run projection', () => {
       itemId: 'mar-agent-tool:start-call',
       kind: 'command_execution',
       status: 'COMPLETED',
-      payload: { command: 'pnpm test', outputPreview: 'first', exitCode: null }
+      payload: {
+        command: 'pnpm test',
+        output: { blocks: [{ channel: 'COMBINED', text: 'first' }] },
+        exitCode: null
+      }
     });
     expect(pollStarted).toEqual([
       expect.objectContaining({
@@ -1607,7 +1611,12 @@ describe('MAR Agent managed run projection', () => {
       status: 'COMPLETED',
       payload: {
         command: '',
-        outputPreview: 'ok',
+        output: {
+          blocks: [
+            { channel: 'STDOUT', text: 'ok' },
+            { channel: 'STDERR', text: '' }
+          ]
+        },
         exitCode: 0,
         toolPresentation: {
           kind: 'EXECUTION',
@@ -1616,11 +1625,7 @@ describe('MAR Agent managed run projection', () => {
             toolName: 'exec_wait',
             action: 'poll',
             targetId: 'process-1',
-            source: { kind: 'SHELL', text: 'pnpm test', cwd: '/workspace' },
-            output: [
-              { channel: 'STDOUT', text: 'ok' },
-              { channel: 'STDERR', text: '' }
-            ]
+            source: { kind: 'SHELL', text: 'pnpm test', cwd: '/workspace' }
           }
         }
       }
@@ -1656,10 +1661,25 @@ describe('MAR Agent managed run projection', () => {
     expect(replayed).toMatchObject({
       itemId: 'mar-agent-tool:replay-call',
       status: 'COMPLETED',
-      payload: { outputPreview: 'first\nok', exitCode: 0 }
+      payload: {
+        output: {
+          blocks: [
+            { channel: 'STDOUT', text: 'first\nok' },
+            { channel: 'STDERR', text: '' }
+          ]
+        },
+        exitCode: 0
+      }
     });
-    expect(running[0]?.payload.outputPreview).toBe('first');
-    expect(completed[0]?.payload.outputPreview).toBe('ok');
+    expect(running[0]?.payload.output).toMatchObject({
+      blocks: [{ channel: 'COMBINED', text: 'first' }]
+    });
+    expect(completed[0]?.payload.output).toMatchObject({
+      blocks: [
+        { channel: 'STDOUT', text: 'ok' },
+        { channel: 'STDERR', text: '' }
+      ]
+    });
     expectNormalizedItemsValid([
       ...started,
       ...running,
@@ -2040,9 +2060,8 @@ describe('MAR Agent managed run projection', () => {
       status: 'COMPLETED',
       payload: {
         command: 'pwd',
-        outputPreview: '/workspace',
-        exitCode: 0,
-        truncated: false
+        output: { blocks: [{ channel: 'COMBINED', text: '/workspace' }] },
+        exitCode: 0
       }
     });
   });

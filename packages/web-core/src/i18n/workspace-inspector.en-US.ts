@@ -119,7 +119,8 @@ export const workspaceInspectorEnUS = {
   },
   gitSync: {
     description:
-      '{upstream}: {behind} incoming commits, {ahead} outgoing commits (local upstream state; no automatic fetch)'
+      '{upstream}: {behind} incoming commits, {ahead} outgoing commits (locally known upstream state)',
+    fetchFailed: 'Could not update remotes; showing local records'
   },
   gitWorktrees: {
     title: 'Git worktrees',

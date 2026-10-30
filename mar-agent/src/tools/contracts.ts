@@ -11,7 +11,7 @@ export interface ClientToolDefinition extends ModelToolDefinition {
   outputSchema?: Record<string, unknown>;
   /** Runtime-only policy. MCP defaults to both callers; other tools default to direct only. */
   allowedCallers?: readonly ToolCaller[];
-  /** Runtime-only allowlist of scalar fields in the public tool.started input. */
+  /** Runtime-only allowlist of scalars and bounded string arrays in public tool.started input. */
   eventInputFields?: readonly string[];
   /** Runtime-only exposure override; retains both permitted entry points with Code Mode enabled. */
   codeModeExposure?: 'both';
@@ -155,6 +155,9 @@ export interface CodeCellEventData {
   truncated?: boolean;
   /** Public output projection discarded older text; not inferred from source truncation. */
   outputHeadTruncated?: boolean;
+  /** Internal public-observation source fact, separate from local head clipping. */
+  outputSourceKnown?: boolean;
+  outputSourceTruncated?: boolean;
   observations?: readonly import('../session/code-observation-contract.js').CodeObservation[];
   error?: { code: string; message: string };
 }

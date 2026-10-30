@@ -11,7 +11,7 @@ import type {
   NativeTranscriptUnknown,
   NativeTranscriptReasoningSummary
 } from '../../native-transcript-model.js';
-import { compactRunnerValue as compactValue } from '../normalization.js';
+import { compactRunnerValue as compactValue, publicOutputSnapshot } from '../normalization.js';
 import { stripGoalStartPrompt, publicGoalHistoryText } from '../../service/goal-runtime.js';
 import { parseCodexComposerImageMarkers } from './composer-image-markers.js';
 import { codexTranscriptSourceItemId } from './conversation-parser.js';
@@ -192,9 +192,8 @@ function codexToolResultsOf(
     return [];
   const toolUseId = firstString(payload, ['call_id', 'id']);
   if (toolUseId === undefined) return [];
-  const output = compactValue(
-    codexToolOutput(payload['output'] ?? payload['contentItems']),
-    10_000
+  const output = publicOutputSnapshot(
+    codexToolOutput(payload['output'] ?? payload['contentItems'])
   );
   const imageAttachments = codexImagePlaceholders(payload['output'] ?? payload['contentItems']);
   return [
@@ -626,7 +625,9 @@ export const codexNativeTranscriptAdapter: NativeTranscriptAdapter = {
           rawInput: entry.input,
           inputSummary: entry.inputSummary,
           outputSummary: entry.outputSummary,
-          truncated: entry.inputTruncated || entry.outputTruncated,
+          inputTruncated: entry.inputTruncated,
+          outputTruncated: entry.outputTruncated,
+          ...(entry.outputTruncated ? { outputDirection: 'HEAD' as const } : {}),
           ...(entry.imageAttachments === undefined ? {} : { attachments: entry.imageAttachments })
         }),
       userInputQuestions: () => []

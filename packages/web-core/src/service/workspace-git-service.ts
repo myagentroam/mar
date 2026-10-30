@@ -48,6 +48,9 @@ export function createWorkspaceGitService(input: {
 }) {
   const changes = shallowRef<unknown>();
   const changesRefreshing = ref(false);
+  const changesFetchFailed = ref(false);
+  const historyFetchFailed = ref(false);
+  let changesFetchRequested = false;
   const restoringPath = ref<string>();
   const historyRepositoryPath = ref('');
   const selectedHistoryRefs = ref<readonly string[]>([]);
@@ -59,6 +62,8 @@ export function createWorkspaceGitService(input: {
   const historyFilesLoading = ref<readonly string[]>([]);
   const historySource = shallowRef<WorkspaceGitHistorySelection>({ repositoryPath: '', refs: [] });
   let historyRefsRepository: string | undefined;
+  let historyFetch:
+    { readonly repositoryPath: string; readonly promise: Promise<boolean> } | undefined;
   let epoch = 0;
   let historyGeneration = 0;
   let appliedWatchRevision = -1;
@@ -115,9 +120,17 @@ export function createWorkspaceGitService(input: {
     return createTrailingTask(async () => {
       const target = input.target();
       if (target === undefined || generation !== epoch || !input.gitEnabled()) return;
+      const fetch = changesFetchRequested;
+      changesFetchRequested = false;
       changesRefreshing.value = true;
-      const watchRevision = appliedWatchRevision;
+      let watchRevision = appliedWatchRevision;
       try {
+        if (fetch) {
+          const failed = await fetchRemotes(target);
+          if (!current(target, generation)) return;
+          changesFetchFailed.value = failed;
+        }
+        watchRevision = appliedWatchRevision;
         const value = await input.http.request(url(target, '/changes'));
         if (current(target, generation) && watchRevision === appliedWatchRevision)
           acceptChanges(value, target);
@@ -135,8 +148,29 @@ export function createWorkspaceGitService(input: {
       target?.nodeId === changesTarget?.nodeId && target?.workspaceId === changesTarget?.workspaceId
     );
   }
-  function loadChanges(): Promise<void> {
+  async function fetchRemotes(
+    target: WorkspaceFileOperationTarget,
+    repositoryPath?: string
+  ): Promise<boolean> {
+    try {
+      const result = await input.http.request<{ readonly fetchFailed: boolean }>(
+        url(target, '/git/fetch'),
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            nodeId: target.nodeId,
+            ...(repositoryPath === undefined ? {} : { repositoryPath })
+          })
+        }
+      );
+      return result.fetchFailed !== false;
+    } catch {
+      return true;
+    }
+  }
+  function loadChanges(fetch = false): Promise<void> {
     if (!matchesChangesTarget()) reset();
+    changesFetchRequested ||= fetch;
     return changesTask.request();
   }
   function applyWatch(value: unknown, revision?: number): boolean {
@@ -158,7 +192,7 @@ export function createWorkspaceGitService(input: {
     historyFilesLoading.value = [];
     fileRequests.clear();
   }
-  async function loadHistory(resetPage = false): Promise<void> {
+  async function loadHistory(resetPage = false, fetch = false): Promise<void> {
     const target = input.target();
     if (target === undefined || !input.historyEnabled() || (!resetPage && historyLoading.value))
       return;
@@ -176,6 +210,20 @@ export function createWorkspaceGitService(input: {
     const cursor = resetPage ? null : historyNextCursor.value;
     historyLoading.value = true;
     try {
+      if (fetch && historyFetch?.repositoryPath !== selection.repositoryPath)
+        historyFetch = {
+          repositoryPath: selection.repositoryPath,
+          promise: fetchRemotes(target, selection.repositoryPath)
+        };
+      const fetching =
+        historyFetch?.repositoryPath === selection.repositoryPath ? historyFetch : undefined;
+      if (fetching !== undefined) {
+        const failed = await fetching.promise;
+        if (historyFetch === fetching) historyFetch = undefined;
+        if (!valid()) return;
+        historyFetchFailed.value = failed;
+        historyRefsRepository = undefined;
+      }
       let refs: readonly HistoryRef[] | undefined;
       if (resetPage && historyRefsRepository !== selection.repositoryPath) {
         const result = await input.http.request<{ readonly refs?: unknown }>(
@@ -226,9 +274,11 @@ export function createWorkspaceGitService(input: {
     }
   }
   function selectHistory(repositoryPath: string, refs: readonly string[]): Promise<void> {
+    const changedRepository = repositoryPath !== historyRepositoryPath.value;
     historyRepositoryPath.value = repositoryPath;
     selectedHistoryRefs.value = [...refs];
-    return loadHistory(true);
+    if (changedRepository) historyFetchFailed.value = false;
+    return loadHistory(true, changedRepository);
   }
   async function openHistory(): Promise<void> {
     if (!matchesChangesTarget()) reset();
@@ -241,7 +291,7 @@ export function createWorkspaceGitService(input: {
     if (!available.some((entry) => entry.repositoryPath === historyRepositoryPath.value))
       historyRepositoryPath.value = available[0]?.repositoryPath ?? '';
     historyRefsRepository = undefined;
-    await loadHistory(true);
+    await loadHistory(true, true);
   }
   function loadHistoryFiles(commit: HistoryCommit): Promise<boolean> {
     const target = input.target(),
@@ -358,12 +408,16 @@ export function createWorkspaceGitService(input: {
     changesTask = createChangesTask(epoch);
     changes.value = undefined;
     changesRefreshing.value = false;
+    changesFetchRequested = false;
+    changesFetchFailed.value = false;
+    historyFetchFailed.value = false;
     restoringPath.value = undefined;
     historyRepositoryPath.value = '';
     selectedHistoryRefs.value = [];
     historyRefs.value = [];
     historyRefsRepository = undefined;
     historyCommits.value = [];
+    historyFetch = undefined;
     historyNextCursor.value = null;
     historyLoading.value = false;
     historySource.value = { repositoryPath: '', refs: [] };
@@ -393,6 +447,8 @@ export function createWorkspaceGitService(input: {
   return {
     changes: readonly(changes),
     changesRefreshing: readonly(changesRefreshing),
+    changesFetchFailed: readonly(changesFetchFailed),
+    historyFetchFailed: readonly(historyFetchFailed),
     restoringPath: readonly(restoringPath),
     visibleChanges,
     repositories,

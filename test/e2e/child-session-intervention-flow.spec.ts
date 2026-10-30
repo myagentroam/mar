@@ -191,7 +191,7 @@ test('opens a mapped child and carries user intervention back to its parent obse
       await processHeading.click();
     const group = page.locator('.subagent-group').first();
     await group.locator(':scope > details > summary').click();
-    await group.getByRole('button', { name: '打开子会话' }).click();
+    await group.getByRole('button', { name: '打开会话' }).click();
     const input = page.getByRole('textbox', { name: '输入消息' });
     await input.fill('User intervention in child');
     const submission = page.waitForResponse(

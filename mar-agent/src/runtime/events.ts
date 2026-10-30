@@ -100,6 +100,7 @@ export type AgentEvent = AgentEventBase &
         callId: string;
         parentCallId?: string;
         output: import('../tools/contracts.js').ExecOutputSnapshot;
+        outputTruncation?: 'HEAD' | 'SOURCE';
       }
     | {
         type: 'tool.completed';
@@ -109,6 +110,8 @@ export type AgentEvent = AgentEventBase &
         parentCallId?: string;
         summary: string;
         truncated?: boolean;
+        summaryTruncated?: boolean;
+        outputTruncation?: 'HEAD' | 'SOURCE';
         artifacts?: readonly AgentToolArtifact[];
         data?:
           | CodeCellEventData
@@ -132,6 +135,7 @@ export type AgentEvent = AgentEventBase &
         message?: string;
         permissionStop?: import('../tools/permission-contract.js').PermissionStop;
         truncated?: boolean;
+        outputTruncation?: 'HEAD' | 'SOURCE';
       }
     | {
         type: 'sleep.started';

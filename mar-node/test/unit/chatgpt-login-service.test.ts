@@ -354,7 +354,10 @@ function signedToken(
 }
 
 function tamperSignature(token: string): string {
-  return `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
+  const [header, payload, signature] = token.split('.');
+  const bytes = Buffer.from(signature!, 'base64url');
+  bytes[0] = bytes[0]! ^ 1;
+  return `${header}.${payload}.${bytes.toString('base64url')}`;
 }
 
 function requestFixture(fixture: IdentityFixture) {

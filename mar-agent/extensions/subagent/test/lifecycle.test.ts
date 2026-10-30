@@ -37,7 +37,8 @@ async function fixture() {
         provider = value;
       }
     },
-    tools: { register() {} }
+    tools: { register() {} },
+    hooks: { intercept() {} }
   } as unknown as SessionExtensionContext;
   const dispose = (await createSubagentExtension({ agent: () => agent }).attachSession!(
     context

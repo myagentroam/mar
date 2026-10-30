@@ -189,12 +189,13 @@ describe('MAR Agent managed run projection', () => {
     expect(completed).toMatchObject({
       itemId: pending?.itemId,
       status: 'COMPLETED',
-      payload: { progressLabel: null, truncated: true },
+      payload: { progressLabel: null },
       merge: true
     });
     expect(JSON.parse(running?.payload.inputSummary as string)).toEqual(input);
     expect(JSON.parse(completed?.payload.inputSummary as string)).toEqual(input);
     expect(JSON.parse(completed?.payload.outputSummary as string)).toEqual(output);
+    expect(completed?.payload).not.toHaveProperty('output.truncation');
   });
 
   it.each([
@@ -287,15 +288,19 @@ describe('MAR Agent managed run projection', () => {
       message: JSON.stringify(output),
       truncated: true
     })[0];
-    expect(started?.payload.truncated).toBe(true);
+    expect(started?.payload).not.toHaveProperty('output.truncation');
     expect(failed).toMatchObject({
       itemId: started?.itemId,
       kind: 'tool_call',
       status: 'FAILED',
-      payload: { toolName: 'web_search', errorCode: 'HOSTED_TOOL_FAILED', truncated: true }
+      payload: {
+        toolName: 'web_search',
+        errorCode: 'HOSTED_TOOL_FAILED',
+        errorMessage: JSON.stringify(output)
+      }
     });
     expect(JSON.parse(failed?.payload.inputSummary as string)).toEqual(input);
-    expect(JSON.parse(failed?.payload.outputSummary as string)).toEqual(output);
+    expect(failed?.payload).not.toHaveProperty('output.truncation');
   });
 
   it('marks ordinary tool input truncation through the shared projection', () => {
@@ -306,7 +311,7 @@ describe('MAR Agent managed run projection', () => {
       toolName: 'web_search',
       input: { query: 'x'.repeat(10_001) }
     })[0];
-    expect(item?.payload.truncated).toBe(true);
+    expect(item?.payload.inputTruncated).toBe(true);
     expect((item?.payload.inputSummary as string).length).toBeLessThanOrEqual(10_000);
   });
 
@@ -902,11 +907,10 @@ describe('MAR Agent managed run projection', () => {
       status: 'COMPLETED',
       payload: {
         command: 'pnpm test',
-        outputPreview: '',
-        exitCode: 0,
-        truncated: true
+        exitCode: 0
       }
     });
+    expect(historyItem?.payload).not.toHaveProperty('output');
   });
 
   it('preserves the user attachment prompt and image placeholder from MAR Agent history after Node restart', () => {

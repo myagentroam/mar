@@ -352,7 +352,7 @@ export function conversationProcessLabel(
         }[presentation.kind];
         if (presentation.kind === 'SKILL') name = presentation.name;
       } else if (payload?.toolCategory === 'IMAGE_GENERATION') activity = 'image';
-      else if (payload?.subagentOperation) activity = 'subagent';
+      else if (payload?.subagentOperation || payload?.agentOperation) activity = 'subagent';
       else {
         activity = 'tool';
         name = payload?.toolName;

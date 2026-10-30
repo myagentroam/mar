@@ -27,7 +27,8 @@ const environment = {
 it('publishes timely communication and deferred queue guidance in the native send tool', () => {
   const register = vi.fn();
   agentNetworkExtension(vi.fn(), () => 'execution').attachSession!({
-    tools: { register }
+    tools: { register },
+    hooks: { intercept() {} }
   } as never);
   const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
   expect(send.description).toContain(

@@ -18,6 +18,8 @@ import {
   publicToolEventInput,
   structuredToolArtifacts,
   publicExtensionToolEventData,
+  publicOutputTruncation,
+  publicEventOutputData,
   structuredToolEventData,
   structuredToolFailureData
 } from './output-projection.js';
@@ -209,6 +211,7 @@ export async function executeRoundTools(
             ? structuredToolEventData(call.name, output.data)
             : publicExtensionToolEventData(output.eventData);
       const artifacts = structuredToolArtifacts(output.artifacts);
+      const outputTruncation = publicOutputTruncation(call.name, structuredData);
       await scope.emit({
         type: 'tool.completed',
         ...(output.resultExtensions ? { resultExtensions: output.resultExtensions } : {}),
@@ -217,8 +220,10 @@ export async function executeRoundTools(
         ...(parentCallId === undefined ? {} : { parentCallId }),
         summary: eventSummary.summary,
         truncated: output.truncated === true || modelOutput.truncated || eventSummary.truncated,
+        ...(eventSummary.truncated ? { summaryTruncated: true } : {}),
+        ...(outputTruncation ? { outputTruncation } : {}),
         ...(artifacts === undefined ? {} : { artifacts }),
-        ...(structuredData === undefined ? {} : { data: structuredData })
+        ...(structuredData === undefined ? {} : { data: publicEventOutputData(structuredData) })
       });
       return {
         call,
@@ -254,6 +259,7 @@ export async function executeRoundTools(
               call.name,
               partial.eventData ?? partial.data
             ) as import('./contracts.js').CodeCellEventData));
+      const outputTruncation = publicOutputTruncation(call.name, eventData);
       await scope.emit({
         type: 'tool.failed',
         ...(failedToolResultExtensions(error)
@@ -267,7 +273,8 @@ export async function executeRoundTools(
         ...(permissionStopFromError(error)
           ? { permissionStop: permissionStopFromError(error)! }
           : {}),
-        ...(eventData === undefined ? {} : { data: eventData })
+        ...(outputTruncation ? { outputTruncation } : {}),
+        ...(eventData === undefined ? {} : { data: publicEventOutputData(eventData) })
       });
       return {
         call,

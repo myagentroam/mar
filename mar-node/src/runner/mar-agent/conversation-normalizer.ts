@@ -18,8 +18,12 @@ import {
   type ToolPresentation,
   type ExecutionPresentation
 } from '@myagentroam/protocol';
-import { boundExecutionPresentation } from '../execution-presentation.js';
-import { publicOutputSnapshot } from '../normalization.js';
+import { publicOutputSnapshot, publicToolOutput } from '../normalization.js';
+import { boundToolOutput } from '@myagentroam/protocol';
+import {
+  agentOperationAction,
+  agentOperationPresentation
+} from './agent-operation-presentation.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;
@@ -56,6 +60,7 @@ type ToolState = {
   readonly input: unknown;
   readonly itemId: string;
   readonly structured: boolean;
+  readonly inputTruncated?: boolean;
   readonly executionId: string;
   readonly turnId?: string;
   active: boolean;
@@ -77,6 +82,7 @@ type CodeModeOutputSnapshot = {
   readonly truncated: boolean;
   readonly displayOutput: NonNullable<CommandState['displayOutput']>;
   readonly processId: string;
+  readonly outputTruncation?: 'HEAD' | 'SOURCE';
 };
 
 function boundCodeOutputSnapshots(sources: Map<string, CodeModeOutputSnapshot>): void {
@@ -129,6 +135,7 @@ type CommandState = {
   readonly cwd: string | null;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   outputPreview: string;
+  outputTruncation?: 'HEAD' | 'SOURCE';
   exitCode: number | null;
   truncated: boolean;
   inputTruncated?: boolean;
@@ -299,17 +306,20 @@ export class MarAgentConversationNormalizer {
         else this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
         return [];
       }
-      // Read/web calls and generated artifacts stay visible independently of cell observations.
+      // Public Agent calls, read/web calls and artifacts do not depend on model observations.
       if (
         event.parentCallId !== undefined &&
         event.toolName !== 'read' &&
         event.toolName !== 'web_search' &&
         event.toolName !== 'web_fetch' &&
+        agentOperationAction(event.toolName) === undefined &&
         !isImageGenerationTool(event.toolName)
       ) {
         this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
         return [];
       }
+      if (event.parentCallId !== undefined && agentOperationAction(event.toolName) !== undefined)
+        this.#codeModeSourceCallIds.add(event.callId);
       if (event.type === 'tool.started') return this.#toolStarted(event);
       this.#finishToolCall(event);
       const permissionStop = permissionStopForToolEvent(event);
@@ -423,6 +433,7 @@ export class MarAgentConversationNormalizer {
       input: event.input,
       itemId: ownItemId,
       structured: 'input' in event,
+      inputTruncated: event.truncated === true,
       executionId: event.executionId,
       ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
       active: true,
@@ -444,7 +455,10 @@ export class MarAgentConversationNormalizer {
         event.truncated === true,
         event.data,
         subagentTitle,
-        subagentDetails
+        subagentDetails,
+        undefined,
+        undefined,
+        event.truncated === true
       )
     ];
   }
@@ -462,17 +476,13 @@ export class MarAgentConversationNormalizer {
       stderrDroppedBytes: 0
     };
     const displayed = [displayOutput.stdout, displayOutput.stderr].filter(Boolean).join('\n');
-    const bounded = publicOutputSnapshot(
-      displayed,
-      output.truncated ||
-        displayOutput.stdoutDroppedBytes > 0 ||
-        displayOutput.stderrDroppedBytes > 0
-    );
+    const bounded = publicOutputSnapshot(displayed, event.outputTruncation !== undefined);
     const snapshot = {
       outputPreview: bounded.text,
       truncated: bounded.truncated || inputOutput.length > 10_000,
       displayOutput,
-      processId: output.processId
+      processId: output.processId,
+      ...(event.outputTruncation ? { outputTruncation: event.outputTruncation } : {})
     };
 
     if (parentCallId !== undefined && (toolName === 'exec' || toolName === 'exec_wait'))
@@ -515,7 +525,12 @@ export class MarAgentConversationNormalizer {
             outputHeadTruncated:
               snapshot.displayOutput.stdoutDroppedBytes > 0 ||
               snapshot.displayOutput.stderrDroppedBytes > 0
-          }
+          },
+          undefined,
+          undefined,
+          undefined,
+          event.outputTruncation,
+          state.inputTruncated
         )
       ];
     }
@@ -526,6 +541,8 @@ export class MarAgentConversationNormalizer {
     if (display !== undefined) command.displayOutput = display;
     command.outputPreview = snapshot.outputPreview;
     command.truncated = snapshot.truncated;
+    if (event.outputTruncation) command.outputTruncation = event.outputTruncation;
+    else delete command.outputTruncation;
     return [commandItem(command, 'IN_PROGRESS')];
   }
 
@@ -588,27 +605,25 @@ export class MarAgentConversationNormalizer {
       target.commandOrigin === undefined ? undefined : this.#commands.get(target.commandOrigin);
     const item = command
       ? commandItem(command, 'IN_PROGRESS')
-      : genericToolItem(target.itemId, target.toolName, 'IN_PROGRESS', target.input, null, null);
-    const original = record(record(item.payload.toolPresentation)?.execution);
+      : genericToolItem(
+          target.itemId,
+          target.toolName,
+          'IN_PROGRESS',
+          target.input,
+          null,
+          null,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          target.inputTruncated
+        );
     const blocks = [
       ...(output.stdout ? [{ channel: 'STDOUT' as const, text: output.stdout }] : []),
       ...(output.stderr ? [{ channel: 'STDERR' as const, text: output.stderr }] : [])
     ];
-    const text = [output.stdout, output.stderr].filter(Boolean).join('\n');
-    const boundedText = publicOutputSnapshot(text, output.truncated);
-    const bounded = boundExecutionPresentation({
-      kind:
-        parentCallId !== undefined
-          ? target.toolName === 'code_exec'
-            ? 'CODE'
-            : 'CONTROL'
-          : toolName === 'exec'
-            ? 'SHELL'
-            : 'CONTROL',
-      ...(typeof original?.toolName === 'string' ? { toolName: original.toolName } : {}),
-      output: blocks,
-      ...(output.truncated ? { truncation: { output: 'HEAD' as const } } : {})
-    });
     return [
       {
         ...item,
@@ -616,9 +631,7 @@ export class MarAgentConversationNormalizer {
         merge: true,
         payload: {
           ...item.payload,
-          outputPreview: boundedText.text,
-          output: boundedText,
-          toolPresentation: bounded.presentation
+          output: boundToolOutput(blocks, event.outputTruncation)
         }
       }
     ];
@@ -696,7 +709,21 @@ export class MarAgentConversationNormalizer {
               .filter(Boolean)
               .join('')
           }
-        }
+        },
+        undefined,
+        undefined,
+        undefined,
+        entries.some((entry) => entry.outputTruncation === 'SOURCE')
+          ? 'SOURCE'
+          : entries.some(
+                (entry) =>
+                  entry.outputTruncation === 'HEAD' ||
+                  entry.displayOutput.stdoutDroppedBytes > 0 ||
+                  entry.displayOutput.stderrDroppedBytes > 0
+              )
+            ? 'HEAD'
+            : undefined,
+        target.inputTruncated
       )
     ];
   }
@@ -883,9 +910,11 @@ export class MarAgentConversationNormalizer {
     const state = this.#tools.get(event.callId);
     if (event.toolName === 'exec' && state?.commandOrigin !== undefined) {
       const command = this.#commands.get(state.commandOrigin);
-      const result = execResult(event.data, event.summary, event.truncated === true);
+      const result = execResult(event.data, event.summary, event.outputTruncation !== undefined);
       if (command !== undefined && result !== undefined) {
         applyCommandResult(command, result);
+        if (event.outputTruncation) command.outputTruncation = event.outputTruncation;
+        else delete command.outputTruncation;
         const data = record(event.data);
         const display = execDisplayOutput(data?.displayOutput);
         if (display !== undefined) command.displayOutput = display;
@@ -940,11 +969,14 @@ export class MarAgentConversationNormalizer {
         ? event.summary
         : generatedImages.map((image) => image.name).join(', '),
       null,
-      event.truncated,
+      event.outputTruncation !== undefined,
       event.data,
       agentId === undefined ? state?.subagentTitle : this.#subagentTitles.get(agentId),
       details,
-      state?.sleepStartedAt
+      state?.sleepStartedAt,
+      event.outputTruncation,
+      state?.inputTruncated,
+      event.summaryTruncated === true
     );
     return [
       {
@@ -992,7 +1024,9 @@ export class MarAgentConversationNormalizer {
         state?.presentationData,
         state?.subagentTitle,
         state?.subagentDetails,
-        state?.sleepStartedAt
+        state?.sleepStartedAt,
+        event.outputTruncation,
+        state?.inputTruncated
       )
     ];
   }
@@ -1393,41 +1427,40 @@ function genericToolItem(
   output?: unknown,
   subagentTitle?: string,
   knownSubagentDetails?: SubagentDetails,
-  sleepStartedAt?: string
+  sleepStartedAt?: string,
+  outputTruncation?: 'HEAD' | 'SOURCE',
+  inputTruncated = false,
+  summaryTruncated = false
 ): MarAgentNormalizedItem {
   if (toolName === 'code_exec') {
     const code = typeof input === 'string' ? input : record(input)?.code;
     const source =
       typeof code === 'string' ? code : compactRunnerValue(input, 10_000).text || toolName;
     const resultData = record(output);
-    const codeOutput = codeObservationOutput(resultData, outputSummary);
+    const codeOutput = codeObservationOutput(resultData, null);
     const resultError = codeExecutionError(resultData);
     const preview =
       errorCode === null
         ? (outputSummary ?? '')
         : [errorCode, outputSummary].filter(Boolean).join(': ');
-    return commandItem(
+    const item = commandItem(
       {
         itemId: id,
         command: compactRunnerText(source, 10_000),
         cwd: null,
-        outputPreview: compactRunnerText(preview, 10_000),
+        outputPreview: '',
         exitCode: null,
-        truncated:
-          truncated ||
-          resultData?.truncated === true ||
-          source.length > 10_000 ||
-          preview.length > 10_000
+        truncated: truncated || source.length > 10_000 || preview.length > 10_000
       },
       status,
       'Code execution',
       {
         kind: 'CODE',
-        ...(source.length > 10_000 || resultData?.outputHeadTruncated === true
+        ...(source.length > 10_000 || inputTruncated || outputTruncation !== undefined
           ? {
               truncation: {
-                ...(source.length > 10_000 ? { input: true } : {}),
-                ...(resultData?.outputHeadTruncated === true ? { output: 'HEAD' as const } : {})
+                ...(source.length > 10_000 || inputTruncated ? { input: true } : {}),
+                ...(outputTruncation === undefined ? {} : { output: outputTruncation })
               }
             }
           : {}),
@@ -1445,6 +1478,12 @@ function genericToolItem(
       },
       toolName
     );
+    if (codeOutput === undefined && errorCode === null && outputSummary !== null) {
+      item.payload.outputSummary = compactRunnerText(outputSummary, 10_000);
+      if (summaryTruncated || outputSummary.length > 10_000)
+        item.payload.outputSummaryTruncated = true;
+    }
+    return item;
   }
   if (toolName === 'code_exec_wait' || toolName === 'exec_wait') {
     const inputRecord = record(input);
@@ -1459,46 +1498,18 @@ function genericToolItem(
         : [])
     ];
     const codeOutput =
-      toolName === 'code_exec_wait' ? codeObservationOutput(resultData, outputSummary) : undefined;
+      toolName === 'code_exec_wait' ? codeObservationOutput(resultData, null) : undefined;
     const resultError = toolName === 'code_exec_wait' ? codeExecutionError(resultData) : undefined;
     const action = typeof inputRecord?.action === 'string' ? inputRecord.action : 'poll';
     const inputSummary = compactRunnerValue(input, 10_000);
-    const result = output === undefined ? null : compactRunnerValue(output, 10_000);
-    const resultSummary = [outputSummary, result?.text]
-      .filter(
-        (value, index, values): value is string =>
-          typeof value === 'string' && value.length > 0 && values.indexOf(value) === index
-      )
-      .join('\n');
-    const details = [
-      `Action: ${compactRunnerText(action, 128)}`,
-      `Input: ${inputSummary.text || '{}'}`,
-      resultSummary.length === 0 ? '' : `Result: ${compactRunnerText(resultSummary, 10_000)}`,
-      errorCode === null ? '' : `Error: ${compactRunnerText(errorCode, 80)}`
-    ]
-      .filter(Boolean)
-      .join('\n');
-    return commandItem(
+    const item = commandItem(
       {
         itemId: id,
         command: '',
         cwd: null,
-        outputPreview:
-          status === 'IN_PROGRESS' && outputSummary !== null
-            ? outputSummary
-            : legacyBlocks.length > 0
-              ? legacyBlocks
-                  .map((block) => block.text)
-                  .filter(Boolean)
-                  .join('\n')
-              : details,
+        outputPreview: '',
         exitCode: typeof resultData?.exitCode === 'number' ? resultData.exitCode : null,
-        truncated:
-          truncated ||
-          resultData?.truncated === true ||
-          inputSummary.truncated ||
-          result?.truncated === true ||
-          resultSummary.length > 10_000
+        truncated: truncated || inputSummary.truncated
       },
       status,
       toolName === 'code_exec_wait' ? 'Code execution wait' : 'Command wait',
@@ -1522,21 +1533,21 @@ function genericToolItem(
             }),
         ...(display === undefined && legacyBlocks.length > 0 ? { output: legacyBlocks } : {}),
         ...(codeOutput === undefined ? {} : { output: codeOutput }),
-        ...((typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000) ||
-        resultData?.outputHeadTruncated === true ||
-        (display !== undefined && (display.stdoutDroppedBytes || display.stderrDroppedBytes)) ||
-        (display === undefined && legacyBlocks.length > 0 && truncated)
+        ...(inputTruncated ||
+        (typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000) ||
+        outputTruncation !== undefined ||
+        (display !== undefined && (display.stdoutDroppedBytes || display.stderrDroppedBytes))
           ? {
               truncation: {
-                ...(typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000
+                ...(inputTruncated ||
+                (typeof inputRecord?.data === 'string' && inputRecord.data.length > 10_000)
                   ? { input: true }
                   : {}),
-                ...(resultData?.outputHeadTruncated === true ||
-                (display !== undefined &&
-                  (display.stdoutDroppedBytes || display.stderrDroppedBytes))
-                  ? { output: 'HEAD' as const }
-                  : display === undefined && legacyBlocks.length > 0 && truncated
-                    ? { output: 'SOURCE' as const }
+                ...(outputTruncation !== undefined
+                  ? { output: outputTruncation }
+                  : display !== undefined &&
+                      (display.stdoutDroppedBytes || display.stderrDroppedBytes)
+                    ? { output: 'HEAD' as const }
                     : {})
               }
             }
@@ -1553,6 +1564,18 @@ function genericToolItem(
             })
       }
     );
+    if (
+      display === undefined &&
+      legacyBlocks.length === 0 &&
+      codeOutput === undefined &&
+      errorCode === null &&
+      outputSummary !== null
+    ) {
+      item.payload.outputSummary = compactRunnerText(outputSummary, 10_000);
+      if (summaryTruncated || outputSummary.length > 10_000)
+        item.payload.outputSummaryTruncated = true;
+    }
+    return item;
   }
   const subagent = marAgentSubagentProjection(
     toolName,
@@ -1561,6 +1584,22 @@ function genericToolItem(
     subagentTitle,
     knownSubagentDetails
   );
+  const agentOperation = agentOperationPresentation(toolName, input, output);
+  if (
+    agentOperation &&
+    record(output)?.agentOperation === undefined &&
+    typeof subagent?.subagentId === 'string'
+  ) {
+    agentOperation.targets = [
+      {
+        agentId: subagent.subagentId,
+        ...(typeof subagent.subagentSessionId === 'string'
+          ? { sessionId: subagent.subagentSessionId }
+          : {}),
+        ...(typeof subagent.title === 'string' ? { title: subagent.title } : {})
+      }
+    ];
+  }
   const toolCategory = isImageGenerationTool(toolName) ? 'IMAGE_GENERATION' : undefined;
   const presentation = projectToolPresentation(toolName, input, output, sleepStartedAt);
   const inputSummary = compactRunnerValue(input, 10_000);
@@ -1573,13 +1612,20 @@ function genericToolItem(
       toolName: compactRunnerText(toolName, 128) || 'unknown',
       title: compactRunnerText(toolName, 500) || 'unknown',
       inputSummary: inputSummary.text || null,
-      outputSummary: outputSummary === null ? null : compactRunnerText(outputSummary, 10_000),
-      ...(outputSummary === null ? {} : { output: publicOutputSnapshot(outputSummary, truncated) }),
+      outputSummary: typeof output === 'string' || errorCode !== null ? null : outputSummary,
+      ...(typeof output === 'string' ? { output: publicToolOutput(output, outputTruncation) } : {}),
+      ...(typeof output !== 'string' && outputSummary !== null && summaryTruncated
+        ? { outputSummaryTruncated: true }
+        : {}),
       progressLabel: status === 'IN_PROGRESS' ? 'Running' : null,
       errorCode: errorCode === null ? null : compactRunnerText(errorCode, 80),
-      truncated: truncated || inputSummary.truncated || (outputSummary?.length ?? 0) > 10_000,
+      ...(errorCode !== null && outputSummary
+        ? { errorMessage: compactRunnerText(outputSummary, 1000) }
+        : {}),
+      ...(inputTruncated || inputSummary.truncated ? { inputTruncated: true } : {}),
       ...(toolCategory === undefined ? {} : { toolCategory }),
       ...(presentation === undefined ? {} : { toolPresentation: presentation }),
+      ...(agentOperation === undefined ? {} : { agentOperation }),
       ...subagent
     },
     merge: true
@@ -1685,7 +1731,7 @@ function commandItem(
     CommandState,
     'itemId' | 'command' | 'cwd' | 'outputPreview' | 'exitCode' | 'truncated'
   > &
-    Partial<Pick<CommandState, 'displayOutput' | 'error' | 'inputTruncated'>>,
+    Partial<Pick<CommandState, 'displayOutput' | 'error' | 'inputTruncated' | 'outputTruncation'>>,
   status: MarAgentNormalizedItem['status'],
   title?: string,
   execution?: ExecutionPresentation['execution'],
@@ -1715,7 +1761,16 @@ function commandItem(
           ]
         })
   };
-  const bounded = boundExecutionPresentation({ toolName, ...detail });
+  const { output: detailOutput, truncation, ...executionMetadata } = detail;
+  const blocks =
+    detailOutput ??
+    (!detail.error && command.outputPreview
+      ? [{ channel: 'COMBINED' as const, text: command.outputPreview }]
+      : undefined);
+  const output =
+    blocks === undefined
+      ? undefined
+      : boundToolOutput(blocks, command.outputTruncation ?? truncation?.output);
   return {
     itemId: command.itemId,
     kind: 'command_execution',
@@ -1724,25 +1779,17 @@ function commandItem(
       ...(title === undefined ? {} : { title }),
       command: command.command,
       cwd: command.cwd,
-      outputPreview: command.outputPreview,
-      output: {
-        text: publicOutputSnapshot(
-          bounded.presentation.execution.output
-            ?.map((block) => block.text)
-            .filter(Boolean)
-            .join('\n') ?? command.outputPreview
-        ).text,
-        truncated: command.truncated || bounded.truncated
-      },
+      ...(output === undefined ? {} : { output }),
       exitCode: command.exitCode,
       durationMs: null,
-      truncated:
-        command.truncated ||
-        command.inputTruncated === true ||
-        bounded.truncated ||
-        (display !== undefined &&
-          (display.stdoutDroppedBytes > 0 || display.stderrDroppedBytes > 0)),
-      toolPresentation: bounded.presentation
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: {
+          toolName,
+          ...executionMetadata,
+          ...(truncation?.input ? { truncation: { input: true } } : {})
+        }
+      }
     },
     merge: true
   };
@@ -1883,8 +1930,8 @@ function execResult(
     ...(data?.cached === true || summaryData?.cached === true ? { cached: true } : {}),
     truncated:
       eventTruncated ||
-      data?.truncated === true ||
-      summaryData?.truncated === true ||
+      (execDisplayOutput(data?.displayOutput) === undefined && data?.truncated === true) ||
+      (data === undefined && summaryData?.truncated === true) ||
       structuredSummaryIncomplete
   };
 }
@@ -1930,17 +1977,11 @@ function marAgentSubagentProjection(
     ...(title.length === 0 ? {} : { title }),
     ...subagentPayload(details),
     ...(typeof details.latestMessage?.text === 'string'
-      ? {
-          outputSummary: boundedToolSummary(details.latestMessage.text),
-          output: publicOutputSnapshot(
-            details.latestMessage.text,
-            details.latestMessage.truncated === true
-          )
-        }
+      ? { outputSummary: null, output: undefined }
       : typeof outputData?.errorMessage === 'string'
         ? {
-            outputSummary: compactRunnerText(outputData.errorMessage, 10_000),
-            output: publicOutputSnapshot(outputData.errorMessage)
+            outputSummary: null,
+            output: publicToolOutput(outputData.errorMessage)
           }
         : {}),
     ...(typeof outputData?.errorCode === 'string'

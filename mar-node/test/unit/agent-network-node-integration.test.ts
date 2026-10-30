@@ -296,6 +296,7 @@ describe('Node Agent Network owner integration', () => {
   it.each([
     {
       action: 'start' as const,
+      nested: false,
       operation: 'START',
       input: {
         title: 'Image task',
@@ -304,17 +305,24 @@ describe('Node Agent Network owner integration', () => {
     },
     {
       action: 'send' as const,
+      nested: false,
       operation: 'MESSAGE',
       input: { agentId: 'child', approval: { approvalId: 'approval-1', decision: 'approve' } }
     },
     {
       action: 'stop' as const,
+      nested: false,
       operation: 'CANCEL',
       input: { agentId: 'child', executionId: 'execution-1' }
+    },
+    {
+      action: 'send' as const,
+      nested: true,
+      input: { agentId: 'child', deliveryIntent: 'REPLACE_CURRENT', content: 'Review now' }
     }
   ])(
-    'projects real SDK $action events without leaking the result or image',
-    async ({ action, operation, input }) => {
+    'projects real SDK $action events (nested=$nested) without leaking the result or image',
+    async ({ action, input, nested }) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-public-event-'));
       const configuration: AgentModelConfiguration = {
         id: 'fixture',
@@ -329,7 +337,7 @@ describe('Node Agent Network owner integration', () => {
         outputCapabilities: ['TEXT'],
         reasoningEfforts: [],
         titleGeneration: false,
-        codeMode: false,
+        codeMode: nested,
         hostedWebSearch: false,
         responsesPreviousResponseId: false,
         enabled: true
@@ -354,8 +362,8 @@ describe('Node Agent Network owner integration', () => {
               yield {
                 type: 'client_tool.call',
                 callId: 'call',
-                name: `agent_${action}`,
-                arguments: input
+                name: nested ? 'code_exec' : `agent_${action}`,
+                arguments: nested ? `await tools.agent_${action}(${JSON.stringify(input)});` : input
               };
               yield { type: 'completed', reason: 'tool_use' };
             } else {
@@ -381,20 +389,35 @@ describe('Node Agent Network owner integration', () => {
           expect.objectContaining({
             type: 'tool.completed',
             toolName: `agent_${action}`,
-            data: { agentId: 'child', productSessionId: 'child' },
-            summary: '{"agentId":"child","productSessionId":"child"}'
+            data: {
+              agentOperation: {
+                action: action.toUpperCase(),
+                targets: [
+                  {
+                    agentId: 'child',
+                    sessionId: 'child',
+                    ...('title' in input ? { title: input.title } : {})
+                  }
+                ]
+              }
+            },
+            summary: '{}'
           })
         );
         expect(items).toContainEqual(
           expect.objectContaining({
             status: 'COMPLETED',
             payload: expect.objectContaining({
-              subagentOperation: operation,
-              subagentId: 'child',
-              subagentSessionId: 'child'
+              agentOperation: expect.objectContaining({
+                action: action.toUpperCase(),
+                targets: [expect.objectContaining({ agentId: 'child', sessionId: 'child' })]
+              })
             })
           })
         );
+        expect(
+          items.filter((item) => item.status === 'COMPLETED' && item.payload.agentOperation)
+        ).toHaveLength(1);
         expect(items).toContainEqual(
           expect.objectContaining({
             kind: 'assistant_message',
@@ -1177,9 +1200,12 @@ describe('Node Agent Network owner integration', () => {
       const childId = started.agentId as string;
       expect(start).toHaveBeenCalledWith(
         expect.objectContaining({
+          __suppressNotifications: true,
           __marctlOrigin: { sessionId: parent.id, name: 'Parent title' }
         })
       );
+      expect(core.runtime.activeSessionRun(childId)?.suppressNotifications).toBe(true);
+      expect(core.runtime.activeSessionRun(parent.id)?.suppressNotifications).not.toBe(true);
       expect(core.runtime.getAgentSession(childId)).toMatchObject({
         parentSessionId: parent.id,
         runner: 'mar-agent',
@@ -1221,6 +1247,7 @@ describe('Node Agent Network owner integration', () => {
       expect(sent).toMatchObject({ agentId: childId, message: { status: 'accepted' } });
       expect(deliver).toHaveBeenCalledWith(
         expect.objectContaining({
+          __suppressNotifications: true,
           __marctlOrigin: { sessionId: parent.id, name: 'Parent title' }
         })
       );
@@ -1941,7 +1968,8 @@ describe('Node Agent Network owner integration', () => {
       expect(starts).toHaveLength(1);
       expect(starts[0]?.[0]).toMatchObject({
         clientMessageId: 'idle-send',
-        messageContent: 'The single body'
+        messageContent: 'The single body',
+        suppressNotifications: true
       });
       expect(starts[0]?.[0].secretEnvironment).toEqual({
         MAR_CTL_USER_TOKEN: 'caller-token',
@@ -2026,6 +2054,7 @@ describe('Node Agent Network owner integration', () => {
       expect(child.effort).toBe('medium');
       expect(internals.goalRuntime.get(child.id)?.objective).toBe('Complete the child task');
       const run = internals.runtime.activeSessionRun(child.id)!;
+      expect(run.suppressNotifications).toBe(true);
       expect(
         await internals.agentNetworkService.wait(actor, {
           agentId: child.id,
@@ -2065,6 +2094,11 @@ describe('Node Agent Network owner integration', () => {
             internals.runtime.getQueueItem(id)?.content.includes('Continue later')
           )
       ).toBe(true);
+      const queued = internals.runtime
+        .sessionQueue(child.id)
+        .itemIds.map((id) => internals.runtime.getQueueItem(id))
+        .find((item) => item?.content.includes('Continue later'));
+      expect(queued?.suppressNotifications).toBe(true);
       expect(
         await internals.agentNetworkService.stop(actor, { agentId: child.id, executionId })
       ).toMatchObject({ agentId: child.id, cancel: { status: 'accepted' } });

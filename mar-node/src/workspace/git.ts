@@ -165,6 +165,29 @@ export interface CurrentChangesRepository {
   readonly changesTruncated?: boolean;
 }
 
+/** Fetches refs only; failures never expose remote URLs or authentication diagnostics. */
+export async function fetchGitRepository(
+  workspacePath: string,
+  timeoutMs: number
+): Promise<boolean> {
+  if (timeoutMs <= 0) return false;
+  try {
+    const result = await runGitAllowFailure(
+      workspacePath,
+      ['fetch', '--all', '--quiet', '--no-recurse-submodules', '--no-write-fetch-head'],
+      {
+        timeoutMs,
+        processGroup: true,
+        includeStderrInTimeout: false,
+        environment: { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' }
+      }
+    );
+    return result.code === 0;
+  } catch {
+    return false;
+  }
+}
+
 export interface GitWorktreeListEntry {
   readonly path: string;
   readonly directoryName: string;
@@ -1117,6 +1140,9 @@ interface GitCommandOptions {
   readonly outputLimit?: number;
   readonly timeoutMs?: number;
   readonly readOnly?: boolean;
+  readonly processGroup?: boolean;
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly includeStderrInTimeout?: boolean;
 }
 
 export class GitCommandError extends Error {
@@ -1195,10 +1221,12 @@ async function runGitAllowFailure(
       cwd: workspacePath,
       shell: false,
       windowsHide: true,
+      detached: options.processGroup === true && process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         ...gitOperationEnvironment.getStore(),
+        ...options.environment,
         ...(options.readOnly === true ? { GIT_OPTIONAL_LOCKS: '0' } : {})
       }
     });
@@ -1208,6 +1236,7 @@ async function runGitAllowFailure(
     let errorSize = 0;
     let truncated = false;
     let timedOut = false;
+    let forcedTerminationTimer: NodeJS.Timeout | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       if (process.platform === 'win32') {
@@ -1231,6 +1260,24 @@ async function runGitAllowFailure(
         });
         return;
       }
+      if (options.processGroup === true && child.pid !== undefined) {
+        const pid = child.pid;
+        try {
+          // Give Git a chance to release transaction locks before bounded escalation.
+          process.kill(-pid, 'SIGTERM');
+          forcedTerminationTimer = setTimeout(() => {
+            try {
+              process.kill(-pid, 'SIGKILL');
+            } catch {
+              // The process group may have completed its cleanup already.
+            }
+          }, 250);
+          forcedTerminationTimer.unref();
+          return;
+        } catch {
+          // The group may have exited before the timeout fired.
+        }
+      }
       child.kill('SIGKILL');
     }, options.timeoutMs ?? GIT_TIMEOUT_MS);
     child.stdout.on('data', (chunk: Buffer) => {
@@ -1251,6 +1298,7 @@ async function runGitAllowFailure(
     });
     child.once('error', (error) => {
       clearTimeout(timer);
+      clearTimeout(forcedTerminationTimer);
       logNodeCommandFailure(`git ${args[0] ?? 'unknown'}`, {
         reason: (error as NodeJS.ErrnoException).code ?? 'START_FAILED'
       });
@@ -1258,12 +1306,14 @@ async function runGitAllowFailure(
     });
     child.once('close', (code) => {
       clearTimeout(timer);
+      clearTimeout(forcedTerminationTimer);
       const stderr = Buffer.concat(errors).toString('utf8');
       if (timedOut) {
+        const details = options.includeStderrInTimeout === false ? '' : stderr;
         reject(
           gitCommandFailure(
             code === null || code === 0 ? 1 : code,
-            `Git command timed out after ${options.timeoutMs ?? GIT_TIMEOUT_MS} ms.${stderr ? `\n${stderr}` : ''}`,
+            `Git command timed out after ${options.timeoutMs ?? GIT_TIMEOUT_MS} ms.${details ? `\n${details}` : ''}`,
             args[0] ?? 'unknown',
             Math.round(performance.now() - startedAt),
             'TIMEOUT'

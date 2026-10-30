@@ -1344,6 +1344,8 @@ function restore(snapshot: unknown): void {
   }
   void restoreWorkspaceFileTabs();
   unavailable.value = false;
+  if (ready.value && activeSection.value === 'changes') void loadChanges(true);
+  else if (ready.value && activeSection.value === 'history') void git.openHistory();
 }
 
 function restoreWorkspace(nodeId: string, workspaceId: string, value: unknown): void {
@@ -1664,7 +1666,7 @@ function refreshVisibleSection(nodeId: string, workspaceId: string): void {
 
 function openChanges(): void {
   activeSection.value = 'changes';
-  void loadChanges();
+  void loadChanges(true);
 }
 
 async function openHistory(): Promise<void> {

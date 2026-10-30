@@ -103,7 +103,7 @@ describe('Code Mode conversation projection', () => {
       itemId: started?.itemId,
       kind: 'tool_call',
       status: 'COMPLETED',
-      payload: { outputSummary: 'cell output' },
+      payload: { output: { blocks: [{ channel: 'TEXT', text: 'cell output' }] } },
       merge: true
     });
     expect(completed?.payload).not.toHaveProperty('inputSummary');
@@ -116,7 +116,11 @@ describe('Code Mode conversation projection', () => {
     expect(page?.turns[0]?.items).toHaveLength(1);
     expect(page?.turns[0]?.items[0]).toMatchObject({
       kind: 'tool_call',
-      payload: { toolName: 'exec', inputSummary: code, outputSummary: 'cell output' }
+      payload: {
+        toolName: 'exec',
+        inputSummary: code,
+        output: { blocks: [{ channel: 'TEXT', text: 'cell output' }] }
+      }
     });
   });
 
@@ -325,7 +329,9 @@ describe('Code Mode conversation projection', () => {
           payload: expect.objectContaining({
             toolName: 'custom_tool',
             inputSummary: input,
-            outputSummary: type === 'tool.completed' ? 'output' : 'Invalid input.'
+            ...(type === 'tool.completed'
+              ? { outputSummary: 'output' }
+              : { errorMessage: 'Invalid input.' })
           })
         })
       ]);
@@ -489,7 +495,6 @@ describe('Code Mode conversation projection', () => {
     (toolName, input) => {
       const normalizer = new MarAgentConversationNormalizer();
       const callId = `call-${toolName}`;
-      const inputSummary = typeof input === 'string' ? input : JSON.stringify(input);
       const base = {
         eventId: 'event',
         sequence: 1,
@@ -516,8 +521,7 @@ describe('Code Mode conversation projection', () => {
                 action: 'poll',
                 targetId: 'cell-1'
               })
-            }),
-            outputPreview: expect.stringContaining(inputSummary)
+            })
           })
         })
       ]);
@@ -543,12 +547,11 @@ describe('Code Mode conversation projection', () => {
                 action: 'poll',
                 targetId: 'cell-1'
               })
-            }),
-            outputPreview: expect.stringContaining(inputSummary)
+            })
           })
         })
       ]);
-      expect(completed[0]?.payload.outputPreview).toContain('Result: done');
+      expect(completed[0]?.payload.outputSummary).toBe('done');
     }
   );
 
@@ -596,7 +599,11 @@ describe('Code Mode conversation projection', () => {
           status: 'FAILED',
           payload: {
             command: code,
-            outputPreview: 'MAR_AGENT_CODE_EXECUTION_FAILED: Guest failed.',
+            toolPresentation: {
+              execution: {
+                error: { code: 'MAR_AGENT_CODE_EXECUTION_FAILED', message: 'Guest failed.' }
+              }
+            },
             exitCode: null
           }
         }
@@ -616,7 +623,7 @@ describe('Code Mode conversation projection', () => {
           itemId: 'mar-agent-tool:cell',
           kind: 'command_execution',
           status: 'COMPLETED',
-          payload: { command: code, outputPreview: summary, exitCode: null }
+          payload: { command: code, outputSummary: summary, exitCode: null }
         }
       ]);
     }
@@ -638,7 +645,9 @@ describe('Code Mode conversation projection', () => {
       callId: 'cell',
       input: 'x'.repeat(20000)
     });
-    expect(started[0]?.payload.truncated).toBe(true);
+    expect(started[0]?.payload.toolPresentation).toMatchObject({
+      execution: { truncation: { input: true } }
+    });
     expect((started[0]?.payload.command as string).length).toBeLessThanOrEqual(10000);
     const failed = normalizer.normalize({
       ...base,
@@ -648,8 +657,10 @@ describe('Code Mode conversation projection', () => {
       code: 'MAR_AGENT_CODE_EXECUTION_FAILED',
       message: 'x'.repeat(20000)
     });
-    expect(failed[0]?.payload.truncated).toBe(true);
-    expect((failed[0]?.payload.outputPreview as string).length).toBeLessThanOrEqual(10000);
+    expect(failed[0]?.payload).not.toHaveProperty('output');
+    expect(failed[0]?.payload.toolPresentation).toMatchObject({
+      execution: { error: { code: 'MAR_AGENT_CODE_EXECUTION_FAILED' } }
+    });
   });
 
   it('keeps ordinary tool cards visible in archived history', () => {
@@ -862,7 +873,11 @@ describe('Code Mode conversation projection', () => {
           command: code,
           cwd: null,
           exitCode: null,
-          outputPreview: expect.stringContaining('nested')
+          output: {
+            blocks: [
+              expect.objectContaining({ channel: 'TEXT', text: expect.stringContaining('nested') })
+            ]
+          }
         };
         expect([...live.values()].filter((item) => item.kind === 'command_execution')).toEqual([
           expect.objectContaining({

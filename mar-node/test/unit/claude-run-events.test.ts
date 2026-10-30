@@ -260,7 +260,7 @@ describe('Claude events and approvals', () => {
       normalizeClaudeTool('Bash', { command: 'pwd' }, '/workspace', false, false)
     ).toMatchObject({
       kind: 'command_execution',
-      payload: { command: 'pwd', outputPreview: '/workspace' }
+      payload: { command: 'pwd', output: { blocks: [{ channel: 'COMBINED', text: '/workspace' }] } }
     });
     expect(
       normalizeClaudeTool('Write', { file_path: 'src/new.ts' }, null, false, false)
@@ -852,7 +852,9 @@ describe('Claude events and approvals', () => {
         expect.objectContaining({
           kind: 'command_execution',
           status: 'COMPLETED',
-          payload: expect.objectContaining({ outputPreview: '/workspace\\n' })
+          payload: expect.objectContaining({
+            output: { blocks: [{ channel: 'COMBINED', text: '/workspace\\n' }] }
+          })
         }),
         expect.objectContaining({
           kind: 'unknown',

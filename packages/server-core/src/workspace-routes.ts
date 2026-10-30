@@ -1188,6 +1188,40 @@ export function registerWorkspaceRoutes(input: {
     }
   });
 
+  app.post<{
+    Params: { workspaceId: string };
+    Body: { nodeId?: unknown; repositoryPath?: unknown };
+  }>('/api/workspaces/:workspaceId/git/fetch', async (request, reply) => {
+    if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+    const admin = protectedAdmin(database, request, reply);
+    if (admin === undefined) return;
+    if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
+    const body = request.body;
+    if (
+      body === null ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      !isNonEmptyString(body.nodeId)
+    )
+      return sendError(reply, 400, 'NODE_ID_REQUIRED');
+    if (
+      body.repositoryPath !== undefined &&
+      body.repositoryPath !== '' &&
+      !isSafeResourceText(body.repositoryPath)
+    )
+      return sendError(reply, 400, 'GIT_REPOSITORY_INVALID');
+    try {
+      return reply.send(
+        await requestUserNode(nodeControl, admin, body.nodeId, 'workspace.git.fetch', {
+          workspaceId: request.params.workspaceId,
+          ...(body.repositoryPath === undefined ? {} : { repositoryPath: body.repositoryPath })
+        })
+      );
+    } catch (error) {
+      return databaseError(reply, error);
+    }
+  });
+
   type GitHistoryQuery = {
     nodeId?: string;
     repositoryPath?: string;

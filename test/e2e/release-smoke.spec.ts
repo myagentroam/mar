@@ -289,7 +289,14 @@ test(smokeTestTitles[2]!, async ({ smoke, page }) => {
         status: 'COMPLETED',
         payload: expect.objectContaining({
           exitCode: 0,
-          outputPreview: expect.stringContaining('RELEASE_HOSTED_SANDBOX_OK')
+          output: expect.objectContaining({
+            blocks: expect.arrayContaining([
+              expect.objectContaining({
+                channel: 'STDOUT',
+                text: expect.stringContaining('RELEASE_HOSTED_SANDBOX_OK')
+              })
+            ])
+          })
         })
       })
     ])

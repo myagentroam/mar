@@ -240,6 +240,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         cwd: parent?.cwd ?? workspace.path,
         content: input.content,
         clientMessageId: input.clientMessageId,
+        __suppressNotifications: true,
         ...(!terminal && parent ? { __marctlOrigin: origin(parent) } : {}),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(model ? { model } : {}),
@@ -257,6 +258,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
                 objective: input.goal.kind === 'set' ? input.goal.objective : '',
                 secretEnvironment: childEnvironment(actor),
                 messageContent: input.content,
+                suppressNotifications: true,
                 ...(!terminal && parent ? { messageOrigin: origin(parent) } : {}),
                 clientMessageId: input.clientMessageId,
                 ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
@@ -302,6 +304,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           session: current,
           objective: change.objective,
           executionContext,
+          suppressNotifications: true,
           secretEnvironment: childEnvironment(actor),
           ...(actor.requestUserId === undefined ? {} : { initiatedByUserId: actor.requestUserId }),
           ...(actor.personalInstructions === undefined
@@ -334,6 +337,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           ...input,
           ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
           sessionId: session.id,
+          __suppressNotifications: true,
           ...(parent ? { __marctlOrigin: origin(parent) } : {})
         })
       );

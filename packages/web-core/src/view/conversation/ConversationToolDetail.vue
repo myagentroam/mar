@@ -6,6 +6,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
+import { readToolOutput } from '../../util/tool-presentation.js';
 
 const props = defineProps<{ item: ConversationItem; copyOnly?: boolean }>();
 const emit = defineEmits<{ copy: [text: string, onSuccess: () => void] }>();
@@ -20,22 +21,13 @@ const execution = computed(() => {
   const parsed = executionPresentationSchema.safeParse(payload.value.toolPresentation);
   return parsed.success ? parsed.data.execution : undefined;
 });
-const genericOutput = computed(() => {
-  const value = payload.value.output;
-  if (value === null || typeof value !== 'object') return undefined;
-  const record = value as Record<string, unknown>;
-  return typeof record.text === 'string' && typeof record.truncated === 'boolean'
-    ? { text: record.text, truncated: record.truncated }
-    : undefined;
-});
+const genericOutput = computed(() => readToolOutput(payload.value));
 const outputs = computed(() => {
   const value = execution.value;
   if (!value) return undefined;
-  if (value.output?.some((block) => block.channel === 'STDOUT' || block.channel === 'STDERR'))
-    return value.output;
-  if (genericOutput.value !== undefined)
-    return [{ channel: 'COMBINED' as const, text: genericOutput.value.text }];
+  if (payload.value.output !== undefined) return genericOutput.value?.blocks;
   if (value.output !== undefined) return value.output;
+  if (genericOutput.value !== undefined) return genericOutput.value.blocks;
   // Codex app-server publishes incremental outputPreview on the same item.
   if (
     value.kind === 'SHELL' &&
@@ -59,10 +51,18 @@ const detailText = computed(() => {
     const text =
       genericOutput.value === undefined
         ? conversationItemDetail(props.item.kind, props.item.payload)
-        : genericOutput.value.text;
+        : genericOutput.value.blocks
+            .map((block) => block.text)
+            .filter(Boolean)
+            .join('\n');
     return [
+      genericOutput.value?.truncation === 'HEAD'
+        ? translate('toolPresentation.detail.truncated')
+        : '',
       text,
-      genericOutput.value?.truncated ? translate('toolPresentation.detail.truncated') : ''
+      genericOutput.value?.truncation === 'SOURCE'
+        ? translate('toolPresentation.detail.truncated')
+        : ''
     ]
       .filter(Boolean)
       .join('\n');
@@ -88,20 +88,17 @@ const detailText = computed(() => {
   if (value.error)
     field('error', [value.error.code, value.error.message].filter(Boolean).join(': '));
   field('permission', props.item.permissionStop?.reason);
+  const outputTruncation =
+    payload.value.output !== undefined ? genericOutput.value?.truncation : value.truncation?.output;
   for (const [index, block] of visibleOutputs.value.entries()) {
     const label = block.channel === 'STDERR' ? 'stderr' : 'output';
     const marker =
-      index === 0 && value.truncation?.output === 'HEAD'
+      index === 0 && outputTruncation === 'HEAD'
         ? `${translate('toolPresentation.detail.truncated')}\n`
         : '';
     lines.push(`${conversationUiEnUS.toolPresentation.detail[label]}:\n${marker}${block.text}`);
   }
-  if (
-    (genericOutput.value?.truncated ||
-      value.truncation?.output ||
-      (payload.value.truncated && !value.truncation?.input)) &&
-    (value.truncation?.output !== 'HEAD' || visibleOutputs.value.length === 0)
-  )
+  if (outputTruncation && (outputTruncation !== 'HEAD' || visibleOutputs.value.length === 0))
     lines.push(translate('toolPresentation.detail.truncated'));
   field('exitCode', payload.value.exitCode);
   return lines.join('\n');

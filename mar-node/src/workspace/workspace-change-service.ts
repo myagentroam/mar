@@ -5,6 +5,7 @@ import { publicErrorMessage, type PublicError } from '@myagentroam/protocol';
 import { nodeLog } from '../operational.js';
 import {
   GitCommandError,
+  fetchGitRepository,
   isWorkspaceChangeVisible,
   listGitWorktrees,
   listGitSubmodules,
@@ -51,6 +52,52 @@ export class WorkspaceChangeService {
     this.changesReads.clear();
     this.changesCache.clear();
     this.changesVersions.clear();
+  }
+
+  async fetch(
+    workspace: NodeWorkspace,
+    repositoryPath?: string
+  ): Promise<{ fetchFailed: boolean }> {
+    if (workspace.kind !== 'GIT_WORKSPACE') throw new Error('WORKSPACE_NOT_GIT');
+    const root = await resolveWorkspaceGitRoot(
+      workspace.path,
+      workspace.includeParentRepository ?? true
+    );
+    // A selected History repository is validated before any network operation.
+    const selected =
+      repositoryPath === undefined ? undefined : await resolveGitRepository(root, repositoryPath);
+    let paths: readonly string[];
+    if (selected !== undefined) paths = [repositoryPath!];
+    else {
+      this.invalidate(workspace.id);
+      const current = (await this.current(workspace)) as {
+        repositories: readonly { repositoryPath: string; source: string; status: string }[];
+      };
+      // Linked worktrees share the root's refs and must not fetch them twice.
+      paths = current.repositories
+        .filter((entry) => entry.source !== 'WORKTREE' && entry.status !== 'UNAVAILABLE')
+        .map((entry) => entry.repositoryPath);
+    }
+    const deadline = performance.now() + 10_000;
+    try {
+      const results = await mapWithConcurrency(paths, REPOSITORY_READ_CONCURRENCY, async (path) => {
+        try {
+          if (performance.now() >= deadline) return false;
+          const repository = selected ?? (await resolveGitRepository(root, path));
+          return await fetchGitRepository(
+            repository,
+            Math.max(0, Math.floor(deadline - performance.now()))
+          );
+        } catch {
+          return false;
+        }
+      });
+      return { fetchFailed: results.some((success) => !success) };
+    } finally {
+      // Fetch is request/user scoped, never coalesced with another user's credentials.
+      // Invalidate even after partial failure: some remotes may already have advanced.
+      this.invalidate(workspace.id);
+    }
   }
 
   async current(workspace: NodeWorkspace): Promise<unknown> {

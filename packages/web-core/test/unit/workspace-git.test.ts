@@ -92,6 +92,104 @@ function requestUrl(path: string): URL {
 }
 
 describe('Workspace Git service', () => {
+  it('fetches before explicit Changes refreshes but not background reads', async () => {
+    const { service, request } = createGitHarness(async (path) =>
+      requestUrl(path).pathname.endsWith('/git/fetch') ? { fetchFailed: false } : { changes: [] }
+    );
+    await service.loadChanges();
+    expect(request).toHaveBeenCalledTimes(1);
+    request.mockClear();
+    await service.loadChanges(true);
+    expect(request.mock.calls.map(([path]) => requestUrl(path).pathname)).toEqual([
+      '/api/workspaces/workspace-1/git/fetch',
+      '/api/workspaces/workspace-1/changes'
+    ]);
+    expect(JSON.parse(request.mock.calls[0]![1]!.body as string)).toEqual({ nodeId: 'node-1' });
+  });
+
+  it('keeps local data with a weak fetch failure flag and clears it after success', async () => {
+    let fail = true;
+    const { service, onFailure } = createGitHarness(async (path) => {
+      if (requestUrl(path).pathname.endsWith('/git/fetch')) return { fetchFailed: fail };
+      return {
+        repositories: [
+          {
+            repositoryPath: '',
+            repositoryName: 'root',
+            source: 'ROOT',
+            changes: [{ path: 'local.txt', state: 'UNTRACKED', change: 'ADDED' }]
+          }
+        ]
+      };
+    });
+    await service.loadChanges(true);
+    expect(service.changesFetchFailed.value).toBe(true);
+    expect(service.visibleChanges.value).toHaveLength(1);
+    await service.loadChanges();
+    expect(service.changesFetchFailed.value).toBe(true);
+    fail = false;
+    await service.loadChanges(true);
+    expect(service.changesFetchFailed.value).toBe(false);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('continues History after a failed fetch without refetching for pagination or ref filters', async () => {
+    const { service, request, onFailure } = createGitHarness(async (path) => {
+      const pathname = requestUrl(path).pathname;
+      if (pathname.endsWith('/git/fetch')) throw new Error('offline');
+      if (pathname.endsWith('/git/refs')) return { refs: [historyRef('refs/heads/main')] };
+      if (pathname.endsWith('/git/history')) return { commits: [historyCommit('a'.repeat(40))] };
+      return { changes: [] };
+    });
+    await service.openHistory();
+    expect(service.historyFetchFailed.value).toBe(true);
+    expect(service.historyCommits.value).toHaveLength(1);
+    const fetches = () =>
+      request.mock.calls.filter(([path]) => requestUrl(path).pathname.endsWith('/git/fetch'));
+    expect(fetches()).toHaveLength(1);
+    await service.loadHistory();
+    await service.selectHistory('', ['refs/heads/main']);
+    expect(fetches()).toHaveLength(1);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not read or publish a late fetch result into another Workspace', async () => {
+    const pending = deferred<{ fetchFailed: boolean }>();
+    const { service, request, setTarget } = createGitHarness(async (path) =>
+      requestUrl(path).pathname.endsWith('/git/fetch') ? pending.promise : { changes: [] }
+    );
+    const reading = service.loadChanges(true);
+    await Promise.resolve();
+    setTarget({ nodeId: 'node-2', workspaceId: 'workspace-2' });
+    service.reset();
+    pending.resolve({ fetchFailed: true });
+    await reading;
+    expect(service.changesFetchFailed.value).toBe(false);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the in-flight History fetch when ref filters supersede its original read', async () => {
+    const pending = deferred<{ fetchFailed: boolean }>();
+    const { service, request, onFailure } = createGitHarness(async (path) => {
+      const pathname = requestUrl(path).pathname;
+      if (pathname.endsWith('/git/fetch')) return pending.promise;
+      if (pathname.endsWith('/git/refs')) return { refs: [historyRef('refs/heads/main')] };
+      return { commits: [], nextCursor: null };
+    });
+    const opening = service.loadHistory(true, true);
+    const filtering = service.selectHistory('', ['refs/heads/main']);
+    expect(request).toHaveBeenCalledTimes(1);
+    pending.resolve({ fetchFailed: true });
+    await Promise.all([opening, filtering]);
+    expect(service.historyFetchFailed.value).toBe(true);
+    const reads = request.mock.calls.filter(([path]) =>
+      requestUrl(path).pathname.endsWith('/git/history')
+    );
+    expect(reads).toHaveLength(1);
+    expect(requestUrl(reads[0]![0]).searchParams.getAll('refs')).toEqual(['refs/heads/main']);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
   it('limits rendered changes across repository boundaries without dropping later batches', () => {
     const repository = (repositoryPath: string, count: number): ChangeRepository => ({
       repositoryPath,
@@ -147,6 +245,7 @@ describe('Workspace Git service', () => {
       changes: []
     };
     const { service, request } = createGitHarness(async (path) => {
+      if (requestUrl(path).pathname.endsWith('/git/fetch')) return { fetchFailed: false };
       if (requestUrl(path).pathname.endsWith('/git/refs')) return { refs: [] };
       if (requestUrl(path).pathname.endsWith('/git/history'))
         return { commits: [], nextCursor: null };
@@ -158,6 +257,7 @@ describe('Workspace Git service', () => {
     await service.openHistory();
 
     expect(request.mock.calls.map(([path]) => requestUrl(path).pathname)).toEqual([
+      '/api/workspaces/workspace-1/git/fetch',
       '/api/workspaces/workspace-1/git/refs',
       '/api/workspaces/workspace-1/git/history'
     ]);
@@ -167,6 +267,7 @@ describe('Workspace Git service', () => {
   it('opens History before the first Watch after binding the initial target', async () => {
     const { service, request } = createGitHarness(async (path) => {
       const pathname = requestUrl(path).pathname;
+      if (pathname.endsWith('/git/fetch')) return { fetchFailed: false };
       if (pathname.endsWith('/changes')) return { changes: [] };
       if (pathname.endsWith('/git/refs')) return { refs: [historyRef('refs/heads/main')] };
       if (pathname.endsWith('/git/history'))
@@ -175,7 +276,7 @@ describe('Workspace Git service', () => {
     });
     await service.openHistory();
     expect(service.historyCommits.value.map((commit) => commit.hash)).toEqual(['initial']);
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledTimes(4);
   });
 
   it('coalesces overlapping change refreshes into one trailing request', async () => {
@@ -397,6 +498,7 @@ describe('Workspace Git service', () => {
     let historyPage = 0;
     const { service, request } = createGitHarness(async (path) => {
       const url = requestUrl(path);
+      if (url.pathname.endsWith('/git/fetch')) return { fetchFailed: false };
       if (url.pathname.endsWith('/git/refs')) return { refs: [historyRef('refs/heads/main')] };
       historyPage += 1;
       return historyPage === 1

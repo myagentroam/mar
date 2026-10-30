@@ -1,5 +1,10 @@
 import { claudeContentBlocks } from './message-parsers.js';
-import { compactRunnerText, compactRunnerValue, publicOutputSnapshot } from '../normalization.js';
+import {
+  compactRunnerText,
+  compactRunnerValue,
+  publicOutputSnapshot,
+  publicToolOutput
+} from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 import type {
   NativeTranscriptToolCall,
@@ -151,12 +156,12 @@ export function normalizeClaudeTool(
   truncated: boolean,
   knownSubagents: Map<string, string> = new Map(),
   resultMetadata?: ClaudeToolResultMetadata,
-  sourceOutputTruncated = output === null ? false : truncated
+  sourceOutputTruncated = output === null ? false : truncated,
+  sourceInputTruncated = output === null ? truncated : false,
+  outputDirection?: 'HEAD' | 'SOURCE'
 ): { kind: 'command_execution' | 'file_change' | 'tool_call'; payload: Record<string, unknown> } {
   const values = record(input);
   const normalizedToolName = compactRunnerText(toolName, 128) || 'unknown';
-  const normalizedOutput = output === null ? null : compactRunnerText(output, 10_000);
-  const outputTruncated = sourceOutputTruncated || (output?.length ?? 0) > 10_000;
   const subagent = claudeSubagentProjection(
     toolName,
     input,
@@ -173,14 +178,21 @@ export function normalizeClaudeTool(
           10_000
         ),
         cwd: null,
-        outputPreview: normalizedOutput ?? '',
         exitCode: null,
         durationMs: null,
-        truncated: truncated || outputTruncated,
         ...(output === null || output === undefined
           ? {}
-          : { output: publicOutputSnapshot(output, outputTruncated) }),
-        toolPresentation: shellExecution(output ?? undefined, outputTruncated)
+          : {
+              output: publicToolOutput(
+                output,
+                outputDirection ?? (sourceOutputTruncated ? 'SOURCE' : undefined),
+                'COMBINED'
+              )
+            }),
+        toolPresentation: shellExecution(
+          sourceInputTruncated ||
+            (typeof values?.command === 'string' && values.command.length > 10_000)
+        )
       }
     };
   if (isFileTool(toolName)) {
@@ -217,11 +229,20 @@ export function normalizeClaudeTool(
       toolName: normalizedToolName,
       title: compactRunnerText(toolName, 500) || normalizedToolName,
       inputSummary: compactRunnerValue(input, 10_000).text || null,
-      outputSummary: normalizedOutput,
-      ...(output === null ? {} : { output: publicOutputSnapshot(output, outputTruncated) }),
+      outputSummary: null,
+      ...(output === null
+        ? {}
+        : {
+            output: publicToolOutput(
+              output,
+              outputDirection ?? (sourceOutputTruncated ? 'SOURCE' : undefined)
+            )
+          }),
       progressLabel: null,
       errorCode: failed ? 'TOOL_EXECUTION_FAILED' : null,
-      truncated: truncated || outputTruncated,
+      ...(sourceInputTruncated || compactRunnerValue(input, 10_000).truncated
+        ? { inputTruncated: true }
+        : {}),
       ...(toolName === 'Read'
         ? {
             toolPresentation: {

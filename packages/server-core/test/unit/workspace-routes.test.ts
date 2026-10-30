@@ -54,6 +54,64 @@ function fixture(resources?: WorkspaceResourcePolicy) {
   };
 }
 describe('Shared Workspace HTTP routes', () => {
+  it.each([undefined, '', 'modules/tool'])(
+    'forwards authenticated fetch with repository scope %s and only its result marker',
+    async (repositoryPath) => {
+      const { app, requestNode, headers } = fixture();
+      requestNode.mockResolvedValue({ fetchFailed: true });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/workspaces/workspace-1/git/fetch?nodeId=node-1',
+        headers,
+        payload: { nodeId: 'node-1', ...(repositoryPath === undefined ? {} : { repositoryPath }) }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ fetchFailed: true });
+      expect(requestNode.mock.calls[0]).toEqual([
+        'node-1',
+        'workspace.git.fetch',
+        { workspaceId: 'workspace-1', ...(repositoryPath === undefined ? {} : { repositoryPath }) },
+        { userId: 1, sessionHash: 'session-hash', workspaceId: 'workspace-1' },
+        undefined
+      ]);
+    }
+  );
+
+  it('rejects fetch without CSRF and rejects invalid repository scope before dispatch', async () => {
+    const { app, requestNode, headers } = fixture();
+    const withoutCsrf = { ...headers, 'x-csrf-token': '' };
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-1/git/fetch',
+      headers: withoutCsrf,
+      payload: { nodeId: 'node-1' }
+    });
+    expect(denied.statusCode).toBe(403);
+    for (const payload of [undefined, null, [], 'invalid']) {
+      const invalid = await app.inject({
+        method: 'POST',
+        url: '/api/workspaces/workspace-1/git/fetch',
+        headers,
+        ...(payload === undefined ? {} : { payload: JSON.stringify(payload) }),
+        ...(payload === undefined
+          ? {}
+          : { headers: { ...headers, 'content-type': 'application/json' } })
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toMatchObject({ error: { code: 'NODE_ID_REQUIRED' } });
+    }
+    for (const repositoryPath of [1, null, 'bad\0path']) {
+      const invalid = await app.inject({
+        method: 'POST',
+        url: '/api/workspaces/workspace-1/git/fetch',
+        headers,
+        payload: { nodeId: 'node-1', repositoryPath }
+      });
+      expect(invalid.statusCode).toBe(400);
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
   it('does not relay workspace removal when the required policy rejects it', async () => {
     const resources = personalWorkspacePolicy();
     resources.assertCanUnregisterWorkspace = vi.fn(async () => {

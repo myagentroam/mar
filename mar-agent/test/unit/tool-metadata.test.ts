@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { structuredToolEventData } from '../../src/tools/output-projection.js';
+import {
+  publicOutputTruncation,
+  structuredToolEventData
+} from '../../src/tools/output-projection.js';
+
+it('distinguishes source truncation from local observation head clipping', () => {
+  const value = (id: string, text: string, truncated = false) => ({
+    type: 'value',
+    id,
+    format: 'text',
+    value: text,
+    truncated
+  });
+  const output = (observations: unknown[]) =>
+    structuredToolEventData('code_exec', {
+      cellId: 'cell',
+      status: 'completed',
+      observations
+    });
+  expect(publicOutputTruncation('code_exec', output([value('a', 'x'.repeat(10001))]))).toBe('HEAD');
+  expect(publicOutputTruncation('code_exec', output([value('a', 'short', true)]))).toBe('SOURCE');
+  expect(
+    publicOutputTruncation(
+      'code_exec',
+      output([value('a', 'source', true), value('b', 'x'.repeat(10001))])
+    )
+  ).toBe('SOURCE');
+  expect(publicOutputTruncation('code_exec', output([value('a', 'complete')]))).toBeUndefined();
+});
 
 it('does not infer collaboration events from tool names or arbitrary result objects', () => {
   for (const name of [

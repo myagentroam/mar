@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-30
 ---
 
 # Create and Manage Sessions
@@ -11,7 +11,7 @@ On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates t
 
 Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
 
-Expand a parent session's subagent control record and choose **Open child session** when Node provides an official session mapping. Normal session permissions govern viewing, messaging, and stopping it. Native subagents without a mapping do not offer this entry.
+Expand an Agent operation record and choose **Open session** when Node provides an official session mapping, including non-child targets. Normal session permissions govern viewing, messaging, and stopping it. Multi-target operations offer separate entries for mapped sessions. Native Agents without a mapping do not offer this entry.
 
 Expand an execution record to inspect the available command or code, output, working directory, exit code, and status. Each call has its own record. **Copy public record** copies that record's available public information, which can be truncated; older Nodes may provide fewer details.
 
