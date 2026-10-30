@@ -545,14 +545,15 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   list-style: none;
 }
 
-.change-load-more {
-  width: 100%;
-  margin: 4px 0;
+.change-append-state {
+  --mar-action-icon-size: 1em;
   font-size: var(--mar-font-size-meta);
+  line-height: 20px;
+  text-align: center;
 }
 
-.change-append-state {
-  text-align: center;
+.change-append-state button {
+  font: inherit;
 }
 
 .change-list li {

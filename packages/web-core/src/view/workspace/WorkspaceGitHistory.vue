@@ -852,6 +852,7 @@ button.history-refresh {
 }
 
 .history-load-more {
+  --mar-action-icon-size: 1em;
   justify-self: center;
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
