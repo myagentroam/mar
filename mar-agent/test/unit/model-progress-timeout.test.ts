@@ -82,18 +82,19 @@ function collect(stream: AsyncIterable<ModelEvent>) {
   return { events, done, failure: () => failure };
 }
 
-it('times out a completely silent model at 300 seconds and only aborts that request', async () => {
+it('times out a completely silent model at 180 seconds and only aborts that request', async () => {
   const f = fixture(async function* (signal) {
     await pause(900_000, signal);
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
-  await vi.advanceTimersByTimeAsync(299_999);
+  await vi.advanceTimersByTimeAsync(179_999);
   expect(run.failure()).toBeUndefined();
   await vi.advanceTimersByTimeAsync(1);
   expect(f.signal().aborted).toBe(true);
   await run.done;
   expect(run.failure()).toMatchObject({
     code: 'MAR_AGENT_MODEL_TIMEOUT',
+    publicMessage: 'Model request produced no generation progress for 180 seconds.',
     retryable: true,
     details: { reason: 'MODEL_PROGRESS_TIMEOUT' }
   });
@@ -123,7 +124,7 @@ it('does not let empty content, lifecycle, heartbeat or usage events keep a requ
     }
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
-  await vi.advanceTimersByTimeAsync(300_000);
+  await vi.advanceTimersByTimeAsync(180_000);
   expect(f.signal().aborted).toBe(true);
   await run.done;
   expect(run.events.length).toBeGreaterThan(0);
@@ -141,13 +142,13 @@ it.each<ModelEvent>([
   async (progress) => {
     const f = fixture(async function* (signal) {
       for (let i = 0; i < 3; i++) {
-        await pause(250_000, signal);
+        await pause(150_000, signal);
         yield progress;
       }
       await pause(900_000, signal);
     });
     const run = collect(f.turn.start(f.request, f.parent.signal));
-    await vi.advanceTimersByTimeAsync(1_049_999);
+    await vi.advanceTimersByTimeAsync(629_999);
     expect(run.events).toHaveLength(3);
     expect(run.failure()).toBeUndefined();
     expect(f.signal().aborted).toBe(false);
@@ -172,7 +173,7 @@ it('does not refresh progress for duplicate hosted-tool states', async () => {
     }
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
-  await vi.advanceTimersByTimeAsync(349_999);
+  await vi.advanceTimersByTimeAsync(229_999);
   expect(run.failure()).toBeUndefined();
   await vi.advanceTimersByTimeAsync(1);
   expect(f.signal().aborted).toBe(true);
@@ -185,7 +186,7 @@ it('preserves caller cancellation rather than classifying it as a retryable time
     await pause(900_000, signal);
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
-  await vi.advanceTimersByTimeAsync(299_999);
+  await vi.advanceTimersByTimeAsync(179_999);
   const reason = new Error('Caller cancelled.');
   f.parent.abort(reason);
   await run.done;

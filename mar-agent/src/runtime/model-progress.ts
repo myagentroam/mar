@@ -1,7 +1,7 @@
 import { AgentError } from '../error.js';
 import type { ModelEvent } from '../model/contracts.js';
 
-const MODEL_PROGRESS_TIMEOUT_MS = 300_000;
+const MODEL_PROGRESS_TIMEOUT_MS = 180_000;
 
 /** Watch normalized generation progress, not transport traffic or consumer processing. */
 export async function* observeModelProgress(
@@ -24,7 +24,7 @@ export async function* observeModelProgress(
         controller.abort(
           new AgentError(
             'MAR_AGENT_MODEL_TIMEOUT',
-            'Model request produced no generation progress for 300 seconds.',
+            'Model request produced no generation progress for 180 seconds.',
             { details: { reason: 'MODEL_PROGRESS_TIMEOUT' }, retryable: true }
           )
         );

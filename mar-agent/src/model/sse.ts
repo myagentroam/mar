@@ -1,7 +1,7 @@
 import { AgentError } from '../error.js';
 import { isRetryableModelHttpStatus } from './http.js';
 
-const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
+const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 180_000;
 const streamEventObservedAt = new WeakMap<object, number>();
 
 export function observeModelStreamEvent<const T>(value: T, observedAt: number | undefined): T {

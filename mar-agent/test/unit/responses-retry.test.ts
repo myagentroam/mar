@@ -702,6 +702,7 @@ describe('Responses retry boundaries', () => {
       const server = await startResponsesWebSocketServer([], {
         responsesByRequest: [
           [
+            { type: 'response.metadata', headers: { 'x-codex-turn-state': 'failed-tool-turn' } },
             { type: 'response.created', response: { id: 'failed' } },
             {
               type: 'response.output_item.done',
@@ -735,6 +736,9 @@ describe('Responses retry boundaries', () => {
         expect(await readFile(join(directory, 'marker.txt'), 'utf8')).toBe('created once\n');
         expect(executed.mock.calls.filter(([call]) => call.name === 'apply_patch')).toHaveLength(1);
         expect(server.requests).toHaveLength(2);
+        expect(server.connections()).toBe(2);
+        expect(server.requests[1]).not.toHaveProperty('client_metadata.x-codex-turn-state');
+        expect(server.requests[1]).not.toHaveProperty('previous_response_id');
         expect(server.requests[1]).toMatchObject({
           input: expect.arrayContaining([
             expect.objectContaining({ type: 'custom_tool_call_output', call_id: 'patch-call' })
@@ -1010,18 +1014,21 @@ describe('Responses retry boundaries', () => {
     }
   );
 
-  it('recovers SDK generation silence on a fresh WebSocket despite empty text traffic', async () => {
+  it('recovers SDK generation silence on a fresh Provider Turn despite empty text traffic', async () => {
     const server = await startResponsesWebSocketServer([], {
       closeWhenEmpty: false,
       responsesByRequest: [
-        Array.from({ length: 4 }, () => ({
-          type: 'response.output_text.delta',
-          item_id: 'empty',
-          delta: ''
-        })),
+        [
+          { type: 'response.metadata', headers: { 'x-codex-turn-state': 'stalled-turn' } },
+          ...Array.from({ length: 4 }, () => ({
+            type: 'response.output_text.delta',
+            item_id: 'empty',
+            delta: ''
+          }))
+        ],
         completed('recovered', 'Recovered after generation silence')
       ],
-      responseFrameDelaysByRequest: [[60_000, 120_000, 180_000, 240_000]]
+      responseFrameDelaysByRequest: [[0, 40_000, 80_000, 120_000, 160_000]]
     });
     servers.push(server.server);
     const { home, directory } = await workspace();
@@ -1039,7 +1046,7 @@ describe('Responses retry boundaries', () => {
       vi.useFakeTimers({ toFake: ['Date', 'performance', 'clearTimeout', 'setTimeout'] });
       const result = session.run({ prompt: 'Continue.' }).result();
       await vi.waitFor(() => expect(server.requests).toHaveLength(1));
-      for (let minute = 0; minute < 5; minute++) {
+      for (let minute = 0; minute < 3; minute++) {
         await vi.advanceTimersByTimeAsync(60_000);
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
@@ -1052,6 +1059,8 @@ describe('Responses retry boundaries', () => {
       expect(server.connections()).toBe(2);
       expect(server.closedConnections()).toBeGreaterThanOrEqual(1);
       expect(server.requests[1]).not.toHaveProperty('previous_response_id');
+      expect(server.requests[1]).not.toHaveProperty('client_metadata.x-codex-turn-state');
+      expect(JSON.stringify(server.requests[1])).toContain('Continue.');
       expect(waitForModelRetry).toHaveBeenCalledTimes(1);
       const store = await JsonlSessionStore.open(home);
       try {
@@ -1096,7 +1105,7 @@ describe('Responses retry boundaries', () => {
         Array.from({ length: 4 }, () => ({ type: metadataType })),
         completed('recovered', 'Recovered after metadata timeout')
       ],
-      responseFrameDelaysByRequest: [[60_000, 120_000, 180_000, 240_000]]
+      responseFrameDelaysByRequest: [[40_000, 80_000, 120_000, 160_000]]
     });
     servers.push(server.server);
     const adapter = new OpenAiResponsesAdapter(configuration(server.baseUrl));
@@ -1120,13 +1129,14 @@ describe('Responses retry boundaries', () => {
       for (let attempt = 0; server.requests.length === 0 && attempt < 100; attempt++)
         await new Promise<void>((resolve) => setImmediate(resolve));
       expect(server.requests).toHaveLength(1);
-      for (let minute = 0; minute < 5; minute++) {
+      for (let minute = 0; minute < 2; minute++) {
         await vi.advanceTimersByTimeAsync(60_000);
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(server.requests).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      expect(server.requests).toHaveLength(2);
+      await vi.waitFor(() => expect(server.requests).toHaveLength(2));
       await expect(outcome).resolves.toContainEqual(
         expect.objectContaining({
           type: 'text.completed',

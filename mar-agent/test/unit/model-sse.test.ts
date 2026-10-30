@@ -37,6 +37,49 @@ function partitions(text: string): Uint8Array[][] {
 }
 
 describe('incremental model SSE framing', () => {
+  it('refreshes the default 180-second idle deadline when incoming bytes arrive', async () => {
+    vi.useFakeTimers();
+    const parent = new AbortController();
+    const cancel = vi.fn();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+        },
+        cancel
+      })
+    );
+    let failure: unknown;
+    const pending = collect(response, parent.signal).catch((error: unknown) => {
+      failure = error;
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(179_999);
+      expect(failure).toBeUndefined();
+      expect(cancel).not.toHaveBeenCalled();
+      controller.enqueue(encoder.encode(': heartbeat\n\n'));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(179_999);
+      expect(failure).toBeUndefined();
+      expect(cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(failure).toMatchObject({
+        code: 'MAR_AGENT_MODEL_TIMEOUT',
+        retryable: true,
+        details: { reason: 'MODEL_STREAM_IDLE_TIMEOUT' }
+      });
+      await pending;
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(response.body?.locked).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      parent.abort();
+      await pending;
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     { name: 'LF', newline: '\n' },
     { name: 'CRLF', newline: '\r\n' }
