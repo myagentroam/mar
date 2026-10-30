@@ -23,10 +23,13 @@ test('Session rows keep their desktop and mobile density', async ({ page }) => {
     await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
-    await expect(row).toHaveCSS('height', '36px');
+    await expect(row).toHaveCSS('height', '32px');
     const mobileBounds = (await row.boundingBox())!;
     const nextMobileBounds = (await nextRow.boundingBox())!;
-    expect(nextMobileBounds.y - (mobileBounds.y + mobileBounds.height)).toBe(4);
+    expect(nextMobileBounds.y - (mobileBounds.y + mobileBounds.height)).toBe(2);
+    await row.hover();
+    await expect(row).toHaveCSS('height', '32px');
+    await expect(row.locator('.session-link')).toHaveCSS('height', '32px');
   } finally {
     await fixture.close();
   }
@@ -44,7 +47,7 @@ test('Mobile session rows remain selectable by touch', async ({ browser }) => {
     const sidebar = page.locator('.conversation-sidebar');
     await sidebar.getByRole('tab').nth(1).tap();
     const row = sidebar.locator('.session-row').first();
-    await expect(row).toHaveCSS('height', '36px');
+    await expect(row).toHaveCSS('height', '32px');
     await row.locator('.session-link').tap();
     await expect(page.locator('.conversation')).toContainText('child');
   } finally {

@@ -295,7 +295,7 @@ html.console-ui,
   --mar-primary-control-size: 28px;
   --mar-utility-control-size: 28px;
   --mar-compact-row-size: 24px;
-  --mar-session-row-min-height: 36px;
+  --mar-session-row-min-height: 32px;
   --mar-session-row-padding-block: 0.3rem;
   --mar-brand-logo-size: 32px;
   --mar-rail-item-height: 46px;
@@ -1585,7 +1585,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
     --mar-primary-control-size: 28px;
     --mar-utility-control-size: 28px;
     --mar-compact-row-size: 24px;
-    --mar-session-row-min-height: 36px;
+    --mar-session-row-min-height: 32px;
     --mar-session-row-padding-block: 0.3rem;
     --mar-brand-logo-size: 32px;
     --mar-rail-item-height: 46px;

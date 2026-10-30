@@ -1060,7 +1060,7 @@ function submitSessionSearch(): void {
   display: inline-flex;
   flex: none;
   align-items: center;
-  padding: 0.25rem 0.35rem 0.25rem 0.1rem;
+  padding: 0 0.35rem 0 0.1rem;
   background: transparent;
 }
 
@@ -1121,7 +1121,7 @@ function submitSessionSearch(): void {
 
 .session-list li {
   border-bottom: 0;
-  padding: 2px 6px;
+  padding: 1px 6px;
 }
 
 .session-group-tabs {
@@ -1140,18 +1140,6 @@ function submitSessionSearch(): void {
 }
 
 @media (min-width: 768px) {
-  .session-list li {
-    padding-block: 1px;
-  }
-
-  .session-list li:first-child {
-    padding-top: 4px;
-  }
-
-  .session-row-actions {
-    padding-block: 0;
-  }
-
   .session-link strong {
     font-size: var(--mar-font-size-body);
   }
