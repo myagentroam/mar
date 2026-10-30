@@ -2,13 +2,14 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RunnerName } from '@myagentroam/protocol';
+import { createEnvelope, type RunnerName } from '@myagentroam/protocol';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
+import { NodeRequestService } from '../../src/service/node-request-service.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -65,6 +66,68 @@ async function fixture() {
 }
 
 describe('Runner configuration ownership through Connector', () => {
+  it('saves defaults through the authorized request boundary while rejecting invalid fields', async () => {
+    const f = await fixture();
+    const send = vi.fn();
+    const service = new NodeRequestService({
+      nodeId: () => 'node-configuration',
+      databaseAvailable: () => true,
+      execute: f.operation,
+      send
+    });
+    const configuration = {
+      runner: 'mar-agent',
+      modelId: 'selected-model',
+      effort: 'high',
+      access: 'auto'
+    };
+    const request = async (data: unknown, id: string) => {
+      const now = Date.now();
+      await service.handle(
+        createEnvelope(
+          'node.request',
+          {
+            operation: 'runner.defaults.save',
+            data,
+            userAuthorization: {
+              userId: 1,
+              sessionHash: 'a'.repeat(43),
+              nodeId: 'node-configuration',
+              operation: 'runner.defaults.save',
+              requestId: id,
+              issuedAt: now,
+              expiresAt: now + 15_000
+            }
+          },
+          { id }
+        )
+      );
+    };
+
+    await request(configuration, 'valid-request');
+    expect(send).toHaveBeenLastCalledWith(
+      'node.response',
+      {
+        result: { defaults: configuration }
+      },
+      'valid-request'
+    );
+    expect(f.database.getRunnerDefaults()).toEqual([configuration]);
+
+    for (const [id, invalid] of [
+      ['unknown-field', { ...configuration, unexpected: true }],
+      ['invalid-access', { ...configuration, access: 'read-only' }]
+    ] as const) {
+      await request(invalid, id);
+      expect(send).toHaveBeenLastCalledWith(
+        'node.response',
+        expect.objectContaining({ error: 'RUNNER_DEFAULT_INVALID' }),
+        id
+      );
+      expect(f.database.getRunnerDefaults()).toEqual([configuration]);
+    }
+  });
+
   it.each(['auto', 'full-access', 'on-request', 'read-only', 'unknown'] as const)(
     'lists stored MAR defaults %j without redundant writes and rejects fresh invalid input',
     async (access) => {

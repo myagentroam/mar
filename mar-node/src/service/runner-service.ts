@@ -8,6 +8,7 @@ import type { NodeOperationHandler } from '../application/node-operation-contrac
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { RunnerUsageReader } from '../runner-usage.js';
 import { parseSecretEnvironment } from '../mcp/secret-environment.js';
+import { isPlainRecord } from '../util/records.js';
 
 export class RunnerService {
   constructor(
@@ -116,7 +117,14 @@ export class RunnerService {
   }
 
   private saveDefaults(data: unknown): unknown {
-    const parsed = runnerDefaultConfigurationSchema.safeParse(data);
+    if (!isPlainRecord(data)) throw new Error('RUNNER_DEFAULT_INVALID');
+    const {
+      __workspaceWatchSessionHash: _sessionHash,
+      __requestUserId: _userId,
+      __usageGrant: _usageGrant,
+      ...configuration
+    } = data;
+    const parsed = runnerDefaultConfigurationSchema.safeParse(configuration);
     if (!parsed.success) throw new Error('RUNNER_DEFAULT_INVALID');
     if (
       parsed.data.runner === 'mar-agent' &&
