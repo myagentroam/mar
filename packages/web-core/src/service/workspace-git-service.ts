@@ -37,6 +37,13 @@ export interface WorkspaceGitSnapshot {
 }
 export type WorkspaceGitOperation = 'CHANGES' | 'HISTORY' | 'FILES' | 'RESTORE';
 
+const CHANGES_FETCH_INTERVAL_MS = 30_000;
+
+interface GitFetchResult {
+  readonly fetchFailed: boolean;
+  readonly updated: boolean;
+}
+
 export function createWorkspaceGitService(input: {
   readonly http: ScopedHttpService;
   readonly target: () => WorkspaceFileOperationTarget | undefined;
@@ -54,6 +61,16 @@ export function createWorkspaceGitService(input: {
   const changesFetchFailed = ref(false);
   const historyFetchFailed = ref(false);
   let changesFetchRequested = false;
+  // This service belongs to the current page user; target resets retain its fetch interval.
+  const changesFetches = new Map<
+    string,
+    {
+      readonly startedAt: number;
+      pending?: Promise<GitFetchResult>;
+      failed: boolean;
+      generation?: number;
+    }
+  >();
   const restoringPath = ref<string>();
   const historyRepositoryPath = ref('');
   const selectedHistoryRefs = ref<readonly string[]>([]);
@@ -132,14 +149,8 @@ export function createWorkspaceGitService(input: {
       const fetch = changesFetchRequested;
       changesFetchRequested = false;
       changesRefreshing.value = true;
-      let watchRevision = appliedWatchRevision;
+      const watchRevision = appliedWatchRevision;
       try {
-        if (fetch) {
-          const failed = await fetchRemotes(target);
-          if (!current(target, generation)) return;
-          changesFetchFailed.value = failed;
-        }
-        watchRevision = appliedWatchRevision;
         const value = await input.http.request(url(target, '/changes'));
         if (current(target, generation) && watchRevision === appliedWatchRevision)
           acceptChanges(value, target);
@@ -153,6 +164,8 @@ export function createWorkspaceGitService(input: {
       } finally {
         if (current(target, generation)) changesRefreshing.value = false;
       }
+      if (fetch && current(target, generation) && input.gitEnabled())
+        requestChangesFetch(target, generation);
     });
   }
   let changesTask = createChangesTask(epoch);
@@ -164,25 +177,63 @@ export function createWorkspaceGitService(input: {
   async function fetchRemotes(
     target: WorkspaceFileOperationTarget,
     repositoryPath?: string
-  ): Promise<boolean> {
+  ): Promise<GitFetchResult> {
     try {
-      const result = await input.http.request<{ readonly fetchFailed: boolean }>(
-        url(target, '/git/fetch'),
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            nodeId: target.nodeId,
-            ...(repositoryPath === undefined ? {} : { repositoryPath })
-          })
-        }
-      );
-      return result.fetchFailed !== false;
+      const result = await input.http.request<{
+        readonly fetchFailed: boolean;
+        readonly updated?: boolean;
+      }>(url(target, '/git/fetch'), {
+        method: 'POST',
+        body: JSON.stringify({
+          nodeId: target.nodeId,
+          ...(repositoryPath === undefined ? {} : { repositoryPath })
+        })
+      });
+      return { fetchFailed: result.fetchFailed !== false, updated: result.updated !== false };
     } catch {
-      return true;
+      return { fetchFailed: true, updated: true };
     }
+  }
+  function requestChangesFetch(target: WorkspaceFileOperationTarget, generation: number): void {
+    const key = JSON.stringify([target.nodeId, target.workspaceId]);
+    let state = changesFetches.get(key);
+    if (state?.pending === undefined) {
+      // Refreshes requested before this attempt starts are already covered by it.
+      changesFetchRequested = false;
+      state = { startedAt: performance.now(), failed: false };
+      changesFetches.set(key, state);
+      const attempt = state;
+      attempt.pending = fetchRemotes(target).then((result) => {
+        attempt.failed = result.fetchFailed;
+        delete attempt.pending;
+        return result;
+      });
+    }
+    // Rejoin after returning to a target, but refresh only once per active view generation.
+    if (state.generation === generation) return;
+    state.generation = generation;
+    void state.pending!.then((result) => {
+      if (!current(target, generation) || !input.gitEnabled()) return;
+      changesFetchFailed.value = result.fetchFailed;
+      if (result.updated) return loadChanges();
+    });
   }
   function loadChanges(fetch = false): Promise<void> {
     if (!matchesChangesTarget()) reset();
+    const target = input.target();
+    if (fetch && target !== undefined && input.gitEnabled()) {
+      const state = changesFetches.get(JSON.stringify([target.nodeId, target.workspaceId]));
+      if (state?.pending !== undefined) {
+        requestChangesFetch(target, epoch);
+        fetch = false;
+      } else if (
+        state !== undefined &&
+        performance.now() - state.startedAt < CHANGES_FETCH_INTERVAL_MS
+      ) {
+        changesFetchFailed.value = state.failed;
+        fetch = false;
+      }
+    }
     changesFetchRequested ||= fetch;
     return changesTask.request();
   }
@@ -224,7 +275,9 @@ export function createWorkspaceGitService(input: {
       if (fetch && historyFetch?.repositoryPath !== selection.repositoryPath)
         historyFetch = {
           repositoryPath: selection.repositoryPath,
-          promise: fetchRemotes(target, selection.repositoryPath)
+          promise: fetchRemotes(target, selection.repositoryPath).then(
+            (result) => result.fetchFailed
+          )
         };
       const fetching =
         historyFetch?.repositoryPath === selection.repositoryPath ? historyFetch : undefined;

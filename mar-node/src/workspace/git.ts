@@ -165,6 +165,24 @@ export interface CurrentChangesRepository {
   readonly changesTruncated?: boolean;
 }
 
+/** Returns a bounded, deterministic refs snapshot, or undefined when it cannot be compared. */
+export async function readGitRefsSnapshot(
+  workspacePath: string,
+  timeoutMs: number
+): Promise<Buffer | undefined> {
+  if (timeoutMs <= 0) return undefined;
+  try {
+    const result = await runReadOnlyGit(
+      workspacePath,
+      ['for-each-ref', '--sort=refname', '--format=%(refname)%00%(objectname)%00%(symref)'],
+      { timeoutMs: Math.min(timeoutMs, GIT_TIMEOUT_MS), outputLimit: GIT_LARGE_OUTPUT_LIMIT }
+    );
+    return result.truncated ? undefined : result.output;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Fetches refs only; failures never expose remote URLs or authentication diagnostics. */
 export async function fetchGitRepository(
   workspacePath: string,

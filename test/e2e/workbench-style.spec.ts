@@ -502,6 +502,86 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
+  test(`Git Changes retry and local automatic batches in ${theme}`, async ({ page }) => {
+    let reads = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let releaseFetch: (() => void) | undefined;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const entries = Array.from({ length: 205 }, (_, index) => ({
+      repositoryPath: '',
+      repositoryName: 'root',
+      source: 'ROOT',
+      path: `file-${index}.ts`,
+      state: 'UNSTAGED',
+      change: 'MODIFIED',
+      diffAvailable: true
+    }));
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/changes')) {
+        if (++reads === 1)
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+          });
+        else {
+          await gate;
+          await route.fulfill({
+            json: {
+              changes: entries,
+              repositories: [
+                {
+                  repositoryPath: '',
+                  repositoryName: 'root',
+                  source: 'ROOT',
+                  current: true,
+                  status: 'DIRTY',
+                  changes: entries
+                }
+              ]
+            }
+          });
+        }
+      } else if (path.endsWith('/git/fetch')) {
+        await fetchGate;
+        await route.fulfill({ json: { fetchFailed: false, updated: true } });
+      } else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.evaluate((element) => {
+      (element as HTMLElement).style.height = '360px';
+    });
+    await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+    const retry = inspector.locator('.change-append-state button');
+    await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
+    await expect(inspector.locator('.current-changes .empty')).toHaveCount(0);
+    await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    release?.();
+    const list = inspector.locator('.change-list');
+    await expect(list.locator('.change-path')).toHaveCount(200);
+    expect(reads).toBe(2);
+    releaseFetch?.();
+    await expect.poll(() => reads).toBe(3);
+    await expect(
+      inspector.getByRole('button', { name: 'Refresh Git changes', exact: true })
+    ).toBeEnabled();
+    await inspector.locator('.current-changes').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.locator('.change-path')).toHaveCount(205);
+    expect(reads).toBe(3);
+    await expect(inspector.getByRole('button', { name: 'Load more' })).toHaveCount(0);
+  });
+
   test(`Content search uses neutral row feedback without losing match emphasis in ${theme}`, async ({
     page
   }, testInfo) => {

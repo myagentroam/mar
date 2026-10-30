@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ChangeEntry,
   ChangeRepository,
@@ -48,6 +48,19 @@ function historyFile(path: string): HistoryFile {
   return { path, change: 'MODIFIED' };
 }
 
+function localChanges(path: string) {
+  return {
+    repositories: [
+      {
+        repositoryPath: '',
+        repositoryName: 'root',
+        source: 'ROOT',
+        changes: [{ path, state: 'UNTRACKED', change: 'ADDED' }]
+      }
+    ]
+  };
+}
+
 const defaultTarget: WorkspaceFileOperationTarget = {
   nodeId: 'node-1',
   workspaceId: 'workspace-1'
@@ -92,7 +105,8 @@ function requestUrl(path: string): URL {
 }
 
 describe('Workspace Git service', () => {
-  it('fetches before explicit Changes refreshes but not background reads', async () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('reads local Changes before fetching and rereads after fetching, but never fetches for background reads', async () => {
     const { service, request } = createGitHarness(async (path) =>
       requestUrl(path).pathname.endsWith('/git/fetch') ? { fetchFailed: false } : { changes: [] }
     );
@@ -100,16 +114,139 @@ describe('Workspace Git service', () => {
     expect(request).toHaveBeenCalledTimes(1);
     request.mockClear();
     await service.loadChanges(true);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
     expect(request.mock.calls.map(([path]) => requestUrl(path).pathname)).toEqual([
+      '/api/workspaces/workspace-1/changes',
       '/api/workspaces/workspace-1/git/fetch',
       '/api/workspaces/workspace-1/changes'
     ]);
-    expect(JSON.parse(request.mock.calls[0]![1]!.body as string)).toEqual({ nodeId: 'node-1' });
+    expect(JSON.parse(request.mock.calls[1]![1]!.body as string)).toEqual({ nodeId: 'node-1' });
+  });
+
+  it.each([false, true])(
+    'does not reread Changes when fetch reports no update, including failure=%s',
+    async (fetchFailed) => {
+      const pending = deferred<{ fetchFailed: boolean; updated: boolean }>();
+      const { service, request, onFailure } = createGitHarness(async (path) =>
+        path.includes('/git/fetch') ? pending.promise : localChanges('local.txt')
+      );
+      await service.loadChanges(true);
+      pending.resolve({ fetchFailed, updated: false });
+      await pending.promise;
+      // A later local read drains any erroneously queued completion refresh too.
+      await service.loadChanges();
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(service.visibleChanges.value[0]?.path).toBe('local.txt');
+      expect(service.changesFetchFailed.value).toBe(fetchFailed);
+      expect(onFailure).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'rereads Changes after refs update, including failure=%s',
+    async (fetchFailed) => {
+      let reads = 0;
+      const { service } = createGitHarness(async (path) =>
+        path.includes('/git/fetch')
+          ? { fetchFailed, updated: true }
+          : localChanges(`local-${++reads}.txt`)
+      );
+      await service.loadChanges(true);
+      await vi.waitFor(() => expect(service.visibleChanges.value[0]?.path).toBe('local-2.txt'));
+      expect(service.changesFetchFailed.value).toBe(fetchFailed);
+      expect(service.changesRefreshing.value).toBe(false);
+    }
+  );
+
+  it('keeps local Changes refreshes independent of a slow fetch without queuing another fetch', async () => {
+    const pending = deferred<{ fetchFailed: boolean }>();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    let reads = 0;
+    const { service, request } = createGitHarness(async (path) => {
+      if (requestUrl(path).pathname.endsWith('/git/fetch')) return pending.promise;
+      return localChanges(`local-${++reads}.txt`);
+    });
+    await service.loadChanges(true);
+    expect(service.visibleChanges.value[0]?.path).toBe('local-1.txt');
+    expect(service.changesRefreshing.value).toBe(false);
+    clock.mockReturnValue(30_000);
+    await service.loadChanges(true);
+    await service.loadChanges();
+    expect(service.visibleChanges.value[0]?.path).toBe('local-3.txt');
+    expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(1);
+    pending.resolve({ fetchFailed: false });
+    await vi.waitFor(() => expect(service.visibleChanges.value[0]?.path).toBe('local-4.txt'));
+    expect(service.changesRefreshing.value).toBe(false);
+    expect(request).toHaveBeenCalledTimes(5);
+  });
+
+  it.each(['in-flight', 'cooldown'])(
+    'does not queue a fetch when refreshes during %s finish after the interval',
+    async (phase) => {
+      const pendingFetch = deferred<{ fetchFailed: boolean }>();
+      const pendingRead = deferred<unknown>();
+      const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+      let holdRead = false;
+      let reads = 0;
+      const { service, request } = createGitHarness(async (path) => {
+        if (path.includes('/git/fetch')) return pendingFetch.promise;
+        reads += 1;
+        if (holdRead) {
+          holdRead = false;
+          return pendingRead.promise;
+        }
+        return localChanges(`local-${reads}.txt`);
+      });
+      await service.loadChanges(true);
+      if (phase === 'cooldown') {
+        pendingFetch.resolve({ fetchFailed: true });
+        await vi.waitFor(() => expect(reads).toBe(2));
+      }
+      clock.mockReturnValue(phase === 'cooldown' ? 29_999 : 30_000);
+      holdRead = true;
+      const refresh = service.loadChanges(true);
+      const repeated = service.loadChanges(true);
+      pendingFetch.resolve({ fetchFailed: true });
+      await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+      clock.mockReturnValue(60_000);
+      pendingRead.resolve(localChanges('delayed-local.txt'));
+      await Promise.all([refresh, repeated]);
+      expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(1);
+      expect(service.changesRefreshing.value).toBe(false);
+      expect(service.visibleChanges.value[0]?.path).toBe(`local-${reads}.txt`);
+    }
+  );
+
+  it('coalesces fetch intentions received before the first local read completes', async () => {
+    const firstRead = deferred<unknown>();
+    const secondRead = deferred<unknown>();
+    const pendingFetch = deferred<{ fetchFailed: boolean }>();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    let reads = 0;
+    const { service, request } = createGitHarness(async (path) => {
+      if (path.includes('/git/fetch')) return pendingFetch.promise;
+      if (++reads === 1) return firstRead.promise;
+      if (reads === 2) return secondRead.promise;
+      return localChanges(`local-${reads}.txt`);
+    });
+    const first = service.loadChanges(true);
+    const repeated = service.loadChanges(true);
+    firstRead.resolve(localChanges('first-local.txt'));
+    await vi.waitFor(() => expect(reads).toBe(2));
+    pendingFetch.resolve({ fetchFailed: true });
+    await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+    clock.mockReturnValue(30_000);
+    secondRead.resolve(localChanges('second-local.txt'));
+    await Promise.all([first, repeated]);
+    expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(1);
+    expect(service.visibleChanges.value[0]?.path).toBe('local-3.txt');
+    expect(service.changesRefreshing.value).toBe(false);
   });
 
   it('keeps local data with a weak fetch failure flag and clears it after success', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
     let fail = true;
-    const { service, onFailure } = createGitHarness(async (path) => {
+    const { service, request, onFailure } = createGitHarness(async (path) => {
       if (requestUrl(path).pathname.endsWith('/git/fetch')) return { fetchFailed: fail };
       return {
         repositories: [
@@ -123,13 +260,33 @@ describe('Workspace Git service', () => {
       };
     });
     await service.loadChanges(true);
-    expect(service.changesFetchFailed.value).toBe(true);
+    await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
     expect(service.visibleChanges.value).toHaveLength(1);
     await service.loadChanges();
     expect(service.changesFetchFailed.value).toBe(true);
     fail = false;
+    clock.mockReturnValue(29_999);
     await service.loadChanges(true);
+    expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(1);
+    expect(service.changesFetchFailed.value).toBe(true);
+    clock.mockReturnValue(30_000);
+    await service.loadChanges(true);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(8));
     expect(service.changesFetchFailed.value).toBe(false);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('rereads Changes after a rejected fetch without reporting a local read failure', async () => {
+    let reads = 0;
+    const { service, onFailure } = createGitHarness(async (path) => {
+      if (requestUrl(path).pathname.endsWith('/git/fetch')) throw new Error('offline');
+      return localChanges(`local-${++reads}.txt`);
+    });
+    await service.loadChanges(true);
+    await vi.waitFor(() => expect(service.visibleChanges.value[0]?.path).toBe('local-2.txt'));
+    expect(service.changesFetchFailed.value).toBe(true);
+    expect(service.changesError.value).toBe(false);
     expect(onFailure).not.toHaveBeenCalled();
   });
 
@@ -153,19 +310,69 @@ describe('Workspace Git service', () => {
     expect(onFailure).not.toHaveBeenCalled();
   });
 
-  it('does not read or publish a late fetch result into another Workspace', async () => {
+  it.each([
+    { nodeId: 'node-1', workspaceId: 'workspace-2' },
+    { nodeId: 'node-2', workspaceId: 'workspace-1' }
+  ])('does not read or publish a late fetch result into $nodeId/$workspaceId', async (target) => {
     const pending = deferred<{ fetchFailed: boolean }>();
     const { service, request, setTarget } = createGitHarness(async (path) =>
       requestUrl(path).pathname.endsWith('/git/fetch') ? pending.promise : { changes: [] }
     );
-    const reading = service.loadChanges(true);
-    await Promise.resolve();
-    setTarget({ nodeId: 'node-2', workspaceId: 'workspace-2' });
+    await service.loadChanges(true);
+    expect(request).toHaveBeenCalledTimes(2);
+    setTarget(target);
     service.reset();
     pending.resolve({ fetchFailed: true });
-    await reading;
+    await pending.promise;
+    await service.loadChanges();
     expect(service.changesFetchFailed.value).toBe(false);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(requestUrl(request.mock.calls[2]![0]).pathname).toBe(
+      `/api/workspaces/${target.workspaceId}/changes`
+    );
+  });
+
+  it('retains the Changes fetch interval across target resets and isolates other targets', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const { service, request, setTarget } = createGitHarness(async (path) =>
+      path.includes('/git/fetch') ? { fetchFailed: true } : { changes: [] }
+    );
+    await service.loadChanges(true);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    for (const target of [
+      { nodeId: 'node-1', workspaceId: 'workspace-2' },
+      { nodeId: 'node-2', workspaceId: 'workspace-1' }
+    ]) {
+      setTarget(target);
+      service.reset();
+      await service.loadChanges(true);
+      await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+    }
+    setTarget(defaultTarget);
+    service.reset();
+    await service.loadChanges(true);
+    expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(3);
+    expect(service.changesFetchFailed.value).toBe(true);
+  });
+
+  it('rejoins an in-flight Changes fetch after leaving and returning to its target', async () => {
+    const pending = deferred<{ fetchFailed: boolean }>();
+    let reads = 0;
+    const { service, request, setTarget } = createGitHarness(async (path) => {
+      if (path.includes('/git/fetch')) return pending.promise;
+      return localChanges(`local-${++reads}.txt`);
+    });
+    await service.loadChanges(true);
+    setTarget({ nodeId: 'node-1', workspaceId: 'workspace-2' });
+    service.reset();
+    setTarget(defaultTarget);
+    service.reset();
+    await service.loadChanges(true);
+    expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(1);
+    pending.resolve({ fetchFailed: true });
+    await vi.waitFor(() => expect(service.visibleChanges.value[0]?.path).toBe('local-3.txt'));
+    expect(service.changesFetchFailed.value).toBe(true);
+    expect(request).toHaveBeenCalledTimes(4);
   });
 
   it('waits for the in-flight History fetch when ref filters supersede its original read', async () => {
