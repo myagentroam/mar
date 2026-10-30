@@ -11,7 +11,7 @@ describe('Orderly restart authorization', () => {
     workspaceId: 'workspace',
     ownerUserId: 7,
     runner: 'mar-agent',
-    model: 'model'
+    modelId: 'model'
   };
   it('accepts only bounded MAR Agent requests with an initiating user', () => {
     expect(restartRunAuthorizeRequestSchema.parse(input)).toEqual(input);
@@ -21,6 +21,7 @@ describe('Orderly restart authorization', () => {
       { ownerUserId: 0 },
       { sessionId: '' },
       { handoffId: 'x'.repeat(201) },
+      { model: 'legacy-model' },
       { credential: 'do-not-send' }
     ])
       expect(restartRunAuthorizeRequestSchema.safeParse({ ...input, ...override }).success).toBe(
