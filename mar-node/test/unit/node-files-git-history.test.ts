@@ -49,7 +49,7 @@ describe('Node Files and Changes fixed-operation handling', () => {
         workspaceId: workspace.id,
         repositoryPath: ''
       })
-    ).resolves.toEqual({ fetchFailed: false });
+    ).resolves.toEqual({ fetchFailed: false, updated: false });
 
     await expect(
       operation(connector, 'workspace.changes.current', { workspaceId: workspace.id })
