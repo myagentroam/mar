@@ -237,10 +237,7 @@ describe('Session tree removal', () => {
         parentSessionId: 'mar-child'
       });
       await expect(f.remove()).rejects.toThrow('batch failed');
-      expect(f.removeNative.mock.calls.map(([, id]) => id)).toEqual([
-        'codex-grandchild',
-        f.target.id
-      ]);
+      expect(f.removeNative.mock.calls.map(([, id]) => id)).toEqual(['codex-grandchild']);
       expect(batch).toHaveBeenCalledOnce();
       expect(batch.mock.calls[0]?.[0].map(({ id }) => id)).toEqual(['mar-child']);
       for (const id of [f.target.id, 'mar-child', 'codex-grandchild'])
@@ -841,7 +838,102 @@ function session(
 }
 
 describe('SessionCatalogService workspace session cleanup', () => {
-  it('preserves old parents of protected children and of children whose cleanup fails', async () => {
+  it('retains a non-batch parent until its MAR child batch succeeds and remains retryable', async () => {
+    const database = new NodeDatabase(':memory:', 'session-cleanup-native-order');
+    const workspace = database.saveWorkspace({
+      path: '/workspace/cleanup',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const runtime = new NodeRuntimeState(
+      () => 'node-1',
+      (id) => database.getWorkspace(id)
+    );
+    const parent = session('parent', workspace.id, Date.now() - 60 * DAY_MS, { runner: 'codex' });
+    const child = session('child', workspace.id, Date.now(), {
+      runner: 'mar-agent',
+      parentSessionId: parent.id
+    });
+    const native = [child, parent];
+    for (const value of native) {
+      database.saveNativeSessionMetadata({
+        runner: value.runner,
+        externalSessionId: value.id,
+        workspaceId: workspace.id,
+        parentSessionId: value.parentSessionId ?? null
+      });
+    }
+    const order: string[] = [];
+    const remove = vi.fn(async (_value: NodeAgentSession, id: string) => {
+      order.push(`single:${id}`);
+      return true;
+    });
+    let failBatch = true;
+    const batch = vi.fn(async (members: readonly NodeAgentSession[]) => {
+      order.push(`batch:${members.map(({ id }) => id).join(',')}`);
+      if (failBatch) throw new Error('CONTROLLED_BATCH_FAILURE');
+    });
+    const service = new SessionCatalogService({
+      database: () => database,
+      nodeId: () => 'node-1',
+      runtime,
+      runners: {
+        require: (runner: string) => ({
+          removeNative: remove,
+          supportsNativeBatchRemoval: () => runner === 'mar-agent',
+          removeNativeMembers: batch
+        })
+      } as never,
+      projection: {
+        projectionForNative: () => undefined
+      } as unknown as NativeSessionProjectionService,
+      runnerAvailable: () => true,
+      cachedNative: () => native,
+      cachedWorkspace: async () => native,
+      discoveryPending: () => false,
+      discoverWorkspace: async () => native,
+      present: (value) => value,
+      nativeIds: (value) => new Set([value.id]),
+      forget: vi.fn(),
+      refreshActivity: async () => {},
+      externalActivity: () => 'IDLE',
+      isWatching: () => false,
+      history: async () => ({ turns: [], nextCursor: null }),
+      invalidateHistory: vi.fn(),
+      invalidateWorkspaceSessions: vi.fn(),
+      emitSession: vi.fn()
+    });
+    const cleanup = () =>
+      service.operations()['workspace.sessions.cleanup']!({
+        workspaceId: workspace.id,
+        inactiveDays: 30
+      });
+    try {
+      await expect(cleanup()).resolves.toEqual({
+        deleted: 0,
+        skipped: 1,
+        failed: 1,
+        deletedByRunner: {}
+      });
+      expect(order).toEqual(['batch:child']);
+      expect(remove).not.toHaveBeenCalled();
+      expect(database.getSessionRecord(parent.id)).toBeDefined();
+      expect(database.getSessionRecord(child.id)?.metadata.parentSessionId).toBe(parent.id);
+      failBatch = false;
+      await expect(cleanup()).resolves.toEqual({
+        deleted: 2,
+        skipped: 0,
+        failed: 0,
+        deletedByRunner: { codex: 1, 'mar-agent': 1 }
+      });
+      expect(order).toEqual(['batch:child', 'batch:child', 'single:parent']);
+      expect(database.listSessionRecords(workspace.id)).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('cascades expired parents except when children are running or native deletion fails', async () => {
     const database = new NodeDatabase(':memory:', 'session-cleanup-relations');
     const workspace = database.saveWorkspace({
       id: 'workspace',
@@ -854,8 +946,10 @@ describe('SessionCatalogService workspace session cleanup', () => {
       (id) => database.getWorkspace(id)
     );
     const old = Date.now() - 3 * DAY_MS;
-    const names = ['active', 'pinned', 'recent', 'failed'];
-    const parents = names.map((name) => session(`parent-${name}`, workspace.id, old));
+    const names = ['active', 'pinned', 'recent', 'failed', 'eligible'];
+    const parents = names.map((name) =>
+      session(`parent-${name}`, workspace.id, name === 'eligible' ? Date.now() : old)
+    );
     const children = names.map((name) =>
       session(
         `child-${name}`,
@@ -917,10 +1011,26 @@ describe('SessionCatalogService workspace session cleanup', () => {
         workspaceId: workspace.id,
         inactiveDays: 1
       });
-      expect(result).toMatchObject({ deleted: 0, failed: 1 });
-      expect(remove.mock.calls.map(([, id]) => id)).toEqual(['child-failed']);
+      expect(result).toEqual({
+        deleted: 5,
+        skipped: 3,
+        failed: 2,
+        deletedByRunner: { 'claude-code': 5 }
+      });
+      const removed = [
+        'child-pinned',
+        'parent-pinned',
+        'child-recent',
+        'parent-recent',
+        'child-eligible'
+      ];
+      expect(remove.mock.calls.map(([, id]) => id).filter((id) => id !== 'child-failed')).toEqual(
+        removed
+      );
+      expect(remove.mock.calls.some(([, id]) => id === 'parent-failed')).toBe(false);
+      expect(remove.mock.calls.some(([, id]) => id === 'child-active')).toBe(false);
       for (const value of [...parents, ...children])
-        expect(database.getSessionRecord(value.id)).toBeDefined();
+        expect(database.getSessionRecord(value.id) !== undefined).toBe(!removed.includes(value.id));
     } finally {
       database.close();
     }

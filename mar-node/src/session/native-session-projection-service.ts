@@ -59,10 +59,19 @@ export class NativeSessionProjectionService {
         return accepted === undefined ? [] : [accepted];
       });
     }
+    const candidates = new Map(ordered.map((session) => [session.id, session]));
     return ordered.flatMap((session) => {
       const record = database.getSessionRecord(session.id);
-      if (record === undefined && session.parentSessionId != null) return [];
-      return [{ ...session, parentSessionId: record?.metadata.parentSessionId ?? null }];
+      if (record === undefined && !this.validParent(session, candidates)) return [];
+      return [
+        {
+          ...session,
+          parentSessionId:
+            record === undefined
+              ? (session.parentSessionId ?? null)
+              : (record.metadata.parentSessionId ?? null)
+        }
+      ];
     });
   }
 
@@ -302,27 +311,34 @@ export class NativeSessionProjectionService {
     };
   }
 
+  private validParent(
+    session: NodeAgentSession,
+    candidates: ReadonlyMap<string, NodeAgentSession>
+  ): boolean {
+    const database = this.options.database();
+    const visited = new Set([session.id]);
+    let parentId = session.parentSessionId ?? null;
+    let depth = 1;
+    while (parentId !== null) {
+      if (visited.has(parentId) || ++depth > 3) return false;
+      visited.add(parentId);
+      const stored = database?.getSessionRecord(parentId);
+      const candidate = stored === undefined ? candidates.get(parentId) : undefined;
+      if ((stored?.workspaceId ?? candidate?.workspaceId) !== session.workspaceId) return false;
+      parentId =
+        stored === undefined
+          ? (candidate?.parentSessionId ?? null)
+          : (stored.metadata.parentSessionId ?? null);
+    }
+    return true;
+  }
+
   remember(sessions: readonly NodeAgentSession[]): void {
     const database = this.options.database();
     const candidates = new Map(sessions.map((session) => [session.id, session]));
-    const validParent = (session: NodeAgentSession): boolean => {
-      const visited = new Set([session.id]);
-      let parentId = session.parentSessionId ?? null;
-      let depth = 1;
-      while (parentId !== null) {
-        if (visited.has(parentId) || ++depth > 3) return false;
-        visited.add(parentId);
-        const stored = database?.getSessionRecord(parentId);
-        const candidate = stored === undefined ? candidates.get(parentId) : undefined;
-        if ((stored?.workspaceId ?? candidate?.workspaceId) !== session.workspaceId) return false;
-        parentId =
-          stored === undefined
-            ? (candidate?.parentSessionId ?? null)
-            : (stored.metadata.parentSessionId ?? null);
-      }
-      return true;
-    };
-    const valid = new Map(sessions.map((session) => [session.id, validParent(session)]));
+    const valid = new Map(
+      sessions.map((session) => [session.id, this.validParent(session, candidates)])
+    );
     const accepted = sessions.flatMap((proposed) => {
       const metadata =
         database === undefined || proposed.externalSessionId === null

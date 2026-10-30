@@ -53,6 +53,14 @@ interface SessionCatalogServiceOptions {
   readonly emitSession: (session: NodeAgentSession) => void;
 }
 
+interface SessionTreeCleanup {
+  readonly candidates: ReadonlyMap<string, NodeAgentSession>;
+  readonly children: ReadonlyMap<string, readonly NodeAgentSession[]>;
+  readonly cutoff: number;
+  readonly budget: WorkspaceSessionCleanupBudget;
+  readonly settled: (session: NodeAgentSession, deleted: boolean) => void;
+}
+
 export class SessionCatalogService {
   private rewindQueue: Promise<void> = Promise.resolve();
 
@@ -437,7 +445,7 @@ export class SessionCatalogService {
     }
   }
 
-  private async removeTree(root: NodeAgentSession): Promise<void> {
+  private async removeTree(root: NodeAgentSession, cleanup?: SessionTreeCleanup): Promise<void> {
     if (root.externalSessionId === null) throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
     const database = this.options.database();
     const live = this.options.runtime
@@ -453,13 +461,22 @@ export class SessionCatalogService {
     const ids = [root.externalSessionId];
     const seen = new Set(ids);
     const parents = new Map<string, string>();
+    const settle = (session: NodeAgentSession, deleted: boolean) => {
+      if (cleanup === undefined) return;
+      database.deleteSessionRecord(session.id);
+      this.options.forget(session, this.options.nativeIds(session));
+      cleanup.settled(session, deleted);
+    };
     const releases: Array<() => void> = [];
     const locked = new Set<string>();
     const lock = (id: string) => {
       const actual = this.options.runtime.getAgentSession(id)?.id ?? id;
       if (locked.has(actual)) return;
       releases.push(
-        this.options.runtime.beginSessionHistoryMutation(actual, { allowQueued: true })
+        this.options.runtime.beginSessionHistoryMutation(
+          actual,
+          cleanup !== undefined && actual === root.id ? undefined : { allowQueued: true }
+        )
       );
       locked.add(actual);
     };
@@ -469,6 +486,9 @@ export class SessionCatalogService {
         const parent = ids[index]!;
         const children = [
           ...database.listChildSessionRecords(root.workspaceId, parent).map((record) => record.id),
+          ...(cleanup?.children.get(parent) ?? [])
+            .filter((session) => cleanup?.candidates.has(session.id))
+            .map((session) => session.externalSessionId ?? session.id),
           ...(liveChildren.get(parent) ?? [])
         ];
         for (const child of children) {
@@ -485,6 +505,7 @@ export class SessionCatalogService {
       const sessions: NodeAgentSession[] = [];
       for (const id of ids) {
         const session =
+          cleanup?.candidates.get(id) ??
           this.options.runtime.getAgentSession(id) ??
           (await this.options.projection.resolve(id, true));
         if (session === undefined || session.workspaceId !== root.workspaceId)
@@ -492,24 +513,56 @@ export class SessionCatalogService {
         sessions.push(session);
       }
       // Validate every member before performing any irreversible native deletion.
-      for (const session of sessions) await this.assertRemovable(session);
-      const batches = new Map<NodeAgentSession['runner'], NodeAgentSession[]>();
+      for (const session of sessions) {
+        const missing = cleanup !== undefined && session.externalDiscovered === false;
+        if (missing && !this.options.runnerAvailable(session.runner))
+          throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
+        await this.assertRemovable(session, cleanup?.budget, missing);
+      }
+      if (cleanup !== undefined && this.cleanupRootProtected(root, cleanup.cutoff)) {
+        throw new Error('SESSION_WATCHING');
+      }
+      let batch: NodeAgentSession[] = [];
+      const flushBatch = async () => {
+        if (batch.length === 0) return;
+        cleanup?.budget.check();
+        await this.options.runners.require(batch[0]!.runner).removeNativeMembers(batch);
+        for (const session of batch) settle(session, true);
+        batch = [];
+      };
       for (const session of [...sessions].reverse()) {
+        if (
+          cleanup !== undefined &&
+          (session.externalSessionId === null || session.externalDiscovered === false)
+        ) {
+          await flushBatch();
+          cleanup.budget.check();
+          settle(session, true);
+          continue;
+        }
         if (session.externalSessionId === null) continue;
         const runner = this.options.runners.require(session.runner);
         if (runner.supportsNativeBatchRemoval?.() === true) {
-          const members = batches.get(session.runner) ?? [];
-          members.push(session);
-          batches.set(session.runner, members);
-        } else await this.removeNativeHistories(session, this.options.nativeIds(session));
+          if (batch.length > 0 && batch[0]!.runner !== session.runner) await flushBatch();
+          batch.push(session);
+        } else {
+          // Preserve descendant-first order across batch and non-batch native owners.
+          await flushBatch();
+          cleanup?.budget.check();
+          const deleted = await this.removeNativeHistories(
+            session,
+            this.options.nativeIds(session)
+          );
+          settle(session, deleted);
+        }
       }
-      for (const [runner, members] of batches)
-        await this.options.runners.require(runner).removeNativeMembers(members);
-      // Preserve every relationship if any native owner fails, so retries cannot
-      // lose sight of descendants whose native cleanup was already attempted.
-      for (const session of sessions.reverse()) {
-        this.options.database().deleteSessionRecord(session.id);
-        this.options.forget(session, this.options.nativeIds(session));
+      await flushBatch();
+      // Manual deletion preserves all relationships if any native owner fails.
+      if (cleanup === undefined) {
+        for (const session of sessions.reverse()) {
+          this.options.database().deleteSessionRecord(session.id);
+          this.options.forget(session, this.options.nativeIds(session));
+        }
       }
     } finally {
       for (const release of releases.reverse()) release();
@@ -558,6 +611,10 @@ export class SessionCatalogService {
     let deleted = 0;
     let skipped = 0;
     let failed = 0;
+    const outcomes = new Map<
+      string,
+      { session: NodeAgentSession; status: 'deleted' | 'skipped' | 'failed' }
+    >();
     const deletedByRunner: Partial<Record<NodeAgentSession['runner'], number>> = {};
     let candidateCount: number | undefined;
     let timedOut = false;
@@ -574,11 +631,13 @@ export class SessionCatalogService {
         candidates.set(session.id, session);
       }
       this.mergePersisted(candidates, workspaceId, false);
-      const candidateParents = new Set(
-        [...candidates.values()].flatMap((candidate) =>
-          candidate.parentSessionId === null ? [] : [candidate.parentSessionId]
-        )
-      );
+      const children = new Map<string, NodeAgentSession[]>();
+      for (const candidate of candidates.values()) {
+        if (candidate.parentSessionId == null) continue;
+        const siblings = children.get(candidate.parentSessionId) ?? [];
+        siblings.push(candidate);
+        children.set(candidate.parentSessionId, siblings);
+      }
       candidateCount = candidates.size;
       for (const session of candidates.values()) {
         budget.check();
@@ -593,17 +652,6 @@ export class SessionCatalogService {
             session.lastActivityAt > 0 &&
             session.lastActivityAt >= cutoff) ||
           (session.pinOrder !== null && session.pinOrder !== undefined) ||
-          (session.externalSessionId !== null &&
-            (this.options.database().listChildSessionRecords(workspaceId, session.externalSessionId)
-              .length > 0 ||
-              candidateParents.has(session.externalSessionId) ||
-              this.options.runtime
-                .listAgentSessions()
-                .some(
-                  (child) =>
-                    child.workspaceId === workspaceId &&
-                    child.parentSessionId === session.externalSessionId
-                ))) ||
           this.options.isWatching(session.id) ||
           this.options.isRecovering?.(session.id) ||
           this.options.runtime.sessionQueue(session.id).itemIds.length > 0 ||
@@ -612,19 +660,28 @@ export class SessionCatalogService {
             .some((run) => !isTerminalRunStatus(run.status)) ||
           this.options.externalActivity(session.id) === 'BUSY'
         ) {
-          skipped += 1;
+          outcomes.set(session.id, { session, status: 'skipped' });
           continue;
         }
         try {
-          if ((await this.removeResolved(session, true, budget)) === 'deleted') {
-            deleted += 1;
-            deletedByRunner[session.runner] = (deletedByRunner[session.runner] ?? 0) + 1;
-          } else skipped += 1;
+          await this.removeTree(session, {
+            candidates,
+            children,
+            cutoff,
+            budget,
+            settled: (member, wasDeleted) => {
+              candidates.delete(member.id);
+              outcomes.set(member.id, {
+                session: member,
+                status: wasDeleted ? 'deleted' : 'skipped'
+              });
+            }
+          });
         } catch (error) {
           if (error instanceof WorkspaceSessionCleanupDeadline) throw error;
-          if (isCleanupSkip(error)) skipped += 1;
+          if (isCleanupSkip(error)) outcomes.set(session.id, { session, status: 'skipped' });
           else {
-            failed += 1;
+            outcomes.set(session.id, { session, status: 'failed' });
             nodeLog('workspace.session.cleanup.failed', {
               workspaceId,
               sessionId: session.id,
@@ -634,12 +691,20 @@ export class SessionCatalogService {
           }
         }
       }
+      budget.check();
     } catch (error) {
       if (!(error instanceof WorkspaceSessionCleanupDeadline)) throw error;
       if (candidateCount === undefined) discoveryMs = Math.round(performance.now() - startedAt);
       timedOut = true;
     } finally {
       this.options.invalidateWorkspaceSessions(workspaceId);
+    }
+    for (const { session, status } of outcomes.values()) {
+      if (status === 'deleted') {
+        deleted += 1;
+        deletedByRunner[session.runner] = (deletedByRunner[session.runner] ?? 0) + 1;
+      } else if (status === 'skipped') skipped += 1;
+      else failed += 1;
     }
     const result: WorkspaceSessionCleanupResult = {
       deleted,
@@ -651,7 +716,7 @@ export class SessionCatalogService {
             timedOut: true,
             ...(candidateCount === undefined
               ? {}
-              : { remaining: candidateCount - deleted - skipped - failed })
+              : { remaining: Math.max(0, candidateCount - outcomes.size) })
           }
         : {})
     };
@@ -676,7 +741,11 @@ export class SessionCatalogService {
     };
   }
 
-  private async assertRemovable(session: NodeAgentSession): Promise<void> {
+  private async assertRemovable(
+    session: NodeAgentSession,
+    budget?: WorkspaceSessionCleanupBudget,
+    missing = false
+  ): Promise<void> {
     if (this.options.isRecovering?.(session.id)) throw new Error('SESSION_RESTART_PENDING');
     if (
       this.options.runtime
@@ -684,8 +753,9 @@ export class SessionCatalogService {
         .some((run) => !isTerminalRunStatus(run.status))
     )
       throw new Error('SESSION_ACTIVE');
-    if (session.externalSessionId !== null && session.nativeControl === 'EXTERNAL') {
-      await this.options.refreshActivity(session);
+    if (!missing && session.externalSessionId !== null && session.nativeControl === 'EXTERNAL') {
+      const refresh = () => this.options.refreshActivity(session);
+      await (budget ? budget.read(refresh) : refresh());
       if (this.options.externalActivity(session.id) === 'BUSY') throw new Error('SESSION_ACTIVE');
     }
   }
@@ -712,64 +782,32 @@ export class SessionCatalogService {
     return deleted;
   }
 
-  private async removeResolved(
-    session: NodeAgentSession,
-    requireCleanupSafety = false,
-    budget?: WorkspaceSessionCleanupBudget
-  ): Promise<'deleted' | 'skipped'> {
-    if (session.externalSessionId === null) throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');
-    const releaseMutation = this.options.runtime.beginSessionHistoryMutation(
-      session.id,
-      requireCleanupSafety ? undefined : { allowQueued: true }
+  private cleanupRootProtected(session: NodeAgentSession, cutoff: number): boolean {
+    // Pin updates and Watch admission do not share the history mutation queue.
+    const pinOrder =
+      session.externalSessionId === null
+        ? undefined
+        : this.options
+            .database()
+            .getNativeSessionMetadata(
+              session.runner,
+              session.externalSessionId,
+              session.workspaceId
+            )?.pinOrder;
+    return (
+      (session.externalDiscovered !== false &&
+        latestSessionActivityAt(
+          session.lastActivityAt,
+          this.options.runtime.getAgentSession(session.id)?.lastActivityAt ?? 0
+        ) >= cutoff) ||
+      (pinOrder !== undefined && pinOrder !== null) ||
+      this.options.isWatching(session.id) ||
+      this.options.isRecovering?.(session.id) === true ||
+      this.options.runtime.sessionQueue(session.id).itemIds.length > 0 ||
+      this.options.runtime
+        .listRunsForSession(session.id)
+        .some((run) => !isTerminalRunStatus(run.status))
     );
-    try {
-      if (this.options.isRecovering?.(session.id)) throw new Error('SESSION_RESTART_PENDING');
-      const missingCandidate = requireCleanupSafety && session.externalDiscovered === false;
-      if (
-        this.options.runtime
-          .listRunsForSession(session.id)
-          .some((run) => !isTerminalRunStatus(run.status))
-      )
-        throw new Error('SESSION_ACTIVE');
-      if (session.nativeControl === 'EXTERNAL' && !missingCandidate) {
-        const refresh = () => this.options.refreshActivity(session);
-        await (budget ? budget.read(refresh) : refresh());
-        if (this.options.externalActivity(session.id) === 'BUSY') throw new Error('SESSION_ACTIVE');
-      }
-      if (requireCleanupSafety) {
-        if (this.options.isWatching(session.id)) throw new Error('SESSION_WATCHING');
-        if (this.options.runtime.sessionQueue(session.id).itemIds.length > 0)
-          throw new Error('SESSION_QUEUE_NOT_EMPTY');
-        // Pin updates do not share the cleanup mutation queue.
-        const pinOrder = this.options
-          .database()
-          .getNativeSessionMetadata(
-            session.runner,
-            session.externalSessionId,
-            session.workspaceId
-          )?.pinOrder;
-        if (pinOrder !== undefined && pinOrder !== null) return 'skipped';
-        if (
-          this.options.runtime
-            .listRunsForSession(session.id)
-            .some((run) => !isTerminalRunStatus(run.status))
-        )
-          throw new Error('SESSION_ACTIVE');
-      }
-      budget?.check();
-      const nativeIds = this.options.nativeIds(session);
-      if (missingCandidate) {
-        this.options.database().deleteSessionRecord(session.id);
-        this.options.forget(session, nativeIds);
-        return 'deleted';
-      }
-      const deleted = await this.removeNativeHistories(session, nativeIds);
-      this.options.database().deleteSessionRecord(session.id);
-      this.options.forget(session, nativeIds);
-      return deleted ? 'deleted' : 'skipped';
-    } finally {
-      releaseMutation();
-    }
   }
 }
 
@@ -811,6 +849,7 @@ function isCleanupSkip(error: unknown): boolean {
   return (
     error instanceof Error &&
     (error.message === 'SESSION_ACTIVE' ||
+      error.message === 'SESSION_RESTART_PENDING' ||
       error.message === 'SESSION_NOT_FOUND' ||
       error.message === 'SESSION_QUEUE_NOT_EMPTY' ||
       error.message === 'SESSION_WATCHING' ||
