@@ -11,12 +11,12 @@ test('Session rows keep their desktop and mobile density', async ({ page }) => {
     const row = page.locator('.conversation-sidebar .session-row').first();
     await row.locator('..').evaluate((item) => item.after(item.cloneNode(true)));
     const nextRow = page.locator('.conversation-sidebar .session-row').nth(1);
-    await expect(row).toHaveCSS('height', '28px');
+    await expect(row).toHaveCSS('height', '32px');
     const bounds = (await row.boundingBox())!;
     const nextBounds = (await nextRow.boundingBox())!;
     expect(nextBounds.y - (bounds.y + bounds.height)).toBe(2);
     await row.hover();
-    await expect(row).toHaveCSS('height', '28px');
+    await expect(row).toHaveCSS('height', '32px');
     const more = row.locator('.session-more-button');
     await expect(more).toHaveCSS('height', '24px');
     await more.click();

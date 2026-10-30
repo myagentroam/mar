@@ -243,11 +243,11 @@ for (const locale of ['zh-CN', 'en-US']) {
         expect(environment.rootFontSize).toBe('17.6px');
         expect(environment.bodyFontSize).toBe('14px');
         for (const row of [...desktop, ...hovered, ...breakpoint]) {
-          expect(row.minHeight).toBe('28px');
+          expect(row.minHeight).toBe('32px');
           expect(row.fontSize).toBe('14px');
           expect(row.fontWeight).toBe('400');
-          expect(row.row.height).toBeCloseTo(28, 1);
-          expect(row.item.height).toBeCloseTo(row.first ? 33 : 30, 1);
+          expect(row.row.height).toBeCloseTo(32, 1);
+          expect(row.item.height).toBeCloseTo(row.first ? 37 : 34, 1);
           for (const part of row.parts) {
             expect(part.bounds.x).toBeGreaterThanOrEqual(row.row.x);
             expect(part.bounds.x + part.bounds.width).toBeLessThanOrEqual(
