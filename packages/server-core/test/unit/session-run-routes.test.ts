@@ -9,7 +9,10 @@ import { SESSION_COOKIE_NAME } from '../../src/auth.js';
 import { sendError } from '../../src/http-errors.js';
 import type { ConversationAuditObserver } from '../../src/conversation-audit.js';
 import type { MarAgentRuntimeModelService } from '../../src/session-run-contracts.js';
-import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
+import {
+  runnerDefaultConfigurationSchema,
+  type MarAgentRuntimeModelConfiguration
+} from '@myagentroam/protocol';
 
 const apps: ReturnType<typeof Fastify>[] = [];
 afterEach(async () => {
@@ -806,6 +809,81 @@ describe('shared ordinary Session and Run routes', () => {
       })
     ]);
   });
+
+  it.each([
+    { runner: 'mar-agent', modelId: 'mar-model-b', effort: 'high', access: 'auto' },
+    { runner: 'mar-agent', modelId: 'mar-model-b', effort: 'high', access: 'full-access' },
+    { runner: 'codex', modelId: 'codex-model-b', effort: 'medium', access: 'on-request' },
+    { runner: 'claude-code', modelId: 'sonnet', effort: 'high', access: 'bypass' },
+    { runner: 'opencode', modelId: 'provider/model-b', effort: '', access: 'auto' }
+  ])(
+    'saves $runner/$access defaults using only the strict Node configuration fields',
+    async (configuration) => {
+      const { app, requestNode, headers, secrets } = fixture();
+      requestNode.mockImplementation(async (...args: unknown[]) => {
+        if (args[1] === 'node.workbench.capabilities')
+          return {
+            manifest: {
+              runners: [
+                {
+                  runner: 'mar-agent',
+                  models: [],
+                  accessOptions: [{ id: 'auto', label: 'Auto', description: 'Automatic approval' }],
+                  commands: [],
+                  capabilities: ['turn.start']
+                }
+              ]
+            }
+          };
+        const parsed = runnerDefaultConfigurationSchema.safeParse(args[2]);
+        if (!parsed.success) throw new Error('RUNNER_DEFAULT_INVALID');
+        return { defaults: parsed.data };
+      });
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/runner-defaults',
+        headers,
+        payload: { nodeId: 'node-one', ...configuration }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ defaults: configuration });
+      expect(requestNode).toHaveBeenLastCalledWith(
+        'node-one',
+        'runner.defaults.save',
+        configuration,
+        { userId: 1, sessionHash: 'fingerprint' },
+        undefined
+      );
+      expect(secrets.resolve).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([{ model: 'legacy-model' }, { modelId: '' }])(
+    'rejects invalid Runner defaults before forwarding: %j',
+    async (invalid) => {
+      const { app, requestNode, headers, secrets } = fixture();
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/runner-defaults',
+        headers,
+        payload: {
+          nodeId: 'node-one',
+          runner: 'mar-agent',
+          modelId: 'mar-model-b',
+          effort: 'high',
+          access: 'full-access',
+          ...invalid
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: { code: 'RUNNER_DEFAULT_INVALID' } });
+      expect(requestNode).not.toHaveBeenCalled();
+      expect(secrets.resolve).not.toHaveBeenCalled();
+    }
+  );
 
   it('passes Workspace scope to runner profiles without putting workspaceId in Node data', async () => {
     const { app, requestNode, headers, secrets } = fixture();
