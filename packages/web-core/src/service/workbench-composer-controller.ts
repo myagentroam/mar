@@ -307,7 +307,7 @@ export function createWorkbenchComposerController(options: {
     const selected = Array.isArray(value) ? value.at(-1) : value;
     if (typeof selected !== 'string') return;
     if (selected.startsWith('effort:')) selectEffortValue(selected.slice(7));
-    else if (selected.startsWith('modelId:')) selectModelValue(selected.slice(6));
+    else if (selected.startsWith('model:')) selectModelValue(selected.slice('model:'.length));
     else return;
     void nextTick(() => {
       options.clearModelEffortSelection();
