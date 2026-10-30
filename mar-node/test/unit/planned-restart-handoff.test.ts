@@ -50,7 +50,7 @@ function fixture(sessionIds = ['native-session']) {
       runner: 'mar-agent',
       externalSessionId,
       cwd: workspace.path,
-      model: 'model-under-test',
+      modelId: 'model-under-test',
       effort: 'high',
       access: 'full-access'
     })
@@ -105,7 +105,7 @@ function prepareCurrent(
     attachmentPaths: [],
     cwd: session.cwd,
     externalSessionId: session.externalSessionId,
-    model: session.model,
+    modelId: session.modelId,
     effort: session.effort,
     access: session.access,
     collaborationMode: 'default',
@@ -145,7 +145,7 @@ function prepareQueue(
     attachmentPaths: [],
     cwd: session.cwd,
     externalSessionId: session.externalSessionId,
-    model: session.model,
+    modelId: session.modelId,
     effort: session.effort,
     access: session.access,
     collaborationMode: 'default',
@@ -237,6 +237,7 @@ describe('PlannedRestartHandoff', () => {
 
     const writer = handoff(f, directory);
     const snapshot = writer.capture();
+    expect(snapshot.schemaVersion).toBe(2);
     expect(snapshot.sessions).toHaveLength(1);
     const entry = snapshot.sessions[0]!;
     expect(entry).toMatchObject({
@@ -325,6 +326,42 @@ describe('PlannedRestartHandoff', () => {
     expect(restored).toHaveLength(1);
   });
 
+  it('migrates a strict schema v1 handoff model into the current modelId when recovering', async () => {
+    const directory = await temporaryDirectory();
+    const f = fixture();
+    const session = f.sessions[0]!;
+    prepareCurrent(f, session, 'resume after upgrade', 'unused-secret');
+    const snapshot = handoff(f, directory).capture();
+    const entry = snapshot.sessions[0]!;
+    const { modelId, ...legacySession } = entry.session;
+    expect(modelId).toBe('model-under-test');
+    const legacy = {
+      ...snapshot,
+      schemaVersion: 1,
+      sessions: [
+        {
+          ...entry,
+          session: { ...legacySession, model: 'non-default-v1-model' }
+        }
+      ]
+    };
+    await writeFile(join(directory, 'planned-restart-handoff.json'), JSON.stringify(legacy));
+
+    const restored: RestartSession[] = [];
+    const reader = handoff(f, directory, {
+      restore: async (restoredSession) => {
+        restored.push(restoredSession);
+      }
+    });
+    await reader.load();
+    await reader.recover();
+    await reader.wait();
+
+    expect(restored).toMatchObject([
+      { session: { id: session.externalSessionId, modelId: 'non-default-v1-model' } }
+    ]);
+  });
+
   it('does not create or consume a manifest when there is no resumable state', async () => {
     const directory = await temporaryDirectory();
     const f = fixture();
@@ -390,7 +427,7 @@ describe('PlannedRestartHandoff', () => {
 
   it.each([
     ['malformed JSON', '{not-json'],
-    ['unsupported schema', JSON.stringify({ schemaVersion: 2 })],
+    ['unsupported schema', JSON.stringify({ schemaVersion: 3 })],
     [
       'wrong Node identity',
       JSON.stringify({

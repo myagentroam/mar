@@ -63,7 +63,7 @@ function fixture(
       attachmentPaths: [],
       cwd: '/workspace',
       externalSessionId: 'native',
-      model: null,
+      modelId: null,
       effort: null,
       access: null,
       collaborationMode: 'default',

@@ -592,6 +592,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.4rem;
   align-items: center;
   min-width: 0;
+  min-height: var(--mar-compact-control-size);
 }
 
 .repository-title-row strong {
@@ -747,10 +748,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 <style scoped>
 button.file-explorer-utility-button {
   display: inline-grid;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: var(--mar-compact-control-size);
+  min-width: var(--mar-compact-control-size);
+  height: var(--mar-compact-control-size);
+  min-height: var(--mar-compact-control-size);
   place-items: center;
   border: 0;
   border-radius: 5px;
@@ -764,12 +765,6 @@ button.file-explorer-utility-button {
 button.file-explorer-utility-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-button.changes-refresh-button {
-  min-width: var(--mar-compact-control-size);
-  min-height: var(--mar-compact-control-size);
-  margin-left: 0.15rem;
 }
 </style>
 

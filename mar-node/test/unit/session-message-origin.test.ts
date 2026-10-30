@@ -107,6 +107,15 @@ it.each(
         .conversationTurnForRun(started.run.id)!
         .items.find((item) => item.kind === 'user_message');
       expect(readOrigin((firstMessage!.payload as { text: string }).text)).toEqual([snapshot]);
+      await expect(
+        node.executeNodeOperation('session.message', {
+          sessionId: started.session.id,
+          clientMessageId: 'legacy-model',
+          content: 'must be rejected',
+          model: 'legacy-model'
+        })
+      ).rejects.toThrow('MESSAGE_INVALID');
+      expect(startTurn).toHaveBeenCalledTimes(1);
       const queued = (await node.executeNodeOperation('session.message', {
         sessionId: started.session.id,
         clientMessageId: 'queued',

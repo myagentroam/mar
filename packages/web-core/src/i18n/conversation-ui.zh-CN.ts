@@ -299,7 +299,6 @@ export const conversationUiZhCN = {
     result: '结果',
     subagentTask: 'Agent',
     subagentOperationCount: '{count} 次操作',
-    openSubagentSession: '打开会话',
     subagentCallFailed: '调用失败',
     approvalPending: '等待确认',
     approvalApproved: '已允许',

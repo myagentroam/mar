@@ -288,7 +288,7 @@ function defaultConfiguration(
     profile?.models.find((candidate) => candidate.isDefault === true) ?? profile?.models[0];
   return {
     runner,
-    model: model?.id ?? '',
+    modelId: model?.id ?? '',
     effort: defaultEffortForModel(model),
     access: profile?.accessOptions[0]?.id ?? ''
   };
@@ -316,7 +316,7 @@ export function defaultEffortForModel(
 
 function supports(value: RunnerDefaultConfiguration, profiles: readonly RunnerProfile[]): boolean {
   const profile = profiles.find((item) => item.runner === value.runner);
-  const model = profile?.models.find((item) => item.id === value.model);
+  const model = profile?.models.find((item) => item.id === value.modelId);
   return (
     model !== undefined &&
     (model.supportedEfforts.length === 0

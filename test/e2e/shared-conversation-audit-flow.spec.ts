@@ -153,7 +153,7 @@ test('Shared organization Node conversations expose content only through audit d
           nodeId,
           workspaceId,
           runner: 'codex',
-          model: 'gpt-5.6-sol',
+          modelId: 'gpt-5.6-sol',
           cwd: workspacePath,
           title: sessionTitle,
           clientMessageId: 't151-start',
@@ -441,7 +441,7 @@ function fakeCodexProfileClient(): CodexAppServerClient {
     listModels: async () => ({
       data: [
         {
-          model: 'gpt-5.6-sol',
+          modelId: 'gpt-5.6-sol',
           displayName: 'gpt-5.6-sol',
           hidden: false,
           isDefault: true,

@@ -64,7 +64,7 @@ export async function mockConsoleApi(
   activityOverride?: 'MANAGED_ACTIVE' | 'IDLE',
   runnerDefaults?: readonly {
     readonly runner: 'codex' | 'claude-code';
-    readonly model: string;
+    readonly modelId: string;
     readonly effort: string;
     readonly access: string;
   }[],

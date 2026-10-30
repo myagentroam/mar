@@ -108,7 +108,7 @@ export abstract class AbstractRunner<TName extends RegisteredRunnerName = Regist
   ): boolean {
     void [workspace, environment];
     const profile = this.profileForValidation();
-    const model = profile.models.find((candidate) => candidate.id === configuration.model);
+    const model = profile.models.find((candidate) => candidate.id === configuration.modelId);
     return (
       configuration.runner === this.name &&
       model !== undefined &&

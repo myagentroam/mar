@@ -36,7 +36,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     '## MAR Workspace management',
     'Use native agent_* tools for Agent discovery, creation, communication, observation, waiting and stopping.',
     'Do not switch to marctl when a native operation fails.',
-    'Use marctl agents config <id> --model <id> --effort <effort>',
+    'Use marctl agents config <id> --model-id <id> --effort <effort>',
     'Use agents prompt get/set/clear for persistent instructions',
     'Use agents schedule list/get/create/update for scheduled tasks',
     'marctl nodes lists authorized Nodes',

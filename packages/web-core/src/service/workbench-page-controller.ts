@@ -706,7 +706,7 @@ export function createWorkbenchPageController<
 
   const {
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     modelEffortSelection: composerModelEffortSelection,
@@ -1137,15 +1137,7 @@ export function createWorkbenchPageController<
   }
 
   async function openSessionFromList(sessionId: string): Promise<void> {
-    const nodeId = workspaceNodeId.value;
-    const workspaceId = activeWorkspaceId.value;
-    if (nodeId !== undefined && workspaceId !== undefined)
-      workbenchNotificationService.markSessionRead(nodeId, workspaceId, sessionId);
     await workbenchSessionSelectionService.selectSession(sessionId);
-  }
-
-  function openMappedSubagentSession(sessionId: string): Promise<void> {
-    return openNavigatedSession(sessionId, true);
   }
 
   const {
@@ -1176,7 +1168,7 @@ export function createWorkbenchPageController<
     skillTokens: composerSkillTokens,
     references: composerFileReferences,
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     workspaceTarget,
@@ -2129,7 +2121,7 @@ export function createWorkbenchPageController<
     draftOpen: draftSessionOpen,
     loading,
     runner: newSessionRunner,
-    model: newSessionModel,
+    modelId: newSessionModel,
     effort: newSessionEffort,
     access: newSessionAccess,
     setModel: composerConfigurationService.selectModel,
@@ -3625,7 +3617,6 @@ export function createWorkbenchPageController<
     openNodeRegistration,
     openSession,
     openSessionFromList,
-    openMappedSubagentSession,
     openWorkbenchNotification: workbenchNotificationService.openNotification,
     openRecentRun,
     openSessionGroupTarget,

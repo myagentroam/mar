@@ -62,7 +62,7 @@ interface AgentNetworkServiceOptions {
       readonly content: string;
       readonly clientMessageId: string;
       readonly runner?: string;
-      readonly model?: string;
+      readonly modelId?: string;
       readonly effort?: string;
       readonly title?: string;
       readonly parentSessionId?: string;
@@ -163,7 +163,7 @@ export class AgentNetworkService {
     input: {
       readonly content?: string;
       readonly runner?: string;
-      readonly model?: string;
+      readonly modelId?: string;
       readonly effort?: string;
       readonly title?: string;
       readonly parentSessionId?: string;
@@ -186,7 +186,8 @@ export class AgentNetworkService {
           input.attachmentIds.some((id) => typeof id !== 'string' || !id))) ||
       (!!input.attachments?.length && !!input.attachmentIds?.length) ||
       !validOptionalString(input.runner) ||
-      !validOptionalString(input.model) ||
+      'model' in input ||
+      !validOptionalString(input.modelId) ||
       !validOptionalString(input.effort) ||
       !validOptionalString(input.title) ||
       !validOptionalString(input.parentSessionId) ||

@@ -647,7 +647,7 @@ describe('Node Workbench history projection and pagination', () => {
       workspaceId: workspace.id,
       runnerTitle: 'renamed title',
       runnerTitlePending: true,
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'workspace-write'
     });
@@ -683,7 +683,7 @@ describe('Node Workbench history projection and pagination', () => {
         cwd: workspace.path
       })
     ).toMatchObject({
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'workspace-write'
     });

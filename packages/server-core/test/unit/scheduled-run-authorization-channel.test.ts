@@ -13,7 +13,7 @@ const request = {
   workspaceId: 'workspace-1',
   sessionId: 'session-1',
   runner: 'codex' as const,
-  model: null
+  modelId: null
 };
 
 describe('scheduled run authorization channel', () => {
@@ -24,7 +24,7 @@ describe('scheduled run authorization channel', () => {
       workspaceId: 'workspace',
       sessionId: 'session',
       runner: 'mar-agent',
-      model: 'model'
+      modelId: 'model'
     };
     const authorize = vi.fn(async () => {
       throw new Error('WORKSPACE_ACCESS_DENIED');
@@ -68,7 +68,7 @@ describe('scheduled run authorization channel', () => {
         workspaceId: 'workspace',
         sessionId: 'session',
         runner: 'mar-agent',
-        model: 'model'
+        modelId: 'model'
       }),
       isCurrentConnection: () => current,
       respond,

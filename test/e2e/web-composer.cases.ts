@@ -1168,8 +1168,8 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
     true,
     undefined,
     [
-      { runner: 'codex', model: 'gpt-5.6-terra', effort: 'high', access: 'workspace-write' },
-      { runner: 'claude-code', model: 'sonnet', effort: 'high', access: 'bypass' }
+      { runner: 'codex', modelId: 'gpt-5.6-terra', effort: 'high', access: 'workspace-write' },
+      { runner: 'claude-code', modelId: 'sonnet', effort: 'high', access: 'bypass' }
     ]
   );
 
@@ -1213,7 +1213,7 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
     .toContainEqual({
       nodeId: 'node-1',
       runner: 'claude-code',
-      model: 'sonnet',
+      modelId: 'sonnet',
       effort: 'high',
       access: 'default'
     });

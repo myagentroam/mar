@@ -391,6 +391,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const headings = inspector.locator('.change-repository-heading');
       await expect(headings).toHaveCount(3);
       const root = headings.first();
+      const titleRows = headings.locator('.repository-title-row');
+      const compactSize = await root.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
+      );
+      for (const row of await titleRows.all()) {
+        expect((await row.boundingBox())!.height).toBeCloseTo(compactSize, 1);
+      }
+      const refresh = root.getByRole('button', { name: 'Refresh Git changes', exact: true });
+      const refreshBounds = (await refresh.boundingBox())!;
+      expect(refreshBounds.height).toBeCloseTo(compactSize, 1);
+      expect(refreshBounds.width).toBeCloseTo(compactSize, 1);
       await expect(root.locator('.repository-title-row strong')).toHaveCSS('font-weight', '500');
       await expect(root.locator('.repository-title-row strong')).toHaveCSS(
         'font-size',
@@ -466,6 +477,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         path: testInfo.outputPath(`git-headers-${width}.png`),
         animations: 'disabled'
       });
+      for (const row of await titleRows.all()) {
+        await row.evaluate((element) => {
+          (element as HTMLElement).style.fontSize = '2em';
+        });
+        const rowHeight = (await row.boundingBox())!.height;
+        expect(rowHeight).toBeGreaterThan(compactSize);
+        expect(rowHeight).toBeGreaterThanOrEqual(
+          (await row.locator('strong').boundingBox())!.height
+        );
+      }
     }
   });
 

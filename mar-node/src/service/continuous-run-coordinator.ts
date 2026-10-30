@@ -33,7 +33,7 @@ export interface PreparedExecutionInput<TAttachment = unknown> {
   readonly cwd: string;
   readonly workspacePath?: string;
   readonly externalSessionId: string | null;
-  readonly model: string | null;
+  readonly modelId: string | null;
   readonly effort: string | null;
   readonly access: string | null;
   readonly collaborationMode: 'default' | 'plan';
@@ -948,7 +948,7 @@ export class ContinuousRunCoordinator<TAttachment> {
         ...(pending.externalSessionId === null
           ? {}
           : { externalSessionId: pending.externalSessionId }),
-        ...(pending.model === null ? {} : { model: pending.model }),
+        ...(pending.modelId === null ? {} : { model: pending.modelId }),
         ...(pending.effort === null ? {} : { effort: pending.effort }),
         ...(pending.access === null ? {} : { access: pending.access }),
         collaborationMode: pending.collaborationMode,

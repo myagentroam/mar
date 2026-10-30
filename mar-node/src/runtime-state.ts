@@ -151,7 +151,7 @@ export class NodeRuntimeState {
     readonly title?: string;
     readonly customTitle?: string;
     readonly sessionPrompt?: string | null;
-    readonly model?: string;
+    readonly modelId?: string;
     readonly effort?: string;
     readonly access?: string;
     readonly createdAt?: number;
@@ -172,7 +172,7 @@ export class NodeRuntimeState {
         input.externalSessionId === undefined ? 'MAR_MANAGED' : (input.nativeControl ?? 'EXTERNAL'),
       channelToken: null,
       cwd: input.cwd,
-      model: input.model ?? null,
+      modelId: input.modelId ?? null,
       effort: input.effort ?? null,
       access: input.access ?? null,
       customTitle,
@@ -216,7 +216,7 @@ export class NodeRuntimeState {
         nativeControl: input.externalSessionId === undefined ? 'MAR_MANAGED' : 'EXTERNAL',
         channelToken: null,
         cwd: input.cwd,
-        model: null,
+        modelId: null,
         effort: null,
         access: null,
         customTitle: null,
@@ -300,12 +300,12 @@ export class NodeRuntimeState {
   }
   updateAgentSessionConfiguration(input: {
     readonly sessionId: string;
-    readonly model?: string;
+    readonly modelId?: string;
     readonly effort?: string;
     readonly access?: string;
   }): NodeAgentSession {
     return this.replaceSession(input.sessionId, {
-      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
       ...(input.effort === undefined ? {} : { effort: input.effort }),
       ...(input.access === undefined ? {} : { access: input.access })
     });
@@ -574,7 +574,7 @@ export class NodeRuntimeState {
       runId: run.id,
       userItemId: user.id,
       status: 'PREPARING',
-      model: session.model,
+      model: session.modelId,
       effort: session.effort,
       access: session.access,
       items: [user],
@@ -1302,7 +1302,7 @@ export class NodeRuntimeState {
       runId: null,
       userItemId: null,
       status: input.failed ? 'FAILED' : 'SUCCEEDED',
-      model: session.model,
+      model: session.modelId,
       effort: session.effort,
       access: session.access,
       items: [],
@@ -1639,7 +1639,7 @@ export class NodeRuntimeState {
       runId: run.id,
       userItemId: null,
       status: terminal(run.status) ? run.status : 'RUNNING',
-      model: session.model,
+      model: session.modelId,
       effort: session.effort,
       access: session.access,
       items: [],
@@ -1686,7 +1686,7 @@ export class NodeRuntimeState {
       runId: run.id,
       userItemId: userId,
       status: 'PREPARING',
-      model: session.model,
+      model: session.modelId,
       effort: session.effort,
       access: session.access,
       items: [user],

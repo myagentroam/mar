@@ -45,7 +45,7 @@ ${configurationHelp}
 
 用法：
   {program} start [-m <text> | --message-file <file|->] [--image <path> ...]
-    [--runner <runner>] [--parent <id>] [--model <id>] [--effort <value>]
+    [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <value>]
     [--title <name>] [--goal <objective> | --clear-goal]
     [--client-message-id <id>] [--json]
   {program} send <id> [-m <text> | --message-file <file|->]
@@ -64,7 +64,7 @@ ${configurationHelp}
     [--limit <1..100>] [--json]
 
 管理：
-  {program} config [<id>] [--model <id>] [--effort <value>] [--json]
+  {program} config [<id>] [--model-id <id>] [--effort <value>] [--json]
   {program} rename [<id>] --title <name> [--json]
   {program} prompt get|clear [<id>] [--json]
   {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]

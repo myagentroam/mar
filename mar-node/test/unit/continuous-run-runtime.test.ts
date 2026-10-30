@@ -3836,7 +3836,7 @@ function prepared(runId: string, sessionId: string) {
     attachmentPaths: [],
     cwd: '/workspace',
     externalSessionId: 'thread-1',
-    model: null,
+    modelId: null,
     effort: null,
     access: null,
     collaborationMode: 'default' as const,

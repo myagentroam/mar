@@ -13,6 +13,7 @@ const delegationPrompt = [
   '# Delegation and coordination',
   'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local.',
   'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'Follow up through the direct delegate by default; inspect deeper Sessions only when a concrete issue needs independent verification.',
   'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
   'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n\n');

@@ -55,7 +55,7 @@ describe('model usage outbox schema', () => {
       migrate(database);
       expect(
         database.prepare('SELECT version FROM node_schema_migrations ORDER BY version').all()
-      ).toEqual([13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map((version) => ({ version })));
+      ).toEqual([13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].map((version) => ({ version })));
     } finally {
       database.close();
     }
@@ -76,7 +76,8 @@ describe('model usage outbox schema', () => {
         { version: 19 },
         { version: 20 },
         { version: 21 },
-        { version: 22 }
+        { version: 22 },
+        { version: 23 }
       ]);
       expect(
         database.raw

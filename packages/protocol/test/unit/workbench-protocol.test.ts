@@ -728,7 +728,7 @@ describe('Workbench protocol contracts', () => {
     expect(
       runnerDefaultConfigurationSchema.safeParse({
         runner: 'opencode',
-        model: 'openrouter/anthropic/claude-sonnet-4.5',
+        modelId: 'openrouter/anthropic/claude-sonnet-4.5',
         effort: 'high',
         access: 'default'
       }).success
@@ -1420,10 +1420,19 @@ describe('Workbench protocol contracts', () => {
   });
 
   it('types Node-local Composer defaults without creating a Runner default option', () => {
+    for (const extra of [{ model: 'old' }, { modelId: 'new', model: 'old' }])
+      expect(
+        runnerDefaultConfigurationSchema.safeParse({
+          runner: 'codex',
+          effort: 'medium',
+          access: 'on-request',
+          ...extra
+        }).success
+      ).toBe(false);
     expect(
       runnerDefaultConfigurationSchema.safeParse({
         runner: 'codex',
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'medium',
         access: 'on-request'
       }).success
@@ -1431,7 +1440,7 @@ describe('Workbench protocol contracts', () => {
     expect(
       runnerDefaultConfigurationSchema.safeParse({
         runner: 'codex',
-        model: '',
+        modelId: '',
         effort: 'medium',
         access: 'on-request'
       }).success

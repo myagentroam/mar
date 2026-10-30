@@ -60,7 +60,7 @@ export async function mockSharedConversation(
     workspaceId: 'workspace-1',
     runner: 'mar-agent',
     runnerTitle: 'Shared session',
-    model: 'test-model',
+    modelId: 'test-model',
     effort: 'high',
     access: 'auto',
     activity: 'MANAGED_ACTIVE',

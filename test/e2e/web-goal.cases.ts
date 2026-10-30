@@ -57,7 +57,7 @@ for (const language of ['zh-CN', 'en-US'] as const) {
                 ]
               }
             ],
-            defaults: [{ runner, model: 'goal-model', effort: 'medium', access: initialAccess }]
+            defaults: [{ runner, modelId: 'goal-model', effort: 'medium', access: initialAccess }]
           })
         );
         const initialSession = {
@@ -65,7 +65,7 @@ for (const language of ['zh-CN', 'en-US'] as const) {
           externalSessionId: 'native-goal-session',
           workspaceId: 'workspace-1',
           runner,
-          model: 'goal-model',
+          modelId: 'goal-model',
           effort: 'medium',
           access: initialAccess,
           activity: 'IDLE',

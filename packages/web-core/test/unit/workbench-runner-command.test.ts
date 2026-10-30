@@ -241,7 +241,7 @@ describe('Workbench runner command', () => {
       id: 'session-1',
       workspaceId: 'workspace-1',
       runner: 'mar-agent',
-      model: 'model-1'
+      modelId: 'model-1'
     } as Session;
     const run = { id: 'run-1', sessionId: session.id, status: 'RUNNING', version: 3 } as AgentRun;
     const runService = createRunService(selectedSessionId);
@@ -280,7 +280,7 @@ describe('Workbench runner command', () => {
       workspaceId: 'workspace-1',
       commandId: 'compact',
       input: 'input',
-      model: 'model-1'
+      modelId: 'model-1'
     });
     expect(configure).toHaveBeenCalledWith(session);
     expect(resetHistory).toHaveBeenCalledWith('node-1', session);

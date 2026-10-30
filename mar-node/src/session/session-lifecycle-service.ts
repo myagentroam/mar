@@ -169,7 +169,8 @@ export class SessionLifecycleService {
       (input.externalSessionId !== undefined && typeof input.externalSessionId !== 'string') ||
       !validSessionTitle(input.title) ||
       !validSessionTitle(input.customTitle) ||
-      !validSessionOption(input.model) ||
+      Object.hasOwn(input, 'model') ||
+      !validSessionOption(input.modelId) ||
       !validSessionEffort(input.effort) ||
       !validSessionOption(input.access)
     )
@@ -219,7 +220,8 @@ export class SessionLifecycleService {
     const fallback = runner.defaultConfiguration(workspace, environment, executionContext);
     const configuration: RunnerDefaultConfiguration = {
       runner: runner.name,
-      model: typeof input.model === 'string' ? input.model : (saved?.model ?? fallback.model),
+      modelId:
+        typeof input.modelId === 'string' ? input.modelId : (saved?.modelId ?? fallback.modelId),
       effort: typeof input.effort === 'string' ? input.effort : (saved?.effort ?? fallback.effort),
       access:
         typeof input.access === 'string'
@@ -231,7 +233,7 @@ export class SessionLifecycleService {
     if (runner.name === 'mar-agent' && !['auto', 'full-access'].includes(configuration.access))
       throw new Error('SESSION_INVALID');
     if (parentSessionId !== undefined)
-      runner.assertChildModel(configuration.model, executionContext);
+      runner.assertChildModel(configuration.modelId, executionContext);
     const session = this.options.runtime.createAgentSession({
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
       workspaceId: input.workspaceId,
@@ -240,7 +242,7 @@ export class SessionLifecycleService {
       ...(typeof input.externalSessionId === 'string'
         ? { externalSessionId: input.externalSessionId }
         : {}),
-      model: configuration.model,
+      modelId: configuration.modelId,
       effort: configuration.effort,
       access: configuration.access,
       ...(typeof input.title === 'string' ? { title: input.title } : {}),
@@ -255,8 +257,9 @@ export class SessionLifecycleService {
   private async updateConfiguration(input: Record<string, unknown>): Promise<unknown> {
     if (
       typeof input.sessionId !== 'string' ||
-      (input.model === undefined && input.effort === undefined && input.access === undefined) ||
-      !validSessionOption(input.model) ||
+      (input.modelId === undefined && input.effort === undefined && input.access === undefined) ||
+      Object.hasOwn(input, 'model') ||
+      !validSessionOption(input.modelId) ||
       !validSessionEffort(input.effort) ||
       !validSessionOption(input.access)
     )
@@ -275,13 +278,13 @@ export class SessionLifecycleService {
       !['auto', 'full-access'].includes(input.access as string)
     )
       throw new Error('SESSION_INVALID');
-    if (current.parentSessionId != null && typeof input.model === 'string') {
+    if (current.parentSessionId != null && typeof input.modelId === 'string') {
       const runner = this.options.runners.require(current.runner);
-      runner.assertChildModel(input.model, runner.prepareExecutionContext(input));
+      runner.assertChildModel(input.modelId, runner.prepareExecutionContext(input));
     }
     const session = this.options.runtime.updateAgentSessionConfiguration({
       sessionId: current.id,
-      ...(typeof input.model === 'string' ? { model: input.model } : {}),
+      ...(typeof input.modelId === 'string' ? { modelId: input.modelId } : {}),
       ...(typeof input.effort === 'string' ? { effort: input.effort } : {}),
       ...(typeof input.access === 'string' ? { access: input.access } : {})
     });
@@ -290,7 +293,7 @@ export class SessionLifecycleService {
         runner: session.runner,
         externalSessionId: session.externalSessionId,
         workspaceId: session.workspaceId,
-        model: session.model,
+        modelId: session.modelId,
         effort: session.effort,
         access: session.access
       });

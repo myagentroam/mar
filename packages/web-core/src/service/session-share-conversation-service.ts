@@ -330,7 +330,7 @@ export function createSessionShareConversationService(options: {
     executeCommand: async (session, command, value) =>
       request(`/api/agent-sessions/${encodeURIComponent(session.id)}/commands`, {
         method: 'POST',
-        body: JSON.stringify({ commandId: command.id, input: value, model: session.model })
+        body: JSON.stringify({ commandId: command.id, input: value, modelId: session.modelId })
       }),
     replaceSession: (_previous, value) => mergeSessions([value]),
     sessionPathId: encodeURIComponent,

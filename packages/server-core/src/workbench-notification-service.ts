@@ -7,6 +7,7 @@ import type { NotificationStore } from './notification-contracts.js';
 import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import { workbenchNotificationMessages } from './i18n/workbench-notifications.js';
 import {
+  NOTIFICATION_TARGET_READ_ID_LIMIT,
   serverNotificationSchema,
   type NotificationTarget as StoredWorkbenchNotificationTarget,
   type ServerNotification as StoredWorkbenchNotification
@@ -269,14 +270,28 @@ export class WorkbenchNotificationService {
          AND read_at IS NULL AND deleted_at IS NULL AND expires_at>?`,
       [timestamp, userId, nodeId, workspaceId, sessionId, timestamp]
     );
-    if (result.affectedRows > 0)
+    if (result.affectedRows > 0) {
+      const [rows] = await this.database.raw.execute<RowDataPacket[]>(
+        `SELECT id FROM workbench_notifications
+         WHERE user_id=? AND node_id=? AND target_type='WORKSPACE_SESSION'
+           AND workspace_id=? AND session_id=? AND read_at=?
+           AND deleted_at IS NULL AND expires_at>?
+         LIMIT ${NOTIFICATION_TARGET_READ_ID_LIMIT + 1}`,
+        [userId, nodeId, workspaceId, sessionId, timestamp, timestamp]
+      );
+      if (rows.length > NOTIFICATION_TARGET_READ_ID_LIMIT) {
+        this.push(userId, { type: 'notification.updated' });
+        return;
+      }
       this.push(userId, {
         type: 'notification.session-read',
         nodeId,
         workspaceId,
         sessionId,
+        notificationIds: rows.map((row) => String(row.id)),
         readAt: timestamp
       });
+    }
   }
 
   async markConversationRead(userId: number, nodeId: string, conversationId: string) {
@@ -287,13 +302,26 @@ export class WorkbenchNotificationService {
          AND conversation_id=? AND read_at IS NULL AND deleted_at IS NULL AND expires_at>?`,
       [timestamp, userId, nodeId, conversationId, timestamp]
     );
-    if (result.affectedRows > 0)
+    if (result.affectedRows > 0) {
+      const [rows] = await this.database.raw.execute<RowDataPacket[]>(
+        `SELECT id FROM workbench_notifications
+         WHERE user_id=? AND node_id=? AND target_type='HOSTED_CONVERSATION'
+           AND conversation_id=? AND read_at=? AND deleted_at IS NULL AND expires_at>?
+         LIMIT ${NOTIFICATION_TARGET_READ_ID_LIMIT + 1}`,
+        [userId, nodeId, conversationId, timestamp, timestamp]
+      );
+      if (rows.length > NOTIFICATION_TARGET_READ_ID_LIMIT) {
+        this.push(userId, { type: 'notification.updated' });
+        return;
+      }
       this.push(userId, {
         type: 'notification.conversation-read',
         nodeId,
         conversationId,
+        notificationIds: rows.map((row) => String(row.id)),
         readAt: timestamp
       });
+    }
   }
 
   async markAllRead(userId: number): Promise<void> {

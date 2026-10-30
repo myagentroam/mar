@@ -106,7 +106,7 @@ describe('Node Workbench Manifest and command control', () => {
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
-        model: 'gpt-5.5',
+        modelId: 'gpt-5.5',
         effort: 'medium',
         access: 'read-only',
         bootstrapOnly: true
@@ -118,11 +118,11 @@ describe('Node Workbench Manifest and command control', () => {
       await expect(
         operation(connector, 'session.config.update', {
           sessionId: created.session.id,
-          model: 'gpt-5.6-sol',
+          modelId: 'gpt-5.6-sol',
           access: 'full-access'
         })
       ).resolves.toMatchObject({
-        session: { model: 'gpt-5.6-sol', access: 'full-access' }
+        session: { modelId: 'gpt-5.6-sol', access: 'full-access' }
       });
       expect(markStale).toHaveBeenCalledWith(workspace.id);
       expect(invalidate).toHaveBeenCalledWith(workspace.id, 'sessions');
@@ -153,7 +153,7 @@ describe('Node Workbench Manifest and command control', () => {
         runner: 'mar-agent',
         cwd: workspace.path,
         externalSessionId: 'metadata-native',
-        model: 'model',
+        modelId: 'model',
         access: 'full-access'
       });
       const publish = vi.spyOn(internals.workbenchEventService, 'publish');
@@ -650,7 +650,7 @@ describe('Node Workbench Manifest and command control', () => {
       }[];
       defaults: {
         runner: string;
-        model: string;
+        modelId: string;
         effort: string;
         access: string;
       }[];
@@ -748,7 +748,7 @@ describe('Node Workbench Manifest and command control', () => {
     ).toBe(false);
     database.saveRunnerDefaults({
       runner: 'codex',
-      model: 'removed-model',
+      modelId: 'removed-model',
       effort: 'medium',
       access: 'on-request'
     });
@@ -761,29 +761,29 @@ describe('Node Workbench Manifest and command control', () => {
     ).toEqual([
       {
         runner: 'codex',
-        model: 'removed-model',
+        modelId: 'removed-model',
         effort: 'medium',
         access: 'on-request'
       }
     ]);
     const savedDefaults = (await operation(connector, 'runner.defaults.save', {
       runner: 'codex',
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'workspace-write'
-    })) as { defaults: { runner: string; model: string; effort: string; access: string } };
+    })) as { defaults: { runner: string; modelId: string; effort: string; access: string } };
     expect(savedDefaults.defaults).toEqual({
       runner: 'codex',
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'workspace-write'
     });
     const savedClaudeDefaults = (await operation(connector, 'runner.defaults.save', {
       runner: 'claude-code',
-      model: 'sonnet',
+      modelId: 'sonnet',
       effort: 'medium',
       access: 'default'
-    })) as { defaults: { runner: string; model: string; effort: string; access: string } };
+    })) as { defaults: { runner: string; modelId: string; effort: string; access: string } };
     expect(savedClaudeDefaults.defaults).toMatchObject({ runner: 'claude-code' });
     expect(
       (
@@ -795,14 +795,14 @@ describe('Node Workbench Manifest and command control', () => {
     await expect(
       operation(connector, 'runner.defaults.save', {
         runner: 'codex',
-        model: 'model-selected-by-web',
+        modelId: 'model-selected-by-web',
         effort: 'custom-effort',
         access: 'workspace-write'
       })
     ).resolves.toMatchObject({
       defaults: {
         runner: 'codex',
-        model: 'model-selected-by-web',
+        modelId: 'model-selected-by-web',
         effort: 'custom-effort',
         access: 'workspace-write'
       }
@@ -812,7 +812,7 @@ describe('Node Workbench Manifest and command control', () => {
         workspaceId: workspace.id,
         runner: 'codex',
         cwd: workspace.path,
-        model: 'model-selected-by-web',
+        modelId: 'model-selected-by-web',
         effort: 'custom-effort',
         access: 'custom-access',
         bootstrapOnly: true
@@ -820,7 +820,7 @@ describe('Node Workbench Manifest and command control', () => {
     ).resolves.toMatchObject({
       session: {
         runner: 'codex',
-        model: 'model-selected-by-web',
+        modelId: 'model-selected-by-web',
         effort: 'custom-effort',
         access: 'custom-access'
       }
@@ -829,7 +829,7 @@ describe('Node Workbench Manifest and command control', () => {
       workspaceId: workspace.id,
       runner: 'codex',
       cwd: workspace.path,
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'high',
       access: 'full-access',
       title: 'Read the current project structure first'
@@ -839,37 +839,37 @@ describe('Node Workbench Manifest and command control', () => {
 
     const configured = (await operation(connector, 'session.config.update', {
       sessionId: session.id,
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'high',
       access: 'full-access'
-    })) as { session: { model: string; effort: string; access: string } };
+    })) as { session: { modelId: string; effort: string; access: string } };
     expect(configured.session).toMatchObject({
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'high',
       access: 'full-access'
     });
     expect(
       (
         (await operation(connector, 'runner.profiles.list', {})) as {
-          defaults: { runner: string; model: string; effort: string; access: string }[];
+          defaults: { runner: string; modelId: string; effort: string; access: string }[];
         }
       ).defaults.find((value) => value.runner === 'codex')
     ).toEqual({
       runner: 'codex',
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'high',
       access: 'full-access'
     });
     await expect(
       operation(connector, 'session.config.update', {
         sessionId: session.id,
-        model: 'sonnet',
+        modelId: 'sonnet',
         effort: 'high',
         access: 'workspace-write'
       })
     ).resolves.toMatchObject({
       session: {
-        model: 'sonnet',
+        modelId: 'sonnet',
         effort: 'high',
         access: 'workspace-write'
       }
@@ -877,7 +877,7 @@ describe('Node Workbench Manifest and command control', () => {
     await expect(
       operation(connector, 'session.config.update', {
         sessionId: session.id,
-        model: '',
+        modelId: '',
         effort: 'high',
         access: 'workspace-write'
       })
@@ -1093,7 +1093,7 @@ describe('Node Workbench Manifest and command control', () => {
       id: 'session-context-cleared',
       workspaceId: 'workspace-context-cleared',
       externalSessionId: 'native-context-cleared',
-      model: 'model-context-cleared'
+      modelId: 'model-context-cleared'
     } as NodeAgentSession;
     let usage:
       | { readonly model: string; readonly usedTokens: number; readonly maxTokens: number }
@@ -1440,6 +1440,7 @@ describe('Node Workbench Manifest and command control', () => {
       gitSummary: null
     });
     let prompt: string | undefined;
+    let sdkModel: string | undefined;
     let complete!: () => void;
     const connector = new NodeConnector({
       reconnect: false,
@@ -1452,8 +1453,9 @@ describe('Node Workbench Manifest and command control', () => {
         claudeCode: { available: true, version: '2.1.0' }
       },
       claudeClient: {
-        startChannel(input: { prompt: string }) {
+        startChannel(input: { prompt: string; model?: string }) {
           prompt = input.prompt;
+          sdkModel = input.model;
           return {
             completed: new Promise<void>((resolve) => {
               complete = resolve;
@@ -1494,8 +1496,20 @@ describe('Node Workbench Manifest and command control', () => {
       runner: 'claude-code',
       cwd: workspace.path,
       externalSessionId: 'claude-compact',
+      modelId: 'opus',
       nativeControl: 'MAR_MANAGED'
     });
+    await expect(
+      operation(connector, 'session.command.execute', {
+        sessionId: session.id,
+        commandId: 'compact',
+        input: '/compact',
+        model: 'legacy-model',
+        __requestUserId: 7
+      })
+    ).rejects.toThrow('RUNNER_COMMAND_INVALID');
+    expect(prompt).toBeUndefined();
+    expect(sdkModel).toBeUndefined();
     const result = (await operation(connector, 'session.command.execute', {
       sessionId: session.id,
       commandId: 'compact',
@@ -1503,6 +1517,8 @@ describe('Node Workbench Manifest and command control', () => {
       __requestUserId: 7
     })) as { run: { id: string } };
     expect(prompt).toBe('/compact');
+    expect(sdkModel).toBe('opus');
+    expect(sdkModel).not.toBe('sonnet');
     expect(internals.runtime.getRun(result.run.id)?.status).toBe('RUNNING');
     expect(internals.runtime.getRun(result.run.id)?.initiatedByUserId).toBe(7);
     const started = internals.runtime
@@ -1592,7 +1608,7 @@ describe('Node Workbench Manifest and command control', () => {
       runner: 'opencode',
       cwd: workspace.path,
       externalSessionId: 'opencode-compact',
-      model: 'provider/model',
+      modelId: 'provider/model',
       nativeControl: 'MAR_MANAGED'
     });
 

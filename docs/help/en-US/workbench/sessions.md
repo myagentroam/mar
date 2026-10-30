@@ -11,7 +11,7 @@ On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates t
 
 Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
 
-Expand an Agent operation record and choose **Open session** when Node provides an official session mapping, including non-child targets. Normal session permissions govern viewing, messaging, and stopping it. Multi-target operations offer separate entries for mapped sessions. Native Agents without a mapping do not offer this entry.
+Agent operation records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
 Expand an execution record to inspect the available command or code, output, working directory, exit code, and status. Each call has its own record. **Copy public record** copies that record's available public information, which can be truncated; older Nodes may provide fewer details.
 

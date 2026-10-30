@@ -168,7 +168,7 @@ function externalResumeFixture(
     ensureConfiguration: (source) => source,
     configuration: () => ({
       runner: f.target.runner,
-      model: 'default',
+      modelId: 'default',
       effort: 'medium',
       access: 'workspace-write'
     }),
@@ -825,7 +825,7 @@ function session(
     nativeControl: 'EXTERNAL',
     channelToken: null,
     cwd: '/workspace/cleanup',
-    model: null,
+    modelId: null,
     effort: null,
     access: null,
     customTitle: null,

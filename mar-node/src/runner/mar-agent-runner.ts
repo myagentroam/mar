@@ -323,7 +323,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   override supportsConfiguration(configuration: RunnerDefaultConfiguration): boolean {
     if (configuration.runner !== this.name) return false;
     const profile = this.profileForValidation();
-    const model = profile.models.find((candidate) => candidate.id === configuration.model);
+    const model = profile.models.find((candidate) => candidate.id === configuration.modelId);
     return (
       model !== undefined &&
       (model.supportedEfforts.length === 0
@@ -345,7 +345,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     const model = profile.models[0];
     return {
       runner: 'mar-agent',
-      model: model?.id ?? '',
+      modelId: model?.id ?? '',
       effort: model?.defaultEffort ?? '',
       access: 'auto'
     };
@@ -471,7 +471,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
                 }),
                 ...(executionConfiguration?.modelId === undefined
                   ? {}
-                  : { model: executionConfiguration.modelId }),
+                  : { modelId: executionConfiguration.modelId }),
                 ...(executionConfiguration?.reasoningEffort === undefined
                   ? {}
                   : { effort: executionConfiguration.reasoningEffort })
@@ -697,8 +697,8 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     return [resolve(session.cwd), ...(generatedImages === undefined ? [] : [generatedImages])];
   }
   async readContextUsage(session: NodeAgentSession) {
-    if (session.externalSessionId === null || session.model === null) return undefined;
-    const model = this.#models.find((candidate) => candidate.id === session.model);
+    if (session.externalSessionId === null || session.modelId === null) return undefined;
+    const model = this.#models.find((candidate) => candidate.id === session.modelId);
     if (model === undefined) return undefined;
     let catalog: AgentSessionCatalog | undefined;
     try {

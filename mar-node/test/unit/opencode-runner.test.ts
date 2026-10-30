@@ -323,7 +323,7 @@ describe('OpenCode Runner', () => {
     const session = {
       externalSessionId: 'native',
       cwd: '/workspace',
-      model: 'company/coding'
+      modelId: 'company/coding'
     } as NodeAgentSession;
 
     await runner.refreshProfile(capabilities, undefined, { API_KEY: 'first' });
@@ -386,7 +386,7 @@ describe('OpenCode Runner', () => {
     expect(providers).toHaveBeenCalledOnce();
     const firstConfiguration = {
       runner: 'opencode',
-      model: 'company/coding',
+      modelId: 'company/coding',
       effort: '',
       access: 'default'
     } as const;
@@ -402,10 +402,10 @@ describe('OpenCode Runner', () => {
 
     await runner.refreshProfile(capabilities, workspace, { API_KEY: 'second' });
     expect(providers).toHaveBeenCalledOnce();
-    expect(runner.defaultConfiguration(workspace, { API_KEY: 'first' }).model).toBe(
+    expect(runner.defaultConfiguration(workspace, { API_KEY: 'first' }).modelId).toBe(
       'company/coding'
     );
-    expect(runner.defaultConfiguration(workspace, { API_KEY: 'second' }).model).toBe(
+    expect(runner.defaultConfiguration(workspace, { API_KEY: 'second' }).modelId).toBe(
       'company/coding'
     );
     await runner.stop();
@@ -466,14 +466,14 @@ describe('OpenCode Runner', () => {
     expect(runner.cachedProfile(capabilities, environment).models).toEqual([
       expect.objectContaining({ id: 'company/coding' })
     ]);
-    expect(runner.defaultConfiguration(undefined, environment).model).toBe('company/coding');
+    expect(runner.defaultConfiguration(undefined, environment).modelId).toBe('company/coding');
 
     await vi.advanceTimersByTimeAsync(30_000);
     expect(providers).toHaveBeenCalledTimes(3);
     expect(runner.cachedProfile(capabilities, environment).models).toEqual([
       expect.objectContaining({ id: 'company/next' })
     ]);
-    expect(runner.defaultConfiguration(undefined, environment).model).toBe('company/next');
+    expect(runner.defaultConfiguration(undefined, environment).modelId).toBe('company/next');
 
     await runner.stop();
     vi.useRealTimers();

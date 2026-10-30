@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-30
 ---
 
 # Manage Nodes with marctl
@@ -66,7 +66,9 @@ marctl agents schedule get <session-id> --json
 
 For `history --json`, select `kind === "assistant_message"` in `segments[].items[]` and read `payload.text`; compact state fields are described below.
 
-Use `marctl agents config <session-id> --model <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `agents start` also accepts `--effort`.
+Use `marctl agents config <session-id> --model-id <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `agents start` also accepts `--effort`.
+
+Both `agents start` and `agents config` select a model with `--model-id <id>`, using an ID from the target Runner configuration's `models[].id`. For MAR Agent this is the internal configuration ID, not the display name or upstream model ID. Requests and Session summaries use `modelId`; the old `--model` option and request field `model` are rejected.
 
 Tasks dispatched with `start`, `send`, or `goal set` suppress automatic notifications to avoid repeated pushes from collaborating Sessions. This applies to subsequent task turns and Goal continuation; status and history remain available. Later manual input restores normal notification rules. Explicit notification tools can still send authorized notifications.
 
@@ -74,7 +76,7 @@ Tasks dispatched with `start`, `send`, or `goal set` suppress automatic notifica
 
 Session listing, ID lookup, and `list --query <title-fragment>` read only Sessions registered or cached on the current Node, without actively scanning Runners. MAR-created Sessions are registered once their native identity is established; external Sessions are registered after successful Workbench discovery. Reads do not resume execution. Pinned Sessions sort first but remain paginated. For a mistyped ID, `SESSION_NOT_FOUND` details may suggest up to three nearby `<sessionId> <name>` entries from the same Workspace, without replacing the ID or replaying an operation. Failed waits retain the target Session, Run, failure stage, and available upstream diagnostics in JSON errors.
 
-`list` returns `id`, `title`, `runner`, `status`, `runId`, and one bounded `latestActivity` per Session. `show` returns a compact `session` with the same identity and status, plus `model`, `effort`, `queuedCount`, `latestMessage`, up to three `recentTools`, plus `pendingApprovals` and `pendingApprovalsTruncated`; it does not include full Runs, queues, Goals, paths, or control settings. Use the existing Goal, schedule, graph, and history commands for their respective details. Model/effort are Node-known Session settings, or null when unknown; `queuedCount` excludes internal Goal continuation.
+`list` returns `id`, `title`, `runner`, `status`, `runId`, and one bounded `latestActivity` per Session. `show` returns a compact `session` with the same identity and status, plus `modelId`, `effort`, `queuedCount`, `latestMessage`, up to three `recentTools`, plus `pendingApprovals` and `pendingApprovalsTruncated`; it does not include full Runs, queues, Goals, paths, or control settings. Use the existing Goal, schedule, graph, and history commands for their respective details. Model ID/effort are Node-known Session settings, or null when unknown; `queuedCount` excludes internal Goal continuation.
 
 Session `status` is `RUNNING`, `IDLE`, or `SLEEPING`. Sleeping requires a confirmed foreground sleep in the current Run, not a tool name or an active Goal. Tool `state` remains its original lifecycle, such as `IN_PROGRESS` or `COMPLETED`. A running Session with no new public action has empty activity rather than borrowing a previous Run. Idle Sessions may show earlier in-memory activity with its observation time. Summaries are limited to 100 Unicode characters, tool names to 128, and the latest message to 300; `truncated` indicates shortened content. Full evidence remains in history.
 
@@ -116,7 +118,7 @@ marctl agents goal clear <session-id> --json
 
 For `start`, `send` and `goal set`, use `-m` / `--message` to supply text directly, or `--message-file` to read a UTF-8 file or stdin; the two options are mutually exclusive. `start` and `send` also accept repeated `--image <path>` options, with or without text. Images are read on the CLI host and sent as existing Session image attachments, not remote path references. PNG, JPEG, GIF and WebP are supported, up to 5 images, 5 MiB each and 10 MiB total. Actual image capabilities still depend on the target Runner and model. `goal set` accepts text only and rejects the reserved objective `--clear`; use `goal clear` to clear the Goal.
 
-`start` creates a Session at the Workspace root and submits its first message; it supports `mar-agent`, `codex`, `claude-code`, and `opencode`, subject to actual Runner capabilities. Omit `--model` to use the target Runner configuration, not the Coordinator's model. Creating a Session does not overwrite the default model, reasoning effort, or access saved for the Web Composer, with or without a parent Session; explicit configuration applies only to the new Session. `--message-file -` reads UTF-8 stdin. Record the returned native Session ID; titles are not unique routing identities.
+`start` creates a Session at the Workspace root and submits its first message; it supports `mar-agent`, `codex`, `claude-code`, and `opencode`, subject to actual Runner capabilities. Omit `--model-id` to use the target Runner configuration, not the Coordinator's model. Creating a Session does not overwrite the default model, reasoning effort, or access saved for the Web Composer, with or without a parent Session; explicit configuration applies only to the new Session. `--message-file -` reads UTF-8 stdin. Record the returned native Session ID; titles are not unique routing identities.
 
 When an Agent runs `start`, Node validates the creation source using its trusted Execution credential. Terminal users can specify a valid parent with `--parent`; Node checks the Workspace and stores the canonical `parentSessionId`. Without a parent it remains null, and it cannot be edited afterward. `list --parent <session-id>` pages through direct children, and `graph <session-id>` returns creation descendants including the root. Graph defaults to at most 100 nodes; `--limit` accepts 1..100. Results contain `rootSessionId`, `nodes`, and `truncated`, using only Node-known Sessions without scanning Runners. Parent means creation source, not authorization, current coordinator, or task dependency. Sending messages and taking over work do not change it. Deleting a parent deletes its descendants under Node's tree rules; old relationships are not inferred from messages or titles.
 

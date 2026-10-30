@@ -50,7 +50,7 @@ export interface SessionStartInput {
   readonly cwd: string;
   readonly clientMessageId: string;
   readonly content: string;
-  readonly model?: string;
+  readonly modelId?: string;
   readonly effort?: string;
   readonly access?: string;
   readonly title?: string;
@@ -72,7 +72,7 @@ export interface SessionMessageInput {
   }[];
   readonly attachmentIds?: readonly string[];
   readonly deliveryIntent?: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
-  readonly model?: string;
+  readonly modelId?: string;
   readonly computerUse?: boolean;
 }
 
@@ -122,7 +122,7 @@ export class SessionInputService {
           ...this.originPayload(origin),
           ...(await this.prepareExecution(
             context,
-            input.runner === 'mar-agent' ? input.model : undefined
+            input.runner === 'mar-agent' ? input.modelId : undefined
           ))
         },
         this.authorization(context),
@@ -150,7 +150,7 @@ export class SessionInputService {
     const { nodeControl } = this.options;
     let result: unknown;
     try {
-      const { model, ...messageInput } = message;
+      const { modelId, ...messageInput } = message;
       result = await nodeControl.requestNode(
         nodeId,
         'session.message',
@@ -159,7 +159,7 @@ export class SessionInputService {
           sessionId,
           workspaceId,
           ...this.originPayload(origin),
-          ...(await this.prepareExecution(context, model))
+          ...(await this.prepareExecution(context, modelId))
         },
         this.authorization(context),
         undefined
@@ -192,7 +192,7 @@ export class SessionInputService {
 
   async executeCommand(
     context: SessionControlContext,
-    input: { commandId: string; input: string; model?: string },
+    input: { commandId: string; input: string; modelId?: string },
     origin: SessionExecutionOrigin = {}
   ): Promise<unknown> {
     return this.options.nodeControl.requestNode(
@@ -206,7 +206,7 @@ export class SessionInputService {
         commandId: input.commandId,
         input: input.input,
         ...this.originPayload(origin),
-        ...(await this.prepareExecution(context, input.model))
+        ...(await this.prepareExecution(context, input.modelId))
       },
       this.authorization(context),
       undefined
@@ -240,7 +240,7 @@ export class SessionInputService {
 
   private async prepareExecution(
     context: Omit<SessionControlContext, 'sessionId'> & { readonly sessionId?: string },
-    model: string | undefined
+    modelId: string | undefined
   ): Promise<object> {
     return {
       ...(await prepareSessionExecutionContext({
@@ -252,7 +252,7 @@ export class SessionInputService {
         instructions: this.options.personalInstructions,
         serverUrl: this.options.publicOrigin
       })),
-      ...(model === undefined
+      ...(modelId === undefined
         ? {}
         : await runtimeModelPayload({
             userId: context.user.userId,
@@ -260,7 +260,7 @@ export class SessionInputService {
             // Legacy command calls without runtime credentials allow an absent Workspace.
             workspaceId: context.workspaceId as string,
             ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
-            selectedModelId: model,
+            selectedModelId: modelId,
             ...(this.options.marAgentModels === undefined
               ? {}
               : { marAgentModels: this.options.marAgentModels }),

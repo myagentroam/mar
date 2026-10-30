@@ -8,7 +8,7 @@ describe('Web Composer Configuration State', () => {
       id: 'child',
       runner: 'mar-agent',
       sessionGroup: 'CHILD',
-      model: 'configured-model',
+      modelId: 'configured-model',
       effort: 'high'
     });
     const profiles = ref([
@@ -25,10 +25,15 @@ describe('Web Composer Configuration State', () => {
       profiles: profiles as never,
       effortLabel: (value) => value
     });
-    state.apply({ runner: 'mar-agent', model: 'configured-model', effort: 'high', access: 'auto' });
+    state.apply({
+      runner: 'mar-agent',
+      modelId: 'configured-model',
+      effort: 'high',
+      access: 'auto'
+    });
     expect(state.modelEffortLabel.value).toBe('Configured model high');
     expect(state.models.value).toEqual([]);
-    expect(state.model.value).toBe('');
+    expect(state.modelId.value).toBe('');
     profiles.value = [];
     expect(state.modelEffortLabel.value).toBe('configured-model high');
     expect(state.models.value).toEqual([]);
@@ -69,12 +74,12 @@ describe('Web Composer Configuration State', () => {
       effortLabel: (value) => value
     });
     expect(state.models.value.map((model) => model.id)).toEqual(['delegation']);
-    state.apply({ runner: 'mar-agent', model: 'conversation', effort: 'medium', access: 'auto' });
-    expect(state.model.value).toBe('delegation');
+    state.apply({ runner: 'mar-agent', modelId: 'conversation', effort: 'medium', access: 'auto' });
+    expect(state.modelId.value).toBe('delegation');
     profiles.value[0]!.models[1]!.subagentModel = false;
     expect(state.models.value).toEqual([]);
     state.normalize();
-    expect(state.model.value).toBe('');
+    expect(state.modelId.value).toBe('');
     session.value.sessionGroup = 'MAIN';
     expect(state.models.value.map((model) => model.id)).toEqual(['conversation', 'delegation']);
     session.value.runner = 'codex';
@@ -95,7 +100,7 @@ describe('Web Composer Configuration State', () => {
       // @ts-expect-error Configuration values are writable only through their owner.
       state.runner.value = 'codex';
       // @ts-expect-error Model selection is installed through its owner command.
-      state.model.value = 'other';
+      state.modelId.value = 'other';
       // @ts-expect-error The owner controls the transient selection.
       state.modelEffortSelection.value = undefined;
     }
@@ -120,9 +125,9 @@ describe('Web Composer Configuration State', () => {
       effortLabel: (value) => value
     });
 
-    state.apply({ runner: 'codex', model: 'removed-model', effort: 'high', access: 'full' });
+    state.apply({ runner: 'codex', modelId: 'removed-model', effort: 'high', access: 'full' });
 
-    expect(state.model.value).toBe('gpt-5.6');
+    expect(state.modelId.value).toBe('gpt-5.6');
     expect(state.effort.value).toBe('medium');
     expect(state.modelEffortLabel.value).toBe('GPT-5.6 medium');
     expect(state.access.value).toBe('on-request');
@@ -145,7 +150,7 @@ describe('Web Composer Configuration State', () => {
       effortLabel: (value) => value
     });
 
-    state.apply({ runner: 'codex', model: 'gpt-5.6', effort: 'medium', access: 'on-request' });
+    state.apply({ runner: 'codex', modelId: 'gpt-5.6', effort: 'medium', access: 'on-request' });
 
     expect(state.effort.value).toBe('');
     expect(state.modelEffortLabel.value).toBe('GPT-5.6');
@@ -177,7 +182,7 @@ describe('Web Composer Configuration State', () => {
 
     state.apply({
       runner: 'mar-agent',
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'on-request'
     });

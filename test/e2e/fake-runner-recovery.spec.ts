@@ -203,7 +203,7 @@ function fakeCodexProfileClient(): CodexAppServerClient {
     listModels: async () => ({
       data: [
         {
-          model: 'gpt-5.6-sol',
+          modelId: 'gpt-5.6-sol',
           displayName: 'gpt-5.6-sol',
           hidden: false,
           isDefault: true,

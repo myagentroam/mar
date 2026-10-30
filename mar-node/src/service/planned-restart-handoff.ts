@@ -55,7 +55,7 @@ const sessionSchema = z
         id: identifier,
         workspaceId: identifier,
         cwd: z.string().min(1),
-        model: z.string().nullable(),
+        modelId: z.string().nullable(),
         effort: z.string().nullable(),
         access: z.string().nullable()
       })
@@ -72,7 +72,7 @@ const sessionSchema = z
   .strict();
 export const plannedRestartSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     id: identifier,
     nodeId: identifier,
     serverUrl: z.string().min(1),
@@ -80,6 +80,16 @@ export const plannedRestartSchema = z
     sessions: z.array(sessionSchema)
   })
   .strict();
+const legacyPlannedRestartSchema = plannedRestartSchema.extend({
+  schemaVersion: z.literal(1),
+  sessions: z.array(
+    sessionSchema.extend({
+      session: sessionSchema.shape.session.omit({ modelId: true }).extend({
+        model: z.string().nullable()
+      })
+    })
+  )
+});
 export type RestartMessage = z.infer<typeof messageSchema>;
 export type RestartSession = z.infer<typeof sessionSchema>;
 export type PlannedRestart = z.infer<typeof plannedRestartSchema>;
@@ -160,7 +170,20 @@ export class PlannedRestartHandoff {
       return;
     }
     try {
-      const value = plannedRestartSchema.parse(JSON.parse(text));
+      const saved: unknown = JSON.parse(text);
+      const legacy = legacyPlannedRestartSchema.safeParse(saved);
+      const value = plannedRestartSchema.parse(
+        legacy.success
+          ? {
+              ...legacy.data,
+              schemaVersion: 2,
+              sessions: legacy.data.sessions.map((entry) => {
+                const { model, ...session } = entry.session;
+                return { ...entry, session: { ...session, modelId: model } };
+              })
+            }
+          : saved
+      );
       const identity = this.options.identity();
       if (value.nodeId !== identity.nodeId || value.serverUrl !== identity.serverUrl)
         throw new Error('RESTART_HANDOFF_IDENTITY_MISMATCH');
@@ -241,7 +264,7 @@ export class PlannedRestartHandoff {
           id: session.externalSessionId,
           workspaceId: session.workspaceId,
           cwd: session.cwd,
-          model: session.model,
+          modelId: session.modelId,
           effort: session.effort,
           access: session.access
         },
@@ -258,7 +281,7 @@ export class PlannedRestartHandoff {
       });
     }
     return plannedRestartSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: randomUUID(),
       ...this.options.identity(),
       createdAt: Date.now(),

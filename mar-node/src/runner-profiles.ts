@@ -252,7 +252,7 @@ export function declaredRunnerProfiles(input: {
 
 export function supportsRunnerConfiguration(input: {
   readonly runner: RunnerName;
-  readonly model: string;
+  readonly modelId: string;
   readonly effort: string;
   readonly access: string;
   readonly environment?: NodeJS.ProcessEnv;
@@ -261,7 +261,7 @@ export function supportsRunnerConfiguration(input: {
     input.runner === 'claude-code'
       ? claudeProfile(input.environment ?? process.env)
       : definitions[input.runner];
-  const model = profile.models.find((candidate) => candidate.id === input.model);
+  const model = profile.models.find((candidate) => candidate.id === input.modelId);
   return (
     model !== undefined &&
     model.supportedEfforts.includes(input.effort) &&

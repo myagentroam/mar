@@ -64,7 +64,7 @@ const networkCommand = z.discriminatedUnion('operation', [
           attachments: message.attachments,
           clientMessageId: id.optional(),
           runner: runnerNameSchema.optional(),
-          model: id.optional(),
+          modelId: id.optional(),
           effort: z.string().max(120).optional(),
           title: z.string().min(1).max(160).optional(),
           parentSessionId: id.optional(),
@@ -201,7 +201,7 @@ const commandSchema = z
         runner: runnerNameSchema,
         ...message,
         clientMessageId: id,
-        model: id.optional(),
+        modelId: id.optional(),
         effort: z.string().max(120).optional(),
         parentSessionId: id.optional(),
         title: z.string().min(1).max(160).optional()
@@ -221,7 +221,7 @@ const commandSchema = z
       .object({
         action: z.literal('config'),
         sessionId: id,
-        model: z
+        modelId: z
           .string()
           .min(1)
           .max(120)
@@ -262,7 +262,8 @@ const commandSchema = z
           ('attachments' in value && (value.attachments?.length ?? 0) > 0)))
   )
   .refine(
-    (value) => value.action !== 'config' || value.model !== undefined || value.effort !== undefined
+    (value) =>
+      value.action !== 'config' || value.modelId !== undefined || value.effort !== undefined
   )
   .refine(
     (value) =>
@@ -432,7 +433,7 @@ export function registerMarctlSessionRoutes(
             Object.assign(resources, profileContext);
             if (requiresExecutionResources) {
               let runner: unknown = operation === 'start' ? arguments_.runner : undefined;
-              let model: unknown = operation === 'start' ? arguments_.model : undefined;
+              let model: unknown = operation === 'start' ? arguments_.modelId : undefined;
               const sessionId =
                 operation === 'send' ? arguments_.agentId : arguments_.parentSessionId;
               if (sessionId !== undefined) {
@@ -440,7 +441,7 @@ export function registerMarctlSessionRoutes(
                 if (session.workspaceId !== scope.workspaceId)
                   return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
                 runner ??= session.runner;
-                if (operation === 'send') model = session.model;
+                if (operation === 'send') model = session.modelId;
               }
               if (operation === 'start' && runner === undefined)
                 return sendError(reply, 400, 'RUNNER_REQUIRED');
@@ -464,13 +465,13 @@ export function registerMarctlSessionRoutes(
                     (value) => isObject(value) && value.isDefault === true
                   );
                   model =
-                    (isObject(defaults) ? defaults.model : undefined) ??
+                    (isObject(defaults) ? defaults.modelId : undefined) ??
                     (isObject(preferred) ? preferred.id : undefined);
                 }
               }
               if (runner === 'mar-agent' && typeof model !== 'string')
                 return sendError(reply, 400, 'MODEL_ID_REQUIRED');
-              if (operation === 'start' && typeof model === 'string') networkInput.model = model;
+              if (operation === 'start' && typeof model === 'string') networkInput.modelId = model;
               Object.assign(
                 resources,
                 await prepareSessionExecutionContext({
@@ -521,7 +522,7 @@ export function registerMarctlSessionRoutes(
             // Provision for the authorized target; Node rechecks identity and Run ownership.
             const runner =
               operation === 'start' ? (arguments_.runner ?? session.runner) : session.runner;
-            let model: unknown = operation === 'start' ? arguments_.model : session.model;
+            let model: unknown = operation === 'start' ? arguments_.modelId : session.modelId;
             if (runner === 'mar-agent') {
               const profileContext = await prepareRunnerProfileContext({
                 userId: user.userId,
@@ -546,14 +547,14 @@ export function registerMarctlSessionRoutes(
                   (value) => isObject(value) && value.isDefault === true
                 );
                 model =
-                  (isObject(defaults) ? defaults.model : undefined) ??
+                  (isObject(defaults) ? defaults.modelId : undefined) ??
                   (isObject(preferred) ? preferred.id : undefined);
               }
             }
             if (runner === 'mar-agent' && typeof model !== 'string')
               return sendError(reply, 400, 'MODEL_ID_REQUIRED');
             if (runner === 'mar-agent' && typeof model === 'string') {
-              if (operation === 'start') networkInput.model = model;
+              if (operation === 'start') networkInput.modelId = model;
               executionResources = await runtimeModelPayload({
                 userId: user.userId,
                 nodeId: scope.nodeId,
@@ -783,13 +784,13 @@ export function registerMarctlSessionRoutes(
           );
         if (body.action === 'config') {
           const models =
-            session?.runner === 'mar-agent' && body.model !== undefined
+            session?.runner === 'mar-agent' && body.modelId !== undefined
               ? ((await input.marAgentModels?.listForUser?.(user.userId)) ?? [])
               : undefined;
           return reply.send(
             await call('session.config.update', {
               sessionId,
-              ...(body.model === undefined ? {} : { model: body.model }),
+              ...(body.modelId === undefined ? {} : { modelId: body.modelId }),
               ...(body.effort === undefined ? {} : { effort: body.effort }),
               ...(models === undefined ? {} : { marAgentModels: models.map(nodeModelSummary) })
             })
@@ -851,7 +852,7 @@ export function registerMarctlSessionRoutes(
         }
 
         let runner = session?.runner;
-        let model = session?.model;
+        let model = session?.modelId;
         if (body.action === 'start') {
           runner = body.runner;
           const profiles = object(
@@ -875,8 +876,8 @@ export function registerMarctlSessionRoutes(
           const models = isObject(profile) && Array.isArray(profile.models) ? profile.models : [];
           const preferred = models.find((value) => isObject(value) && value.isDefault === true);
           model =
-            body.model ??
-            (isObject(defaults) ? defaults.model : undefined) ??
+            body.modelId ??
+            (isObject(defaults) ? defaults.modelId : undefined) ??
             (isObject(preferred) ? preferred.id : undefined);
         }
         if (runner === 'mar-agent' && typeof model !== 'string')
@@ -929,7 +930,8 @@ export function registerMarctlSessionRoutes(
           workspaceId: scope.workspaceId,
           user: { ...user, scheduled, ...(channel === undefined ? {} : { channel }) }
         };
-        const runtimeModel = runner === 'mar-agent' && typeof model === 'string' ? { model } : {};
+        const runtimeModel =
+          runner === 'mar-agent' && typeof model === 'string' ? { modelId: model } : {};
         const parentSessionId =
           body.action === 'start'
             ? caller.type === 'execution'
@@ -946,7 +948,7 @@ export function registerMarctlSessionRoutes(
                 content: body.content,
                 ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
                 clientMessageId: body.clientMessageId,
-                ...(typeof model === 'string' ? { model } : {}),
+                ...(typeof model === 'string' ? { modelId: model } : {}),
                 ...(body.effort === undefined ? {} : { effort: body.effort }),
                 ...(body.title === undefined ? {} : { customTitle: body.title }),
                 ...(parentSessionId === undefined ? {} : { parentSessionId })

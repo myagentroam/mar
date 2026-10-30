@@ -210,7 +210,7 @@ it.each(
         attachmentPaths: [],
         cwd: home,
         externalSessionId: session.id,
-        model: null,
+        modelId: null,
         effort: null,
         access: null,
         collaborationMode: 'default',

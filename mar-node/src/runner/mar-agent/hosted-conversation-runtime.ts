@@ -683,7 +683,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
 function historySession(input: HostedConversationRuntimeHistoryInput): NodeAgentSession {
   return {
     id: input.sessionId,
-    model: input.modelId ?? null,
+    modelId: input.modelId ?? null,
     effort: null,
     access: 'full-access'
   } as NodeAgentSession;

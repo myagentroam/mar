@@ -34,7 +34,7 @@ describe('SessionInputService execution entry', () => {
         cwd: '/fixture',
         content: 'hello',
         clientMessageId: 'message',
-        model: 'selected',
+        modelId: 'selected',
         customTitle: 'CLI title',
         parentSessionId: 'parent'
       },
@@ -52,7 +52,7 @@ describe('SessionInputService execution entry', () => {
       expect.objectContaining({
         customTitle: 'CLI title',
         parentSessionId: 'parent',
-        model: 'selected',
+        modelId: 'selected',
         secretEnvironment: { TOKEN: 'private', MAR_USERNAME: 'alice' },
         marAgentRuntimeScopeId: 'scope',
         __marctlOrigin: { sessionId: 'source', name: 'Source' },
@@ -72,10 +72,10 @@ describe('SessionInputService execution entry', () => {
       cwd: '/fixture',
       content: 'hello',
       clientMessageId: 'message',
-      model: 'codex-model'
+      modelId: 'codex-model'
     });
     expect(f.prepare).not.toHaveBeenCalled();
-    expect(f.requestNode.mock.calls[0]?.[2]).toMatchObject({ model: 'codex-model' });
+    expect(f.requestNode.mock.calls[0]?.[2]).toMatchObject({ modelId: 'codex-model' });
   });
 
   it('audits preparation failure once and never dispatches the execution', async () => {
@@ -125,7 +125,7 @@ describe('SessionInputService execution entry', () => {
       await expect(
         f.service.submitMessage(
           { ...f.context, sessionId: 'target' },
-          { clientMessageId: 'message', content: 'hello', model: 'selected' }
+          { clientMessageId: 'message', content: 'hello', modelId: 'selected' }
         )
       ).resolves.toMatchObject({ accepted: true });
       expect(f.prepare).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'target' }));

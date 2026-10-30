@@ -37,7 +37,10 @@ test('maps six Agent operations to the common Node command without inventing a s
         }
       }
     });
-  assert.equal(await invoke(['start', '-m', 'work', '--goal', 'finish']), 0);
+  assert.equal(
+    await invoke(['start', '-m', 'work', '--goal', 'finish', '--model-id', 'selected-id']),
+    0
+  );
   assert.equal(await invoke(['send', 'child', '--clear-goal']), 0);
   assert.equal(
     await invoke([
@@ -66,6 +69,8 @@ test('maps six Agent operations to the common Node command without inventing a s
     ['start', 'send', 'wait', 'stop', 'list', 'view']
   );
   assert.deepEqual(calls[0].command.input.goal, { objective: 'finish' });
+  assert.equal(calls[0].command.input.modelId, 'selected-id');
+  assert.equal(Object.hasOwn(calls[0].command.input, 'model'), false);
   assert.equal(calls[0].command.input.runner, undefined);
   assert.equal(calls[0].command.input.parentSessionId, undefined);
   assert.deepEqual(calls[1].command.input.goal, { clear: true });
@@ -566,25 +571,31 @@ test('updates model and effort independently and forwards startup effort', async
   };
   const invoke = (args) =>
     main(['agents', ...args, '--json'], { env, client, stdout: { write() {} } });
-  assert.equal(await invoke(['config', 'target', '--model', 'next-model', '--effort', 'high']), 0);
+  assert.equal(
+    await invoke(['config', 'target', '--model-id', 'next-model', '--effort', 'high']),
+    0
+  );
   assert.deepEqual(calls[0], {
     action: 'config',
     sessionId: 'target',
-    model: 'next-model',
+    modelId: 'next-model',
     effort: 'high'
   });
   assert.equal(await invoke(['config', 'target', '--effort', '']), 0);
   assert.deepEqual(calls[1], { action: 'config', sessionId: 'target', effort: '' });
-  assert.equal(await invoke(['config', 'target', '--model', 'next-model']), 0);
+  assert.equal(await invoke(['config', 'target', '--model-id', 'next-model']), 0);
   assert.equal(Object.hasOwn(calls[2], 'effort'), false);
   assert.equal(await invoke(['start', '--runner', 'codex', '--effort', 'low', '-m', 'task']), 0);
   assert.equal(calls[3].command.input.effort, 'low');
   for (const args of [
     ['config', 'target'],
     ['config', 'target', '--access', 'full-access'],
-    ['config', 'target', '--model', ''],
+    ['config', 'target', '--model-id', ''],
+    ['config', 'target', '--model', 'old'],
+    ['start', '--model', 'old', '-m', 'work'],
+    ['start', '--model', 'old', '--model-id', 'selected', '-m', 'work'],
     ['config', 'target', '--effort', 'x'.repeat(121)],
-    ['config', 'target', '--model', 'x'.repeat(121)]
+    ['config', 'target', '--model-id', 'x'.repeat(121)]
   ])
     assert.throws(() => parseArgs(['agents', ...args]));
   let output = '';
@@ -1406,7 +1417,7 @@ test('keeps structured authorization failures and reports unknown mutation outco
   assert.ok(!output.includes(env.MAR_CTL_USER_TOKEN));
   for (const args of [
     ['start', '--runner', 'mar-agent', '-m', 'task'],
-    ['config', 's', '--model', 'model'],
+    ['config', 's', '--model-id', 'model'],
     ['rename', 's', '--title', 'title'],
     ['prompt', 'set', 's', '-m', 'new instructions'],
     ['prompt', 'clear', 's'],

@@ -222,7 +222,7 @@ describe('Runner Profile Domain Service', () => {
 
     await service.load('node-a');
     expect(service.defaultFor('node-a', 'mar-agent')).toMatchObject({
-      model: 'dev-coding',
+      modelId: 'dev-coding',
       effort: 'medium'
     });
 
@@ -422,7 +422,7 @@ describe('Runner Profile Domain Service', () => {
       'opencode'
     ]);
     expect(service.defaultFor('node-a', 'codex')).toMatchObject({
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'low'
     });
   });
@@ -568,7 +568,7 @@ describe('Runner Profile Domain Service', () => {
     profiles.value = [codexProfile];
     service.save('node-a', {
       runner: 'codex',
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'medium',
       access: 'on-request'
     });
@@ -576,6 +576,6 @@ describe('Runner Profile Domain Service', () => {
     const result = await loading;
 
     expect(result?.defaultsChanged).toBe(false);
-    expect(service.defaultFor('node-a', 'codex').model).toBe('gpt-5.6-sol');
+    expect(service.defaultFor('node-a', 'codex').modelId).toBe('gpt-5.6-sol');
   });
 });

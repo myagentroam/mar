@@ -287,7 +287,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
             ? emptyCodexConfiguration()
             : {
                 runner: this.name,
-                model: selected.model,
+                modelId: selected.model,
                 effort: selected.defaultEffort,
                 access: 'on-request'
               }
@@ -519,7 +519,8 @@ export class CodexRunner extends AbstractRunner<'codex'> {
       profile !== undefined &&
       profile.models.some(
         (model) =>
-          model.id === configuration.model && model.supportedEfforts.includes(configuration.effort)
+          model.id === configuration.modelId &&
+          model.supportedEfforts.includes(configuration.effort)
       ) &&
       profile.accessOptions.some((option) => option.id === configuration.access)
     );
@@ -906,7 +907,11 @@ export class CodexRunner extends AbstractRunner<'codex'> {
   ): Promise<string> {
     const threadId = session.externalSessionId;
     if (threadId === null) throw new Error('SESSION_REWIND_UNAVAILABLE');
-    const configuration = { model: session.model, effort: session.effort, access: session.access };
+    const configuration = {
+      model: session.modelId,
+      effort: session.effort,
+      access: session.access
+    };
     return this.withTemporaryClient(async (client) => {
       const result =
         boundary === null
@@ -939,7 +944,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     const threadId = session.externalSessionId!;
     return this.withTemporaryClient(async (client) => {
       const resumed = await client.resumeThread(threadId, session.cwd, {
-        model: session.model,
+        model: session.modelId,
         effort: session.effort,
         access: session.access
       });
@@ -991,7 +996,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
 }
 
 function emptyCodexConfiguration(): RunnerDefaultConfiguration {
-  return { runner: 'codex', model: '', effort: '', access: 'on-request' };
+  return { runner: 'codex', modelId: '', effort: '', access: 'on-request' };
 }
 
 function codexModelPage(value: unknown): {

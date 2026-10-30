@@ -196,7 +196,7 @@ describe('Claude session discovery, resumption, and projection', () => {
     });
     database.saveRunnerDefaults({
       runner: 'claude-code',
-      model: 'opus',
+      modelId: 'opus',
       effort: 'xhigh',
       access: 'bypass'
     });
@@ -261,7 +261,7 @@ describe('Claude session discovery, resumption, and projection', () => {
               readonly id: string;
               readonly activity: string;
               readonly control: { level: string };
-              readonly model: string;
+              readonly modelId: string;
               readonly effort: string;
               readonly access: string;
             };
@@ -280,7 +280,7 @@ describe('Claude session discovery, resumption, and projection', () => {
           id: 'cli-session',
           activity: 'MANAGED_ACTIVE',
           control: { level: 'MANAGED' },
-          model: 'opus',
+          modelId: 'opus',
           effort: 'xhigh',
           access: 'bypass'
         }

@@ -14,7 +14,7 @@ export interface NodeAgentSession {
   readonly channelToken: string | null;
   readonly cwd: string;
   /** Runner preferences chosen when this managed session was created. */
-  readonly model: string | null;
+  readonly modelId: string | null;
   readonly effort: string | null;
   readonly access: string | null;
   readonly customTitle: string | null;
@@ -37,7 +37,7 @@ export interface NativeSessionMetadata {
   readonly runnerTitlePending: boolean;
   readonly pinnedAt: number | null;
   readonly pinOrder: number | null;
-  readonly model: string | null;
+  readonly modelId: string | null;
   readonly effort: string | null;
   readonly access: string | null;
 }

@@ -37,7 +37,7 @@ export class SessionChannelService {
 
   executeCommand(
     context: ChannelExecutionContext,
-    input: { commandId: string; input: string; model?: string }
+    input: { commandId: string; input: string; modelId?: string }
   ): Promise<unknown> {
     return this.sessions.executeCommand(context, input);
   }

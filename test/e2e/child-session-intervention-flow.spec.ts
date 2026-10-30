@@ -14,7 +14,7 @@ import type { AgentNetworkObservations } from '../../mar-node/src/service/agent-
 import type { RunEventService } from '../../mar-node/src/service/run-event-service.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 
-test('opens a mapped child and carries user intervention back to its parent observation', async ({
+test('opens a child from the session list and carries user intervention back to its parent observation', async ({
   page,
   baseURL
 }) => {
@@ -29,7 +29,7 @@ test('opens a mapped child and carries user intervention back to its parent obse
   const database = new NodeDatabase(':memory:', 'child-intervention');
   database.saveRunnerDefaults({
     runner: 'codex',
-    model: 'gpt-5.3-codex',
+    modelId: 'gpt-5.3-codex',
     effort: 'medium',
     access: 'auto'
   });
@@ -122,7 +122,7 @@ test('opens a mapped child and carries user intervention back to its parent obse
       runner: 'codex',
       cwd: workspacePath,
       externalSessionId: 'child-intervention-parent',
-      model: 'gpt-5.3-codex',
+      modelId: 'gpt-5.3-codex',
       effort: 'medium',
       nativeControl: 'MAR_MANAGED',
       customTitle: 'Intervention parent'
@@ -191,7 +191,15 @@ test('opens a mapped child and carries user intervention back to its parent obse
       await processHeading.click();
     const group = page.locator('.subagent-group').first();
     await group.locator(':scope > details > summary').click();
-    await group.getByRole('button', { name: '打开会话' }).click();
+    await expect(group.getByRole('button', { name: '打开会话' })).toHaveCount(0);
+    await page
+      .getByRole('tablist', { name: '会话分组', exact: true })
+      .getByRole('tab', { name: /^子会话(?:,|$)/ })
+      .click();
+    await page
+      .locator('.session-list .session-link')
+      .filter({ hasText: 'Intervention child' })
+      .click();
     const input = page.getByRole('textbox', { name: '输入消息' });
     await input.fill('User intervention in child');
     const submission = page.waitForResponse(

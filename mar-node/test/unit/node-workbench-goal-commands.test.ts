@@ -55,7 +55,7 @@ describe('Node Workbench Manifest and command control', () => {
           workspaceId: workspace.id,
           runner: 'codex',
           cwd: workspace.path,
-          model: 'gpt-5.3-codex',
+          modelId: 'gpt-5.3-codex',
           clientMessageId: 'goal-start-once',
           content: 'Implement this exactly once'
         },
@@ -1408,7 +1408,7 @@ describe('Node Workbench Manifest and command control', () => {
       runner: 'mar-agent',
       cwd: workspace.path,
       nativeControl: 'MAR_MANAGED',
-      model: 'model-1'
+      modelId: 'model-1'
     });
     const marAgentModel = { id: 'model-1', credential: { type: 'RUNTIME_TICKET' } };
     const marAgentModels = [marAgentModel];
@@ -1599,7 +1599,7 @@ describe('Node Workbench Manifest and command control', () => {
       runner: 'mar-agent',
       cwd: workspace.path,
       nativeControl: 'MAR_MANAGED',
-      model: 'model-1',
+      modelId: 'model-1',
       effort: 'high',
       access: 'full-access'
     });
@@ -1630,7 +1630,7 @@ describe('Node Workbench Manifest and command control', () => {
       attachmentPaths: [],
       cwd: workspace.path,
       externalSessionId: null,
-      model: 'model-1',
+      modelId: 'model-1',
       effort: 'high',
       access: 'full-access',
       collaborationMode: 'default',
@@ -1747,7 +1747,7 @@ describe('Node Workbench Manifest and command control', () => {
       attachmentPaths: [],
       cwd: workspace.path,
       externalSessionId: null,
-      model: null,
+      modelId: null,
       effort: null,
       access: 'bypass',
       collaborationMode: 'default',

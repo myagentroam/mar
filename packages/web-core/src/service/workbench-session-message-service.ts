@@ -348,7 +348,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
                   workspaceId,
                   runner: session.runner,
                   cwd: selectedWorkspace!.path,
-                  model: session.model,
+                  modelId: session.modelId,
                   effort: session.effort,
                   access: session.access,
                   title: session.runnerTitle,
@@ -359,7 +359,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
                 }
               : {
                   workspaceId,
-                  ...(session.runner === 'mar-agent' ? { model: session.model } : {})
+                  ...(session.runner === 'mar-agent' ? { modelId: session.modelId } : {})
                 }),
             clientMessageId,
             content,

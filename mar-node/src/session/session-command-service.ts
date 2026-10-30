@@ -66,6 +66,7 @@ export class SessionCommandService {
   private async sessionCommand(input: Record<string, unknown>): Promise<unknown> {
     if (
       typeof input.sessionId !== 'string' ||
+      Object.hasOwn(input, 'model') ||
       typeof input.commandId !== 'string' ||
       input.commandId.length === 0 ||
       typeof input.input !== 'string' ||

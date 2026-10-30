@@ -272,7 +272,7 @@ export class SessionCatalogService {
           nativeControl: 'EXTERNAL',
           channelToken: null,
           cwd: workspace.path,
-          model: persisted.metadata.model,
+          modelId: persisted.metadata.modelId,
           effort: persisted.metadata.effort,
           access: persisted.metadata.access,
           customTitle: persisted.metadata.customTitle,
@@ -396,7 +396,7 @@ export class SessionCatalogService {
       cwd,
       nativeControl: 'MAR_MANAGED',
       ...(nativeId === null ? {} : { externalSessionId: nativeId }),
-      ...(source.model === null ? {} : { model: source.model }),
+      ...(source.modelId === null ? {} : { modelId: source.modelId }),
       ...(source.effort === null ? {} : { effort: source.effort }),
       ...(source.access === null ? {} : { access: source.access }),
       title

@@ -257,7 +257,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
           content: 'first unfinished request',
           clientMessageId: 'first-input',
           ...(mode === 'goal' ? { deferredCommands: [{ commandId: 'goal', input: '/goal' }] } : {}),
-          model: model.id,
+          modelId: model.id,
           effort: '',
           access: 'full-access',
           marAgentModel: model,

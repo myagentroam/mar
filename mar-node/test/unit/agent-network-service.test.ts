@@ -93,6 +93,29 @@ function fixture(parentSessionId: string | null = 'parent') {
 
 afterEach(() => vi.useRealTimers());
 
+describe('Agent Network model selection', () => {
+  it('forwards the selected Profile model ID', async () => {
+    const f = fixture();
+    await f.service.start(f.actor, { content: 'work', modelId: 'internal-id' });
+    expect(f.start).toHaveBeenCalledWith(
+      f.actor,
+      expect.objectContaining({ modelId: 'internal-id' }),
+      undefined
+    );
+  });
+
+  it.each([{ model: 'Luna' }, { model: 'old', modelId: 'internal-id' }])(
+    'rejects the removed model field before creation: %j',
+    async (selection) => {
+      const f = fixture();
+      await expect(
+        invokeAgentNetwork(f.service, f.actor, 'start', { content: 'work', ...selection })
+      ).rejects.toThrow('AGENT_START_INVALID');
+      expect(f.start).not.toHaveBeenCalled();
+    }
+  );
+});
+
 describe('Agent Network send and stop', () => {
   it.each(['message', 'goal', 'failed message'])(
     'does not subscribe to a non-child after sending %s',

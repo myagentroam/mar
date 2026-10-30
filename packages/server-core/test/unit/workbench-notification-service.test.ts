@@ -616,7 +616,11 @@ describe('Server Workbench notification service', () => {
   });
 
   it('rejects hosted notifications when template authorization fails and synchronizes bulk conversation reads only when they change', async () => {
-    const execute = vi.fn(async () => [{ affectedRows: 2 }, []]);
+    const execute = vi.fn(async (sql: string) =>
+      sql.startsWith('SELECT id')
+        ? [[{ id: 'notification-1' }, { id: 'notification-2' }], []]
+        : [{ affectedRows: 2 }, []]
+    );
     const push = vi.fn();
     const service = new WorkbenchNotificationService(
       { raw: { execute } } as never,
@@ -651,6 +655,7 @@ describe('Server Workbench notification service', () => {
       type: 'notification.conversation-read',
       nodeId: 'node-1',
       conversationId: 'conversation-1',
+      notificationIds: ['notification-1', 'notification-2'],
       readAt: 1_000
     });
   });
@@ -674,6 +679,7 @@ describe('Server Workbench notification service', () => {
     const execute = vi.fn(async (sql: string) => {
       if (sql.includes('DELETE FROM')) return [{ affectedRows: 0 }, []];
       if (sql.includes('SELECT * FROM')) return [[row], []];
+      if (sql.startsWith('SELECT id')) return [[{ id: row.id }], []];
       if (sql.includes('UPDATE workbench_notifications SET read_at=')) {
         row.read_at = now;
         return [{ affectedRows: 1 }, []];
@@ -705,6 +711,7 @@ describe('Server Workbench notification service', () => {
       nodeId: 'node-1',
       workspaceId: 'workspace-1',
       sessionId: 'session-1',
+      notificationIds: ['notification-1'],
       readAt: now
     });
 
@@ -862,12 +869,79 @@ describe('Server Workbench notification service', () => {
     expect(push).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['session', 'conversation'] as const)(
+    'confirms only persisted reads for %s, not late notifications with an old occurrence time',
+    async (target) => {
+      const rows = [{ id: 'covered', created_at: 900, read_at: null as number | null }];
+      const execute = vi.fn(async (sql: string, parameters: unknown[] = []) => {
+        if (sql.startsWith('UPDATE workbench_notifications')) {
+          rows[0]!.read_at = Number(parameters[0]);
+          rows.push({ id: 'late', created_at: 800, read_at: null });
+          return [{ affectedRows: 1 }, []];
+        }
+        expect(sql).toContain('SELECT id FROM workbench_notifications');
+        expect(sql).toContain('read_at=?');
+        expect(sql).toContain('LIMIT 251');
+        expect(parameters).toEqual(
+          target === 'session'
+            ? [7, 'node-1', 'workspace-1', 'session-1', 1_000, 1_000]
+            : [7, 'node-1', 'conversation-1', 1_000, 1_000]
+        );
+        return [rows.filter((row) => row.read_at === 1_000), []];
+      });
+      const push = vi.fn();
+      const service = new WorkbenchNotificationService(
+        { raw: { execute } } as never,
+        vi.fn(async () => true),
+        push,
+        () => 1_000
+      );
+      if (target === 'session')
+        await service.markSessionRead(7, 'node-1', 'workspace-1', 'session-1');
+      else await service.markConversationRead(7, 'node-1', 'conversation-1');
+      expect(push).toHaveBeenCalledExactlyOnceWith(
+        7,
+        expect.objectContaining({ notificationIds: ['covered'], readAt: 1_000 })
+      );
+      expect(rows[1]!.read_at).toBeNull();
+    }
+  );
+
+  it.each([
+    ['session', 250],
+    ['session', 251],
+    ['conversation', 250],
+    ['conversation', 251]
+  ] as const)('bounds %s confirmations with %s persisted reads', async (target, count) => {
+    const ids = Array.from({ length: count }, (_, index) => ({ id: `notification-${index}` }));
+    const execute = vi.fn(async (sql: string) =>
+      sql.startsWith('SELECT id') ? [ids, []] : [{ affectedRows: count }, []]
+    );
+    const push = vi.fn();
+    const service = new WorkbenchNotificationService(
+      { raw: { execute } } as never,
+      vi.fn(async () => true),
+      push,
+      () => 1_000
+    );
+    if (target === 'session')
+      await service.markSessionRead(7, 'node-1', 'workspace-1', 'session-1');
+    else await service.markConversationRead(7, 'node-1', 'conversation-1');
+    expect(push).toHaveBeenCalledExactlyOnceWith(
+      7,
+      count === 250
+        ? expect.objectContaining({ notificationIds: ids.map((row) => row.id) })
+        : { type: 'notification.updated' }
+    );
+  });
+
   it('synchronizes other browsers only when read state actually changes', async () => {
     const execute = vi
       .fn()
       .mockResolvedValueOnce([{ affectedRows: 0 }, []])
       .mockResolvedValueOnce([{ affectedRows: 0 }, []])
       .mockResolvedValueOnce([{ affectedRows: 2 }, []])
+      .mockResolvedValueOnce([[{ id: 'notification-1' }, { id: 'notification-2' }], []])
       .mockResolvedValueOnce([{ affectedRows: 3 }, []]);
     const push = vi.fn();
     const service = new WorkbenchNotificationService(

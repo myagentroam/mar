@@ -586,7 +586,7 @@ export class CodexManagedRunController<TAttachment> {
             ...value,
             sessionId: this.runner.execution.runs.get(runId)?.threadId
           }),
-        active ? (this.host.session(active.sessionId)?.model ?? undefined) : undefined
+        active ? (this.host.session(active.sessionId)?.modelId ?? undefined) : undefined
       );
       this.usage.set(runId, usage);
     }

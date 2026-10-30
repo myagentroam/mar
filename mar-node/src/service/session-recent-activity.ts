@@ -165,7 +165,7 @@ export function marctlSessionDetail(
     ...identity(session),
     status,
     runId,
-    model: session.model,
+    modelId: session.modelId,
     effort: session.effort,
     queuedCount,
     latestMessage,

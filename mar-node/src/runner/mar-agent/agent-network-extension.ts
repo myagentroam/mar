@@ -7,6 +7,11 @@ import { agentNetworkWaitModelOutput } from './agent-network-wait-output.js';
 import { agentOperationEvent } from './agent-operation-presentation.js';
 
 const text = { type: 'string', minLength: 1 } as const;
+const runner = {
+  ...text,
+  description:
+    'Runner type (for example mar-agent), not a model name; defaults to the current Runner.'
+} as const;
 const attachmentIds = {
   type: 'array',
   items: text,
@@ -55,8 +60,12 @@ const tools: readonly {
       content: { type: 'string' },
       attachments,
       attachmentIds,
-      runner: text,
-      model: text,
+      runner,
+      modelId: {
+        ...text,
+        description:
+          'Model ID from the target Runner Profile models[].id, not a display name. For MAR Agent this is an internal configuration ID, not an upstream model ID; omit to use the Runner default.'
+      },
       effort: text,
       title: text,
       goal,
@@ -67,7 +76,7 @@ const tools: readonly {
   {
     action: 'send',
     description:
-      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Prefer REPLACE_CURRENT for timely communication or course correction. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first. Sending to a non-child does not subscribe to its updates.',
+      'Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. Messages default to REPLACE_CURRENT (steer); use QUEUE only when deferred delivery is explicitly requested. QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.',
     properties: {
       agentId: text,
       content: { type: 'string' },
@@ -80,7 +89,12 @@ const tools: readonly {
         required: ['approvalId', 'decision'],
         properties: { approvalId: text, decision: { type: 'string', enum: ['approve', 'reject'] } }
       },
-      deliveryIntent: { type: 'string', enum: ['SEND', 'QUEUE', 'REPLACE_CURRENT'] },
+      deliveryIntent: {
+        type: 'string',
+        enum: ['SEND', 'QUEUE', 'REPLACE_CURRENT'],
+        description:
+          'Message delivery defaults to REPLACE_CURRENT (steer); explicit SEND remains supported.'
+      },
       clientMessageId: text
     },
     required: ['agentId']
@@ -88,7 +102,7 @@ const tools: readonly {
   {
     action: 'wait',
     description:
-      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot. Non-child targets are observed only during this call.',
+      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot.',
     properties: {
       agentId: text,
       agentIds: { type: 'array', items: text, minItems: 1, maxItems: 8 },
@@ -105,13 +119,19 @@ const tools: readonly {
   },
   {
     action: 'list',
-    description: 'List Sessions, descendants or a Runner profile.',
+    description:
+      'List direct children by default, discover Workspace Sessions, inspect descendants or query a Runner profile.',
     properties: {
       scope: { type: 'string', enum: ['workspace', 'children', 'descendants', 'profile'] },
-      agentId: text,
-      parent: text,
-      runner: text,
-      query: { type: 'string' },
+      agentId: {
+        ...text,
+        description: 'Root for children or descendants; defaults to the current Session.'
+      },
+      runner: {
+        ...runner,
+        description: 'Runner for profile scope; defaults to the current Runner, not a model name.'
+      },
+      query: { type: 'string', description: 'Search Sessions; not a model selector.' },
       limit: { type: 'integer', minimum: 1, maximum: 100 },
       cursor: text
     }
@@ -133,13 +153,15 @@ const delegationPrompt = [
   '# Delegation and coordination',
   'Delegate bounded, self-contained tasks when independent progress or context savings materially helps. Keep simple or tightly coupled work local.',
   'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'Follow up through the direct delegate by default; inspect deeper Sessions only when a concrete issue needs independent verification.',
   'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
   'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n\n');
 
 const collaborationPrompt = [
   '# Workspace collaboration',
-  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Sending to a non-child does not subscribe to its updates; explicitly wait when you need its progress or completion."
+  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Explicitly wait when you need progress or completion.",
+  "Reuse known Session IDs rather than rediscovering them. Send updates for meaningful progress, blockers, or changes that affect the recipient's work; combine related updates and avoid acknowledgment-only exchanges."
 ].join('\n\n');
 
 const managementPrompt = [
@@ -191,7 +213,7 @@ export function agentNetworkExtension(
             'title',
             'executionId',
             'runner',
-            'model',
+            'modelId',
             'effort',
             'waitFor',
             'waitMs',
@@ -206,18 +228,22 @@ export function agentNetworkExtension(
           async execute(input, call) {
             const executionId = currentExecution();
             if (!executionId) throw new Error('AGENT_ACTOR_NOT_ACTIVE');
-            const result = await invoke(
-              executionId,
-              tool.action,
-              input as Record<string, unknown>,
-              call
-            );
+            const args = input as Record<string, unknown>;
+            const operationInput =
+              tool.action === 'send' &&
+              args.deliveryIntent === undefined &&
+              ((typeof args.content === 'string' && !!args.content.trim()) ||
+                (Array.isArray(args.attachments) && args.attachments.length > 0) ||
+                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0))
+                ? { ...args, deliveryIntent: 'REPLACE_CURRENT' }
+                : args;
+            const result = await invoke(executionId, tool.action, operationInput, call);
             const modelResult =
               tool.action === 'wait' ? agentNetworkWaitModelOutput(result) : result;
             return {
               data: result,
               content: JSON.stringify(modelResult),
-              ...agentOperationEvent(tool.action, input, result)
+              ...agentOperationEvent(tool.action, operationInput, result)
             };
           }
         });

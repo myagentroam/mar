@@ -304,8 +304,8 @@ describe('Workbench Event Projection', () => {
         return (
           path.includes('cursor=')
             ? segmentPage(
-                Array.from({ length: 10 }, (_, index) => turn(`turn-${index + 1}`)),
-                'before-1'
+                Array.from({ length: 3 }, (_, index) => turn(`turn-${index + 8}`)),
+                'before-8'
               )
             : segmentPage(
                 Array.from({ length: 15 }, (_, index) => turn(`turn-${index + 27}`)),
@@ -319,10 +319,10 @@ describe('Workbench Event Projection', () => {
     });
 
     await service.loadOlderConversationTurns();
-    expect(turns.value).toHaveLength(40);
-    expect(nextCursor.value).toBe('before-1');
+    expect(turns.value).toHaveLength(33);
+    expect(nextCursor.value).toBe('before-8');
     await service.refreshRecentConversationTurns();
-    expect(requests[0]).toContain('limit=10&cursor=before-11');
+    expect(requests[0]).toContain('limit=3&cursor=before-11');
     expect(requests[1]).toContain('limit=15');
     expect(requests[1]).not.toContain('cursor=');
     expect(replaceRecent).toHaveBeenCalledWith(

@@ -47,7 +47,7 @@ export class SessionContextService {
       return { context: null, pending: false };
     }
     const context: SessionContextUsage = {
-      model: usage.model ?? session.model,
+      model: usage.model ?? session.modelId,
       usedTokens: usage.usedTokens,
       maxTokens: usage.maxTokens,
       percentage: Math.round((usage.usedTokens / usage.maxTokens) * 1000) / 10

@@ -146,6 +146,7 @@ const surfacePage = shallowReactive({
     selectedConversationId: ref(undefined)
   },
   setComposerInputFocus() {},
+  setComposerRangeEditor() {},
   workspaceTarget: { nodeId: 'node', workspaceId: 'offline' },
   workspaceHost: { connected: false },
   selectedWorkspace: undefined,

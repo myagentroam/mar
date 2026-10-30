@@ -135,7 +135,7 @@ export class NativeSessionProjectionService {
       nativeControl: 'EXTERNAL',
       channelToken: null,
       cwd: workspace.path,
-      model: record.metadata.model,
+      modelId: record.metadata.modelId,
       effort: record.metadata.effort,
       access: record.metadata.access,
       customTitle: record.metadata.customTitle,
@@ -172,7 +172,7 @@ export class NativeSessionProjectionService {
       cwd: direct.cwd,
       createdAt: direct.createdAt,
       lastActivityAt: direct.lastActivityAt,
-      ...(direct.model === null ? {} : { model: direct.model }),
+      ...(direct.modelId === null ? {} : { modelId: direct.modelId }),
       ...(direct.effort === null ? {} : { effort: direct.effort }),
       ...(direct.access === null ? {} : { access: direct.access }),
       ...(direct.runnerTitle === null ? {} : { title: direct.runnerTitle }),
@@ -192,10 +192,10 @@ export class NativeSessionProjectionService {
     const fallback = saved ?? runner.defaultConfiguration(workspace);
     const configuration: RunnerDefaultConfiguration = {
       runner: session.runner,
-      model:
-        typeof session.model === 'string' && session.model.trim().length > 0
-          ? session.model
-          : fallback.model,
+      modelId:
+        typeof session.modelId === 'string' && session.modelId.trim().length > 0
+          ? session.modelId
+          : fallback.modelId,
       effort: typeof session.effort === 'string' ? session.effort : fallback.effort,
       access: runner.restoreStoredAccess(session.access, fallback.access)
     };
@@ -205,14 +205,14 @@ export class NativeSessionProjectionService {
   ensureResumedConfiguration(session: NodeAgentSession): NodeAgentSession {
     const configuration = this.resumedConfiguration(session);
     if (
-      session.model === configuration.model &&
+      session.modelId === configuration.modelId &&
       session.effort === configuration.effort &&
       session.access === configuration.access
     )
       return session;
     return this.options.runtime.updateAgentSessionConfiguration({
       sessionId: session.id,
-      model: configuration.model,
+      modelId: configuration.modelId,
       effort: configuration.effort,
       access: configuration.access
     });
@@ -276,7 +276,7 @@ export class NativeSessionProjectionService {
       nativeControl: 'EXTERNAL',
       channelToken: null,
       cwd: input.cwd,
-      model: metadata?.model ?? null,
+      modelId: metadata?.modelId ?? null,
       effort: metadata?.effort ?? null,
       access: metadata?.access ?? null,
       customTitle: metadata?.customTitle ?? null,

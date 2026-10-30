@@ -270,7 +270,7 @@ export function registerSessionRunRoutes(input: {
       workspaceId?: unknown;
       runner?: unknown;
       cwd?: unknown;
-      model?: unknown;
+      modelId?: unknown;
       effort?: unknown;
       access?: unknown;
       title?: unknown;
@@ -298,7 +298,8 @@ export function registerSessionRunRoutes(input: {
       (body.content.length === 0 &&
         !(Array.isArray(body.attachmentIds) && body.attachmentIds.length > 0)) ||
       !validSessionTitle(body.title) ||
-      !validSessionOption(body.model) ||
+      Object.hasOwn(body, 'model') ||
+      !validSessionOption(body.modelId) ||
       !validSessionEffort(body.effort) ||
       !validSessionOption(body.access) ||
       (body.computerUse !== undefined && typeof body.computerUse !== 'boolean') ||
@@ -339,7 +340,7 @@ export function registerSessionRunRoutes(input: {
           cwd: body.cwd,
           clientMessageId: body.clientMessageId,
           content: body.content,
-          ...(typeof body.model === 'string' ? { model: body.model } : {}),
+          ...(typeof body.modelId === 'string' ? { modelId: body.modelId } : {}),
           ...(typeof body.effort === 'string' ? { effort: body.effort } : {}),
           ...(typeof body.access === 'string' ? { access: body.access } : {}),
           ...(typeof body.title === 'string' ? { title: body.title } : {}),
@@ -363,7 +364,7 @@ export function registerSessionRunRoutes(input: {
     Body: {
       nodeId?: unknown;
       workspaceId?: unknown;
-      model?: unknown;
+      modelId?: unknown;
       effort?: unknown;
       access?: unknown;
     };
@@ -377,10 +378,11 @@ export function registerSessionRunRoutes(input: {
       typeof body.nodeId !== 'string' ||
       body.nodeId.length === 0 ||
       (body.workspaceId !== undefined && !isNonEmptyString(body.workspaceId)) ||
-      typeof body.model !== 'string' ||
+      typeof body.modelId !== 'string' ||
+      Object.hasOwn(body, 'model') ||
       typeof body.effort !== 'string' ||
       typeof body.access !== 'string' ||
-      !validSessionOption(body.model) ||
+      !validSessionOption(body.modelId) ||
       !validSessionEffort(body.effort) ||
       !validSessionOption(body.access)
     )
@@ -407,7 +409,7 @@ export function registerSessionRunRoutes(input: {
           'session.config.update',
           {
             sessionId: request.params.sessionId,
-            model: body.model,
+            modelId: body.modelId,
             effort: body.effort,
             access: body.access,
             secretEnvironment: await secrets.resolve(
@@ -1040,7 +1042,7 @@ export function registerSessionRunRoutes(input: {
       attachments?: unknown;
       attachmentIds?: unknown;
       deliveryIntent?: unknown;
-      model?: unknown;
+      modelId?: unknown;
       computerUse?: unknown;
     };
   }>('/api/agent-sessions/:sessionId/messages', async (request, reply) => {
@@ -1063,6 +1065,7 @@ export function registerSessionRunRoutes(input: {
         body.deliveryIntent !== 'QUEUE' &&
         body.deliveryIntent !== 'REPLACE_CURRENT') ||
       !validMessageAttachments(body.attachments) ||
+      Object.hasOwn(body, 'model') ||
       !validComposerAttachmentIds(body.attachmentIds) ||
       (body.computerUse !== undefined && typeof body.computerUse !== 'boolean') ||
       (body.attachments !== undefined && body.attachmentIds !== undefined)
@@ -1106,7 +1109,7 @@ export function registerSessionRunRoutes(input: {
           ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
           ...(body.attachmentIds === undefined ? {} : { attachmentIds: body.attachmentIds }),
           ...(body.computerUse === undefined ? {} : { computerUse: body.computerUse }),
-          ...(typeof body.model === 'string' ? { model: body.model } : {})
+          ...(typeof body.modelId === 'string' ? { modelId: body.modelId } : {})
         }
       );
       return reply.code(202).send(result);

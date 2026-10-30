@@ -4,6 +4,7 @@ import { NODE_SCHEMA_MIGRATION_V19 } from './migrations/v019.js';
 import { NODE_SCHEMA_MIGRATION_V20 } from './migrations/v020.js';
 import { NODE_SCHEMA_MIGRATION_V21 } from './migrations/v021.js';
 import { NODE_SCHEMA_MIGRATION_V22 } from './migrations/v022.js';
+import { NODE_SCHEMA_MIGRATION_V23 } from './migrations/v023.js';
 import { normalizeSessionPrompt } from './runner/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -44,7 +45,8 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
   NODE_SCHEMA_MIGRATION_V19,
   NODE_SCHEMA_MIGRATION_V20,
   NODE_SCHEMA_MIGRATION_V21,
-  NODE_SCHEMA_MIGRATION_V22
+  NODE_SCHEMA_MIGRATION_V22,
+  NODE_SCHEMA_MIGRATION_V23
 ];
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
@@ -455,7 +457,7 @@ export class NodeDatabase {
     readonly runnerTitle?: string | null;
     readonly runnerTitlePending?: boolean;
     readonly pinned?: boolean;
-    readonly model?: string | null;
+    readonly modelId?: string | null;
     readonly effort?: string | null;
     readonly access?: string | null;
   }): NativeSessionMetadata {
@@ -486,7 +488,7 @@ export class NodeDatabase {
     const pinAtTop = input.pinned === true && pinOrder === null;
     if (pinAtTop) pinOrder = 0;
     else if (input.pinned === false) pinOrder = null;
-    const model = input.model === undefined ? (current?.model ?? null) : input.model;
+    const model = input.modelId === undefined ? (current?.modelId ?? null) : input.modelId;
     const effort = input.effort === undefined ? (current?.effort ?? null) : input.effort;
     const access = input.access === undefined ? (current?.access ?? null) : input.access;
     const parentSessionId =
@@ -499,7 +501,7 @@ export class NodeDatabase {
       sessionPrompt,
       runnerTitle,
       runnerTitlePending,
-      model,
+      modelId: model,
       effort,
       access
     });
@@ -552,7 +554,7 @@ export class NodeDatabase {
       runnerTitlePending,
       pinnedAt: pinOrder === null ? null : 1,
       pinOrder,
-      model,
+      modelId: model,
       effort,
       access
     };
@@ -916,7 +918,7 @@ function sessionMetadata(row: SqlRow): Omit<NativeSessionMetadata, 'pinnedAt' | 
     sessionPrompt: value('sessionPrompt'),
     runnerTitle: value('runnerTitle'),
     runnerTitlePending: raw['runnerTitlePending'] === true,
-    model: value('model'),
+    modelId: value('modelId'),
     effort: value('effort'),
     access: value('access')
   };

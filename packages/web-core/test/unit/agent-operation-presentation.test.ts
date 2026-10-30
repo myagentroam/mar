@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversationItem } from '../../src/model/workbench.js';
-import { agentGroupSessions } from '../../src/util/agent-operation-presentation.js';
+import { agentOperationTargets } from '../../src/util/agent-operation-presentation.js';
 import {
   conversationDisplayItems,
   conversationItemDetail,
@@ -54,13 +54,14 @@ describe('Agent operation presentation', () => {
     ]);
     expect(groups[0]).toMatchObject({ items: [{ id: 'start' }, { id: 'send' }] });
     expect(subagentGroupText(items.slice(0, 2))).toBe('Inspect changes');
-    expect(agentGroupSessions(items)).toEqual([
-      { sessionId: 'peer', title: 'Inspect changes' },
-      { sessionId: 'other', title: 'other' }
+    expect(groups[1]).toMatchObject({ items: [{ id: 'wait-many' }] });
+    expect(agentOperationTargets(items[2]!.payload)).toEqual([
+      { agentId: 'peer', sessionId: 'peer' },
+      { agentId: 'other', sessionId: 'other' }
     ]);
   });
 
-  it('uses explicit public fields for all Runners and never tool names for navigation or grouping', () => {
+  it('uses explicit public fields for all Runners and never tool names for grouping', () => {
     for (const toolName of ['agent_start', 'spawn_agent', 'Agent', 'task']) {
       expect(conversationDisplayItems([item(toolName, { toolName })])[0]?.type).toBe('tool_group');
     }
@@ -72,14 +73,14 @@ describe('Agent operation presentation', () => {
         title: 'Native task'
       });
       expect(conversationDisplayItems([entry])[0]?.type).toBe('subagent_group');
-      expect(agentGroupSessions([entry])).toEqual([]);
+      expect(agentOperationTargets(entry.payload)).toEqual([{ agentId: 'native-id' }]);
       expect(subagentGroupText([entry])).toBe('Native task');
     }
     const entry = item('failed', {
       toolName: 'agent_send',
       agentOperation: { action: 'SEND', targets: [{ agentId: 'input-only' }] }
     });
-    expect(agentGroupSessions([entry])).toEqual([]);
+    expect(agentOperationTargets(entry.payload)).toEqual([{ agentId: 'input-only' }]);
   });
 
   it('renders original Tool, identities, output and error in the shared detail surface', () => {

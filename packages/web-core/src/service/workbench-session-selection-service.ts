@@ -280,7 +280,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         sessionResult.session.workspaceId === workspaceId &&
         current(requestId, nodeId, sessionId, workspaceId)
       )
-        await options.markSessionRead(nodeId, workspaceId!, sessionResult.session.id);
+        void Promise.resolve(
+          options.markSessionRead(nodeId, workspaceId!, sessionResult.session.id)
+        ).catch(() => undefined);
     } catch (error) {
       await cachedPositioning;
       if (!isCurrent()) return;
@@ -307,11 +309,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
   }
 
   async function selectSession(sessionId: string): Promise<void> {
-    if (options.selectedSessionId.value === sessionId && !options.draftOpen.value) {
-      options.closeMobileSurface();
-      return;
-    }
-    await openSession(sessionId);
+    await openWorkspaceTabSession(sessionId);
   }
 
   async function openWorkspaceTabSession(
@@ -346,7 +344,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
           return;
         }
         if (session !== undefined) onSessionResolved?.(session);
-        await options.markSessionRead(target.nodeId, target.workspaceId, sessionId);
+        void Promise.resolve(
+          options.markSessionRead(target.nodeId, target.workspaceId, sessionId)
+        ).catch(() => undefined);
         return;
       }
     }

@@ -252,7 +252,7 @@ describe('Codex App Server client', () => {
         runner: 'codex',
         externalSessionId: 'native',
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession;
@@ -337,7 +337,7 @@ describe('Codex App Server client', () => {
         externalSessionId: 'thread',
         nativeControl: 'EXTERNAL',
         cwd: '/workspace',
-        model: null,
+        modelId: null,
         effort: null,
         access: null
       } as NodeAgentSession;
@@ -452,7 +452,7 @@ describe('Codex App Server client', () => {
       cwd: '/workspace',
       runner: 'codex',
       nativeControl: 'EXTERNAL',
-      model: 'gpt-test',
+      modelId: 'gpt-test',
       effort: 'medium',
       access: 'on-request'
     } as NodeAgentSession;

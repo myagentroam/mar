@@ -1784,6 +1784,38 @@ describe('Conversation Show Aggregation', () => {
     expect(conversationItemDetail('tool_call', payload)).toContain('# README');
   });
 
+  it.each(['exec_wait', 'code_exec_wait'])(
+    'uses the original %s tool name for control rows instead of a command fallback',
+    (toolName) => {
+      for (const locale of ['zh-CN', 'en-US'] as const) {
+        localePreferenceService().setLocale(locale);
+        for (const action of ['poll', 'write', 'cancel']) {
+          const payload = {
+            command: '',
+            title: 'Command wait',
+            toolPresentation: {
+              kind: 'EXECUTION',
+              execution: {
+                kind: 'CONTROL',
+                toolName,
+                action,
+                source: { kind: 'SHELL', text: 'original command', truncated: false }
+              }
+            }
+          };
+          expect(conversationItemText('command_execution', payload, 'IN_PROGRESS')).toBe(toolName);
+          expect(
+            conversationItemText(
+              'command_execution',
+              { ...payload, output: { blocks: [{ channel: 'STDOUT', text: 'done' }] } },
+              'COMPLETED'
+            )
+          ).toBe(toolName);
+        }
+      }
+    }
+  );
+
   it('shows a normalized Code Exec command with unchanged JavaScript and output in both locales', () => {
     const code =
       'const result = await tools.read({ reads: [{ path: "README.md" }] });\nout.text(result.content);';

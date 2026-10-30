@@ -713,7 +713,7 @@ export const scheduledRunAuthorizeRequestSchema = z
     workspaceId: boundedIdentifierSchema,
     ownerUserId: positiveSafeIntegerSchema,
     runner: runnerNameSchema,
-    model: z.string().max(256).nullable()
+    modelId: z.string().max(256).nullable()
   })
   .strict();
 export type ScheduledRunAuthorizeRequest = z.infer<typeof scheduledRunAuthorizeRequestSchema>;
@@ -1893,13 +1893,15 @@ export const runnerProfileSchema = z.object({
 export type RunnerProfile = z.infer<typeof runnerProfileSchema>;
 
 /** The last explicitly chosen Composer configuration belongs to one Node Runner. */
-export const runnerDefaultConfigurationSchema = z.object({
-  runner: runnerNameSchema,
-  model: z.string().trim().min(1).max(128),
-  /** Runners without a reasoning-variant dimension persist an empty effort value. */
-  effort: z.string().trim().max(64),
-  access: z.string().trim().min(1).max(128)
-});
+export const runnerDefaultConfigurationSchema = z
+  .object({
+    runner: runnerNameSchema,
+    modelId: z.string().trim().min(1).max(128),
+    /** Runners without a reasoning-variant dimension persist an empty effort value. */
+    effort: z.string().trim().max(64),
+    access: z.string().trim().min(1).max(128)
+  })
+  .strict();
 export type RunnerDefaultConfiguration = z.infer<typeof runnerDefaultConfigurationSchema>;
 
 /** A Runner command is selected from a Node-declared profile, never guessed from `/` text. */

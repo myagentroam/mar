@@ -70,11 +70,11 @@ function fixture() {
   });
   configuration.apply({
     runner: 'codex',
-    model: 'model-a',
+    modelId: 'model-a',
     effort: 'medium',
     access: 'on-request'
   });
-  const { runner, model, effort, access } = configuration;
+  const { runner, modelId, effort, access } = configuration;
   const currentInspector = ref<WorkspaceInspectorHandle | null>();
   const normalizeDraft = vi.fn(configuration.apply);
   const persistDraft = vi.fn();
@@ -97,7 +97,7 @@ function fixture() {
     input,
     skillTokens,
     runner,
-    model,
+    modelId,
     effort,
     access,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
@@ -126,7 +126,7 @@ function fixture() {
     input,
     skillTokens,
     runner,
-    model,
+    modelId,
     effort,
     access,
     currentInspector,
@@ -238,7 +238,7 @@ describe('Public Workspace Cache Controller', () => {
       input: 'continue this task',
       skillTokens: f.skillTokens.value,
       runner: 'codex',
-      model: 'model-a',
+      modelId: 'model-a',
       effort: 'medium',
       access: 'on-request'
     });
@@ -342,7 +342,7 @@ describe('Public Workspace Cache Controller', () => {
         input: 'restored input',
         skillTokens: [],
         runner: 'mar-agent',
-        model: 'gpt-5',
+        modelId: 'gpt-5',
         effort: 'high',
         access: 'full-access'
       }
@@ -350,7 +350,7 @@ describe('Public Workspace Cache Controller', () => {
 
     expect(f.normalizeDraft).toHaveBeenCalledOnce();
     expect(f.runner.value).toBe('mar-agent');
-    expect(f.model.value).toBe('gpt-5');
+    expect(f.modelId.value).toBe('gpt-5');
     expect(f.effort.value).toBe('high');
     expect(f.access.value).toBe('full-access');
     expect(f.input.value).toBe('restored input');

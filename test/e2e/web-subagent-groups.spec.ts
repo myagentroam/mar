@@ -131,9 +131,8 @@ test('subagent controls group by identity and phase with expandable results and 
     '发送消息已完成'
   ]);
   await operations.nth(1).locator('summary').click();
-  await expect(operations.nth(1).locator('p')).toBeVisible();
-  await expect(operations.nth(1)).toContainText('Input wait');
-  await expect(operations.nth(1)).toContainText('Result wait');
+  await expect(operations.nth(1).getByText('Input wait', { exact: false })).toBeVisible();
+  await expect(operations.nth(1).getByText('Result wait', { exact: false })).toBeVisible();
   await heading.click();
   await expect(group.locator('.conversation-tool-detail')).toHaveCount(0);
   await page.reload();
@@ -150,10 +149,10 @@ test('subagent controls group by identity and phase with expandable results and 
     'Review integration'
   );
   await expect(groups.nth(1).locator('.conversation-group-meta')).toHaveText('3 operations');
-  await expect(groups.first().locator('.conversation-group-meta')).toHaveText('1 operations');
+  await expect(groups.first().locator('.conversation-group-meta')).toHaveText('1 operation');
 });
 
-test('opens only an explicitly mapped child Session through the existing coordinator', async ({
+test('shows Agent records without shortcuts and opens the child through the session list', async ({
   page
 }) => {
   const capabilities = [
@@ -166,6 +165,7 @@ test('opens only an explicitly mapped child Session through the existing coordin
   await mockConsoleApi(page, 'MANAGED', capabilities, []);
   const child = {
     id: 'session-2',
+    customTitle: 'Child session',
     workspaceId: 'workspace-1',
     runner: 'mar-agent',
     externalSessionId: 'native-child',
@@ -239,11 +239,15 @@ test('opens only an explicitly mapped child Session through the existing coordin
   });
   const parent = {
     id: 'session-1',
+    customTitle: 'Parent session',
     workspaceId: 'workspace-1',
     runner: 'mar-agent',
     activity: 'IDLE',
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   };
+  await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+    json(route, { sessions: [parent, child], nextCursor: null })
+  );
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(
       page,
@@ -302,7 +306,7 @@ test('opens only an explicitly mapped child Session through the existing coordin
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.locator('.session-list .session-link').first().click();
+  await page.locator('.session-list .session-link').filter({ hasText: 'Parent session' }).click();
   const process = page.locator('.conversation-process.is-group .process-heading');
   await expect(process).toHaveCount(1);
   if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
@@ -313,7 +317,7 @@ test('opens only an explicitly mapped child Session through the existing coordin
   await groups.nth(2).locator(':scope > details > summary').click();
   await expect(groups.nth(2).getByRole('button', { name: '打开会话' })).toHaveCount(0);
   await groups.nth(0).locator(':scope > details > summary').click();
-  await expect(groups.nth(0).getByRole('button', { name: '打开会话' })).toBeVisible();
+  await expect(groups.nth(0).getByRole('button', { name: '打开会话' })).toHaveCount(0);
   const connection = (connected: boolean) =>
     page.evaluate((value) => {
       (
@@ -335,7 +339,9 @@ test('opens only an explicitly mapped child Session through the existing coordin
   const mappedDetails = mapped.locator(':scope > details');
   if ((await mappedDetails.getAttribute('open')) === null)
     await mappedDetails.locator('summary').click();
-  await mapped.getByRole('button', { name: '打开会话' }).click();
+  await expect(mapped.getByRole('button', { name: '打开会话' })).toHaveCount(0);
+  await expect(page.getByText('Mapped child conversation')).toHaveCount(0);
+  await page.locator('.session-list .session-link').filter({ hasText: 'Child session' }).click();
   await expect(page.getByText('Mapped child conversation')).toBeVisible();
   const input = page.getByRole('textbox', { name: '输入消息' });
   await input.fill('User intervention in child');

@@ -303,7 +303,7 @@ describe('Codex session discovery and first-message activation', () => {
     });
     database.saveRunnerDefaults({
       runner: 'codex',
-      model: 'gpt-5.6-terra',
+      modelId: 'gpt-5.6-terra',
       effort: 'high',
       access: 'workspace-write'
     });
@@ -336,7 +336,7 @@ describe('Codex session discovery and first-message activation', () => {
         })
       ).resolves.toMatchObject({
         session: {
-          model: 'gpt-5.6-terra',
+          modelId: 'gpt-5.6-terra',
           effort: 'high',
           access: 'workspace-write'
         }
@@ -399,14 +399,14 @@ describe('Codex session discovery and first-message activation', () => {
         }
       ).executeNodeOperation('session.config.update', {
         sessionId: discovered.sessions[0]?.id,
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       })
     ).resolves.toMatchObject({
       session: {
         id: discovered.sessions[0]?.id,
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       }
@@ -448,7 +448,7 @@ describe('Codex session discovery and first-message activation', () => {
       idempotent: false,
       delivery: 'STARTED',
       session: {
-        model: 'gpt-5.6-sol',
+        modelId: 'gpt-5.6-sol',
         effort: 'high',
         access: 'full-access'
       }

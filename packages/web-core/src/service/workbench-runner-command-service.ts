@@ -58,7 +58,7 @@ export function createWorkbenchRunnerCommandService(options: {
           workspaceId: session.workspaceId,
           commandId,
           input,
-          ...(session.runner === 'mar-agent' && session.model ? { model: session.model } : {})
+          ...(session.runner === 'mar-agent' && session.modelId ? { modelId: session.modelId } : {})
         })
       }
     );

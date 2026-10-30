@@ -32,7 +32,7 @@ interface WorkbenchWorkspaceCacheControllerOptions {
   readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
   readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerFileReference[]>;
   readonly runner: Readonly<Ref<Session['runner']>>;
-  readonly model: Readonly<Ref<string>>;
+  readonly modelId: Readonly<Ref<string>>;
   readonly effort: Readonly<Ref<RunnerDefaultConfiguration['effort']>>;
   readonly access: Readonly<Ref<RunnerDefaultConfiguration['access']>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
@@ -77,7 +77,7 @@ export function createWorkbenchWorkspaceCacheController(
           skillTokens: options.skillTokens.value,
           references: options.references?.value ?? [],
           runner: options.runner.value,
-          model: options.model.value,
+          modelId: options.modelId.value,
           effort: options.effort.value,
           access: options.access.value
         },

@@ -80,7 +80,7 @@ describe('Goal transient orchestration', () => {
       cwd: f.session.cwd,
       runner: 'mar-agent',
       parentSessionId: f.session.id,
-      model: 'not-authorized',
+      modelId: 'not-authorized',
       access: 'full-access'
     });
     const previous = f.goals.start(child.id, 'Keep the existing goal');

@@ -1034,7 +1034,7 @@ describe('Node MAR Agent runtime credentials', () => {
       workspaceId: 'workspace-1',
       runner: 'mar-agent',
       cwd: '/workspace',
-      model: 'model-1'
+      modelId: 'model-1'
     });
     const prepare = vi.fn();
     const releasePreparation = vi.fn();
@@ -1113,7 +1113,7 @@ describe('Node MAR Agent runtime credentials', () => {
       workspaceId: 'workspace-1',
       runner: 'mar-agent',
       cwd: '/workspace',
-      model: 'model-1'
+      modelId: 'model-1'
     });
     const control = vi.fn();
     const coordinator = new ContinuousRunCoordinator({
@@ -1147,7 +1147,7 @@ describe('Node MAR Agent runtime credentials', () => {
       attachmentPaths: [],
       cwd: '/workspace',
       externalSessionId: null,
-      model: 'model-1',
+      modelId: 'model-1',
       effort: 'high',
       access: 'full-access',
       collaborationMode: 'default',

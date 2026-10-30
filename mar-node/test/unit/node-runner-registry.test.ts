@@ -195,7 +195,7 @@ describe('Node Runner registry', () => {
     ]);
     expect(registry.require('codex').defaultConfiguration()).toEqual({
       runner: 'codex',
-      model: '',
+      modelId: '',
       effort: '',
       access: 'on-request'
     });
@@ -274,14 +274,14 @@ describe('Node Runner registry', () => {
     ]);
     expect(runner.defaultConfiguration()).toEqual({
       runner: 'codex',
-      model: 'gpt-dynamic-sol',
+      modelId: 'gpt-dynamic-sol',
       effort: 'low',
       access: 'on-request'
     });
     expect(
       runner.supportsConfiguration({
         runner: 'codex',
-        model: 'gpt-dynamic-sol',
+        modelId: 'gpt-dynamic-sol',
         effort: 'ultra',
         access: 'on-request'
       })
@@ -490,13 +490,13 @@ describe('Node Runner registry', () => {
 
     expect(
       runner.supportsConfiguration(
-        { runner: 'codex', model: 'gpt-user-a', effort: 'medium', access: 'on-request' },
+        { runner: 'codex', modelId: 'gpt-user-a', effort: 'medium', access: 'on-request' },
         undefined,
         userA
       )
     ).toBe(true);
-    expect(runner.defaultConfiguration(undefined, userA).model).toBe('gpt-user-a');
-    expect(runner.defaultConfiguration(undefined, userB).model).toBe('gpt-user-a');
+    expect(runner.defaultConfiguration(undefined, userA).modelId).toBe('gpt-user-a');
+    expect(runner.defaultConfiguration(undefined, userB).modelId).toBe('gpt-user-a');
   });
 
   it('reclaims in-flight model-catalog clients when the Codex Runner stops', async () => {
@@ -543,14 +543,14 @@ describe('Node Runner registry', () => {
     ]);
     expect(claude.defaultConfiguration()).toEqual({
       runner: 'claude-code',
-      model: 'company-sonnet-v2',
+      modelId: 'company-sonnet-v2',
       effort: 'medium',
       access: 'default'
     });
     expect(
       claude.supportsConfiguration({
         runner: 'claude-code',
-        model: 'company-sonnet-v2',
+        modelId: 'company-sonnet-v2',
         effort: 'high',
         access: 'default'
       })
@@ -558,7 +558,7 @@ describe('Node Runner registry', () => {
     expect(
       claude.supportsConfiguration({
         runner: 'claude-code',
-        model: 'sonnet',
+        modelId: 'sonnet',
         effort: 'high',
         access: 'default'
       })
@@ -586,7 +586,7 @@ describe('Node Runner registry', () => {
     ]);
     expect(thirdParty.defaultConfiguration()).toEqual({
       runner: 'claude-code',
-      model: 'vendor-model-a',
+      modelId: 'vendor-model-a',
       effort: 'medium',
       access: 'default'
     });
@@ -598,7 +598,7 @@ describe('Node Runner registry', () => {
     expect(opusOnly.profile(capabilities).models.map((model) => model.id)).toEqual([
       'vendor-model-b'
     ]);
-    expect(opusOnly.defaultConfiguration().model).toBe('vendor-model-b');
+    expect(opusOnly.defaultConfiguration().modelId).toBe('vendor-model-b');
 
     const haikuOnly = new ClaudeCodeRunner(new ClaudeAgentSdkAdapter(), {
       ANTHROPIC_BASE_URL: 'not a url',
@@ -607,13 +607,13 @@ describe('Node Runner registry', () => {
     expect(haikuOnly.profile(capabilities).models.map((model) => model.id)).toEqual([
       'vendor-model-c'
     ]);
-    expect(haikuOnly.defaultConfiguration().model).toBe('vendor-model-c');
+    expect(haikuOnly.defaultConfiguration().modelId).toBe('vendor-model-c');
 
     const unconfigured = new ClaudeCodeRunner(new ClaudeAgentSdkAdapter(), {
       ANTHROPIC_BASE_URL: 'https://gateway.example.com'
     });
     expect(unconfigured.profile(capabilities).models).toEqual([]);
-    expect(unconfigured.defaultConfiguration().model).toBe('sonnet');
+    expect(unconfigured.defaultConfiguration().modelId).toBe('sonnet');
 
     const official = new ClaudeCodeRunner(new ClaudeAgentSdkAdapter(), {
       ANTHROPIC_BASE_URL: 'https://api.anthropic.com',

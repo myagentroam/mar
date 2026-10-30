@@ -59,7 +59,7 @@ export class RestartSessionRestorer {
             workspaceId: entry.session.workspaceId,
             ownerUserId,
             runner: 'mar-agent',
-            model: entry.session.model
+            modelId: entry.session.modelId
           })
         );
       return contexts.get(ownerUserId)!;
@@ -79,7 +79,7 @@ export class RestartSessionRestorer {
       throw new Error('RESTART_SESSION_MISMATCH');
     session = this.options.runtime.updateAgentSessionConfiguration({
       sessionId: session.id,
-      model: entry.session.model ?? session.model!,
+      modelId: entry.session.modelId ?? session.modelId!,
       effort: entry.session.effort ?? session.effort!,
       access: entry.session.access ?? session.access!
     });

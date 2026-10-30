@@ -518,6 +518,10 @@ export function conversationItemText(
     return stringField(value, 'namespace');
   }
   if (kind === 'command_execution') {
+    const presentation = conversationPayload(value.toolPresentation);
+    const execution =
+      presentation?.kind === 'EXECUTION' ? conversationPayload(presentation.execution) : undefined;
+    if (execution?.kind === 'CONTROL') return stringField(execution, 'toolName');
     const command = stringField(value, 'command');
     if (command.length > 0) return command;
     return (readToolOutput(value)?.blocks.some((block) => block.text.length > 0) ?? false) ||
@@ -801,17 +805,6 @@ function subagentTaskTitle(value: Record<string, unknown>): string {
   const title = stringField(value, 'title');
   if (title.length > 0 && title.toLowerCase() !== toolName.toLowerCase()) return title;
   return stringField(value, 'subagentId') || toolName || translate('presentation.subagentTask');
-}
-
-/** Only an explicit Node-provided product Session mapping is navigable. */
-export function subagentGroupSessionId(items: readonly ConversationItem[]): string | undefined {
-  const ids = new Set(
-    items.flatMap((item) => {
-      const id = conversationPayload(item.payload)?.subagentSessionId;
-      return typeof id === 'string' && id.trim().length > 0 && id.length <= 128 ? [id] : [];
-    })
-  );
-  return ids.size === 1 ? [...ids][0] : undefined;
 }
 
 export interface TaskListEntry {

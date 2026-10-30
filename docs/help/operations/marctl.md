@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-30
 ---
 
 # 使用 marctl 管理节点
@@ -66,7 +66,9 @@ marctl agents schedule get <session-id> --json
 
 `history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
-已有会话可用 `marctl agents config <session-id> --model <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
+已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
+
+`--model-id` 使用目标 Runner 配置中的 `models[].id`。MAR Agent 对应内部模型配置 ID，不是显示名或上游模型 ID。请求和会话摘要使用 `modelId`；旧 `--model` 选项及请求字段 `model` 均拒绝。
 
 通过 `start`、`send` 或 `goal set` 派发的任务默认抑制自动通知，避免协作会话反复推送。该规则适用于后续任务轮次和 Goal 续作；运行状态和历史仍可正常查看。后续人工输入恢复普通通知规则。显式通知工具仍可按授权发送。
 
@@ -74,7 +76,7 @@ marctl agents schedule get <session-id> --json
 
 会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。置顶会话优先排序，但仍遵守分页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
 
-`list` 每个会话只返回 `id`、`title`、`runner`、`status`、`runId` 和一条有界 `latestActivity`。`show` 返回精简 `session`，保留相同身份与状态，另带 `model`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。model/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
+`list` 每个会话只返回 `id`、`title`、`runner`、`status`、`runId` 和一条有界 `latestActivity`。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
 会话 `status` 只有 `RUNNING`、`IDLE`、`SLEEPING`。SLEEPING 必须来自当前 Run 的真实前台 sleep 等待，不按工具名或 Goal 是否 active 推断；工具 `state` 仍为原有 `IN_PROGRESS`、`COMPLETED` 等生命周期。活动会话尚无新公开动作时返回空动态，不借用上一 Run；IDLE 可保留既有内存中的活动及观察时间。摘要最多 100 个 Unicode 字符，工具名最多 128 个，最新消息最多 300 个；`truncated` 标明内容截断，完整证据仍查 history。
 
@@ -116,7 +118,7 @@ marctl agents goal clear <session-id> --json
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。`start`、`send` 还可重复传入 `--image <路径>`，与文本组合或只发送图片。图片从 CLI 所在主机读取，使用既有 Session 图片附件链路发送，不是远端路径引用。支持 PNG、JPEG、GIF、WebP，最多 5 张，单张 5 MiB、合计 10 MiB；实际图片能力仍取决于目标 Runner 和模型。`goal set` 只接受文本，并拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
-`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
+`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model-id` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
 Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --parent <session-id>` 按直接子会话筛选并分页，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
 

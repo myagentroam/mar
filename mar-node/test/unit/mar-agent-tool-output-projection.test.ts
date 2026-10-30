@@ -606,9 +606,143 @@ describe('MAR Agent live tool output projection', () => {
     }
   );
 
-  it.each(['code_exec', 'code_exec_wait'] as const)(
-    'shows %s result errors without replacing the call status',
-    (toolName) => {
+  it.each([
+    ['without prior presentation', undefined, 'before failure', undefined],
+    ['over stale presentation', 'stale observation', 'retained tail', 'HEAD'],
+    ['with source truncation', undefined, 'partial observation', 'SOURCE'],
+    ['with empty terminal observations', 'stale observation', '', undefined],
+    ['without terminal data', 'stored observation', undefined, undefined]
+  ] as const)(
+    'keeps failed Code observations %s in live output and history',
+    (_condition, priorText, terminalText, truncation) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const result = (text: string, direction?: 'HEAD' | 'SOURCE') =>
+        structuredToolEventData('code_exec', {
+          cellId: 'cell',
+          status: 'failed',
+          ...(direction === undefined ? {} : { truncated: true }),
+          ...(direction === 'HEAD' ? { outputHeadTruncated: true } : {}),
+          observations: text
+            ? [
+                {
+                  type: 'value',
+                  id: 'observation',
+                  format: 'text',
+                  value: text,
+                  truncated: direction === 'SOURCE'
+                }
+              ]
+            : [],
+          error: { code: 'MAR_AGENT_CODE_FAILED', message: 'Cell failed.' }
+        });
+      const input = { code: 'observe.text("before failure");\nthrow new Error("Cell failed.");' };
+      const started = toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'failed-code',
+        input,
+        ...(priorText === undefined ? {} : { data: result(priorText) })
+      });
+      const data = terminalText === undefined ? undefined : result(terminalText, truncation);
+      const failed = toolEvent({
+        type: 'tool.failed',
+        toolName: 'code_exec',
+        callId: 'failed-code',
+        code: 'MAR_AGENT_CODE_FAILED',
+        message: 'Cell failed.',
+        ...(data === undefined
+          ? {}
+          : { data, outputTruncation: publicOutputTruncation('code_exec', data) })
+      });
+      const startItems = normalizer.normalize(started);
+      const items = normalizer.normalize(failed);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        itemId: startItems[0]!.itemId,
+        kind: 'command_execution',
+        status: 'FAILED',
+        payload: {
+          command: input.code,
+          cwd: null,
+          exitCode: null,
+          output: {
+            blocks: [{ channel: 'TEXT', text: terminalText ?? priorText }],
+            ...(truncation === undefined ? {} : { truncation })
+          },
+          toolPresentation: {
+            execution: {
+              kind: 'CODE',
+              toolName: 'code_exec',
+              error: { code: 'MAR_AGENT_CODE_FAILED', message: 'Cell failed.' }
+            }
+          }
+        }
+      });
+      expect(items[0]).not.toHaveProperty('append');
+      if (truncation === undefined)
+        expect(items[0]?.payload.output).not.toHaveProperty('truncation');
+      expectValidConversationItems([...startItems, ...items]);
+      const history = projectMarAgentHistory(
+        { id: 'session-1' } as NodeAgentSession,
+        [started, failed].map((event) => ({
+          kind: 'event' as const,
+          sequence: event.sequence,
+          event
+        }))
+      ).flatMap((turn) => turn.items);
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({
+        id: items[0]!.itemId,
+        status: 'FAILED',
+        payload: items[0]!.payload
+      });
+      expect(conversationItemSchema.parse(history[0])).toBeDefined();
+    }
+  );
+
+  it.each([
+    ['MAR_AGENT_CODE_FAILED', 'FAILED'],
+    ['MAR_AGENT_CANCELLED', 'CANCELLED'],
+    ['MAR_AGENT_EXECUTION_CANCELLED', 'CANCELLED']
+  ] as const)('keeps a plain Code failure %s separate from output', (code, status) => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const started = normalizer.normalize(
+      toolEvent({
+        type: 'tool.started',
+        toolName: 'code_exec',
+        callId: 'plain-failure',
+        input: 'run()'
+      })
+    );
+    const items = normalizer.normalize(
+      toolEvent({
+        type: 'tool.failed',
+        toolName: 'code_exec',
+        callId: 'plain-failure',
+        code,
+        message: 'Stopped.'
+      })
+    );
+    expect(items[0]).toMatchObject({
+      itemId: started[0]!.itemId,
+      status,
+      payload: {
+        command: 'run()',
+        toolPresentation: { execution: { error: { code, message: 'Stopped.' } } }
+      }
+    });
+    expect(items[0]?.payload).not.toHaveProperty('output');
+    expectValidConversationItems(items);
+  });
+
+  it.each([
+    ['code_exec', ''],
+    ['code_exec_wait', ''],
+    ['code_exec', 'before failure'],
+    ['code_exec_wait', 'before failure']
+  ] as const)(
+    'shows %s result errors without replacing the call status (observation: %s)',
+    (toolName, text) => {
       const normalizer = new MarAgentConversationNormalizer();
       const started = toolEvent({
         type: 'tool.started',
@@ -619,7 +753,9 @@ describe('MAR Agent live tool output projection', () => {
       const data = structuredToolEventData(toolName, {
         cellId: 'cell',
         status: 'failed',
-        observations: [],
+        observations: text
+          ? [{ type: 'value', id: 'partial', format: 'text', value: text, truncated: false }]
+          : [],
         error: { code: 'MAR_AGENT_CODE_FAILED', message: 'The command failed.' }
       });
       const completed = toolEvent({
@@ -631,9 +767,11 @@ describe('MAR Agent live tool output projection', () => {
       normalizer.normalize(started);
       const items = normalizer.normalize(completed);
       expect(items[0]).toMatchObject({
+        itemId: 'mar-agent-tool:failed-cell',
+        kind: 'command_execution',
         status: 'COMPLETED',
         payload: {
-          output: { blocks: [{ channel: 'TEXT', text: '' }] },
+          output: { blocks: [{ channel: 'TEXT', text }] },
           toolPresentation: {
             execution: {
               error: { code: 'MAR_AGENT_CODE_FAILED', message: 'The command failed.' }
@@ -641,6 +779,10 @@ describe('MAR Agent live tool output projection', () => {
           }
         }
       });
+      if (toolName === 'code_exec_wait')
+        expect(items[0]?.payload.toolPresentation).toMatchObject({
+          execution: { kind: 'CONTROL', toolName, action: 'poll', targetId: 'cell' }
+        });
       expectValidConversationItems(items);
       const history = projectMarAgentHistory(
         { id: 'session-1' } as NodeAgentSession,

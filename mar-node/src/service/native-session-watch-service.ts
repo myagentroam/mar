@@ -17,6 +17,7 @@ import {
 const INTERVAL_MS = 2_000;
 const TTL_MS = 45_000;
 const MAX_FAILURES = 3;
+const INITIAL_SEGMENT_LIMIT = 3;
 
 interface NativeSessionWatch {
   readonly observation: ConversationObservation;
@@ -420,7 +421,9 @@ export class NativeSessionWatchService {
       stage = 'project_snapshot';
       const page = update.page;
       const payload =
-        lease.unit === 'SEGMENT' ? projectInitialPage!(session, page, 'SEGMENT', 10) : page;
+        lease.unit === 'SEGMENT'
+          ? projectInitialPage!(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
+          : page;
       this.emitSnapshot(lease, session, payload);
       this.releaseSnapshotPendingEvents(lease, page);
       const hydration = watch.observation.hydrate();
@@ -499,7 +502,7 @@ export class NativeSessionWatchService {
       if (!lease.ready) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', 10)
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
       this.options.emitWatchEvent?.({
@@ -528,7 +531,7 @@ export class NativeSessionWatchService {
       if (!lease.snapshotSent) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', 10)
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
       this.emitSnapshot(lease, session, payload);

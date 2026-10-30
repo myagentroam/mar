@@ -29,7 +29,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
       runnerTitle: id,
       externalSessionId: `native-${id}`,
       nativeControl: 'MAR_MANAGED',
-      model: 'gpt-5.6-sol',
+      modelId: 'gpt-5.6-sol',
       effort: 'high',
       access: 'workspace-write',
       activity: 'IDLE',

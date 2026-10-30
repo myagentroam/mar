@@ -224,7 +224,7 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
   ): boolean {
     if (configuration.runner !== this.name) return false;
     const models = this.cachedModels(environment);
-    const model = models.find((candidate) => candidate.id === configuration.model);
+    const model = models.find((candidate) => candidate.id === configuration.modelId);
     return (
       model !== undefined &&
       (model.supportedEfforts.length === 0 ||
@@ -242,7 +242,7 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     const model = this.cachedModels(environment)[0];
     return {
       runner: this.name,
-      model: model?.id ?? '',
+      modelId: model?.id ?? '',
       effort: model?.supportedEfforts[0] ?? '',
       access: 'default'
     };
@@ -535,11 +535,11 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     session: NodeAgentSession,
     environment: Readonly<Record<string, string>>
   ): Promise<unknown> {
-    if (session.externalSessionId === null || session.model === null)
+    if (session.externalSessionId === null || session.modelId === null)
       throw new Error('RUNNER_COMMAND_UNAVAILABLE');
     const client = this.managedClient(environment);
     try {
-      return await client.summarize(session.cwd, session.externalSessionId, session.model);
+      return await client.summarize(session.cwd, session.externalSessionId, session.modelId);
     } finally {
       this.releaseManagedClient(client);
     }
@@ -560,7 +560,7 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     const cache = object(tokens?.cache);
     const usedTokens = positiveNumber(tokens?.input) + positiveNumber(cache?.read);
     const modelId =
-      provider !== undefined && model !== undefined ? `${provider}/${model}` : session.model;
+      provider !== undefined && model !== undefined ? `${provider}/${model}` : session.modelId;
     if (modelId === null || usedTokens <= 0) return undefined;
     const maxTokens =
       Date.now() >= this.contextLimitsExpiresAt ? undefined : this.contextLimits.get(modelId);

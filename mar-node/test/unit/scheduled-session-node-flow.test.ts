@@ -195,7 +195,7 @@ describe('scheduled Node session flow', () => {
         externalSessionId: 'schedule-stop-session',
         nativeControl: 'MAR_MANAGED',
         cwd: workspace.path,
-        model: 'claude-sonnet',
+        modelId: 'claude-sonnet',
         access: 'full'
       });
       await internals.executeNodeOperation('session.schedule.save', {
@@ -509,7 +509,7 @@ describe('scheduled Node session flow', () => {
         workspaceId: workspace.id,
         runner: 'claude-code',
         cwd: workspace.path,
-        model: 'claude-sonnet',
+        modelId: 'sonnet',
         effort: 'medium',
         access: 'full-access'
       });
@@ -609,7 +609,7 @@ describe('scheduled Node session flow', () => {
         externalSessionId: 'claude-session',
         nativeControl: 'MAR_MANAGED',
         cwd: workspace.path,
-        model: 'claude-sonnet'
+        modelId: 'sonnet'
       });
       internals.claudeClient.execution.managedNativeIds.add(session.id);
       await internals.executeNodeOperation('session.schedule.save', {
@@ -631,7 +631,7 @@ describe('scheduled Node session flow', () => {
         )
       );
       expect(startedConfigurations[0]).toMatchObject({
-        model: 'claude-sonnet',
+        model: 'sonnet',
         effort: 'medium',
         access: 'default'
       });
@@ -785,7 +785,7 @@ describe('scheduled Node session flow', () => {
           externalSessionId: 'session-1',
           nativeControl: 'MAR_MANAGED',
           cwd: workspace.path,
-          model: 'claude-sonnet',
+          modelId: 'sonnet',
           access: 'full'
         });
         internals.claudeClient.execution.managedNativeIds.add(session.id);

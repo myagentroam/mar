@@ -46,5 +46,29 @@ export const notificationCreatedSchema = z
   })
   .strict();
 
+export const NOTIFICATION_TARGET_READ_ID_LIMIT = 250;
+
+export const notificationTargetReadSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('notification.session-read'),
+      nodeId: identity,
+      workspaceId: identity,
+      sessionId: identity,
+      notificationIds: z.array(identity).max(NOTIFICATION_TARGET_READ_ID_LIMIT),
+      readAt: timestamp
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('notification.conversation-read'),
+      nodeId: identity,
+      conversationId: identity,
+      notificationIds: z.array(identity).max(NOTIFICATION_TARGET_READ_ID_LIMIT),
+      readAt: timestamp
+    })
+    .strict()
+]);
+
 export type NotificationTarget = Readonly<z.infer<typeof notificationTargetSchema>>;
 export type ServerNotification = Readonly<z.infer<typeof serverNotificationSchema>>;

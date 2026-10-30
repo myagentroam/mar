@@ -132,7 +132,7 @@ export class ExternalSessionResumeService {
               cwd,
               createdAt: session.createdAt,
               lastActivityAt: session.lastActivityAt,
-              model: configuration.model,
+              modelId: configuration.modelId,
               effort: configuration.effort,
               access: configuration.access,
               ...(session.runnerTitle === null ? {} : { title: session.runnerTitle }),
