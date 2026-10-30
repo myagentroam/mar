@@ -323,12 +323,10 @@ describe('Workbench controller composition behavior', () => {
   it.each([
     ['quick', 'MAIN'],
     ['recent', 'MAIN'],
-    ['badge', 'MAIN'],
-    ['workspace-badge', 'MAIN'],
+    ['explicit-target', 'MAIN'],
     ['quick', 'CHILD'],
     ['recent', 'CHILD'],
-    ['badge', 'CHILD'],
-    ['workspace-badge', 'CHILD']
+    ['explicit-target', 'CHILD']
   ] as const)(
     'aligns navigation through %s to %s while list selection stays unchanged',
     async (entry, targetGroup) => {
@@ -374,7 +372,7 @@ describe('Workbench controller composition behavior', () => {
       );
 
       if (entry === 'quick') await page.openSessionFromList(main.id);
-      else if (entry === 'badge') {
+      else if (entry === 'explicit-target') {
         await flushComponent();
         vi.mocked(fetch).mockClear();
         const opening = page.openSessionGroupTarget({
@@ -388,13 +386,6 @@ describe('Workbench controller composition behavior', () => {
         expect(
           vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith('/api/workspaces?'))
         ).toBe(false);
-      } else if (entry === 'workspace-badge') {
-        vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget').mockReturnValue({
-          nodeId: 'node-a',
-          workspaceId: 'workspace-a',
-          sessionId: main.id
-        });
-        page.activateWorkspaceSessionGroupMarker(targetGroup);
       } else {
         await flushComponent();
         vi.mocked(fetch).mockClear();
@@ -540,39 +531,6 @@ describe('Workbench controller composition behavior', () => {
     expect(captured.restartWorkspace).not.toHaveBeenCalled();
   });
 
-  it('scopes a workspace group badge lookup without changing the selected group', () => {
-    const { page } = controller();
-    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
-    page.selectedSessionId.value = 'current';
-    const group = page.workspaceSessionGroup.value;
-    const lookup = vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget');
-    page.activateWorkspaceSessionGroupMarker('CHILD');
-    expect(lookup).toHaveBeenCalledWith('CHILD', {
-      nodeId: 'node-a',
-      workspaceId: 'workspace-a',
-      lastSessionId: 'current'
-    });
-    expect(page.workspaceSessionGroup.value).toBe(group);
-    expect(page.selectedSessionId.value).toBe('current');
-  });
-
-  it('does not select the workspace badge group before the target resolves', async () => {
-    const { page } = controller();
-    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
-    page.selectedSessionId.value = 'current';
-    const group = page.workspaceSessionGroup.value;
-    captured.waitForReady.mockResolvedValue(false);
-    vi.spyOn(page.workbenchNotificationService, 'sessionGroupTarget').mockReturnValue({
-      nodeId: 'node-a',
-      workspaceId: 'workspace-a',
-      sessionId: 'target'
-    });
-    page.activateWorkspaceSessionGroupMarker('CHILD');
-    expect(page.selectedSessionId.value).toBe('target');
-    expect(page.workspaceSessionGroup.value).toBe(group);
-    await flushComponent();
-  });
-
   it('shows only sessions in the current group page while retaining the selected session body', async () => {
     const { page } = controller();
     page.nodes.value = [{ ...node, nodeAppVersion: '0.11.19' }];
@@ -695,7 +653,7 @@ describe('Workbench controller composition behavior', () => {
       page.selectNavigation(view);
       expect(page.mobileSidebarOpen.value).toBe(view === 'nodes');
       expect(page.hostedConversationMobileHistoryOpen.value).toBe(view === 'conversations');
-      page.selectMobileUtilityPanel('notifications');
+      page.selectMobileUtilityPanel('activity');
       page.selectNavigation(view === 'nodes' ? 'conversations' : 'nodes');
       expect(page.mobileSidebarOpen.value).toBe(false);
       expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
@@ -709,13 +667,13 @@ describe('Workbench controller composition behavior', () => {
     page.selectNavigation('conversations');
     page.selectNavigation('conversations');
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
-    page.selectMobileUtilityPanel('recent-sessions');
+    page.selectMobileUtilityPanel('activity');
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(false);
-    expect(page.mobileUtilityPanel.value).toBe('recent-sessions');
+    expect(page.mobileUtilityPanel.value).toBe('activity');
     page.selectNavigation('conversations');
     expect(page.mobileUtilityPanel.value).toBeUndefined();
     expect(page.hostedConversationMobileHistoryOpen.value).toBe(true);
-    page.selectMobileUtilityPanel('notifications');
+    page.selectMobileUtilityPanel('activity');
     page.selectNavigation('settings');
     expect(page.mobileUtilityPanel.value).toBeUndefined();
     expect(page.mobileSidebarOpen.value).toBe(true);
@@ -726,9 +684,9 @@ describe('Workbench controller composition behavior', () => {
     page.mobileViewport.value = true;
     page.selectNavigation('conversations');
     page.hostedConversationMobileFilesOpen.value = true;
-    page.selectMobileUtilityPanel('notifications');
+    page.selectMobileUtilityPanel('activity');
     expect(page.hostedConversationMobileFilesOpen.value).toBe(false);
-    expect(page.mobileUtilityPanel.value).toBe('notifications');
+    expect(page.mobileUtilityPanel.value).toBe('activity');
     page.hostedConversationMobileFilesOpen.value = true;
     page.selectNavigation('nodes');
     expect(page.hostedConversationMobileFilesOpen.value).toBe(false);
@@ -738,7 +696,7 @@ describe('Workbench controller composition behavior', () => {
   it('replaces a mobile utility menu with the active Work resource menu', () => {
     const { page } = controller();
     page.mobileViewport.value = true;
-    page.selectMobileUtilityPanel('notifications');
+    page.selectMobileUtilityPanel('activity');
     page.selectNavigation('nodes');
     expect(page.mobileUtilityPanel.value).toBeUndefined();
     expect(page.mobileSidebarOpen.value).toBe(true);

@@ -16,8 +16,7 @@ import type {
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
 import MarIcon from '../common/MarIcon.vue';
-import WorkbenchNotificationCenter from './WorkbenchNotificationCenter.vue';
-import WorkbenchRecentSessions from './WorkbenchRecentSessions.vue';
+import WorkbenchActivityCenter from './WorkbenchActivityCenter.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
@@ -109,7 +108,6 @@ const emit = defineEmits<{
   renameWorkspace: [nodeId: string, workspace: Workspace];
   openNotification: [notification: WorkbenchNotification];
   openRecentRun: [run: RecentRun];
-  openSessionTarget: [target: { nodeId: string; workspaceId: string; sessionId: string }];
   retryUpload: [task: WorkspaceUploadTask];
   cancelUpload: [task: WorkspaceUploadTask];
   removeUpload: [task: WorkspaceUploadTask];
@@ -122,15 +120,13 @@ function setMobileUtilityPanel(panel: MobileUtilityPanel, open: boolean): void {
 
 const menuLabel = computed(() =>
   translate(
-    displayUtility.value === 'recent-sessions'
-      ? 'workbenchNotificationCenter.recentSessions'
-      : displayUtility.value === 'notifications'
-        ? 'generated.workbenchNotificationCenter.notifications'
-        : displayView.value === 'settings'
-          ? 'navigation.settingsCategories'
-          : displayView.value === 'management'
-            ? 'navigation.managementCategories'
-            : 'navigation.nodeWorkspace'
+    displayUtility.value === 'activity'
+      ? 'activityCenter.title'
+      : displayView.value === 'settings'
+        ? 'navigation.settingsCategories'
+        : displayView.value === 'management'
+          ? 'navigation.managementCategories'
+          : 'navigation.nodeWorkspace'
   )
 );
 
@@ -246,16 +242,22 @@ function openBlankMenu(event: MouseEvent): void {
             <MarIcon name="administration" aria-hidden="true" v-else />
           </span>
         </button>
-        <WorkbenchRecentSessions
+        <WorkbenchActivityCenter
           v-if="item.id === 'conversations'"
           :service="notificationService"
+          :uploads="uploads"
+          :status-label="uploadStatusLabel"
           :mobile-mode="mobileViewport"
-          :mobile-open="mobileUtilityPanel === 'recent-sessions'"
-          :mobile-presented="displayUtility === 'recent-sessions'"
+          :mobile-open="mobileUtilityPanel === 'activity'"
+          :mobile-presented="displayUtility === 'activity'"
           :mobile-panel-target="mobilePanelTarget"
-          @update:mobile-open="setMobileUtilityPanel('recent-sessions', $event)"
+          :preview-suppressed="mobileViewport && (mobileSidebarOpen || mobileHistoryOpen)"
+          @update:mobile-open="setMobileUtilityPanel('activity', $event)"
           @open-recent-run="emit('openRecentRun', $event)"
-          @open-session-target="emit('openSessionTarget', $event)"
+          @open-notification="emit('openNotification', $event)"
+          @retry-upload="emit('retryUpload', $event)"
+          @cancel-upload="emit('cancelUpload', $event)"
+          @remove-upload="emit('removeUpload', $event)"
         />
       </template>
       <el-link
@@ -273,21 +275,6 @@ function openBlankMenu(event: MouseEvent): void {
           <span class="rail-label">{{ $t('navigation.help') }}</span>
         </span>
       </el-link>
-      <WorkbenchNotificationCenter
-        class="global-notification-center"
-        :service="notificationService"
-        :uploads="uploads"
-        :status-label="uploadStatusLabel"
-        :mobile-mode="mobileViewport"
-        :mobile-open="mobileUtilityPanel === 'notifications'"
-        :mobile-presented="displayUtility === 'notifications'"
-        :mobile-panel-target="mobilePanelTarget"
-        @update:mobile-open="setMobileUtilityPanel('notifications', $event)"
-        @open-notification="emit('openNotification', $event)"
-        @retry-upload="emit('retryUpload', $event)"
-        @cancel-upload="emit('cancelUpload', $event)"
-        @remove-upload="emit('removeUpload', $event)"
-      />
     </nav>
     <WebPerformanceIndicator v-if="!mobileViewport" :diagnostics="performanceDiagnostics" />
   </aside>
@@ -516,13 +503,6 @@ function openBlankMenu(event: MouseEvent): void {
   padding: 0.5rem 0 52px;
 }
 
-.global-notification-center {
-  position: fixed;
-  z-index: 30;
-  top: calc((var(--mar-workbench-header-height) - var(--mar-utility-control-size)) / 2);
-  right: 10px;
-}
-
 .activity-rail nav button {
   box-sizing: border-box;
   display: grid;
@@ -618,6 +598,10 @@ function openBlankMenu(event: MouseEvent): void {
 
 .mobile-menu-content {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 .workspace-tree:focus {
   outline: none;
@@ -771,7 +755,7 @@ function openBlankMenu(event: MouseEvent): void {
     position: absolute;
     z-index: 12;
     top: 0;
-    right: 52px;
+    right: 8px;
     bottom: auto;
     left: calc(12px + var(--mar-brand-logo-size) + 8px);
     width: auto;
@@ -803,19 +787,6 @@ function openBlankMenu(event: MouseEvent): void {
 
   .activity-rail nav::-webkit-scrollbar {
     display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .global-notification-center {
-    position: fixed;
-    z-index: 30;
-    top: 0;
-    right: 0;
-    display: block;
-    height: var(--sidebar-header-height);
-    flex: 0 0 var(--sidebar-header-height);
-    margin-left: 0;
   }
 }
 

@@ -22,10 +22,6 @@ import SessionShareDialog from './SessionShareDialog.vue';
 
 const props = defineProps<{
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
-  readonly groupState?: Record<
-    import('@myagentroam/protocol').SessionGroup,
-    { running: number; unread: boolean }
-  >;
   readonly sessions: readonly Session[];
   readonly selectedSessionId: string | undefined;
   readonly mobileViewport: boolean;
@@ -63,7 +59,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
-  activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
   openTree: [sessionId: string];
   create: [];
   open: [sessionId: string];
@@ -446,11 +441,9 @@ function submitSessionSearch(): void {
       </el-dropdown>
     </div>
     <SessionGroupTabs
-      v-if="sessionGroup && groupState"
+      v-if="sessionGroup"
       :model-value="sessionGroup"
-      :state="groupState"
       @update:model-value="emit('selectGroup', $event)"
-      @activate-marker="emit('activateGroupMarker', $event)"
     />
     <p v-if="watchStatus === 'loading'" class="watch-status">
       {{ translate('workspaceWatch.loadingSessions') }}

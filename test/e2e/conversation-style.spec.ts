@@ -857,6 +857,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}`);
+      await expect(page.locator('.process-activity.is-active')).toBeVisible();
       const tokens = await page.locator('html').evaluate((root) => {
         const color = (token: string) => {
           const probe = document.createElement('span');
@@ -971,7 +972,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();
       const treeToggle = page.locator('.workbench-tree-toggle');
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'true');
-      const notificationToggle = page.locator('.workbench-notification-trigger');
+      const notificationToggle = page.locator('.activity-center-trigger');
       const loads = page.getByTestId('notification-loads');
       await notificationToggle.click();
       await expect(loads).toHaveText('1');
@@ -979,7 +980,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await notificationToggle.click();
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await page.getByRole('button', { name: 'Preview notification', exact: true }).click();
-      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('.activity-preview')).toBeVisible();
+      await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await notificationToggle.click();
       await expect(loads).toHaveText('2');
       await notificationToggle.click();
@@ -1013,12 +1015,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const [selector, edge, size] of [
         ['.task-list-items', 'border-top-width', '1px'],
         ['.task-list-items > li', 'border-bottom-width', '1px'],
-        ['.conversation-tool-list', 'border-left-width', '2px'],
-        ['.conversation-tool-list > .conversation-tool-detail', 'border-top-width', '1px'],
+        ['.conversation-record-group', 'border-left-width', '0px'],
+        ['.conversation-record-group > .conversation-tool-detail', 'padding-top', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'border-top-width', '0px'],
         ['.conversation-record-group > .conversation-command-detail', 'border-top-width', '0px']
       ] as const)
         await expect(page.locator(selector).first()).toHaveCSS(edge, size);
+      const tool = page.locator('.conversation-record-group > .conversation-tool-detail').first();
+      const toolHeading = await tool.locator(':scope > summary').boundingBox();
+      const groupHeading = await tool.locator('..').locator(':scope > summary').boundingBox();
+      expect(toolHeading!.x).toBeGreaterThan(groupHeading!.x);
       await treeToggle.click();
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'false');
       await treeToggle.click();

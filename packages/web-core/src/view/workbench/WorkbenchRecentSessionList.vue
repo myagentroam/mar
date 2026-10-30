@@ -6,10 +6,6 @@ import { recentRunTimeReference } from '../../util/notification-presentation.js'
 
 defineProps<{
   readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
-  readonly groupState: Record<
-    import('@myagentroam/protocol').SessionGroup,
-    { running: number; unread: boolean }
-  >;
   readonly runs: readonly RecentRun[];
   readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
@@ -18,7 +14,6 @@ defineProps<{
 const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
-  activateGroupMarker: [group: import('@myagentroam/protocol').SessionGroup];
 }>();
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
@@ -52,14 +47,9 @@ function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warn
     :class="{ 'drawer-mode': mobileMode }"
     :aria-label="translate('workbenchNotificationCenter.recentSessions')"
   >
-    <header v-if="!mobileMode">
-      {{ translate('workbenchNotificationCenter.recentSessions') }}
-    </header>
     <SessionGroupTabs
       class="recent-session-groups"
       :model-value="sessionGroup"
-      :state="groupState"
-      @activate-marker="emit('activateGroupMarker', $event)"
       @update:model-value="emit('selectGroup', $event)"
     />
     <p v-if="runs.length === 0" class="recent-sessions-empty">
@@ -107,26 +97,11 @@ function runStatusType(run: RecentRun): 'primary' | 'success' | 'danger' | 'warn
 .recent-sessions-panel {
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - var(--sidebar-header-height) - 2rem - env(safe-area-inset-bottom, 0px));
+  min-height: 0;
   overflow: hidden;
-}
-.recent-sessions-panel > header {
-  flex: none;
-  padding: 0.55rem 0.7rem;
-  border-bottom: 1px solid var(--mar-border-default);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  color: var(--mar-text-primary);
-}
-.recent-sessions-panel.drawer-mode {
-  max-height: none;
-  overflow: visible;
 }
 .recent-session-groups {
   margin-inline: 0.35rem;
-}
-.drawer-mode .recent-sessions-list {
-  overflow: visible;
 }
 .recent-sessions-empty {
   margin: 0;

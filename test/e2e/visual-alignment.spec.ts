@@ -788,11 +788,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     page
   }, testInfo) => {
     await page.goto(`${fixture.url}visual-alignment.html?theme=${theme}`);
-    const trigger = page.locator('.workbench-notification-center button').first();
+    const trigger = page.locator('.activity-center-trigger');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     await trigger.click();
+    await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    const panel = page.locator('.workbench-notification-panel');
+    const panel = page.locator('.workbench-activity-panel:visible');
     await expect(panel).toBeVisible();
     await expect(panel).toHaveCSS('backdrop-filter', 'none');
     await page.evaluate(() => {
@@ -803,8 +804,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       document.documentElement.style.setProperty('--mar-radius-surface', '13px');
       document.documentElement.style.setProperty('--mar-radius-marker', '2px');
     });
-    await expect(panel).toHaveCSS('background-color', 'rgb(30, 45, 60)');
-    await expect(panel).toHaveCSS('border-radius', '13px');
+    await expect(page.locator('.workbench-activity-popover')).toHaveCSS(
+      'background-color',
+      'rgb(30, 45, 60)'
+    );
+    await expect(page.locator('.workbench-activity-popover')).toHaveCSS('border-radius', '13px');
     await expect(page.locator('.notification-unread-label')).toHaveCSS('border-radius', '2px');
     await expect(panel).toHaveCSS('opacity', '1');
     await page.screenshot({
@@ -842,8 +846,9 @@ for (const mobile of [false, true]) {
       await page.goto(
         `${fixture.url}visual-alignment.html?long-notification=1${mobile ? '&mobile=1&theme=daylight' : ''}`
       );
-      await page.locator('.workbench-notification-center button').first().click();
-      const panel = page.locator('.workbench-notification-panel');
+      await page.locator('.activity-center-trigger').click();
+      await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
+      const panel = page.locator('.workbench-activity-panel:visible');
       const item = panel.locator('.workbench-notification-list > li').first();
       const title = item.locator('strong');
       const message = item.locator('small');
@@ -879,9 +884,7 @@ for (const mobile of [false, true]) {
       const time = item.locator('time');
       const timeBox = (await time.boundingBox())!;
       expect(timeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
-      const section = mobile
-        ? page.locator('.notification-fixture-drawer')
-        : panel.locator('.workbench-notification-section');
+      const section = panel.locator('.workbench-notification-section');
       await section.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
@@ -919,8 +922,8 @@ test('Mobile first touch executes the action and the notification stays within t
     await page.goto(`${fixture.url}visual-alignment.html?mobile=1`);
     await page.locator('.composer-context-button').tap();
     await expect(page.getByTestId('compact-count')).toHaveText('1');
-    await page.locator('.workbench-notification-center button').first().tap();
-    const panel = page.locator('.workbench-notification-panel');
+    await page.locator('.activity-center-trigger').tap();
+    const panel = page.locator('.workbench-activity-panel:visible');
     await expect(panel).toBeVisible();
     const box = await page.locator('.notification-fixture-drawer').boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(0);

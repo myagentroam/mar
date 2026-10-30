@@ -157,7 +157,7 @@ export * from './service/workbench-notification-service.js';
 export * from './service/workbench-notification-navigation-service.js';
 export * from './service/web-version-update-service.js';
 export * from './util/notification-presentation.js';
-export { default as WorkbenchNotificationCenter } from './view/workbench/WorkbenchNotificationCenter.vue';
+export { default as WorkbenchActivityCenter } from './view/workbench/WorkbenchActivityCenter.vue';
 export * from './i18n/notifications.js';
 export * from './service/workspace-session-service.js';
 export * from './service/workbench-page-lifecycle-service.js';

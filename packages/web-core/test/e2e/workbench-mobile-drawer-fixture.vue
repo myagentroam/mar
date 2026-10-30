@@ -14,6 +14,7 @@ import { createWorkbenchNavigationService } from '../../src/service/workbench-na
 import { captureMobileLayerRoute } from '../../src/service/mobile-layer-history-service.js';
 import { createMobileMenuHistoryService } from '../../src/service/mobile-menu-history-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import type { WorkspaceUploadTask } from '../../src/service/workspace-upload-service.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type {
@@ -59,16 +60,21 @@ const notification = {
     sessionId: 'session'
   }
 };
-let notificationsRead = false;
+const params = new URL(location.href).searchParams;
+const startedAt = Date.now() - 138_000;
+let notificationsRead = params.has('read');
 const service = createWorkbenchNotificationService(ref('fixture-user'), {
   request: async <T,>(path: string, init?: RequestInit) => {
     if (path === '/api/notifications/read-all' && init?.method === 'POST') notificationsRead = true;
     return {
-      notifications: Array.from({ length: 30 }, (_, index) => ({
-        ...notification,
-        id: `notification-${index}`,
-        read: notificationsRead
-      })),
+      notifications: Array.from(
+        { length: params.has('many-notifications') ? 120 : 30 },
+        (_, index) => ({
+          ...notification,
+          id: `notification-${index}`,
+          read: notificationsRead
+        })
+      ),
       recentRuns: Array.from({ length: 30 }, (_, index) => ({
         nodeId: 'node',
         runId: `run-${index}`,
@@ -78,12 +84,12 @@ const service = createWorkbenchNotificationService(ref('fixture-user'), {
         sessionTitle: `Session ${index}`,
         userMessage: `Review task ${index}`,
         runner: 'mar',
-        status: index === 0 ? 'RUNNING' : 'SUCCEEDED',
-        createdAt: 1,
-        startedAt: 1,
-        updatedAt: 2,
-        completedAt: index === 0 ? null : 2,
-        sortAt: 2,
+        status: index === 0 && !params.has('stopped') ? 'RUNNING' : 'SUCCEEDED',
+        createdAt: startedAt,
+        startedAt,
+        updatedAt: startedAt,
+        completedAt: index === 0 && !params.has('stopped') ? null : startedAt + 40_000,
+        sortAt: startedAt,
         version: 1
       }))
     } as T;
@@ -92,6 +98,21 @@ const service = createWorkbenchNotificationService(ref('fixture-user'), {
 void service.load();
 const diagnostics = createWebPerformanceDiagnostics();
 const opened = ref('');
+const uploads: WorkspaceUploadTask[] = params.has('uploads')
+  ? (['FAILED', 'UPLOADING'] as const).map((status) => ({
+      id: status,
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      directory: '.',
+      overwrite: false,
+      file: new File(['fixture'], 'report.txt'),
+      name: 'report.txt',
+      size: 7,
+      receivedBytes: 0,
+      status,
+      cancelled: false
+    }))
+  : [];
 const quickOpen = ref(false);
 const detailsOpen = ref(false);
 const imageOpen = ref(false);
@@ -217,13 +238,16 @@ onBeforeUnmount(() => {
       :mobile-viewport="navigation.mobileViewport.value"
       :notification-service="service"
       :performance-diagnostics="diagnostics"
-      :uploads="[]"
+      :uploads="uploads"
       :upload-status-label="() => ''"
       @select-navigation="selectView"
       @select-mobile-utility-panel="navigation.selectMobileUtilityPanel"
       @close-mobile-sidebar="navigation.closeMobileSidebar"
       @open-recent-run="opened = $event.sessionId"
       @open-notification="opened = $event.id"
+      @retry-upload="opened = `retry:${$event.id}`"
+      @remove-upload="opened = `remove:${$event.id}`"
+      @cancel-upload="opened = `cancel:${$event.id}`"
       @toggle-node="tree.toggleNode"
     />
     <section class="fixture-workspace" :class="{ 'tree-reveal-fixture': treeRevealFixture }">

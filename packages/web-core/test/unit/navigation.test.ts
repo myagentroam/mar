@@ -24,19 +24,17 @@ describe('Public Navigation Layout', () => {
   it('keeps utility drawers, navigation and Workspace tools mutually exclusive', () => {
     const { service } = setup();
     service.selectView('settings');
-    service.selectMobileUtilityPanel('recent-sessions');
+    service.selectMobileUtilityPanel('activity');
     expect(service.mobileSidebarOpen.value).toBe(true);
-    expect(service.mobileUtilityPanel.value).toBe('recent-sessions');
-    service.selectMobileUtilityPanel('notifications');
-    expect(service.mobileUtilityPanel.value).toBe('notifications');
+    expect(service.mobileUtilityPanel.value).toBe('activity');
     service.openMobileWorkspaceSurface('terminal');
     expect(service.mobileUtilityPanel.value).toBeUndefined();
-    service.selectMobileUtilityPanel('notifications');
+    service.selectMobileUtilityPanel('activity');
     expect(service.mobileWorkspaceSurface.value).toBe('conversation');
     service.selectView('settings');
     expect(service.mobileUtilityPanel.value).toBeUndefined();
     expect(service.mobileSidebarOpen.value).toBe(true);
-    service.selectMobileUtilityPanel('recent-sessions');
+    service.selectMobileUtilityPanel('activity');
     service.selectMobileUtilityPanel(undefined);
     expect(service.mobileUtilityPanel.value).toBeUndefined();
     expect(service.mobileSidebarOpen.value).toBe(false);
@@ -45,15 +43,15 @@ describe('Public Navigation Layout', () => {
   it('clears utility drawers on breakpoint changes and ignores them on desktop', () => {
     const { service, query } = setup();
     service.start();
-    service.selectMobileUtilityPanel('notifications');
+    service.selectMobileUtilityPanel('activity');
     const change = query.addEventListener.mock.calls[0]![1] as (event: {
       matches: boolean;
     }) => void;
     change({ matches: true });
-    expect(service.mobileUtilityPanel.value).toBe('notifications');
+    expect(service.mobileUtilityPanel.value).toBe('activity');
     change({ matches: false });
     expect(service.mobileUtilityPanel.value).toBeUndefined();
-    service.selectMobileUtilityPanel('recent-sessions');
+    service.selectMobileUtilityPanel('activity');
     expect(service.mobileUtilityPanel.value).toBeUndefined();
     service.dispose();
   });

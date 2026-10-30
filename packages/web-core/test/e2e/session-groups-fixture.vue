@@ -5,11 +5,13 @@ import type { Session } from '../../src/model/workbench.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
-import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue';
+import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 
 const mobile = matchMedia('(max-width: 767px)').matches;
+const mobileOpen = ref(false);
+const mobileTarget = document.getElementById('recent-mobile')!;
 const group = ref<SessionGroup>('MAIN');
 const selected = ref('main');
 const treeSession = ref('');
@@ -83,11 +85,6 @@ if (new URL(location.href).searchParams.has('unread-only')) {
     status: 'SUCCEEDED' as const
   }));
 }
-const groupState = computed(() => service.sessionGroupState('node', 'workspace'));
-function activateMarker(group: SessionGroup): void {
-  const target = service.sessionGroupTarget(group, { nodeId: 'node', workspaceId: 'workspace' });
-  if (target) openTarget(target.sessionId);
-}
 function openTarget(sessionId: string): void {
   selected.value = sessionId;
   group.value = sessionId === 'main' ? 'MAIN' : 'CHILD';
@@ -139,9 +136,7 @@ const props = {
         :sessions="shown"
         :selected-session-id="selected"
         :session-group="group"
-        :group-state="groupState"
         @select-group="group = $event"
-        @activate-group-marker="activateMarker"
         @open="selected = $event"
         @open-tree="treeSession = $event"
       />
@@ -179,13 +174,14 @@ const props = {
       <output data-testid="opened-tree-session">{{ treeSession }}</output>
     </section>
     <div class="recent-host">
-      <WorkbenchRecentSessions
+      <WorkbenchActivityCenter
         :service="service"
+        :uploads="[]"
+        :status-label="() => ''"
         :mobile-mode="mobile"
-        mobile-panel-target="#recent-mobile"
-        :mobile-presented="mobile"
+        v-model:mobile-open="mobileOpen"
+        :mobile-panel-target="mobileTarget"
         @open-recent-run="openTarget($event.sessionId)"
-        @open-session-target="openTarget($event.sessionId)"
       />
     </div>
   </main>

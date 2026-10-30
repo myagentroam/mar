@@ -1123,19 +1123,6 @@ export function createWorkbenchPageController<
       : openSession(sessionId, { onSessionResolved });
   }
 
-  function activateWorkspaceSessionGroupMarker(
-    group: import('@myagentroam/protocol').SessionGroup
-  ): void {
-    const target = workspaceTarget.value;
-    if (target === undefined) return;
-    const session = workbenchNotificationService.sessionGroupTarget(group, {
-      nodeId: target.nodeId,
-      workspaceId: target.workspaceId,
-      ...(selectedSessionId.value === undefined ? {} : { lastSessionId: selectedSessionId.value })
-    });
-    if (session !== undefined) void openNavigatedSession(session.sessionId, true);
-  }
-
   async function openSessionFromList(sessionId: string): Promise<void> {
     await workbenchSessionSelectionService.selectSession(sessionId);
   }
@@ -1801,7 +1788,6 @@ export function createWorkbenchPageController<
   const {
     currentGroup: workspaceSessionGroup,
     selectGroup: selectWorkspaceSessionGroup,
-    runningCounts: workspaceSessionRunningCounts,
     refreshing: refreshingWorkspaceSessions,
     searchQuery: workspaceSessionSearchQuery,
     searchResults: workspaceSessionSearchResults,
@@ -1830,16 +1816,6 @@ export function createWorkbenchPageController<
             workspaceSessionDiscovery.listedSessionIds.value.has(session.id)))
     )
   );
-  const workspaceSessionGroupState = computed(() => {
-    const target = workspaceTarget.value;
-    const state = workbenchNotificationService.sessionGroupState(
-      target?.nodeId,
-      target?.workspaceId
-    );
-    state.MAIN.running = workspaceSessionRunningCounts.value.MAIN;
-    state.CHILD.running = workspaceSessionRunningCounts.value.CHILD;
-    return state;
-  });
   const canLoadMoreWorkspaceSessions = computed(() =>
     workspaceSessionSearchQuery.value.length > 0
       ? workspaceSessionSearchNextCursor.value !== null
@@ -3447,6 +3423,7 @@ export function createWorkbenchPageController<
     canUseComposer,
     cancelWorkspaceUpload,
     changeWorkspaceWatchDirectory,
+    retryWorkspaceWatch: () => workspaceWatchService.retryFailed(),
     changePassword,
     closeCommandState,
     clearHostedConversation,
@@ -3649,9 +3626,7 @@ export function createWorkbenchPageController<
     renameSession,
     moveSessionToMain,
     workspaceSessionGroup,
-    workspaceSessionGroupState,
     selectWorkspaceSessionGroup,
-    activateWorkspaceSessionGroupMarker,
     rollbackConversation,
     rollbackConversationEnabled,
     rewindConversationEnabled,

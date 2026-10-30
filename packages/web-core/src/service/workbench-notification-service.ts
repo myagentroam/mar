@@ -102,10 +102,6 @@ export type WorkbenchNotificationInput = (
 };
 
 export interface WorkbenchNotificationService {
-  sessionGroupState(
-    nodeId?: string,
-    workspaceId?: string
-  ): Record<import('@myagentroam/protocol').SessionGroup, { running: number; unread: boolean }>;
   readonly notifications: Ref<WorkbenchNotification[]>;
   readonly unreadCount: Readonly<Ref<number>>;
   readonly previewNotificationId: Readonly<Ref<string | undefined>>;
@@ -114,15 +110,7 @@ export interface WorkbenchNotificationService {
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
-  workspaceTabSession(
-    nodeId: string,
-    workspaceId: string,
-    lastSessionId?: string
-  ): string | undefined;
-  sessionGroupTarget(
-    group: import('@myagentroam/protocol').SessionGroup,
-    scope?: { nodeId: string; workspaceId: string; lastSessionId?: string }
-  ): { nodeId: string; workspaceId: string; sessionId: string } | undefined;
+  workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
   hasUnreadConversation(nodeId: string, conversationId: string): boolean;
   notify(input: WorkbenchNotificationInput): void;
@@ -688,40 +676,6 @@ export function createWorkbenchNotificationService(
     persist();
   }
 
-  function sessionGroupState(nodeId?: string, workspaceId?: string) {
-    const state = { MAIN: { running: 0, unread: false }, CHILD: { running: 0, unread: false } };
-    const active = new Set<string>();
-    for (const run of recentRuns.value) {
-      if (
-        (nodeId !== undefined && run.nodeId !== nodeId) ||
-        (workspaceId !== undefined && run.workspaceId !== workspaceId) ||
-        !['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
-      )
-        continue;
-      const key = `${run.nodeId}:${run.workspaceId}:${run.sessionId}`;
-      if (active.has(key)) continue;
-      active.add(key);
-      state[run.sessionGroup ?? 'MAIN'].running += 1;
-    }
-    for (const notification of notifications.value) {
-      if (
-        notification.source !== 'server' ||
-        notification.read ||
-        notification.expiresAt <= Date.now() ||
-        notification.target.targetType !== 'WORKSPACE_SESSION'
-      )
-        continue;
-      const target = notification.target;
-      if (
-        (nodeId !== undefined && target.nodeId !== nodeId) ||
-        (workspaceId !== undefined && target.workspaceId !== workspaceId)
-      )
-        continue;
-      state[target.sessionGroup ?? 'MAIN'].unread = true;
-    }
-    return state;
-  }
-
   function hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean {
     return recentRuns.value.some(
       (run) =>
@@ -747,55 +701,6 @@ export function createWorkbenchNotificationService(
         notification.target.workspaceId === workspaceId
     );
     return entry?.target?.targetType === 'WORKSPACE_SESSION' ? entry.target.sessionId : undefined;
-  }
-
-  function workspaceTabSession(
-    nodeId: string,
-    workspaceId: string,
-    lastSessionId?: string
-  ): string | undefined {
-    const unreadSessionId = firstUnreadWorkspaceSession(nodeId, workspaceId);
-    if (unreadSessionId !== undefined) return unreadSessionId;
-    const activeRuns = recentRuns.value.filter(
-      (run) =>
-        run.nodeId === nodeId &&
-        run.workspaceId === workspaceId &&
-        activeRecentRunStatus(run.status)
-    );
-    return (
-      activeRuns.find((run) => run.sessionId === lastSessionId)?.sessionId ??
-      activeRuns[0]?.sessionId
-    );
-  }
-
-  function sessionGroupTarget(
-    group: import('@myagentroam/protocol').SessionGroup,
-    scope?: { nodeId: string; workspaceId: string; lastSessionId?: string }
-  ): { nodeId: string; workspaceId: string; sessionId: string } | undefined {
-    const matches = (target: {
-      nodeId: string;
-      workspaceId: string;
-      sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
-    }) =>
-      (target.sessionGroup ?? 'MAIN') === group &&
-      (scope === undefined ||
-        (target.nodeId === scope.nodeId && target.workspaceId === scope.workspaceId));
-    const unread = notifications.value.find(
-      (notification) =>
-        notification.source === 'server' &&
-        !notification.read &&
-        notification.expiresAt > Date.now() &&
-        notification.target.targetType === 'WORKSPACE_SESSION' &&
-        matches(notification.target)
-    );
-    if (unread?.target?.targetType === 'WORKSPACE_SESSION') return unread.target;
-    const active = recentRuns.value.filter(
-      (run) => matches(run) && activeRecentRunStatus(run.status)
-    );
-    const run = active.find((item) => item.sessionId === scope?.lastSessionId) ?? active[0];
-    return run === undefined
-      ? undefined
-      : { nodeId: run.nodeId, workspaceId: run.workspaceId, sessionId: run.sessionId };
   }
 
   function hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean {
@@ -966,15 +871,13 @@ export function createWorkbenchNotificationService(
   return {
     notifications,
     recentRuns,
-    sessionGroupState,
     unreadCount,
     notificationRevision,
     previewNotificationId,
     systemNotifications,
     hasActiveWorkspaceRun,
     hasUnreadWorkspace,
-    workspaceTabSession,
-    sessionGroupTarget,
+    workspaceTabSession: firstUnreadWorkspaceSession,
     hasUnreadSession,
     hasUnreadConversation,
     notify,

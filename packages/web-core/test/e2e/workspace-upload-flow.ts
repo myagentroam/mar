@@ -7,7 +7,7 @@ import { createWorkspaceDirectTransferService } from '../../src/service/workspac
 import { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
+import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import type { WorkspaceTarget } from '../../src/model/workbench.js';
 import type { DirectBrowserMessage, DirectServerMessage } from '../../../protocol/src/index.js';
 
@@ -102,7 +102,7 @@ createApp({
         ref: uploads.recoveryInput,
         onChange: uploads.recover
       }),
-      h(WorkbenchNotificationCenter, {
+      h(WorkbenchActivityCenter, {
         service: notifications,
         uploads: uploads.tasks.value,
         statusLabel: uploads.statusLabel,

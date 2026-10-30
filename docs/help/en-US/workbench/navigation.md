@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-28
+lastUpdated: 2026-10-30
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -11,7 +11,7 @@ In Work mode, expand a Node group in the left resource tree and open a registere
 
 Every Workspace uses the same activation path: its tab activates and restores cached content immediately, then refreshes in the background. An uncached target shows its own loading state without waiting for network responses before selection. A temporary network failure leaves the target selected so it can be retried. Confirmed missing or inaccessible Workspaces have their content cleared and follow tab removal and fallback rules. Newer selections take precedence over late responses.
 
-Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, first opens its first valid unread session. A successful open marks only that session read; unread indicators remain for other sessions, and another click opens the next unread session. With no unread sessions, active tasks take priority: if the Workspace's last selected session still has an active task, the tab keeps that session instead of switching to another active session. Otherwise, it opens the first active session. With no active tasks, the tab restores its last selected session, or keeps the existing empty or draft behavior when none is available. Other candidates follow their existing order, regardless of session-list pagination or search. A failed open does not clear unread state. Background notifications and task changes never switch sessions automatically, and navigation never starts or stops tasks. Tree navigation, shortcuts, and fallback after closing a tab keep their existing behavior.
+Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, opens its first valid unread session and selects the correct Main / Child group. A successful open marks only that session read; another click can open the next unread session. With no unread sessions, the tab restores its last selected session, or preserves the existing empty or draft behavior. Running indicators are informational and never select a running session. A failed open does not clear unread state. Background notifications and task changes do not switch sessions automatically. Tree navigation, shortcuts, and tab-close fallback keep their existing behavior.
 
 Workspace registration uses an explicit host target in a dialog; closing it leaves the active Workspace unchanged. Open Workspaces appear as tabs and retain their order in the current browser.
 
@@ -31,7 +31,7 @@ On mobile, use **Work** in the top bar to open the same resource tree. Selecting
 
 Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme and Material file icons, with light/dark color themes and Seti/Material icon themes available. Changes apply immediately and are saved only in the current browser; valid saved choices are not overridden by the defaults. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. Node bundles tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
 
-The **Recent Sessions** icon immediately after **Chat** opens a separate list of recent regular Workspace sessions. Its badge counts only active sessions, including those starting or cancelling, independently of unread notifications. Finished sessions do not contribute to the badge, which is hidden when no sessions are active. See [Conversation](conversation.md) for retention and ordering.
+The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right blue dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
 
 ## Themes
 
@@ -55,7 +55,7 @@ Enable the capability offered under **Settings → System notifications**. Opt-i
 
 - **PC: focus-loss system notifications.** While the workbench remains connected, switching tabs or applications, or minimizing the window, can trigger a reminder. Closing all workbench pages stops new notifications; PC does not register for offline Push.
 - **Mobile: offline Push.** There are no realtime focus-loss notifications. Moving the app into the background normally disconnects it. Only new notifications created while every workbench connection for the account is offline are pushed to registered mobile clients. A connected PC suppresses mobile Push even when unfocused.
-- **In-app notifications:** a foreground page previews notifications for other targets; the active target keeps its existing read behavior. Background pages do not expand cards, and reload, reconnect, or focus recovery does not replay history. External notification preferences and permissions do not disable the in-app center.
+- **In-app notifications:** a foreground page previews notifications for other targets beside the Sessions & notifications entry (below the top bar on mobile), without replacing an open menu. The active target keeps its existing read behavior. Background pages do not expand cards, and reload, reconnect, or focus recovery does not replay history. External notification preferences and permissions do not disable the in-app center.
 
 Run, approval, plan, user-input, scheduled-task, and explicit Agent notifications retain their existing scope. Clicking a system notification focuses or opens Console, marks only that item read, and locates its target. Deleted, expired, or unauthorized items do not navigate. Uploads and Web updates remain in-app only; email requires an explicit request.
 

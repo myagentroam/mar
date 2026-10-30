@@ -1064,8 +1064,8 @@ pre {
   align-items: center;
   border: 0;
   border-radius: var(--mar-radius-marker);
-  background: color-mix(in srgb, var(--mar-text-secondary) 40%, var(--mar-bg-panel));
-  color: var(--mar-text-primary);
+  background: color-mix(in srgb, var(--mar-text-secondary) 14%, var(--mar-bg-panel));
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
   line-height: 1.4;

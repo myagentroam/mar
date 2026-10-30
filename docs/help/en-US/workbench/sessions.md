@@ -5,11 +5,11 @@ lastUpdated: 2026-10-30
 
 # Create and Manage Sessions
 
-Select a group badge to open an unread session first, or an active session if none is unread. Chats switches to the opened session's actual group. Notifications, recent sessions, and workspace tabs also synchronize the group when opening a session. Selecting the rest of a group tab only switches the list and does not change the conversation.
+Group tabs only switch the list; they do not open a session. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session.
 
 On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions with a parent relationship appear under Child Sessions; sessions without one appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. A Node without grouping capability retains the mixed list.
 
-Each tab has a green active-session count (`99+` above 99) and a separate **Unread** label when notifications are unread. Search and pagination do not change these indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
+Group tabs have no running or unread badges. Individual session rows retain their running and unread indicators. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. A child session also has a shortcut beside its title. The dialog indicates when the tree is limited to 100 sessions.
 
 Agent operation records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
@@ -71,7 +71,7 @@ Unexpected exits, forced kills, power loss, failed handoffs, other Agents, hoste
 
 Changing only the task prompt, notification settings, or saving user does not postpone the next scheduled occurrence. Changing the schedule or re-enabling a paused task recalculates the next run from the current time; missed occurrences during a pause are not replayed.
 
-Workspace tabs follow the [unread, active-task, then last-session priority](navigation.md); an already open target keeps its reading position. Clicking the selected Workspace tree entry, or selecting the current session again from the session list or Quick Open, does not refresh content or change your reading position. Repeated selections also leave an in-progress load alone. Use the corresponding refresh action when you need updated data.
+Workspace tabs [open an unread session, or restore the last session when none is unread](navigation.md); an already open target keeps its reading position. Clicking the selected Workspace tree entry, or selecting the current session again from the session list or Quick Open, does not refresh content or change your reading position. Repeated selections also leave an in-progress load alone. Use the corresponding refresh action when you need updated data.
 
 Choose **Scheduled task** from a session's More menu and enter a task prompt. If no task exists, the dialog shows **Not configured** with the enable switch off; repeat and time values are only unsaved form defaults. Enable the task and save to allow automatic execution. Simple mode uses a time picker for hourly, daily, or weekly schedules; Cron mode accepts a standard five-field expression with numbers, ranges, lists, and steps. The task runs in the Node time zone; no time zone setting is needed. The dialog shows the notification recipient by nickname or account name. Saving a task makes you both its execution identity and notification recipient. Task notifications are off by default. Enable them for run completion, skips, and failures. When disabled, results remain in recent runs without in-app notifications, system notifications, or offline Push. Proposed task changes still notify separately. Enabling a task pins the session and shows a clock in the list. Pausing or deleting the task leaves the pin in place. The dialog shows the next run, recent results, and proposed changes. Recent results are shown in pages of 10; changing pages preserves unsaved task edits.
 

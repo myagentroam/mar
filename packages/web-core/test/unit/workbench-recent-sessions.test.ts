@@ -2,13 +2,9 @@ import { nextTick, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type { RecentRun } from '../../src/service/workbench-notification-service.js';
-import WorkbenchRecentSessions from '../../src/view/workbench/WorkbenchRecentSessions.vue?unit-render';
 import WorkbenchRecentSessionList from '../../src/view/workbench/WorkbenchRecentSessionList.vue?unit-render';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
-import {
-  mountSessionGroupTestComponent,
-  SessionGroupTestNode
-} from './support/session-group-tabs-renderer.js';
+import { mountSessionGroupTestComponent } from './support/session-group-tabs-renderer.js';
 
 const originalLocale = localePreferenceService().locale.value;
 const mountedApps: { unmount(): void }[] = [];
@@ -42,53 +38,6 @@ function run(sessionId: string, sessionGroup: SessionGroup, runIndex: number): R
 }
 
 describe('Workbench recent session groups', () => {
-  it('keeps entry running counts and authoritative unread independent', async () => {
-    localePreferenceService().setLocale('en-US');
-    const runs = ref([run('active', 'MAIN', 1)]);
-    const state = ref({
-      MAIN: { running: 1, unread: false },
-      CHILD: { running: 0, unread: true }
-    });
-    const service = {
-      recentRuns: runs,
-      load: vi.fn(async () => undefined),
-      sessionGroupState: () => state.value,
-      hasUnreadSession: () => false
-    };
-    const mounted = mountSessionGroupTestComponent(WorkbenchRecentSessions, {
-      service,
-      mobileMode: true
-    });
-    mountedApps.push(mounted.app);
-    const trigger = mounted.container.findAll(
-      (node) => node.props.get('aria-label') === 'Recent Sessions'
-    )[0]!;
-    const unread = () =>
-      trigger.findAll((node) => node.props.get('class') === 'recent-sessions-mobile-unread');
-    const counts = () =>
-      trigger.findAll((node) => node.props.get('class') === 'session-state-count');
-    expect(unread()).toHaveLength(1);
-    expect(counts()[0]?.textContent).toBe('1');
-    expect(trigger.props.get('aria-description')).toBe('1 active sessions, Unread');
-    runs.value = [];
-    await nextTick();
-    expect(counts()).toHaveLength(0);
-    expect(unread()).toHaveLength(1);
-    state.value.CHILD.unread = false;
-    await nextTick();
-    expect(unread()).toHaveLength(0);
-    expect(trigger.props.get('aria-description')).toBe('0 active sessions');
-    state.value.MAIN.unread = true;
-    await nextTick();
-    expect(unread()).toHaveLength(1);
-    runs.value = [run('active', 'MAIN', 2)];
-    state.value.MAIN.unread = false;
-    await nextTick();
-    expect(counts()[0]?.textContent).toBe('1');
-    expect(unread()).toHaveLength(0);
-    expect(service.load).not.toHaveBeenCalled();
-  });
-
   it.each([
     {
       locale: 'en-US' as const,
@@ -176,55 +125,6 @@ describe('Workbench recent session groups', () => {
       'Interrupted',
       'Canceled'
     ]);
-  });
-
-  it('defaults to Main, filters runs on selection, and preserves the combined entry count', async () => {
-    localePreferenceService().setLocale('en-US');
-    const runs = ref([
-      run('main-session', 'MAIN', 1),
-      run('main-session', 'MAIN', 2),
-      run('child-session', 'CHILD', 1)
-    ]);
-    const groupState = {
-      MAIN: { running: 1, unread: true },
-      CHILD: { running: 1, unread: true }
-    };
-    const service = {
-      recentRuns: runs,
-      load: vi.fn(async () => undefined),
-      sessionGroupState: vi.fn(() => groupState),
-      hasUnreadSession: vi.fn(() => true)
-    };
-    const target = new SessionGroupTestNode('mobile-panel');
-    const mounted = mountSessionGroupTestComponent(WorkbenchRecentSessions, {
-      service,
-      mobileMode: true,
-      mobileOpen: true,
-      mobilePresented: true,
-      mobilePanelTarget: target as unknown as HTMLElement
-    });
-    mountedApps.push(mounted.app);
-
-    expect(target.textContent).toContain('main-session');
-    expect(target.textContent).not.toContain('child-session');
-    const trigger = mounted.container.findAll(
-      (node) => node.props.get('aria-label') === 'Recent Sessions'
-    )[0];
-    expect(trigger?.props.get('aria-description')).toBe('3 active sessions, Unread');
-    expect(service.sessionGroupState).toHaveBeenCalledOnce();
-    expect(service.hasUnreadSession).toHaveBeenCalledWith('node-1', 'workspace-1', 'main-session');
-
-    const childTab = target.findAll(
-      (node) => node.props.get('role') === 'tab' && node.props.get('data-group') === 'CHILD'
-    )[0];
-    expect(childTab?.props.get('aria-label')).toContain('Child Sessions');
-    expect(childTab?.props.get('aria-label')).toContain('Unread');
-    childTab?.invoke('onClick');
-    await nextTick();
-
-    expect(target.textContent).toContain('child-session');
-    expect(target.textContent).not.toContain('main-session');
-    expect(trigger?.props.get('aria-description')).toBe('3 active sessions, Unread');
   });
 
   it.each([false, true])(

@@ -24,7 +24,7 @@ import { createWorkbenchContextCommandService } from '../../src/service/workbenc
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
-import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
+import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -259,7 +259,7 @@ const app = createApp({
             readonlyReason: ''
           })
         : null,
-      h(WorkbenchNotificationCenter, {
+      h(WorkbenchActivityCenter, {
         service,
         uploads: [],
         statusLabel: String,
@@ -269,7 +269,6 @@ const app = createApp({
         mobilePanelTarget: mobileNotificationPanelTarget.value,
         'onUpdate:mobileOpen': (open: boolean) => {
           mobileNotificationsOpen.value = open;
-          if (open) void service.load();
         }
       }),
       mobile

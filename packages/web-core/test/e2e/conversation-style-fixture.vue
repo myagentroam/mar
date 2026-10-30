@@ -9,7 +9,7 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
-import WorkbenchNotificationCenter from '../../src/view/workbench/WorkbenchNotificationCenter.vue';
+import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import ThemePreview from '../../src/view/settings/ThemePreview.vue';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
@@ -378,7 +378,7 @@ function finishPreview() {
 <template>
   <main class="conversation-style-fixture">
     <section aria-label="Notifications fixture">
-      <WorkbenchNotificationCenter :service="notifications" />
+      <WorkbenchActivityCenter :service="notifications" :uploads="[]" :status-label="String" />
       <ThemePreview name="Fixture preview" :colors="previewColors" />
       <output data-testid="notification-loads">{{ notificationLoads }}</output>
       <button
