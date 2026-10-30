@@ -57,6 +57,19 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=zh-CN&theme=${theme}`);
       const trigger = page.locator('.activity-center-trigger');
       const panel = page.locator('.workbench-activity-panel:visible');
+      const icon = trigger.locator('[data-mar-icon="recent-sessions"]');
+      await expect(icon).toBeVisible();
+      await expect(icon).toHaveAttribute('aria-hidden', 'true');
+      await expect(icon).toHaveCSS('animation-name', 'none');
+      const content = await icon
+        .locator('path')
+        .last()
+        .evaluate((element: SVGPathElement) => {
+          const { width, height } = element.getBBox();
+          return { width, height, length: element.getTotalLength() };
+        });
+      expect(content).toEqual({ width: 6, height: 4, length: 10 });
+      await trigger.screenshot({ path: testInfo.outputPath('activity-entry-stacked-cards.png') });
       await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
       await expect(trigger.locator('.activity-entry-running')).toHaveCount(1);
       await expect(page.locator('.workbench-notification-trigger')).toHaveCount(0);
@@ -67,6 +80,7 @@ for (const width of [1280, 390]) {
       );
       await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(30);
       await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
+      await expect(panel).toBeInViewport({ ratio: 1 });
       const box = await panel.boundingBox();
       expect(box!.width).toBeGreaterThanOrEqual(240);
       expect((await panel.locator('.activity-tabs').boundingBox())!.height).toBeLessThan(60);
