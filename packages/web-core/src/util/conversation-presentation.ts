@@ -518,6 +518,10 @@ export function conversationItemText(
     return stringField(value, 'namespace');
   }
   if (kind === 'command_execution') {
+    const presentation = conversationPayload(value.toolPresentation);
+    const execution =
+      presentation?.kind === 'EXECUTION' ? conversationPayload(presentation.execution) : undefined;
+    if (execution?.kind === 'CONTROL') return stringField(execution, 'toolName');
     const command = stringField(value, 'command');
     if (command.length > 0) return command;
     return (readToolOutput(value)?.blocks.some((block) => block.text.length > 0) ?? false) ||
