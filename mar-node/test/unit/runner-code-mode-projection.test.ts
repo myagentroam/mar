@@ -716,7 +716,7 @@ describe('Code Mode conversation projection', () => {
   });
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
-    'projects real SDK code_exec file changes and web tools in live and Catalog history for %s',
+    'projects real SDK code_exec file changes, web tools and partial failures in live and Catalog history for %s',
     async (protocol) => {
       const root = await mkdtemp(join(tmpdir(), 'mar-code-mode-projection-'));
       const workspace = join(root, 'workspace');
@@ -732,6 +732,8 @@ describe('Code Mode conversation projection', () => {
         'observe.text(command.data.stdout);'
       ].join('\n');
       const input = protocol === 'OPENAI_RESPONSES' ? code : { code };
+      const failureCode = 'observe.text("before failure"); throw new Error("Cell failed.");';
+      const failureInput = protocol === 'OPENAI_RESPONSES' ? failureCode : { code: failureCode };
       const model: AgentModelConfiguration = {
         id: 'projection',
         name: 'Projection',
@@ -760,6 +762,12 @@ describe('Code Mode conversation projection', () => {
               callId: 'direct-command',
               name: 'exec',
               arguments: { command, yieldMs: 5_000 }
+            };
+            yield {
+              type: 'client_tool.call',
+              callId: 'failed-cell',
+              name: 'code_exec',
+              arguments: failureInput
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else {
@@ -803,7 +811,10 @@ describe('Code Mode conversation projection', () => {
             event.type === 'tool.failed'
         );
         const nested = toolEvents.filter(
-          (event) => event.callId !== 'cell' && event.callId !== 'direct-command'
+          (event) =>
+            event.callId !== 'cell' &&
+            event.callId !== 'direct-command' &&
+            event.callId !== 'failed-cell'
         );
         expect(nested).toHaveLength(10);
         expect(nested).toEqual(
@@ -813,9 +824,23 @@ describe('Code Mode conversation projection', () => {
         );
         for (const event of nested) expect(event).toHaveProperty('parentCallId', 'cell');
         for (const event of toolEvents.filter(
-          (event) => event.callId === 'cell' || event.callId === 'direct-command'
+          (event) =>
+            event.callId === 'cell' ||
+            event.callId === 'direct-command' ||
+            event.callId === 'failed-cell'
         ))
           expect(event).not.toHaveProperty('parentCallId');
+        expect(toolEvents).toContainEqual(
+          expect.objectContaining({
+            type: 'tool.failed',
+            callId: 'failed-cell',
+            code: 'MAR_AGENT_CODE_FAILED',
+            message: 'Cell failed.',
+            data: expect.objectContaining({
+              observations: [expect.objectContaining({ type: 'value', value: 'before failure' })]
+            })
+          })
+        );
         const normalizer = new MarAgentConversationNormalizer();
         const live = new Map(
           events.flatMap((event) => normalizer.normalize(event)).map((item) => [item.itemId, item])
@@ -879,13 +904,32 @@ describe('Code Mode conversation projection', () => {
             ]
           }
         };
+        const expectedFailurePayload = {
+          command: failureCode,
+          cwd: null,
+          exitCode: null,
+          output: { blocks: [{ channel: 'TEXT', text: 'before failure' }] },
+          toolPresentation: {
+            kind: 'EXECUTION',
+            execution: {
+              kind: 'CODE',
+              toolName: 'code_exec',
+              error: { code: 'MAR_AGENT_CODE_FAILED', message: 'Cell failed.' }
+            }
+          }
+        };
         expect([...live.values()].filter((item) => item.kind === 'command_execution')).toEqual([
           expect.objectContaining({
             itemId: 'mar-agent-tool:cell',
             status: 'COMPLETED',
             payload: expect.objectContaining(expectedPayload)
           }),
-          expect.objectContaining({ itemId: 'mar-agent-tool:direct-command' })
+          expect.objectContaining({ itemId: 'mar-agent-tool:direct-command' }),
+          expect.objectContaining({
+            itemId: 'mar-agent-tool:failed-cell',
+            status: 'FAILED',
+            payload: expect.objectContaining(expectedFailurePayload)
+          })
         ]);
         const catalog = await openAgentSessionCatalog({ homeDirectory: home });
         try {
@@ -922,7 +966,12 @@ describe('Code Mode conversation projection', () => {
               status: 'COMPLETED',
               payload: expect.objectContaining(expectedPayload)
             }),
-            expect.objectContaining({ id: 'mar-agent-tool:direct-command' })
+            expect.objectContaining({ id: 'mar-agent-tool:direct-command' }),
+            expect.objectContaining({
+              id: 'mar-agent-tool:failed-cell',
+              status: 'FAILED',
+              payload: expect.objectContaining(expectedFailurePayload)
+            })
           ]);
         } finally {
           await catalog.close();

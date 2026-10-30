@@ -1021,7 +1021,7 @@ export class MarAgentConversationNormalizer {
         event.message ?? event.code,
         event.code,
         event.truncated === true,
-        state?.presentationData,
+        event.data === undefined ? state?.presentationData : event.data,
         state?.subagentTitle,
         state?.subagentDetails,
         state?.sleepStartedAt,
