@@ -428,6 +428,7 @@ it('automatically appends Git changes after the loading delay and cleans up', as
     worktreesTruncated: ref(false),
     discoveryErrors: ref([]),
     changesRefreshing: ref(false),
+    changesFetchFailed: ref(false),
     restoringPath: ref(undefined),
     loadChanges: vi.fn()
   };
@@ -628,6 +629,7 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
       worktreesTruncated: ref(false),
       discoveryErrors: ref([]),
       changesRefreshing: ref(false),
+      changesFetchFailed: ref(false),
       restoringPath: ref(undefined),
       loadChanges: vi.fn(async () => undefined)
     };
@@ -671,6 +673,7 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
         ]),
         historyNextCursor: ref(null),
         historyLoading: ref(false),
+        historyFetchFailed: ref(false),
         historyFiles: ref({}),
         historyFilesLoading: ref([]),
         historyRepositoryPath: ref(''),
