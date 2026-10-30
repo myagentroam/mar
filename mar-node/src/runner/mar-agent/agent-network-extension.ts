@@ -64,8 +64,7 @@ const tools: readonly {
       runner,
       modelId: {
         ...text,
-        description:
-          'Model ID from the target Runner Profile models[].id, not a display name. For MAR Agent this is an internal configuration ID, not an upstream model ID; omit to use the Runner default.'
+        description: 'Model configuration ID; omit to use the target Runner default.'
       },
       effort: text,
       title: text,
@@ -181,13 +180,27 @@ export function agentNetworkExtension(
       context.hooks.intercept('prompt.sections', (input, _call, next) => {
         const available = new Set(input.facts?.tools);
         const enabled = input.facts?.mode !== 'compact';
+        const delegate = enabled && available.has('agent_start');
+        const models = delegate
+          ? (context.models
+              ?.list()
+              .filter((model) => model.conversationModel && model.subagentModel)
+              .map((model) => ({
+                id: model.id,
+                name: model.name,
+                supportedEfforts: model.reasoningEfforts,
+                defaultEffort: model.defaultReasoningEffort
+              })) ?? [])
+          : [];
         return next({
           ...input,
           sections: [
             ...input.sections,
             {
               id: 'mar.node.agent-network:delegation',
-              text: enabled && available.has('agent_start') ? delegationPrompt : null
+              text: delegate
+                ? `${delegationPrompt}\n\nAvailable subagent models:\n${JSON.stringify({ runner: 'mar-agent', models })}`
+                : null
             },
             {
               id: 'mar.node.agent-network:collaboration',

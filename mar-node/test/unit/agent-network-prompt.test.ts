@@ -14,7 +14,11 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
 });
 
-async function fixture(codeMode = false, toolCall?: { name: string; input: unknown }) {
+async function fixture(
+  codeMode = false,
+  toolCall?: { name: string; input: unknown },
+  additionalModels: readonly Partial<AgentModelConfiguration>[] = []
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mar-network-prompt-'));
   const configuration: AgentModelConfiguration = {
     id: 'fixture',
@@ -41,7 +45,7 @@ async function fixture(codeMode = false, toolCall?: { name: string; input: unkno
     {
       mode: 'node',
       host: new LocalAgentHost({ mode: 'node', homeDirectory: directory, workspace: directory }),
-      models: [configuration],
+      models: [configuration, ...additionalModels.map((model) => ({ ...configuration, ...model }))],
       extensions: [
         agentNetworkExtension(invoke, () => 'execution'),
         {
@@ -93,7 +97,7 @@ async function fixture(codeMode = false, toolCall?: { name: string; input: unkno
   })();
   expect((await run.result()).status).toBe('completed');
   await events;
-  return { session, context, requests, invoke, failures };
+  return { agent, configuration, session, context, requests, invoke, failures };
 }
 
 it.each([false, true])(
@@ -137,6 +141,9 @@ it.each([false, true])(
       expect(instructions).toContain('Do not switch to marctl when a native operation fails.');
       expect(instructions).not.toContain('existing authorized Sessions');
       expect(instructions).not.toContain('never inside code_exec');
+      expect(JSON.stringify(request.tools)).toContain(
+        'Model configuration ID; omit to use the target Runner default.'
+      );
     }
     expect(test.invoke).not.toHaveBeenCalled();
   }
@@ -158,8 +165,62 @@ it('selects delegation and lateral guidance independently and omits both during 
       instructions.includes('# Workspace collaboration'),
       instructions.includes('# Workspace management')
     ]).toEqual(expected);
+    expect(instructions.includes('Available subagent models:')).toBe(expected[0]);
   }
   expect(test.requests).toHaveLength(1);
+  expect(test.invoke).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'injects only eligible subagent models with Code Mode %s',
+  async (codeMode) => {
+    const test = await fixture(codeMode, undefined, [
+      {
+        id: 'child',
+        name: 'Child model',
+        modelId: 'private-upstream-model',
+        baseUrl: 'https://private-provider.test',
+        apiKey: new SecretValue('private-model-key'),
+        subagentModel: true,
+        reasoningEfforts: ['low', 'high'],
+        defaultReasoningEffort: 'high'
+      },
+      { id: 'disabled', enabled: false, subagentModel: true },
+      { id: 'auxiliary', conversationModel: false, subagentModel: true }
+    ]);
+    const composed = await test.context.prompts.composeDefault();
+    const text = composed.sections.find(
+      (section) => section.id === 'mar.node.agent-network:delegation'
+    )!.text!;
+    expect(JSON.parse(text.split('Available subagent models:\n')[1]!)).toEqual({
+      runner: 'mar-agent',
+      models: [
+        {
+          id: 'child',
+          name: 'Child model',
+          supportedEfforts: ['low', 'high'],
+          defaultEffort: 'high'
+        }
+      ]
+    });
+    expect(JSON.stringify(test.requests[0])).toContain('Available subagent models:');
+    expect(test.invoke).not.toHaveBeenCalled();
+  }
+);
+
+it('refreshes the injected models after reconfiguration and represents an empty catalog', async () => {
+  const test = await fixture();
+  for (const models of [[{ ...test.configuration, id: 'next-child', subagentModel: true }], []]) {
+    await test.agent.reconfigureModels({ models: [test.configuration, ...models] });
+    const composed = await test.context.prompts.composeDefault();
+    const text = composed.sections.find(
+      (section) => section.id === 'mar.node.agent-network:delegation'
+    )!.text!;
+    const catalog = JSON.parse(text.split('Available subagent models:\n')[1]!);
+    expect(catalog.models.map((model: { id: string }) => model.id)).toEqual(
+      models.map((model) => model.id)
+    );
+  }
   expect(test.invoke).not.toHaveBeenCalled();
 });
 
