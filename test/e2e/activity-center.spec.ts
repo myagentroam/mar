@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 test.use({ hasTouch: true });
@@ -7,6 +7,142 @@ test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/workbench-mobile-drawer.html');
 });
 test.afterAll(async () => fixture.close());
+
+async function prepareActivityInteraction(page: Page, width = 1280) {
+  await page.setViewportSize({ width, height: 760 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US`);
+  await expect(page.locator('.activity-entry-count')).toHaveText('30');
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  return {
+    entry: page.locator('.activity-center-trigger'),
+    panel: page.locator('.workbench-activity-panel:visible')
+  };
+}
+
+test('Activity hover opens temporarily without a tooltip or changing focus', async ({ page }) => {
+  const { entry, panel } = await prepareActivityInteraction(page);
+  const input = page.getByRole('textbox', { name: 'Background input' });
+  await input.focus();
+  await entry.hover();
+  await page.clock.runFor(100);
+  await expect(entry).toHaveAttribute('aria-expanded', 'false');
+  await page.mouse.move(900, 650);
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+
+  await entry.hover();
+  await page.clock.runFor(500);
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('tab', { name: 'Notifications', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  await expect(input).toBeFocused();
+  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  const anchor = (await entry.boundingBox())!;
+  await page.mouse.move(anchor.x + anchor.width + 4, anchor.y + anchor.height / 2);
+  await page.clock.runFor(60);
+  await expect(panel).toBeVisible();
+  await panel.hover();
+  await page.clock.runFor(500);
+  await expect(panel).toBeVisible();
+  await page.mouse.move(900, 650);
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+  await expect(entry).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('Activity hover is kept open by click without resetting its selected page', async ({
+  page
+}) => {
+  const { entry, panel } = await prepareActivityInteraction(page);
+  await entry.hover();
+  await page.clock.runFor(500);
+  await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
+  await entry.click();
+  await expect(panel.getByRole('tab', { name: 'Recent Sessions', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  await page.mouse.move(900, 650);
+  await page.clock.runFor(500);
+  await expect(panel).toBeVisible();
+  await entry.click();
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+  await entry.click();
+  await expect(panel).toBeVisible();
+  await page.mouse.click(900, 650);
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+});
+
+test('Activity shortcuts keep hover panels open without displaying a tooltip', async ({ page }) => {
+  const { entry, panel } = await prepareActivityInteraction(page);
+  await page.getByRole('textbox', { name: 'Background input' }).focus();
+  for (const shortcut of ['Control+Shift+E', 'Meta+Shift+E']) {
+    await page.keyboard.press(shortcut);
+    await page.clock.runFor(500);
+    await expect(panel).toBeVisible();
+    await expect(entry).toBeFocused();
+    await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+    await page.keyboard.press(shortcut);
+    await page.clock.runFor(500);
+    await expect(panel).toHaveCount(0);
+  }
+  await entry.hover();
+  await page.clock.runFor(500);
+  await expect(panel).toBeVisible();
+  await page.keyboard.press('Control+Shift+E');
+  await page.mouse.move(900, 650);
+  await page.clock.runFor(500);
+  await expect(panel).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+});
+
+test('Activity pending hover is canceled by Escape and mobile layout changes', async ({ page }) => {
+  const { entry, panel } = await prepareActivityInteraction(page);
+  await entry.hover();
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+  await page.mouse.move(900, 650);
+  await entry.hover();
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+});
+
+for (const width of [1280, 390]) {
+  test(`Activity touch keeps explicit opening and closing at ${width}px`, async ({ page }) => {
+    const { entry, panel } = await prepareActivityInteraction(page, width);
+    await entry.focus();
+    await entry.dispatchEvent('pointerenter', { pointerType: 'touch' });
+    await page.clock.runFor(500);
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+    if (width < 768) {
+      await entry.hover();
+      await page.clock.runFor(500);
+      await expect(panel).toHaveCount(0);
+    }
+    await entry.tap();
+    await expect(panel).toBeVisible();
+    await entry.dispatchEvent('pointerleave', { pointerType: 'touch' });
+    await page.clock.runFor(500);
+    await expect(panel).toBeVisible();
+    await entry.tap();
+    await page.clock.runFor(500);
+    await expect(panel).toHaveCount(0);
+  });
+}
 
 test('Aggregated notifications preserve upload recovery, removal and cancellation intents', async ({
   page

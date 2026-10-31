@@ -36,17 +36,18 @@ const emit = defineEmits<{
   removeUpload: [task: WorkspaceUploadTask];
 }>();
 const trigger = ref<HTMLElement>();
-const desktopOpen = ref(false);
+const desktopOpen = ref<'hover' | 'explicit'>();
 const page = ref<'recent-sessions' | 'notifications'>('recent-sessions');
 const sessionGroup = ref<SessionGroup>('MAIN');
 const previewId = ref<string>();
 const previewVisible = ref(false);
 let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 const open = computed({
-  get: () => (props.mobileMode ? props.mobileOpen === true : desktopOpen.value),
+  get: () => (props.mobileMode ? props.mobileOpen === true : desktopOpen.value !== undefined),
   set: (value: boolean) => {
     if (props.mobileMode) emit('update:mobileOpen', value);
-    else desktopOpen.value = value;
+    else desktopOpen.value = value ? 'explicit' : undefined;
   }
 });
 const popoverOpen = computed({
@@ -73,9 +74,32 @@ function dismissPreview(): void {
   // Retain the preview identity while the popover finishes its leave transition.
   previewVisible.value = false;
 }
+function clearHoverTimer(): void {
+  clearTimeout(hoverTimer);
+  hoverTimer = undefined;
+}
+function onPointerEnter(event: PointerEvent): void {
+  if (props.mobileMode || event.pointerType !== 'mouse') return;
+  clearHoverTimer();
+  if (desktopOpen.value) return;
+  hoverTimer = setTimeout(() => {
+    hoverTimer = undefined;
+    desktopOpen.value = 'hover';
+  }, 200);
+}
+function onPointerLeave(event: PointerEvent): void {
+  if (props.mobileMode || event.pointerType !== 'mouse') return;
+  clearHoverTimer();
+  if (desktopOpen.value !== 'hover') return;
+  hoverTimer = setTimeout(() => {
+    hoverTimer = undefined;
+    desktopOpen.value = undefined;
+  }, 150);
+}
 watch(
   open,
   (visible) => {
+    clearHoverTimer();
     dismissPreview();
     if (!visible) return;
     previewId.value = undefined;
@@ -112,12 +136,18 @@ watch(
 watch(
   () => props.mobileMode,
   () => {
-    desktopOpen.value = false;
+    clearHoverTimer();
+    desktopOpen.value = undefined;
     dismissPreview();
   }
 );
 function toggle(): void {
+  clearHoverTimer();
   dismissPreview();
+  if (!props.mobileMode && desktopOpen.value === 'hover') {
+    desktopOpen.value = 'explicit';
+    return;
+  }
   open.value = !open.value;
 }
 function selectNotification(notification: WorkbenchNotification): void {
@@ -141,11 +171,14 @@ function onShortcut(event: KeyboardEvent): void {
     return;
   event.preventDefault();
   if (event.repeat) return;
-  if (!props.mobileMode && !open.value) trigger.value?.querySelector('button')?.focus();
+  if (!props.mobileMode && desktopOpen.value !== 'explicit')
+    trigger.value?.querySelector('button')?.focus();
   toggle();
 }
 function onEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || !popoverOpen.value) return;
+  if (event.key !== 'Escape') return;
+  clearHoverTimer();
+  if (!popoverOpen.value) return;
   event.stopPropagation();
   popoverOpen.value = false;
 }
@@ -154,6 +187,7 @@ onMounted(() => {
   window.addEventListener('keydown', onEscape);
 });
 onBeforeUnmount(() => {
+  clearHoverTimer();
   dismissPreview();
   window.removeEventListener('keydown', onShortcut, true);
   window.removeEventListener('keydown', onEscape);
@@ -162,33 +196,31 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workbench-activity-center" :class="{ 'mobile-mode': mobileMode }">
-    <span ref="trigger" class="activity-reference">
-      <span
-        v-tooltip="{
-          content: `${translate('activityCenter.shortcut')}\n${entryDescription}`,
-          placement: mobileMode ? 'bottom' : 'right'
-        }"
-        class="mar-tooltip-control"
+    <span
+      ref="trigger"
+      class="activity-reference"
+      @pointerenter="onPointerEnter"
+      @pointerleave="onPointerLeave"
+    >
+      <button
+        class="activity-center-trigger"
+        :class="{ active: open }"
+        type="button"
+        :aria-label="translate('activityCenter.title')"
+        :aria-description="entryDescription"
+        aria-keyshortcuts="Control+Shift+E Meta+Shift+E"
+        :aria-expanded="open"
+        @click.stop="toggle"
       >
-        <button
-          class="activity-center-trigger"
-          :class="{ active: open }"
-          type="button"
-          :aria-label="translate('activityCenter.title')"
-          :aria-description="entryDescription"
-          :aria-expanded="open"
-          @click.stop="toggle"
+        <MarIcon name="recent-sessions" aria-hidden="true" />
+        <span
+          v-if="service.unreadCount.value > 0"
+          class="activity-entry-count"
+          aria-hidden="true"
+          >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
-          <MarIcon name="recent-sessions" aria-hidden="true" />
-          <span
-            v-if="service.unreadCount.value > 0"
-            class="activity-entry-count"
-            aria-hidden="true"
-            >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
-          >
-          <span v-if="runningCount > 0" class="activity-entry-running" aria-hidden="true" />
-        </button>
-      </span>
+        <span v-if="runningCount > 0" class="activity-entry-running" aria-hidden="true" />
+      </button>
     </span>
     <ElPopover
       v-if="trigger"
@@ -229,6 +261,8 @@ onBeforeUnmount(() => {
         :uploads="uploads"
         :status-label="statusLabel"
         :mobile-mode="false"
+        @pointerenter="onPointerEnter"
+        @pointerleave="onPointerLeave"
         @open-recent-run="selectRun"
         @open-notification="selectNotification"
         @retry-upload="emit('retryUpload', $event)"
@@ -266,9 +300,6 @@ onBeforeUnmount(() => {
   display: flex;
   width: calc(100% - 4px);
   margin: 0 2px;
-}
-.activity-reference > .mar-tooltip-control {
-  width: 100%;
 }
 .activity-center-trigger {
   --activity-marker-surface: var(--mar-bg-chrome);

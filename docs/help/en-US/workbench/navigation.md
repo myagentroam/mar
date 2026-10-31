@@ -33,6 +33,8 @@ Settings contains Account Security, Appearance, System Notifications, Quick Prom
 
 The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right green dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
 
+On desktop, hover over the icon to open the panel temporarily. Move into the panel to read or interact; leaving both the icon and panel closes it. Click the icon or press `Ctrl/Cmd+Shift+E` to keep it open. If hover already opened it, this does not close it or reset the selected tab. Click the icon again, use the same shortcut, click outside, or press `Esc` to close. Mobile uses taps only, not hover. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise; tab selection then stays under your control. No extra text tooltip covers the panel.
+
 ## Themes
 
 Themes stay only in this browser. They are not uploaded or synced with accounts or devices. Clearing browser data deletes custom themes; export JSON files for backup or manual transfer.
