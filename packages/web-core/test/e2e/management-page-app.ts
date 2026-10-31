@@ -11,12 +11,13 @@ import '../../src/styles.css';
 const audit = new URLSearchParams(location.search).get('area') === 'audit';
 const usage = new URLSearchParams(location.search).get('area') === 'usage';
 const tall = new URLSearchParams(location.search).has('tall');
+const many = new URLSearchParams(location.search).has('many');
 const pending: {
   path: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
 }[] = [];
-const nodes = Array.from({ length: 45 }, (_, index) => ({
+const nodes = Array.from({ length: many ? 85 : 45 }, (_, index) => ({
   id: `node-${index}`,
   displayName: `Node ${index}`,
   connected: true,
@@ -132,13 +133,20 @@ async function request<T>(path: string): Promise<T> {
 localePreferenceService().setLocale('en-US');
 createTooltipApp({
   render: () =>
-    h('div', { class: 'fixture-scroller', style: `height:${tall ? 3000 : 560}px;overflow:auto` }, [
-      audit
-        ? h(AuditManagementPage, { request })
-        : usage
-          ? h(UsageStatisticsSettings, { request })
-          : h(ResourceManagementPanel, { request, resourceType: 'NODE', writable: false })
-    ])
+    h(
+      'div',
+      {
+        class: 'fixture-scroller',
+        style: `display:flex;height:${tall ? 3000 : 560}px;overflow:auto`
+      },
+      [
+        audit
+          ? h(AuditManagementPage, { request })
+          : usage
+            ? h(UsageStatisticsSettings, { request })
+            : h(ResourceManagementPanel, { request, resourceType: 'NODE', writable: false })
+      ]
+    )
 })
   .use(ElementPlus)
   .use(i18n)

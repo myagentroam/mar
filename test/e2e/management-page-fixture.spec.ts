@@ -123,6 +123,65 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   expect(await page.evaluate(() => window.managementPageFixture.calls().length)).toBe(5);
 });
 
+test('Mobile tables preserve the reading position and append every page by continuing downward', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}management-page.html?many=1`);
+  const section = page.locator('.resource-management-panel');
+  const rows = section.locator('tbody tr.el-table__row');
+  const boundary = section.locator('.management-mobile-status');
+  const count = () => page.evaluate(() => window.managementPageFixture.calls().length);
+  await expect.poll(count).toBe(1);
+  await page.evaluate(() => window.managementPageFixture.settle(0, true));
+  await expect(rows).toHaveCount(20);
+  const geometry = await section.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight
+  }));
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  await section.hover({ position: { x: 150, y: 400 } });
+  const scrollDown = async () => {
+    for (let step = 0; step < 12; step++) {
+      const position = await section.evaluate((element) => ({
+        top: element.scrollTop,
+        bottom: element.scrollHeight - element.clientHeight
+      }));
+      if (position.top >= position.bottom - 1) return;
+      await page.mouse.wheel(0, 5000);
+      await expect
+        .poll(() => section.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(position.top);
+    }
+    throw new Error('The management container did not reach its next page boundary');
+  };
+
+  for (let nextPage = 2; nextPage <= 5; nextPage++) {
+    await expect(boundary).not.toBeInViewport();
+    await scrollDown();
+    await expect.poll(count).toBe(nextPage);
+    const previousTop = await section.evaluate((element) => element.scrollTop);
+    await page.evaluate((index) => window.managementPageFixture.settle(index, true), nextPage - 1);
+    await expect(rows).toHaveCount(Math.min(nextPage * 20, 85));
+    const currentTop = await section.evaluate((element) => element.scrollTop);
+    expect(Math.abs(currentTop - previousTop)).toBeLessThanOrEqual(2);
+    await expect(boundary).not.toBeInViewport();
+    expect(await count()).toBe(nextPage);
+  }
+
+  await scrollDown();
+  await expect(boundary).toBeInViewport();
+  expect(await count()).toBe(5);
+  const calls = await page.evaluate(() => window.managementPageFixture.calls());
+  expect(calls.map((path) => new URL(path, 'http://fixture').searchParams.get('page'))).toEqual([
+    '1',
+    '2',
+    '3',
+    '4',
+    '5'
+  ]);
+});
+
 test('A continuously visible boundary loads only once per new query context', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 3600 });
   await page.goto(`${fixture.url}management-page.html?tall=1`);
