@@ -46,6 +46,16 @@ function preparedInput(): PreparedExecutionInput {
 }
 
 describe('restart execution state', () => {
+  it.each([1, 2, 3])('rejects plaintext state with schema version %s', (schemaVersion) => {
+    expect(() => openRestartState(JSON.stringify({ schemaVersion }), credential)).toThrow();
+  });
+
+  it('rejects an unsupported encrypted envelope version', () => {
+    const sealed = JSON.parse(sealRestartState({}, credential));
+    sealed.version = 2;
+    expect(() => openRestartState(JSON.stringify(sealed), credential)).toThrow();
+  });
+
   it('captures the original execution context, environment, usage grant, and optional attribution', () => {
     const input = preparedInput();
     const captured = captureRestartExecution(input, 41);

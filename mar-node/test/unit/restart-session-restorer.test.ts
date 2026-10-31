@@ -308,7 +308,7 @@ describe('Orderly restart input reconstruction', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('does not borrow a different execution context when a legacy input has none', async () => {
+  it('does not borrow a different execution context when the required input context is missing', async () => {
     const f = await fixture();
     delete f.entry.current!.execution;
 

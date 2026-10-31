@@ -82,15 +82,7 @@ export function sealRestartState(value: unknown, credential: string): string {
 }
 
 export function openRestartState(text: string, credential: string): unknown {
-  const saved: unknown = JSON.parse(text);
-  if (
-    saved !== null &&
-    typeof saved === 'object' &&
-    'schemaVersion' in saved &&
-    (saved.schemaVersion === 1 || saved.schemaVersion === 2)
-  )
-    return saved;
-  const sealed = sealedSchema.parse(saved);
+  const sealed = sealedSchema.parse(JSON.parse(text));
   const decipher = createDecipheriv(
     'aes-256-gcm',
     encryptionKey(credential),

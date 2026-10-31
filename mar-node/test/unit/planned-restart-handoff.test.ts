@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
-import { openRestartState } from '../../src/service/restart-execution-state.js';
+import { openRestartState, sealRestartState } from '../../src/service/restart-execution-state.js';
 import {
   PlannedRestartHandoff,
   type PlannedRestart,
@@ -598,80 +598,43 @@ describe('PlannedRestartHandoff', () => {
     expect(restored).toHaveLength(1);
   });
 
-  it('migrates a strict schema v1 handoff model into the current modelId when recovering', async () => {
-    const directory = await temporaryDirectory();
-    const f = fixture();
-    const session = f.sessions[0]!;
-    prepareCurrent(f, session, 'resume after upgrade', 'unused-secret');
-    const queued = prepareQueue(f, session, 'legacy-v1-queue', 'legacy FIFO request');
-    const snapshot = handoff(f, directory).capture();
-    const entry = snapshot.sessions[0]!;
-    const { modelId, ...legacySession } = entry.session;
-    expect(modelId).toBe('model-under-test');
-    const legacy = {
-      ...snapshot,
-      schemaVersion: 1,
-      sessions: [
-        {
-          ...asLegacySession(entry),
-          session: { ...legacySession, model: 'non-default-v1-model' }
-        }
-      ]
-    };
-    await writeFile(join(directory, 'planned-restart-handoff.json'), JSON.stringify(legacy));
+  it.each([1, 2, 4])(
+    'rejects unsupported handoff schema v%s before restoring or blocking sessions',
+    async (schemaVersion) => {
+      const directory = await temporaryDirectory();
+      const f = fixture();
+      const session = f.sessions[0]!;
+      prepareCurrent(f, session, 'resume after upgrade', 'unused-secret');
+      prepareQueue(f, session, 'unsupported-queue', 'unsupported FIFO request');
+      const snapshot = handoff(f, directory).capture();
+      const unsupported = {
+        ...snapshot,
+        schemaVersion,
+        sessions:
+          schemaVersion === 4
+            ? snapshot.sessions
+            : snapshot.sessions.map((entry) => {
+                const legacy = asLegacySession(entry);
+                if (schemaVersion === 2) return legacy;
+                const { modelId, ...oldSession } = legacy.session;
+                return { ...legacy, session: { ...oldSession, model: modelId } };
+              })
+      };
+      await writeFile(
+        join(directory, 'planned-restart-handoff.json'),
+        sealRestartState(unsupported, nodeCredential)
+      );
 
-    const restored: RestartSession[] = [];
-    const reader = handoff(f, directory, {
-      restore: async (restoredSession) => {
-        restored.push(restoredSession);
-      }
-    });
-    await reader.load();
-    await reader.recover();
-    await reader.wait();
-
-    expect(restored).toMatchObject([
-      {
-        session: { id: session.externalSessionId, modelId: 'non-default-v1-model' },
-        current: { content: 'resume after upgrade' },
-        queue: [{ id: queued.id, content: 'legacy FIFO request' }]
-      }
-    ]);
-    expect(restored[0]).not.toHaveProperty('ownerUserId');
-    expect(restored[0]?.current).not.toHaveProperty('initiatedByUserId');
-    expect(restored[0]?.current).not.toHaveProperty('execution');
-    expect(restored[0]?.queue[0]).not.toHaveProperty('initiatedByUserId');
-  });
-
-  it('migrates a strict schema v2 handoff and drops its legacy identity metadata', async () => {
-    const directory = await temporaryDirectory();
-    const f = fixture();
-    const session = f.sessions[0]!;
-    prepareCurrent(f, session, 'resume schema v2 work', 'unused-secret');
-    const snapshot = handoff(f, directory).capture();
-    const legacy = {
-      ...snapshot,
-      schemaVersion: 2,
-      sessions: snapshot.sessions.map(asLegacySession)
-    };
-    await writeFile(join(directory, 'planned-restart-handoff.json'), JSON.stringify(legacy));
-
-    const restored: RestartSession[] = [];
-    const reader = handoff(f, directory, {
-      restore: async (restoredSession) => {
-        restored.push(restoredSession);
-      }
-    });
-    await reader.load();
-    await reader.recover();
-
-    expect(restored).toMatchObject([
-      { session: { id: session.externalSessionId, modelId: 'model-under-test' } }
-    ]);
-    expect(restored[0]).not.toHaveProperty('ownerUserId');
-    expect(restored[0]?.current).not.toHaveProperty('initiatedByUserId');
-    expect(restored[0]?.current).not.toHaveProperty('execution');
-  });
+      const restore = vi.fn(async () => undefined);
+      const reader = handoff(f, directory, { restore });
+      await reader.load();
+      expect(reader.blocks(session.externalSessionId!)).toBe(false);
+      expect(f.diagnostics).toEqual([{ code: 'RESTART_HANDOFF_INVALID' }]);
+      await reader.recover();
+      await reader.wait();
+      expect(restore).not.toHaveBeenCalled();
+    }
+  );
 
   it('rejects a handoff encrypted with a different Node credential', async () => {
     const directory = await temporaryDirectory();
@@ -738,11 +701,10 @@ describe('PlannedRestartHandoff', () => {
   it('does not replay a processing manifest left by an interrupted prior startup', async () => {
     const directory = await temporaryDirectory();
     const f = fixture();
+    prepareCurrent(f, f.sessions[0]!, 'do-not-replay', 'processing-secret');
+    const content = sealRestartState(handoff(f, directory).capture(), nodeCredential);
     const processingPath = join(directory, 'planned-restart-handoff.processing.json');
-    await writeFile(
-      processingPath,
-      JSON.stringify({ schemaVersion: 1, sessions: [{ id: 'do-not-replay' }] })
-    );
+    await writeFile(processingPath, content);
     const restore = vi.fn(async () => undefined);
     const recovery = handoff(f, directory, { restore });
 
@@ -750,7 +712,7 @@ describe('PlannedRestartHandoff', () => {
     await recovery.recover();
 
     expect(restore).not.toHaveBeenCalled();
-    expect(await readFile(processingPath, 'utf8')).toContain('do-not-replay');
+    expect(await readFile(processingPath, 'utf8')).toBe(content);
   });
 
   it('does not resubmit an input already completed before the manifest was published', async () => {
@@ -781,17 +743,34 @@ describe('PlannedRestartHandoff', () => {
 
   it.each([
     ['malformed JSON', '{not-json'],
-    ['unsupported schema', JSON.stringify({ schemaVersion: 3 })],
+    ['malformed current payload', sealRestartState({ schemaVersion: 3 }, nodeCredential)],
     [
       'wrong Node identity',
-      JSON.stringify({
-        schemaVersion: 1,
-        id: 'handoff',
-        nodeId: 'another-node',
-        serverUrl,
-        createdAt: 1,
-        sessions: []
-      })
+      sealRestartState(
+        {
+          schemaVersion: 3,
+          id: 'handoff',
+          nodeId: 'another-node',
+          serverUrl,
+          createdAt: 1,
+          sessions: []
+        },
+        nodeCredential
+      )
+    ],
+    [
+      'wrong Server identity',
+      sealRestartState(
+        {
+          schemaVersion: 3,
+          id: 'handoff',
+          nodeId,
+          serverUrl: 'https://another-server.example.test',
+          createdAt: 1,
+          sessions: []
+        },
+        nodeCredential
+      )
     ]
   ])('rejects %s without restoring a session', async (_case, content) => {
     const directory = await temporaryDirectory();

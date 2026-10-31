@@ -88,28 +88,6 @@ export const plannedRestartSchema = z
     sessions: z.array(sessionSchema)
   })
   .strict();
-const legacyMessageSchema = messageSchema.omit({ execution: true }).extend({
-  initiatedByUserId: z.number().int().positive().optional()
-});
-const legacySessionSchema = sessionSchema.omit({ execution: true }).extend({
-  ownerUserId: z.number().int().positive().optional(),
-  current: legacyMessageSchema.optional(),
-  queue: z.array(legacyMessageSchema)
-});
-const legacyV2Schema = plannedRestartSchema.extend({
-  schemaVersion: z.literal(2),
-  sessions: z.array(legacySessionSchema)
-});
-const legacyV1Schema = legacyV2Schema.extend({
-  schemaVersion: z.literal(1),
-  sessions: z.array(
-    legacySessionSchema.extend({
-      session: sessionSchema.shape.session.omit({ modelId: true }).extend({
-        model: z.string().nullable()
-      })
-    })
-  )
-});
 export type RestartMessage = z.infer<typeof messageSchema>;
 export type RestartSession = z.infer<typeof sessionSchema>;
 export type PlannedRestart = z.infer<typeof plannedRestartSchema>;
@@ -244,36 +222,7 @@ export class PlannedRestartHandoff {
       return;
     }
     try {
-      const saved = openRestartState(text, this.options.credential());
-      const legacy = z.union([legacyV1Schema, legacyV2Schema]).safeParse(saved);
-      const value = plannedRestartSchema.parse(
-        legacy.success
-          ? {
-              ...legacy.data,
-              schemaVersion: 3,
-              sessions: legacy.data.sessions.map((entry) => {
-                const { ownerUserId: _owner, current, queue, ...state } = entry;
-                const message = (input: z.infer<typeof legacyMessageSchema>) => {
-                  const { initiatedByUserId: _origin, ...value } = input;
-                  return value;
-                };
-                const session =
-                  'model' in entry.session
-                    ? (() => {
-                        const { model, ...value } = entry.session;
-                        return { ...value, modelId: model };
-                      })()
-                    : entry.session;
-                return {
-                  ...state,
-                  session,
-                  ...(current === undefined ? {} : { current: message(current) }),
-                  queue: queue.map(message)
-                };
-              })
-            }
-          : saved
-      );
+      const value = plannedRestartSchema.parse(openRestartState(text, this.options.credential()));
       const identity = this.options.identity();
       if (value.nodeId !== identity.nodeId || value.serverUrl !== identity.serverUrl)
         throw new Error('RESTART_HANDOFF_IDENTITY_MISMATCH');
