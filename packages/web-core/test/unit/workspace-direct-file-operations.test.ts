@@ -280,6 +280,7 @@ describe('Workspace direct file operations', () => {
             nodeId: 'node',
             nodeGeneration: 'old',
             resource,
+            activeWorker: async () => navigator.serviceWorker.controller ?? undefined,
             metadata: async () => {
               if (phase === 'metadata') throw new Error('HTTP_FAILED');
               return identity;

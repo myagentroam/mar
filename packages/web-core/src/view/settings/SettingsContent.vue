@@ -39,6 +39,7 @@ import PersonalGitSettings from './PersonalGitSettings.vue';
 import UsageStatisticsSettings from './UsageStatisticsSettings.vue';
 import SystemNotificationControl from './SystemNotificationControl.vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
+import type { PwaApplicationState } from '../../service/pwa-application-service.js';
 import type { QuickPrompt } from '../../model/workbench.js';
 
 const documentationAvailable = useDocumentationAvailability();
@@ -46,6 +47,8 @@ const documentationAvailable = useDocumentationAvailability();
 const props = defineProps<{
   readonly section: SettingsSection;
   readonly webVersion: string;
+  readonly pwaState?: PwaApplicationState;
+  readonly checkingForUpdates?: boolean;
   readonly sessions: readonly UserSessionSummary[];
   readonly newPassword: string;
   readonly passwordValidationError: string;
@@ -71,6 +74,8 @@ const emit = defineEmits<{
   logoutSession: [session: UserSessionSummary];
   logout: [];
   createRegistrationToken: [];
+  checkForUpdates: [];
+  applyWebUpdate: [];
 }>();
 const passwordDialogOpen = ref(false);
 const themeService = themePreferenceService();
@@ -660,6 +665,24 @@ async function confirmLogout(): Promise<void> {
         </div>
       </div>
       <el-descriptions :column="1" border>
+        <el-descriptions-item v-if="pwaState" :label="t('webUpdate.offlineLabel')">
+          <span>{{ t(`webUpdate.offline.${pwaState.offline}`) }}</span>
+          <div class="pwa-actions">
+            <el-button :loading="checkingForUpdates" @click="emit('checkForUpdates')">{{
+              t('webUpdate.check')
+            }}</el-button>
+            <el-button v-if="pwaState.update" type="primary" @click="emit('applyWebUpdate')">{{
+              t('webUpdate.apply')
+            }}</el-button>
+            <el-button v-else-if="pwaState.reload" @click="emit('applyWebUpdate')">{{
+              t(
+                pwaState.reload.action === 'activate'
+                  ? 'webUpdate.usePrepared'
+                  : 'webUpdate.reloadPrepared'
+              )
+            }}</el-button>
+          </div>
+        </el-descriptions-item>
         <el-descriptions-item v-if="documentationAvailable" :label="t('settings.documentation')">
           <el-link
             :href="localizedDocsPath(locale, 'getting-started/overview')"
@@ -699,6 +722,12 @@ async function confirmLogout(): Promise<void> {
   color: var(--el-color-danger);
   font-size: var(--mar-font-size-meta);
   line-height: 1.4;
+}
+.pwa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 </style>
 

@@ -28,7 +28,25 @@ export const workbenchPageEnUS = {
   },
   webUpdate: {
     title: 'Application update available',
-    message: 'Version v{value0} is available. Click this notification to refresh now.'
+    message: 'Version v{value0} is available. Click to reload this page and update.',
+    blocked: 'Save or discard unsaved changes and finish file transfers before updating.',
+    otherWindows: 'Close other application windows before updating this window.',
+    unavailable: 'The update is not ready to apply. Check for updates and try again.',
+    offlineLabel: 'Application resource cache',
+    offline: {
+      preparing: 'Preparing application interface resources.',
+      ready: 'The app shell is cached. Features still require a connection.',
+      degraded: 'The app shell cache is unavailable. Connect and check for an update.',
+      online: 'Application resources are loaded online only.'
+    },
+    check: 'Check for updates',
+    apply: 'Apply update',
+    reloadPrepared: 'Reload prepared version',
+    usePrepared: 'Use prepared version',
+    reloadAvailable: 'A prepared version can be reloaded in this window.',
+    upToDate: 'No update is available.',
+    available: 'An update is available.',
+    checkFailed: 'Unable to check for updates. Try again when connected.'
   },
   generated: {
     workbenchSurface: {

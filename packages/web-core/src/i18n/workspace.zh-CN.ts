@@ -1,6 +1,9 @@
 export const workspaceZhCN = {
   sessionGroups: {
     tree: '查看会话树',
+    statusRUNNING: '运行中',
+    statusSLEEPING: '休眠中',
+    statusIDLE: '空闲',
     treeTruncated: '会话树最多显示 100 个会话。',
     label: '会话分组',
     main: '主会话',

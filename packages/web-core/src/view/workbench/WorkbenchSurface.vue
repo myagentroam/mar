@@ -32,7 +32,7 @@ import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
-import WorkspaceSessionTreeDialog from '../../view/workspace/WorkspaceSessionTreeDialog.vue';
+import WorkspaceSessionTreePopover from '../../view/workspace/WorkspaceSessionTreePopover.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
 import ConversationHeader from '../../view/conversation/ConversationHeader.vue';
@@ -86,29 +86,10 @@ const composer = ref<{
 }>();
 const composerToolbar = ref<{ openModelMenu(): boolean }>();
 const cleanupDialogOpen = ref(false);
-const treeTarget = ref<{ nodeId: string; workspaceId: string; sessionId: string }>();
 const inspectorElement = ref<HTMLElement>();
 const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
-watch(
-  () => [props.page.workspaceTarget?.nodeId, props.page.workspaceTarget?.workspaceId],
-  ([nodeId, workspaceId]) => {
-    if (
-      treeTarget.value &&
-      (treeTarget.value.nodeId !== nodeId || treeTarget.value.workspaceId !== workspaceId)
-    )
-      treeTarget.value = undefined;
-  }
-);
-
-function openSessionTree(sessionId: string): void {
-  const target = props.page.workspaceTarget;
-  if (target)
-    treeTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId, sessionId };
-}
-
 function openSessionFromTree(sessionId: string): void {
-  const target = treeTarget.value;
-  treeTarget.value = undefined;
+  const target = props.page.workspaceTarget;
   if (target) void props.page.openSessionGroupTarget({ ...target, sessionId });
 }
 const hostedConversationHeader = computed(() => {
@@ -370,7 +351,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           <WorkspaceSessionList
             :session-group="page.workspaceSessionGroup"
             @select-group="page.selectWorkspaceSessionGroup"
-            @open-tree="openSessionTree"
+            @open-tree="openSessionFromTree"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
             :mobile-viewport="page.mobileViewport"
@@ -432,16 +413,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :cleanup="cleanupWorkspaceSessions"
             @update:model-value="updateCleanupDialogOpen"
           />
-          <WorkspaceSessionTreeDialog
-            v-if="treeTarget"
-            :model-value="true"
-            :node-id="treeTarget.nodeId"
-            :workspace-id="treeTarget.workspaceId"
-            :session-id="treeTarget.sessionId"
-            :request="page.request"
-            @close="treeTarget = undefined"
-            @open="openSessionFromTree"
-          />
           <section
             class="conversation-panel"
             :aria-label="translate('generated.workbenchSurface.agentConversation')"
@@ -456,8 +427,19 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :session-title="page.sessionTitle"
                 :content-search-ready="page.contentSearchReady"
                 @open-surface="page.openMobileWorkspaceSurface"
-                @open-tree="openSessionTree"
-              />
+              >
+                <template #tree="{ sessionId }">
+                  <WorkspaceSessionTreePopover
+                    v-if="page.workspaceTarget"
+                    :key="sessionId"
+                    :node-id="page.workspaceTarget.nodeId"
+                    :workspace-id="page.workspaceTarget.workspaceId"
+                    :session-id="sessionId"
+                    :request="page.request"
+                    @open="openSessionFromTree"
+                  />
+                </template>
+              </ConversationHeader>
               <ConversationScroll
                 :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
                 :has-older="page.conversationNextCursor !== null"
@@ -838,6 +820,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       <slot name="settings">
         <SettingsContent
           :web-version="page.webVersion"
+          :pwa-state="page.pwaState"
+          :checking-for-updates="page.checkingForUpdates"
           v-model:new-password="page.newPassword"
           :section="page.settingsSection"
           :sessions="page.adminSessions"
@@ -857,6 +841,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :change-password="page.changePassword"
           @logout="page.logout"
           @create-registration-token="page.createRegistrationToken"
+          @check-for-updates="page.checkForUpdates"
+          @apply-web-update="page.applyWebUpdate"
         />
       </slot>
     </template>

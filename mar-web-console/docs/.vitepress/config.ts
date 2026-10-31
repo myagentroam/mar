@@ -3,6 +3,7 @@ import { enSidebar } from './navigation.en-US';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitepress';
 import { SUPPORTED_LOCALES } from '@myagentroam/web-core/locale-config';
+import { documentationModulesMetadata } from '@myagentroam/web-core/build/third-party-notices';
 
 const localeLabel = (value: 'zh-CN' | 'en-US') =>
   SUPPORTED_LOCALES.find((locale) => locale.value === value)!.nativeLabel;
@@ -49,6 +50,7 @@ export default defineConfig({
   ignoreDeadLinks: false,
   vite: {
     publicDir: resolve(import.meta.dirname, '../public'),
+    plugins: [documentationModulesMetadata()],
     build: { target: 'esnext' },
     esbuild: { target: 'esnext', tsconfigRaw: { compilerOptions: { target: 'ESNext' } } }
   },

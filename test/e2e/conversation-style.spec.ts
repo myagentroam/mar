@@ -10,6 +10,136 @@ test.afterAll(async () => {
 });
 
 for (const width of [1280, 390]) {
+  test(`Top-boundary history immediately reveals the loaded page without chaining at ${width}px`, async ({
+    browser
+  }) => {
+    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1`);
+      const region = page.locator('.conversation-scroll');
+      const requests = page.getByTestId('older-requests');
+      await region.focus();
+      await region.press('Home');
+      await expect(requests).toHaveText('1');
+      await expect(region.locator('.busy-indicator')).toHaveCount(1);
+      await page.getByTestId('finish-older').click();
+      await expect(region.locator('.busy-indicator')).toHaveCount(0);
+      await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+      await expect(region.locator('.prepended-page')).toHaveCount(3);
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      );
+      await expect(requests).toHaveText('1');
+      await region.hover();
+      await page.mouse.wheel(0, -160);
+      await expect(requests).toHaveText('2');
+      await page.getByTestId('finish-older').click();
+      await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+      await expect(region.locator('.prepended-page')).toHaveCount(6);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`Top-boundary history remains visible throughout progressive timeline mounting at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&progressive-history=1`
+    );
+    const region = page.locator('.conversation-scroll');
+    await region.focus();
+    await page.keyboard.press('Home');
+    await expect(page.getByTestId('older-requests')).toHaveText('1');
+    await page.getByTestId('finish-older').click();
+    await expect(page.getByText('earlier-1-0-item-0', { exact: true })).toBeInViewport();
+    await expect(page.getByTestId('older-requests')).toHaveText('1');
+  });
+}
+
+test('Bottom following survives content shrink and subsequent growth', async ({ page }) => {
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1`);
+  const region = page.locator('.conversation-scroll');
+  await expect(page.getByTestId('following')).toHaveText('true');
+  await page.getByTestId('shrink-content').click();
+  await expect.poll(() => region.evaluate((element) => element.scrollHeight)).toBeLessThan(1000);
+  await expect(page.getByTestId('following')).toHaveText('true');
+  await page.getByTestId('grow-content').click();
+  await expect.poll(() => region.evaluate((element) => element.scrollHeight)).toBeGreaterThan(1000);
+  await expect
+    .poll(() =>
+      region.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)
+    )
+    .toBeLessThanOrEqual(1);
+  await expect(page.getByTestId('following')).toHaveText('true');
+});
+
+test('Near-bottom geometry does not override upward intent while earlier history is loading', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&small-overflow=1`
+  );
+  const region = page.locator('.conversation-scroll');
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+  await region.evaluate((element) => {
+    const history = element.querySelector<HTMLElement>('.history')!;
+    history.style.height = `${Number.parseFloat(history.style.height) + 20 - (element.scrollHeight - element.clientHeight)}px`;
+    element.scrollTop = 20;
+    element.dispatchEvent(new Event('scroll'));
+    element.dispatchEvent(new WheelEvent('wheel', { deltaY: -160, bubbles: true }));
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page.getByTestId('following')).toHaveText('false');
+  await page.getByTestId('finish-older').click();
+  await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+});
+
+test('Automatic history backfill preserves the latest message before a manual top-boundary load', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&underflow=1`
+  );
+  const region = page.locator('.conversation-scroll');
+  const requests = page.getByTestId('older-requests');
+  await page.getByTestId('finish-initial').click();
+  await expect(requests).toHaveText('1');
+  await page.getByTestId('finish-older').click();
+  await expect(region.getByText('Latest cached message')).toBeInViewport();
+  await region.focus();
+  await region.press('Home');
+  await expect(requests).toHaveText('2');
+  await page.getByTestId('finish-older').click();
+  await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+  await expect(requests).toHaveText('2');
+});
+
+test('History arriving after the reader leaves the top preserves their reading position', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1`);
+  const region = page.locator('.conversation-scroll');
+  await region.focus();
+  await region.press('Home');
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+  await region.evaluate((element) => {
+    element.scrollTop = 700;
+  });
+  await page.getByTestId('finish-older').click();
+  await expect(region.locator('.busy-indicator')).toHaveCount(0);
+  expect(await region.evaluate((element) => element.scrollTop)).toBeGreaterThan(1800);
+  await expect(page.getByTestId('earlier-1-0')).not.toBeInViewport();
+});
+
+for (const width of [1280, 390]) {
   test(`Underfilled initial history loads one extra page without chaining at ${width}px`, async ({
     browser
   }) => {

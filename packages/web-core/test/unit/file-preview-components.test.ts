@@ -16,6 +16,10 @@ import {
   localePreferenceService,
   translate
 } from '../../src/service/locale-preference-service.js';
+import {
+  createPwaApplicationService,
+  PWA_APPLICATION_SERVICE_KEY
+} from '../../src/service/pwa-application-service.js';
 import WorkspaceFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
@@ -146,6 +150,7 @@ async function setupStandaloneWithCachedDraft() {
     }
   });
   app.use(i18n);
+  app.provide(PWA_APPLICATION_SERVICE_KEY, createPwaApplicationService(undefined));
   await renderToString(app);
   return { bindings, storage, draft, closeWindow };
 }

@@ -296,6 +296,39 @@ function processBlock(blocks: ReturnType<typeof conversationWorkProcessBlocks>, 
 }
 
 describe('Conversation work process blocks', () => {
+  it.each(['BACKGROUND', 'BLOCKING', undefined])(
+    'seals the preceding process at %s compaction before subsequent work arrives',
+    (mode) => {
+      const before = item('before', 'reasoning', {
+        processGroup: { id: 'before-process', isStart: true },
+        payload: { representation: 'summary', sections: [{ text: 'Before compact' }] }
+      });
+      const compact = item('compact', 'context_compaction', {
+        status: 'IN_PROGRESS',
+        payload: { mode, phase: 'STARTED' }
+      });
+      const blocks = conversationWorkProcessBlocks(
+        [turn([before, compact])],
+        [{ id: runId, status: 'RUNNING' }]
+      );
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        groupId: 'before-process',
+        sealed: true,
+        active: false,
+        status: 'completed'
+      });
+      expect(blocks[1]?.groupId).toBeUndefined();
+      expect(blocks[1]?.entries[0]?.displayItem.id).toBe('compact');
+
+      const running = conversationWorkProcessBlocks(
+        [turn([{ ...before, status: 'IN_PROGRESS' }, compact])],
+        [{ id: runId, status: 'RUNNING' }]
+      );
+      expect(running[0]).toMatchObject({ sealed: true, active: true });
+    }
+  );
+
   it('only renders the footer of the mounted session when turn ids coincide', () => {
     const first = turn([item('first', 'command_execution')]);
     const second = turn([item('second', 'command_execution')], { sessionId: 'session-2' });

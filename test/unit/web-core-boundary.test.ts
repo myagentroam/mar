@@ -392,7 +392,7 @@ describe('single shared Web implementation', () => {
       ['workbench-notification-service', 'notifications'],
       ['workbench-notification-navigation-service', 'notification-navigation'],
       ['workspace-upload-service', 'workspace-upload'],
-      ['web-version-update-service', 'web-version-update']
+      ['pwa-application-service', 'pwa-application']
     ]) {
       expect(existsSync(`ee/web/src/service/${name}.ts`)).toBe(false);
       expect(manifest.exports[`./${entry}`]).toBe(`./src/service/${name}.ts`);
@@ -506,8 +506,7 @@ describe('single shared Web implementation', () => {
               management: { items: () => [] },
               systemManagementSection: 'system',
               nodeManagementSection: 'nodes',
-              webVersion: '0.10.1',
-              webBuildHash: 'fixture'
+              webVersion: '0.10.1'
             });
             return () => h('div');
           }

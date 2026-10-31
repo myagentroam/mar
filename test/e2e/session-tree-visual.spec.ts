@@ -9,6 +9,175 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('tree popover keeps one snapshot, orders active branches and closes by keyboard and outside click', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&mixed=1`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.hover();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree).toBeVisible();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByTestId('requests')).toHaveText('1');
+  await tree.hover({ position: { x: 2, y: 2 } });
+  await expect(tree.locator('.session-tree-node')).toHaveText([
+    'RootIdle',
+    'Running branchRunning',
+    'Sleeping branchSleeping',
+    'Idle branchIdle',
+    'Active descendantRunning',
+    'Idle leafIdle',
+    'Idle leaf twoIdle'
+  ]);
+  await expect(tree.locator('.session-tree-status.el-tag')).toHaveCount(7);
+  await expect(tree.locator('.session-tree-status.el-tag--success')).toHaveText([
+    'Running',
+    'Running'
+  ]);
+  await expect(tree.locator('.session-tree-status.el-tag--info')).toHaveText([
+    'Idle',
+    'Sleeping',
+    'Idle',
+    'Idle',
+    'Idle'
+  ]);
+  await trigger.click();
+  await expect(page.getByTestId('requests')).toHaveText('1');
+  await page.keyboard.press('Escape');
+  await expect(tree).toHaveCount(0);
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('requests')).toHaveText('2');
+  await page.mouse.click(900, 700);
+  await expect(tree).toHaveCount(0);
+});
+
+test('closing an in-flight snapshot aborts it and a failed snapshot can be reopened', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&pending=1`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.click();
+  await expect(page.getByTestId('requests')).toHaveText('1');
+  await trigger.click();
+  await expect(page.getByTestId('aborts')).toHaveText('1');
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&failure=1`);
+  await trigger.click();
+  await expect(page.getByText('tree unavailable')).toBeVisible();
+  await trigger.click();
+  await expect(page.getByTestId('requests')).toHaveText('2');
+  await expect(
+    page
+      .getByRole('dialog', { name: 'View session tree' })
+      .getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
+  ).toBeVisible();
+});
+
+test('keyboard-opened list actions anchor the tree without a preceding mouse click', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
+  const chats = page.locator('.conversation-sidebar');
+  await chats.getByRole('tab').nth(1).click();
+  await chats.locator('.session-link').focus();
+  const trigger = chats.locator('.session-more-button');
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  const action = page.getByRole('menuitem', { name: 'View session tree', exact: true });
+  await expect(action).toBeVisible();
+  await action.focus();
+  await action.press('Enter');
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree).toBeVisible();
+  await tree.getByRole('button', { name: 'Child collaboration, Idle' }).press('Enter');
+  await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+});
+
+test('Escape returns keyboard focus from the tree to its title trigger', async ({ page }) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.focus();
+  await trigger.press('Enter');
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await tree.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(tree).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test('Escape closes a keyboard-opened tree before focus enters it', async ({ page }) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.focus();
+  await trigger.press('Enter');
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(tree).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test('Escape dismisses a hover-only tree without moving keyboard focus', async ({ page }) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.hover();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree).toBeVisible();
+  await expect(trigger).not.toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(tree).toHaveCount(0);
+  await expect(page.getByTestId('requests')).toHaveText('1');
+});
+
+test('Escape cancels a pending hover before any snapshot is requested', async ({ page }) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.dispatchEvent('pointerenter', { pointerType: 'mouse' });
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(250);
+  await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
+  await expect(page.getByTestId('requests')).toHaveText('0');
+});
+
+test('a deep 100-node snapshot remains scrollable on a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 600 });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&long=1`);
+  await page.getByRole('button', { name: 'View session tree' }).click();
+  const tree = page.locator('.session-tree');
+  await expect(tree.locator('.session-tree-node')).toHaveCount(100);
+  expect(
+    await tree.evaluate(
+      (el) => el.scrollHeight > el.clientHeight && el.scrollWidth > el.clientWidth
+    )
+  ).toBe(true);
+  const last = tree.getByRole('button', { name: 'Node 99, Idle' });
+  await last.scrollIntoViewIfNeeded();
+  expect(
+    await last.locator('.session-tree-title').evaluate((el) => el.getBoundingClientRect().width)
+  ).toBeGreaterThan(20);
+  await expect(last.locator('.session-tree-status')).toBeVisible();
+});
+
+test.describe('touch interaction', () => {
+  test.use({ hasTouch: true });
+  test('touch opens the anchored tree and mobile back closes it', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 850 });
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&rootOnly=1`);
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await trigger.tap();
+    const tree = page.getByRole('dialog', { name: 'View session tree' });
+    await expect(tree).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await page.goBack();
+    await expect(tree).toHaveCount(0);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
 for (const width of [390, 1280]) {
   for (const theme of ['dark', 'daylight']) {
     test(`session tree controls at ${width}px in ${theme}`, async ({ page }, testInfo) => {
@@ -38,9 +207,10 @@ for (const width of [390, 1280]) {
       await expect(dialog).toBeVisible();
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
+      await expect(rows.locator('.session-tree-status.el-tag')).toHaveCount(4);
       const longTitle = rows.last().locator('.session-tree-title');
       await expect(rows.last()).toHaveAccessibleName(
-        'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()
+        `${'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()}, ${locale === 'en-US' ? 'Idle' : '空闲'}`
       );
       const titleSize = await longTitle.evaluate((element) => ({
         height: element.clientHeight,
@@ -151,7 +321,7 @@ for (const theme of ['dark', 'daylight']) {
     await expect(dialog.locator('.session-tree-branch')).toHaveCount(0);
     await expect(dialog.locator('.session-tree')).toHaveCSS('min-height', '0px');
     await expect(dialog.locator('.el-loading-mask')).toBeHidden();
-    const root = dialog.getByRole('button', { name: 'forge#maintainer' });
+    const root = dialog.getByRole('button', { name: 'forge#maintainer, 空闲' });
     await expect(root).toHaveAttribute('aria-current', 'true');
     await expect(root).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await page.mouse.move(0, 0);
@@ -184,6 +354,7 @@ for (const [width, theme] of [
     await expect(treeItem.locator('[data-mar-icon="collection"]')).toHaveCount(0);
     await treeItem.screenshot({ path: testInfo.outputPath('session-tree-menu.png') });
     await treeItem.click();
+    await page.locator('.session-tree-node').click();
     await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
     await expect(treeItem).not.toBeVisible();
   });

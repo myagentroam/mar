@@ -48,6 +48,8 @@ import {
   closeImageCredentialProviders,
   type MarAgentRuntimeModel
 } from './runtime-model-factory.js';
+import { snapshotRuntimeModel } from './runtime-model-factory.js';
+import type { RunnerExecutionContext } from '../execution-context.js';
 import { createImageGenerationExtensions } from './image-generation-extensions.js';
 import { createWebToolsExtensions } from './web-tools-extensions.js';
 import { combineExecutionExtensions } from './execution-extensions.js';
@@ -243,6 +245,51 @@ export class MarAgentManagedRunController {
 
   releaseSession(sessionId: string): Promise<void> {
     return this.#runtimes.releaseSession(sessionId);
+  }
+
+  restartExecutionContext(
+    sessionId: string,
+    context: Extract<RunnerExecutionContext, { runner: 'mar-agent' }>,
+    selectedModelId?: string | null
+  ): Extract<RunnerExecutionContext, { runner: 'mar-agent' }> {
+    const runtime = this.#runtimes.findRuntime(sessionId);
+    const input = marAgentEnvelopeInput(context);
+    if (runtime === undefined || typeof input?.runtimeScopeId !== 'string') return context;
+    const scope = input.runtimeScopeId;
+    const snapshots = new Map(
+      runtime.models.flatMap((model) => {
+        const snapshot = snapshotRuntimeModel(model, scope);
+        return snapshot === undefined ? [] : [[model.id, snapshot] as const];
+      })
+    );
+    if (snapshots.size === 0) return context;
+    const refresh = (value: unknown): unknown => {
+      if (value === null || typeof value !== 'object' || !('id' in value)) return value;
+      return typeof value.id === 'string' ? (snapshots.get(value.id) ?? value) : value;
+    };
+    const models = Array.isArray(input.models) ? input.models.map(refresh) : input.models;
+    const selected = Array.isArray(models)
+      ? models.find(
+          (model) =>
+            model !== null &&
+            typeof model === 'object' &&
+            'id' in model &&
+            model.id === selectedModelId
+        )
+      : undefined;
+    const compact = input.compact;
+    return {
+      runner: 'mar-agent',
+      runnerInput: {
+        ...input,
+        model: selected ?? refresh(input.model),
+        models,
+        compact:
+          compact !== null && typeof compact === 'object' && 'model' in compact
+            ? { ...compact, model: refresh(compact.model) }
+            : compact
+      }
+    };
   }
 
   async executeCommand(

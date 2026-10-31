@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '@myagentroam/protocol';
-import {
-  resolveScheduledRunAuthorization,
-  resolveRestartRunAuthorization
-} from '../../src/scheduled-run-authorization-channel.js';
+import * as authorization from '../../src/scheduled-run-authorization-channel.js';
+const { resolveScheduledRunAuthorization } = authorization;
 
 const request = {
   taskId: 'task-1',
@@ -17,7 +15,8 @@ const request = {
 };
 
 describe('scheduled run authorization channel', () => {
-  it('authorizes a MAR Agent restart with its own request identity and preserves denial codes', async () => {
+  it('does not expose a dedicated restart authorization API or accept its retired request', async () => {
+    expect(authorization).not.toHaveProperty('resolveRestartRunAuthorization');
     const restart = {
       handoffId: 'handoff',
       ownerUserId: 7,
@@ -30,20 +29,20 @@ describe('scheduled run authorization channel', () => {
       throw new Error('WORKSPACE_ACCESS_DENIED');
     });
     const respond = vi.fn();
-    await resolveRestartRunAuthorization({
+    await resolveScheduledRunAuthorization({
       nodeId: 'node',
       envelope: createEnvelope('restart.authorize', restart),
       isCurrentConnection: () => true,
       authorize,
       respond
     });
-    expect(authorize).toHaveBeenCalledWith('node', restart);
+    expect(authorize).not.toHaveBeenCalled();
     expect(respond).toHaveBeenCalledWith({
-      error: expect.objectContaining({ code: 'WORKSPACE_ACCESS_DENIED' })
+      error: expect.objectContaining({ code: 'SCHEDULE_AUTH_REQUEST_INVALID' })
     });
     for (const runner of ['codex', 'claude-code', 'opencode']) {
       authorize.mockClear();
-      await resolveRestartRunAuthorization({
+      await resolveScheduledRunAuthorization({
         nodeId: 'node',
         envelope: createEnvelope('restart.authorize', { ...restart, runner }),
         isCurrentConnection: () => true,
@@ -52,24 +51,17 @@ describe('scheduled run authorization channel', () => {
       });
       expect(authorize).not.toHaveBeenCalled();
       expect(respond).toHaveBeenLastCalledWith({
-        error: expect.objectContaining({ code: 'RESTART_AUTH_REQUEST_INVALID' })
+        error: expect.objectContaining({ code: 'SCHEDULE_AUTH_REQUEST_INVALID' })
       });
     }
   });
 
-  it('never releases fresh restart credentials to a superseded Node connection', async () => {
+  it('never releases scheduled credentials to a superseded Node connection', async () => {
     let current = true;
     const respond = vi.fn();
-    await resolveRestartRunAuthorization({
+    await resolveScheduledRunAuthorization({
       nodeId: 'node',
-      envelope: createEnvelope('restart.authorize', {
-        handoffId: 'handoff',
-        ownerUserId: 7,
-        workspaceId: 'workspace',
-        sessionId: 'session',
-        runner: 'mar-agent',
-        modelId: 'model'
-      }),
+      envelope: createEnvelope('schedule.authorize', request),
       isCurrentConnection: () => current,
       respond,
       authorize: async () => {
@@ -78,7 +70,7 @@ describe('scheduled run authorization channel', () => {
       }
     });
     expect(respond).toHaveBeenCalledWith({
-      error: expect.objectContaining({ code: 'RESTART_SERVER_UNAVAILABLE' })
+      error: expect.objectContaining({ code: 'SCHEDULE_SERVER_UNAVAILABLE' })
     });
     expect(JSON.stringify(respond.mock.calls)).not.toContain('private-value');
   });

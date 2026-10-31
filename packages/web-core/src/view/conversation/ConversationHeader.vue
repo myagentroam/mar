@@ -4,7 +4,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
-import MarIcon from '../common/MarIcon.vue';
 
 defineProps<{
   readonly session: Session | undefined;
@@ -18,7 +17,6 @@ defineProps<{
 
 const emit = defineEmits<{
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
-  openTree: [sessionId: string];
 }>();
 
 async function copySessionId(sessionId: string): Promise<void> {
@@ -58,16 +56,7 @@ async function copySessionId(sessionId: string): Promise<void> {
               : sessionTitle(session!)
           }}
         </h2>
-        <button
-          v-if="session?.sessionGroup === 'CHILD' && !sessionIsDraft(session)"
-          v-tooltip="translate('sessionGroups.tree')"
-          class="icon-button utility-control conversation-tree-button"
-          type="button"
-          :aria-label="translate('sessionGroups.tree')"
-          @click="emit('openTree', session.id)"
-        >
-          <MarIcon name="session-tree" />
-        </button>
+        <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button
@@ -120,15 +109,6 @@ async function copySessionId(sessionId: string): Promise<void> {
 </template>
 
 <style scoped>
-.conversation-tree-button {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--mar-utility-control-size);
-  height: var(--mar-utility-control-size);
-}
-
 .conversation-header p {
   margin: 0;
   color: var(--mar-text-tertiary);

@@ -16,7 +16,6 @@ const commands = {
     'title',
     'message',
     'message-file',
-    'image',
     'client-message-id',
     'parent',
     'goal',
@@ -35,7 +34,6 @@ const commands = {
   send: [
     'message',
     'message-file',
-    'image',
     'steer',
     'queue',
     'client-message-id',
@@ -61,8 +59,7 @@ const fieldNames = {
   timeout: 'timeoutMs',
   execution: 'executionId',
   'wait-for': 'waitFor',
-  'clear-goal': 'clearGoal',
-  image: 'images'
+  'clear-goal': 'clearGoal'
 };
 
 export function parseSessionArgs(argv, translate = createTranslator()) {
@@ -128,7 +125,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     const key = fieldNames[name] ?? name;
     if (
       !commands[action].includes(name) ||
-      (name !== 'image' && !(name === 'agent' && action === 'wait') && Object.hasOwn(args, key))
+      (!(name === 'agent' && action === 'wait') && Object.hasOwn(args, key))
     )
       throw invalid();
     const value = input.shift();
@@ -141,9 +138,6 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     if (name === 'agent' && action === 'wait') {
       (args.agentIds ??= []).push(value);
       if (args.agentIds.length > 8) throw invalid();
-    } else if (name === 'image') {
-      (args.images ??= []).push(value);
-      if (args.images.length > 5) throw invalid();
     } else if (name === 'limit' || name === 'expected-revision') {
       if (
         !/^[1-9][0-9]*$/u.test(value) ||
@@ -174,7 +168,6 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     ['start', 'send', 'goal.set', 'schedule.create', 'prompt.set'].includes(action) &&
     args.messageFile === undefined &&
     args.message === undefined &&
-    !args.images?.length &&
     !(
       action === 'send' &&
       (args.goal !== undefined || args.clearGoal || args.approvalId !== undefined)

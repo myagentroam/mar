@@ -1,6 +1,9 @@
 export const workspaceEnUS = {
   sessionGroups: {
     tree: 'View session tree',
+    statusRUNNING: 'Running',
+    statusSLEEPING: 'Sleeping',
+    statusIDLE: 'Idle',
     treeTruncated: 'The tree is limited to 100 sessions.',
     label: 'Session groups',
     main: 'Main Sessions',

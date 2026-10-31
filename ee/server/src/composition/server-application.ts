@@ -198,8 +198,6 @@ export async function composeServerApplication(
         notificationChannels: { send: (...args) => notificationChannels.send(...args) },
         scheduleAuthorizer: (nodeId, request) =>
           authorizeBackgroundExecution(nodeId, request, 'SCHEDULE_MODEL_UNAVAILABLE'),
-        restartAuthorizer: (nodeId, request) =>
-          authorizeBackgroundExecution(nodeId, request, 'RESTART_MODEL_UNAVAILABLE'),
         marctlExecutionCredential: (nodeId, request) =>
           userCredentials.deriveExecution({
             ...request,

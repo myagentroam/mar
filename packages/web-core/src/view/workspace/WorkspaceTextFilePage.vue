@@ -5,6 +5,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
+import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -13,6 +14,7 @@ import { ElMessageBox } from '../../service/message-box-service.js';
 import {
   computed,
   defineAsyncComponent,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -245,6 +247,11 @@ function navigationPreviewHtml(target: NavigationTarget): string | undefined {
 }
 const selectedSymbolIndex = ref(0);
 const dirty = computed(() => editorContent.value !== savedContent.value);
+const pwaApplication = inject(PWA_APPLICATION_SERVICE_KEY, undefined);
+const removeUpdateBlocker = pwaApplication?.registerUpdateBlocker(
+  () => dirty.value || saving.value
+);
+onBeforeUnmount(() => removeUpdateBlocker?.());
 watch(canWrite, (available) => {
   if (!available) editing.value = false;
 });

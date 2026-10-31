@@ -2,6 +2,30 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { Plugin } from 'vite';
 
+// Record the documentation bundle solely for the distribution notice.
+export function documentationModulesMetadata(): Plugin {
+  let serverBuild = false;
+  return {
+    name: 'mar-documentation-modules',
+    apply: 'build',
+    configResolved(config) {
+      serverBuild = Boolean(config.build.ssr);
+    },
+    generateBundle(_options, bundle) {
+      if (serverBuild) return;
+      const modules = new Set<string>();
+      for (const output of Object.values(bundle)) {
+        if (output.type === 'chunk') for (const id of output.moduleIds) modules.add(id);
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: '.mar-distribution-modules.json',
+        source: JSON.stringify([...modules])
+      });
+    }
+  };
+}
+
 interface ThirdPartyPackage {
   readonly name: string;
   readonly version: string;
@@ -91,6 +115,30 @@ function declaredLicenseText(packageInfo: ThirdPartyPackage): string {
   return 'License text is not included in this package distribution.';
 }
 
+export function createThirdPartyNotices(moduleIds: Iterable<string>): string {
+  const packages = new Map<string, ThirdPartyPackage>();
+  for (const moduleId of moduleIds) {
+    const packageInfo = packageForModule(moduleId);
+    if (packageInfo !== undefined)
+      packages.set(`${packageInfo.name}@${packageInfo.version}`, packageInfo);
+  }
+  const notices = [...packages.values()]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((packageInfo) => {
+      const header = `${packageInfo.name} ${packageInfo.version}\nLicense: ${packageInfo.license}`;
+      return `${header}\n${declaredLicenseText(packageInfo)}`;
+    });
+  const setiRoot = resolve(import.meta.dirname, '../src/icon-themes/seti/assets');
+  const materialRoot = resolve(import.meta.dirname, '../src/icon-themes/material');
+  notices.push(
+    `Visual Studio Code Seti File Icon Theme\n${readFileSync(resolve(setiRoot, 'NOTICE.md'), 'utf8').trim()}\n\n${readFileSync(resolve(setiRoot, 'LICENSE.txt'), 'utf8').trim()}`,
+    `Material Design Icons\n${readFileSync(resolve(materialRoot, 'LICENSE.txt'), 'utf8').trim()}`,
+    `Material Icon Theme (subset)\n${readFileSync(resolve(materialRoot, 'UPSTREAM_LICENSE.txt'), 'utf8').trim()}`,
+    readFileSync(resolve(import.meta.dirname, '../src/util/icon-shapes.NOTICE.txt'), 'utf8').trim()
+  );
+  return `MyAgentRoam Third-Party Open Source Software Notices\n\n${notices.join('\n\n' + '='.repeat(80) + '\n\n')}\n`;
+}
+
 export function thirdPartyNoticesPlugin(options: { readonly outputDirectory: string }): Plugin {
   const noticesPath = resolve(options.outputDirectory, 'THIRD_PARTY_NOTICES.txt');
   const serveNotices: Plugin['configureServer'] = (server) => {
@@ -112,42 +160,15 @@ export function thirdPartyNoticesPlugin(options: { readonly outputDirectory: str
     name: 'myagentroam-third-party-notices',
     configureServer: serveNotices,
     generateBundle(_options, bundle) {
-      const packages = new Map<string, ThirdPartyPackage>();
+      const moduleIds = new Set<string>();
       for (const output of Object.values(bundle)) {
         if (output.type !== 'chunk') continue;
-        for (const moduleId of output.moduleIds) {
-          const packageInfo = packageForModule(moduleId);
-          if (packageInfo !== undefined)
-            packages.set(`${packageInfo.name}@${packageInfo.version}`, packageInfo);
-        }
+        for (const moduleId of output.moduleIds) moduleIds.add(moduleId);
       }
-      const notices = [...packages.values()]
-        .sort((left, right) => left.name.localeCompare(right.name))
-        .map((packageInfo) => {
-          const header = `${packageInfo.name} ${packageInfo.version}\nLicense: ${packageInfo.license}`;
-          return `${header}\n${declaredLicenseText(packageInfo)}`;
-        });
-      const setiRoot = resolve(import.meta.dirname, '../src/icon-themes/seti/assets');
-      const materialRoot = resolve(import.meta.dirname, '../src/icon-themes/material');
-      notices.push(
-        `Visual Studio Code Seti File Icon Theme\n${readFileSync(resolve(setiRoot, 'NOTICE.md'), 'utf8').trim()}\n\n${readFileSync(resolve(setiRoot, 'LICENSE.txt'), 'utf8').trim()}`
-      );
-      notices.push(
-        `Material Design Icons\n${readFileSync(resolve(materialRoot, 'LICENSE.txt'), 'utf8').trim()}`
-      );
-      notices.push(
-        `Material Icon Theme (subset)\n${readFileSync(resolve(materialRoot, 'UPSTREAM_LICENSE.txt'), 'utf8').trim()}`
-      );
-      notices.push(
-        readFileSync(
-          resolve(import.meta.dirname, '../src/util/icon-shapes.NOTICE.txt'),
-          'utf8'
-        ).trim()
-      );
       this.emitFile({
         type: 'asset',
         fileName: 'THIRD_PARTY_NOTICES.txt',
-        source: `MyAgentRoam Third-Party Open Source Software Notices\n\n${notices.join('\n\n' + '='.repeat(80) + '\n\n')}\n`
+        source: createThirdPartyNotices(moduleIds)
       });
     }
   };

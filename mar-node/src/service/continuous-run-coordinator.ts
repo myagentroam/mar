@@ -798,6 +798,8 @@ export class ContinuousRunCoordinator<TAttachment> {
       return;
     }
     let executionId = this.options.runtime.currentExecutionId(active.id);
+    // Immediate commands own a root Runner handle without a normal message Execution.
+    if (executionId === undefined && this.options.runtime.isExecutionActive(active.id)) return;
     if (executionId !== undefined && this.dispatchedExecutions.has(executionId)) return;
     let pending =
       executionId === undefined

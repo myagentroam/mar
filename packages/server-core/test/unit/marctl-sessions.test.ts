@@ -242,8 +242,11 @@ describe('Workspace-bound marctl agents', () => {
     expect(configured[2]).not.toHaveProperty('marAgentModel');
   });
 
-  it('does not prepare model execution resources for a control-only Goal clear', async () => {
-    const control = { goal: { clear: true } };
+  it.each([
+    { goal: { clear: true } },
+    { approval: { approvalId: 'approval', decision: 'approve' } },
+    { approval: { approvalId: 'approval', decision: 'reject' } }
+  ])('does not prepare model execution resources for control-only send %j', async (control) => {
     const prepare = vi.fn(async () => {
       throw new Error('MODEL_CONFIGURATION_UNAVAILABLE');
     });
@@ -270,6 +273,29 @@ describe('Workspace-bound marctl agents', () => {
     });
     expect(network[2].input).not.toHaveProperty('clientMessageId');
     expect(network[3]).not.toHaveProperty('marctlExecutionResources');
+  });
+
+  it('rejects malformed network approval decisions before contacting Node', async () => {
+    const { app, headers, requestNode, secrets } = await fixture();
+    for (const approval of [
+      { approvalId: '', decision: 'approve' },
+      { approvalId: 'approval', decision: 'APPROVED' },
+      { approvalId: 'approval' },
+      { approvalId: 'approval', decision: 'approve', runId: 'untrusted' }
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: {
+          action: 'network',
+          command: { operation: 'send', input: { agentId: 'target', approval } }
+        }
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(requestNode).not.toHaveBeenCalled();
+    expect(secrets.resolve).not.toHaveBeenCalled();
   });
 
   it('prepares target MAR resources for the execution goal.set alias through the shared network path', async () => {
@@ -603,28 +629,33 @@ describe('Workspace-bound marctl agents', () => {
       ],
       truncated: false
     };
-    requestNode.mockImplementation(async (...args) =>
-      args[1] === 'agent.network' && args[2].action === 'send'
-        ? {
-            agentId: 'target',
-            message: {
-              status: 'accepted',
-              result: {
-                run: { id: 'active-run' },
-                queueItemId: 'input',
-                delivery: 'ACCEPTED'
+    requestNode.mockImplementation(async (...args) => {
+      if (args[1] === 'agent.network' && args[2].action === 'send') {
+        const approval = (args[2].input as Record<string, unknown>).approval;
+        return approval
+          ? { agentId: 'target', approval: { status: 'applied' }, message: null }
+          : {
+              agentId: 'target',
+              message: {
+                status: 'accepted',
+                result: {
+                  run: { id: 'active-run' },
+                  queueItemId: 'input',
+                  delivery: 'ACCEPTED'
+                }
               }
-            }
-          }
-        : args[1] === 'agent.network' && args[2].action === 'list'
-          ? listResult
-          : request(...args)
-    );
+            };
+      }
+      return args[1] === 'agent.network' && args[2].action === 'list'
+        ? listResult
+        : request(...args);
+    });
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
     try {
       for (const args of [
         ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
+        ['send', 'target', '--approval', 'approval-1', '--decision', 'approve'],
         ['list', '--scope', 'active', '--query', 'Review', '--limit', '1'],
         ['rename', '--title', 'reviewer#42 Updated'],
         ['config', '--effort', 'high'],
@@ -650,7 +681,13 @@ describe('Workspace-bound marctl agents', () => {
         expect(result.stderr).toBe('');
         expect(JSON.parse(result.stdout)).toBeTypeOf('object');
         if (args[0] === 'list') expect(JSON.parse(result.stdout)).toEqual(listResult);
-        if (args[0] === 'send')
+        if (args[0] === 'send' && args.includes('--approval'))
+          expect(JSON.parse(result.stdout)).toMatchObject({
+            agentId: 'target',
+            approval: { status: 'applied' },
+            message: null
+          });
+        else if (args[0] === 'send')
           expect(JSON.parse(result.stdout)).toMatchObject({
             clientMessageId: 'input',
             agentId: 'target',
@@ -664,6 +701,21 @@ describe('Workspace-bound marctl agents', () => {
             }
           });
       }
+      expect(requestNode).toHaveBeenCalledWith(
+        'node',
+        'agent.network',
+        {
+          workspaceId: 'workspace',
+          action: 'send',
+          input: {
+            agentId: 'target',
+            approval: { approvalId: 'approval-1', decision: 'approve' },
+            clientMessageId: expect.any(String),
+            deliveryIntent: 'SEND'
+          }
+        },
+        expect.not.objectContaining({ marctlExecutionResources: expect.anything() })
+      );
       expect(requestNode).toHaveBeenCalledWith(
         'node',
         'agent.network',
@@ -1995,59 +2047,38 @@ describe('Workspace-bound marctl agents', () => {
     ]);
   });
 
-  it('forwards image-only start and message inputs through existing scoped attachment operations', async () => {
+  it('rejects attachment inputs on legacy and Agent Network routes before forwarding', async () => {
     const { app, headers, requestNode } = await fixture();
-    const attachments = [
-      {
-        name: 'screenshot.png',
-        mime: 'image/png',
-        dataBase64: Buffer.alloc(1024 * 1024).toString('base64')
+    for (const network of [false, true]) {
+      for (const action of ['start', 'send']) {
+        for (const attachment of [
+          { attachments: [{ name: 'image.png', mime: 'image/png', dataBase64: 'aW1hZ2U=' }] },
+          { attachments: [] },
+          { attachments: [{ name: 42, mime: 'text/plain' }] },
+          { attachmentIds: ['existing-image'] },
+          { attachmentIds: [] }
+        ]) {
+          const input = {
+            content: 'A valid text message does not make attachments acceptable',
+            clientMessageId: 'invalid',
+            ...(action === 'start'
+              ? { runner: 'codex' }
+              : network
+                ? { agentId: 'target' }
+                : { sessionId: 'target', deliveryIntent: 'QUEUE' }),
+            ...attachment
+          };
+          const result = await app.inject({
+            method: 'POST',
+            url: '/api/marctl/sessions',
+            headers,
+            payload: network
+              ? { action: 'network', command: { operation: action, input } }
+              : { action, ...input }
+          });
+          expect(result.statusCode).toBe(400);
+        }
       }
-    ];
-    for (const action of ['start', 'send']) {
-      const result = await app.inject({
-        method: 'POST',
-        url: '/api/marctl/sessions',
-        headers,
-        payload: {
-          action,
-          content: '',
-          clientMessageId: 'image-' + action,
-          attachments,
-          ...(action === 'start'
-            ? { runner: 'codex' }
-            : { sessionId: 'target', deliveryIntent: 'QUEUE' })
-        }
-      });
-      expect(result.statusCode).toBe(200);
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        action === 'start' ? 'session.start' : 'session.message',
-        expect.objectContaining({ content: '', attachments, workspaceId: 'workspace' }),
-        expect.anything()
-      );
-    }
-    requestNode.mockClear();
-    for (const input of [
-      { content: '', attachments: [] },
-      { content: ' ', attachments: [] },
-      { content: '', attachments: Array(6).fill(attachments[0]) },
-      { content: '', attachments: [{ ...attachments[0], mime: 'text/plain' }] },
-      { content: '', attachments: [{ ...attachments[0], dataBase64: 42 }] }
-    ]) {
-      const result = await app.inject({
-        method: 'POST',
-        url: '/api/marctl/sessions',
-        headers,
-        payload: {
-          action: 'send',
-          sessionId: 'target',
-          clientMessageId: 'invalid',
-          deliveryIntent: 'QUEUE',
-          ...input
-        }
-      });
-      expect(result.statusCode).toBe(400);
     }
     expect(requestNode).not.toHaveBeenCalled();
   });

@@ -135,31 +135,42 @@ it.each([false, true])(
       expect(instructions).toContain(
         [
           '# Delegation and coordination',
-          'Handle focused or tightly coupled work locally by default.',
-          'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-          'Do not split work merely because agents are available.'
+          'Prefer handling focused or tightly coupled work locally.',
+          'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+          'Avoid splitting work merely because agents are available.'
         ].join('\n\n')
       );
-      expect(instructions).toContain('Follow up through the direct delegate by default');
+      expect(instructions).toContain('Prefer following up through the direct delegate');
       expect(instructions).toContain('only when a concrete issue needs independent verification');
       expect(instructions).toContain('avoid unnecessary cross-Session coordination');
       expect(instructions).toContain('do not treat them as task-owned children');
-      expect(instructions).toContain('Explicitly wait when you need progress or completion.');
-      expect(instructions).toContain('Reuse known Session IDs rather than rediscovering them.');
+      expect(instructions).not.toContain('Explicitly wait when you need progress or completion.');
       expect(instructions).toContain(
-        'do not provide routine progress updates or acknowledgments unless requested'
+        'prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work'
       );
       expect(instructions).toContain(
-        'blockers, scope conflicts, or information that requires the parent to decide or change course'
+        'Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.'
       );
-      expect(instructions).toContain('do not also send a duplicate completion message');
       expect(instructions).toContain(
-        'Send updates only when requested or when the recipient needs to decide or change course'
+        'Prefer reusing known Session IDs rather than rediscovering them.'
+      );
+      expect(instructions).toContain(
+        'An accepted message normally needs no separate acknowledgment.'
+      );
+      expect(instructions).toContain(
+        'Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.'
+      );
+      expect(instructions).toContain(
+        'blockers, scope conflicts, or information needed for a decision'
+      );
+      expect(instructions).toContain(
+        'prefer a concise final handoff over routine progress reports or duplicate completion messages'
+      );
+      expect(instructions).toContain(
+        'Updates are most useful when requested or when the recipient needs to decide or change course'
       );
       expect(instructions).not.toContain('Send updates for meaningful progress');
-      expect(instructions).toContain(
-        'combine related updates and avoid acknowledgment-only exchanges'
-      );
+      expect(instructions).toContain('prefer combining related updates');
       expect(instructions).not.toContain('subscribe');
       expect(instructions).toContain(
         "selecting a child's model or effort at creation use native agent_* tools"
@@ -195,8 +206,10 @@ it('selects delegation and lateral guidance independently and omits both during 
     ]).toEqual(expected);
     expect(instructions.includes('Available subagent models:')).toBe(expected[0]);
     for (const guidance of [
-      'do not provide routine progress updates or acknowledgments unless requested',
-      'do not also send a duplicate completion message'
+      'An accepted message normally needs no separate acknowledgment.',
+      'Requests for receipt-only replies',
+      'immediate agent_view calls solely to confirm receipt are usually unnecessary',
+      'prefer a concise final handoff over routine progress reports or duplicate completion messages'
     ]) {
       expect(instructions.split(guidance)).toHaveLength(expected[1] ? 2 : 1);
     }
@@ -261,8 +274,6 @@ it('refreshes the injected models after reconfiguration and represents an empty 
 it.each([false, true])('defaults native messages to steer with Code Mode %s', async (codeMode) => {
   for (const message of [
     { content: 'Continue the task' },
-    { attachments: [{ name: 'image.png', mime: 'image/png', dataBase64: 'aW1hZ2U=' }] },
-    { attachmentIds: ['existing-image'] },
     { content: 'Continue', goal: { objective: 'Finish the task' } },
     { content: 'Continue', approval: { approvalId: 'approval', decision: 'approve' } }
   ]) {
@@ -317,6 +328,49 @@ it.each([false, true])(
 );
 
 it.each([false, true])(
+  'requires a text task before invoking start with Code Mode %s',
+  async (codeMode) => {
+    for (const content of [undefined, '']) {
+      const test = await fixture(codeMode, {
+        name: 'agent_start',
+        input: { title: 'Text task', ...(content === undefined ? {} : { content }) }
+      });
+      expect(test.invoke).not.toHaveBeenCalled();
+      expect(test.failures).toEqual(
+        expect.arrayContaining([{ toolName: 'agent_start', code: 'MAR_AGENT_TOOL_INPUT_INVALID' }])
+      );
+    }
+  }
+);
+
+it.each([false, true])(
+  'rejects retired attachment fields before invoking Node with Code Mode %s',
+  async (codeMode) => {
+    for (const name of ['agent_start', 'agent_send']) {
+      for (const attachment of [
+        { attachments: [] },
+        { attachments: [{ name: 'image.png', mime: 'image/png', dataBase64: 'aW1hZ2U=' }] },
+        { attachmentIds: [] },
+        { attachmentIds: ['existing-image'] }
+      ]) {
+        const test = await fixture(codeMode, {
+          name,
+          input: {
+            ...(name === 'agent_start' ? { title: 'Text task' } : { agentId: 'child' }),
+            content: 'Valid text must not silently discard retired input',
+            ...attachment
+          }
+        });
+        expect(test.invoke).not.toHaveBeenCalled();
+        expect(test.failures).toEqual(
+          expect.arrayContaining([{ toolName: name, code: 'MAR_AGENT_TOOL_INPUT_INVALID' }])
+        );
+      }
+    }
+  }
+);
+
+it.each([false, true])(
   'does not interpret internal delivery fields supplied by a model with Code Mode %s',
   async (codeMode) => {
     const test = await fixture(codeMode, {
@@ -339,7 +393,7 @@ it.each([false, true])(
   async (codeMode) => {
     for (const change of [
       { goal: { objective: 'Finish the task' } },
-      { goal: { clear: true }, content: '  ', attachments: [], attachmentIds: [] },
+      { goal: { clear: true }, content: '  ' },
       { approval: { approvalId: 'approval', decision: 'approve' } }
     ]) {
       const input = { agentId: 'child', ...change };

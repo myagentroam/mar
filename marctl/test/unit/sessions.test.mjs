@@ -7,7 +7,7 @@ import { main, parseArgs } from '../../src/cli.mjs';
 import { waitForSessionRun } from '../../src/session-wait.mjs';
 import { MarctlError } from '../../src/errors.mjs';
 import { MarctlClient } from '../../src/client.mjs';
-import { mkdtemp, rm, writeFile, truncate } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -890,7 +890,7 @@ test('parses closed Session commands including creation and rejects scope overri
   ])
     assert.throws(() => parseArgs(['agents', ...args]));
 });
-test('supports direct messages and repeated images without accepting ambiguous input', () => {
+test('supports direct messages while rejecting images and ambiguous input', () => {
   for (const content of ['--help', '-h', '--json', '--review'])
     assert.equal(parseArgs(['agents', 'send', 's', '--steer', '-m', content]).message, content);
   assert.equal(
@@ -901,12 +901,10 @@ test('supports direct messages and repeated images without accepting ambiguous i
     parseArgs(['agents', 'goal', 'set', 's', '--message', 'Finish review']).message,
     'Finish review'
   );
-  assert.deepEqual(
-    parseArgs(['agents', 'start', '--runner', 'codex', '--image', 'a.png', '--image', 'b.jpg'])
-      .images,
-    ['a.png', 'b.jpg']
-  );
   for (const args of [
+    ['start', '--runner', 'codex', '--image', 'a.png'],
+    ['start', '-m', 'task', '--image', 'a.png'],
+    ['send', 's', '-m', 'update', '--image', 'a.png'],
     ['send', 's', '--steer', '-m', 'one', '--message', 'two'],
     ['send', 's', '--steer', '-m', 'one', '--message-file', '-'],
     ['goal', 'set', 's', '--image', 'a.png'],
@@ -916,7 +914,7 @@ test('supports direct messages and repeated images without accepting ambiguous i
     assert.throws(() => parseArgs(['agents', ...args]));
 });
 
-test('submits inline text and local images once, including image-only input, with local validation', async () => {
+test('submits text and message files once and rejects images without submitting', async () => {
   const root = await mkdtemp(join(tmpdir(), 'marctl-input-'));
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=',
@@ -924,22 +922,8 @@ test('submits inline text and local images once, including image-only input, wit
   );
   const image = join(root, 'screen shot.png');
   await writeFile(image, png);
-  const invalid = join(root, 'invalid.png');
-  await writeFile(invalid, 'not an image');
-  const oversized = join(root, 'large.png');
-  await writeFile(oversized, png);
-  await truncate(oversized, 5 * 1024 * 1024 + 1);
-  const large = join(root, 'four-mib.png');
-  await writeFile(large, png);
-  await truncate(large, 4 * 1024 * 1024);
   const messageFile = join(root, 'task.txt');
-  await writeFile(messageFile, 'Describe these images');
-  const formats = [
-    ['jpeg', Buffer.from('ffd8ffe0', 'hex'), 'image/jpeg'],
-    ['gif', Buffer.from('GIF89a'), 'image/gif'],
-    ['webp', Buffer.from('524946460000000057454250', 'hex'), 'image/webp']
-  ];
-  for (const [extension, data] of formats) await writeFile(join(root, 'image.' + extension), data);
+  await writeFile(messageFile, 'Review the task');
   const calls = [];
   const client = {
     sessionCommand: async (body) => {
@@ -955,45 +939,25 @@ test('submits inline text and local images once, including image-only input, wit
       stderr: { write() {} }
     });
   try {
-    assert.equal(
-      await invoke(['start', '--runner', 'mar-agent', '-m', 'Describe this', '--image', image]),
-      0
-    );
-    assert.equal(await invoke(['send', 's', '--steer', '--image', image]), 0);
+    assert.equal(await invoke(['start', '--runner', 'mar-agent', '-m', 'Review this']), 0);
+    assert.equal(await invoke(['send', 's', '--steer', '-m', 'Continue review']), 0);
     assert.equal(await invoke(['goal', 'set', 's', '-m', 'Finish review']), 0);
-    assert.equal(calls[0].command.input.content, 'Describe this');
-    assert.deepEqual(calls[0].command.input.attachments, [
-      { name: 'screen shot.png', mime: 'image/png', dataBase64: png.toString('base64') }
-    ]);
-    assert.equal(calls[1].command.input.content, undefined);
-    assert.deepEqual(calls[1].command.input.attachments, calls[0].command.input.attachments);
+    assert.equal(calls[0].command.input.content, 'Review this');
+    assert.equal(calls[1].command.input.content, 'Continue review');
+    assert.equal(Object.hasOwn(calls[0].command.input, 'attachments'), false);
+    assert.equal(Object.hasOwn(calls[1].command.input, 'attachments'), false);
     assert.equal(calls[2].content, 'Finish review');
     assert.equal(calls[2].attachments, undefined);
-    assert.equal(
-      await invoke([
-        'send',
-        's',
-        '--steer',
-        '--message-file',
-        messageFile,
-        '--image',
-        image,
-        ...formats.flatMap(([extension]) => ['--image', join(root, 'image.' + extension)])
-      ]),
-      0
-    );
-    assert.equal(calls[3].command.input.content, 'Describe these images');
-    assert.deepEqual(
-      calls[3].command.input.attachments.map((value) => value.mime),
-      ['image/png', ...formats.map((value) => value[2])]
-    );
+    assert.equal(await invoke(['send', 's', '--steer', '--message-file', messageFile]), 0);
+    assert.equal(calls[3].command.input.content, 'Review the task');
+    assert.equal(Object.hasOwn(calls[3].command.input, 'attachments'), false);
     for (const args of [
       ['send', 's', '--steer', '-m', '   '],
       ['send', 's', '--steer', '-m', 'a'.repeat(100001)],
       ['goal', 'set', 's', '-m', 'a'.repeat(20001)],
-      ['send', 's', '--steer', '--image', invalid],
-      ['send', 's', '--steer', '--image', oversized],
-      ['send', 's', '--steer', '--image', large, '--image', large, '--image', large],
+      ['start', '--runner', 'codex', '-m', 'task', '--image', image],
+      ['send', 's', '--steer', '-m', 'update', '--image', image],
+      ['send', 's', '--message-file', messageFile, '--image', image],
       ['send', 's', '--steer', '--image', root],
       ['send', 's', '--steer', '--image', join(root, 'missing.png')]
     ])
@@ -1338,7 +1302,7 @@ test('Session help documents prompts and approvals without supporting --prompt-f
     );
     assert.ok(output.includes('[--runner <runner>]'));
     assert.ok(output.includes('-m <text>'));
-    assert.ok(output.includes('--image <path>'));
+    assert.ok(!output.includes('--image'));
     assert.ok(output.includes('prompt get'));
     assert.ok(output.includes('prompt set'));
     assert.ok(output.includes('agents prompt get|clear'));

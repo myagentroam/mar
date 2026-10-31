@@ -317,6 +317,7 @@ describe('Standalone Workspace direct transfer', () => {
     const service = createStandaloneWorkspaceDirectTransferService({
       nodeId: 'node-1',
       workspaceId: 'workspace-1',
+      activeDownloadWorker: async () => navigator.serviceWorker.controller ?? undefined,
       ...target
     });
     await vi.waitFor(() =>
@@ -426,7 +427,8 @@ describe('Standalone Workspace direct transfer', () => {
 
     const service = createStandaloneWorkspaceDirectTransferService({
       nodeId: 'node-1',
-      workspaceId: 'workspace-1'
+      workspaceId: 'workspace-1',
+      activeDownloadWorker: async () => navigator.serviceWorker.controller ?? undefined
     });
     const initialRead = service.readRange('notes.txt', 0, 512);
     for (let index = 0; index < 6; index += 1) await Promise.resolve();

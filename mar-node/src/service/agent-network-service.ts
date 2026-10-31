@@ -65,8 +65,6 @@ interface AgentNetworkServiceOptions {
       readonly effort?: string;
       readonly title?: string;
       readonly parentSessionId?: string;
-      readonly attachments?: readonly unknown[];
-      readonly attachmentIds?: readonly string[];
       readonly goal: AgentGoalChange;
     },
     signal?: AbortSignal
@@ -79,8 +77,6 @@ interface AgentNetworkServiceOptions {
       readonly clientMessageId: string;
       readonly content: string;
       readonly deliveryIntent: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
-      readonly attachments?: readonly unknown[];
-      readonly attachmentIds?: readonly string[];
     },
     signal?: AbortSignal
   ) => Promise<unknown>;
@@ -91,8 +87,6 @@ interface AgentNetworkServiceOptions {
       readonly clientMessageId: string;
       readonly content: string;
       readonly deliveryIntent: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
-      readonly attachments?: readonly unknown[];
-      readonly attachmentIds?: readonly string[];
     },
     signal?: AbortSignal
   ) => Promise<unknown>;
@@ -169,8 +163,6 @@ export class AgentNetworkService {
       readonly title?: string;
       readonly parentSessionId?: string;
       readonly goal?: unknown;
-      readonly attachments?: readonly unknown[];
-      readonly attachmentIds?: readonly string[];
       readonly clientMessageId?: string;
     },
     signal?: AbortSignal,
@@ -181,12 +173,9 @@ export class AgentNetworkService {
     const content = input.content ?? '';
     if (
       typeof content !== 'string' ||
-      (!content.trim() && !input.attachments?.length && !input.attachmentIds?.length) ||
-      (input.attachments !== undefined && !Array.isArray(input.attachments)) ||
-      (input.attachmentIds !== undefined &&
-        (!Array.isArray(input.attachmentIds) ||
-          input.attachmentIds.some((id) => typeof id !== 'string' || !id))) ||
-      (!!input.attachments?.length && !!input.attachmentIds?.length) ||
+      !content.trim() ||
+      'attachments' in input ||
+      'attachmentIds' in input ||
       !validOptionalString(input.runner) ||
       'model' in input ||
       !validOptionalString(input.modelId) ||
@@ -228,8 +217,6 @@ export class AgentNetworkService {
       readonly content?: string;
       readonly goal?: unknown;
       readonly deliveryIntent?: 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
-      readonly attachments?: readonly unknown[];
-      readonly attachmentIds?: readonly string[];
       readonly clientMessageId?: string;
       readonly approval?: { readonly approvalId: string; readonly decision: 'approve' | 'reject' };
     },
@@ -243,16 +230,9 @@ export class AgentNetworkService {
       typeof input.agentId !== 'string' ||
       !input.agentId ||
       typeof content !== 'string' ||
-      (!content.trim() &&
-        !input.attachments?.length &&
-        !input.attachmentIds?.length &&
-        goal.kind === 'unchanged' &&
-        input.approval === undefined) ||
-      (input.attachments !== undefined && !Array.isArray(input.attachments)) ||
-      (input.attachmentIds !== undefined &&
-        (!Array.isArray(input.attachmentIds) ||
-          input.attachmentIds.some((id) => typeof id !== 'string' || !id))) ||
-      (!!input.attachments?.length && !!input.attachmentIds?.length) ||
+      (!content.trim() && goal.kind === 'unchanged' && input.approval === undefined) ||
+      'attachments' in input ||
+      'attachmentIds' in input ||
       !validOptionalString(input.clientMessageId) ||
       (input.approval !== undefined &&
         (!isPlainRecord(input.approval) ||
@@ -267,8 +247,7 @@ export class AgentNetworkService {
       !['SEND', 'QUEUE', 'REPLACE_CURRENT'].includes(input.deliveryIntent)
     )
       throw new Error('AGENT_SEND_INVALID');
-    const hasMessage =
-      !!content.trim() || !!input.attachments?.length || !!input.attachmentIds?.length;
+    const hasMessage = !!content.trim();
     const session = await this.options.target(actor, input.agentId);
     signal?.throwIfAborted();
     if (hasMessage) await this.options.authorize(actor, session, 'send');
@@ -304,9 +283,7 @@ export class AgentNetworkService {
       ? {
           clientMessageId: input.clientMessageId ?? randomUUID(),
           content,
-          deliveryIntent: input.deliveryIntent ?? ('SEND' as const),
-          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-          ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds })
+          deliveryIntent: input.deliveryIntent ?? ('SEND' as const)
         }
       : undefined;
     let goalResult: unknown;

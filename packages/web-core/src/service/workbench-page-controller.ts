@@ -103,7 +103,7 @@ import { createWorkbenchConversationComposition } from './workbench-conversation
 import { createWorkbenchEntityController } from './workbench-entity-controller.js';
 import { createWorkbenchPageStateService } from './workbench-base-state-service.js';
 import { createWorkbenchPageInteractionService } from './workbench-page-interaction-service.js';
-import { createWebVersionUpdateService } from './web-version-update-service.js';
+import type { PwaApplicationService } from './pwa-application-service.js';
 import { createWorkbenchNewSessionController } from './workbench-new-session-controller.js';
 import { createWorkbenchComposerInteractionController } from './workbench-composer-interaction-controller.js';
 import { installWorkbenchPageLifecycle } from './workbench-page-lifecycle-service.js';
@@ -178,7 +178,7 @@ export function createWorkbenchPageController<
   readonly systemManagementSection: ManagementSection;
   readonly nodeManagementSection: ManagementSection;
   readonly webVersion: string;
-  readonly webBuildHash: string;
+  readonly pwaApplication?: PwaApplicationService;
   readonly submitWorkspaceRegistration?: (
     request: <T>(path: string, init?: RequestInit) => Promise<T>,
     input: WorkspaceRegistrationInput,
@@ -310,39 +310,32 @@ export function createWorkbenchPageController<
 
   const { start: startWorkbenchNotifications, dispose: disposeWorkbenchNotifications } =
     workbenchNotificationService;
-  const webVersionUpdateService = createWebVersionUpdateService({
-    currentVersion: options.webVersion,
-    currentHash: options.webBuildHash,
-    fetchVersion: async () => {
-      const response = await fetch(`/web-version.json?t=${Date.now()}`, {
-        cache: 'no-store',
-        credentials: 'same-origin'
-      });
-      if (!response.ok) return undefined;
-      return response.json();
-    },
-    onUpdateAvailable: (version, hash) =>
-      workbenchNotificationService.notify({
-        id: `web-update:${version}:${hash}`,
-        kind: 'web-update',
-        source: 'local',
-        title: translate('webUpdate.title'),
-        message: translate('webUpdate.message', { value0: version }),
-        action: 'RELOAD_PAGE'
-      }),
-    onVersionCurrent: () => workbenchNotificationService.clearWebUpdate()
-  });
-  let removeWebVersionFocusListener: (() => void) | undefined;
+  let removeWebVersionSubscription: (() => void) | undefined;
+  const pwaState =
+    options.pwaApplication?.state ?? ref({ offline: 'online' as const, checked: false });
+  const checkingForUpdates = ref(false);
 
   function startWebVersionUpdateCheck(): void {
-    if (removeWebVersionFocusListener !== undefined) return;
-    const check = () => void webVersionUpdateService.check().catch(() => undefined);
-    window.addEventListener('focus', check);
-    removeWebVersionFocusListener = () => {
-      window.removeEventListener('focus', check);
-      removeWebVersionFocusListener = undefined;
-    };
-    check();
+    if (removeWebVersionSubscription !== undefined || options.pwaApplication === undefined) return;
+    removeWebVersionSubscription = options.pwaApplication.subscribe((state) => {
+      if (!state.checked) return;
+      const hasUpdateNotice = workbenchNotificationService.notifications.value.some(
+        (item) => item.kind === 'web-update'
+      );
+      const update = state.update ?? (hasUpdateNotice ? state.reload : undefined);
+      if (update === undefined) {
+        if (state.reload === undefined) workbenchNotificationService.clearWebUpdate();
+      } else {
+        workbenchNotificationService.notify({
+          id: `web-update:${update.version}:${update.buildId}`,
+          kind: 'web-update',
+          source: 'local',
+          title: translate('webUpdate.title'),
+          message: translate('webUpdate.message', { value0: update.version }),
+          action: 'RELOAD_PAGE'
+        });
+      }
+    });
   }
 
   const sessionDraftService = baseState.draft;
@@ -1009,10 +1002,64 @@ export function createWorkbenchPageController<
     remove: deleteWorkspaceUpload,
     dispose: disposeWorkspaceUploads
   } = workspaceUploadService;
+  let activeFileDownloads = 0;
+
+  async function runFileDownload(
+    operation: () => Promise<WorkspaceDirectDownloadResult>
+  ): Promise<WorkspaceDirectDownloadResult> {
+    activeFileDownloads += 1;
+    try {
+      return await operation();
+    } finally {
+      activeFileDownloads -= 1;
+    }
+  }
+
+  async function checkForUpdates(): Promise<void> {
+    if (checkingForUpdates.value || options.pwaApplication === undefined) return;
+    checkingForUpdates.value = true;
+    try {
+      await options.pwaApplication.checkForUpdate();
+      const state = options.pwaApplication.state.value;
+      showMessage(
+        translate(
+          state.update
+            ? 'webUpdate.available'
+            : state.reload
+              ? 'webUpdate.reloadAvailable'
+              : 'webUpdate.upToDate'
+        ),
+        'info'
+      );
+    } catch (error) {
+      showMessage(translate('webUpdate.checkFailed'), 'error', error);
+    } finally {
+      checkingForUpdates.value = false;
+    }
+  }
+
+  async function applyWebUpdate(): Promise<void> {
+    const result = await options.pwaApplication?.applyUpdate(
+      () =>
+        activeFileDownloads === 0 &&
+        !workspaceUploadTasks.value.some(
+          (task) => task.status === 'QUEUED' || task.status === 'UPLOADING'
+        )
+    );
+    if (result !== 'APPLIED') {
+      const key =
+        result === 'BLOCKED'
+          ? 'blocked'
+          : result === 'OTHER_WINDOWS'
+            ? 'otherWindows'
+            : 'unavailable';
+      showMessage(translate(`webUpdate.${key}`), 'warning');
+    }
+  }
 
   async function openWorkbenchNotification(notification: WorkbenchNotification): Promise<void> {
     if (notification.action === 'RELOAD_PAGE') {
-      window.location.reload();
+      await applyWebUpdate();
       return;
     }
     const target = notification.target;
@@ -1639,7 +1686,14 @@ export function createWorkbenchPageController<
   ): Promise<WorkspaceDirectDownloadResult> {
     if (nodeManifest.value?.directTransfer?.download !== true) return 'UNAVAILABLE';
     const target = workspaceDirectFile(path, worktreePath, repositoryPath);
-    return target === undefined ? 'UNAVAILABLE' : downloadWorkspaceDirectFile(target);
+    return target === undefined || options.pwaApplication === undefined
+      ? 'UNAVAILABLE'
+      : runFileDownload(() =>
+          downloadWorkspaceDirectFile({
+            ...target,
+            activeWorker: options.pwaApplication!.activeWorker
+          })
+        );
   }
 
   async function directGitFileObjectUrl(
@@ -1668,7 +1722,14 @@ export function createWorkbenchPageController<
   ): Promise<WorkspaceDirectDownloadResult> {
     if (nodeManifest.value?.directTransfer?.download !== true) return 'UNAVAILABLE';
     const target = gitDirectFile(commit, path, repositoryPath, refs);
-    return target === undefined ? 'UNAVAILABLE' : downloadWorkspaceDirectFile(target);
+    return target === undefined || options.pwaApplication === undefined
+      ? 'UNAVAILABLE'
+      : runFileDownload(() =>
+          downloadWorkspaceDirectFile({
+            ...target,
+            activeWorker: options.pwaApplication!.activeWorker
+          })
+        );
   }
 
   const adminAuthService = createAdminAuthService({
@@ -1697,6 +1758,8 @@ export function createWorkbenchPageController<
   });
 
   const {
+    authenticationUnknown,
+    restoring: authenticationRestoring,
     returnToLogin,
     refresh: refreshAdmin,
     refreshSessions: refreshAdminSessions,
@@ -1888,7 +1951,8 @@ export function createWorkbenchPageController<
     authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
-    removeWebVersionFocusListener?.();
+    removeWebVersionSubscription?.();
+    removeWebVersionSubscription = undefined;
     watchCoordinator.current?.dispose();
     hostedConversationWorkspace.clearSelectedConversation();
     directTransport.reset();
@@ -3375,6 +3439,9 @@ export function createWorkbenchPageController<
     handleSessionWatchVisibility,
     onGlobalKeydown,
     refreshAdmin,
+    recoverAuthentication: () => {
+      if (authenticationUnknown.value && !authenticationRestoring.value) void refreshAdmin();
+    },
     cancelFileReferenceSearch: composerReferenceService.cancelSearch,
     disposeNavigation: () => {
       mobileMenuHistory.dispose();
@@ -3382,7 +3449,7 @@ export function createWorkbenchPageController<
     },
     disposeWorkspaceUploads,
     disposeWorkbenchNotifications,
-    disposeWebVersionUpdateCheck: () => removeWebVersionFocusListener?.(),
+    disposeWebVersionUpdateCheck: () => removeWebVersionSubscription?.(),
     stopWorkspaceWatch: () => watchCoordinator.current?.stopWorkspace(),
     closeWorkbenchLive,
     disposeDirectTransport: directTransport.dispose,
@@ -3413,6 +3480,12 @@ export function createWorkbenchPageController<
     addWorkspaceForNode,
     admin,
     adminLoaded,
+    authenticationUnknown,
+    authenticationRestoring,
+    pwaState,
+    checkingForUpdates,
+    checkForUpdates,
+    applyWebUpdate,
     adminSessions,
     attachmentPreview,
     attachmentPreviewOpen,

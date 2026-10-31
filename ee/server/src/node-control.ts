@@ -34,9 +34,7 @@ import { ServerTrafficMetrics } from './service/server-traffic-metrics.js';
 import type { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
 import {
   resolveScheduledRunAuthorization,
-  resolveRestartRunAuthorization,
-  type ScheduledRunAuthorizer,
-  type RestartRunAuthorizer
+  type ScheduledRunAuthorizer
 } from '@myagentroam/server-core/scheduled-run-authorization-channel';
 import { resolveMailNotification } from '@myagentroam/server-core/mail-notification-channel';
 import type { MailNotificationService } from '@myagentroam/server-core/mail-notification-service';
@@ -93,7 +91,6 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly mailNotifications: Pick<MailNotificationService, 'send'>;
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
-  readonly restartAuthorizer: RestartRunAuthorizer;
   readonly marctlExecutionCredential: (
     nodeId: string,
     request: MarctlExecutionCredentialRequest
@@ -480,14 +477,13 @@ export class NodeControl extends NodeIdentityControl {
       this.send(socket, 'credential.response', runtimeCredentialConnectionError(), envelope.id);
       return;
     }
-    if (envelope.type === 'schedule.authorize' || envelope.type === 'restart.authorize') {
-      const purpose = envelope.type === 'schedule.authorize' ? 'schedule' : 'restart';
+    if (envelope.type === 'schedule.authorize') {
       this.send(
         socket,
-        `${purpose}.authorize.response`,
+        'schedule.authorize.response',
         {
           error: {
-            code: `${purpose.toUpperCase()}_SERVER_UNAVAILABLE`,
+            code: 'SCHEDULE_SERVER_UNAVAILABLE',
             message: 'The Node connection is no longer valid.'
           }
         },
@@ -592,16 +588,6 @@ export class NodeControl extends NodeIdentityControl {
             this.send(socket, 'notification.channels.response', payload, envelope.id)
         })
       );
-      return true;
-    }
-    if (envelope.type === 'restart.authorize') {
-      await resolveRestartRunAuthorization({
-        nodeId,
-        envelope,
-        isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        authorize: this.consumers.restartAuthorizer,
-        respond: (payload) => this.send(socket, 'restart.authorize.response', payload, envelope.id)
-      });
       return true;
     }
     if (envelope.type === 'schedule.authorize') {

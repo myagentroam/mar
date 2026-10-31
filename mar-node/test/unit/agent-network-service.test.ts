@@ -96,6 +96,36 @@ function fixture(parentSessionId: string | null = 'parent') {
 
 afterEach(() => vi.useRealTimers());
 
+describe('Agent Network text input', () => {
+  it.each(['attachments', 'attachmentIds'])(
+    'rejects %s before creating or mutating a Session',
+    async (field) => {
+      const f = fixture();
+      for (const value of [undefined, [], ['legacy']]) {
+        const input = { content: 'Continue the task', [field]: value };
+        await expect(f.service.start(f.actor, input)).rejects.toThrow('AGENT_START_INVALID');
+        await expect(
+          f.service.send(f.actor, {
+            ...input,
+            agentId: 'child',
+            goal: { objective: 'Finish the task' },
+            approval: { approvalId: 'approval', decision: 'approve' }
+          })
+        ).rejects.toThrow('AGENT_SEND_INVALID');
+      }
+      for (const operation of [
+        f.start,
+        f.resolveTarget,
+        f.setGoal,
+        f.approval,
+        f.message,
+        f.observe
+      ])
+        expect(operation).not.toHaveBeenCalled();
+    }
+  );
+});
+
 describe('Agent Network model selection', () => {
   it('publishes only actual implicitly selected wait targets, in selection order', async () => {
     const f = fixture();

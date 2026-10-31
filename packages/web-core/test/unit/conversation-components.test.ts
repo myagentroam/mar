@@ -17,6 +17,7 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
+import WorkspaceSessionTreePopover from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
@@ -950,7 +951,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
   });
 
-  it('offers the session tree shortcut only for a child session', async () => {
+  it('offers the session tree shortcut for root and child sessions, but not drafts', async () => {
     const session: Session = {
       id: 'child',
       workspaceId: 'workspace-1',
@@ -965,18 +966,37 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       runnerIcon: () => '/icon.svg',
       sessionTitle: () => 'Title'
     };
-    const child = await render(ConversationHeader, {
-      ...props,
-      session: { ...session, sessionGroup: 'CHILD' }
-    });
-    const root = await render(ConversationHeader, {
-      ...props,
-      session: { ...session, sessionGroup: 'MAIN' }
-    });
+    const slots = {
+      tree: () =>
+        h(WorkspaceSessionTreePopover, {
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          sessionId: 'child',
+          request: async () => ({})
+        })
+    };
+    const child = await render(
+      ConversationHeader,
+      {
+        ...props,
+        session: { ...session, sessionGroup: 'CHILD' }
+      },
+      slots
+    );
+    const root = await render(
+      ConversationHeader,
+      {
+        ...props,
+        session: { ...session, sessionGroup: 'MAIN' }
+      },
+      slots
+    );
     expect(child).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
     expect(child).toContain('data-mar-icon="session-tree"');
-    expect(root).not.toContain('data-mar-icon="session-tree"');
-    expect(root).not.toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
+    expect(root).toContain('data-mar-icon="session-tree"');
+    expect(root).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
+    const draft = await render(ConversationHeader, { ...props, session: undefined }, slots);
+    expect(draft).not.toContain('data-mar-icon="session-tree"');
   });
 
   it('omits duplicate header activity indicators for active and idle sessions', async () => {
@@ -1845,9 +1865,17 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
   });
 
-  it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(
-    'keeps Node-assigned process IDs around a %s compaction item',
-    async (status) => {
+  it.each([
+    ['IN_PROGRESS', undefined],
+    ['COMPLETED', undefined],
+    ['FAILED', undefined],
+    ['IN_PROGRESS', 'BACKGROUND'],
+    ['COMPLETED', 'BACKGROUND'],
+    ['FAILED', 'BACKGROUND'],
+    ['IN_PROGRESS', 'BLOCKING']
+  ])(
+    'keeps Node-assigned process IDs around a %s compaction item in %s mode',
+    async (status, mode) => {
       const before = {
         ...conversationItem('reasoning-before', 'reasoning', {
           representation: 'summary',
@@ -1858,7 +1886,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       const compact = conversationItem(
         'compact',
         'context_compaction',
-        { phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED' },
+        { mode, phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED' },
         status
       );
       const after = {

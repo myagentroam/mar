@@ -55,6 +55,7 @@ describe('Shared workbench lifecycle', () => {
         options.onGlobalKeydown,
         true
       );
+      expect(window.addEventListener).toHaveBeenCalledWith('online', options.recoverAuthentication);
       calls.length = 0;
       hooks.unmounted[0]!();
       expect(calls).toEqual([
@@ -71,7 +72,7 @@ describe('Shared workbench lifecycle', () => {
         'releaseRunImagePreviews'
       ]);
       expect(document.removeEventListener.mock.calls).toEqual(document.addEventListener.mock.calls);
-      expect(window.removeEventListener.mock.calls).toEqual([]);
+      expect(window.removeEventListener.mock.calls).toEqual(window.addEventListener.mock.calls);
       const selection = hooks.watchers.find((entry) => entry.source === options.selectedSessionId)!;
       calls.length = 0;
       selection.callback('same', 'same');

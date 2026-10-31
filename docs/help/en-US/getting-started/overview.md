@@ -1,6 +1,6 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-31
 ---
 
 # What Is MyAgentRoam?
@@ -23,6 +23,16 @@ Browsers authenticate and obtain authorization through Server, while each Node o
 ## Interface Language
 
 Console and the documentation center use the language saved in the current browser. The independent marketing website has a separate language preference. Opening documentation from Console takes you to the matching language. When you sign in or return to Console, the browser's language is synchronized to your account and used for notifications created afterward; changing the language in Settings also updates the account preference. A notification keeps the final text generated when it was created, so later language changes do not rewrite it. Switching languages in the documentation center opens the matching version of the current page; a direct documentation link takes precedence over the saved language.
+
+## Installation, interface caching, and updates
+
+Console caches the static resources needed for its interface on the first online visit, avoiding repeated downloads of unchanged files. **Settings → About** shows the application resource cache status. When cached, the app shell can open offline, but sign-in, sessions, files, terminals, and other features still require a connection. Documentation and search are not included in the application cache. Browser tabs and installed applications use the same mechanism. Browser storage may be separate or reclaimed; the application remains usable online when caching is unavailable.
+
+To install a standalone application window, use the browser's install-app control in the address bar or menu. On supported mobile browsers, you can also choose **Add to Home Screen** from the share or browser menu. The name and location vary by browser and operating system; installation is not required for static resource caching.
+
+Offline resources do not include sign-in state, permissions, sessions, Workspace files, or terminals. If Server cannot be reached on a cold start, the interface reports that your identity is unconfirmed; reconnect to open documentation or retry. Identity and Server- or Node-dependent functions require a connection. An already open page does not sign you out merely because the network is lost.
+
+A notification appears when a new version is prepared; the current page continues running until you choose to update. Clicking the notification or applying the update in **Settings → About** activates the prepared version and reloads only the current page, in both browser tabs and installed applications. Save or discard unsaved edits and finish file transfers first. If other windows are open, close the other same-origin application windows and tabs and retry; they are not refreshed automatically. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
 
 ## Fastest path to success
 

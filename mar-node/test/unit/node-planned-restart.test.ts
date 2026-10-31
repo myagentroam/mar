@@ -16,7 +16,11 @@ import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { GoalRuntime } from '../../src/service/goal-runtime.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
-import type { PlannedRestartHandoff } from '../../src/service/planned-restart-handoff.js';
+import {
+  plannedRestartSchema,
+  type PlannedRestartHandoff
+} from '../../src/service/planned-restart-handoff.js';
+import { openRestartState } from '../../src/service/restart-execution-state.js';
 
 interface TestOperationResponse {
   readonly error?: string;
@@ -78,7 +82,6 @@ describe('Node capture failure logging', () => {
           access: sentinel
         });
         core.goalRuntime.start(session.id, sentinel);
-        core.restartHandoff.rememberUser(session.id, 41);
         if (mode === 'goal') {
           const goal = core.goalRuntime.restartState(session.id)!;
           vi.spyOn(core.goalRuntime, 'restartState').mockReturnValue({
@@ -257,8 +260,6 @@ describe('Node CLI orderly restart with the real SDK', () => {
       let control: WebSocket | undefined;
       let connections = 0;
       let authorizations = 0;
-      let delayAuthorization = mode === 'goal';
-      let releaseAuthorization: (() => void) | undefined;
       const watchEvents: unknown[] = [];
       const replies = new Map<string, (value: TestOperationResponse) => void>();
       sockets.on('connection', (socket) => {
@@ -275,24 +276,6 @@ describe('Node CLI orderly restart with the real SDK', () => {
             watchEvents.push(envelope.payload);
           } else if (envelope.type === 'restart.authorize') {
             authorizations++;
-            const respond = () =>
-              socket.send(
-                JSON.stringify(
-                  createEnvelope(
-                    'restart.authorize.response',
-                    {
-                      context: {
-                        secretEnvironment: { SYNTHETIC_TOKEN: 'fresh-after-restart' },
-                        marAgentModel: model,
-                        marAgentModels: [model]
-                      }
-                    },
-                    { replyTo: envelope.id }
-                  )
-                )
-              );
-            if (delayAuthorization) releaseAuthorization = respond;
-            else respond();
           }
         });
       });
@@ -435,45 +418,31 @@ describe('Node CLI orderly restart with the real SDK', () => {
           marAgentModels: [model]
         });
         await stop('SIGTERM');
-        const handoff = JSON.parse(
-          await readFile(join(data, 'planned-restart-handoff.json'), 'utf8')
-        );
-        expect(handoff.sessions[0].session.id).toBe(sessionId);
-        expect(handoff.sessions[0].queue).toMatchObject([{ clientMessageId: 'queued-input' }]);
+        const saved = await readFile(join(data, 'planned-restart-handoff.json'), 'utf8');
+        expect(saved).not.toContain('before-restart');
+        const handoff = plannedRestartSchema.parse(openRestartState(saved, 'synthetic-credential'));
+        const savedSession = handoff.sessions[0]!;
+        expect(savedSession.session.id).toBe(sessionId);
+        expect(savedSession.queue).toMatchObject([{ clientMessageId: 'queued-input' }]);
         if (mode === 'goal')
-          expect(handoff.sessions[0].goal.goal).toMatchObject({
+          expect(savedSession.goal!.goal).toMatchObject({
             sessionId,
             status: 'active',
             objective: 'first unfinished request',
             turns: 1
           });
-        expect(JSON.stringify(handoff)).not.toContain('before-restart');
+        const originalExecution =
+          handoff.sessions[0]!.current?.execution ?? handoff.sessions[0]!.execution;
+        expect(originalExecution?.secretEnvironment).toMatchObject({
+          SYNTHETIC_TOKEN: 'before-restart'
+        });
         hold = false;
         await start();
-        if (mode === 'goal') {
-          await vi.waitFor(() => expect(releaseAuthorization).toBeTypeOf('function'));
-          const stopping = stop('SIGTERM');
-          await vi.waitFor(async () =>
-            expect(operation('workspace.list')).rejects.toThrow('NODE_STOPPED')
-          );
-          delayAuthorization = false;
-          releaseAuthorization!();
-          await stopping;
-          const nextHandoff = JSON.parse(
-            await readFile(join(data, 'planned-restart-handoff.json'), 'utf8')
-          );
-          expect(nextHandoff.sessions[0].queue).toEqual(handoff.sessions[0].queue);
-          expect(nextHandoff.sessions[0].goal).toEqual(handoff.sessions[0].goal);
-          expect(nextHandoff.sessions[0].paused).toBe(handoff.sessions[0].paused);
-          expect(requests).toHaveLength(1);
-          await start();
-        }
-        const expectedAuthorizations = mode === 'goal' ? 2 : 1;
         const resumedRequests = mode === 'goal' ? 4 : 3;
         await vi.waitFor(() => expect(requests, logs).toHaveLength(resumedRequests), {
           timeout: 15000
         });
-        expect(authorizations).toBe(expectedAuthorizations);
+        expect(authorizations).toBe(0);
         expect(JSON.stringify(requests[1])).toContain('system restart');
         if (mode === 'native-steer')
           expect(JSON.stringify(requests[1]).split('accepted native guidance')).toHaveLength(2);
@@ -495,7 +464,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
         }
         if (mode === 'goal') {
           const { goal } = await operation('session.goal.get', { sessionId });
-          const original = handoff.sessions[0].goal.goal;
+          const original = savedSession.goal!.goal;
           expect(goal).toMatchObject({
             id: original.id,
             revision: original.revision,
@@ -546,7 +515,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
         await stop('SIGKILL');
         await start();
         await operation('workspace.list');
-        expect(authorizations).toBe(expectedAuthorizations);
+        expect(authorizations).toBe(0);
         await expect(readFile(join(data, 'planned-restart-handoff.json'))).rejects.toMatchObject({
           code: 'ENOENT'
         });

@@ -106,6 +106,10 @@ export function marctlSessionProgress(runtime: NodeRuntimeState, sessionId: stri
   return { ...progress, ...pendingApprovals(runtime, sessionId) };
 }
 
+export function sessionActivityStatus(runtime: NodeRuntimeState, sessionId: string) {
+  return activity(runtime, sessionId).status;
+}
+
 /** Summarizes current approval facts without exposing tool input or native payloads. */
 function pendingApprovals(runtime: NodeRuntimeState, sessionId: string) {
   const run = runtime.activeSessionRun(sessionId);

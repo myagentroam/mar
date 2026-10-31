@@ -10,6 +10,7 @@ import {
   marAgentRuntimeModelConfigurationSchema,
   resolveMarAgentDefaultReasoningEffort,
   type MarAgentRuntimeModelConfiguration,
+  type RuntimeCredentialResolveResponse,
   type RuntimeCredentialTicket
 } from '@myagentroam/protocol';
 import type { RuntimeCredentialControlService } from '../../service/runtime-credential-control-service.js';
@@ -64,14 +65,59 @@ interface TicketState {
   released: boolean;
 }
 
+const restartConfigurations = new WeakMap<
+  MarAgentRuntimeModel,
+  {
+    readonly configuration: MarAgentRuntimeModelConfiguration;
+    readonly scope: string | undefined;
+    readonly tickets: ReadonlyMap<string, TicketState>;
+  }
+>();
+
+export function snapshotRuntimeModel(
+  model: MarAgentRuntimeModel,
+  scope: string
+): MarAgentRuntimeModelConfiguration | undefined {
+  const state = restartConfigurations.get(model);
+  if (state === undefined || state.scope !== scope) return;
+  const configuration = structuredClone(state.configuration);
+  for (const credential of [configuration.credential, configuration.imageGeneration?.credential]) {
+    if (credential?.type !== 'RUNTIME_TICKET') continue;
+    const key = `${credential.credentialId}\0${credential.ticket.runtimeScopeId}\0${credential.ticket.purpose ?? 'MODEL'}`;
+    const current = state.tickets.get(key);
+    if (current === undefined || current.released) return;
+    credential.ticket = structuredClone(current.ticket);
+  }
+  return configuration;
+}
+
 const CREDENTIAL_REFRESH_WINDOW_MS = 60_000;
 const CREDENTIAL_REFRESH_RETRY_MS = 30_000;
 
 export class MarAgentRuntimeModelFactory {
+  private readonly control: Pick<RuntimeCredentialControlService, 'resolve'>;
+  private readonly pendingCredentials = new Set<Promise<RuntimeCredentialResolveResponse>>();
+
   constructor(
-    private readonly control: Pick<RuntimeCredentialControlService, 'resolve'>,
+    control: Pick<RuntimeCredentialControlService, 'resolve'>,
     private readonly now: () => number = Date.now
-  ) {}
+  ) {
+    this.control = {
+      resolve: (...args) => {
+        const pending = control.resolve(...args);
+        this.pendingCredentials.add(pending);
+        void pending.then(
+          () => this.pendingCredentials.delete(pending),
+          () => this.pendingCredentials.delete(pending)
+        );
+        return pending;
+      }
+    };
+  }
+
+  async waitForPendingCredentials(): Promise<void> {
+    await Promise.allSettled([...this.pendingCredentials]);
+  }
 
   create(
     configurations: readonly MarAgentRuntimeModelConfiguration[],
@@ -82,6 +128,14 @@ export class MarAgentRuntimeModelFactory {
     try {
       return configurations.map((raw) => {
         const configuration = marAgentRuntimeModelConfigurationSchema.parse(raw);
+        const remember = (model: MarAgentRuntimeModel): MarAgentRuntimeModel => {
+          restartConfigurations.set(model, {
+            configuration,
+            scope: context.runtimeScopeId,
+            tickets
+          });
+          return model;
+        };
         const imageGeneration =
           configuration.imageGeneration === undefined ||
           configuration.imageGeneration.credential === undefined
@@ -148,10 +202,10 @@ export class MarAgentRuntimeModelFactory {
         };
         const { credential } = configuration;
         if (credential.type === 'INLINE_API_KEY')
-          return {
+          return remember({
             ...model,
             apiKey: new SecretValue(credential.value)
-          };
+          });
         if (credential?.type !== 'RUNTIME_TICKET')
           throw new AgentError(
             'MAR_AGENT_RUNTIME_MODEL_CREDENTIAL_INVALID',
@@ -175,7 +229,7 @@ export class MarAgentRuntimeModelFactory {
           this.control,
           this.now
         );
-        return {
+        return remember({
           ...model,
           ...(configuration.imageGeneration !== undefined &&
           configuration.imageGeneration.credential === undefined
@@ -192,7 +246,7 @@ export class MarAgentRuntimeModelFactory {
               }
             : {}),
           credentialProvider: provider
-        } satisfies MarAgentRuntimeModel;
+        } satisfies MarAgentRuntimeModel);
       });
     } catch (error) {
       for (const provider of providers) void provider.close();

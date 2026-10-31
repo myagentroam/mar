@@ -100,8 +100,7 @@ marctl agents show <session-id> --json
 marctl agents history <session-id> --limit 10 --json
 marctl agents send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
 marctl agents send <session-id> --queue -m 'After the current task, review the final diff.' --json
-marctl agents send <session-id> --steer -m 'Current blocker: see this screenshot.' --image screenshot.png --json
-marctl agents send <session-id> --steer --image first.png --image second.jpg --json
+marctl agents send <session-id> --approval <approval-id> --decision approve --json
 marctl agents wait <session-id> --run <run-id> --timeout 30s --json
 marctl agents prompt get <session-id> --json
 marctl agents prompt set <session-id> --message-file instructions.txt --json
@@ -116,7 +115,7 @@ marctl agents goal set <session-id> -m 'Finish the review and verify the fix' --
 marctl agents goal clear <session-id> --json
 ```
 
-`start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。`start`、`send` 还可重复传入 `--image <路径>`，与文本组合或只发送图片。图片从 CLI 所在主机读取，使用既有 Session 图片附件链路发送，不是远端路径引用。支持 PNG、JPEG、GIF、WebP，最多 5 张，单张 5 MiB、合计 10 MiB；实际图片能力仍取决于目标 Runner 和模型。`goal set` 只接受文本，并拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
+`start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。文本中的文件路径指向目标获授权可访问的资源，不会自动上传 CLI 主机上的文件。`goal set` 拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
 `start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model-id` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
@@ -124,7 +123,11 @@ Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来�
 
 按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
-`send` 默认按普通发送处理，也可显式选择互斥的 `--steer` 或 `--queue`；冲突、重复或旧选项在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，受管等待可提前返回，后台任务继续；其他情况可能切换当前执行，Node 按实际状态裁决。及时协作优先使用 `--steer`；仅明确希望当前执行结束后再处理的后续工作使用 `--queue`。排队的消息按顺序处理，后来的显式停止仍有效。有活动 Goal 时可能等待 Goal 退出才处理。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，不代表模型已处理或业务已完成；排队回执应以 `queueItemId`/`clientMessageId` 和历史核对。
+`send` 默认按普通发送处理，也可显式选择互斥的 `--steer` 或 `--queue`；冲突、重复或旧选项在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，受管等待可提前返回，后台任务继续；其他情况可能切换当前执行，Node 按实际状态裁决。及时协作建议优先使用 `--steer`；`--queue` 建议保留给用户或接收方明确要求延后处理的输入。队列消息在当前工作及前面的队列项结束后才消费，有活动 Goal 时还需等到 Goal 退出；后来的显式停止仍有效。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，接受不保证立即处理。消息被接受后，通常无需另外回复或索取收悉确认，也无需仅为确认收到而立即检查历史。投递结果未知时先查看历史再重试；排队消息可通过 `queueItemId`/`clientMessageId` 关联。
+
+`send --approval <approval-id> --decision approve|reject` 可单独决定审批，也可与正文或 Goal 一起提交；Node 仍核验审批有效性和目标归属。单独决定审批无需启动模型请求。
+
+子 Agent 运行时，建议并行推进有意义且不重叠的工作，不重复委派内容。没有其他本地工作可做，且需要结果解除阻塞或收尾时，再考虑等待。通常简洁交付最终结果即可，无需例行汇报或重复发送完成消息；用户要求的更新、阻塞、范围冲突或待决策信息适合提前沟通。
 
 Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。终端用户直接输入不伪造会话来源。内部来源标记不会出现在消息正文中。
 

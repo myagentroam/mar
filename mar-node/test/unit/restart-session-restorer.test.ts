@@ -16,7 +16,7 @@ import {
   RESTART_NOTICE,
   type RestartSession
 } from '../../src/service/planned-restart-handoff.js';
-import { parseComposerTags, type RestartRunAuthorizeRequest } from '@myagentroam/protocol';
+import { parseComposerTags } from '@myagentroam/protocol';
 import type { RunnerImageAttachment } from '../../src/service/run-attachment-service.js';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -117,10 +117,11 @@ async function fixture(parentSessionId?: string) {
     prepareGoalInsertion: () => true,
     goalPreparationFailed: vi.fn()
   });
-  const authorize = vi.fn(async (_request: RestartRunAuthorizeRequest) => ({
+  const execution = {
     secretEnvironment: { FRESH_SECRET: 'new-value' },
-    executionContext: runner.prepareExecutionContext({ marAgentModels: authorizedModels })
-  }));
+    executionContext: runner.prepareExecutionContext({ marAgentModels: authorizedModels }),
+    initiatedByUserId: 7
+  };
   const inputState = vi.fn(
     async () => 'interrupted' as 'interrupted' | 'completed' | 'missing' | 'paused'
   );
@@ -131,7 +132,6 @@ async function fixture(parentSessionId?: string) {
     coordinator,
     messages,
     resolve: async () => session,
-    authorize,
     inputState,
     withGrant: (_context, work) => work(),
     goalReference: (sessionId) => {
@@ -150,7 +150,7 @@ async function fixture(parentSessionId?: string) {
       effort: 'high',
       access: 'auto'
     },
-    ownerUserId: 7,
+    execution,
     paused: false,
     plan: false,
     awaitingGoal: false,
@@ -159,8 +159,8 @@ async function fixture(parentSessionId?: string) {
       id: 'old-input',
       clientMessageId: 'old-client',
       content: 'original request',
+      execution,
       attachments: [],
-      initiatedByUserId: 7,
       immediate: false
     }
   };
@@ -176,7 +176,7 @@ async function fixture(parentSessionId?: string) {
     commands,
     coordinator,
     messages,
-    authorize,
+    execution,
     inputState,
     restorer,
     entry,
@@ -185,6 +185,141 @@ async function fixture(parentSessionId?: string) {
 }
 
 describe('Orderly restart input reconstruction', () => {
+  it('keeps each queued input configuration instead of borrowing the latest Session settings', async () => {
+    const f = await fixture();
+    delete f.entry.current;
+    f.entry.paused = true;
+    f.entry.queue = [
+      {
+        id: 'original-configuration',
+        clientMessageId: 'original-configuration',
+        content: 'original queued request',
+        attachments: [],
+        execution: {
+          ...f.execution,
+          configuration: { modelId: 'original-model', effort: 'low', access: 'read-only' }
+        },
+        immediate: false
+      },
+      {
+        id: 'later-configuration',
+        clientMessageId: 'later-configuration',
+        content: 'later queued request',
+        attachments: [],
+        execution: {
+          ...f.execution,
+          configuration: { modelId: 'later-model', effort: 'medium', access: 'full-access' }
+        },
+        immediate: false
+      }
+    ];
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.coordinator.pending('original-configuration')).toMatchObject({
+      modelId: 'original-model',
+      effort: 'low',
+      access: 'read-only'
+    });
+    expect(f.coordinator.pending('later-configuration')).toMatchObject({
+      modelId: 'later-model',
+      effort: 'medium',
+      access: 'full-access'
+    });
+    expect(f.runtime.getAgentSession(f.session.id)).toMatchObject({
+      modelId: 'model',
+      effort: 'high',
+      access: 'auto'
+    });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('restores resolved personal instructions for ordinary inputs and FIFO items', async () => {
+    const f = await fixture();
+    f.entry.paused = true;
+    f.entry.current!.execution = {
+      ...f.execution,
+      personalInstructions: 'Original ordinary input instructions'
+    };
+    f.entry.queue = [
+      {
+        id: 'queued-instructions',
+        clientMessageId: 'queued-instructions',
+        content: 'queued request',
+        attachments: [],
+        execution: { ...f.execution, personalInstructions: 'Original queued instructions' },
+        immediate: false
+      }
+    ];
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.coordinator.pending('restart:handoff:session')?.personalInstructions).toBe(
+      'Original ordinary input instructions'
+    );
+    expect(f.coordinator.pending('queued-instructions')?.personalInstructions).toBe(
+      'Original queued instructions'
+    );
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('continues the original execution state without an initiating user or restart authorization', async () => {
+    const f = await fixture();
+    f.entry.current!.execution = { ...f.execution, initiatedByUserId: undefined };
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
+    expect(f.runtime.activeSessionRun('session')!.initiatedByUserId).toBeUndefined();
+    expect(f.control.mock.calls[0]![1]).toMatchObject({
+      secretEnvironment: f.execution.secretEnvironment,
+      ...f.execution.executionContext
+    });
+  });
+
+  it('uses the input origin without requiring a separate Session owner', async () => {
+    const f = await fixture();
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
+    expect(f.runtime.activeSessionRun('session')!.initiatedByUserId).toBe(7);
+  });
+
+  it('restores local command state without authorizing a new execution', async () => {
+    const f = await fixture();
+    delete f.entry.current;
+    f.entry.awaitingGoal = true;
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.commands.get('session', 'goal')?.active).toBe(true);
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('does not require initiating identity for an already completed input', async () => {
+    const f = await fixture();
+    delete f.entry.current!.execution;
+    f.inputState.mockResolvedValue('completed');
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.runtime.sessionQueue('session').itemIds).toEqual([]);
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('does not borrow a different execution context when the required input context is missing', async () => {
+    const f = await fixture();
+    delete f.entry.current!.execution;
+
+    await expect(f.restorer.restore(f.entry, 'handoff')).rejects.toThrow(
+      'RESTART_EXECUTION_CONTEXT_UNAVAILABLE'
+    );
+
+    expect(f.runtime.sessionQueue('session').itemIds).toEqual([]);
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
   it('restores a managed child through its own normal handoff without resuming its parent', async () => {
     const f = await fixture('parent');
     await f.restorer.restore(f.entry, 'handoff');
@@ -198,23 +333,14 @@ describe('Orderly restart input reconstruction', () => {
     ]);
     expect(f.runtime.getAgentSession(f.session.id)?.parentSessionId).toBe('parent');
     expect(f.runtime.activeSessionRun('parent')).toBeUndefined();
-    expect(f.authorize).toHaveBeenCalledTimes(1);
     expect(f.inputState).toHaveBeenCalledTimes(1);
   });
-  it('uses a marked continuation and fresh authorization instead of resending an accepted user input', async () => {
+  it('uses a marked continuation with the original context instead of resending an accepted input', async () => {
     const f = await fixture();
     f.entry.current!.suppressNotifications = true;
     await f.restorer.restore(f.entry, 'handoff');
     await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
     expect(f.runtime.activeSessionRun('session')!.suppressNotifications).toBe(true);
-    expect(f.authorize).toHaveBeenCalledWith({
-      handoffId: 'handoff',
-      sessionId: 'session',
-      workspaceId: 'workspace',
-      ownerUserId: 7,
-      runner: 'mar-agent',
-      modelId: 'model'
-    });
     expect(f.control.mock.calls[0]).toMatchObject([
       'run.start',
       {
@@ -242,7 +368,7 @@ describe('Orderly restart input reconstruction', () => {
       clientMessageId: `client-${index}`,
       content: `message-${index}`,
       attachments: [],
-      initiatedByUserId: owner,
+      execution: { ...f.execution, initiatedByUserId: owner },
       immediate: false
     }));
     f.entry.queue[0]!.suppressNotifications = true;
@@ -252,7 +378,6 @@ describe('Orderly restart input reconstruction', () => {
       paused: true,
       itemIds: ['queue-0', 'queue-1']
     });
-    expect(f.authorize.mock.calls.map((call) => call[0].ownerUserId)).toEqual([7]);
     expect(f.control).not.toHaveBeenCalled();
     expect(f.runtime.getQueueItem('queue-0')!.suppressNotifications).toBe(true);
     expect(f.runtime.getQueueItem('queue-1')!.suppressNotifications).toBeUndefined();
@@ -304,6 +429,8 @@ describe('Orderly restart input reconstruction', () => {
     async (suppressNotifications) => {
       const f = await fixture();
       const submitGoal = vi.spyOn(f.messages, 'submitGoal');
+      const configuration = { modelId: 'goal-model', effort: 'low', access: 'read-only' };
+      f.entry.execution = { ...f.execution, configuration };
       f.entry.suppressNotifications = suppressNotifications;
       f.goals.start('session', 'finish the feature');
       f.goals.recordTurn('session');
@@ -319,7 +446,7 @@ describe('Orderly restart input reconstruction', () => {
           clientMessageId: 'ordinary',
           content: 'later',
           attachments: [],
-          initiatedByUserId: 7,
+          execution: f.execution,
           immediate: false
         }
       ];
@@ -328,6 +455,7 @@ describe('Orderly restart input reconstruction', () => {
         expect.objectContaining({
           sessionId: 'session',
           restoreQueued: true,
+          restartConfiguration: configuration,
           goal: { id: f.entry.goal.goal.id, revision: f.entry.goal.goal.revision, epoch: 19 }
         })
       );
@@ -335,6 +463,11 @@ describe('Orderly restart input reconstruction', () => {
       await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
       expect(f.control.mock.calls[0]![1].input).toContain('finish the feature');
       expect(f.control.mock.calls[0]![1].input).toContain(RESTART_NOTICE);
+      expect(f.control.mock.calls[0]![1]).toMatchObject({
+        model: 'goal-model',
+        effort: 'low',
+        access: 'read-only'
+      });
       expect(f.inputState).not.toHaveBeenCalled();
       expect(f.runtime.sessionQueue('session').itemIds).toEqual(['ordinary']);
       expect(f.runtime.activeSessionRun('session')!.suppressNotifications === true).toBe(
@@ -360,6 +493,7 @@ describe('Orderly restart input reconstruction', () => {
     const writer = new PlannedRestartHandoff({
       directory: () => f.session.cwd,
       identity: () => ({ nodeId: 'node', serverUrl: 'https://server.example.test' }),
+      credential: () => 'test-node-credential',
       runtime: f.runtime,
       goals: f.goals,
       coordinator: f.coordinator,
@@ -368,7 +502,6 @@ describe('Orderly restart input reconstruction', () => {
       restore: async () => undefined,
       diagnose: vi.fn()
     });
-    writer.rememberUser('session', 7);
     expect(writer.capture().sessions[0]!.suppressNotifications).toBe(true);
   });
 
@@ -380,7 +513,7 @@ describe('Orderly restart input reconstruction', () => {
         clientMessageId: 'replacement',
         content: 'replace it',
         attachments: [],
-        initiatedByUserId: 7,
+        execution: f.execution,
         immediate: true
       }
     ];
@@ -390,14 +523,7 @@ describe('Orderly restart input reconstruction', () => {
     expect(f.control.mock.calls[0]![1].input).toBe('replace it');
   });
 
-  it('rejects authorization before creating inputs and keeps a preparation failure paused', async () => {
-    const denied = await fixture();
-    denied.authorize.mockRejectedValue(new Error('WORKSPACE_ACCESS_DENIED'));
-    await expect(denied.restorer.restore(denied.entry, 'handoff')).rejects.toThrow(
-      'WORKSPACE_ACCESS_DENIED'
-    );
-    expect(denied.runtime.sessionQueue('session').itemIds).toEqual([]);
-    expect(denied.control).not.toHaveBeenCalled();
+  it('keeps a preparation failure paused', async () => {
     const failed = await fixture();
     failed.inputState.mockResolvedValue('missing');
     vi.spyOn(failed.messages, 'restoreQueued').mockRejectedValue(new Error('ATTACHMENT_MISSING'));
@@ -408,7 +534,7 @@ describe('Orderly restart input reconstruction', () => {
     expect(failed.control).not.toHaveBeenCalled();
   });
 
-  it('reauthorizes every distinct owner without weakening existing FIFO ownership restrictions', async () => {
+  it('preserves original FIFO ownership restrictions without requesting new authorization', async () => {
     const f = await fixture();
     delete f.entry.current;
     f.entry.queue = [7, 8].map((owner) => ({
@@ -416,13 +542,12 @@ describe('Orderly restart input reconstruction', () => {
       clientMessageId: `client-${owner}`,
       content: 'queued',
       attachments: [],
-      initiatedByUserId: owner,
+      execution: { ...f.execution, initiatedByUserId: owner },
       immediate: false
     }));
     await expect(f.restorer.restore(f.entry, 'handoff')).rejects.toThrow(
       'RUN_OWNED_BY_ANOTHER_USER'
     );
-    expect(f.authorize.mock.calls.map((call) => call[0].ownerUserId)).toEqual([7, 8]);
     expect(f.runtime.sessionQueue('session').paused).toBe(true);
     expect(f.control).not.toHaveBeenCalled();
   });

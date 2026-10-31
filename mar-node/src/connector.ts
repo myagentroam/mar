@@ -224,7 +224,6 @@ export class NodeConnector {
   private readonly controlChannel: NodeControlChannel;
   private readonly controlMessages: NodeControlMessageService;
   private readonly scheduledRunAuthorization: RunAuthorizationControl;
-  private readonly restartAuthorization: RunAuthorizationControl;
   private readonly restartHandoff: PlannedRestartHandoff;
   private readonly operationAdmission: NodeOperationAdmission;
   private readonly executionLifecycle: ExecutionLifecycle;
@@ -268,7 +267,11 @@ export class NodeConnector {
         await this.sessionMessageService.drain();
       },
       closeResume: () => this.externalSessionResumeService.close(),
-      capture: () => (this.config?.nodeId ? this.restartHandoff.capture() : undefined),
+      capture: async () => {
+        if (!this.config?.nodeId) return;
+        await this.marAgentRuntimeModels.waitForPendingCredentials();
+        return this.restartHandoff.capture();
+      },
       dispose: () => this.disposeRuntime(),
       publish: (snapshot) => this.restartHandoff.publish(snapshot),
       diagnose: (stage, error) =>
@@ -1355,15 +1358,6 @@ export class NodeConnector {
       coordinator: this.continuousRunCoordinator,
       messages: this.sessionMessageService,
       resolve: (id) => this.externalSessionResumeService.resolveForMessage(id),
-      authorize: async (request) => {
-        const context = await this.restartAuthorization.authorize(request);
-        return {
-          secretEnvironment: context.secretEnvironment,
-          personalInstructions: context.personalInstructions,
-          usageGrant: context.usageGrant,
-          executionContext: this.runners.require(request.runner).prepareExecutionContext(context)
-        };
-      },
       inputState,
       withGrant: (context, work) => this.modelUsage.withGrant(context.usageGrant, work),
       publishGoal: (session, goal) => this.goalCoordinator.publishGoalState(session, goal),
@@ -1373,13 +1367,22 @@ export class NodeConnector {
     this.restartHandoff = new PlannedRestartHandoff({
       directory: () => nodeDataDirectory(this.config!, this.configPath),
       identity: () => ({ nodeId: this.config!.nodeId!, serverUrl: this.config!.serverUrl }),
+      credential: () => this.config!.credential!,
       runtime: this.runtime,
       coordinator: this.continuousRunCoordinator,
       goals: this.goalRuntime,
+      goalExecution: (id) => this.goalCoordinator.restartExecution(id),
+      executionContext: (id, context, modelId) =>
+        this.marAgentRunController.restartExecutionContext(
+          id,
+          context,
+          modelId === undefined ? this.runtime.getAgentSession(id)?.modelId : modelId
+        ),
       commandActive: (id, command) => this.commandStates.get(id, command)?.active === true,
       inputState,
       restore: (entry, id) => restorer.restore(entry, id),
-      diagnose: (code, sessionId) => nodeLog('node.restart.diagnostic', { code, sessionId })
+      diagnose: (code, sessionId, errorCode) =>
+        nodeLog('node.restart.diagnostic', { code, sessionId, errorCode })
     });
     this.sessionCatalogService = new SessionCatalogService({
       resolveExecutionDirectory,
@@ -1540,7 +1543,6 @@ export class NodeConnector {
         this.runtimeCredentials.disconnected();
         this.chatgptLogins.close();
         this.scheduledRunAuthorization.disconnected();
-        this.restartAuthorization.disconnected();
         this.mailNotificationControl.disconnected();
         this.marctlExecutionCredentials.disconnected();
         this.upgradeCredentials.disconnect();
@@ -1604,8 +1606,7 @@ export class NodeConnector {
       cancelNodeWait: (requestId) => this.nodeRequests.cancelWait(requestId),
       handleRuntimeCredentialResponse: (envelope) => this.runtimeCredentials.handle(envelope),
       handleScheduledRunAuthorizeResponse: (envelope) =>
-        this.scheduledRunAuthorization.handle(envelope) ||
-        this.restartAuthorization.handle(envelope),
+        this.scheduledRunAuthorization.handle(envelope),
       handleMailNotificationResponse: (envelope) => this.mailNotificationControl.handle(envelope),
       handleMarctlExecutionCredentialResponse: (envelope) =>
         this.marctlExecutionCredentials.handle(envelope),
@@ -1714,7 +1715,6 @@ export class NodeConnector {
         this.runtimeCredentials.connected();
         this.scheduledRunAuthorization.connected();
         this.scheduledSessions.connected();
-        this.restartAuthorization.connected();
         if (!this.stopped) void this.restartHandoff.recover();
         this.mailNotificationControl.connected();
         this.marctlExecutionCredentials.connected();
@@ -1727,10 +1727,6 @@ export class NodeConnector {
     };
     this.scheduledRunAuthorization = new RunAuthorizationControl((envelope) =>
       this.controlChannel.sendEnvelope(envelope)
-    );
-    this.restartAuthorization = new RunAuthorizationControl(
-      (envelope) => this.controlChannel.sendEnvelope(envelope),
-      'restart'
     );
     this.scheduledSessions = new ScheduledSessionCoordinator({
       store: () => new ScheduledSessionStore(requireDatabase().raw),
@@ -2143,7 +2139,6 @@ export class NodeConnector {
     this.chatgptLogins.close();
     const scheduledDrain = this.scheduledSessions.stop();
     this.scheduledRunAuthorization.close();
-    this.restartAuthorization.close();
     this.mailNotificationControl.close();
     this.marctlExecutionCredentials.disconnected();
     this.upgradeCredentials.disconnect();

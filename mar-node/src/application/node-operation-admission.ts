@@ -21,7 +21,6 @@ export class NodeOperationAdmission {
   async execute(operation: string, data: unknown): Promise<unknown> {
     if (this.stopped()) throw new Error('NODE_STOPPED');
     const input = isPlainRecord(data) ? data : {};
-    const sessionId = typeof input.sessionId === 'string' ? input.sessionId : undefined;
     if (this.restart.blocksOperation(operation, input)) throw new Error('SESSION_RESTART_PENDING');
     if (!this.databaseAvailable()) throw new Error('NODE_DATABASE_UNAVAILABLE');
     if (this.upgrade.blocks(operation)) throw new Error('NODE_UPGRADE_PENDING');
@@ -31,14 +30,7 @@ export class NodeOperationAdmission {
     );
     this.inFlight.add(task);
     try {
-      const result = await task;
-      if (
-        (operation === 'session.command.execute' || operation === 'session.message') &&
-        sessionId !== undefined &&
-        Number.isSafeInteger(input.__requestUserId)
-      )
-        this.restart.rememberUser(sessionId, input.__requestUserId as number);
-      return result;
+      return await task;
     } finally {
       this.inFlight.delete(task);
     }

@@ -2,7 +2,8 @@ import type { Plugin, ViteDevServer } from 'vite';
 import { notificationsEnUS } from '../src/i18n/notifications.en-US.ts';
 import { notificationsZhCN } from '../src/i18n/notifications.zh-CN.ts';
 
-const serviceWorkerSource = String.raw`
+export function directDownloadServiceWorkerSource(legacyLifecycle = true): string {
+  return String.raw`
 const directDownloads = new Map();
 const desktopNotificationAttempts = new Map();
 
@@ -125,13 +126,17 @@ self.addEventListener('push', (event) => {
   })());
 });
 
-self.addEventListener('install', (event) => {
+${
+  legacyLifecycle
+    ? `self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
-});
+});`
+    : ''
+}
 
 self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data;
@@ -286,6 +291,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 `;
+}
 
 export function directDownloadServiceWorkerPlugin(): Plugin {
   const installServiceWorker = (server: Pick<ViteDevServer, 'middlewares'>) => {
@@ -299,7 +305,7 @@ export function directDownloadServiceWorkerPlugin(): Plugin {
         'cache-control': 'no-cache',
         'service-worker-allowed': '/'
       });
-      response.end(serviceWorkerSource);
+      response.end(directDownloadServiceWorkerSource());
     });
   };
   return {
@@ -307,14 +313,11 @@ export function directDownloadServiceWorkerPlugin(): Plugin {
     configureServer(server) {
       installServiceWorker(server);
     },
-    configurePreviewServer(server) {
-      installServiceWorker(server);
-    },
     generateBundle() {
       this.emitFile({
         type: 'asset',
         fileName: 'service-worker.js',
-        source: serviceWorkerSource
+        source: directDownloadServiceWorkerSource()
       });
     }
   };

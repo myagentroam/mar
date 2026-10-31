@@ -202,8 +202,7 @@ export function registerWait(
 ): void {
   context.tools.register({
     name: 'agent_wait',
-    description:
-      'Wait for direct child completion or a message; defaults to completion for 30 seconds.',
+    description: 'Wait for direct child completion or a message.',
     allowedCallers: ['direct', 'programmatic'],
     inputSchema: {
       type: 'object',

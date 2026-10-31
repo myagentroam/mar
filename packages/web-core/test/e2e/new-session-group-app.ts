@@ -27,8 +27,7 @@ const workbench = defineComponent({
         management,
         systemManagementSection: 'system',
         nodeManagementSection: 'system',
-        webVersion: '0.11.19',
-        webBuildHash: 'fixture'
+        webVersion: '0.11.19'
       })
     );
     return () => h(WorkbenchPage, { page });

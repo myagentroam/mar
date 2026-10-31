@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/web-core",
-  "version": "0.11.49",
+  "version": "0.11.50",
   "private": true,
   "type": "module",
   "files": [
@@ -16,6 +16,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./bootstrap": "./src/bootstrap.ts",
+    "./pwa-application": "./src/service/pwa-application-service.ts",
     "./theme": "./src/service/theme-preference-service.ts",
     "./styles.css": "./src/styles.css",
     "./MarIcon.vue": "./src/view/common/MarIcon.vue",
@@ -123,6 +124,7 @@
     "./file-navigation-messages": "./src/i18n/file-navigation.ts",
     "./build/third-party-notices": "./scripts/third-party-notices.ts",
     "./build/direct-download-service-worker": "./scripts/direct-download-service-worker.ts",
+    "./build/pwa-service-worker": "./scripts/pwa-service-worker.ts",
     "./FilePreviewDialog.vue": "./src/view/workspace/FilePreviewDialog.vue",
     "./GitDiffViewer.vue": "./src/view/workspace/GitDiffViewer.vue",
     "./CodeFileEditor.vue": "./src/view/workspace/CodeFileEditor.vue",
@@ -178,7 +180,6 @@
     "./workspace-upload": "./src/service/workspace-upload-service.ts",
     "./notifications": "./src/service/workbench-notification-service.ts",
     "./notification-navigation": "./src/service/workbench-notification-navigation-service.ts",
-    "./web-version-update": "./src/service/web-version-update-service.ts",
     "./notification-presentation": "./src/util/notification-presentation.ts",
     "./WorkbenchNotificationCenter.vue": "./src/view/workbench/WorkbenchNotificationCenter.vue",
     "./notification-messages": "./src/i18n/notifications.ts",
@@ -290,7 +291,8 @@
     "markdown-it": "^15.0.3",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.17.1",
-    "pdfjs-dist": "^6.2.108"
+    "pdfjs-dist": "^6.2.108",
+    "workbox-precaching": "^7.4.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",

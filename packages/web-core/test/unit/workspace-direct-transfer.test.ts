@@ -693,7 +693,11 @@ describe('Workspace direct download stream', () => {
             }
     });
 
-    const stream = await createWorkspaceDirectDownloadStream('large.bin', 3);
+    const stream = await createWorkspaceDirectDownloadStream(
+      'large.bin',
+      3,
+      async () => worker as unknown as ServiceWorker
+    );
     await stream.sink.write(new Uint8Array([1, 2, 3]));
     await stream.sink.close();
     await vi.waitFor(() =>
@@ -732,7 +736,11 @@ describe('Workspace direct download stream', () => {
           : { href: '', target: '', style: {}, click: vi.fn(), remove: vi.fn() }
     });
 
-    const stream = await createWorkspaceDirectDownloadStream('cancel.bin', 3);
+    const stream = await createWorkspaceDirectDownloadStream(
+      'cancel.bin',
+      3,
+      async () => worker as unknown as ServiceWorker
+    );
     const write = stream.sink.write(new Uint8Array([1, 2, 3]));
     workerPort!.postMessage({
       type: 'cancel',

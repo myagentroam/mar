@@ -7,7 +7,8 @@ import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conve
 import {
   marctlSessionDetail,
   marctlSessionProgress,
-  marctlSessionSummary
+  marctlSessionSummary,
+  sessionActivityStatus
 } from '../../src/service/session-recent-activity.js';
 import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
 import type { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
@@ -223,10 +224,11 @@ describe('bounded marctl Session views', () => {
   });
 
   it('uses actual foreground sleep facts, not names or a three-tool window, and preserves tool states', () => {
-    const { emit, detail } = fixture();
+    const { runtime, session, emit, detail } = fixture();
     const sleep = { toolName: 'sleep', toolPresentation: { kind: 'SLEEP', durationMs: 10_000 } };
     emit('sleep', 'tool_call', 'IN_PROGRESS', sleep);
     expect(detail().status).toBe('RUNNING');
+    expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
     const started = {
       ...sleep,
       toolPresentation: { ...sleep.toolPresentation, startedAt: '2026-10-20T01:00:00.000Z' }
@@ -236,6 +238,7 @@ describe('bounded marctl Session views', () => {
       status: 'SLEEPING',
       recentTools: [{ name: 'sleep', state: 'IN_PROGRESS', summary: 'Sleep for up to 10000 ms' }]
     });
+    expect(sessionActivityStatus(runtime, session.id)).toBe('SLEEPING');
     for (let i = 0; i < 4; i += 1)
       emit('read-' + i, 'tool_call', 'COMPLETED', { toolName: 'read' });
     expect(detail().status).toBe('SLEEPING');
@@ -246,6 +249,7 @@ describe('bounded marctl Session views', () => {
       toolPresentation: { ...started.toolPresentation, elapsedMs: 500, wakeReason: 'steer' }
     });
     expect(detail().status).toBe('RUNNING');
+    expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
   });
 
   it('formats only displayed content while still finding late updates outside the three-tool window', () => {

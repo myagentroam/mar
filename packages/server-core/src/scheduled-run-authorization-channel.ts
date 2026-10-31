@@ -1,7 +1,5 @@
 import {
   scheduledRunAuthorizeRequestSchema,
-  restartRunAuthorizeRequestSchema,
-  type RestartRunAuthorizeRequest,
   type NodeEnvelope,
   type ScheduledRunAuthorizeRequest,
   type ScheduledRunAuthorizeResponse
@@ -12,10 +10,6 @@ export type ScheduledRunAuthorizer = (
   nodeId: string,
   request: ScheduledRunAuthorizeRequest
 ) => Promise<Extract<ScheduledRunAuthorizeResponse, { context: unknown }>['context']>;
-export type RestartRunAuthorizer = (
-  nodeId: string,
-  request: RestartRunAuthorizeRequest
-) => ReturnType<ScheduledRunAuthorizer>;
 
 interface AuthorizationInput<Request> {
   readonly nodeId: string;
@@ -24,17 +18,6 @@ interface AuthorizationInput<Request> {
   readonly authorize:
     ((nodeId: string, request: Request) => ReturnType<ScheduledRunAuthorizer>) | undefined;
   readonly respond: (payload: ScheduledRunAuthorizeResponse) => void;
-}
-
-export function resolveRestartRunAuthorization(
-  input: AuthorizationInput<RestartRunAuthorizeRequest>
-): Promise<void> {
-  return resolveAuthorization(
-    input,
-    restartRunAuthorizeRequestSchema,
-    'RESTART',
-    'restart continuation'
-  );
 }
 
 export async function resolveScheduledRunAuthorization(input: {

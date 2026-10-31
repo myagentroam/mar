@@ -13,7 +13,7 @@ import { sessionPage } from './pagination.js';
 import type { NativeSessionProjectionService } from './native-session-projection-service.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { latestSessionActivityAt } from './session-presentation-service.js';
-import { marctlSessionSummary } from '../service/session-recent-activity.js';
+import { marctlSessionSummary, sessionActivityStatus } from '../service/session-recent-activity.js';
 import {
   WorkspaceSessionCleanupBudget,
   WorkspaceSessionCleanupDeadline
@@ -159,7 +159,8 @@ export class SessionCatalogService {
           session.metadata.runnerTitle ??
           'Untitled session',
         runner: session.runner,
-        activity: live && 'activity' in live ? live.activity : 'IDLE'
+        activity: live && 'activity' in live ? live.activity : 'IDLE',
+        status: sessionActivityStatus(this.options.runtime, session.id)
       });
       const children = [...database.listChildSessionRecords(input.workspaceId, session.id)];
       if (input.includeAncestors === true)

@@ -1,3 +1,4 @@
+import { AgentError } from '@myagentroam/agent';
 import type { AgentExtension } from '@myagentroam/agent/extensions';
 import type {
   AgentNetworkAction,
@@ -12,22 +13,6 @@ const runner = {
   ...text,
   description:
     'Runner type (for example mar-agent), not a model name; defaults to the current Runner.'
-} as const;
-const attachmentIds = {
-  type: 'array',
-  items: text,
-  maxItems: 32,
-  description: 'Existing composer attachment IDs.'
-} as const;
-const attachments = {
-  type: 'array',
-  maxItems: 5,
-  items: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['name', 'mime', 'dataBase64'],
-    properties: { name: text, mime: text, dataBase64: text }
-  }
 } as const;
 const goal = {
   anyOf: [
@@ -48,7 +33,7 @@ const goal = {
 } as const;
 
 const deliveryGuidance =
-  'Default to STEER. Use QUEUE only when the user or recipient explicitly requests deferred delivery. Do not queue merely to avoid interrupting the recipient or because the message is a report.';
+  'STEER is the default and preferred for timely communication. QUEUE is best reserved for deferred delivery explicitly requested by the user or recipient, not merely to avoid interruption or send a report.';
 
 const tools: readonly {
   action: AgentNetworkAction;
@@ -59,11 +44,9 @@ const tools: readonly {
   {
     action: 'start',
     description:
-      'Start a child Agent with a message or image and optional Goal; returns without waiting.',
+      'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
     properties: {
-      content: { type: 'string' },
-      attachments,
-      attachmentIds,
+      content: text,
       runner,
       modelId: {
         ...text,
@@ -74,16 +57,14 @@ const tools: readonly {
       goal,
       clientMessageId: text
     },
-    required: ['title']
+    required: ['title', 'content']
   },
   {
     action: 'send',
-    description: `Send input, decide an approval or update a Goal; goal:null leaves it unchanged, goal:{clear:true} clears it. ${deliveryGuidance} QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.`,
+    description: 'Send a message to an Agent, update its Goal, or decide an approval.',
     properties: {
       agentId: text,
       content: { type: 'string' },
-      attachments,
-      attachmentIds,
       goal,
       approval: {
         type: 'object',
@@ -94,7 +75,7 @@ const tools: readonly {
       delivery: {
         type: 'string',
         enum: ['STEER', 'QUEUE'],
-        description: deliveryGuidance
+        description: `${deliveryGuidance} QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.`
       },
       clientMessageId: text
     },
@@ -102,8 +83,7 @@ const tools: readonly {
   },
   {
     action: 'wait',
-    description:
-      'Wait for completion or messages; defaults to direct children, completion and 30 seconds. Use waitMs 0 for a snapshot.',
+    description: 'Wait for Agent messages or execution completion.',
     properties: {
       agentId: text,
       agentIds: { type: 'array', items: text, minItems: 1, maxItems: 8 },
@@ -120,8 +100,7 @@ const tools: readonly {
   },
   {
     action: 'list',
-    description:
-      "List the current Session's collaboration tree by default, or active Workspace Sessions. Active includes running and sleeping. Reuse known Session IDs directly. Returns currentAgentId, flat sessions (id, parentSessionId, title, runner, status) and truncated; no pagination.",
+    description: 'List the current collaboration tree or active Agents in the Workspace.',
     properties: {
       scope: {
         type: 'string',
@@ -139,7 +118,7 @@ const tools: readonly {
   },
   {
     action: 'view',
-    description: 'View an Agent session, Goal and recent history.',
+    description: "View an Agent's state, Goal and public history.",
     properties: {
       agentId: text,
       includeHistory: { type: 'boolean' },
@@ -152,20 +131,21 @@ const tools: readonly {
 
 const delegationPrompt = [
   '# Delegation and coordination',
-  'Handle focused or tightly coupled work locally by default.',
-  'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-  'Do not split work merely because agents are available.',
-  'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
-  'Follow up through the direct delegate by default; inspect deeper Sessions only when a concrete issue needs independent verification.',
-  'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
+  'Prefer handling focused or tightly coupled work locally.',
+  'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+  'Avoid splitting work merely because agents are available.',
+  'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
+  'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
   'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n\n');
 
 const collaborationPrompt = [
   '# Workspace collaboration',
-  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Keep requests focused and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup. Explicitly wait when you need progress or completion.",
-  'Reuse known Session IDs rather than rediscovering them. Send updates only when requested or when the recipient needs to decide or change course; combine related updates and avoid acknowledgment-only exchanges.',
-  'For delegated work, do not provide routine progress updates or acknowledgments unless requested. Contact the parent before completion only when requested or for blockers, scope conflicts, or information that requires the parent to decide or change course. Return a concise final handoff; do not also send a duplicate completion message.'
+  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.",
+  'Prefer reusing known Session IDs rather than rediscovering them. Updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
+  'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
+  'For delegated work, prefer a concise final handoff over routine progress reports or duplicate completion messages. Early contact is most useful for requested updates, blockers, scope conflicts, or information needed for a decision.'
 ].join('\n\n');
 
 const managementPrompt = [
@@ -181,6 +161,24 @@ export function agentNetworkExtension(
     id: 'mar.node.agent-network',
     apiVersion: '1.0',
     attachSession(context) {
+      // Reject retired input before generic unknown-field normalization can discard it.
+      context.hooks.intercept(
+        'tool.invoke',
+        (input, _call, next) => {
+          if (
+            (input.name === 'agent_start' || input.name === 'agent_send') &&
+            input.arguments !== null &&
+            typeof input.arguments === 'object' &&
+            ('attachments' in input.arguments || 'attachmentIds' in input.arguments)
+          )
+            throw new AgentError(
+              'MAR_AGENT_TOOL_INPUT_INVALID',
+              'Agent collaboration accepts text input only.'
+            );
+          return next(input);
+        },
+        { reentry: 'allow' }
+      );
       context.hooks.intercept('prompt.sections', (input, _call, next) => {
         const available = new Set(input.facts?.tools);
         const enabled = input.facts?.mode !== 'compact';
@@ -253,10 +251,7 @@ export function agentNetworkExtension(
             let operationInput = args;
             if (tool.action === 'send') {
               const { delivery, ...sendInput } = args;
-              const hasMessage =
-                (typeof args.content === 'string' && !!args.content.trim()) ||
-                (Array.isArray(args.attachments) && args.attachments.length > 0) ||
-                (Array.isArray(args.attachmentIds) && args.attachmentIds.length > 0);
+              const hasMessage = typeof args.content === 'string' && !!args.content.trim();
               operationInput =
                 delivery !== undefined || hasMessage
                   ? {

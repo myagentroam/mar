@@ -123,7 +123,20 @@ const props = {
   searching: false,
   refreshing: false,
   workspaceManageable: false,
-  request: async <T,>() => ({}) as T,
+  request: async <T,>() =>
+    ({
+      rootSessionId: 'child',
+      truncated: false,
+      nodes: [
+        {
+          id: 'child',
+          parentSessionId: null,
+          title: 'Child collaboration',
+          runner: 'mar-agent',
+          status: 'IDLE'
+        }
+      ]
+    }) as T,
   hasUnread: () => true
 };
 </script>

@@ -44,12 +44,11 @@ ${configurationHelp}
     agents: `{program} — 协调当前 MAR 工作区中的 Agent
 
 用法：
-  {program} start [-m <text> | --message-file <file|->] [--image <path> ...]
+  {program} start [-m <text> | --message-file <file|->]
     [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <value>]
     [--title <name>] [--goal <objective> | --clear-goal]
     [--client-message-id <id>] [--json]
   {program} send <id> [-m <text> | --message-file <file|->]
-    [--image <path> ...]
     [--steer | --queue] [--goal <objective> | --clear-goal]
     [--approval <id> --decision <approve|reject>]
     [--client-message-id <id>] [--json]
@@ -86,15 +85,18 @@ ${configurationHelp}
   --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
   stop 清除目标会话的 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数小于 10 秒按 10 秒等待，最多 5 分钟。等待不会停止任务。
-  可只传图片：最多 5 张，单张 5 MiB、总计 10 MiB。-m 与 --message-file
-  互斥；文件使用 UTF-8，- 从 stdin 读取。list 默认查询所在会话树，包含空闲会话；
+  -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
+  list 默认查询所在会话树，包含空闲会话；
   没有当前会话时默认 active，显式 tree 须有会话上下文。active 包含当前
   Workspace 中运行及睡眠的会话。返回 currentAgentId（无会话时为 null）、
   扁平 sessions 和 truncated。limit 默认及上限均为 100，无 cursor 或分页。
   配置和持久提示从后续执行生效。
   即时沟通或纠偏优先使用 --steer。
-  仅明确要延后处理的输入使用 --queue：当前工作及前面的队列项结束后才消费，
+  建议仅将 --queue 用于明确要求延后的输入：当前工作及前面的队列项结束后才消费，
   有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
+  消息被接受后，通常无需另行确认收悉或立即查看是否收到。
+  子会话运行时建议并行推进有意义且不重叠的工作；无其他本地工作可做，且需
+  结果解除阻塞或收尾时，再考虑等待。
 
   show --json 包含 session.status、session.modelId、session.effort、
   session.title、session.runId、session.recentTools、session.queuedCount 和
@@ -209,8 +211,6 @@ ${configurationHelp}`,
   errors: Object.freeze({
     sessionOutcomeUnknown: '投递结果未知，请先查看会话状态和历史，不要盲目重试。',
     sessionMessageInvalid: '消息不能为空或超过长度限制；输入文件必须是可读取的 UTF-8 文本。',
-    sessionImageInvalid:
-      '图片必须是可读取的 PNG、JPEG、GIF 或 WebP 文件：最多 5 张，单张 5 MiB，合计 10 MiB。',
     sessionWaitUnknown: '无法确认指定 Run，请查看会话状态和历史。',
     sessionWaitCancelled: '已取消等待，未停止目标 Run。',
     sessionWaitTimeout: '等待超时，未停止目标 Run。',

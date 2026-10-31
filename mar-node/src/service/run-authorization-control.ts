@@ -2,8 +2,6 @@ import {
   createEnvelope,
   scheduledRunAuthorizeRequestSchema,
   scheduledRunAuthorizeResponseSchema,
-  restartRunAuthorizeRequestSchema,
-  type RestartRunAuthorizeRequest,
   type NodeEnvelope,
   type ScheduledRunAuthorizeRequest,
   type ScheduledRunAuthorizeResponse
@@ -22,13 +20,10 @@ export class RunAuthorizationControl {
   #connected = false;
   #closed = false;
 
-  constructor(
-    private readonly send: (envelope: NodeEnvelope) => void,
-    private readonly purpose: 'schedule' | 'restart' = 'schedule'
-  ) {}
+  constructor(private readonly send: (envelope: NodeEnvelope) => void) {}
 
   private code(suffix: string): string {
-    return `${this.purpose.toUpperCase()}_${suffix}`;
+    return `SCHEDULE_${suffix}`;
   }
 
   connected(): void {
@@ -49,7 +44,7 @@ export class RunAuthorizationControl {
   }
 
   handle(envelope: NodeEnvelope): boolean {
-    if (envelope.type !== `${this.purpose}.authorize.response`) return false;
+    if (envelope.type !== 'schedule.authorize.response') return false;
     const pending =
       envelope.replyTo === undefined ? undefined : this.#pending.get(envelope.replyTo);
     if (pending === undefined || pending.generation !== this.#generation) return true;
@@ -60,16 +55,13 @@ export class RunAuthorizationControl {
   }
 
   authorize(
-    request: ScheduledRunAuthorizeRequest | RestartRunAuthorizeRequest
+    request: ScheduledRunAuthorizeRequest
   ): Promise<Extract<ScheduledRunAuthorizeResponse, { context: unknown }>['context']> {
     if (!this.#connected || this.#closed)
       return Promise.reject(new Error(this.code('SERVER_UNAVAILABLE')));
     const envelope = createEnvelope(
-      `${this.purpose}.authorize`,
-      (this.purpose === 'schedule'
-        ? scheduledRunAuthorizeRequestSchema
-        : restartRunAuthorizeRequestSchema
-      ).parse(request)
+      'schedule.authorize',
+      scheduledRunAuthorizeRequestSchema.parse(request)
     );
     return new Promise((resolve, reject) => {
       const settle = (action: () => void) => {

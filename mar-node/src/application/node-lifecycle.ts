@@ -15,7 +15,7 @@ export class NodeLifecycle<Snapshot = never> {
       waitForRecovery(): Promise<void>;
       drainInput(): Promise<void>;
       closeResume(): Promise<void>;
-      capture(): Snapshot | undefined;
+      capture(): Snapshot | undefined | Promise<Snapshot | undefined>;
       dispose(): Promise<void>;
       publish(snapshot: Snapshot): Promise<void>;
       diagnose(stage: NodeShutdownStage, error: unknown): void;
@@ -101,7 +101,7 @@ export class NodeLifecycle<Snapshot = never> {
       await this.shutdown.closeResume();
       if (failure === undefined && handoff) {
         stage = 'capture';
-        snapshot = this.shutdown.capture();
+        snapshot = await this.shutdown.capture();
       }
     } catch (error) {
       failed(error);

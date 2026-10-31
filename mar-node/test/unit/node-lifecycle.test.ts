@@ -14,6 +14,38 @@ function shutdown(dispose: () => Promise<void> = async () => {}) {
 }
 
 describe('NodeLifecycle', () => {
+  it('waits for an asynchronous restart checkpoint before disposing or publishing', async () => {
+    let complete!: () => void;
+    let entered!: () => void;
+    const checkpoint = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const capturing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const dispose = vi.fn(async () => {});
+    const publish = vi.fn(async (_snapshot: string) => {});
+    const lifecycle = new NodeLifecycle(async () => {}, vi.fn(), {
+      ...shutdown(),
+      dispose,
+      publish,
+      capture: async () => {
+        entered();
+        await checkpoint;
+        return 'settled-snapshot';
+      }
+    });
+    await lifecycle.start();
+    const stopping = lifecycle.stop(true);
+    await capturing;
+    expect(dispose).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    complete();
+    await stopping;
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledWith('settled-snapshot');
+  });
+
   it('freezes immediately and waits for startup before disposing once', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

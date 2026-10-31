@@ -6,7 +6,14 @@ import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
 import type { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
+import type { createAdminAuthService } from '../../src/service/admin-auth-service.js';
+import type {
+  PwaApplicationService,
+  PwaApplicationState
+} from '../../src/service/pwa-application-service.js';
 import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/standalone-file-window-service.js';
+import * as feedback from '../../src/service/message-feedback-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
 import type { NodeSummary } from '../../src/model/node.js';
 import type { Session } from '../../src/model/workbench.js';
 import { renderComponent, flushComponent } from './support/component-renderer.js';
@@ -14,7 +21,8 @@ import { renderComponent, flushComponent } from './support/component-renderer.js
 const captured = vi.hoisted(() => ({
   live: undefined as Parameters<typeof createWorkbenchLiveService>[0] | undefined,
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
-  checkVersion: undefined as (() => Promise<void>) | undefined,
+  authenticated: undefined as
+    Parameters<typeof createAdminAuthService>[0]['onAuthenticated'] | undefined,
   waitForReady: vi.fn(async () => true),
   startWorkspace: vi.fn(async () => undefined),
   restartWorkspace: vi.fn(async () => undefined)
@@ -53,16 +61,13 @@ vi.mock('../../src/service/hosted-conversation-watch-coordinator.js', async (ori
     })
   };
 });
-vi.mock('../../src/service/web-version-update-service.js', async (original) => {
-  const module = await original<typeof import('../../src/service/web-version-update-service.js')>();
+vi.mock('../../src/service/admin-auth-service.js', async (original) => {
+  const module = await original<typeof import('../../src/service/admin-auth-service.js')>();
   return {
     ...module,
-    createWebVersionUpdateService: (
-      ...args: Parameters<typeof module.createWebVersionUpdateService>
-    ) => {
-      const service = module.createWebVersionUpdateService(...args);
-      captured.checkVersion = service.check;
-      return service;
+    createAdminAuthService: (options: Parameters<typeof module.createAdminAuthService>[0]) => {
+      captured.authenticated = options.onAuthenticated;
+      return module.createAdminAuthService(options);
     }
   };
 });
@@ -119,7 +124,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function controller() {
+function controller(pwaApplication?: PwaApplicationService) {
   const navigation = createWorkbenchNavigationService<WorkbenchView, SettingsSection, string>({
     initialView: 'nodes',
     initialSettingsSection: 'account',
@@ -140,7 +145,7 @@ function controller() {
             systemManagementSection: 'custom-system',
             nodeManagementSection: 'custom-nodes',
             webVersion: '9.8.7-fixture',
-            webBuildHash: 'fixture-build'
+            ...(pwaApplication === undefined ? {} : { pwaApplication })
           });
           return () => h('div');
         }
@@ -731,20 +736,62 @@ describe('Workbench controller composition behavior', () => {
     expect(page.view.value).toBe('nodes');
     expect(page.workbenchNotificationService.notifications.value[0]!.read).toBe(true);
   });
-  it('compares version manifests against the supplied build hash', async () => {
-    const { page } = controller();
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ version: '9.8.7-fixture', hash: 'fixture-build' }))
-    );
-    await captured.checkVersion!();
+  it('projects lifecycle updates once and clears the notification after alignment', async () => {
+    let listener!: (state: PwaApplicationState) => void;
+    const initial: PwaApplicationState = { offline: 'ready', checked: true };
+    const applyUpdate = vi.fn().mockResolvedValue('APPLIED');
+    const pwa = {
+      state: ref(initial),
+      applyUpdate,
+      subscribe(callback: (state: PwaApplicationState) => void) {
+        listener = callback;
+        callback(initial);
+        return () => undefined;
+      }
+    } as unknown as PwaApplicationService;
+    const { page } = controller(pwa);
+    await captured.authenticated!();
     expect(page.workbenchNotificationService.notifications.value).toEqual([]);
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ version: '9.8.7-fixture', hash: 'new-build' }))
-    );
-    await captured.checkVersion!();
+    listener({
+      offline: 'ready',
+      checked: true,
+      update: { mode: 'worker', action: 'activate', version: '9.8.7', buildId: 'new-build' }
+    });
     expect(page.workbenchNotificationService.notifications.value).toEqual([
       expect.objectContaining({ kind: 'web-update', action: 'RELOAD_PAGE' })
     ]);
+    expect(applyUpdate).not.toHaveBeenCalled();
+    await page.openWorkbenchNotification(page.workbenchNotificationService.notifications.value[0]!);
+    expect(applyUpdate).toHaveBeenCalledOnce();
+    expect(await applyUpdate.mock.calls[0]![0]()).toBe(true);
+    listener({
+      offline: 'preparing',
+      checked: true,
+      reload: { mode: 'worker', action: 'reload', version: '9.8.7', buildId: 'new-build' }
+    });
+    expect(page.workbenchNotificationService.notifications.value).toEqual([
+      expect.objectContaining({ kind: 'web-update', action: 'RELOAD_PAGE' })
+    ]);
+    listener(initial);
+    expect(page.workbenchNotificationService.notifications.value).toEqual([]);
+    listener({
+      offline: 'preparing',
+      checked: true,
+      reload: { mode: 'worker', action: 'reload', version: '9.8.7', buildId: 'other-build' }
+    });
+    expect(page.workbenchNotificationService.notifications.value).toEqual([]);
+  });
+  it('reports an unavailable waiting update as a failed check, not the latest version', async () => {
+    const failure = new Error('Waiting worker not ready');
+    const pwa = {
+      state: ref<PwaApplicationState>({ offline: 'ready', checked: true }),
+      checkForUpdate: vi.fn().mockRejectedValue(failure)
+    } as unknown as PwaApplicationService;
+    const showMessage = vi.spyOn(feedback, 'showMessage').mockImplementation(() => undefined);
+    const { page } = controller(pwa);
+    await page.checkForUpdates();
+    expect(showMessage).toHaveBeenCalledWith(translate('webUpdate.checkFailed'), 'error', failure);
+    expect(showMessage).not.toHaveBeenCalledWith(translate('webUpdate.upToDate'), 'info');
   });
   it.each([true, false])(
     'refreshes restored Node state without duplicate workspace Watch (resumed=%s)',
