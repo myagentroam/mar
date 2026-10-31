@@ -889,6 +889,15 @@ describe('Node Agent Network owner integration', () => {
         sessions: [{ id: parent.id, parentSessionId: null, status: 'RUNNING' }],
         truncated: false
       });
+      const viewed = await invoke(executionId, 'view', { agentId: parent.id }, context);
+      expect(viewed).toMatchObject({
+        session: { id: parent.id, status: 'RUNNING', recentTools: expect.any(Array) },
+        goal: null
+      });
+      expect(Object.keys(viewed as object).sort()).toEqual(['goal', 'session']);
+      await expect(
+        invoke(executionId, 'view', { agentId: parent.id, includeHistory: true }, context)
+      ).rejects.toMatchObject({ code: 'AGENT_VIEW_INVALID' });
       const abortedStart = new AbortController();
       const starting = invoke(executionId, 'start', { title: 'Child', content: 'must not start' }, {
         signal: abortedStart.signal

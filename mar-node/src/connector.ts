@@ -1320,7 +1320,6 @@ export class NodeConnector {
       goals: this.goalRuntime,
       runs: this.runWorkbenchService,
       observations: this.agentNetworkObservations,
-      history: async (input) => this.sessionQueryService.operations()['session.turns.list']!(input),
       ensureObservations: (actor) => {
         const existing = this.agentNetworkObservations.get(actor.observationId ?? actor.sessionId);
         if (existing) return existing;

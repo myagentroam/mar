@@ -58,8 +58,7 @@ Usage:
   {program} stop <id> --execution <execution-id> [--json]
   {program} list [--scope tree|active] [--query <title>]
     [--limit <1..100>] [--json]
-  {program} view [<id>] [--history] [--cursor <cursor>]
-    [--limit <1..100>] [--json]
+  {program} view [<id>] [--json]
 
 Management:
   {program} config [<id>] [--model-id <id>] [--effort <value>] [--json]
@@ -77,7 +76,8 @@ Management:
   {program} wait <id> --run <run-id> [--until approval] --timeout <duration>
   {program} goal get|clear <id> [--json]
   {program} goal set <id> (-m <text> | --message-file <file|->) [--json]
-  {program} current | show [<id>] | graph [<id>] | history [<id>]
+  {program} current | show [<id>] | graph [<id>]
+  {program} history [<id>] [--cursor <cursor>] [--limit <1..100>] [--json]
 
 Input and results:
   Start defaults to the current Session Runner; a terminal without a current

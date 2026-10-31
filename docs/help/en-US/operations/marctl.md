@@ -64,7 +64,7 @@ marctl agents schedule get <session-id> --json
 
 `schedule list` pages through Node SQLite and returns `tasks[]` (including `sessionTitle`) and `nextCursor`, without scanning Runners. Other schedule operations accept an explicit target Session. Creation requires cron and text; updates require at least one. Text uses `-m` / `--message-file` (including stdin), up to 20,000 characters. The Node chooses the time zone. The CLI does not provide task enable/disable, deletion, or proposal approval commands.
 
-For `history --json`, select `kind === "assistant_message"` in `segments[].items[]` and read `payload.text`; compact state fields are described below.
+`view [<session-id>] --json` returns only state, the current Goal, and bounded recent activity, without history or history pagination options. Read records on demand with the separate `history [<session-id>] --cursor <cursor> --limit <1..100> --json` command; omit the cursor for the first page. For `history --json`, select `kind === "assistant_message"` in `segments[].items[]` and read `payload.text`; compact state fields are described below.
 
 Use `marctl agents config <session-id> --model-id <id> --effort high --json` to switch an existing Session's model and reasoning effort. Either option can be set alone; omitted fields and permissions stay unchanged. Use `--effort ""` for the Runner's native default. Configuration applies through the existing subsequent execution flow without restarting active execution. `agents start` also accepts `--effort`.
 

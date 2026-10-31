@@ -50,7 +50,6 @@ interface Bindings {
   readonly observations: AgentNetworkObservations;
   readonly ensureObservations: (actor: AgentNetworkActor) => ParentObservations;
   readonly withGrant: <T>(actor: AgentNetworkActor, work: () => T) => T;
-  readonly history: (input: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** Bind the collaboration use case to the existing Session, Run and Goal owners. */
@@ -459,18 +458,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           session,
           options.runtime.sessionQueue(session.id).itemIds.length
         ),
-        goal: publicGoal(options.goals.get(session.id)) ?? null,
-        ...(input.includeHistory
-          ? {
-              history: await options.history({
-                sessionId: session.id,
-                workspaceId: session.workspaceId,
-                registeredOnly: true,
-                limit: input.limit,
-                cursor: input.cursor
-              })
-            }
-          : {})
+        goal: publicGoal(options.goals.get(session.id)) ?? null
       };
     }
   });

@@ -129,6 +129,8 @@ Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Suba
 
 协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 使用文本任务和非空标题，登记子会话和首个执行后即返回，不等待完成；手动 marctl 创建时标题可省略。使用结果中的 `agentId` 寻址子会话。`agent_send` 可发送文本消息、更新 Goal 或对获授权会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照。`agent_stop` 停止指定执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。
 
+`agent_view` 仅接受 `agentId`，返回状态、当前 Goal 和有界最近活动，不读取会话历史。完整记录通过独立的 `marctl agents history <session-id>` 按需分页查询；`marctl agents view` 遵循相同的状态查询边界。
+
 目标空闲且没有当前或保留执行时，`agent_wait` 返回 `AGENT_IDLE`，摘要明确说明“Agent is idle; there is no execution to wait for.”，不表示会话不存在或任务失败。空闲会话若仍保有真实终态执行，则正常返回该执行结果。省略目标且没有子会话时返回 `AGENT_WAIT_NO_TARGETS`；显式目标不存在时返回 `SESSION_NOT_FOUND`。等待不会启动空闲会话。
 
 同一获授权 Node/Workspace 内，消息、显式等待、Goal、停止、审批及 marctl 会话设置均不按父子关系限制；目标 Run/队列用户归属、模型及资源授权仍有效。发送不建立横向自动订阅。

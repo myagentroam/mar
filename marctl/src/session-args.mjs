@@ -7,7 +7,7 @@ const commands = {
   list: ['scope', 'query', 'limit'],
   graph: ['limit'],
   show: [],
-  view: ['cursor', 'limit', 'history'],
+  view: [],
   history: ['cursor', 'limit'],
   start: [
     'runner',
@@ -112,11 +112,8 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       args[key] = true;
       continue;
     }
-    if (
-      (flag === '--clear-goal' && ['start', 'send'].includes(action)) ||
-      (flag === '--history' && action === 'view')
-    ) {
-      const key = flag === '--history' ? 'history' : 'clearGoal';
+    if (flag === '--clear-goal' && ['start', 'send'].includes(action)) {
+      const key = 'clearGoal';
       if (Object.hasOwn(args, key)) throw invalid();
       args[key] = true;
       continue;

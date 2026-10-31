@@ -57,8 +57,7 @@ ${configurationHelp}
   {program} stop <id> --execution <execution-id> [--json]
   {program} list [--scope tree|active] [--query <title>]
     [--limit <1..100>] [--json]
-  {program} view [<id>] [--history] [--cursor <cursor>]
-    [--limit <1..100>] [--json]
+  {program} view [<id>] [--json]
 
 管理：
   {program} config [<id>] [--model-id <id>] [--effort <value>] [--json]
@@ -76,7 +75,8 @@ ${configurationHelp}
   {program} wait <id> --run <run-id> [--until approval] --timeout <duration>
   {program} goal get|clear <id> [--json]
   {program} goal set <id> (-m <text> | --message-file <file|->) [--json]
-  {program} current | show [<id>] | graph [<id>] | history [<id>]
+  {program} current | show [<id>] | graph [<id>]
+  {program} history [<id>] [--cursor <cursor>] [--limit <1..100>] [--json]
 
 输入与结果：
   start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或

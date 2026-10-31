@@ -64,7 +64,7 @@ marctl agents schedule get <session-id> --json
 
 `schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Runner。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
-`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
+`view [<session-id>] --json` 只返回状态、当前 Goal 和有界最近活动，不附历史或接受历史分页参数。完整记录通过独立的 `history [<session-id>] --cursor <cursor> --limit <1..100> --json` 按需分页读取；首次读取可省略 cursor。`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
 已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
 

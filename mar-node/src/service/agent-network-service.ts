@@ -126,9 +126,6 @@ interface AgentNetworkServiceOptions {
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly includeHistory?: boolean;
-      readonly limit?: number;
-      readonly cursor?: string;
     },
     onResolved?: ResolvedTargets
   ) => Promise<unknown>;
@@ -142,16 +139,19 @@ export class AgentNetworkService {
     return this.options.list(actor, input);
   }
 
-  view(
+  async view(
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly includeHistory?: boolean;
-      readonly limit?: number;
-      readonly cursor?: string;
     },
     onResolved?: ResolvedTargets
   ): Promise<unknown> {
+    if (
+      typeof input.agentId !== 'string' ||
+      !input.agentId.trim() ||
+      Object.keys(input).some((key) => key !== 'agentId')
+    )
+      throw new AgentError('AGENT_VIEW_INVALID', 'Agent view accepts only a target agent ID.');
     return this.options.view(actor, input, onResolved);
   }
 
