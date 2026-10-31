@@ -30,22 +30,7 @@ const page = {
 };
 const message = {
   sourceSessionId: id.optional(),
-  content: z.string().max(100_000),
-  attachments: z
-    .array(
-      z
-        .object({
-          name: z.string().min(1).max(255),
-          mime: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
-          dataBase64: z
-            .string()
-            .min(1)
-            .max(Math.ceil((5 * 1024 * 1024) / 3) * 4)
-        })
-        .strict()
-    )
-    .max(5)
-    .optional()
+  content: z.string().max(100_000)
 };
 const goal = z
   .union([
@@ -61,7 +46,6 @@ const networkCommand = z.discriminatedUnion('operation', [
       input: z
         .object({
           content: z.string().max(100_000).optional(),
-          attachments: message.attachments,
           clientMessageId: id.optional(),
           runner: runnerNameSchema.optional(),
           modelId: id.optional(),
@@ -80,9 +64,12 @@ const networkCommand = z.discriminatedUnion('operation', [
         .object({
           agentId: id,
           content: z.string().max(100_000).optional(),
-          attachments: message.attachments,
           clientMessageId: id.optional(),
           deliveryIntent: z.enum(['SEND', 'QUEUE', 'REPLACE_CURRENT']).optional(),
+          approval: z
+            .object({ approvalId: id, decision: z.enum(['approve', 'reject']) })
+            .strict()
+            .optional(),
           goal
         })
         .strict()
@@ -254,9 +241,7 @@ const commandSchema = z
   .refine(
     (value) =>
       (value.action !== 'start' && value.action !== 'send') ||
-      ('content' in value &&
-        (value.content.trim().length > 0 ||
-          ('attachments' in value && (value.attachments?.length ?? 0) > 0)))
+      ('content' in value && value.content.trim().length > 0)
   )
   .refine(
     (value) =>
@@ -405,9 +390,7 @@ export function registerMarctlSessionRoutes(
           const networkInput: Record<string, unknown> = { ...arguments_ };
           const messageInput =
             operation === 'start' || operation === 'send' ? arguments_ : undefined;
-          const hasMessage =
-            messageInput !== undefined &&
-            (!!messageInput.content?.trim() || !!messageInput.attachments?.length);
+          const hasMessage = messageInput !== undefined && !!messageInput.content?.trim();
           if (
             (operation === 'start' || (operation === 'send' && hasMessage)) &&
             networkInput.clientMessageId === undefined
@@ -937,7 +920,6 @@ export function registerMarctlSessionRoutes(
                 runner: body.runner,
                 cwd: object(context.workspace).path as string,
                 content: body.content,
-                ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
                 clientMessageId: body.clientMessageId,
                 ...(typeof model === 'string' ? { modelId: model } : {}),
                 ...(body.effort === undefined ? {} : { effort: body.effort }),
@@ -953,7 +935,6 @@ export function registerMarctlSessionRoutes(
               { ...executionContext, sessionId: sessionId as string },
               {
                 content: body.content,
-                ...(body.attachments === undefined ? {} : { attachments: body.attachments }),
                 clientMessageId: body.clientMessageId,
                 deliveryIntent: body.deliveryIntent,
                 ...runtimeModel

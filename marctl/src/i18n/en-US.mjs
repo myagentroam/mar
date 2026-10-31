@@ -45,12 +45,11 @@ Notes:
     agents: `{program} — Coordinate Agents in the current MAR Workspace
 
 Usage:
-  {program} start [-m <text> | --message-file <file|->] [--image <path> ...]
+  {program} start [-m <text> | --message-file <file|->]
     [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <value>]
     [--title <name>] [--goal <objective> | --clear-goal]
     [--client-message-id <id>] [--json]
   {program} send <id> [-m <text> | --message-file <file|->]
-    [--image <path> ...]
     [--steer | --queue] [--goal <objective> | --clear-goal]
     [--approval <id> --decision <approve|reject>]
     [--client-message-id <id>] [--json]
@@ -88,7 +87,6 @@ Input and results:
   without text; omitted Goal is unchanged. Stop clears the target Session Goal.
   Wait defaults to direct-child completion and 30s; 0ms is a snapshot.
   Positive timeouts below 10s become 10s; maximum is 5m. Waiting does not stop.
-  Images may be supplied without text: at most 5, 5 MiB each, 10 MiB total.
   -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
   List defaults to the containing tree, including idle Sessions. Without a
   current Session it defaults to active; explicit tree requires a Session.
@@ -97,10 +95,14 @@ Input and results:
   truncated. Limit defaults to 100, maximum 100; no cursor or pagination.
   Configuration and prompt changes apply to future executions.
   Prefer --steer for timely communication or course correction.
-  Use --queue only for deliberately deferred input: it is consumed after
+  Reserve --queue for explicitly requested deferred input: it is consumed after
   current work and earlier queued inputs finish. With an active Goal it is
   not consumed until that Goal exits.
   Acceptance does not guarantee immediate processing.
+  An accepted message normally needs no separate acknowledgment or receipt
+  check.
+  While children run, prefer meaningful, non-overlapping work; wait when needed
+  to unblock or finish and no other meaningful local task work remains.
 
   show --json includes session.status, session.modelId, session.effort,
   session.title, session.runId, session.recentTools, session.queuedCount and
@@ -222,8 +224,6 @@ or Server connection is required.`
       'The delivery outcome is unknown. Inspect Session state/history before retrying.',
     sessionMessageInvalid:
       'The message must be non-empty and within the length limit; input files must be readable UTF-8.',
-    sessionImageInvalid:
-      'Images must be readable PNG, JPEG, GIF or WebP files: at most 5 images, 5 MiB each and 10 MiB total.',
     sessionWaitUnknown: 'The specified Run could not be confirmed. Inspect Session state/history.',
     sessionWaitCancelled: 'Waiting was cancelled; the target Run was not stopped.',
     sessionWaitTimeout: 'Waiting timed out; the target Run was not stopped.',

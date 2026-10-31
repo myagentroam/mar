@@ -24,32 +24,51 @@ const environment = {
   MAR_CTL_WORKSPACE_ID: 'workspace'
 };
 
-it('publishes default steer and opt-in queue guidance in the native send tool', () => {
+it('publishes concise Agent tool descriptions and delivery parameter guidance', () => {
   const register = vi.fn();
   agentNetworkExtension(vi.fn(), () => 'execution').attachSession!({
     tools: { register },
     hooks: { intercept() {} }
   } as never);
-  const send = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_send');
-  expect(send.description).toContain('Default to STEER.');
-  expect(send.description).toContain(
-    'Use QUEUE only when the user or recipient explicitly requests deferred delivery'
+  const definitions = register.mock.calls.map(([tool]) => tool);
+  expect(Object.fromEntries(definitions.map((tool) => [tool.name, tool.description]))).toEqual({
+    agent_start:
+      'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
+    agent_send: 'Send a message to an Agent, update its Goal, or decide an approval.',
+    agent_wait: 'Wait for Agent messages or execution completion.',
+    agent_stop: 'Stop the specified Agent Execution and clear its Goal.',
+    agent_list: 'List the current collaboration tree or active Agents in the Workspace.',
+    agent_view: "View an Agent's state, Goal and public history."
+  });
+  for (const tool of definitions.filter((tool) =>
+    ['agent_start', 'agent_send'].includes(tool.name)
+  )) {
+    expect(tool.inputSchema.properties).not.toHaveProperty('attachments');
+    expect(tool.inputSchema.properties).not.toHaveProperty('attachmentIds');
+  }
+  const send = definitions.find((tool) => tool.name === 'agent_send');
+  const delivery = send.inputSchema.properties.delivery.description;
+  expect(delivery).toContain('STEER is the default and preferred for timely communication.');
+  expect(delivery).toContain(
+    'QUEUE is best reserved for deferred delivery explicitly requested by the user or recipient'
   );
-  expect(send.description).toContain('Do not queue merely to avoid interrupting the recipient');
+  expect(delivery).toContain('not merely to avoid interruption or send a report');
   expect(send.inputSchema.properties.delivery.enum).toEqual(['STEER', 'QUEUE']);
-  expect(send.inputSchema.properties.delivery.description).toContain('Default to STEER');
+  expect(send.inputSchema.properties.delivery.description).toContain('STEER is the default');
   expect(send.inputSchema.properties).not.toHaveProperty('deliveryIntent');
   expect(JSON.stringify(send)).not.toContain('REPLACE_CURRENT');
-  expect(send.description).toContain(
+  expect(delivery).toContain(
     'QUEUE is consumed only after current work and earlier queued inputs finish'
   );
   expect(send.description).not.toContain('subscribe');
-  expect(send.description).toContain('an active Goal must exit first');
+  expect(delivery).toContain('an active Goal must exit first');
   const list = register.mock.calls.map(([tool]) => tool).find((tool) => tool.name === 'agent_list');
   expect(new Set(Object.keys(list.inputSchema.properties))).toEqual(
     new Set(['scope', 'query', 'limit'])
   );
-  expect(list.description).toContain('tree by default');
+  expect(list.description).toBe(
+    'List the current collaboration tree or active Agents in the Workspace.'
+  );
   expect(list.inputSchema.properties.scope.enum).toEqual(['tree', 'active']);
   expect(list.inputSchema.properties.limit.maximum).toBe(100);
 });
@@ -75,7 +94,9 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     expect(await skill.load()).toBe(marctlManagementInstructions);
     expect(await skill.load()).toContain('native agent_* tools');
     expect(await skill.load()).not.toContain('agents start');
-    expect(await skill.load()).toContain('Acceptance is not completion');
+    expect(await skill.load()).toContain(
+      'If a request result is unknown, inspect history before retrying.'
+    );
     expect(client.getServerVersion()?.name).toBe('mar_cli');
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(1);
@@ -102,7 +123,6 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       '--scope tree|active',
       'agents start --title <title>',
       'manual terminal may omit it',
-      'Acceptance is not completion',
       'inspect history before retrying',
       'Session IDs and parent relationships do not grant authorization'
     ]) {
@@ -110,8 +130,23 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     }
     expect(marctlInstructions).toContain('Prefer agents send <id> --steer');
     expect(marctlInstructions).toContain('timely communication or course correction');
+    expect(marctlInstructions).toContain(
+      '--queue is best reserved for deferred input explicitly requested by the user or recipient'
+    );
     expect(marctlInstructions).toContain('consumed after current work and earlier queued inputs');
     expect(marctlInstructions).toContain('not consumed until that Goal exits');
+    expect(marctlInstructions).toContain(
+      'prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work'
+    );
+    expect(marctlInstructions).toContain(
+      'Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.'
+    );
+    expect(marctlInstructions).toContain(
+      'An accepted message normally needs no separate acknowledgment.'
+    );
+    expect(marctlInstructions).toContain(
+      'Requests for receipt-only replies and immediate agents view checks solely to confirm receipt are usually unnecessary.'
+    );
     expect((await client.callTool({ name: 'load_guide', arguments: {} })).content).toEqual(
       result.content
     );

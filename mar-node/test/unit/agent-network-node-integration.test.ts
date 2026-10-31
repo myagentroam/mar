@@ -481,8 +481,8 @@ describe('Node Agent Network owner integration', () => {
       nested: false,
       operation: 'START',
       input: {
-        title: 'Image task',
-        attachments: [{ name: 'picture.png', mime: 'image/png', dataBase64: 'secret-image' }]
+        title: 'Text task',
+        content: 'secret-task'
       }
     },
     {
@@ -503,7 +503,7 @@ describe('Node Agent Network owner integration', () => {
       input: { agentId: 'child', delivery: 'STEER', content: 'Review now' }
     }
   ])(
-    'projects real SDK $action events (nested=$nested) without leaking the result or image',
+    'projects real SDK $action events (nested=$nested) without leaking private input or results',
     async ({ action, input, nested }) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-public-event-'));
       const configuration: AgentModelConfiguration = {
@@ -635,9 +635,7 @@ describe('Node Agent Network owner integration', () => {
         expect(parent.capture(session.id)?.result).toMatchObject({ summary: 'done' });
         parent.close();
         const history = await agent.sessionHistory(session.id);
-        expect(JSON.stringify({ events, items, history })).not.toMatch(
-          /secret-image|secret-result/
-        );
+        expect(JSON.stringify({ events, items, history })).not.toMatch(/secret-task|secret-result/);
       } finally {
         await agent.dispose();
         await rm(directory, { recursive: true, force: true });
@@ -1626,7 +1624,7 @@ describe('Node Agent Network owner integration', () => {
             { content: 'report', deliveryIntent: 'SEND' },
             { content: 'report', deliveryIntent: 'QUEUE' },
             { content: 'report', deliveryIntent: 'REPLACE_CURRENT' },
-            { attachmentIds: ['image-only'] },
+            { content: 'report', goal: { objective: 'must not restart the ancestor' } },
             { goal: { objective: 'must not restart the ancestor' } }
           ]) {
             await expect(
@@ -1736,7 +1734,7 @@ describe('Node Agent Network owner integration', () => {
     ['send', 'inline'],
     ['send', 'reference']
   ] as const)(
-    'passes an image-only %s with %s from a native model tool to the Node owner',
+    'rejects %s with retired %s attachments before invoking the Node owner',
     async (action, kind) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-image-'));
       const database = new NodeDatabase(':memory:', 'network-image');
@@ -1872,6 +1870,7 @@ describe('Node Agent Network owner integration', () => {
                 name: `agent_${action}`,
                 arguments: {
                   ...(action === 'send' ? { agentId: child.id } : { title: 'Image task' }),
+                  content: 'Valid text does not enable attachment input',
                   ...(kind === 'inline'
                     ? { attachments: [image] }
                     : { attachmentIds: [attachmentId] })
@@ -1887,20 +1886,18 @@ describe('Node Agent Network owner integration', () => {
       );
       try {
         const session = await agent.createSession({ workspace: directory });
-        const result = await session.run({ prompt: 'Send the image.' }).result();
+        const run = session.run({ prompt: 'Send the image.' });
+        const failures: string[] = [];
+        const events = (async () => {
+          for await (const event of run)
+            if (event.type === 'tool.failed') failures.push(event.code);
+        })();
+        const result = await run.result();
+        await events;
         expect(result.status).toBe('completed');
-        expect(delivered).toHaveBeenCalledOnce();
-        expect(delivered.mock.calls[0]?.[2]).toMatchObject(
-          kind === 'inline' ? { attachments: [image] } : { attachmentIds: [attachmentId] }
-        );
-        const receipt = await delivered.mock.results[0]!.value;
-        expect(receipt).toMatchObject(
-          action === 'start'
-            ? { agentId: expect.any(String) }
-            : { agentId: child.id, message: { status: 'accepted' } }
-        );
-        if (kind === 'inline')
-          expect(persist).toHaveBeenCalledWith(workspace.id, expect.any(String), [image]);
+        expect(failures).toEqual(['MAR_AGENT_TOOL_INPUT_INVALID']);
+        expect(delivered).not.toHaveBeenCalled();
+        expect(persist).not.toHaveBeenCalled();
       } finally {
         await agent.dispose();
         observer.close();

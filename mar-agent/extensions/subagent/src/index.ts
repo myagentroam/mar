@@ -11,12 +11,13 @@ import { sharedSessionHistory } from './history.js';
 
 const delegationPrompt = [
   '# Delegation and coordination',
-  'Handle focused or tightly coupled work locally by default.',
-  'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-  'Do not split work merely because agents are available.',
-  'Give each child an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
-  'Follow up through the direct delegate by default; inspect deeper Sessions only when a concrete issue needs independent verification.',
-  'While children run, continue meaningful non-overlapping work. Do not redo delegated work. Wait only when the next step needs the result.',
+  'Prefer handling focused or tightly coupled work locally.',
+  'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+  'Avoid splitting work merely because agents are available.',
+  'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
+  'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
+  'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
+  'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
   'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n\n');
 

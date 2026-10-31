@@ -12,7 +12,7 @@ export const marctlManagementDescription =
   'Use marctl to manage MAR Agent session settings (model, effort, title, persistent prompts, and schedules), discover authorized MAR Nodes, and execute commands or transfer files on those Nodes. Use native agent_* tools for other Agent lifecycle and collaboration operations.';
 
 const marctlSafety =
-  'Acceptance is not completion. If a request result is unknown, inspect history before retrying. Session IDs and parent relationships do not grant authorization.';
+  'If a request result is unknown, inspect history before retrying. Session IDs and parent relationships do not grant authorization.';
 
 export const marctlManagementInstructions = [
   '## MAR Workspace management',
@@ -29,10 +29,12 @@ export const marctlDescription =
 export const marctlInstructions = [
   '## MAR Workspace CLI',
   'Run marctl from the shell. Commands use the authenticated Node and Workspace; marctl help agents, nodes, ssh or scp shows options.',
-  'Use agents start --title <title> -m <text> [--runner <runner>] [--model-id <id>] [--effort <effort>] [--goal <objective>]. An Agent must supply a nonblank title; a manual terminal may omit it. The default Runner is the current Session Runner; a terminal without a current Session must specify --runner or an explicit --parent. Start returns without waiting.',
-  'Use agents send <id> -m <text> [--steer|--queue], agents wait [<id>] [--wait-for message|completion] [--timeout <duration>], agents stop <id> --execution <execution-id>, agents list [--scope tree|active], and agents view <id> [--history]. Wait defaults to direct-child completion for 30 seconds; --timeout 0ms takes a snapshot. Stop clears the target Session Goal.',
-  'Prefer agents send <id> --steer -m <text> for timely communication or course correction. Use --queue only for deliberately deferred input: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance is not a guarantee of immediate processing.',
-  'Start and send accept repeated --image <local-path> for PNG, JPEG, GIF or WebP; limits are five images, 5 MiB each and 10 MiB total. Send can update a Goal alone with --goal <objective> or --clear-goal; omitted Goal leaves it unchanged. Decide a direct child approval with send <id> --approval <approval-id> --decision approve|reject.',
+  'Use agents start --title <title> -m <text> [--runner <runner>] [--model-id <id>] [--effort <effort>] [--goal <objective>]. An Agent must supply a nonblank title; a manual terminal may omit it. The default Runner is the current Session Runner; a terminal without a current Session must specify --runner or an explicit --parent. Start returns without waiting for completion.',
+  'Use agents send <id> -m <text> [--steer|--queue], agents wait [<id>] [--wait-for message|completion] [--timeout <duration>], agents stop <id> --execution <execution-id>, agents list [--scope tree|active], and agents view <id> [--history]. --timeout 0ms takes a snapshot. Stop clears the target Session Goal.',
+  'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
+  'Prefer agents send <id> --steer -m <text> for timely communication or course correction. --queue is best reserved for deferred input explicitly requested by the user or recipient: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance is not a guarantee of immediate processing.',
+  'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agents view checks solely to confirm receipt are usually unnecessary.',
+  'Send can update a Goal alone with --goal <objective> or --clear-goal; omitted Goal leaves it unchanged. Decide an authorized Agent approval with send <id> --approval <approval-id> --decision approve|reject.',
   'List accepts only --scope tree|active, optional --query <title-fragment> and --limit <1..100> (default 100). With a current Session it defaults to the containing collaboration tree, including idle Sessions; without one it defaults to active Workspace Sessions (running or sleeping), and explicit tree is rejected. Returns currentAgentId (null without a Session), flat sessions with id, parentSessionId, title, runner and status, and truncated; no cursor or pagination. Reuse known IDs directly.',
   'Only direct-child updates are collected automatically. Sending to a non-child never subscribes; an explicit wait observes it only for that call.',
   'Use agents config, rename, prompt and schedule for management. marctl nodes, ssh and scp use authorized Nodes.',

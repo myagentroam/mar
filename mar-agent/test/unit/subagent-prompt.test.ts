@@ -28,21 +28,34 @@ it.each([false, true])(
       expect(instructions).toContain(
         [
           '# Delegation and coordination',
-          'Handle focused or tightly coupled work locally by default.',
-          'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-          'Do not split work merely because agents are available.'
+          'Prefer handling focused or tightly coupled work locally.',
+          'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+          'Avoid splitting work merely because agents are available.'
         ].join('\n\n')
       );
       expect(instructions).toContain('a read-only boundary or non-overlapping write scope');
-      expect(instructions).toContain('Follow up through the direct delegate by default');
+      expect(instructions).toContain('Prefer following up through the direct delegate');
       expect(instructions).toContain('only when a concrete issue needs independent verification');
-      expect(instructions).toContain('Do not redo delegated work.');
-      expect(instructions).toContain('Wait only when the next step needs the result.');
+      expect(instructions).toContain(
+        'prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work'
+      );
+      expect(instructions).toContain(
+        'Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.'
+      );
+      expect(instructions).toContain(
+        'An accepted message normally needs no separate acknowledgment.'
+      );
+      expect(instructions).toContain(
+        'Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.'
+      );
       expect(instructions).toContain('retain responsibility for the final result');
       expect(instructions).not.toContain('agent_message');
       expect(instructions).not.toContain('agent_cancel');
       expect(instructions).not.toContain('never inside code_exec');
       expect(instructions).not.toContain('# Workspace collaboration');
+      expect(JSON.stringify(request.tools)).toContain(
+        'Send a message to a direct child or report to the direct parent.'
+      );
     }
   }
 );

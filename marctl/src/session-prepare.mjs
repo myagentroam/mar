@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { messageContent, imageAttachments } from './session-input.mjs';
+import { messageContent } from './session-input.mjs';
 
 const networkActions = new Set(['start', 'send', 'wait', 'stop', 'list', 'view']);
 
@@ -28,7 +28,6 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
   if (args.action === 'view' && args.history) input.includeHistory = true;
   if (args.message !== undefined || args.messageFile !== undefined)
     input.content = await messageContent(args, stdin, 100000, translate);
-  if (args.images?.length) input.attachments = await imageAttachments(args.images, translate);
   if (args.goal !== undefined) input.goal = { objective: args.goal.trim() };
   if (args.clearGoal) input.goal = { clear: true };
   if (args.action === 'send' && args.approvalId !== undefined)
@@ -82,10 +81,6 @@ export async function prepareSessionRequest({ args, env, stdin, translate, sessi
     );
   if (args.action === 'approval.decide')
     body.decision = args.decision === 'approve' ? 'APPROVED' : 'REJECTED';
-  if (args.images !== undefined) {
-    body.attachments = await imageAttachments(args.images, translate);
-    body.content ??= '';
-  }
   if (args.action === 'start' || args.action === 'send')
     body.clientMessageId = args.clientMessageId ?? randomUUID();
   if (args.action === 'send')

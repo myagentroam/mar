@@ -5,7 +5,7 @@ import type { SessionExtensionContext } from '@myagentroam/agent/extensions';
 export function registerQueryTools(context: SessionExtensionContext, agent: Agent): void {
   context.tools.register({
     name: 'agent_list',
-    description: 'List direct child Sessions or eligible local models.',
+    description: 'List direct child Sessions or eligible model configurations.',
     allowedCallers: ['direct', 'programmatic'],
     inputSchema: {
       type: 'object',

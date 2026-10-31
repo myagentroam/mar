@@ -272,9 +272,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         ...(!terminal && parent ? { __marctlOrigin: origin(parent) } : {}),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(model ? { modelId: model } : {}),
-        ...(input.effort === undefined ? {} : { effort: input.effort }),
-        ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-        ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds })
+        ...(input.effort === undefined ? {} : { effort: input.effort })
       };
       signal?.throwIfAborted();
       const result = await options.withGrant(actor, () =>
@@ -289,10 +287,6 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
                 suppressNotifications: true,
                 ...(!terminal && parent ? { messageOrigin: origin(parent) } : {}),
                 clientMessageId: input.clientMessageId,
-                ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-                ...(input.attachmentIds === undefined
-                  ? {}
-                  : { attachmentIds: input.attachmentIds }),
                 ...(actor.requestUserId === undefined
                   ? {}
                   : { initiatedByUserId: actor.requestUserId }),
@@ -346,11 +340,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
             : {
                 messageContent: message.content,
                 clientMessageId: message.clientMessageId,
-                messageIntent: message.deliveryIntent,
-                ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
-                ...(message.attachmentIds === undefined
-                  ? {}
-                  : { attachmentIds: message.attachmentIds })
+                messageIntent: message.deliveryIntent
               })
         })
       );
