@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MAR_AGENT_PROMPT_VERSION, buildSystemPrompt } from '../../src/prompts/index.js';
+import {
+  MAR_AGENT_PROMPT_VERSION,
+  buildSystemPrompt,
+  buildSystemPromptSections
+} from '../../src/prompts/index.js';
 import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
 import { countModelTokens } from '../../src/runtime/token-budget.js';
 import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
@@ -16,6 +20,25 @@ const shortWaitToolFixture = {
 } as const;
 
 describe('system prompt', () => {
+  it.each(['/home/test/.mar/worktrees', 'D:\\Users\\test\\.mar\\worktrees'])(
+    'guides worktree placement under %s in contextual environment rules',
+    (worktreeRoot) => {
+      const sections = buildSystemPromptSections({
+        mode: 'run',
+        platform: 'linux',
+        workspace: '/workspace',
+        worktreeRoot,
+        tools: ['exec']
+      });
+      expect(sections.find((section) => section.id === 'core:environment-rules')?.text).toContain(
+        `When creating a Git worktree, prefer a unique directory under the JSON-encoded path ${JSON.stringify(worktreeRoot)} unless the user specifies another location.`
+      );
+      expect(
+        sections.find((section) => section.id === 'core:workspace-discipline')?.text
+      ).not.toContain(worktreeRoot);
+    }
+  );
+
   it('limits resource wrap-up to pending work needed for the task', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
@@ -324,7 +347,7 @@ describe('system prompt', () => {
     expect(normalized).toContain('focus final answers on the most important information');
     expect(normalized).toContain('avoid long-winded explanations unless necessary');
     expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.67');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.68');
   });
 
   it('reuses available Skill instructions without skipping first-use or post-compaction loading', () => {
