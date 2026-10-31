@@ -19,7 +19,7 @@ import BusyIndicator from '../common/BusyIndicator.vue';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
-import WorkspaceSessionTreePopover from './WorkspaceSessionTreePopover.vue';
+import WorkspaceSessionTreeDialog from './WorkspaceSessionTreeDialog.vue';
 
 const props = defineProps<{
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
@@ -176,8 +176,6 @@ const hoveredSessionId = ref<string>();
 const focusedSessionId = ref<string>();
 const openSessionActionsId = ref<string>();
 const treeSessionId = ref<string>();
-const treeAnchor = ref<HTMLElement>();
-let menuAnchor: HTMLElement;
 watch(
   () => [props.nodeId, props.workspaceId],
   () => {
@@ -574,6 +572,7 @@ function submitSessionSearch(): void {
             popper-class="session-action-menu"
             trigger="click"
             @visible-change="openSessionActionsId = $event ? session.id : undefined"
+            @command="$event === 'tree' && (treeSessionId = session.id)"
           >
             <button
               v-tooltip="translate('generated.workspaceSessionList.moreSessionActions2')"
@@ -585,8 +584,6 @@ function submitSessionSearch(): void {
                 })
               "
               type="button"
-              @focus="menuAnchor = $event.currentTarget as HTMLElement"
-              @click="menuAnchor = $event.currentTarget as HTMLElement"
             >
               <MarIcon name="more" />
             </button>
@@ -628,13 +625,7 @@ function submitSessionSearch(): void {
                     translate('generated.workspaceSessionList.rename')
                   }}</el-dropdown-item
                 >
-                <el-dropdown-item
-                  :disabled="loading || !nodeReady"
-                  @click="
-                    treeAnchor = menuAnchor;
-                    treeSessionId = session.id;
-                  "
-                >
+                <el-dropdown-item :disabled="loading || !nodeReady" command="tree">
                   <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
                 </el-dropdown-item>
                 <el-dropdown-item
@@ -847,14 +838,14 @@ function submitSessionSearch(): void {
       :workspace-id="workspaceId"
       :request="request"
     />
-    <WorkspaceSessionTreePopover
-      v-if="treeSessionId && treeAnchor"
+    <!-- Let the menu release its focus trap before mounting the dialog. -->
+    <WorkspaceSessionTreeDialog
+      v-if="treeSessionId && openSessionActionsId !== treeSessionId"
       :key="treeSessionId"
       :node-id="nodeId"
       :workspace-id="workspaceId"
       :session-id="treeSessionId"
       :request="request"
-      :anchor="treeAnchor"
       @close="treeSessionId = undefined"
       @open="emit('openTree', $event)"
     />

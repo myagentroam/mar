@@ -17,7 +17,7 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import type { ConversationItem, ConversationTurn, Session } from '../../src/model/workbench.js';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
-import WorkspaceSessionTreePopover from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
+import WorkspaceSessionTreeButton from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
@@ -968,7 +968,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     };
     const slots = {
       tree: () =>
-        h(WorkspaceSessionTreePopover, {
+        h(WorkspaceSessionTreeButton, {
           nodeId: 'node',
           workspaceId: 'workspace',
           sessionId: 'child',

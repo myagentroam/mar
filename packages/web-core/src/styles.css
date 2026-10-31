@@ -1502,6 +1502,11 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html.console-ui {
+    --el-transition-duration: 0s;
+    --el-transition-duration-fast: 0s;
+  }
+
   .console-ui .is-loading,
   .console-ui .el-loading-spinner .circular,
   .console-ui .el-loading-spinner .path {
