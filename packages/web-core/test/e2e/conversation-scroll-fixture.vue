@@ -4,11 +4,13 @@ import type { ConversationTurn, Session } from '../../src/model/workbench.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createRunService } from '../../src/service/run-service.js';
+import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service.js';
 import {
   createWorkbenchSessionSelectionService,
   type WorkbenchSessionSelectionOptions
 } from '../../src/service/workbench-session-selection-service.js';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
+import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const scroll = createConversationScrollService();
 const { following, positioningInitialConversation: positioning } = scroll;
@@ -29,6 +31,63 @@ const contextKey = ref(0);
 const loading = ref(false);
 const opened = ref(false);
 const olderRequests = ref(0);
+const prependedTurns = ref<ConversationTurn[]>([]);
+let finishOlderPage: (() => void) | undefined;
+const paging = createWorkbenchConversationPagingService({
+  workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
+  selectedSessionId,
+  nextCursor: ref('older'),
+  loadingOlder: olderPending,
+  capturePrependAnchor: scroll.capturePrependAnchor,
+  pageSize: 3,
+  recentSegmentWindowSize: 15,
+  replaceRecent: () => undefined,
+  mergeOlderPage: (page) => {
+    prependedTurns.value = [...page.turns, ...prependedTurns.value];
+  },
+  recoverWindow: () => undefined,
+  clearCursor: () => undefined,
+  request: <T,>() => {
+    const page = ++olderRequests.value;
+    return new Promise<T>((resolve) => {
+      finishOlderPage = () => {
+        finishOlderPage = undefined;
+        resolve({
+          unit: 'SEGMENT',
+          segments: Array.from({ length: 3 }, (_, index) => ({
+            id: `earlier-${page}-${index}`,
+            turnId: `turn-${page}`,
+            sessionId: selectedSessionId.value,
+            runId: null,
+            index,
+            status: 'SUCCEEDED',
+            items: Array.from({ length: 24 }, (_, itemIndex) => ({
+              id: `earlier-${page}-${index}-item-${itemIndex}`,
+              kind: 'assistant_message',
+              status: 'COMPLETED',
+              payload: { text: `earlier-${page}-${index}-item-${itemIndex}` }
+            }))
+          })),
+          nextCursor: `older-${page}`
+        } as T);
+      };
+    });
+  },
+  sessionPathId: (id) => id,
+  notice: () => undefined,
+  errorMessage: String
+});
+
+function requestOlder(): void {
+  if (parameters.has('prepend-history')) {
+    void paging.loadOlderConversationTurns();
+  } else if (!olderPending.value) {
+    olderRequests.value++;
+    olderPending.value = true;
+    olderError.value = '';
+  }
+}
+
 const guardedAtInterruption = ref(false);
 const interruptionPhase = new URL(location.href).searchParams.get('interrupt');
 const interruptionInput = new URL(location.href).searchParams.get('input');
@@ -201,9 +260,16 @@ onMounted(async () => {
 
 <template>
   <main>
-    <template v-if="underflow || parameters.has('small-overflow')">
+    <template
+      v-if="underflow || parameters.has('small-overflow') || parameters.has('prepend-history')"
+    >
       <button data-testid="finish-initial" @click="initialPending = false">Finish initial</button>
-      <button data-testid="finish-older" @click="olderPending = false">Finish older</button>
+      <button
+        data-testid="finish-older"
+        @click="finishOlderPage ? finishOlderPage() : (olderPending = false)"
+      >
+        Finish older
+      </button>
       <button
         data-testid="fail-older"
         @click="
@@ -226,6 +292,7 @@ onMounted(async () => {
     <button data-testid="restore-cache" @click="restore">Restore cached conversation</button>
     <button data-testid="finish-watch" @click="releaseWatch?.()">Finish Watch</button>
     <button data-testid="grow-content" @click="historyHeight += 240">Append content</button>
+    <button data-testid="shrink-content" @click="historyHeight = 800">Collapse content</button>
     <output data-testid="following">{{ following }}</output>
     <output data-testid="positioning">{{ positioning }}</output>
     <output data-testid="loading">{{ loading }}</output>
@@ -244,13 +311,9 @@ onMounted(async () => {
         :has-turns="true"
         :following="following"
         @scroll-element="scroll.setElement"
-        @scroll="scroll.handleScroll(() => olderRequests++)"
+        @scroll="scroll.handleScroll(requestOlder)"
         @scroll-intent="scroll.stopFollowing"
-        @load-older="
-          olderRequests++;
-          olderPending = true;
-          olderError = '';
-        "
+        @load-older="requestOlder"
         @latest="scroll.scrollToLatest"
         @reload="
           initialRequests++;
@@ -258,6 +321,34 @@ onMounted(async () => {
           initialFailed = false;
         "
       >
+        <ConversationTimeline
+          v-if="parameters.has('progressive-history')"
+          :turns="prependedTurns"
+          :workspace-root="undefined"
+          :loading="false"
+          :initializing="false"
+          :initial-render-version="0"
+          :image-attachments="() => []"
+          :user-input-questions="() => []"
+          :user-input-answer="() => ''"
+          :user-input-submitted="() => false"
+          :plan-continuation="undefined"
+          :node-ready="true"
+          :rewind-enabled="false"
+          :rollback-enabled="false"
+          :capture-render-anchor="scroll.captureRenderAnchor"
+        />
+        <template v-else>
+          <section
+            v-for="turn in prependedTurns"
+            :key="turn.id"
+            class="prepended-page"
+            :data-testid="turn.id"
+            style="min-height: 600px"
+          >
+            {{ turn.id }}
+          </section>
+        </template>
         <div ref="history" class="history" :style="{ height: `${historyHeight}px` }">
           <p>Latest cached message</p>
         </div>

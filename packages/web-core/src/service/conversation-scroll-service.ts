@@ -35,14 +35,20 @@ export function createConversationScrollService() {
     const current = element.value;
     if (current === undefined || positioningInitialConversation.value) return;
     const movedUp = current.scrollTop < lastScrollTop - 1;
+    const movedDown = current.scrollTop > lastScrollTop;
+    const distanceFromBottom = current.scrollHeight - current.scrollTop - current.clientHeight;
     lastScrollTop = current.scrollTop;
-    if (updateLayout(current) && !movedUp) {
+    if (
+      updateLayout(current) &&
+      ((!movedUp && !movedDown) || (following.value && distanceFromBottom <= 1))
+    ) {
       if (following.value) scrollToLatest();
       return;
     }
     following.value =
-      current.scrollHeight - current.scrollTop - current.clientHeight < FOLLOW_THRESHOLD_PX;
+      !movedUp && (following.value || movedDown) && distanceFromBottom < FOLLOW_THRESHOLD_PX;
     if (
+      movedUp &&
       current.scrollTop < LOAD_OLDER_THRESHOLD_PX &&
       current.scrollHeight > current.clientHeight + LOAD_OLDER_THRESHOLD_PX
     )
@@ -57,7 +63,7 @@ export function createConversationScrollService() {
 
   function stopFollowing(): void {
     const current = element.value;
-    if (current === undefined || current.scrollHeight <= current.clientHeight) return;
+    if (current === undefined) return;
     following.value = false;
     positioningInitialConversation.value = false;
   }
@@ -76,6 +82,7 @@ export function createConversationScrollService() {
     const previousHeight = target.scrollHeight;
     const previousTop = target.scrollTop;
     const wasFollowing = followBottom && following.value;
+    const revealPrepend = !following.value && previousTop < LOAD_OLDER_THRESHOLD_PX;
     return () => {
       if (element.value !== target || target.scrollTop !== previousTop) return;
       if (wasFollowing) {
@@ -85,7 +92,9 @@ export function createConversationScrollService() {
         }
         return;
       }
-      target.scrollTop = previousTop + (target.scrollHeight - previousHeight);
+      target.scrollTop = revealPrepend
+        ? previousTop
+        : previousTop + (target.scrollHeight - previousHeight);
       lastScrollTop = target.scrollTop;
       updateLayout(target);
     };

@@ -10,6 +10,125 @@ function scrollElement(values: {
 }
 
 describe('Web session scrolling status', () => {
+  it.each(['capturePrependAnchor', 'captureRenderAnchor'] as const)(
+    'reveals prepended history at the top without chaining through %s',
+    (capture) => {
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: 0, clientHeight: 200 });
+      const state = createConversationScrollService();
+      state.setElement(element);
+      state.stopFollowing();
+      const restore = state[capture]();
+      Object.defineProperty(element, 'scrollHeight', { value: 1600 });
+      restore();
+      expect(element.scrollTop).toBe(0);
+      const loadOlder = vi.fn();
+      state.handleScroll(loadOlder);
+      expect(loadOlder).not.toHaveBeenCalled();
+    }
+  );
+
+  it('honors upward intent when short history becomes scrollable after a prepend', () => {
+    const element = scrollElement({ scrollHeight: 150, scrollTop: 0, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    const restore = state.capturePrependAnchor();
+    Object.defineProperty(element, 'scrollHeight', { value: 750 });
+    restore();
+    state.handleResize();
+    expect(state.following.value).toBe(false);
+    expect(element.scrollTop).toBe(0);
+  });
+
+  it.each([
+    { height: 220, top: 20 },
+    { height: 220, top: 0 },
+    { height: 200, top: 0 }
+  ])(
+    'does not resume following near the bottom without downward movement: %s',
+    ({ height, top }) => {
+      const element = scrollElement({ scrollHeight: height, scrollTop: top, clientHeight: 200 });
+      const state = createConversationScrollService();
+      state.setElement(element);
+      state.stopFollowing();
+      element.scrollTop = 0;
+      state.handleScroll(vi.fn());
+      expect(state.following.value).toBe(false);
+      const restore = state.capturePrependAnchor();
+      Object.defineProperty(element, 'scrollHeight', { value: height + 600 });
+      restore();
+      expect(element.scrollTop).toBe(0);
+    }
+  );
+
+  it('resumes following when the reader scrolls down to the latest message', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 700, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    element.scrollTop = 800;
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(true);
+  });
+
+  it('resumes following when downward scrolling reaches the bottom during a layout change', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 700, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    Object.defineProperty(element, 'scrollHeight', { value: 1200 });
+    element.scrollTop = 1000;
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(true);
+  });
+
+  it.each([
+    { scrollHeight: 500, clientHeight: 200, scrollTop: 300 },
+    { scrollHeight: 1000, clientHeight: 600, scrollTop: 400 }
+  ])(
+    'preserves following when a shrinking scroll range clamps the viewport to the bottom: %s',
+    (layout) => {
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+      const state = createConversationScrollService();
+      state.setElement(element);
+      Object.defineProperty(element, 'scrollHeight', { value: layout.scrollHeight });
+      Object.defineProperty(element, 'clientHeight', { value: layout.clientHeight });
+      element.scrollTop = layout.scrollTop;
+      const loadOlder = vi.fn();
+      state.handleScroll(loadOlder);
+      expect(state.following.value).toBe(true);
+      expect(loadOlder).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not override explicit upward intent when a shrinking range also reaches the bottom', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    Object.defineProperty(element, 'scrollHeight', { value: 500 });
+    element.scrollTop = 300;
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(false);
+  });
+
+  it.each([
+    { following: true, top: 0 },
+    { following: false, top: 300 }
+  ])(
+    'preserves the reading anchor outside an active top-boundary load: %s',
+    ({ following, top }) => {
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: top, clientHeight: 200 });
+      const state = createConversationScrollService();
+      state.setElement(element);
+      state.following.value = following;
+      const restore = state.capturePrependAnchor();
+      Object.defineProperty(element, 'scrollHeight', { value: 1600 });
+      restore();
+      expect(element.scrollTop).toBe(top + 600);
+    }
+  );
+
   it('owns progressive mounting anchor compensation without overriding an intervening user scroll', () => {
     const element = scrollElement({ scrollHeight: 1000, scrollTop: 300, clientHeight: 200 });
     const state = createConversationScrollService();
@@ -80,7 +199,9 @@ describe('Web session scrolling status', () => {
     expect(state.following.value).toBe(true);
     expect(loadOlder).not.toHaveBeenCalled();
 
-    state.setElement(scrollElement({ scrollHeight: 1000, scrollTop: 20, clientHeight: 200 }));
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 300, clientHeight: 200 });
+    state.setElement(element);
+    element.scrollTop = 20;
     state.handleScroll(loadOlder);
     expect(state.following.value).toBe(false);
     expect(loadOlder).toHaveBeenCalledTimes(1);
