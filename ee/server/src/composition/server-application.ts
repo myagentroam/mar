@@ -21,7 +21,11 @@ import { registerNodeRoutes } from '../route/node-routes.js';
 import { registerNodeRegistrationRoute } from '@myagentroam/server-core/node-registration-route';
 import { registerWorkspaceRoutes } from '../route/workspace-routes.js';
 import { registerSessionRunRoutes } from '../route/session-run-routes.js';
-import { runtimeModelPayload } from '@myagentroam/server-core/run-model-payload';
+import { prepareSessionExecutionContext } from '@myagentroam/server-core/session-execution-context';
+import {
+  executionPrepareResponseSchema,
+  type ExecutionPrepareRequest
+} from '@myagentroam/protocol';
 import { registerRunControlRoutes } from '../route/run-control-routes.js';
 import { registerEnvironmentSecretRoutes } from '../route/environment-secret-routes.js';
 import { prepareMysqlDatabase } from '../mysql/connection.js';
@@ -196,8 +200,24 @@ export async function composeServerApplication(
         modelUsage,
         mailNotifications: { send: (...args) => mailNotifications.send(...args) },
         notificationChannels: { send: (...args) => notificationChannels.send(...args) },
-        scheduleAuthorizer: (nodeId, request) =>
-          authorizeBackgroundExecution(nodeId, request, 'SCHEDULE_MODEL_UNAVAILABLE'),
+        scheduleAuthorizer: async (nodeId, request) => {
+          const context = await prepareBackgroundExecution(
+            nodeId,
+            {
+              userId: request.ownerUserId,
+              sessionId: request.sessionId,
+              workspaceId: request.workspaceId,
+              runner: request.runner,
+              modelId: request.modelId
+            },
+            'SCHEDULE_MODEL_UNAVAILABLE'
+          );
+          if (request.executionResources === 1) return context;
+          const { gitConfiguration: _git, ...legacyContext } = context;
+          return legacyContext;
+        },
+        executionPreparer: (nodeId, request) =>
+          prepareBackgroundExecution(nodeId, request, 'EXECUTION_MODEL_UNAVAILABLE'),
         marctlExecutionCredential: (nodeId, request) =>
           userCredentials.deriveExecution({
             ...request,
@@ -302,16 +322,13 @@ export async function composeServerApplication(
       skillFavorites
     );
     constructedMaintenance = maintenance;
-    const authorizeBackgroundExecution = async (
+    const prepareBackgroundExecution = async (
       nodeId: string,
-      request: Omit<
-        import('@myagentroam/protocol').ScheduledRunAuthorizeRequest,
-        'taskId' | 'revision' | 'occurrenceId'
-      >,
+      request: ExecutionPrepareRequest,
       unavailableCode: string
     ) => {
       const allowed = await authorizeNodeRequest(
-        request.ownerUserId,
+        request.userId,
         nodeId,
         'session.message',
         { workspaceId: request.workspaceId, sessionId: request.sessionId },
@@ -320,36 +337,34 @@ export async function composeServerApplication(
       if (!allowed) throw new Error('WORKSPACE_ACCESS_DENIED');
       if (request.runner === 'mar-agent' && request.modelId === null)
         throw new Error(unavailableCode);
-      const modelPayload =
-        request.runner === 'mar-agent'
-          ? await runtimeModelPayload({
-              userId: request.ownerUserId,
-              nodeId,
-              workspaceId: request.workspaceId,
-              sessionId: request.sessionId,
-              selectedModelId: request.modelId!,
-              marAgentModels,
-              marAgentRuntimeModels
+      const prepared = await prepareSessionExecutionContext({
+        user: { userId: request.userId },
+        nodeId,
+        workspaceId: request.workspaceId,
+        serverUrl: publicOrigin,
+        secrets: environmentSecrets,
+        credentials: userCredentials,
+        instructions: personalInstructions,
+        git: personalGit,
+        ...(request.runner !== 'mar-agent'
+          ? {}
+          : {
+              model: {
+                sessionId: request.sessionId,
+                selectedModelId: request.modelId!,
+                marAgentModels,
+                marAgentRuntimeModels
+              }
             })
-          : {};
-      return {
-        usageGrant: modelUsage.grants.issue(nodeId, request.ownerUserId, 'work'),
-        secretEnvironment: {
-          ...(await environmentSecrets.resolve(request.ownerUserId, nodeId, request.workspaceId)),
-          MAR_USERNAME: '',
-          ...(await userCredentials.environment(
-            { userId: request.ownerUserId },
-            publicOrigin,
-            {
-              nodeId,
-              workspaceId: request.workspaceId
-            },
-            { type: 'delegation' }
-          ))
-        },
-        personalInstructions: await personalInstructions.get(request.ownerUserId),
-        ...modelPayload
-      };
+      });
+      const response = executionPrepareResponseSchema.parse({
+        context: {
+          ...prepared,
+          usageGrant: modelUsage.grants.issue(nodeId, request.userId, 'work')
+        }
+      });
+      if ('error' in response) throw new Error('EXECUTION_CONTEXT_INVALID');
+      return response.context;
     };
     const conversationTemplates = new ConversationTemplateService(
       database,

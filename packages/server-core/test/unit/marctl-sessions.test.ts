@@ -1188,6 +1188,26 @@ describe('Workspace-bound marctl agents', () => {
     ).not.toHaveProperty('__marctlOrigin');
   });
 
+  it('routes stop by Session and rejects stale execution or run identifiers', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const send = (input: Record<string, string>) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action: 'network', command: { operation: 'stop', input } }
+      });
+    expect((await send({ agentId: 'target' })).statusCode).toBe(200);
+    expect(requestNode.mock.calls.filter((call) => call[1] === 'agent.network')).toHaveLength(1);
+    expect(requestNode.mock.calls.find((call) => call[1] === 'agent.network')?.[2]).toMatchObject({
+      action: 'stop',
+      input: { agentId: 'target' }
+    });
+    expect((await send({ agentId: 'target', executionId: 'old' })).statusCode).toBe(400);
+    expect((await send({ agentId: 'target', runId: 'old' })).statusCode).toBe(400);
+    expect(requestNode.mock.calls.filter((call) => call[1] === 'agent.network')).toHaveLength(1);
+  });
+
   it('rejects legacy writes with a claimed execution source or parent before Node dispatch', async () => {
     const { app, headers, requestNode } = await fixture(true, true, { executionSource: 'source' });
     for (const payload of [

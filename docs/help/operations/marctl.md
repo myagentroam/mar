@@ -64,7 +64,7 @@ marctl agents schedule get <session-id> --json
 
 `schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Runner。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
-`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
+`view [<session-id>] --json` 只返回状态、当前 Goal 和有界最近活动，不附历史或接受历史分页参数。完整记录通过独立的 `history [<session-id>] --cursor <cursor> --limit <1..100> --json` 按需分页读取；首次读取可省略 cursor。`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
 已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
 
@@ -76,7 +76,7 @@ marctl agents schedule get <session-id> --json
 
 会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。列表按所选范围排序并限量；超出的匹配通过 `truncated` 标记，不提供翻页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
 
-`list` 仅接受 `--scope tree|active`、`--query <标题片段>`、`--limit <1..100>`。有当前会话时默认返回所在协作树，包含空闲会话；独立终端默认 active，显式 tree 需要会话上下文。active 返回当前 Workspace 中运行或睡眠的会话，不按更新时间、Goal 或队列推断。query 在所选范围内按标题过滤，忽略首尾空白、大小写及全角字母等兼容差异，再应用 limit（默认及上限均为 100）。结果仅含 `currentAgentId`（无会话时为 null）、扁平 `sessions` 和 `truncated`；每项仅含 `id`、`parentSessionId`、`title`、`runner`、`status`。无匹配返回空列表，超出 limit 标记截断，无 cursor 或翻页；已知 ID 直接复用。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
+`list` 仅接受 `--scope tree|active`、`--query <标题片段>`、`--limit <1..100>`。有当前会话时默认返回所在协作树，包含空闲会话；独立终端默认 active，显式 tree 需要会话上下文。active 返回当前 Workspace 中运行或睡眠的会话，不按更新时间、Goal 或队列推断。query 在所选范围内按标题过滤，忽略首尾空白、大小写及全角字母等兼容差异，再应用 limit（默认 10、上限 100）。活跃会话优先，其后按最近活动时间倒序。结果仅含 `currentAgentId`（无会话时为 null）、扁平 `sessions` 和 `truncated`；每项仅含 `id`、`parentSessionId`、`title`、`status`。无匹配返回空列表，超出 limit 标记截断，无 cursor 或翻页；已知 ID 直接复用。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
 会话 `status` 只有 `RUNNING`、`IDLE`、`SLEEPING`。SLEEPING 必须来自当前 Run 的真实前台 sleep 等待，不按工具名或 Goal 是否 active 推断；工具 `state` 仍为原有 `IN_PROGRESS`、`COMPLETED` 等生命周期。活动会话尚无新公开动作时返回空动态，不借用上一 Run；IDLE 可保留既有内存中的活动及观察时间。摘要最多 100 个 Unicode 字符，工具名最多 128 个，最新消息最多 300 个；`truncated` 标明内容截断，完整证据仍查 history。
 
@@ -108,7 +108,7 @@ marctl agents prompt clear <session-id> --json
 marctl agents wait <session-id> --run <run-id> --until approval --timeout 5m --json
 marctl agents approval decide <session-id> --run <run-id> --approval <approval-id> --decision approve --json
 marctl agents wait <session-id> --timeout 0ms --json
-marctl agents stop <session-id> --execution <execution-id> --json
+marctl agents stop <session-id> --json
 marctl agents goal get <session-id> --json
 marctl agents goal set <session-id> --message-file objective.txt --json
 marctl agents goal set <session-id> -m 'Finish the review and verify the fix' --json
@@ -131,7 +131,9 @@ Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来�
 
 Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。终端用户直接输入不伪造会话来源。内部来源标记不会出现在消息正文中。
 
-不带 `--run` 的 `wait` 默认等待直接子会话终态 30 秒，`--timeout 0ms` 读取快照；从快照取得的 `executionId` 可用于 `stop --execution`，过期身份不会取消后来的执行，stop 同时清除相应 Goal。`wait --run` 通过既有 Watch 等待指定 Run 或审批，退出时释放观察；超时错误可附最后收到的有界 `progress`，没有观察时省略。无论哪种等待，超时或取消等待都不停止任务。Run 成功仍需核验产物与测试；子会话终态不会自动唤醒父会话的 sleep，需主动等待或读取。
+不带 `--run` 的 `wait` 默认等待直接子会话终态 30 秒，`--timeout 0ms` 读取快照，正数按传入时长等待。`stop <session-id>` 停止目标当前执行并清除 Goal，无需执行 ID；空闲时如实返回 idle，并清除 Goal。`wait --run` 通过既有 Watch 等待指定 Run 或审批，退出时释放观察；超时错误可附最后收到的有界 `progress`，没有观察时省略。无论哪种等待，超时或取消等待都不停止任务。Run 成功仍需核验产物与测试；子会话终态不会自动唤醒父会话的 sleep，需主动等待或读取。
+
+`view` 返回状态、Goal 和有界最近活动，不公开 Run 或 Execution ID。
 
 只有直接子会话的公开更新会被父会话自动收取。向其他会话 `send` 不建立订阅；显式 `wait` 只在本次调用期间监听，不会持续接收其后续更新。
 

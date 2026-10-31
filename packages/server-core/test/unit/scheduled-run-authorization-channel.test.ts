@@ -3,6 +3,63 @@ import { createEnvelope } from '@myagentroam/protocol';
 import * as authorization from '../../src/scheduled-run-authorization-channel.js';
 const { resolveScheduledRunAuthorization } = authorization;
 
+describe('execution preparation channel', () => {
+  const execution = {
+    userId: 7,
+    workspaceId: 'workspace-1',
+    sessionId: 'session-1',
+    runner: 'mar-agent' as const,
+    modelId: 'selected'
+  };
+  it('passes only business identifiers from the authenticated Node to preparation', async () => {
+    const context = { secretEnvironment: { FRESH: 'current-secret' } };
+    const authorize = vi.fn(async () => context);
+    const respond = vi.fn();
+    await authorization.resolveExecutionPreparation({
+      nodeId: 'authenticated-node',
+      envelope: createEnvelope('execution.prepare', execution),
+      isCurrentConnection: () => true,
+      authorize,
+      respond
+    });
+    expect(authorize).toHaveBeenCalledWith('authenticated-node', execution);
+    expect(respond).toHaveBeenCalledWith({ context });
+  });
+  it.each(['revoked', 'replaced', 'malformed'] as const)(
+    'does not release resources for %s execution',
+    async (mode) => {
+      let current = true;
+      const authorize = vi.fn(async () => {
+        if (mode === 'revoked') throw new Error('WORKSPACE_ACCESS_DENIED');
+        current = false;
+        return { secretEnvironment: { FRESH: 'private-secret' } };
+      });
+      const respond = vi.fn();
+      await authorization.resolveExecutionPreparation({
+        nodeId: 'node',
+        envelope: createEnvelope(
+          'execution.prepare',
+          mode === 'malformed'
+            ? { ...execution, secretEnvironment: { OLD: 'do-not-accept' } }
+            : execution
+        ),
+        isCurrentConnection: () => current,
+        authorize,
+        respond
+      });
+      const code =
+        mode === 'revoked'
+          ? 'WORKSPACE_ACCESS_DENIED'
+          : mode === 'replaced'
+            ? 'EXECUTION_SERVER_UNAVAILABLE'
+            : 'EXECUTION_AUTH_REQUEST_INVALID';
+      expect(respond).toHaveBeenCalledWith({ error: expect.objectContaining({ code }) });
+      expect(JSON.stringify(respond.mock.calls)).not.toContain('private-secret');
+      if (mode === 'malformed') expect(authorize).not.toHaveBeenCalled();
+    }
+  );
+});
+
 const request = {
   taskId: 'task-1',
   revision: 1,

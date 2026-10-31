@@ -3,7 +3,10 @@ import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
 import { parseMessageAttachments } from '../session/attachments.js';
-import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
+import type {
+  ContinuousRunCoordinator,
+  PreparedExecutionInput
+} from './continuous-run-coordinator.js';
 import type { GoalRuntime, GoalState } from './goal-runtime.js';
 import type { SessionMessageService } from '../session/session-message-service.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
@@ -14,6 +17,12 @@ import {
   type RestartSession,
   type RestartMessage
 } from './planned-restart-handoff.js';
+
+export type PreparedRestartExecution = RestartExecution &
+  Pick<
+    PreparedExecutionInput,
+    'executionContext' | 'secretEnvironment' | 'personalInstructions' | 'usageGrant'
+  >;
 
 interface Options {
   readonly runtime: NodeRuntimeState;
@@ -26,7 +35,11 @@ interface Options {
     entry: RestartSession,
     message: RestartMessage
   ) => Promise<'missing' | 'completed' | 'interrupted' | 'paused'>;
-  readonly withGrant: (context: RestartExecution, work: () => Promise<unknown>) => Promise<unknown>;
+  readonly withExecution: (
+    session: NodeAgentSession,
+    checkpoint: RestartExecution,
+    work: (context: PreparedRestartExecution) => Promise<unknown>
+  ) => Promise<unknown>;
   readonly goalReference: (sessionId: string) => {
     readonly id: string;
     readonly revision: number;
@@ -96,8 +109,7 @@ export class RestartSessionRestorer {
         closeInput: '/goal --clear'
       });
     const submit = async (input: RestartMessage, content = input.content) => {
-      const context = execution(input.execution);
-      await this.options.withGrant(context, () =>
+      await this.options.withExecution(session, execution(input.execution), (context) =>
         this.options.messages.restoreQueued(
           {
             sessionId: session.id,
@@ -143,8 +155,7 @@ export class RestartSessionRestorer {
       }
       for (const input of entry.queue) await submit(input);
       if (entry.goal?.goal.status === 'active') {
-        const context = execution(entry.execution);
-        await this.options.withGrant(context, () =>
+        await this.options.withExecution(session, execution(entry.execution), (context) =>
           this.options.messages.submitGoal({
             sessionId: session.id,
             kind: 'continue',

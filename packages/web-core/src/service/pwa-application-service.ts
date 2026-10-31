@@ -99,8 +99,16 @@ export function createPwaApplicationService(
   }
 
   function observeWorker(worker: ServiceWorker | null): void {
-    if (worker === null || observedWorkers.has(worker)) return;
-    const changed = () => backgroundCheck(false);
+    if (worker === null || worker.state === 'redundant' || observedWorkers.has(worker)) return;
+    const changed = () => {
+      if (worker.state === 'redundant') {
+        const remove = observedWorkers.get(worker);
+        if (remove === undefined) return;
+        remove();
+        observedWorkers.delete(worker);
+      }
+      backgroundCheck(false);
+    };
     worker.addEventListener('statechange', changed);
     observedWorkers.set(worker, () => worker.removeEventListener('statechange', changed));
   }

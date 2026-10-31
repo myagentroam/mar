@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/server-core",
-  "version": "0.11.51",
+  "version": "0.11.52",
   "private": true,
   "type": "module",
   "files": [
@@ -224,6 +224,11 @@
       "development": "./src/session-input-service.ts",
       "types": "./dist/session-input-service.d.ts",
       "import": "./dist/session-input-service.js"
+    },
+    "./session-execution-context": {
+      "development": "./src/session-execution-context.ts",
+      "types": "./dist/session-execution-context.d.ts",
+      "import": "./dist/session-execution-context.js"
     },
     "./session-channel-service": {
       "development": "./src/session-channel-service.ts",

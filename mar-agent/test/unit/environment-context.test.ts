@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +17,7 @@ import {
 } from '../../src/runtime/context/environment.js';
 import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { effectiveInstructions } from './support/model-context.js';
 
 const state = {
   platform: 'linux',
@@ -145,6 +146,49 @@ class RecordingAdapter implements ModelAdapter {
 }
 
 describe('environment context persistence', () => {
+  it.each([false, true])(
+    'uses Host MAR Home for worktree guidance without exposing mapped paths (mapped=%s)',
+    async (mapped) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-worktree-guidance-'));
+      roots.push(home);
+      const workspace = join(home, 'workspace');
+      await mkdir(workspace);
+      const adapter = new RecordingAdapter();
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model],
+          ...(mapped
+            ? { workspaceMapping: { logicalPath: '/workspace', physicalPath: workspace } }
+            : {})
+        },
+        () => adapter
+      );
+      try {
+        const session = await agent.createSession({ workspace, title: 'Worktree guidance' });
+        expect((await session.run({ prompt: 'Inspect the project.' }).result()).status).toBe(
+          'completed'
+        );
+        const request = adapter.requests[0]!;
+        const worktreeRoot = join(home, '.mar', 'worktrees');
+        const instructions = effectiveInstructions(request);
+        if (mapped) {
+          expect(instructions).not.toContain(worktreeRoot);
+          expect(instructions).not.toContain('When creating a Git worktree');
+        } else {
+          expect(instructions).toContain(
+            `When creating a Git worktree, prefer a unique directory under the JSON-encoded path ${JSON.stringify(worktreeRoot)} unless the user specifies another location.`
+          );
+          expect(request.system).not.toContain(worktreeRoot);
+        }
+        await expect(access(worktreeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await agent.dispose();
+      }
+    }
+  );
+
   it('refreshes the environment date across days without adding a precise time reminder', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-28T00:30:00.000Z'));
@@ -324,6 +368,9 @@ describe('environment context persistence', () => {
       adapter.requests[2]?.messages.filter((m) => m.contextKind === 'environment')
     ).toHaveLength(1);
     expect(adapter.requests[2]?.messages[0]).toEqual(adapter.requests[0]?.messages[0]);
+    expect(effectiveInstructions(adapter.requests[2]!)).toContain(
+      JSON.stringify(join(home, '.mar', 'worktrees'))
+    );
     agent = await create('sh');
     try {
       const session = await agent.openSession(id);
@@ -345,6 +392,9 @@ describe('environment context persistence', () => {
       expect(restored).toHaveLength(1);
       expect(restored[0]?.content).toContain(`<cwd>${workspace}</cwd>`);
       expect(restored[0]?.content).toContain('<shell>sh</shell>');
+      expect(effectiveInstructions(adapter.requests.at(-1)!)).toContain(
+        JSON.stringify(join(home, '.mar', 'worktrees'))
+      );
     } finally {
       await agent.dispose();
     }

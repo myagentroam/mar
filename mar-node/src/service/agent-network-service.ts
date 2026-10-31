@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AgentError } from '@myagentroam/agent';
 import type { NodeAgentSession } from '../session/contracts.js';
 import { isPlainRecord } from '../util/records.js';
 import { safeErrorCode } from '../util/safe-error.js';
@@ -54,6 +55,7 @@ interface AgentNetworkServiceOptions {
   readonly children: (actor: AgentNetworkActor) => Promise<readonly NodeAgentSession[]>;
   /** Ensure the caller's automatic channel exists, only for a verified direct child. */
   readonly observe: (actor: AgentNetworkActor, session: NodeAgentSession) => void;
+  /** Undefined means the Session is idle with no retained execution to wait for. */
   readonly freezeExecution: (session: NodeAgentSession) => AgentWaitTarget | undefined;
   readonly start: (
     actor: AgentNetworkActor,
@@ -113,20 +115,13 @@ interface AgentNetworkServiceOptions {
       readonly decision: 'approve' | 'reject';
     }
   ) => Promise<void>;
-  readonly stop: (
-    actor: AgentNetworkActor,
-    session: NodeAgentSession,
-    executionId: string
-  ) => unknown;
+  readonly stop: (actor: AgentNetworkActor, session: NodeAgentSession) => unknown;
   readonly goal: (sessionId: string) => unknown;
   readonly list: (actor: AgentNetworkActor, input: AgentNetworkListInput) => Promise<unknown>;
   readonly view: (
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly includeHistory?: boolean;
-      readonly limit?: number;
-      readonly cursor?: string;
     },
     onResolved?: ResolvedTargets
   ) => Promise<unknown>;
@@ -140,16 +135,19 @@ export class AgentNetworkService {
     return this.options.list(actor, input);
   }
 
-  view(
+  async view(
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly includeHistory?: boolean;
-      readonly limit?: number;
-      readonly cursor?: string;
     },
     onResolved?: ResolvedTargets
   ): Promise<unknown> {
+    if (
+      typeof input.agentId !== 'string' ||
+      !input.agentId.trim() ||
+      Object.keys(input).some((key) => key !== 'agentId')
+    )
+      throw new AgentError('AGENT_VIEW_INVALID', 'Agent view accepts only a target agent ID.');
     return this.options.view(actor, input, onResolved);
   }
 
@@ -184,7 +182,7 @@ export class AgentNetworkService {
       !validOptionalString(input.parentSessionId) ||
       !validOptionalString(input.clientMessageId)
     )
-      throw new Error('AGENT_START_INVALID');
+      throw new AgentError('AGENT_START_INVALID', 'The agent start input is invalid.');
     const { goal: _goal, ...start } = input;
     const created = await this.options.start(
       actor,
@@ -241,12 +239,12 @@ export class AgentNetworkService {
           !input.approval.approvalId ||
           !['approve', 'reject'].includes(input.approval.decision)))
     )
-      throw new Error('AGENT_SEND_INVALID');
+      throw new AgentError('AGENT_SEND_INVALID', 'The agent send input is invalid.');
     if (
       input.deliveryIntent !== undefined &&
       !['SEND', 'QUEUE', 'REPLACE_CURRENT'].includes(input.deliveryIntent)
     )
-      throw new Error('AGENT_SEND_INVALID');
+      throw new AgentError('AGENT_SEND_INVALID', 'The message delivery intent is invalid.');
     const hasMessage = !!content.trim();
     const session = await this.options.target(actor, input.agentId);
     signal?.throwIfAborted();
@@ -360,27 +358,27 @@ export class AgentNetworkService {
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly executionId: string;
     },
     onResolved?: ResolvedTargets
   ): Promise<unknown> {
     if (
       typeof input.agentId !== 'string' ||
-      !input.agentId ||
-      typeof input.executionId !== 'string' ||
-      !input.executionId
+      !input.agentId.trim() ||
+      Object.keys(input).some((key) => key !== 'agentId')
     )
-      throw new Error('AGENT_STOP_INVALID');
+      throw new AgentError('AGENT_STOP_INVALID', 'Agent stop accepts only a target agent ID.');
     const session = await this.options.target(actor, input.agentId);
     await this.options.authorize(actor, session, 'stop');
     await onResolved?.([session]);
     const goalBefore = this.options.goal(session.id);
     try {
-      const result = this.options.stop(actor, session, input.executionId);
+      const result = this.options.stop(actor, session);
       return {
         agentId: session.id,
-        executionId: input.executionId,
-        cancel: { status: 'accepted', result },
+        cancel: {
+          status: isPlainRecord(result) && result.status === 'IDLE' ? 'idle' : 'accepted',
+          result
+        },
         goal: {
           status:
             goalBefore != null && this.options.goal(session.id) == null ? 'cleared' : 'unchanged'
@@ -388,11 +386,10 @@ export class AgentNetworkService {
       };
     } catch (error) {
       const code = safeErrorCode(error, 'AGENT_STOP_FAILED');
-      if (code === 'RUN_EXECUTION_STALE' || code === 'RUN_OWNED_BY_ANOTHER_USER') throw error;
+      if (code === 'RUN_OWNED_BY_ANOTHER_USER') throw error;
       const current = this.options.goal(session.id);
       return {
         agentId: session.id,
-        executionId: input.executionId,
         cancel: { status: 'unknown', code },
         goal: { status: goalBefore != null && current == null ? 'cleared' : 'unchanged' }
       };
@@ -424,7 +421,7 @@ export class AgentNetworkService {
           input.agentIds.some((id) => typeof id !== 'string' || !id) ||
           new Set(input.agentIds).size !== input.agentIds.length))
     )
-      throw new Error('AGENT_WAIT_INVALID');
+      throw new AgentError('AGENT_WAIT_INVALID', 'The agent wait target selection is invalid.');
     input.signal?.throwIfAborted();
     const ids = input.agentId === undefined ? input.agentIds : [input.agentId];
     let sessions: readonly NodeAgentSession[];
@@ -436,7 +433,22 @@ export class AgentNetworkService {
       const target = this.options.freezeExecution(session);
       return target === undefined ? [] : [target];
     });
-    if (ids && targets.length !== sessions.length) throw new Error('AGENT_EXECUTION_NOT_FOUND');
+    if (!targets.length || (ids && targets.length !== sessions.length)) {
+      if (!sessions.length)
+        throw new AgentError('AGENT_WAIT_NO_TARGETS', 'There are no child agents to wait for.');
+      const idle = ids
+        ? sessions.filter((session) => !targets.some((target) => target.agentId === session.id))
+        : [...sessions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 1);
+      const agentIds = idle.map((session) => session.id);
+      const message = 'Agent is idle; there is no execution to wait for.';
+      throw new AgentError(
+        'AGENT_IDLE',
+        input.agentId === undefined
+          ? `${message} Idle agent IDs: ${agentIds.join(', ')}.`
+          : message,
+        { details: { agentIds, status: 'IDLE' } }
+      );
+    }
     if (!ids) {
       const active = targets.filter(
         (target) =>
@@ -455,7 +467,6 @@ export class AgentNetworkService {
         targets = targets.filter((target) => target.agentId === latest?.id);
       }
     }
-    if (!targets.length) throw new Error('AGENT_EXECUTION_NOT_FOUND');
     const selected = new Set(targets.map((target) => target.agentId));
     await onResolved?.(
       targets.map((target) => sessions.find((session) => session.id === target.agentId)!)
@@ -467,7 +478,11 @@ export class AgentNetworkService {
         directChildren.add(session.id);
       }
     const parent = this.options.observations.get(actor.observationId ?? actor.sessionId);
-    if (directChildren.size && !parent) throw new Error('AGENT_OBSERVATION_UNAVAILABLE');
+    if (directChildren.size && !parent)
+      throw new AgentError(
+        'AGENT_OBSERVATION_UNAVAILABLE',
+        'The agent observation channel is unavailable.'
+      );
     const otherTargets = targets.filter((target) => !directChildren.has(target.agentId));
     const temporary =
       otherTargets.length && input.waitMs !== 0

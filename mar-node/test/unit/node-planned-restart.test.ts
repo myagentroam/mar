@@ -256,10 +256,41 @@ describe('Node CLI orderly restart with the real SDK', () => {
         codeMode: false,
         enabled: true
       };
+      const freshModel = {
+        ...model,
+        name: 'Execution-prepare model',
+        modelId: 'fresh-after-restart'
+      };
+      const initialGitConfiguration = {
+        credentials: [
+          {
+            id: 'initial-git-credential',
+            name: 'Initial HTTPS Git credential',
+            protocol: 'HTTPS' as const,
+            host: 'git.example.test',
+            port: 443,
+            pathPrefix: '',
+            username: 'mar-test-user',
+            commitName: '',
+            commitEmail: '',
+            secret: 'initial-git-secret'
+          }
+        ]
+      };
+      const freshGitConfiguration = {
+        credentials: [
+          {
+            ...initialGitConfiguration.credentials[0]!,
+            id: 'fresh-git-credential',
+            name: 'Fresh HTTPS Git credential',
+            secret: 'fresh-git-secret'
+          }
+        ]
+      };
       const sockets = new WebSocketServer({ server: http, path: '/api/node/connect' });
       let control: WebSocket | undefined;
       let connections = 0;
-      let authorizations = 0;
+      const executionPreparations: Array<Record<string, unknown>> = [];
       const watchEvents: unknown[] = [];
       const replies = new Map<string, (value: TestOperationResponse) => void>();
       sockets.on('connection', (socket) => {
@@ -274,8 +305,29 @@ describe('Node CLI orderly restart with the real SDK', () => {
             replies.delete(envelope.replyTo);
           } else if (envelope.type === 'watch.event') {
             watchEvents.push(envelope.payload);
-          } else if (envelope.type === 'restart.authorize') {
-            authorizations++;
+          } else if (envelope.type === 'execution.prepare') {
+            executionPreparations.push(envelope.payload as Record<string, unknown>);
+            socket.send(
+              JSON.stringify(
+                createEnvelope(
+                  'execution.prepare.response',
+                  {
+                    context: {
+                      secretEnvironment: { SYNTHETIC_TOKEN: 'after-restart' },
+                      personalInstructions: 'FRESH_EXECUTION_PREPARE_INSTRUCTIONS',
+                      usageGrant: {
+                        scopeId: '00000000-0000-4000-8000-000000000099',
+                        token: 'fresh-execution-prepare-grant'
+                      },
+                      gitConfiguration: freshGitConfiguration,
+                      marAgentModel: freshModel,
+                      marAgentModels: [freshModel]
+                    }
+                  },
+                  { replyTo: envelope.id }
+                )
+              )
+            );
           }
         });
       });
@@ -392,7 +444,12 @@ describe('Node CLI orderly restart with the real SDK', () => {
           access: 'full-access',
           marAgentModel: model,
           marAgentModels: [model],
-          secretEnvironment: { SYNTHETIC_TOKEN: 'before-restart' }
+          secretEnvironment: {
+            SYNTHETIC_TOKEN: 'before-restart',
+            MAR_GIT_TOKEN: 'stale-git-lease-token',
+            MAR_GIT_ENDPOINT: 'http://stale-git-lease.invalid'
+          },
+          gitConfiguration: initialGitConfiguration
         });
         const sessionId = started.session.id;
         await vi.waitFor(() => expect(requests).toHaveLength(1), { timeout: 10000 });
@@ -403,7 +460,8 @@ describe('Node CLI orderly restart with the real SDK', () => {
             content: 'accepted native guidance',
             clientMessageId: 'native-guidance',
             marAgentModel: model,
-            marAgentModels: [model]
+            marAgentModels: [model],
+            gitConfiguration: initialGitConfiguration
           });
           expect(accepted.run?.id).toBe(started.run?.id);
           const history = await operation('session.turns.list', { sessionId, limit: 10 });
@@ -415,12 +473,39 @@ describe('Node CLI orderly restart with the real SDK', () => {
           content: 'queued followup',
           clientMessageId: 'queued-input',
           marAgentModel: model,
-          marAgentModels: [model]
+          marAgentModels: [model],
+          gitConfiguration: initialGitConfiguration
         });
+        const priorPreparations = executionPreparations.length;
         await stop('SIGTERM');
         const saved = await readFile(join(data, 'planned-restart-handoff.json'), 'utf8');
         expect(saved).not.toContain('before-restart');
+        expect(saved).not.toContain('synthetic-key');
+        expect(saved).not.toContain('fresh-execution-prepare-grant');
+        expect(saved).not.toContain('initial-git-secret');
+        expect(saved).not.toContain('fresh-git-secret');
+        expect(saved).not.toContain('stale-git-lease-token');
+        expect(saved).not.toContain('stale-git-lease.invalid');
+        expect(saved).not.toContain('MAR_GIT_TOKEN');
+        expect(saved).not.toContain('MAR_GIT_ENDPOINT');
         const handoff = plannedRestartSchema.parse(openRestartState(saved, 'synthetic-credential'));
+        const openedText = JSON.stringify(handoff);
+        expect(openedText).not.toContain('before-restart');
+        expect(openedText).not.toContain('synthetic-key');
+        expect(openedText).not.toContain('after-restart');
+        expect(openedText).not.toContain('fresh-execution-prepare-grant');
+        expect(openedText).not.toContain('initial-git-secret');
+        expect(openedText).not.toContain('fresh-git-secret');
+        expect(openedText).not.toContain('stale-git-lease-token');
+        expect(openedText).not.toContain('stale-git-lease.invalid');
+        expect(openedText).not.toContain('MAR_GIT_TOKEN');
+        expect(openedText).not.toContain('MAR_GIT_ENDPOINT');
+        expect(openedText).not.toContain('SYNTHETIC_TOKEN');
+        expect(openedText).not.toContain('gitConfiguration');
+        expect(openedText).not.toContain('secretEnvironment');
+        expect(openedText).not.toContain('personalInstructions');
+        expect(openedText).not.toContain('usageGrant');
+        expect(openedText).not.toContain('executionContext');
         const savedSession = handoff.sessions[0]!;
         expect(savedSession.session.id).toBe(sessionId);
         expect(savedSession.queue).toMatchObject([{ clientMessageId: 'queued-input' }]);
@@ -433,16 +518,38 @@ describe('Node CLI orderly restart with the real SDK', () => {
           });
         const originalExecution =
           handoff.sessions[0]!.current?.execution ?? handoff.sessions[0]!.execution;
-        expect(originalExecution?.secretEnvironment).toMatchObject({
-          SYNTHETIC_TOKEN: 'before-restart'
+        expect(originalExecution).toMatchObject({
+          configuration: { modelId: 'restart-model', access: 'full-access' },
+          initiatedByUserId: 7
         });
+        expect(originalExecution).not.toHaveProperty('secretEnvironment');
+        expect(originalExecution).not.toHaveProperty('executionContext');
         hold = false;
         await start();
         const resumedRequests = mode === 'goal' ? 4 : 3;
         await vi.waitFor(() => expect(requests, logs).toHaveLength(resumedRequests), {
           timeout: 15000
         });
-        expect(authorizations).toBe(0);
+        const resumedPreparations = executionPreparations.slice(priorPreparations);
+        expect(resumedPreparations.length).toBeGreaterThanOrEqual(2);
+        expect(
+          resumedPreparations.every(
+            (preparation) =>
+              preparation['userId'] === 7 &&
+              preparation['sessionId'] === sessionId &&
+              preparation['workspaceId'] === workspaceId &&
+              preparation['runner'] === 'mar-agent' &&
+              preparation['modelId'] === 'restart-model'
+          )
+        ).toBe(true);
+        expect(
+          requests
+            .slice(1)
+            .every(
+              (request) => (request as { readonly model?: unknown }).model === 'fresh-after-restart'
+            )
+        ).toBe(true);
+        expect(JSON.stringify(requests.slice(1))).toContain('FRESH_EXECUTION_PREPARE_INSTRUCTIONS');
         expect(JSON.stringify(requests[1])).toContain('system restart');
         if (mode === 'native-steer')
           expect(JSON.stringify(requests[1]).split('accepted native guidance')).toHaveLength(2);
@@ -515,7 +622,7 @@ describe('Node CLI orderly restart with the real SDK', () => {
         await stop('SIGKILL');
         await start();
         await operation('workspace.list');
-        expect(authorizations).toBe(0);
+        expect(executionPreparations.length).toBeGreaterThanOrEqual(2);
         await expect(readFile(join(data, 'planned-restart-handoff.json'))).rejects.toMatchObject({
           code: 'ENOENT'
         });

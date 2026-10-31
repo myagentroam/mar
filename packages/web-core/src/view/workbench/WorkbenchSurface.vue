@@ -32,7 +32,7 @@ import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
-import WorkspaceSessionTreePopover from '../../view/workspace/WorkspaceSessionTreePopover.vue';
+import WorkspaceSessionTreeButton from '../../view/workspace/WorkspaceSessionTreeButton.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
 import ConversationHeader from '../../view/conversation/ConversationHeader.vue';
@@ -429,7 +429,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 @open-surface="page.openMobileWorkspaceSurface"
               >
                 <template #tree="{ sessionId }">
-                  <WorkspaceSessionTreePopover
+                  <WorkspaceSessionTreeButton
                     v-if="page.workspaceTarget"
                     :key="sessionId"
                     :node-id="page.workspaceTarget.nodeId"

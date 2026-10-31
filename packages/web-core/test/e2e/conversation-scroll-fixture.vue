@@ -20,6 +20,33 @@ const run = createRunService(selectedSessionId);
 const turns = conversation.turns;
 const history = ref<HTMLElement>();
 const parameters = new URL(location.href).searchParams;
+const timelineHistory = parameters.has('timeline-history');
+const renderingHistory = parameters.has('rendering-history');
+function loadTimelineHistory(): void {
+  conversation.projection.restoreWindow(
+    Array.from({ length: 3 }, (_, index) => ({
+      id: `current-${index}`,
+      sessionId: selectedSessionId.value!,
+      runId: null,
+      status: 'SUCCEEDED',
+      items: Array.from({ length: renderingHistory ? 200 : 1 }, (_, itemIndex) => ({
+        id: `current-message-${index}-${itemIndex}`,
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: {
+          text: renderingHistory
+            ? `Current message ${index}, item ${itemIndex}`
+            : Array.from(
+                { length: 24 },
+                (_, line) => `Current message ${index}, line ${line}`
+              ).join('\n\n')
+        }
+      }))
+    })),
+    'older'
+  );
+}
+if (timelineHistory && !renderingHistory) loadTimelineHistory();
 const underflow = parameters.has('underflow');
 const historyHeight = ref(underflow ? 80 : 4000);
 const initialPending = ref(underflow);
@@ -45,7 +72,8 @@ const paging = createWorkbenchConversationPagingService({
   recentSegmentWindowSize: 15,
   replaceRecent: () => undefined,
   mergeOlderPage: (page) => {
-    prependedTurns.value = [...page.turns, ...prependedTurns.value];
+    if (timelineHistory) conversation.projection.mergeOlderPage(page);
+    else prependedTurns.value = [...page.turns, ...prependedTurns.value];
     nextCursor.value = page.nextCursor;
   },
   recoverWindow: (page) => {
@@ -297,6 +325,13 @@ onMounted(async () => {
       </button>
       <button data-testid="fail-older" @click="failOlder">Fail older</button>
       <button
+        v-if="renderingHistory"
+        data-testid="load-timeline-history"
+        @click="loadTimelineHistory"
+      >
+        Load timeline history
+      </button>
+      <button
         data-testid="next-context"
         @click="
           contextKey++;
@@ -327,7 +362,7 @@ onMounted(async () => {
         :older-error="
           parameters.has('prepend-history') ? paging.olderHistoryError.value : olderError
         "
-        :has-turns="true"
+        :has-turns="timelineHistory ? turns.length > 0 : true"
         :following="following"
         @scroll-element="scroll.setElement"
         @scroll="scroll.handleScroll(requestOlder)"
@@ -341,8 +376,8 @@ onMounted(async () => {
         "
       >
         <ConversationTimeline
-          v-if="parameters.has('progressive-history')"
-          :turns="prependedTurns"
+          v-if="parameters.has('progressive-history') || timelineHistory"
+          :turns="timelineHistory ? turns : prependedTurns"
           :workspace-root="undefined"
           :loading="false"
           :initializing="false"
@@ -368,7 +403,12 @@ onMounted(async () => {
             {{ turn.id }}
           </section>
         </template>
-        <div ref="history" class="history" :style="{ height: `${historyHeight}px` }">
+        <div
+          v-if="!timelineHistory"
+          ref="history"
+          class="history"
+          :style="{ height: `${historyHeight}px` }"
+        >
           <p>Latest cached message</p>
         </div>
       </ConversationScroll>

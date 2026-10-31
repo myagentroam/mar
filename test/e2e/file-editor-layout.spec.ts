@@ -3,7 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
-  fixture = await startCustomThemeFixture();
+  fixture = await startCustomThemeFixture('test/e2e/support/file-editor-layout.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
@@ -98,6 +98,78 @@ test('Working-tree Diff keeps its minimap inside the content inset across viewpo
 });
 
 for (const theme of ['light', 'dark']) {
+  test(`Text selections stand out above same-word matches and the current line in ${theme} theme`, async ({
+    page
+  }, testInfo) => {
+    await page.goto(`${fixture.url}file-editor-layout.html?text=code&draft=1&theme=${theme}`);
+    const content = page.locator('.cm-content');
+    await expect(content).toBeVisible();
+    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await content.fill('const example = 1;\nconsole.log(example);\nexample;');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await content
+        .locator('.cm-line')
+        .last()
+        .dblclick({ position: { x: 22, y: 8 } });
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+        .toBe('example');
+      await expect(page.locator('.cm-selectionMatch')).toHaveCount(2);
+      await expect(page.locator('.cm-selectionBackground').first()).toBeVisible();
+      await expect(page.locator('.cm-activeLine')).toBeVisible();
+      const hierarchy = await page.locator('.code-file-editor').evaluate((editor) => {
+        const selection = editor.querySelector('.cm-selectionBackground')!;
+        const line = editor.querySelector('.cm-activeLine')!;
+        const match = editor.querySelector('.cm-selectionMatch')!;
+        const background = getComputedStyle(editor.querySelector('.cm-editor')!).backgroundColor;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        const luminance = (colors: string[]) => {
+          context.clearRect(0, 0, 1, 1);
+          for (const color of colors) {
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+          }
+          const channels = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map((value) => {
+            const channel = value / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        const lineBackground = getComputedStyle(line).backgroundColor;
+        const base = luminance([background, lineBackground]);
+        const contrast = (value: number) =>
+          (Math.max(base, value) + 0.05) / (Math.min(base, value) + 0.05);
+        return {
+          selection: contrast(
+            luminance([background, getComputedStyle(selection).backgroundColor, lineBackground])
+          ),
+          match: contrast(luminance([background, getComputedStyle(match).backgroundColor])),
+          matchColor: getComputedStyle(match).color,
+          textColor: getComputedStyle(editor.querySelector('.cm-content')!).color,
+          matchOutline: getComputedStyle(match).outlineStyle
+        };
+      });
+      expect(hierarchy.selection).toBeGreaterThan(1.5);
+      expect(hierarchy.match).toBeLessThan(hierarchy.selection);
+      expect(hierarchy.matchColor).toBe(hierarchy.textColor);
+      expect(hierarchy.matchOutline).toBe('solid');
+      await page.screenshot({
+        path: testInfo.outputPath(`editor-highlights-${theme}-${width}.png`)
+      });
+    }
+    const selection = page.locator('.cm-selectionBackground').first();
+    const before = await selection.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await page
+      .locator('html')
+      .evaluate((element) => element.style.setProperty('--mar-color-brand', '#805ad5'));
+    await expect
+      .poll(() => selection.evaluate((element) => getComputedStyle(element).backgroundColor))
+      .not.toBe(before);
+  });
+
   test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
     browser
   }, testInfo) => {

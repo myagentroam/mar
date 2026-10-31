@@ -7,7 +7,7 @@ const commands = {
   list: ['scope', 'query', 'limit'],
   graph: ['limit'],
   show: [],
-  view: ['cursor', 'limit', 'history'],
+  view: [],
   history: ['cursor', 'limit'],
   start: [
     'runner',
@@ -42,7 +42,7 @@ const commands = {
     'approval',
     'decision'
   ],
-  stop: ['execution'],
+  stop: [],
   'goal.get': [],
   'goal.set': ['message', 'message-file'],
   'goal.clear': [],
@@ -57,7 +57,6 @@ const fieldNames = {
   run: 'runId',
   approval: 'approvalId',
   timeout: 'timeoutMs',
-  execution: 'executionId',
   'wait-for': 'waitFor',
   'clear-goal': 'clearGoal'
 };
@@ -112,11 +111,8 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       args[key] = true;
       continue;
     }
-    if (
-      (flag === '--clear-goal' && ['start', 'send'].includes(action)) ||
-      (flag === '--history' && action === 'view')
-    ) {
-      const key = flag === '--history' ? 'history' : 'clearGoal';
+    if (flag === '--clear-goal' && ['start', 'send'].includes(action)) {
+      const key = 'clearGoal';
       if (Object.hasOwn(args, key)) throw invalid();
       args[key] = true;
       continue;
@@ -180,7 +176,6 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     !['mar-agent', 'codex', 'claude-code', 'opencode'].includes(args.runner)
   )
     throw invalid();
-  if (action === 'stop' && !args.executionId) throw invalid();
   if (action === 'wait' && args.sessionId && args.agentIds?.length) throw invalid();
   if (
     args.until !== undefined &&

@@ -5,6 +5,7 @@ import { NodeDatabase } from '../../src/database.js';
 import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import {
+  agentNetworkSessionView,
   marctlSessionDetail,
   marctlSessionProgress,
   marctlSessionSummary,
@@ -84,6 +85,9 @@ describe('bounded marctl Session views', () => {
     );
     expect(JSON.stringify(value)).not.toContain('DO_NOT_INCLUDE');
     expect(JSON.stringify(value)).not.toContain(execution.id);
+    expect(agentNetworkSessionView(runtime, session, 0).pendingApprovals[0]).not.toHaveProperty(
+      'runId'
+    );
     runtime.decideApproval(approval.id, 'REJECTED');
     expect(detail().pendingApprovals).toEqual([]);
     const expired = runtime.createApproval({
@@ -147,12 +151,12 @@ describe('bounded marctl Session views', () => {
   });
 
   it('keeps a strict whitelist and bounded Unicode messages and tools without raw bodies', () => {
-    const { runtime, run, emit, detail, summary } = fixture();
+    const { runtime, session, run, emit, summary } = fixture();
+    const detail = () => agentNetworkSessionView(runtime, session, 0);
     expect(detail()).toMatchObject({
       latestMessage: null,
       recentTools: [],
-      status: 'RUNNING',
-      runId: run.id
+      status: 'RUNNING'
     });
     expect(marctlSessionProgress(runtime, 'not-loaded')).toMatchObject({
       status: 'IDLE',
@@ -177,7 +181,6 @@ describe('bounded marctl Session views', () => {
         'title',
         'runner',
         'status',
-        'runId',
         'modelId',
         'effort',
         'queuedCount',
@@ -190,7 +193,15 @@ describe('bounded marctl Session views', () => {
     expect(Object.keys(summary()).sort()).toEqual(
       ['id', 'title', 'runner', 'status', 'runId', 'latestActivity'].sort()
     );
-    expect(value.latestMessage).toMatchObject({ runId: run.id, truncated: true, at: 1_100 });
+    const cliDetail = marctlSessionDetail(runtime, session, 0);
+    expect(Object.keys(cliDetail).sort()).toEqual([...Object.keys(value), 'runId'].sort());
+    expect(cliDetail.runId).toBe(run.id);
+    expect(cliDetail.latestMessage).toMatchObject({ runId: run.id });
+    expect(value.latestMessage).toMatchObject({ truncated: true, at: 1_100 });
+    expect(value).not.toHaveProperty('runId');
+    expect(value.latestMessage).not.toHaveProperty('runId');
+    expect(value.recentTools.every((tool) => !('runId' in tool))).toBe(true);
+    expect(value.pendingApprovals.every((approval) => !('runId' in approval))).toBe(true);
     expect([...value.latestMessage!.text]).toHaveLength(300);
     expect(value.recentTools).toHaveLength(3);
     expect([...value.recentTools[0]!.name]).toHaveLength(128);

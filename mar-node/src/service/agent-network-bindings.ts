@@ -2,6 +2,7 @@ import {
   auditConversationReceiptSchema,
   marAgentRuntimeModelConfigurationSchema
 } from '@myagentroam/protocol';
+import { AgentError } from '@myagentroam/agent';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { resolvedPersonalInstructions } from '../runner/personal-instructions.js';
 import type { NodeDatabase } from '../database.js';
@@ -32,7 +33,7 @@ export function actorForAuthenticatedTerminal(
   return authenticated;
 }
 
-import { marctlSessionDetail } from './session-recent-activity.js';
+import { agentNetworkSessionView } from './session-recent-activity.js';
 import { listAgentNetworkSessions } from './agent-network-list.js';
 
 interface Bindings {
@@ -49,18 +50,21 @@ interface Bindings {
   readonly observations: AgentNetworkObservations;
   readonly ensureObservations: (actor: AgentNetworkActor) => ParentObservations;
   readonly withGrant: <T>(actor: AgentNetworkActor, work: () => T) => T;
-  readonly history: (input: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** Bind the collaboration use case to the existing Session, Run and Goal owners. */
 export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
   async function actorSession(actor: AgentNetworkActor): Promise<NodeAgentSession> {
     if (!Number.isSafeInteger(actor.requestUserId) || (actor.requestUserId ?? 0) <= 0)
-      throw new Error('USER_AUTHORIZATION_REQUIRED');
+      throw new AgentError(
+        'USER_AUTHORIZATION_REQUIRED',
+        'An authenticated user is required for agent operations.'
+      );
     const parent =
       options.runtime.getAgentSession(actor.sessionId) ??
       (await options.projection.resolve(actor.sessionId, true));
-    if (!parent) throw new Error('SESSION_NOT_FOUND');
+    if (!parent)
+      throw new AgentError('SESSION_NOT_FOUND', 'The calling agent session was not found.');
     if (actor.runId !== undefined) {
       const run = options.runtime.getRun(actor.runId);
       if (
@@ -71,7 +75,10 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           options.runtime.currentExecutionId(run.id) !== actor.executionId) ||
         run.initiatedByUserId !== actor.requestUserId
       )
-        throw new Error('AGENT_ACTOR_INVALID');
+        throw new AgentError(
+          'AGENT_ACTOR_INVALID',
+          'The calling agent execution identity is invalid.'
+        );
     }
     return parent;
   }
@@ -81,7 +88,11 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     const workspaceId = terminal?.workspaceId ?? parent?.workspaceId;
     const session =
       options.runtime.getAgentSession(id) ?? (await options.projection.resolve(id, true));
-    if (!session || session.workspaceId !== workspaceId) throw new Error('SESSION_NOT_FOUND');
+    if (!session || session.workspaceId !== workspaceId)
+      throw new AgentError(
+        'SESSION_NOT_FOUND',
+        'The target agent session was not found in this Workspace.'
+      );
     return session;
   }
   function ancestorDistance(source: NodeAgentSession, targetId: string): number {
@@ -183,7 +194,11 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
     },
     children: async (actor) => {
-      if (terminalCalls.has(actor)) throw new Error('AGENT_TARGET_REQUIRED');
+      if (terminalCalls.has(actor))
+        throw new AgentError(
+          'AGENT_TARGET_REQUIRED',
+          'A terminal caller must specify an agent to wait for.'
+        );
       const parent = await actorSession(actor);
       const records =
         options.database()?.listChildSessionRecords(parent.workspaceId, parent.id) ?? [];
@@ -227,9 +242,23 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         },
         read: () => {
           const id = currentId();
-          return id === undefined
-            ? (options.runtime.getRun(runId) ?? { status: 'UNKNOWN' })
-            : (options.runtime.executionSnapshot(id) ?? { status: 'UNKNOWN' });
+          const state =
+            id === undefined
+              ? options.runtime.getRun(runId)
+              : options.runtime.executionSnapshot(id);
+          if (!state)
+            throw new AgentError(
+              'AGENT_EXECUTION_NOT_FOUND',
+              'The execution selected for this wait is no longer available.',
+              {
+                details: {
+                  agentId: session.id,
+                  runId,
+                  ...(id === undefined ? {} : { executionId: id })
+                }
+              }
+            );
+          return state;
         }
       };
     },
@@ -397,14 +426,16 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         throw error;
       }
     },
-    stop: (actor, session, executionId) =>
-      publicReceipt(
-        options.runs.stopAgentExecution({
-          sessionId: session.id,
-          executionId,
-          ...(actor.requestUserId === undefined ? {} : { requestUserId: actor.requestUserId })
-        })
-      ),
+    stop: (actor, session) => {
+      const result = options.runs.stopAgentSession({
+        sessionId: session.id,
+        ...(actor.requestUserId === undefined ? {} : { requestUserId: actor.requestUserId })
+      });
+      return {
+        ...publicReceipt(result),
+        ...(isPlainRecord(result) && result.status === 'IDLE' ? { status: 'IDLE' } : {})
+      };
+    },
     goal: (sessionId) => publicGoal(options.goals.get(sessionId)),
     list: async (actor, input) => {
       const terminal = terminalCalls.get(actor);
@@ -424,23 +455,12 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
       await onResolved?.([session]);
       return {
-        session: marctlSessionDetail(
+        session: agentNetworkSessionView(
           options.runtime,
           session,
           options.runtime.sessionQueue(session.id).itemIds.length
         ),
-        goal: publicGoal(options.goals.get(session.id)) ?? null,
-        ...(input.includeHistory
-          ? {
-              history: await options.history({
-                sessionId: session.id,
-                workspaceId: session.workspaceId,
-                registeredOnly: true,
-                limit: input.limit,
-                cursor: input.cursor
-              })
-            }
-          : {})
+        goal: publicGoal(options.goals.get(session.id)) ?? null
       };
     }
   });

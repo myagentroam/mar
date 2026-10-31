@@ -2,6 +2,31 @@ import { describe, expect, it } from 'vitest';
 import * as protocol from '../../src/index.js';
 
 describe('Scheduled run authorization protocol', () => {
+  it('accepts generic execution preparation without accepting persisted capabilities', () => {
+    const request = {
+      userId: 7,
+      workspaceId: 'workspace',
+      sessionId: 'session',
+      runner: 'mar-agent',
+      modelId: 'selected'
+    };
+    expect(protocol.executionPrepareRequestSchema.parse(request)).toEqual(request);
+    for (const extra of [
+      { userId: 0 },
+      { secretEnvironment: {} },
+      { gitConfiguration: {} },
+      { ticket: {} },
+      { handoffId: 'restart-only' }
+    ])
+      expect(
+        protocol.executionPrepareRequestSchema.safeParse({ ...request, ...extra }).success
+      ).toBe(false);
+    expect(
+      protocol.executionPrepareResponseSchema.safeParse({
+        context: { secretEnvironment: {}, gitConfiguration: { credentials: [] } }
+      }).success
+    ).toBe(true);
+  });
   const input = {
     taskId: 'task-1',
     revision: 1,

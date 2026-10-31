@@ -36,18 +36,17 @@ const emit = defineEmits<{
   removeUpload: [task: WorkspaceUploadTask];
 }>();
 const trigger = ref<HTMLElement>();
-const desktopOpen = ref<'hover' | 'explicit'>();
+const desktopOpen = ref(false);
 const page = ref<'recent-sessions' | 'notifications'>('recent-sessions');
 const sessionGroup = ref<SessionGroup>('MAIN');
 const previewId = ref<string>();
 const previewVisible = ref(false);
 let dismissTimer: ReturnType<typeof setTimeout> | undefined;
-let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 const open = computed({
-  get: () => (props.mobileMode ? props.mobileOpen === true : desktopOpen.value !== undefined),
+  get: () => (props.mobileMode ? props.mobileOpen === true : desktopOpen.value),
   set: (value: boolean) => {
     if (props.mobileMode) emit('update:mobileOpen', value);
-    else desktopOpen.value = value ? 'explicit' : undefined;
+    else desktopOpen.value = value;
   }
 });
 const popoverOpen = computed({
@@ -74,32 +73,9 @@ function dismissPreview(): void {
   // Retain the preview identity while the popover finishes its leave transition.
   previewVisible.value = false;
 }
-function clearHoverTimer(): void {
-  clearTimeout(hoverTimer);
-  hoverTimer = undefined;
-}
-function onPointerEnter(event: PointerEvent): void {
-  if (props.mobileMode || event.pointerType !== 'mouse') return;
-  clearHoverTimer();
-  if (desktopOpen.value) return;
-  hoverTimer = setTimeout(() => {
-    hoverTimer = undefined;
-    desktopOpen.value = 'hover';
-  }, 200);
-}
-function onPointerLeave(event: PointerEvent): void {
-  if (props.mobileMode || event.pointerType !== 'mouse') return;
-  clearHoverTimer();
-  if (desktopOpen.value !== 'hover') return;
-  hoverTimer = setTimeout(() => {
-    hoverTimer = undefined;
-    desktopOpen.value = undefined;
-  }, 150);
-}
 watch(
   open,
   (visible) => {
-    clearHoverTimer();
     dismissPreview();
     if (!visible) return;
     previewId.value = undefined;
@@ -136,18 +112,12 @@ watch(
 watch(
   () => props.mobileMode,
   () => {
-    clearHoverTimer();
-    desktopOpen.value = undefined;
+    desktopOpen.value = false;
     dismissPreview();
   }
 );
 function toggle(): void {
-  clearHoverTimer();
   dismissPreview();
-  if (!props.mobileMode && desktopOpen.value === 'hover') {
-    desktopOpen.value = 'explicit';
-    return;
-  }
   open.value = !open.value;
 }
 function selectNotification(notification: WorkbenchNotification): void {
@@ -171,13 +141,11 @@ function onShortcut(event: KeyboardEvent): void {
     return;
   event.preventDefault();
   if (event.repeat) return;
-  if (!props.mobileMode && desktopOpen.value !== 'explicit')
-    trigger.value?.querySelector('button')?.focus();
+  if (!props.mobileMode && !desktopOpen.value) trigger.value?.querySelector('button')?.focus();
   toggle();
 }
 function onEscape(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return;
-  clearHoverTimer();
   if (!popoverOpen.value) return;
   event.stopPropagation();
   popoverOpen.value = false;
@@ -187,7 +155,6 @@ onMounted(() => {
   window.addEventListener('keydown', onEscape);
 });
 onBeforeUnmount(() => {
-  clearHoverTimer();
   dismissPreview();
   window.removeEventListener('keydown', onShortcut, true);
   window.removeEventListener('keydown', onEscape);
@@ -196,12 +163,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workbench-activity-center" :class="{ 'mobile-mode': mobileMode }">
-    <span
-      ref="trigger"
-      class="activity-reference"
-      @pointerenter="onPointerEnter"
-      @pointerleave="onPointerLeave"
-    >
+    <span ref="trigger" class="activity-reference">
       <button
         class="activity-center-trigger"
         :class="{ active: open }"
@@ -261,8 +223,6 @@ onBeforeUnmount(() => {
         :uploads="uploads"
         :status-label="statusLabel"
         :mobile-mode="false"
-        @pointerenter="onPointerEnter"
-        @pointerleave="onPointerLeave"
         @open-recent-run="selectRun"
         @open-notification="selectNotification"
         @retry-upload="emit('retryUpload', $event)"

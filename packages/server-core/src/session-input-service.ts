@@ -8,7 +8,6 @@ import type {
 } from './session-run-contracts.js';
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 import { prepareSessionExecutionContext } from './session-execution-context.js';
-import { runtimeModelPayload } from './run-model-payload.js';
 import {
   recordSharedConversationAudit,
   sharedConversationFailureResult,
@@ -242,33 +241,29 @@ export class SessionInputService {
     context: Omit<SessionControlContext, 'sessionId'> & { readonly sessionId?: string },
     modelId: string | undefined
   ): Promise<object> {
-    return {
-      ...(await prepareSessionExecutionContext({
-        user: context.user,
-        nodeId: context.nodeId,
-        workspaceId: context.workspaceId,
-        secrets: this.options.secrets,
-        credentials: this.options.userCredentials,
-        instructions: this.options.personalInstructions,
-        serverUrl: this.options.publicOrigin
-      })),
+    return prepareSessionExecutionContext({
+      user: context.user,
+      nodeId: context.nodeId,
+      workspaceId: context.workspaceId,
+      secrets: this.options.secrets,
+      credentials: this.options.userCredentials,
+      instructions: this.options.personalInstructions,
+      serverUrl: this.options.publicOrigin,
       ...(modelId === undefined
         ? {}
-        : await runtimeModelPayload({
-            userId: context.user.userId,
-            nodeId: context.nodeId,
-            // Legacy command calls without runtime credentials allow an absent Workspace.
-            workspaceId: context.workspaceId as string,
-            ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
-            selectedModelId: modelId,
-            ...(this.options.marAgentModels === undefined
-              ? {}
-              : { marAgentModels: this.options.marAgentModels }),
-            ...(this.options.marAgentRuntimeModels === undefined
-              ? {}
-              : { marAgentRuntimeModels: this.options.marAgentRuntimeModels })
-          }))
-    };
+        : {
+            model: {
+              ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+              selectedModelId: modelId,
+              ...(this.options.marAgentModels === undefined
+                ? {}
+                : { marAgentModels: this.options.marAgentModels }),
+              ...(this.options.marAgentRuntimeModels === undefined
+                ? {}
+                : { marAgentRuntimeModels: this.options.marAgentRuntimeModels })
+            }
+          })
+    });
   }
 
   private auditRejection(

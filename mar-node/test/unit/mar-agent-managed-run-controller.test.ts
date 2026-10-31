@@ -987,20 +987,6 @@ describe('MAR Agent managed run projection', () => {
       runtimeScopeId: 'scope-2',
       executionId: 'run-2'
     });
-    const original = {
-      runner: 'mar-agent' as const,
-      runnerInput: {
-        model: firstModel,
-        models: [
-          firstModel,
-          { ...firstModel, id: 'other', credential: { type: 'INLINE_API_KEY', value: 'private' } }
-        ],
-        runtimeScopeId: 'scope-1'
-      }
-    };
-    expect(controller.restartExecutionContext('native-session', original, 'other')).toEqual(
-      original
-    );
     await controller.dispose();
   });
 

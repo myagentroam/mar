@@ -44,6 +44,7 @@ function fixture(parentSessionId: string | null = 'parent') {
     session: target,
     result: { delivery: 'STARTED' }
   }));
+  const view = vi.fn(async () => ({}));
   const service = new AgentNetworkService({
     observations,
     target: resolveTarget,
@@ -60,7 +61,7 @@ function fixture(parentSessionId: string | null = 'parent') {
     stop,
     goal: () => goal,
     list: async () => ({}),
-    view: async () => ({})
+    view
   });
   const actor = { sessionId: 'parent', requestUserId: 7 };
   const publish = (value: string) =>
@@ -90,11 +91,34 @@ function fixture(parentSessionId: string | null = 'parent') {
     children,
     observe,
     freezeExecution,
-    start
+    start,
+    view
   };
 }
 
 afterEach(() => vi.useRealTimers());
+
+describe('Agent Network state view', () => {
+  it('forwards only the target identity to the state owner', async () => {
+    const f = fixture();
+    await invokeAgentNetwork(f.service, f.actor, 'view', { agentId: 'child' });
+    expect(f.view).toHaveBeenCalledWith(f.actor, { agentId: 'child' }, undefined);
+  });
+
+  it.each([
+    { includeHistory: true },
+    { includeHistory: false },
+    { includeHistory: undefined },
+    { limit: 1 },
+    { cursor: 'older' }
+  ])('rejects removed history options before querying state: %j', async (options) => {
+    const f = fixture();
+    await expect(
+      invokeAgentNetwork(f.service, f.actor, 'view', { agentId: 'child', ...options })
+    ).rejects.toMatchObject({ code: 'AGENT_VIEW_INVALID' });
+    expect(f.view).not.toHaveBeenCalled();
+  });
+});
 
 describe('Agent Network text input', () => {
   it.each(['attachments', 'attachmentIds'])(
@@ -708,20 +732,34 @@ describe('Agent Network send and stop', () => {
       f.setGoal(f.actor, {} as NodeAgentSession, { kind: 'clear' });
       throw new Error('RUN_CANCEL_FAILED');
     });
-    expect(
-      await f.service.stop(f.actor, { agentId: 'child', executionId: 'execution' })
-    ).toMatchObject({ cancel: { status: 'unknown' }, goal: { status: 'cleared' } });
+    expect(await f.service.stop(f.actor, { agentId: 'child' })).toMatchObject({
+      cancel: { status: 'unknown' },
+      goal: { status: 'cleared' }
+    });
   });
 
-  it('rejects an obsolete execution without clearing the current Goal', async () => {
+  it('rejects retired execution selectors without stopping or clearing the Goal', async () => {
     const f = fixture();
-    f.stop.mockImplementation(() => {
-      throw new Error('RUN_EXECUTION_STALE');
-    });
-    await expect(f.service.stop(f.actor, { agentId: 'child', executionId: 'old' })).rejects.toThrow(
-      'RUN_EXECUTION_STALE'
-    );
+    await expect(
+      invokeAgentNetwork(f.service, f.actor, 'stop', {
+        agentId: 'child',
+        executionId: 'old'
+      })
+    ).rejects.toMatchObject({ code: 'AGENT_STOP_INVALID' });
+    expect(f.stop).not.toHaveBeenCalled();
     expect(f.goal()).toEqual({ objective: 'old' });
+  });
+
+  it('stops by Session identity alone and reports Goal cleanup without execution metadata', async () => {
+    const f = fixture();
+    const result = await f.service.stop(f.actor, { agentId: 'child' });
+    expect(f.stop).toHaveBeenCalledWith(f.actor, f.target);
+    expect(result).toMatchObject({
+      agentId: 'child',
+      cancel: { status: 'accepted' },
+      goal: { status: 'cleared' }
+    });
+    expect(result).not.toHaveProperty('executionId');
   });
 
   it('validates the complete wait target set before registering observers', async () => {

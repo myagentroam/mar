@@ -77,14 +77,15 @@ onMounted(async () => {
       `/api/agent-sessions/${encodeURIComponent(props.sessionId)}/tree?${query}`,
       { signal: controller.signal }
     );
-    if (!controller.signal.aborted) result.value = snapshot;
+    if (!controller.signal.aborted) {
+      result.value = snapshot;
+      loading.value = false;
+    }
   } catch (error) {
     if (!controller.signal.aborted) {
       showMessage(errorMessage(error), 'error', error);
       emit('close');
     }
-  } finally {
-    if (!controller.signal.aborted) loading.value = false;
   }
 });
 onBeforeUnmount(() => controller.abort());
@@ -138,10 +139,6 @@ onBeforeUnmount(() => controller.abort());
 <style scoped>
 .session-tree[aria-busy='true'] {
   min-height: 4rem;
-}
-.session-tree {
-  max-height: min(60vh, 32rem);
-  overflow-y: auto;
 }
 .session-tree-list {
   list-style: none;

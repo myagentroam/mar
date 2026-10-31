@@ -267,9 +267,8 @@ export class NodeConnector {
         await this.sessionMessageService.drain();
       },
       closeResume: () => this.externalSessionResumeService.close(),
-      capture: async () => {
+      capture: () => {
         if (!this.config?.nodeId) return;
-        await this.marAgentRuntimeModels.waitForPendingCredentials();
         return this.restartHandoff.capture();
       },
       dispose: () => this.disposeRuntime(),
@@ -1321,7 +1320,6 @@ export class NodeConnector {
       goals: this.goalRuntime,
       runs: this.runWorkbenchService,
       observations: this.agentNetworkObservations,
-      history: async (input) => this.sessionQueryService.operations()['session.turns.list']!(input),
       ensureObservations: (actor) => {
         const existing = this.agentNetworkObservations.get(actor.observationId ?? actor.sessionId);
         if (existing) return existing;
@@ -1359,7 +1357,44 @@ export class NodeConnector {
       messages: this.sessionMessageService,
       resolve: (id) => this.externalSessionResumeService.resolveForMessage(id),
       inputState,
-      withGrant: (context, work) => this.modelUsage.withGrant(context.usageGrant, work),
+      withExecution: async (session, checkpoint, work) => {
+        if (checkpoint.initiatedByUserId === undefined)
+          throw new Error('RESTART_EXECUTION_USER_UNAVAILABLE');
+        const context = await this.scheduledRunAuthorization.prepare({
+          userId: checkpoint.initiatedByUserId,
+          sessionId: session.id,
+          workspaceId: session.workspaceId,
+          runner: session.runner,
+          modelId:
+            checkpoint.configuration === undefined
+              ? session.modelId
+              : checkpoint.configuration.modelId
+        });
+        return this.gitOperationService.execute(
+          'session.message',
+          {
+            sessionId: session.id,
+            workspaceId: session.workspaceId,
+            __requestUserId: checkpoint.initiatedByUserId,
+            ...context
+          },
+          async (data) =>
+            this.modelUsage.withGrant(context.usageGrant, () =>
+              work({
+                ...checkpoint,
+                secretEnvironment: (data as { secretEnvironment: Record<string, string> })
+                  .secretEnvironment,
+                executionContext: this.runners
+                  .require(session.runner)
+                  .prepareExecutionContext(context),
+                ...(typeof context.personalInstructions === 'string'
+                  ? { personalInstructions: context.personalInstructions }
+                  : {}),
+                ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant })
+              })
+            )
+        );
+      },
       publishGoal: (session, goal) => this.goalCoordinator.publishGoalState(session, goal),
       goalReference: (sessionId) => this.goalCoordinator.reference(sessionId),
       publishQueue: (session) => this.continuousRunCoordinator.publish(session.id)
@@ -1372,12 +1407,6 @@ export class NodeConnector {
       coordinator: this.continuousRunCoordinator,
       goals: this.goalRuntime,
       goalExecution: (id) => this.goalCoordinator.restartExecution(id),
-      executionContext: (id, context, modelId) =>
-        this.marAgentRunController.restartExecutionContext(
-          id,
-          context,
-          modelId === undefined ? this.runtime.getAgentSession(id)?.modelId : modelId
-        ),
       commandActive: (id, command) => this.commandStates.get(id, command)?.active === true,
       inputState,
       restore: (entry, id) => restorer.restore(entry, id),
@@ -1758,6 +1787,9 @@ export class NodeConnector {
           modelId: configuredSession.modelId
         });
         return {
+          ...(context.gitConfiguration === undefined
+            ? {}
+            : { gitConfiguration: context.gitConfiguration }),
           secretEnvironment: context.secretEnvironment,
           personalInstructions: context.personalInstructions,
           usageGrant: context.usageGrant,
@@ -1765,16 +1797,30 @@ export class NodeConnector {
         };
       },
       submit: async (task, occurrenceId, context) => {
-        const result = (await this.sessionMessageService.submitScheduled({
-          sessionId: task.sessionId,
-          occurrenceId,
-          objective: task.objective,
-          initiatedByUserId: task.ownerUserId,
-          secretEnvironment: context.secretEnvironment,
-          personalInstructions: context.personalInstructions,
-          ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant }),
-          executionContext: context.executionContext
-        })) as { run: { id: string } };
+        const result = (await this.gitOperationService.execute(
+          'session.message',
+          {
+            sessionId: task.sessionId,
+            workspaceId: task.workspaceId,
+            __requestUserId: task.ownerUserId,
+            secretEnvironment: context.secretEnvironment,
+            ...(context.gitConfiguration === undefined
+              ? {}
+              : { gitConfiguration: context.gitConfiguration })
+          },
+          async (data) =>
+            this.sessionMessageService.submitScheduled({
+              sessionId: task.sessionId,
+              occurrenceId,
+              objective: task.objective,
+              initiatedByUserId: task.ownerUserId,
+              secretEnvironment: (data as { secretEnvironment: Record<string, string> })
+                .secretEnvironment,
+              personalInstructions: context.personalInstructions,
+              ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant }),
+              executionContext: context.executionContext
+            })
+        )) as { run: { id: string } };
         return { runId: result.run.id };
       },
       sessionTitle: (sessionId) => {

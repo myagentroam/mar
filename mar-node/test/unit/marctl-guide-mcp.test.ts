@@ -36,9 +36,9 @@ it('publishes concise Agent tool descriptions and delivery parameter guidance', 
       'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
     agent_send: 'Send a message to an Agent, update its Goal, or decide an approval.',
     agent_wait: 'Wait for Agent messages or execution completion.',
-    agent_stop: 'Stop the specified Agent Execution and clear its Goal.',
+    agent_stop: 'Stop the Agent’s current execution and clear its Goal.',
     agent_list: 'List the current collaboration tree or active Agents in the Workspace.',
-    agent_view: "View an Agent's state, Goal and public history."
+    agent_view: "View an Agent's state, Goal and recent activity."
   });
   for (const tool of definitions.filter((tool) =>
     ['agent_start', 'agent_send'].includes(tool.name)
@@ -89,11 +89,16 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     const skill = marctlHostSkill(environment)!;
     expect(skill.description).toBe(marctlManagementDescription);
     expect(skill.description).toContain('MAR Agent session settings');
+    expect(skill.description).toContain('read paginated public history');
     expect(skill.description).toContain('authorized MAR Nodes');
     expect(skill.description).toContain('native agent_* tools');
     expect(await skill.load()).toBe(marctlManagementInstructions);
     expect(await skill.load()).toContain('native agent_* tools');
     expect(await skill.load()).not.toContain('agents start');
+    for (const guidance of [await skill.load(), marctlInstructions]) {
+      expect(guidance).toContain('marctl agents history <id>');
+      expect(guidance).toContain('agents view returns state, Goal and recent activity only');
+    }
     expect(await skill.load()).toContain(
       'If a request result is unknown, inspect history before retrying.'
     );
@@ -128,6 +133,8 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     ]) {
       expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(guidance) }]);
     }
+    expect(marctlInstructions).not.toContain('--history');
+    expect(marctlInstructions).toContain('agents view <id>.');
     expect(marctlInstructions).toContain('Prefer agents send <id> --steer');
     expect(marctlInstructions).toContain('timely communication or course correction');
     expect(marctlInstructions).toContain(

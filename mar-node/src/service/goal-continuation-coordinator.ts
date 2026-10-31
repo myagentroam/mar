@@ -200,6 +200,9 @@ export class GoalContinuationCoordinator {
         void this.enqueueGoalContinuation({
           sessionId: retry.sessionId,
           goal: pending.goal!,
+          ...(retry.initiatedByUserId === undefined
+            ? {}
+            : { initiatedByUserId: retry.initiatedByUserId }),
           ...(pending.usageGrant === undefined ? {} : { usageGrant: pending.usageGrant }),
           secretEnvironment: pending.secretEnvironment,
           ...(pending.personalInstructions === undefined

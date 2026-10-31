@@ -612,15 +612,23 @@ onBeforeUnmount(() => {
   --mar-editor-cursor: #000000;
   --mar-editor-selection: color-mix(
     in srgb,
+    var(--mar-color-brand) 40%,
+    var(--mar-editor-background)
+  );
+  --mar-editor-selection-match: color-mix(
+    in srgb,
+    var(--mar-color-brand) 10%,
+    var(--mar-editor-background)
+  );
+  --mar-editor-selection-match-border: color-mix(
+    in srgb,
     var(--mar-color-brand) 30%,
     var(--mar-editor-background)
   );
-  --mar-editor-selection-match: #f8eec7;
-  --mar-editor-selection-match-border: #d6bd58;
-  --mar-editor-selection-match-main: #7aa9d8;
-  --mar-editor-selection-match-main-border: #386f9e;
-  --mar-editor-selection-match-main-foreground: #102b42;
-  --mar-editor-active-line: rgb(244 246 248 / 55%);
+  --mar-editor-selection-match-main: var(--mar-editor-selection);
+  --mar-editor-selection-match-main-border: var(--mar-color-brand);
+  --mar-editor-selection-match-main-foreground: var(--mar-editor-foreground);
+  --mar-editor-active-line: rgb(31 31 31 / 3%);
   --mar-editor-active-line-indicator: #91a3b7;
   --mar-editor-gutter-background: #f8f8f8;
   --mar-editor-gutter-foreground: #6e7681;
@@ -652,12 +660,12 @@ onBeforeUnmount(() => {
   --mar-editor-background: #1e1e1e;
   --mar-editor-foreground: #d4d4d4;
   --mar-editor-cursor: #aeafad;
-  --mar-editor-selection-match: #91c85b;
-  --mar-editor-selection-match-border: #d9ff9f;
-  --mar-editor-selection-match-main: var(--mar-editor-selection);
-  --mar-editor-selection-match-main-border: var(--mar-color-brand);
-  --mar-editor-selection-match-main-foreground: #ffffff;
-  --mar-editor-active-line: rgb(45 51 61 / 58%);
+  --mar-editor-selection: color-mix(
+    in srgb,
+    var(--mar-color-brand) 55%,
+    var(--mar-editor-background)
+  );
+  --mar-editor-active-line: rgb(255 255 255 / 4%);
   --mar-editor-active-line-indicator: #4e83ac;
   --mar-editor-gutter-background: #1e1e1e;
   --mar-editor-gutter-foreground: #858585;

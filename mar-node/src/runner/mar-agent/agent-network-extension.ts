@@ -94,9 +94,9 @@ const tools: readonly {
   },
   {
     action: 'stop',
-    description: 'Stop the specified Agent Execution and clear its Goal.',
-    properties: { agentId: text, executionId: text },
-    required: ['agentId', 'executionId']
+    description: 'Stop the Agent’s current execution and clear its Goal.',
+    properties: { agentId: text },
+    required: ['agentId']
   },
   {
     action: 'list',
@@ -113,17 +113,14 @@ const tools: readonly {
         maxLength: 160,
         description: 'Optional case-insensitive title fragment within the scope.'
       },
-      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 100.' }
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 10.' }
     }
   },
   {
     action: 'view',
-    description: "View an Agent's state, Goal and public history.",
+    description: "View an Agent's state, Goal and recent activity.",
     properties: {
-      agentId: text,
-      includeHistory: { type: 'boolean' },
-      limit: { type: 'integer', minimum: 1, maximum: 100 },
-      cursor: text
+      agentId: text
     },
     required: ['agentId']
   }

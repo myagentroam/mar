@@ -17,15 +17,13 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     'parentSessionId',
     'scope',
     'waitFor',
-    'mode',
-    'executionId'
+    'mode'
   ])
     if (args[name] !== undefined) input[name] = args[name];
   if (['send', 'stop', 'view', 'wait'].includes(args.action) && sessionId)
     input.agentId = sessionId;
   if (args.action === 'wait' && args.agentIds?.length) input.agentIds = args.agentIds;
   if (args.action === 'wait' && args.timeoutMs !== undefined) input.waitMs = args.timeoutMs;
-  if (args.action === 'view' && args.history) input.includeHistory = true;
   if (args.message !== undefined || args.messageFile !== undefined)
     input.content = await messageContent(args, stdin, 100000, translate);
   if (args.goal !== undefined) input.goal = { objective: args.goal.trim() };

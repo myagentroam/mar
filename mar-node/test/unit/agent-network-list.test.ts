@@ -73,6 +73,29 @@ async function fixture() {
 }
 
 describe('native Agent Network list', () => {
+  it('prioritizes active Sessions, then sorts by activity without returning sort metadata', async () => {
+    const f = await fixture();
+    const root = f.create('root');
+    const first = f.create('first', root.id);
+    const second = f.create('second', root.id);
+    const idle = f.create('idle', root.id);
+    f.start(first);
+    f.start(second);
+    Object.assign(f.runtime.getAgentSession(root.id)!, { lastActivityAt: 0 });
+    Object.assign(f.runtime.getAgentSession(first.id)!, { lastActivityAt: 100 });
+    Object.assign(f.runtime.getAgentSession(second.id)!, { lastActivityAt: 200 });
+    Object.assign(f.runtime.getAgentSession(idle.id)!, { lastActivityAt: 1000 });
+    const result = (await f.list(root)) as { sessions: Array<Record<string, unknown>> };
+    expect(result.sessions.map((session) => session.id)).toEqual([
+      'second',
+      'first',
+      'idle',
+      'root'
+    ]);
+    for (const session of result.sessions)
+      expect(Object.keys(session).sort()).toEqual(['id', 'parentSessionId', 'status', 'title']);
+  });
+
   it('defaults a trusted terminal without a Session to active without inventing an identity', async () => {
     const f = await fixture();
     const active = f.create('active');
@@ -80,9 +103,7 @@ describe('native Agent Network list', () => {
     f.create('idle');
     expect(await f.terminalList()).toEqual({
       currentAgentId: null,
-      sessions: [
-        { id: 'active', parentSessionId: null, title: 'active', runner: 'codex', status: 'RUNNING' }
-      ],
+      sessions: [{ id: 'active', parentSessionId: null, title: 'active', status: 'RUNNING' }],
       truncated: false
     });
     await expect(f.terminalList({ scope: 'tree' })).rejects.toThrow('AGENT_TARGET_REQUIRED');
@@ -120,13 +141,14 @@ describe('native Agent Network list', () => {
     const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
     expect(await f.list(source)).toEqual({
       currentAgentId: source.id,
-      sessions: [root, parent, sibling, source, child].map((session) => ({
-        id: session.id,
-        parentSessionId: session.parentSessionId,
-        title: session.customTitle,
-        runner: 'codex',
-        status: 'IDLE'
-      })),
+      sessions: [root, parent, sibling, source, child]
+        .sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.id.localeCompare(b.id))
+        .map((session) => ({
+          id: session.id,
+          parentSessionId: session.parentSessionId,
+          title: session.customTitle,
+          status: 'IDLE'
+        })),
       truncated: false
     });
     expect(discover).not.toHaveBeenCalled();
@@ -152,19 +174,19 @@ describe('native Agent Network list', () => {
     const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
     expect(await f.list(source)).toEqual({
       currentAgentId: source.id,
-      sessions: [
-        { id: 'root', parentSessionId: null, title: 'root', runner: 'codex', status: 'IDLE' },
-        { id: 'source', parentSessionId: 'root', title: 'source', runner: 'codex', status: 'IDLE' },
+      sessions: expect.arrayContaining([
+        { id: 'root', parentSessionId: null, title: 'root', status: 'IDLE' },
+        { id: 'source', parentSessionId: 'root', title: 'source', status: 'IDLE' },
         {
           id: 'archived-child',
           parentSessionId: 'source',
           title: 'archived-child',
-          runner: 'codex',
           status: 'IDLE'
         }
-      ],
+      ]),
       truncated: false
     });
+    expect(((await f.list(source)) as { sessions: unknown[] }).sessions).toHaveLength(3);
     expect(discover).not.toHaveBeenCalled();
     expect(f.runtime.activeSessionRun('archived-child')).toBeUndefined();
   });
@@ -222,14 +244,12 @@ describe('native Agent Network list', () => {
           id: running.id,
           parentSessionId: null,
           title: 'running',
-          runner: 'codex',
           status: 'RUNNING'
         },
         {
           id: sleeping.id,
           parentSessionId: null,
           title: 'sleeping',
-          runner: 'codex',
           status: 'SLEEPING'
         }
       ]),
@@ -248,16 +268,15 @@ describe('native Agent Network list', () => {
     const f = await fixture();
     const source = f.create('source');
     f.create('first', source.id, 'Other');
-    f.create('second', source.id, 'ＴＡＳＫ One');
-    f.create('third', source.id, 'Task Two');
+    Object.assign(f.create('second', source.id, 'ＴＡＳＫ One'), { lastActivityAt: 100 });
+    Object.assign(f.create('third', source.id, 'Task Two'), { lastActivityAt: 200 });
     expect(await f.list(source, { query: ' task ', limit: 1 })).toEqual({
       currentAgentId: source.id,
       sessions: [
         {
-          id: 'second',
+          id: 'third',
           parentSessionId: source.id,
-          title: 'ＴＡＳＫ One',
-          runner: 'codex',
+          title: 'Task Two',
           status: 'IDLE'
         }
       ],
@@ -270,16 +289,25 @@ describe('native Agent Network list', () => {
     });
   });
 
-  it('defaults to a 100-session cap and filters the full scope before truncation', async () => {
+  it('defaults to ten Sessions, supports an explicit hundred and filters before truncation', async () => {
     const f = await fixture();
     const source = f.create('source');
     for (let index = 0; index < 99; index++)
       f.create(`child-${index.toString().padStart(3, '0')}`, source.id);
     const full = (await f.list(source)) as { sessions: unknown[]; truncated: boolean };
-    expect(full.sessions).toHaveLength(100);
-    expect(full.truncated).toBe(false);
+    expect(full.sessions).toHaveLength(10);
+    expect(full.truncated).toBe(true);
+    const explicit = (await f.list(source, { limit: 100 })) as {
+      sessions: unknown[];
+      truncated: boolean;
+    };
+    expect(explicit.sessions).toHaveLength(100);
+    expect(explicit.truncated).toBe(false);
     f.create('last-child', source.id);
-    const capped = (await f.list(source)) as { sessions: unknown[]; truncated: boolean };
+    const capped = (await f.list(source, { limit: 100 })) as {
+      sessions: unknown[];
+      truncated: boolean;
+    };
     expect(capped.sessions).toHaveLength(100);
     expect(capped.truncated).toBe(true);
     expect(await f.list(source, { query: 'last-child' })).toMatchObject({
@@ -313,7 +341,6 @@ describe('native Agent Network list', () => {
             id: source.id,
             parentSessionId: 'outside',
             title: 'source',
-            runner: 'codex',
             status: 'IDLE'
           }
         ],

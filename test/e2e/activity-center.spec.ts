@@ -21,7 +21,7 @@ async function prepareActivityInteraction(page: Page, width = 1280) {
   };
 }
 
-test('Activity hover opens temporarily without a tooltip or changing focus', async ({ page }) => {
+test('Activity hover never opens the panel or changes focus', async ({ page }) => {
   const { entry, panel } = await prepareActivityInteraction(page);
   const input = page.getByRole('textbox', { name: 'Background input' });
   await input.focus();
@@ -34,34 +34,24 @@ test('Activity hover opens temporarily without a tooltip or changing focus', asy
 
   await entry.hover();
   await page.clock.runFor(500);
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole('tab', { name: 'Notifications', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  );
+  await expect(panel).toHaveCount(0);
   await expect(input).toBeFocused();
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
-  const anchor = (await entry.boundingBox())!;
-  await page.mouse.move(anchor.x + anchor.width + 4, anchor.y + anchor.height / 2);
-  await page.clock.runFor(60);
-  await expect(panel).toBeVisible();
-  await panel.hover();
-  await page.clock.runFor(500);
-  await expect(panel).toBeVisible();
   await page.mouse.move(900, 650);
   await page.clock.runFor(500);
   await expect(panel).toHaveCount(0);
   await expect(entry).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('Activity hover is kept open by click without resetting its selected page', async ({
+test('Activity clicks toggle the custom panel and pointer movement keeps its selected page', async ({
   page
 }) => {
   const { entry, panel } = await prepareActivityInteraction(page);
-  await entry.hover();
-  await page.clock.runFor(500);
-  await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
   await entry.click();
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
+  await panel.hover();
   await expect(panel.getByRole('tab', { name: 'Recent Sessions', exact: true })).toHaveAttribute(
     'aria-selected',
     'true'
@@ -79,7 +69,7 @@ test('Activity hover is kept open by click without resetting its selected page',
   await expect(panel).toHaveCount(0);
 });
 
-test('Activity shortcuts keep hover panels open without displaying a tooltip', async ({ page }) => {
+test('Activity shortcuts toggle the panel without displaying a tooltip', async ({ page }) => {
   const { entry, panel } = await prepareActivityInteraction(page);
   await page.getByRole('textbox', { name: 'Background input' }).focus();
   for (const shortcut of ['Control+Shift+E', 'Meta+Shift+E']) {
@@ -94,7 +84,7 @@ test('Activity shortcuts keep hover panels open without displaying a tooltip', a
   }
   await entry.hover();
   await page.clock.runFor(500);
-  await expect(panel).toBeVisible();
+  await expect(panel).toHaveCount(0);
   await page.keyboard.press('Control+Shift+E');
   await page.mouse.move(900, 650);
   await page.clock.runFor(500);
@@ -104,15 +94,23 @@ test('Activity shortcuts keep hover panels open without displaying a tooltip', a
   await expect(panel).toHaveCount(0);
 });
 
-test('Activity pending hover is canceled by Escape and mobile layout changes', async ({ page }) => {
+test('Activity pointer movement cannot reopen panels after Escape or layout changes', async ({
+  page
+}) => {
   const { entry, panel } = await prepareActivityInteraction(page);
+  await entry.click();
+  await expect(panel).toBeVisible();
   await entry.hover();
   await page.keyboard.press('Escape');
   await page.clock.runFor(500);
   await expect(panel).toHaveCount(0);
   await page.mouse.move(900, 650);
-  await entry.hover();
+  await entry.click();
+  await expect(panel).toBeVisible();
   await page.setViewportSize({ width: 390, height: 760 });
+  await page.clock.runFor(500);
+  await expect(panel).toHaveCount(0);
+  await entry.hover();
   await page.clock.runFor(500);
   await expect(panel).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 760 });

@@ -69,25 +69,37 @@ export async function listAgentNetworkSessions(
         session !== undefined && session.workspaceId === options.workspaceId
     );
   } else {
-    sessions = [...known.values()].sort(
-      (left, right) => right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)
-    );
+    sessions = [...known.values()];
   }
   const query = input.query?.trim().normalize('NFKC').toLocaleLowerCase() ?? '';
   const matches = sessions
     .map((session) => {
-      const { id, title, runner, status } = marctlSessionSummary(options.runtime, session);
-      return { id, parentSessionId: session.parentSessionId ?? null, title, runner, status };
+      const { id, title, status } = marctlSessionSummary(options.runtime, session);
+      return {
+        id,
+        parentSessionId: session.parentSessionId ?? null,
+        title,
+        status,
+        lastActivityAt: session.lastActivityAt
+      };
     })
     .filter(
       (session) =>
         (scope !== 'active' || session.status !== 'IDLE') &&
         (!query || session.title.normalize('NFKC').toLocaleLowerCase().includes(query))
+    )
+    .sort(
+      (left, right) =>
+        Number(right.status !== 'IDLE') - Number(left.status !== 'IDLE') ||
+        right.lastActivityAt - left.lastActivityAt ||
+        left.id.localeCompare(right.id)
     );
-  const limit = input.limit ?? 100;
+  const limit = input.limit ?? 10;
   return {
     currentAgentId: source?.id ?? null,
-    sessions: matches.slice(0, limit),
+    sessions: matches
+      .slice(0, limit)
+      .map(({ lastActivityAt: _lastActivityAt, ...session }) => session),
     truncated: matches.length > limit
   };
 }

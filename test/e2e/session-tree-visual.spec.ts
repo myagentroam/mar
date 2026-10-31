@@ -9,15 +9,16 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-test('tree popover keeps one snapshot, orders active branches and closes by keyboard and outside click', async ({
+test('tree dialog keeps one snapshot, orders active branches and closes by keyboard and backdrop', async ({
   page
 }) => {
   await page.setViewportSize({ width: 1280, height: 850 });
   await page.goto(`${fixture.url}session-tree.html?locale=en-US&mixed=1`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
-  await trigger.hover();
+  await trigger.click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
+  await expect(tree).toHaveAttribute('aria-modal', 'true');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.getByTestId('requests')).toHaveText('1');
   await tree.hover({ position: { x: 2, y: 2 } });
@@ -42,7 +43,6 @@ test('tree popover keeps one snapshot, orders active branches and closes by keyb
     'Idle',
     'Idle'
   ]);
-  await trigger.click();
   await expect(page.getByTestId('requests')).toHaveText('1');
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
@@ -72,20 +72,31 @@ for (const width of [390, 1280]) {
         await page.getByRole('menuitem', { name: 'View session tree', exact: true }).click();
       }
       const tree = page.getByRole('dialog', { name: 'View session tree' });
-      const popover = page.locator('.session-tree-popover');
+      const overlay = page.locator('.el-overlay');
       await expect(tree.locator('.session-tree-node').first()).toBeVisible();
-      await expect(popover).not.toHaveClass(/enter-active/);
+      await overlay.evaluate(async (element) => {
+        await Promise.allSettled(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished)
+        );
+      });
+      await expect(overlay).not.toHaveClass(/enter-active/);
+      await expect
+        .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
+        .toBe(true);
       const leaving = await page.evaluate(async () => {
-        const panel = document.querySelector<HTMLElement>('.session-tree-popover')!;
+        const panel = document.querySelector<HTMLElement>('.el-overlay')!;
         const content = panel.textContent;
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         return {
           connected: panel.isConnected,
-          active: panel.classList.contains('el-fade-in-linear-leave-active'),
-          duration: Number.parseFloat(getComputedStyle(panel).transitionDuration),
+          active: panel.classList.contains('dialog-fade-leave-active'),
+          duration: Math.max(
+            Number.parseFloat(getComputedStyle(panel).transitionDuration),
+            Number.parseFloat(getComputedStyle(panel).animationDuration)
+          ),
           contentUnchanged: panel.textContent === content,
-          inert: panel.querySelector('.session-tree-popover-content')?.hasAttribute('inert')
+          inert: panel.querySelector('.session-tree-content')?.hasAttribute('inert')
         };
       });
       expect(leaving.connected, entry).toBe(true);
@@ -93,32 +104,78 @@ for (const width of [390, 1280]) {
       expect(leaving.duration, entry).toBeGreaterThan(0);
       expect(leaving.contentUnchanged, entry).toBe(true);
       expect(leaving.inert, entry).toBe(true);
-      await expect(popover).toHaveCount(0);
+      await expect(overlay).toHaveCount(0);
     }
   });
 }
 
-test('reopening during the leave transition reads a fresh snapshot and stays open', async ({
-  page
-}) => {
+test('reopening the dialog reads a fresh snapshot and stays open', async ({ page }) => {
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
   await trigger.click();
-  const popover = page.locator('.session-tree-popover');
+  const overlay = page.locator('.el-overlay');
   await expect(page.getByTestId('requests')).toHaveText('1');
-  await expect(popover).not.toHaveClass(/enter-active/);
-  await trigger.evaluate(async (button) => {
-    if (!(button instanceof HTMLElement))
-      throw new Error('Session tree trigger is not an HTML element');
-    button.click();
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    button.click();
-  });
+  await page.keyboard.press('Escape');
+  await expect(overlay).toHaveCount(0);
+  await trigger.click();
   await expect(page.getByTestId('requests')).toHaveText('2');
-  await expect(popover).not.toHaveClass(/enter-active/);
+  await expect(overlay).not.toHaveClass(/enter-active/);
   await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 });
+
+for (const width of [390, 1280]) {
+  for (const action of ['select', 'failure']) {
+    test(`${action} uses the native tree dialog leave transition at ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto(
+        `${fixture.url}session-tree.html?locale=en-US${action === 'failure' ? '&delayed=1' : ''}`
+      );
+      const trigger = page.getByRole('button', { name: 'View session tree' });
+      await trigger.click();
+      const overlay = page.locator('.el-overlay');
+      await expect(page.getByTestId('requests')).toHaveText('1');
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await overlay.evaluate(async (element) => {
+        const surfaces = [element, element.querySelector('.el-dialog')!];
+        await Promise.allSettled(
+          surfaces
+            .flatMap((surface) => surface.getAnimations())
+            .map((animation) => animation.finished)
+        );
+      });
+      const control =
+        action === 'select'
+          ? page.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
+          : page.getByTestId('reject-snapshot');
+      const leaving = await control.evaluate(async (button: HTMLButtonElement) => {
+        const panel = document.querySelector<HTMLElement>('.el-overlay')!;
+        const dialog = panel.querySelector('.el-dialog')!;
+        const height = dialog.clientHeight;
+        button.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        return {
+          connected: panel.isConnected,
+          active: panel.classList.contains('dialog-fade-leave-active'),
+          heightUnchanged: dialog.clientHeight === height,
+          inert: panel.querySelector('.session-tree-content')?.hasAttribute('inert')
+        };
+      });
+      expect(leaving).toEqual({
+        connected: true,
+        active: true,
+        heightUnchanged: true,
+        inert: true
+      });
+      if (action === 'select') await expect(page.getByTestId('selected')).toHaveText('grandchild');
+      else await expect(page.getByText('tree unavailable')).toBeVisible();
+      await expect(overlay).toHaveCount(0);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+  }
+}
 
 test('session tree respects reduced motion when opening and closing', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -129,12 +186,42 @@ test('session tree respects reduced motion when opening and closing', async ({ p
       throw new Error('Session tree trigger is not an HTML element');
     button.click();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    return getComputedStyle(document.querySelector('.session-tree-popover')!).transitionDuration;
+    const style = getComputedStyle(document.querySelector('.el-overlay')!);
+    return Math.max(
+      Number.parseFloat(style.transitionDuration),
+      Number.parseFloat(style.animationDuration)
+    );
   });
-  expect(Number.parseFloat(duration)).toBe(0);
+  expect(duration).toBe(0);
   await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
+});
+
+test('standard MessageBox respects reduced motion on desktop and mobile', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&confirmation=1`);
+    const durations = await page.getByTestId('show-confirmation').evaluate(async (button) => {
+      if (!(button instanceof HTMLElement))
+        throw new Error('Confirmation trigger is not an HTML element');
+      button.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      return [dialog, dialog.closest('.el-overlay')!].map((element) => {
+        const style = getComputedStyle(element);
+        return Math.max(
+          Number.parseFloat(style.animationDuration),
+          Number.parseFloat(style.transitionDuration)
+        );
+      });
+    });
+    expect(durations, `${width}px`).toEqual([0, 0]);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
 });
 
 for (const outcome of ['success', 'failure']) {
@@ -145,16 +232,14 @@ for (const outcome of ['success', 'failure']) {
     const trigger = page.getByRole('button', { name: 'View session tree' });
     await trigger.click();
     await expect(page.getByTestId('requests')).toHaveText('1');
-    const popover = page.locator('.session-tree-popover');
-    await expect(popover).not.toHaveClass(/enter-active/);
-    const closed = await trigger.evaluate(async (button) => {
-      if (!(button instanceof HTMLElement))
-        throw new Error('Session tree trigger is not an HTML element');
-      button.click();
+    const overlay = page.locator('.el-overlay');
+    await expect(overlay).not.toHaveClass(/enter-active/);
+    const closed = await page.evaluate(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       return {
         aborted: document.querySelector('[data-testid="aborts"]')!.textContent,
-        connected: document.querySelector('.session-tree-popover') !== null
+        connected: document.querySelector('.el-overlay') !== null
       };
     });
     expect.soft(closed).toEqual({ aborted: '1', connected: true });
@@ -171,7 +256,7 @@ for (const outcome of ['success', 'failure']) {
       };
     }, outcome);
     expect(retired).toEqual({ busy: 'true', nodes: 0, errors: 0 });
-    await expect(popover).toHaveCount(0);
+    await expect(overlay).toHaveCount(0);
   });
 }
 
@@ -182,7 +267,7 @@ test('closing an in-flight snapshot aborts it and a failed snapshot can be reope
   const trigger = page.getByRole('button', { name: 'View session tree' });
   await trigger.click();
   await expect(page.getByTestId('requests')).toHaveText('1');
-  await trigger.click();
+  await page.keyboard.press('Escape');
   await expect(page.getByTestId('aborts')).toHaveText('1');
   await page.goto(`${fixture.url}session-tree.html?locale=en-US&failure=1`);
   await trigger.click();
@@ -196,7 +281,7 @@ test('closing an in-flight snapshot aborts it and a failed snapshot can be reope
   ).toBeVisible();
 });
 
-test('keyboard-opened list actions anchor the tree without a preceding mouse click', async ({
+test('keyboard-opened list actions open a modal tree without a preceding mouse click', async ({
   page
 }) => {
   await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
@@ -212,6 +297,19 @@ test('keyboard-opened list actions anchor the tree without a preceding mouse cli
   await action.press('Enter');
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
+  await expect(tree).toHaveAttribute('aria-modal', 'true');
+  await expect
+    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(tree).toHaveCount(0);
+  await expect
+    .poll(() => chats.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  await action.focus();
+  await action.press('Enter');
   await tree.getByRole('button', { name: 'Child collaboration, Idle' }).press('Enter');
   await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
 });
@@ -228,42 +326,44 @@ test('Escape returns keyboard focus from the tree to its title trigger', async (
   await expect(trigger).toBeFocused();
 });
 
-test('Escape closes a keyboard-opened tree before focus enters it', async ({ page }) => {
+test('the standard dialog traps keyboard focus and its close button returns it', async ({
+  page
+}) => {
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
   await trigger.focus();
   await trigger.press('Enter');
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
-  await expect(trigger).toBeFocused();
-  await page.keyboard.press('Escape');
+  await expect
+    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+  await page.keyboard.press('Shift+Tab');
+  await expect
+    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+  const close = tree.getByRole('button', { name: 'Close this dialog' });
+  await expect(close.locator('[data-mar-icon="close"]')).toBeVisible();
+  await close.click();
   await expect(tree).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
 
-test('Escape dismisses a hover-only tree without moving keyboard focus', async ({ page }) => {
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
-  const trigger = page.getByRole('button', { name: 'View session tree' });
-  await trigger.hover();
-  const tree = page.getByRole('dialog', { name: 'View session tree' });
-  await expect(tree).toBeVisible();
-  await expect(trigger).not.toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(tree).toHaveCount(0);
-  await expect(page.getByTestId('requests')).toHaveText('1');
-});
-
-test('Escape cancels a pending hover before any snapshot is requested', async ({ page }) => {
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
-  const trigger = page.getByRole('button', { name: 'View session tree' });
-  await trigger.dispatchEvent('pointerenter', { pointerType: 'mouse' });
-  await page.keyboard.press('Escape');
-  await page.clock.runFor(250);
-  await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
-  await expect(page.getByTestId('requests')).toHaveText('0');
-});
+for (const width of [390, 1280]) {
+  test(`hover never opens the tree or reads a snapshot at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await trigger.focus();
+    await trigger.hover();
+    await page.clock.runFor(500);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByTestId('requests')).toHaveText('0');
+    await expect(trigger).toBeFocused();
+  });
+}
 
 test('a deep 100-node snapshot remains scrollable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 600 });
@@ -271,8 +371,9 @@ test('a deep 100-node snapshot remains scrollable on a narrow viewport', async (
   await page.getByRole('button', { name: 'View session tree' }).click();
   const tree = page.locator('.session-tree');
   await expect(tree.locator('.session-tree-node')).toHaveCount(100);
+  const body = page.locator('.session-tree-dialog .el-dialog__body');
   expect(
-    await tree.evaluate(
+    await body.evaluate(
       (el) => el.scrollHeight > el.clientHeight && el.scrollWidth > el.clientWidth
     )
   ).toBe(true);
@@ -286,7 +387,7 @@ test('a deep 100-node snapshot remains scrollable on a narrow viewport', async (
 
 test.describe('touch interaction', () => {
   test.use({ hasTouch: true });
-  test('touch opens the anchored tree and mobile back closes it', async ({ page }) => {
+  test('touch opens the standard dialog and mobile back closes it', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 850 });
     await page.goto(`${fixture.url}session-tree.html?locale=en-US&rootOnly=1`);
     const trigger = page.getByRole('button', { name: 'View session tree' });

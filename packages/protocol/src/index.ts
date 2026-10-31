@@ -1,4 +1,5 @@
 import { modelUsageGrantSchema } from './model-usage.js';
+import { personalGitRuntimeSchema } from './git-identity.js';
 import { z } from 'zod';
 import { fileChangeDiffSchema } from './tool-result-resource.js';
 export * from './tool-result-resource.js';
@@ -706,6 +707,7 @@ export type RuntimeCredentialResolveResponse = z.infer<
 >;
 export const scheduledRunAuthorizeRequestSchema = z
   .object({
+    executionResources: z.literal(1).optional(),
     taskId: boundedIdentifierSchema,
     revision: positiveSafeIntegerSchema,
     occurrenceId: z.string().min(1).max(256),
@@ -717,7 +719,17 @@ export const scheduledRunAuthorizeRequestSchema = z
   })
   .strict();
 export type ScheduledRunAuthorizeRequest = z.infer<typeof scheduledRunAuthorizeRequestSchema>;
-export const scheduledRunAuthorizeResponseSchema = z.union([
+export const executionPrepareRequestSchema = z
+  .object({
+    userId: positiveSafeIntegerSchema,
+    sessionId: boundedIdentifierSchema,
+    workspaceId: boundedIdentifierSchema,
+    runner: runnerNameSchema,
+    modelId: z.string().max(256).nullable()
+  })
+  .strict();
+export type ExecutionPrepareRequest = z.infer<typeof executionPrepareRequestSchema>;
+export const executionPrepareResponseSchema = z.union([
   z
     .object({
       context: z
@@ -725,6 +737,7 @@ export const scheduledRunAuthorizeResponseSchema = z.union([
           usageGrant: modelUsageGrantSchema.optional(),
           secretEnvironment: z.record(z.string().min(1).max(256), z.string().max(65_536)),
           personalInstructions: z.unknown().optional(),
+          gitConfiguration: personalGitRuntimeSchema.optional(),
           marAgentModel: z.unknown().optional(),
           marAgentModels: z.unknown().optional(),
           marAgentCompact: z.unknown().optional(),
@@ -744,7 +757,9 @@ export const scheduledRunAuthorizeResponseSchema = z.union([
     })
     .strict()
 ]);
-export type ScheduledRunAuthorizeResponse = z.infer<typeof scheduledRunAuthorizeResponseSchema>;
+export type ExecutionPrepareResponse = z.infer<typeof executionPrepareResponseSchema>;
+export const scheduledRunAuthorizeResponseSchema = executionPrepareResponseSchema;
+export type ScheduledRunAuthorizeResponse = ExecutionPrepareResponse;
 const marAgentInlineApiKeyCredentialSchema = z
   .object({
     type: z.literal('INLINE_API_KEY'),

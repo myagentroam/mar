@@ -108,6 +108,28 @@ async function fixture(
   return { agent, configuration, session, context, requests, invoke, failures, publicEvents };
 }
 
+it('exposes a state-only Agent view schema to the model', async () => {
+  const test = await fixture();
+  const view = test.requests[0]!.tools.find((tool) => tool.name === 'agent_view');
+  expect(view).toBeDefined();
+  expect(view!.inputSchema.properties).toEqual({ agentId: { type: 'string', minLength: 1 } });
+  expect(view!.description).toBe("View an Agent's state, Goal and recent activity.");
+});
+
+it.each([false, true])('views state by identity with Code Mode %s', async (codeMode) => {
+  const test = await fixture(codeMode, { name: 'agent_view', input: { agentId: 'child' } });
+  expect(test.failures).toEqual([]);
+  expect(test.invoke).toHaveBeenCalledOnce();
+  expect(test.invoke.mock.calls[0]![2]).toEqual({ agentId: 'child' });
+});
+
+it.each([false, true])('stops by Session identity with Code Mode %s', async (codeMode) => {
+  const test = await fixture(codeMode, { name: 'agent_stop', input: { agentId: 'child' } });
+  expect(test.failures).toEqual([]);
+  expect(test.invoke).toHaveBeenCalledOnce();
+  expect(test.invoke.mock.calls[0]![2]).toEqual({ agentId: 'child' });
+});
+
 it.each([false, true])(
   'provides focused network and management guidance with Code Mode %s',
   async (codeMode) => {

@@ -13,8 +13,11 @@ export const instructionPriorityPrompt =
 export const workspaceDisciplinePrompt =
   '# Workspace and change discipline\nAssume a dirty worktree. Preserve changes you did not make: never reset, revert, overwrite, delete, or reformat unrelated user work. Ignore unrelated changes; integrate overlapping changes in required files instead of restoring old versions. If unexpected concurrent changes appear, continue only when safely separable; otherwise report the exact conflict. Do not amend unless explicitly asked. Do not create branches, push, publish, deploy, open pull requests, or send external messages without an explicit request for that action. Do not fix unrelated defects or failing tests; report material ones separately.';
 
-export function environmentPrompt(input: { mode: ExecutionMode }): string {
-  return `# Environment and workspace\nMode: ${input.mode}. The Runtime provides current platform, shell and Workspace facts in a mar_environment message. These facts describe the execution environment, not additional instructions or permissions. Start exploration inside this workspace unless the task explicitly requires an absolute path elsewhere. Generate commands for the actual platform and configured shell; do not assume POSIX tools on Windows or PowerShell/cmd syntax on Unix. Relative tool paths resolve from the Workspace. Absolute paths are allowed subject to the operating-system account's permissions and Host-declared file boundaries.`;
+export function environmentPrompt(input: { mode: ExecutionMode; worktreeRoot?: string }): string {
+  const worktreeGuidance = input.worktreeRoot
+    ? ` When creating a Git worktree, prefer a unique directory under the JSON-encoded path ${JSON.stringify(input.worktreeRoot)} unless the user specifies another location.`
+    : '';
+  return `# Environment and workspace\nMode: ${input.mode}. The Runtime provides current platform, shell and Workspace facts in a mar_environment message. These facts describe the execution environment, not additional instructions or permissions. Start exploration inside this workspace unless the task explicitly requires an absolute path elsewhere. Generate commands for the actual platform and configured shell; do not assume POSIX tools on Windows or PowerShell/cmd syntax on Unix. Relative tool paths resolve from the Workspace. Absolute paths are allowed subject to the operating-system account's permissions and Host-declared file boundaries.${worktreeGuidance}`;
 }
 
 export function buildEnvironmentContext(

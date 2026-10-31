@@ -1,5 +1,13 @@
 import type { PersonalGitService } from './personal-git-service.js';
 
+export async function prepareGitExecutionContext(
+  configuration: Pick<PersonalGitService, 'getRuntime'>,
+  userId: number
+) {
+  const runtime = await configuration.getRuntime(userId);
+  return runtime.credentials.length === 0 ? {} : { gitConfiguration: runtime };
+}
+
 const EXECUTION_OPERATIONS = new Set([
   'session.start',
   'session.message',
@@ -30,9 +38,6 @@ export class GitExecutionForwarding {
     }
     if (!EXECUTION_OPERATIONS.has(operation) && !operation.startsWith('workspace.git.'))
       return input;
-    const configuration = await this.configuration.getRuntime(userId);
-    return configuration.credentials.length === 0
-      ? input
-      : { ...input, gitConfiguration: configuration };
+    return { ...input, ...(await prepareGitExecutionContext(this.configuration, userId)) };
   }
 }

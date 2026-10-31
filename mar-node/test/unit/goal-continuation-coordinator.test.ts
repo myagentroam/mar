@@ -73,6 +73,44 @@ afterEach(() => {
 });
 
 describe('Goal transient orchestration', () => {
+  it('keeps the original user when a pre-start failure retry enters the Goal queue', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.queue.hasExecutionStarted = () => false;
+    f.runtime.createMessageRun({
+      runId: f.input.runId,
+      sessionId: f.session.id,
+      clientMessageId: 'original-goal',
+      content: 'Continue the goal',
+      initiatedByUserId: 41
+    });
+    let queuedOwner: number | undefined;
+    f.submit.mockImplementation(async (value) => {
+      const input = value as { content: string; initiatedByUserId?: number };
+      const { item } = f.runtime.createQueueItem({
+        sessionId: f.session.id,
+        clientMessageId: 'retried-goal',
+        content: input.content,
+        goalInput: true,
+        ...(input.initiatedByUserId === undefined
+          ? {}
+          : { initiatedByUserId: input.initiatedByUserId })
+      });
+      queuedOwner = item.initiatedByUserId;
+      return {};
+    });
+    try {
+      f.coordinator.executionTerminating(f.input.runId, 'FAILED');
+      expect(f.coordinator.restartExecution(f.session.id)).toMatchObject({ initiatedByUserId: 41 });
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(f.submit).toHaveBeenCalledWith(expect.objectContaining({ initiatedByUserId: 41 }));
+      expect(queuedOwner).toBe(41);
+      expect(f.coordinator.restartExecution(f.session.id)).toBeUndefined();
+    } finally {
+      f.coordinator.dispose();
+    }
+  });
+
   it('rejects an unauthorized child model before changing its Goal or queue', async () => {
     const f = fixture();
     const child = f.runtime.createAgentSession({

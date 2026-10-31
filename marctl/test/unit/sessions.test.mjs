@@ -58,9 +58,9 @@ test('maps six Agent operations to the common Node command without inventing a s
     ]),
     0
   );
-  assert.equal(await invoke(['stop', 'child', '--execution', 'exec-1']), 0);
+  assert.equal(await invoke(['stop', 'child']), 0);
   assert.equal(await invoke(['list', '--scope', 'active', '--query', 'Task', '--limit', '10']), 0);
-  assert.equal(await invoke(['view', 'child', '--history', '--limit', '5']), 0);
+  assert.equal(await invoke(['view', 'child']), 0);
   assert.deepEqual(
     calls.map((call) => call.command.operation),
     ['start', 'send', 'wait', 'stop', 'list', 'view']
@@ -74,9 +74,53 @@ test('maps six Agent operations to the common Node command without inventing a s
   assert.equal(calls[1].command.input.content, undefined);
   assert.deepEqual(calls[2].command.input.agentIds, ['child', 'other']);
   assert.equal(calls[2].command.input.waitMs, 0);
-  assert.equal(calls[3].command.input.executionId, 'exec-1');
+  assert.deepEqual(calls[3].command.input, { agentId: 'child' });
   assert.deepEqual(calls[4].command.input, { scope: 'active', query: 'Task', limit: 10 });
-  assert.deepEqual(calls[5].command.input, { agentId: 'child', includeHistory: true, limit: 5 });
+  assert.deepEqual(calls[5].command.input, { agentId: 'child' });
+});
+
+test('state view rejects history options locally while dedicated history retains pagination', async () => {
+  let calls = 0;
+  for (const options of [['--history'], ['--limit', '5'], ['--cursor', 'older']]) {
+    assert.equal(
+      await main(['agents', 'view', 'child', ...options, '--json'], {
+        env,
+        stdout: { write() {} },
+        stderr: { write() {} },
+        client: {
+          sessionCommand: async () => {
+            calls++;
+          }
+        }
+      }),
+      2
+    );
+  }
+  assert.equal(calls, 0);
+  assert.deepEqual(parseArgs(['agents', 'history', 'child', '--cursor', 'older', '--limit', '5']), {
+    command: 'agents',
+    action: 'history',
+    sessionId: 'child',
+    cursor: 'older',
+    limit: 5
+  });
+  const requests = [];
+  assert.equal(
+    await main(['agents', 'history', 'child', '--cursor', 'older', '--limit', '5', '--json'], {
+      env,
+      stdout: { write() {} },
+      client: {
+        sessionCommand: async (body) => {
+          requests.push(body);
+          return { segments: [], nextCursor: 'next' };
+        }
+      }
+    }),
+    0
+  );
+  assert.deepEqual(requests, [
+    { action: 'history', sessionId: 'child', cursor: 'older', limit: 5 }
+  ]);
 });
 
 test('keeps the CLI wait transport budget above the effective Node wait', async () => {
@@ -283,6 +327,7 @@ test('defaults only state and configuration commands to the current Session befo
     ['goal', 'set', '-m', 'Finish'],
     ['goal', 'clear'],
     ['stop', '--run', 'r'],
+    ['stop', 'child', '--execution', 'old'],
     ['wait', '--run', 'r', '--timeout', '1s']
   ])
     assert.throws(() => parseArgs(['agents', ...args]));
@@ -1252,21 +1297,20 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         const lines = output.split('\n');
         const start = lines.findIndex((line) => line.startsWith(`  marctl agents ${action} `));
         assert.ok(start >= 0, action);
-        if (action !== 'stop') assert.match(lines[start + 1], /^ {4}\S/u);
+        if (!['stop', 'view'].includes(action)) assert.match(lines[start + 1], /^ {4}\S/u);
       }
       for (const flag of [
         '--runner',
         '--parent',
         '--goal',
         '--clear-goal',
-        '--execution',
         '--scope',
         '--wait-for',
-        '--timeout',
-        '--history'
+        '--timeout'
       ])
         assert.ok(output.includes(flag), flag);
       assert.ok(!output.includes('--forced'));
+      assert.ok(!output.includes('--history'));
       assert.ok(!output.toLowerCase().includes('urgent'));
       for (const line of output.split('\n')) {
         // Count CJK glyphs as two columns; other help characters occupy one.
@@ -1393,7 +1437,7 @@ test('keeps structured authorization failures and reports unknown mutation outco
     ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
     ['schedule', 'create', 's', '--cron', '* * * * *', '-m', 'task'],
     ['schedule', 'update', 's', '--expected-revision', '1', '--cron', '* * * * *'],
-    ['stop', 's', '--execution', 'execution'],
+    ['stop', 's'],
     ['goal', 'set', 's', '-m', 'goal'],
     ['goal', 'clear', 's']
   ]) {

@@ -3,9 +3,10 @@ import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import { ElMessageBox } from '../../src/service/message-box-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import Header from '../../src/view/conversation/ConversationHeader.vue';
-import Tree from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
+import Tree from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -173,6 +174,20 @@ createTooltipApp({
       h('output', { 'data-testid': 'selected' }, selected.value),
       h('output', { 'data-testid': 'requests' }, requests.value),
       h('output', { 'data-testid': 'aborts' }, aborts.value),
+      query.has('confirmation')
+        ? h(
+            'button',
+            {
+              'data-testid': 'show-confirmation',
+              onClick: () => {
+                void ElMessageBox.confirm('Fixture confirmation', 'Confirmation').catch(
+                  () => undefined
+                );
+              }
+            },
+            'Show confirmation'
+          )
+        : null,
       query.has('delayed')
         ? h('div', [
             h(

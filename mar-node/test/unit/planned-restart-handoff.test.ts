@@ -144,7 +144,8 @@ function prepareQueue(
   attachments: RestartMessage['attachments'] = [],
   suppressNotifications = false,
   secret = 'queued-model-secret',
-  usageGrantToken = 'queued-usage-grant-secret'
+  usageGrantToken = 'queued-usage-grant-secret',
+  initiatedByUserId = ownerUserId
 ) {
   const accepted = f.coordinator.accept({
     runId: id,
@@ -153,7 +154,7 @@ function prepareQueue(
     content,
     attachments,
     suppressNotifications,
-    initiatedByUserId: ownerUserId
+    initiatedByUserId
   });
   if (accepted.queueItem === undefined) throw new Error('Expected an accepted queue item');
   const item = accepted.queueItem;
@@ -184,7 +185,7 @@ function prepareQueue(
       scopeId: '00000000-0000-4000-8000-000000000002',
       token: usageGrantToken
     },
-    restartMessage: { content, attachments, initiatedByUserId: ownerUserId }
+    restartMessage: { content, attachments, initiatedByUserId }
   });
   return item;
 }
@@ -196,11 +197,6 @@ function handoff(
     readonly goals?: GoalRuntime;
     readonly credential?: () => string;
     readonly goalExecution?: (sessionId: string) => RestartExecution | undefined;
-    readonly executionContext?: (
-      sessionId: string,
-      context: RestartExecution['executionContext'],
-      modelId?: string | null
-    ) => RestartExecution['executionContext'];
     readonly inputState?: (
       session: RestartSession,
       message: RestartMessage
@@ -217,9 +213,6 @@ function handoff(
     coordinator: f.coordinator,
     goals: callbacks.goals ?? f.goals,
     ...(callbacks.goalExecution === undefined ? {} : { goalExecution: callbacks.goalExecution }),
-    ...(callbacks.executionContext === undefined
-      ? {}
-      : { executionContext: callbacks.executionContext }),
     commandActive: (sessionId, command) => f.activeCommands.has(sessionId + ':' + command),
     inputState: callbacks.inputState ?? (async () => 'interrupted'),
     restore: callbacks.restore ?? (async () => undefined),
@@ -233,28 +226,12 @@ function handoff(
   });
 }
 
-function asLegacySession(entry: RestartSession) {
-  const { execution: _execution, current, queue, ...state } = entry;
-  const asLegacyMessage = (message: RestartMessage) => {
-    const { execution: _messageExecution, ...legacyMessage } = message;
-    return { ...legacyMessage, initiatedByUserId: ownerUserId };
-  };
-  return {
-    ...state,
-    ownerUserId,
-    ...(current === undefined ? {} : { current: asLegacyMessage(current) }),
-    queue: queue.map(asLegacyMessage)
-  };
-}
-
 describe('PlannedRestartHandoff', () => {
   it('keeps the effective Goal configuration when only a retry context remains', async () => {
     const f = fixture();
     const session = f.sessions[0]!;
     f.goals.start(session.id, 'Continue after a model switch');
     const retry: RestartExecution = {
-      executionContext: { runner: 'mar-agent', runnerInput: { model: { id: 'original-model' } } },
-      secretEnvironment: {},
       configuration: { modelId: 'original-model', effort: 'low', access: 'read-only' }
     };
     const current = { modelId: 'effective-goal-model', effort: 'high', access: 'auto' };
@@ -278,12 +255,7 @@ describe('PlannedRestartHandoff', () => {
       access: 'read-only'
     };
     f.runtime.updateAgentSessionConfiguration({ sessionId: session.id, ...activeConfiguration });
-    const executionContext = vi.fn(
-      (_id: string, context: RestartExecution['executionContext'], _modelId?: string | null) =>
-        context
-    );
-    const saved = handoff(f, await temporaryDirectory(), { executionContext }).capture()!
-      .sessions[0]!;
+    const saved = handoff(f, await temporaryDirectory()).capture()!.sessions[0]!;
 
     expect(saved.current!.execution!.configuration).toEqual(activeConfiguration);
     expect(saved.queue[0]!.execution!.configuration).toEqual({
@@ -291,18 +263,6 @@ describe('PlannedRestartHandoff', () => {
       effort: 'high',
       access: 'full-access'
     });
-    expect(executionContext).toHaveBeenNthCalledWith(
-      1,
-      session.id,
-      expect.anything(),
-      'model-under-test'
-    );
-    expect(executionContext).toHaveBeenNthCalledWith(
-      2,
-      session.id,
-      expect.anything(),
-      'live-selected-model'
-    );
   });
 
   it('keeps the application error code when capture rejects an unready Session', async () => {
@@ -330,16 +290,7 @@ describe('PlannedRestartHandoff', () => {
     first.goals.start(session.id, 'Keep this paused objective');
     first.runtime.pauseSessionQueue(session.id);
     const execution: RestartExecution = {
-      executionContext: {
-        runner: 'mar-agent',
-        runnerInput: { model: { id: 'goal-model' }, models: [{ id: 'goal-model' }] }
-      },
-      secretEnvironment: { GOAL_MODEL_SECRET: 'goal-retry-secret' },
-      personalInstructions: 'private Goal instructions',
-      usageGrant: {
-        scopeId: '00000000-0000-4000-8000-000000000003',
-        token: 'goal-usage-grant-secret'
-      }
+      configuration: { modelId: 'model-under-test', effort: 'high', access: 'full-access' }
     };
     const writer = handoff(first, directory, { goalExecution: () => execution });
     const snapshot = writer.capture();
@@ -347,6 +298,14 @@ describe('PlannedRestartHandoff', () => {
     expect(snapshot.sessions[0]).not.toHaveProperty('ownerUserId');
     expect(snapshot.sessions[0]?.execution).not.toHaveProperty('initiatedByUserId');
     await writer.publish(snapshot);
+    const sealed = await readFile(join(directory, 'planned-restart-handoff.json'), 'utf8');
+    const opened = openRestartState(sealed, nodeCredential) as PlannedRestart;
+    expect(sealed).not.toContain('executionContext');
+    expect(sealed).not.toContain('secretEnvironment');
+    expect(JSON.stringify(opened)).not.toContain('executionContext');
+    expect(JSON.stringify(opened)).not.toContain('secretEnvironment');
+    expect(JSON.stringify(opened)).not.toContain('usageGrant');
+    expect(JSON.stringify(opened)).not.toContain('personalInstructions');
     const next = fixture();
     const reader = handoff(next, directory, {
       goalExecution: () => execution,
@@ -361,7 +320,9 @@ describe('PlannedRestartHandoff', () => {
     expect(nextSnapshot.sessions).toMatchObject([
       {
         paused: true,
-        execution,
+        execution: {
+          configuration: execution.configuration
+        },
         goal: { goal: { id: first.goals.get(session.id)!.id } }
       }
     ]);
@@ -369,7 +330,7 @@ describe('PlannedRestartHandoff', () => {
     expect(nextSnapshot.sessions[0]?.execution).not.toHaveProperty('initiatedByUserId');
   });
 
-  it('restores interrupted Sessions without requiring initiating identity', async () => {
+  it('captures execution checkpoints without inventing a Session owner', async () => {
     const directory = await temporaryDirectory();
     const f = fixture(['without-origin', 'with-origin']);
     prepareCurrent(f, f.sessions[0]!, 'first request', 'no-secret', false, null);
@@ -423,11 +384,15 @@ describe('PlannedRestartHandoff', () => {
       [],
       false,
       'goal-model-secret',
-      'goal-usage-grant-secret'
+      'goal-usage-grant-secret',
+      ownerUserId
     );
     const goalInput = f.coordinator.pending(goalItem.id)!;
     f.coordinator.prepare(goalItem.id, {
       ...goalInput,
+      modelId: 'goal-model',
+      effort: 'low',
+      access: 'read-only',
       goal: { id: goal.id, revision: goal.revision, epoch: 1 }
     });
     const after = prepareQueue(f, session, 'after-goal', 'ordinary after Goal');
@@ -436,23 +401,29 @@ describe('PlannedRestartHandoff', () => {
     const snapshot = writer.capture();
     const entry = snapshot.sessions[0]!;
     expect(entry.queue.map((message) => message.id)).toEqual([before.id, after.id]);
-    expect(entry.execution).toMatchObject({
-      executionContext: {
-        runnerInput: {
-          model: {
-            credential: { value: 'goal-model-secret' }
-          }
-        }
-      },
-      secretEnvironment: { QUEUED_MODEL_SECRET: 'goal-model-secret' },
-      usageGrant: { token: 'goal-usage-grant-secret' },
+    expect(entry.execution).toEqual({
+      configuration: { modelId: 'goal-model', effort: 'low', access: 'read-only' },
       initiatedByUserId: ownerUserId
     });
+    expect(entry.queue.map((message) => message.execution?.initiatedByUserId)).toEqual([
+      ownerUserId,
+      ownerUserId
+    ]);
 
     await writer.publish(snapshot);
     const sealed = await readFile(join(directory, 'planned-restart-handoff.json'), 'utf8');
     expect(sealed).not.toContain('goal-model-secret');
     expect(sealed).not.toContain('goal-usage-grant-secret');
+    expect(sealed).not.toContain('private queued instructions');
+    const opened = openRestartState(sealed, nodeCredential) as PlannedRestart;
+    const openedText = JSON.stringify(opened);
+    expect(openedText).not.toContain('goal-model-secret');
+    expect(openedText).not.toContain('goal-usage-grant-secret');
+    expect(openedText).not.toContain('private queued instructions');
+    expect(openedText).not.toContain('executionContext');
+    expect(openedText).not.toContain('secretEnvironment');
+    expect(openedText).not.toContain('usageGrant');
+    expect(openedText).not.toContain('personalInstructions');
     const restored: RestartSession[] = [];
     const reader = handoff(f, directory, {
       restore: async (restoredSession) => {
@@ -466,7 +437,7 @@ describe('PlannedRestartHandoff', () => {
     expect(restored[0]?.queue.map((message) => message.id)).toEqual([before.id, after.id]);
   });
 
-  it('captures encrypted execution state, interrupted work, FIFO attachments, pause intent, and exact Goal counters', async () => {
+  it('seals credential-free checkpoints with interrupted work, FIFO state, and exact Goal counters', async () => {
     const directory = await temporaryDirectory();
     const f = fixture();
     const session = f.sessions[0]!;
@@ -492,7 +463,7 @@ describe('PlannedRestartHandoff', () => {
 
     const writer = handoff(f, directory);
     const snapshot = writer.capture();
-    expect(snapshot.schemaVersion).toBe(3);
+    expect(snapshot.schemaVersion).toBe(4);
     expect(snapshot.sessions).toHaveLength(1);
     const entry = snapshot.sessions[0]!;
     expect(entry).toMatchObject({
@@ -541,19 +512,21 @@ describe('PlannedRestartHandoff', () => {
     expect(persistedText).not.toContain('private instructions');
     expect(persistedText).not.toContain('secretEnvironment');
     expect(persistedText).not.toContain('MODEL_API_SECRET');
-    expect(persisted.sessions[0]?.current?.execution).toMatchObject({
-      executionContext: { runner: 'mar-agent' },
-      secretEnvironment: { MODEL_API_SECRET: 'current-secret-value' },
-      personalInstructions: 'private instructions current-secret-value',
-      usageGrant: {
-        scopeId: '00000000-0000-4000-8000-000000000001',
-        token: 'usage-grant-current-secret-value'
-      },
+    const persistedTextJson = JSON.stringify(persisted);
+    expect(persistedTextJson).not.toContain('current-secret-value');
+    expect(persistedTextJson).not.toContain('queued-model-secret');
+    expect(persistedTextJson).not.toContain('queued-usage-grant-secret');
+    expect(persistedTextJson).not.toContain('private instructions');
+    expect(persistedTextJson).not.toContain('executionContext');
+    expect(persistedTextJson).not.toContain('secretEnvironment');
+    expect(persistedTextJson).not.toContain('personalInstructions');
+    expect(persistedTextJson).not.toContain('usageGrant');
+    expect(persisted.sessions[0]?.current?.execution).toEqual({
+      configuration: { modelId: 'model-under-test', effort: 'high', access: 'full-access' },
       initiatedByUserId: ownerUserId
     });
-    expect(persisted.sessions[0]?.queue[0]?.execution).toMatchObject({
-      secretEnvironment: { QUEUED_MODEL_SECRET: 'queued-model-secret' },
-      usageGrant: { token: 'queued-usage-grant-secret' },
+    expect(persisted.sessions[0]?.queue[0]?.execution).toEqual({
+      configuration: { modelId: 'model-under-test', effort: 'high', access: 'full-access' },
       initiatedByUserId: ownerUserId
     });
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
@@ -598,7 +571,7 @@ describe('PlannedRestartHandoff', () => {
     expect(restored).toHaveLength(1);
   });
 
-  it.each([1, 2, 4])(
+  it.each([1, 2, 3])(
     'rejects unsupported handoff schema v%s before restoring or blocking sessions',
     async (schemaVersion) => {
       const directory = await temporaryDirectory();
@@ -609,16 +582,7 @@ describe('PlannedRestartHandoff', () => {
       const snapshot = handoff(f, directory).capture();
       const unsupported = {
         ...snapshot,
-        schemaVersion,
-        sessions:
-          schemaVersion === 4
-            ? snapshot.sessions
-            : snapshot.sessions.map((entry) => {
-                const legacy = asLegacySession(entry);
-                if (schemaVersion === 2) return legacy;
-                const { modelId, ...oldSession } = legacy.session;
-                return { ...legacy, session: { ...oldSession, model: modelId } };
-              })
+        schemaVersion
       };
       await writeFile(
         join(directory, 'planned-restart-handoff.json'),
@@ -743,12 +707,12 @@ describe('PlannedRestartHandoff', () => {
 
   it.each([
     ['malformed JSON', '{not-json'],
-    ['malformed current payload', sealRestartState({ schemaVersion: 3 }, nodeCredential)],
+    ['malformed current payload', sealRestartState({ schemaVersion: 4 }, nodeCredential)],
     [
       'wrong Node identity',
       sealRestartState(
         {
-          schemaVersion: 3,
+          schemaVersion: 4,
           id: 'handoff',
           nodeId: 'another-node',
           serverUrl,
@@ -762,7 +726,7 @@ describe('PlannedRestartHandoff', () => {
       'wrong Server identity',
       sealRestartState(
         {
-          schemaVersion: 3,
+          schemaVersion: 4,
           id: 'handoff',
           nodeId,
           serverUrl: 'https://another-server.example.test',

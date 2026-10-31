@@ -1,3 +1,4 @@
+import { AgentError } from '@myagentroam/agent';
 import { waitForToolCondition, type ToolWaitInterrupt } from '@myagentroam/agent/extensions';
 import type { AgentObservationSnapshot, ParentObservations } from './agent-network-observations.js';
 
@@ -22,7 +23,10 @@ export function validateAgentWaitOptions(input: {
     (input.waitMs !== undefined &&
       (!Number.isInteger(input.waitMs) || input.waitMs < 0 || input.waitMs > 300_000))
   )
-    throw new Error('AGENT_WAIT_INVALID');
+    throw new AgentError(
+      'AGENT_WAIT_INVALID',
+      'The agent wait mode, condition or duration is invalid.'
+    );
 }
 
 /** One deadline and one notification subscription, with Session-scoped consumption. */
@@ -44,7 +48,7 @@ export async function waitForAgentTargets(input: {
     (!input.single && targets.length > 8) ||
     new Set(targets.map((target) => target.agentId)).size !== targets.length
   )
-    throw new Error('AGENT_WAIT_INVALID');
+    throw new AgentError('AGENT_WAIT_INVALID', 'The agent wait target selection is invalid.');
   input.signal?.throwIfAborted();
   const waitMs = input.waitMs ?? 30_000;
   const snapshot = waitMs === 0;
@@ -94,7 +98,7 @@ export async function waitForAgentTargets(input: {
             );
           listener();
         }),
-      waitMs: Math.max(waitMs, 10_000),
+      waitMs,
       signal: input.signal,
       interrupt: input.interrupt
     });

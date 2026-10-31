@@ -10,14 +10,19 @@ import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coord
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { RunAttachmentService } from '../../src/service/run-attachment-service.js';
 import { SessionMessageService } from '../../src/session/session-message-service.js';
-import { RestartSessionRestorer } from '../../src/service/restart-session-restorer.js';
+import {
+  RestartSessionRestorer,
+  type PreparedRestartExecution
+} from '../../src/service/restart-session-restorer.js';
 import {
   PlannedRestartHandoff,
   RESTART_NOTICE,
   type RestartSession
 } from '../../src/service/planned-restart-handoff.js';
+import type { RestartExecution } from '../../src/service/restart-execution-state.js';
 import { parseComposerTags } from '@myagentroam/protocol';
 import type { RunnerImageAttachment } from '../../src/service/run-attachment-service.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -117,11 +122,39 @@ async function fixture(parentSessionId?: string) {
     prepareGoalInsertion: () => true,
     goalPreparationFailed: vi.fn()
   });
-  const execution = {
-    secretEnvironment: { FRESH_SECRET: 'new-value' },
-    executionContext: runner.prepareExecutionContext({ marAgentModels: authorizedModels }),
+  const execution: RestartExecution = {
+    configuration: { modelId: 'model', effort: 'high', access: 'auto' },
     initiatedByUserId: 7
   };
+  const preparedExecutions: PreparedRestartExecution[] = [];
+  let preparationCount = 0;
+  const withExecution = vi.fn(
+    async (
+      _session: NodeAgentSession,
+      checkpoint: RestartExecution,
+      work: (fresh: PreparedRestartExecution) => Promise<unknown>
+    ) => {
+      if (checkpoint.initiatedByUserId === undefined)
+        throw new Error('RESTART_EXECUTION_USER_UNAVAILABLE');
+      const modelId = checkpoint.configuration?.modelId ?? 'model';
+      const model = { ...authorizedModels[0]!, id: modelId, modelId: `fresh-${modelId}` };
+      const fresh: PreparedRestartExecution = {
+        ...checkpoint,
+        executionContext: runner.prepareExecutionContext({ marAgentModels: [model] }),
+        secretEnvironment: {
+          FRESH_SECRET: `fresh-secret-${++preparationCount}`,
+          GIT_LEASE_MARKER: `fresh-git-lease-${preparationCount}`
+        },
+        personalInstructions: `Fresh Server instructions for ${modelId}`,
+        usageGrant: {
+          scopeId: '00000000-0000-4000-8000-000000000099',
+          token: `fresh-usage-grant-${preparationCount}`
+        }
+      };
+      preparedExecutions.push(fresh);
+      return work(fresh);
+    }
+  );
   const inputState = vi.fn(
     async () => 'interrupted' as 'interrupted' | 'completed' | 'missing' | 'paused'
   );
@@ -133,7 +166,7 @@ async function fixture(parentSessionId?: string) {
     messages,
     resolve: async () => session,
     inputState,
-    withGrant: (_context, work) => work(),
+    withExecution,
     goalReference: (sessionId) => {
       const goal = goals.get(sessionId)!;
       return { id: goal.id, revision: goal.revision, epoch: 19 };
@@ -177,6 +210,8 @@ async function fixture(parentSessionId?: string) {
     coordinator,
     messages,
     execution,
+    preparedExecutions,
+    withExecution,
     inputState,
     restorer,
     entry,
@@ -231,23 +266,25 @@ describe('Orderly restart input reconstruction', () => {
       effort: 'high',
       access: 'auto'
     });
+    expect(f.withExecution).toHaveBeenCalledTimes(2);
+    expect(f.preparedExecutions.map((prepared) => prepared.configuration)).toEqual([
+      { modelId: 'original-model', effort: 'low', access: 'read-only' },
+      { modelId: 'later-model', effort: 'medium', access: 'full-access' }
+    ]);
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('restores resolved personal instructions for ordinary inputs and FIFO items', async () => {
+  it('uses freshly prepared context, environment, instructions and grants for ordinary and FIFO inputs', async () => {
     const f = await fixture();
     f.entry.paused = true;
-    f.entry.current!.execution = {
-      ...f.execution,
-      personalInstructions: 'Original ordinary input instructions'
-    };
+    f.entry.current!.execution = f.execution;
     f.entry.queue = [
       {
         id: 'queued-instructions',
         clientMessageId: 'queued-instructions',
         content: 'queued request',
         attachments: [],
-        execution: { ...f.execution, personalInstructions: 'Original queued instructions' },
+        execution: f.execution,
         immediate: false
       }
     ];
@@ -255,26 +292,47 @@ describe('Orderly restart input reconstruction', () => {
     await f.restorer.restore(f.entry, 'handoff');
 
     expect(f.coordinator.pending('restart:handoff:session')?.personalInstructions).toBe(
-      'Original ordinary input instructions'
+      f.preparedExecutions[0]?.personalInstructions
     );
     expect(f.coordinator.pending('queued-instructions')?.personalInstructions).toBe(
-      'Original queued instructions'
+      f.preparedExecutions[1]?.personalInstructions
     );
+    expect(f.coordinator.pending('restart:handoff:session')?.secretEnvironment).toEqual(
+      f.preparedExecutions[0]?.secretEnvironment
+    );
+    expect(f.coordinator.pending('queued-instructions')?.secretEnvironment).toEqual(
+      f.preparedExecutions[1]?.secretEnvironment
+    );
+    expect(f.coordinator.pending('restart:handoff:session')?.usageGrant).toEqual(
+      f.preparedExecutions[0]?.usageGrant
+    );
+    expect(f.coordinator.pending('queued-instructions')?.usageGrant).toEqual(
+      f.preparedExecutions[1]?.usageGrant
+    );
+    expect(f.coordinator.pending('restart:handoff:session')?.executionContext).toEqual(
+      f.preparedExecutions[0]?.executionContext
+    );
+    expect(f.coordinator.pending('queued-instructions')?.executionContext).toEqual(
+      f.preparedExecutions[1]?.executionContext
+    );
+    expect(f.withExecution).toHaveBeenCalledTimes(2);
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('continues the original execution state without an initiating user or restart authorization', async () => {
+  it('fails required execution explicitly when the original user is unavailable', async () => {
     const f = await fixture();
-    f.entry.current!.execution = { ...f.execution, initiatedByUserId: undefined };
+    const { initiatedByUserId: _initiator, ...withoutOrigin } = f.execution;
+    f.entry.current!.execution = withoutOrigin;
 
-    await f.restorer.restore(f.entry, 'handoff');
+    await expect(f.restorer.restore(f.entry, 'handoff')).rejects.toThrow(
+      'RESTART_EXECUTION_USER_UNAVAILABLE'
+    );
 
-    await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
-    expect(f.runtime.activeSessionRun('session')!.initiatedByUserId).toBeUndefined();
-    expect(f.control.mock.calls[0]![1]).toMatchObject({
-      secretEnvironment: f.execution.secretEnvironment,
-      ...f.execution.executionContext
-    });
+    expect(f.withExecution).toHaveBeenCalledOnce();
+    expect(f.withExecution.mock.calls[0]?.[1]).not.toHaveProperty('initiatedByUserId');
+    expect(f.preparedExecutions).toHaveLength(0);
+    expect(f.runtime.activeSessionRun('session')).toBeUndefined();
+    expect(f.control).not.toHaveBeenCalled();
   });
 
   it('uses the input origin without requiring a separate Session owner', async () => {
@@ -284,6 +342,7 @@ describe('Orderly restart input reconstruction', () => {
 
     await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
     expect(f.runtime.activeSessionRun('session')!.initiatedByUserId).toBe(7);
+    expect(f.withExecution.mock.calls[0]?.[1].initiatedByUserId).toBe(7);
   });
 
   it('restores local command state without authorizing a new execution', async () => {
@@ -305,18 +364,18 @@ describe('Orderly restart input reconstruction', () => {
     await f.restorer.restore(f.entry, 'handoff');
 
     expect(f.runtime.sessionQueue('session').itemIds).toEqual([]);
+    expect(f.withExecution).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('does not borrow a different execution context when the required input context is missing', async () => {
+  it('does not borrow a different checkpoint when the required execution checkpoint is missing', async () => {
     const f = await fixture();
     delete f.entry.current!.execution;
 
-    await expect(f.restorer.restore(f.entry, 'handoff')).rejects.toThrow(
-      'RESTART_EXECUTION_CONTEXT_UNAVAILABLE'
-    );
+    await expect(f.restorer.restore(f.entry, 'handoff')).rejects.toThrow();
 
     expect(f.runtime.sessionQueue('session').itemIds).toEqual([]);
+    expect(f.withExecution).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
   });
 
@@ -347,12 +406,21 @@ describe('Orderly restart input reconstruction', () => {
         sessionId: 'session',
         input: expect.stringContaining(RESTART_NOTICE),
         clientMessageId: 'restart:handoff:session',
-        secretEnvironment: { FRESH_SECRET: 'new-value' },
+        secretEnvironment: { FRESH_SECRET: 'fresh-secret-1' },
         model: 'model',
         effort: 'high',
         access: 'auto'
       }
     ]);
+    expect(f.preparedExecutions[0]?.secretEnvironment).toEqual({
+      FRESH_SECRET: 'fresh-secret-1',
+      GIT_LEASE_MARKER: 'fresh-git-lease-1'
+    });
+    expect(f.preparedExecutions[0]?.personalInstructions).toBe(
+      'Fresh Server instructions for model'
+    );
+    expect(f.preparedExecutions[0]?.usageGrant?.token).toBe('fresh-usage-grant-1');
+    expect(f.preparedExecutions[0]?.executionContext.runner).toBe('mar-agent');
     expect(parseComposerTags(f.control.mock.calls[0]![1].input as string)).toContainEqual(
       expect.objectContaining({ kind: 'mar_restart', payload: {} })
     );
@@ -474,6 +542,25 @@ describe('Orderly restart input reconstruction', () => {
         suppressNotifications
       );
       expect(f.runtime.getQueueItem('ordinary')!.suppressNotifications).toBeUndefined();
+      expect(f.withExecution).toHaveBeenCalledTimes(2);
+      expect(
+        f.withExecution.mock.calls.map((call) => [
+          call[1].configuration?.modelId,
+          call[1].initiatedByUserId
+        ])
+      ).toEqual([
+        ['model', 7],
+        ['goal-model', 7]
+      ]);
+      expect(f.preparedExecutions.map((prepared) => prepared.configuration?.modelId)).toEqual([
+        'model',
+        'goal-model'
+      ]);
+      expect(f.preparedExecutions[1]?.secretEnvironment).toEqual({
+        FRESH_SECRET: 'fresh-secret-2',
+        GIT_LEASE_MARKER: 'fresh-git-lease-2'
+      });
+      expect(f.preparedExecutions[1]?.usageGrant?.token).toBe('fresh-usage-grant-2');
     }
   );
 

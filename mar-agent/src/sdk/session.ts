@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path';
 import type { InternalAgentSession, SessionServices } from './session-composition.js';
 import type { SessionModelMessage as ModelMessage } from '../session/model-request.js';
 import type { SessionStore } from '../session/store/contracts.js';
@@ -93,6 +94,15 @@ export function createSessionOpener(services: SessionServices) {
           ? { guaranteedCommands: description.guaranteedCommands }
           : {}),
         workspace: logicalWorkspace,
+        ...(settings.workspaceMapping === undefined
+          ? {
+              worktreeRoot: (description.platform === 'win32' ? win32 : posix).join(
+                description.homeDirectory,
+                '.mar',
+                'worktrees'
+              )
+            }
+          : {}),
         tools: availableTools
           .filter((tool) => !tool.name.startsWith('mcp__'))
           .map((tool) => tool.name),

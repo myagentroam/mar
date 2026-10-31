@@ -17,7 +17,7 @@ import {
   workflowPrompt
 } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.67';
+export const MAR_AGENT_PROMPT_VERSION = '1.68';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -26,6 +26,7 @@ interface SystemPromptInput {
   shell?: { readonly name: string; readonly path: string };
   guaranteedCommands?: Readonly<Record<string, string>>;
   workspace: string;
+  worktreeRoot?: string;
   tools: readonly string[];
   directTools?: readonly string[];
   extension?: string | undefined;
