@@ -24,7 +24,7 @@ describe('audit result presentation', () => {
     }));
     const request = vi.fn(async (path: string) =>
       path.includes('?')
-        ? { events, total: events.length, page: 1 }
+        ? { events, total: events.length, page: 1, pageSize: 20, hasMore: false }
         : events.find((event) => path.endsWith('/' + event.id))
     );
     const view = renderComponent(AuditManagementPage, { request });
