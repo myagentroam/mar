@@ -147,13 +147,13 @@ export function conversationWorkProcessProjection(
             'approval_request',
             'user_input_request',
             'plan',
+            'context_compaction',
             'error',
             'turn_summary'
           ].includes(item.kind) ||
           (item.kind === 'assistant_message' &&
             typeof payload?.text === 'string' &&
-            !!payload.text.trim()) ||
-          (item.kind === 'context_compaction' && payload?.mode !== 'BACKGROUND');
+            !!payload.text.trim());
         if (boundary) {
           const previous = open.get(turn.sessionId);
           if (previous !== undefined) previous.sealed = true;

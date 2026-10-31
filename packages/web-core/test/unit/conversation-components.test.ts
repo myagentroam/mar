@@ -1865,9 +1865,17 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
   });
 
-  it.each(['IN_PROGRESS', 'COMPLETED', 'FAILED'])(
-    'keeps Node-assigned process IDs around a %s compaction item',
-    async (status) => {
+  it.each([
+    ['IN_PROGRESS', undefined],
+    ['COMPLETED', undefined],
+    ['FAILED', undefined],
+    ['IN_PROGRESS', 'BACKGROUND'],
+    ['COMPLETED', 'BACKGROUND'],
+    ['FAILED', 'BACKGROUND'],
+    ['IN_PROGRESS', 'BLOCKING']
+  ])(
+    'keeps Node-assigned process IDs around a %s compaction item in %s mode',
+    async (status, mode) => {
       const before = {
         ...conversationItem('reasoning-before', 'reasoning', {
           representation: 'summary',
@@ -1878,7 +1886,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       const compact = conversationItem(
         'compact',
         'context_compaction',
-        { phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED' },
+        { mode, phase: status === 'COMPLETED' ? 'COMPLETED' : 'STARTED' },
         status
       );
       const after = {

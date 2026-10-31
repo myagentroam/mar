@@ -15,6 +15,7 @@ import {
   codexTranscriptSourceItemId
 } from '../../mar-node/src/runner/codex/conversation-parser.js';
 import type { PublicConversationItem } from '../../mar-node/src/native-transcript-model.js';
+import { conversationWorkProcessBlocks } from '../../packages/web-core/src/util/conversation-work-process.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
@@ -72,6 +73,65 @@ function byId(value: NodeConversationTurn, id: string): NodeConversationItem {
 }
 
 describe('Conversation work process projection', () => {
+  it('splits at anchored compaction throughout its lifecycle in live and historical projections', () => {
+    const before = item('before', 'reasoning', {
+      payload: { representation: 'summary', sections: [{ text: 'Before compact' }] }
+    });
+    const after = item('after', 'reasoning', {
+      status: 'IN_PROGRESS',
+      payload: { representation: 'summary', sections: [{ text: 'After compact' }] }
+    });
+    let previousGroups: unknown;
+    for (const [mode, status] of [
+      ['BACKGROUND', 'IN_PROGRESS'],
+      ['BLOCKING', 'IN_PROGRESS'],
+      ['BACKGROUND', 'COMPLETED'],
+      ['BACKGROUND', 'FAILED'],
+      ['BACKGROUND', 'CANCELLED']
+    ] as const) {
+      const compact = item('compact', 'context_compaction', {
+        status,
+        payload: { mode, anchorItemId: before.id }
+      });
+      const projected = projectConversationWorkProcesses(turn([before, after, compact]));
+      expect(projected.items.map(({ id }) => id)).toEqual(['before', 'compact', 'after']);
+      expect(byId(projected, 'compact').processGroup).toBeUndefined();
+      const beforeGroup = byId(projected, 'before').processGroup;
+      const afterGroup = byId(projected, 'after').processGroup;
+      expect(beforeGroup).toMatchObject({ isStart: true });
+      expect(afterGroup).toMatchObject({ isStart: true });
+      expect(beforeGroup?.id).not.toBe(afterGroup?.id);
+      const groups = [beforeGroup, afterGroup];
+      if (previousGroups !== undefined) expect(groups).toEqual(previousGroups);
+      previousGroups = groups;
+      expect(projectConversationWorkProcesses(projected)).toBe(projected);
+
+      const history = projectConversationWorkProcesses(
+        turn(
+          [item('user-1', 'user_message'), before, after, compact].map((entry) => ({
+            ...entry,
+            runId: null
+          })),
+          { runId: null }
+        )
+      );
+      expect([byId(history, 'before').processGroup, byId(history, 'after').processGroup]).toEqual(
+        groups
+      );
+
+      const blocks = conversationWorkProcessBlocks(conversationSegments(projected), [
+        { id: runId, status: 'RUNNING' }
+      ]);
+      expect(blocks.map(({ groupId }) => groupId)).toEqual([
+        beforeGroup?.id,
+        undefined,
+        afterGroup?.id
+      ]);
+      expect(blocks[0]).toMatchObject({ sealed: true, active: false });
+      expect(blocks[2]).toMatchObject({ sealed: false, active: true });
+    }
+  });
+
   it('keeps reasoning and tools together until visible Agent prose starts the next process', () => {
     const initial = turn([
       item('user-1', 'user_message', { payload: { text: 'Inspect this.' } }),

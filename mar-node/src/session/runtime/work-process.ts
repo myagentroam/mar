@@ -14,6 +14,7 @@ const boundaries = new Set([
   'approval_request',
   'user_input_request',
   'plan',
+  'context_compaction',
   'turn_summary'
 ]);
 
@@ -75,13 +76,10 @@ export function projectConversationWorkProcesses(turn: NodeConversationTurn): No
   let current: string | undefined;
   const assigned = new Map<string, string>();
   const items = ordered.map((item): NodeConversationItem => {
-    const payload = record(item.payload);
     let group: string | undefined;
     let isStart = false;
     const independent =
-      boundaries.has(item.kind) ||
-      (item.kind === 'context_compaction' && payload.mode !== 'BACKGROUND') ||
-      (item.kind === 'error' && item.parentItemId === null);
+      boundaries.has(item.kind) || (item.kind === 'error' && item.parentItemId === null);
     if (visible(item)) {
       if (independent) {
         current = undefined;
