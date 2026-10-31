@@ -237,6 +237,7 @@ for (const width of [390, 1280]) {
       expect(ancestorLine!.x).toBe(childLine!.x);
       expect(Math.abs(childLine!.y + childLine!.height - ancestorLine!.y)).toBeLessThan(1);
       const connectorEdges = await treeRows.evaluateAll((elements) => {
+        const origin = elements[0]!.querySelector('.session-tree-origin')!;
         const stem = elements[0]!.querySelector('.session-tree-origin-stem')!;
         const child = elements[1]!.querySelector('.session-tree-branch')!;
         const ancestor = elements[2]!.querySelector('.session-tree-branch')!;
@@ -249,6 +250,8 @@ for (const width of [390, 1280]) {
           parseFloat(getComputedStyle(element, '::before').left);
         return {
           root: branchX(stem),
+          rootElbow: elbowX(origin),
+          rootCornerRadius: getComputedStyle(origin, '::before').borderEndStartRadius,
           continuing: branchX(child),
           continuingElbow: elbowX(child),
           ancestor: branchX(ancestor),
@@ -257,6 +260,8 @@ for (const width of [390, 1280]) {
           lastElbow: elbowX(last)
         };
       });
+      expect(connectorEdges.rootElbow).toBeCloseTo(connectorEdges.root, 1);
+      expect(connectorEdges.rootCornerRadius).toBe('0px');
       expect(connectorEdges.continuing).toBeCloseTo(connectorEdges.root, 1);
       expect(connectorEdges.continuingElbow).toBeCloseTo(connectorEdges.continuing, 1);
       expect(connectorEdges.ancestor).toBeCloseTo(connectorEdges.continuing, 1);

@@ -205,7 +205,6 @@ onBeforeUnmount(() => controller.abort());
   width: 100%;
   border-inline-start: 1px solid var(--mar-border-medium);
   border-bottom: 1px solid var(--mar-border-medium);
-  border-end-start-radius: 0.25rem;
 }
 .session-tree-origin-stem {
   position: absolute;
