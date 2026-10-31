@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -18,6 +18,7 @@ interface TreeResult {
 }
 
 const props = defineProps<{
+  readonly active: boolean;
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly sessionId: string;
@@ -25,6 +26,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; open: [sessionId: string] }>();
 const controller = new AbortController();
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) controller.abort();
+  }
+);
 const loading = ref(true);
 const result = ref<TreeResult>();
 const rows = computed(() => {
@@ -51,12 +58,12 @@ const rows = computed(() => {
         priority[a.status] - priority[b.status]
     );
   }
-  const flattened: Array<{ node: TreeNode; branches: boolean[] }> = [];
+  const flattened: Array<{ node: TreeNode; branches: boolean[]; hasChildren: boolean }> = [];
   function visit(parent: string | null, branches: boolean[]): void {
     const siblings = children.get(parent) ?? [];
     for (const [index, node] of siblings.entries()) {
       const path = parent === null ? [] : [...branches, index < siblings.length - 1];
-      flattened.push({ node, branches: path });
+      flattened.push({ node, branches: path, hasChildren: children.has(node.id) });
       visit(node.id, path);
     }
   }
@@ -66,17 +73,18 @@ const rows = computed(() => {
 onMounted(async () => {
   try {
     const query = new URLSearchParams({ nodeId: props.nodeId, workspaceId: props.workspaceId });
-    result.value = await props.request<TreeResult>(
+    const snapshot = await props.request<TreeResult>(
       `/api/agent-sessions/${encodeURIComponent(props.sessionId)}/tree?${query}`,
       { signal: controller.signal }
     );
+    if (!controller.signal.aborted) result.value = snapshot;
   } catch (error) {
     if (!controller.signal.aborted) {
       showMessage(errorMessage(error), 'error', error);
       emit('close');
     }
   } finally {
-    loading.value = false;
+    if (!controller.signal.aborted) loading.value = false;
   }
 });
 onBeforeUnmount(() => controller.abort());
@@ -96,6 +104,12 @@ onBeforeUnmount(() => controller.abort());
           class="session-tree-branch"
           :class="{ 'is-continuing': continues, 'is-leaf': level === row.branches.length - 1 }"
           :style="{ insetInlineStart: `${level * 1.25 + 0.75}rem` }"
+        />
+        <span
+          v-if="row.branches.length > 0 && row.hasChildren"
+          class="session-tree-child-stem"
+          aria-hidden="true"
+          :style="{ insetInlineStart: `${row.branches.length * 1.25 + 0.75}rem` }"
         />
         <button
           type="button"
@@ -205,13 +219,14 @@ onBeforeUnmount(() => controller.abort());
   width: 100%;
   border-inline-start: 1px solid var(--mar-border-medium);
   border-bottom: 1px solid var(--mar-border-medium);
-  border-end-start-radius: 0.25rem;
 }
-.session-tree-origin-stem {
+.session-tree-origin-stem,
+.session-tree-child-stem {
   position: absolute;
   top: 50%;
   bottom: 0;
   border-inline-start: 1px solid var(--mar-border-medium);
+  pointer-events: none;
 }
 .session-tree-branch {
   position: absolute;

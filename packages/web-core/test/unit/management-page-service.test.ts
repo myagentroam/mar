@@ -381,6 +381,84 @@ describe('management page service lifecycle', () => {
     service.dispose();
   });
 
+  it('retries a failed clamped append fallback as a page-one replacement', async () => {
+    const fallbackError = new Error('Reload failed.');
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(page([{ id: 'retained' }], 1, 40, true))
+      .mockResolvedValueOnce(page([{ id: 'clamped' }], 1, 12, false))
+      .mockRejectedValueOnce(fallbackError)
+      .mockResolvedValueOnce(page([{ id: 'authoritative' }], 1, 12, false));
+    const service = createManagementPageService<Item>({
+      read,
+      key: (item) => item.id,
+      context: () => 'clamped-list'
+    });
+
+    await service.load();
+    const items = service.items.value;
+    const metadata = service.result.value;
+    await service.loadMore();
+
+    expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1]);
+    expect(service.failure.value).toEqual({ error: fallbackError, page: 1, append: false });
+    expect(service.items.value).toBe(items);
+    expect(service.result.value).toBe(metadata);
+    expect(service.total.value).toBe(40);
+    expect(service.hasMore.value).toBe(true);
+    expect(service.loading.value).toBe(false);
+    expect(service.loadingMore.value).toBe(false);
+
+    await service.retry();
+
+    expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1]);
+    expect(service.items.value).toEqual([{ id: 'authoritative' }]);
+    expect(service.result.value).toEqual(page([{ id: 'authoritative' }], 1, 12, false));
+    expect(service.page.value).toBe(1);
+    expect(service.failure.value).toBeUndefined();
+    service.dispose();
+  });
+
+  it('keeps repeated fallback failures on page one and bounds retries to manual requests', async () => {
+    const fallbackError = new Error('Reload failed.');
+    const retryError = new Error('Retry failed.');
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(page([{ id: 'retained' }], 1, 40, true))
+      .mockResolvedValueOnce(page([{ id: 'clamped' }], 1, 12, false))
+      .mockRejectedValueOnce(fallbackError)
+      .mockRejectedValueOnce(retryError)
+      .mockResolvedValueOnce(page([{ id: 'authoritative' }], 1, 12, false));
+    const service = createManagementPageService<Item>({
+      read,
+      key: (item) => item.id,
+      context: () => 'clamped-list'
+    });
+
+    await service.load();
+    const items = service.items.value;
+    const metadata = service.result.value;
+    await service.loadMore();
+    await service.retry();
+
+    expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1]);
+    expect(service.failure.value).toEqual({ error: retryError, page: 1, append: false });
+    expect(service.items.value).toBe(items);
+    expect(service.result.value).toBe(metadata);
+    expect(service.loading.value).toBe(false);
+    expect(service.loadingMore.value).toBe(false);
+
+    await service.loadMore(true);
+    expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1]);
+
+    await service.retry();
+
+    expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1, 1]);
+    expect(service.items.value).toEqual([{ id: 'authoritative' }]);
+    expect(service.failure.value).toBeUndefined();
+    service.dispose();
+  });
+
   it('accepts a server-clamped direct page and stores the returned page number', async () => {
     const read = vi.fn(async (requestedPage: number) =>
       requestedPage === 1

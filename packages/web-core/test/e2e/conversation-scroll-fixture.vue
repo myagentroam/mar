@@ -32,11 +32,13 @@ const loading = ref(false);
 const opened = ref(false);
 const olderRequests = ref(0);
 const prependedTurns = ref<ConversationTurn[]>([]);
+const nextCursor = ref<string | null>('older');
 let finishOlderPage: (() => void) | undefined;
+let failOlderPage: (() => void) | undefined;
 const paging = createWorkbenchConversationPagingService({
   workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
   selectedSessionId,
-  nextCursor: ref('older'),
+  nextCursor,
   loadingOlder: olderPending,
   capturePrependAnchor: scroll.capturePrependAnchor,
   pageSize: 3,
@@ -44,14 +46,29 @@ const paging = createWorkbenchConversationPagingService({
   replaceRecent: () => undefined,
   mergeOlderPage: (page) => {
     prependedTurns.value = [...page.turns, ...prependedTurns.value];
+    nextCursor.value = page.nextCursor;
   },
-  recoverWindow: () => undefined,
-  clearCursor: () => undefined,
+  recoverWindow: (page) => {
+    nextCursor.value = page.nextCursor;
+  },
+  clearCursor: () => {
+    nextCursor.value = null;
+  },
   request: <T,>() => {
     const page = ++olderRequests.value;
-    return new Promise<T>((resolve) => {
+    return new Promise<T>((resolve, reject) => {
+      failOlderPage = () => {
+        finishOlderPage = undefined;
+        failOlderPage = undefined;
+        reject(
+          new Error(
+            parameters.has('recover-exhausted') ? 'EVENT_CURSOR_INVALID' : 'History unavailable'
+          )
+        );
+      };
       finishOlderPage = () => {
         finishOlderPage = undefined;
+        failOlderPage = undefined;
         resolve({
           unit: 'SEGMENT',
           segments: Array.from({ length: 3 }, (_, index) => ({
@@ -68,7 +85,7 @@ const paging = createWorkbenchConversationPagingService({
               payload: { text: `earlier-${page}-${index}-item-${itemIndex}` }
             }))
           })),
-          nextCursor: `older-${page}`
+          nextCursor: parameters.has('exhaust-history') ? null : `older-${page}`
         } as T);
       };
     });
@@ -85,6 +102,14 @@ function requestOlder(): void {
     olderRequests.value++;
     olderPending.value = true;
     olderError.value = '';
+  }
+}
+
+function failOlder(): void {
+  if (failOlderPage) failOlderPage();
+  else {
+    olderPending.value = false;
+    olderError.value = 'Unavailable';
   }
 }
 
@@ -270,15 +295,7 @@ onMounted(async () => {
       >
         Finish older
       </button>
-      <button
-        data-testid="fail-older"
-        @click="
-          olderPending = false;
-          olderError = 'Unavailable';
-        "
-      >
-        Fail older
-      </button>
+      <button data-testid="fail-older" @click="failOlder">Fail older</button>
       <button
         data-testid="next-context"
         @click="
@@ -303,11 +320,13 @@ onMounted(async () => {
     <section class="scroll-fixture">
       <ConversationScroll
         :context-key="String(contextKey)"
-        :has-older="!parameters.has('no-older')"
+        :has-older="!parameters.has('no-older') && nextCursor !== null"
         :loading-initial="initialPending"
         :initial-load-failed="initialFailed"
         :loading-older="olderPending"
-        :older-error="olderError"
+        :older-error="
+          parameters.has('prepend-history') ? paging.olderHistoryError.value : olderError
+        "
         :has-turns="true"
         :following="following"
         @scroll-element="scroll.setElement"

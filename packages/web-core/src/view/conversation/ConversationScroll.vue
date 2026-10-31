@@ -225,6 +225,8 @@ function updateMotionPreference(event: MediaQueryListEvent): void {
 }
 
 onBeforeUpdate(() => {
+  if (!props.hasOlder && historyMarker.value?.contains(document.activeElement))
+    element.value?.focus({ preventScroll: true });
   const composer = composerHost();
   const motionAllowed =
     motionPreference?.matches === false &&
@@ -336,13 +338,7 @@ onBeforeUnmount(() => {
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
         <div
-          v-if="
-            !loadingInitial &&
-            !initialLoadFailed &&
-            !reloading &&
-            (hasOlder || olderAction === 'retry') &&
-            hasTurns
-          "
+          v-if="!loadingInitial && !initialLoadFailed && !reloading && hasOlder && hasTurns"
           ref="historyMarker"
           class="conversation-history-control"
           :aria-busy="loadingOlder || olderAction !== undefined"
@@ -410,7 +406,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .conversation-history-control {
-  min-height: 1px;
+  /* Keep loading and retry feedback from shifting the reading viewport. */
+  min-height: calc(24px + 0.8rem);
   text-align: center;
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
@@ -433,7 +430,6 @@ onBeforeUnmount(() => {
   height: 100%;
   min-width: 0;
   overflow: auto;
-  overflow-anchor: none;
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
   background: var(--mar-conversation-canvas);
 }

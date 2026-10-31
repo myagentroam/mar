@@ -849,6 +849,7 @@ function submitSessionSearch(): void {
     />
     <WorkspaceSessionTreePopover
       v-if="treeSessionId && treeAnchor"
+      :key="treeSessionId"
       :node-id="nodeId"
       :workspace-id="workspaceId"
       :session-id="treeSessionId"

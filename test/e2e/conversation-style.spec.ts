@@ -10,7 +10,7 @@ test.afterAll(async () => {
 });
 
 for (const width of [1280, 390]) {
-  test(`Top-boundary history immediately reveals the loaded page without chaining at ${width}px`, async ({
+  test(`Top-boundary history preserves the viewport without chaining at ${width}px`, async ({
     browser
   }) => {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
@@ -18,24 +18,36 @@ for (const width of [1280, 390]) {
       const page = await context.newPage();
       await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1`);
       const region = page.locator('.conversation-scroll');
+      const anchor = region.locator('.history');
       const requests = page.getByTestId('older-requests');
-      await region.focus();
-      await region.press('Home');
+      const before = await region.evaluate((element) => {
+        element.scrollTop = 0;
+        const y = element.querySelector('.history')!.getBoundingClientRect().y;
+        element.dispatchEvent(new WheelEvent('wheel', { deltaY: -160, bubbles: true }));
+        return y;
+      });
       await expect(requests).toHaveText('1');
       await expect(region.locator('.busy-indicator')).toHaveCount(1);
+      expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
       await page.getByTestId('finish-older').click();
       await expect(region.locator('.busy-indicator')).toHaveCount(0);
-      await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+      await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+      await expect(page.getByTestId('earlier-1-0')).not.toBeInViewport();
       await expect(region.locator('.prepended-page')).toHaveCount(3);
       await page.evaluate(
         () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       );
       await expect(requests).toHaveText('1');
-      await region.hover();
-      await page.mouse.wheel(0, -160);
+      await region.focus();
+      await region.press('Home');
       await expect(requests).toHaveText('2');
+      const previousPage = page.getByTestId('earlier-1-0');
+      const nextBefore = (await previousPage.boundingBox())!.y;
       await page.getByTestId('finish-older').click();
-      await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+      await expect
+        .poll(async () => (await previousPage.boundingBox())!.y)
+        .toBeCloseTo(nextBefore, 0);
+      await expect(page.getByTestId('earlier-2-0')).not.toBeInViewport();
       await expect(region.locator('.prepended-page')).toHaveCount(6);
     } finally {
       await context.close();
@@ -44,7 +56,7 @@ for (const width of [1280, 390]) {
 }
 
 for (const width of [1280, 390]) {
-  test(`Top-boundary history remains visible throughout progressive timeline mounting at ${width}px`, async ({
+  test(`Top-boundary history keeps its reading anchor throughout progressive mounting at ${width}px`, async ({
     page
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -55,9 +67,166 @@ for (const width of [1280, 390]) {
     await region.focus();
     await page.keyboard.press('Home');
     await expect(page.getByTestId('older-requests')).toHaveText('1');
-    await page.getByTestId('finish-older').click();
-    await expect(page.getByText('earlier-1-0-item-0', { exact: true })).toBeInViewport();
+    const anchor = region.locator('.history');
+    const before = (await anchor.boundingBox())!.y;
+    const offsets = await page.getByTestId('finish-older').evaluate(async (button) => {
+      const history = document.querySelector('.history')!;
+      const positions: number[] = [];
+      (button as HTMLButtonElement).click();
+      for (let frame = 0; frame < 12; frame++) {
+        await new Promise(requestAnimationFrame);
+        positions.push(history.getBoundingClientRect().y);
+      }
+      return positions;
+    });
+    await expect(page.getByText('earlier-1-0-item-0', { exact: true })).toHaveCount(1);
+    for (const offset of offsets) expect(offset).toBeCloseTo(before, 0);
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
     await expect(page.getByTestId('older-requests')).toHaveText('1');
+  });
+}
+
+test('History retry and exhaustion preserve the viewport and keyboard focus', async ({ page }) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&exhaust-history=1`
+  );
+  const region = page.locator('.conversation-scroll');
+  await region.focus();
+  await region.press('Home');
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+  const anchor = region.locator('.history');
+  const before = (await anchor.boundingBox())!.y;
+  await page.getByTestId('fail-older').click();
+  const retry = region.getByRole('button', { name: 'Failed to load. Retry' });
+  await expect(retry).toBeVisible();
+  expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await retry.focus();
+  await retry.press('Enter');
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+  expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await page.getByTestId('finish-older').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(region.locator('.conversation-history-control')).toHaveCount(0);
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await expect(region).toBeFocused();
+  await expect(region.locator('.prepended-page')).toHaveCount(3);
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+});
+
+for (const nativeAnchoring of [true, false]) {
+  test(`Exhausted cursor recovery preserves the reading viewport with native anchoring ${nativeAnchoring}`, async ({
+    page
+  }) => {
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&recover-exhausted=1&exhaust-history=1`
+    );
+    if (!nativeAnchoring)
+      await page.addStyleTag({
+        content: '.conversation-scroll { overflow-anchor: none !important; }'
+      });
+    const region = page.locator('.conversation-scroll');
+    await region.focus();
+    await region.press('Home');
+    await expect(page.getByTestId('older-requests')).toHaveText('1');
+    await page.getByTestId('fail-older').click();
+    await expect(page.getByTestId('older-requests')).toHaveText('2');
+    await region.evaluate((element) => {
+      element.scrollTop = 300;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    const anchor = region.locator('.history');
+    const before = (await anchor.boundingBox())!.y;
+    await page.getByTestId('finish-older').click();
+    await expect(region.locator('.conversation-history-control')).toHaveCount(0);
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('older-requests')).toHaveText('2');
+  });
+}
+
+for (const { nearBottom, trailingGrowth } of [
+  { nearBottom: false, trailingGrowth: 0 },
+  { nearBottom: true, trailingGrowth: 0 },
+  { nearBottom: true, trailingGrowth: 5 }
+]) {
+  test(`Native anchoring preserves the reading viewport and intent when content above expands: near-bottom=${nearBottom}, trailing-growth=${trailingGrowth}`, async ({
+    page
+  }) => {
+    test.skip(
+      !(await page.evaluate(() => CSS.supports('overflow-anchor', 'auto'))),
+      'This engine does not support native scroll anchoring.'
+    );
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+    await page.addStyleTag({
+      content: '.history { height: auto !important; display: block !important; }'
+    });
+    const region = page.locator('.conversation-scroll');
+    await region.evaluate((element, nearBottom) => {
+      const history = element.querySelector<HTMLElement>('.history')!;
+      history.style.display = 'block';
+      history.innerHTML = Array.from(
+        { length: 20 },
+        (_, index) =>
+          `<p data-reading-row="${index}" style="height:200px;margin:0">Existing message ${index}</p>`
+      ).join('');
+      element.scrollTop = nearBottom ? element.scrollHeight - element.clientHeight - 20 : 420;
+      element.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
+      element.dispatchEvent(new Event('scroll'));
+    }, nearBottom);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const anchor = page.locator(`[data-reading-row="${nearBottom ? 19 : 3}"]`);
+    await expect(anchor).toBeInViewport();
+    const before = (await anchor.boundingBox())!.y;
+    await page.locator('.history').evaluate((history, trailingGrowth) => {
+      const expanded = document.createElement('div');
+      expanded.style.height = '200px';
+      expanded.textContent = 'Expanded content above the reading viewport';
+      history.prepend(expanded);
+      if (trailingGrowth > 0) {
+        const trailing = document.createElement('div');
+        trailing.style.height = `${trailingGrowth}px`;
+        history.append(trailing);
+      }
+    }, trailingGrowth);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('following')).toHaveText('false');
+    await region.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect(page.getByTestId('following')).toHaveText('true');
+  });
+}
+
+for (const nativeAnchoring of [true, false]) {
+  test(`Appending below does not consume later downward reading: native anchoring ${nativeAnchoring}`, async ({
+    page
+  }) => {
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+    if (!nativeAnchoring)
+      await page.addStyleTag({
+        content: '.conversation-scroll { overflow-anchor: none !important; }'
+      });
+    const region = page.locator('.conversation-scroll');
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await region.dispatchEvent('wheel', { deltaY: -1 });
+    await expect(page.getByTestId('following')).toHaveText('false');
+    const before = await region.evaluate((element) => element.scrollTop);
+    await page.locator('.history').evaluate((history) => {
+      const appended = document.createElement('div');
+      appended.style.height = '240px';
+      appended.textContent = 'A later message below the reading viewport';
+      history.after(appended);
+    });
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('following')).toHaveText('false');
+    await region.focus();
+    await region.press('End');
+    await expect(page.getByTestId('following')).toHaveText('true');
   });
 }
 
@@ -97,8 +266,10 @@ test('Near-bottom geometry does not override upward intent while earlier history
   });
   await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.getByTestId('following')).toHaveText('false');
+  const anchor = region.locator('.history');
+  const before = (await anchor.boundingBox())!.y;
   await page.getByTestId('finish-older').click();
-  await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
   await expect(page.getByTestId('older-requests')).toHaveText('1');
 });
 
@@ -117,8 +288,10 @@ test('Automatic history backfill preserves the latest message before a manual to
   await region.focus();
   await region.press('Home');
   await expect(requests).toHaveText('2');
+  const anchor = page.getByTestId('earlier-1-0');
+  const before = (await anchor.boundingBox())!.y;
   await page.getByTestId('finish-older').click();
-  await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
   await expect(requests).toHaveText('2');
 });
 
@@ -908,9 +1081,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const headingHeight = await heading.evaluate(
           (element) => element.getBoundingClientRect().height
         );
-        await expect(command.locator('.conversation-command-output')).toHaveCount(0);
+        await expect(command.getByRole('region', { name: 'Output' })).toHaveCount(0);
         await heading.click();
-        const detail = command.locator('.conversation-command-output');
+        const detail = command.getByRole('region', { name: 'Output' });
         await expect(detail).toBeVisible();
         expect(await detail.textContent()).toContain(fullCommand);
         await expect(detail).toContainText('Review output');
@@ -939,7 +1112,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(detail).toHaveCount(0);
         const withoutOutput = group.locator(':scope > details').nth(1);
         await withoutOutput.locator(':scope > summary').click();
-        await expect(withoutOutput.locator('.conversation-command-output')).toContainText(
+        await expect(withoutOutput.getByRole('region', { name: 'Output' })).toContainText(
           'echo review-1'
         );
       } finally {

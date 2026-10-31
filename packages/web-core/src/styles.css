@@ -1219,6 +1219,8 @@ pre {
 @media (max-width: 767px) {
   .management-page {
     padding: 12px;
+    /* Appended rows must not anchor the reader to the moving table footer. */
+    overflow-anchor: none;
   }
 
   .management-page .el-table {

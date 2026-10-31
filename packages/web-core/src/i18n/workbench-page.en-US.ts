@@ -32,6 +32,8 @@ export const workbenchPageEnUS = {
     blocked: 'Save or discard unsaved changes and finish file transfers before updating.',
     otherWindows: 'Close other application windows before updating this window.',
     unavailable: 'The update is not ready to apply. Check for updates and try again.',
+    displayModeLabel: 'Display mode',
+    displayMode: { browser: 'Browser tab', standalone: 'Standalone PWA window' },
     offlineLabel: 'Application resource cache',
     offline: {
       preparing: 'Preparing application interface resources.',

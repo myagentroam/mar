@@ -7,7 +7,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import { iconThemes, type IconThemeId } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
@@ -87,6 +87,20 @@ const fileEditorMode = fileEditorService.mode;
 const localeService = localePreferenceService();
 const locale = localeService.locale;
 const { t } = useI18n();
+const standaloneWindow = ref(false);
+let removeDisplayModeListener: (() => void) | undefined;
+onMounted(() => {
+  if (typeof window === 'undefined') return;
+  const media = window.matchMedia('(display-mode: standalone)');
+  const updateDisplayMode = () => {
+    standaloneWindow.value =
+      media.matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  };
+  updateDisplayMode();
+  media.addEventListener('change', updateDisplayMode);
+  removeDisplayModeListener = () => media.removeEventListener('change', updateDisplayMode);
+});
+onBeforeUnmount(() => removeDisplayModeListener?.());
 const customThemes = computed(() =>
   themeService.customThemes.value.map((item) => ({
     id: item.id,
@@ -665,6 +679,9 @@ async function confirmLogout(): Promise<void> {
         </div>
       </div>
       <el-descriptions :column="1" border>
+        <el-descriptions-item :label="t('webUpdate.displayModeLabel')">
+          {{ t(`webUpdate.displayMode.${standaloneWindow ? 'standalone' : 'browser'}`) }}
+        </el-descriptions-item>
         <el-descriptions-item v-if="pwaState" :label="t('webUpdate.offlineLabel')">
           <span>{{ t(`webUpdate.offline.${pwaState.offline}`) }}</span>
           <div class="pwa-actions">

@@ -17,6 +17,7 @@ themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2
 const requests = ref(0);
 const aborts = ref(0);
 const selected = ref('');
+let settleSnapshot: ((fail: boolean) => void) | undefined;
 const session = {
   id: rootOnly ? 'parent' : 'child',
   externalSessionId: rootOnly ? 'parent' : 'child',
@@ -46,6 +47,13 @@ createTooltipApp({
               sessionId: rootOnly ? 'parent' : 'child',
               request: async <T>(_path: string, init?: RequestInit) => {
                 requests.value++;
+                if (query.has('delayed') && requests.value === 1) {
+                  await new Promise<void>((resolve, reject) => {
+                    settleSnapshot = (fail) =>
+                      fail ? reject(new Error('tree unavailable')) : resolve();
+                    init?.signal?.addEventListener('abort', () => aborts.value++, { once: true });
+                  });
+                }
                 if (query.has('pending')) {
                   await new Promise<void>((_resolve, reject) => {
                     init?.signal?.addEventListener('abort', () => {
@@ -164,7 +172,21 @@ createTooltipApp({
       ),
       h('output', { 'data-testid': 'selected' }, selected.value),
       h('output', { 'data-testid': 'requests' }, requests.value),
-      h('output', { 'data-testid': 'aborts' }, aborts.value)
+      h('output', { 'data-testid': 'aborts' }, aborts.value),
+      query.has('delayed')
+        ? h('div', [
+            h(
+              'button',
+              { 'data-testid': 'resolve-snapshot', onClick: () => settleSnapshot?.(false) },
+              'Resolve snapshot'
+            ),
+            h(
+              'button',
+              { 'data-testid': 'reject-snapshot', onClick: () => settleSnapshot?.(true) },
+              'Reject snapshot'
+            )
+          ])
+        : null
     ])
 })
   .use(i18n)
