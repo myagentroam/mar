@@ -1,14 +1,15 @@
+import { AgentError } from '@myagentroam/agent';
 import type { NodeAgentRun, NodeQueueItem } from '../runtime-model.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 
 export function assertRunOwner(run: NodeAgentRun, requestUserId: unknown): void {
   if (Number.isSafeInteger(requestUserId) && run.initiatedByUserId !== requestUserId)
-    throw new Error('RUN_OWNED_BY_ANOTHER_USER');
+    throw new AgentError('RUN_OWNED_BY_ANOTHER_USER', 'The run belongs to another user.');
 }
 
 export function assertQueueItemOwner(item: NodeQueueItem, requestUserId: unknown): void {
   if (Number.isSafeInteger(requestUserId) && item.initiatedByUserId !== requestUserId)
-    throw new Error('RUN_OWNED_BY_ANOTHER_USER');
+    throw new AgentError('RUN_OWNED_BY_ANOTHER_USER', 'The queued input belongs to another user.');
 }
 
 export function assertSessionControlOwner(

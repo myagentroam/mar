@@ -1,3 +1,4 @@
+import { AgentError } from '@myagentroam/agent';
 import type { ExtensionOperationContext } from '@myagentroam/agent/extensions';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
@@ -60,7 +61,10 @@ export function executionAgentActor(input: {
     !['STARTING', 'RUNNING'].includes(execution.status) ||
     !Number.isSafeInteger(run.initiatedByUserId)
   )
-    throw new Error('AGENT_ACTOR_NOT_ACTIVE');
+    throw new AgentError(
+      'AGENT_ACTOR_NOT_ACTIVE',
+      'The calling agent execution is no longer active.'
+    );
   const captured =
     prepared.executionContext.runner === 'mar-agent' &&
     isPlainRecord(prepared.executionContext.runnerInput)
@@ -102,7 +106,10 @@ export async function invokeAgentNetwork(
         (context || actor.executionId) &&
         (typeof payload.title !== 'string' || !payload.title.trim())
       )
-        throw new Error('AGENT_START_INVALID');
+        throw new AgentError(
+          'AGENT_START_INVALID',
+          'A nonblank title is required to start an agent.'
+        );
       if (
         !context &&
         !actor.executionId &&
