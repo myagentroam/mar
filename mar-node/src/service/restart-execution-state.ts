@@ -1,5 +1,4 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { modelUsageGrantSchema, type ModelUsageGrant } from '@myagentroam/protocol';
 import { z } from 'zod';
 import type { PreparedExecutionInput } from './continuous-run-coordinator.js';
 
@@ -12,14 +11,6 @@ export const restartExecutionSchema = z
         access: z.string().nullable()
       })
       .strict()
-      .optional(),
-    executionContext: z
-      .object({ runner: z.literal('mar-agent'), runnerInput: z.unknown().optional() })
-      .strict(),
-    secretEnvironment: z.record(z.string(), z.string()),
-    personalInstructions: z.string().optional(),
-    usageGrant: z
-      .custom<ModelUsageGrant>((value) => modelUsageGrantSchema.safeParse(value).success)
       .optional(),
     initiatedByUserId: z.number().int().positive().optional()
   })
@@ -42,12 +33,6 @@ export function captureRestartExecution(
     ...(input.modelId === undefined || input.effort === undefined || input.access === undefined
       ? {}
       : { configuration: { modelId: input.modelId, effort: input.effort, access: input.access } }),
-    executionContext: structuredClone(input.executionContext),
-    secretEnvironment: { ...input.secretEnvironment },
-    ...(input.personalInstructions === undefined
-      ? {}
-      : { personalInstructions: input.personalInstructions }),
-    ...(input.usageGrant === undefined ? {} : { usageGrant: { ...input.usageGrant } }),
     ...(initiatedByUserId === undefined ? {} : { initiatedByUserId })
   });
 }

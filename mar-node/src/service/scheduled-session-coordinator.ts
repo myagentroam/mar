@@ -8,6 +8,7 @@ import {
 } from './scheduled-session-store.js';
 
 export interface ScheduledRunContext {
+  readonly gitConfiguration?: import('@myagentroam/protocol').PersonalGitRuntime;
   readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant | undefined;
   readonly secretEnvironment: Readonly<Record<string, string>>;
   readonly personalInstructions?: unknown;

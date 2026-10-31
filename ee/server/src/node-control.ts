@@ -34,6 +34,8 @@ import { ServerTrafficMetrics } from './service/server-traffic-metrics.js';
 import type { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
 import {
   resolveScheduledRunAuthorization,
+  resolveExecutionPreparation,
+  type ExecutionPreparer,
   type ScheduledRunAuthorizer
 } from '@myagentroam/server-core/scheduled-run-authorization-channel';
 import { resolveMailNotification } from '@myagentroam/server-core/mail-notification-channel';
@@ -91,6 +93,7 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly mailNotifications: Pick<MailNotificationService, 'send'>;
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
+  readonly executionPreparer?: ExecutionPreparer;
   readonly marctlExecutionCredential: (
     nodeId: string,
     request: MarctlExecutionCredentialRequest
@@ -477,13 +480,16 @@ export class NodeControl extends NodeIdentityControl {
       this.send(socket, 'credential.response', runtimeCredentialConnectionError(), envelope.id);
       return;
     }
-    if (envelope.type === 'schedule.authorize') {
+    if (envelope.type === 'execution.prepare' || envelope.type === 'schedule.authorize') {
       this.send(
         socket,
-        'schedule.authorize.response',
+        `${envelope.type}.response`,
         {
           error: {
-            code: 'SCHEDULE_SERVER_UNAVAILABLE',
+            code:
+              envelope.type === 'execution.prepare'
+                ? 'EXECUTION_SERVER_UNAVAILABLE'
+                : 'SCHEDULE_SERVER_UNAVAILABLE',
             message: 'The Node connection is no longer valid.'
           }
         },
@@ -597,6 +603,16 @@ export class NodeControl extends NodeIdentityControl {
         isCurrentConnection: () => this.sockets.get(nodeId) === socket,
         authorize: this.consumers.scheduleAuthorizer,
         respond: (payload) => this.send(socket, 'schedule.authorize.response', payload, envelope.id)
+      });
+      return true;
+    }
+    if (envelope.type === 'execution.prepare') {
+      await resolveExecutionPreparation({
+        nodeId,
+        envelope,
+        isCurrentConnection: () => this.sockets.get(nodeId) === socket,
+        authorize: this.consumers.executionPreparer,
+        respond: (payload) => this.send(socket, 'execution.prepare.response', payload, envelope.id)
       });
       return true;
     }

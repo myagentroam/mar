@@ -80,7 +80,7 @@ const sessionSchema = z
   .strict();
 export const plannedRestartSchema = z
   .object({
-    schemaVersion: z.literal(3),
+    schemaVersion: z.literal(4),
     id: identifier,
     nodeId: identifier,
     serverUrl: z.string().min(1),
@@ -154,11 +154,6 @@ interface Options {
   readonly coordinator: Pick<ContinuousRunCoordinator<unknown>, 'pending' | 'isImmediate'>;
   readonly goals: GoalRuntime;
   readonly goalExecution?: (sessionId: string) => RestartExecution | undefined;
-  readonly executionContext?: (
-    sessionId: string,
-    context: RestartExecution['executionContext'],
-    selectedModelId?: string | null
-  ) => RestartExecution['executionContext'];
   readonly commandActive: (sessionId: string, command: string) => boolean;
   readonly inputState: (
     session: RestartSession,
@@ -254,12 +249,6 @@ export class PlannedRestartHandoff {
             effort: session.effort,
             access: session.access
           };
-        if (execution !== undefined && this.options.executionContext !== undefined)
-          execution.executionContext = this.options.executionContext(
-            session.id,
-            execution.executionContext,
-            execution.configuration?.modelId
-          );
         return execution;
       };
       const toMessage = (
@@ -354,7 +343,7 @@ export class PlannedRestartHandoff {
     return parseCapture(
       plannedRestartSchema,
       {
-        schemaVersion: 3,
+        schemaVersion: 4,
         id: randomUUID(),
         ...this.options.identity(),
         createdAt: Date.now(),

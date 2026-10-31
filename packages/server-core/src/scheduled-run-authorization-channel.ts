@@ -1,5 +1,8 @@
 import {
   scheduledRunAuthorizeRequestSchema,
+  executionPrepareRequestSchema,
+  type ExecutionPrepareRequest,
+  type ExecutionPrepareResponse,
   type NodeEnvelope,
   type ScheduledRunAuthorizeRequest,
   type ScheduledRunAuthorizeResponse
@@ -9,15 +12,20 @@ import type { ZodType } from 'zod';
 export type ScheduledRunAuthorizer = (
   nodeId: string,
   request: ScheduledRunAuthorizeRequest
-) => Promise<Extract<ScheduledRunAuthorizeResponse, { context: unknown }>['context']>;
+) => ReturnType<ExecutionPreparer>;
+
+export type ExecutionPreparer = (
+  nodeId: string,
+  request: ExecutionPrepareRequest
+) => Promise<Extract<ExecutionPrepareResponse, { context: unknown }>['context']>;
 
 interface AuthorizationInput<Request> {
   readonly nodeId: string;
   readonly envelope: NodeEnvelope;
   readonly isCurrentConnection: () => boolean;
   readonly authorize:
-    ((nodeId: string, request: Request) => ReturnType<ScheduledRunAuthorizer>) | undefined;
-  readonly respond: (payload: ScheduledRunAuthorizeResponse) => void;
+    ((nodeId: string, request: Request) => ReturnType<ExecutionPreparer>) | undefined;
+  readonly respond: (payload: ExecutionPrepareResponse) => void;
 }
 
 export async function resolveScheduledRunAuthorization(input: {
@@ -33,6 +41,12 @@ export async function resolveScheduledRunAuthorization(input: {
     'SCHEDULE',
     'scheduled run'
   );
+}
+
+export async function resolveExecutionPreparation(
+  input: AuthorizationInput<ExecutionPrepareRequest>
+): Promise<void> {
+  return resolveAuthorization(input, executionPrepareRequestSchema, 'EXECUTION', 'execution');
 }
 
 async function resolveAuthorization<Request>(

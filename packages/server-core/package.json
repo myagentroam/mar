@@ -225,6 +225,11 @@
       "types": "./dist/session-input-service.d.ts",
       "import": "./dist/session-input-service.js"
     },
+    "./session-execution-context": {
+      "development": "./src/session-execution-context.ts",
+      "types": "./dist/session-execution-context.d.ts",
+      "import": "./dist/session-execution-context.js"
+    },
     "./session-channel-service": {
       "development": "./src/session-channel-service.ts",
       "types": "./dist/session-channel-service.d.ts",

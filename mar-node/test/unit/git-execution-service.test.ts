@@ -2,8 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { delimiter, dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitExecutionService } from '../../src/service/git-execution-service.js';
 
 const execute = promisify(execFile);
@@ -24,8 +24,29 @@ const configuration = {
   ]
 };
 const services: GitExecutionService[] = [];
+beforeEach(async () => {
+  // Do not nest fixture capabilities inside the Agent host's Git broker.
+  const { stdout } = await execute(
+    process.platform === 'win32' ? 'where.exe' : '/bin/sh',
+    process.platform === 'win32' ? ['git.exe'] : ['-lc', 'command -p -v git']
+  );
+  const binary = stdout
+    .split(/\r?\n/u)
+    .find((line) => line.trim() !== '')!
+    .trim();
+  const pathKey = process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH';
+  vi.stubEnv(pathKey, `${dirname(binary)}${delimiter}${process.env[pathKey] ?? ''}`);
+  for (const name of Object.keys(process.env)) {
+    if (name.startsWith('MAR_GIT_') || name === 'GIT_SSH_COMMAND' || name === 'GIT_SSH_VARIANT')
+      vi.stubEnv(name, undefined);
+  }
+});
 afterEach(async () => {
-  await Promise.all(services.splice(0).map((service) => service.close()));
+  try {
+    await Promise.all(services.splice(0).map((service) => service.close()));
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 describe('Git execution environments', () => {
@@ -141,7 +162,11 @@ describe('Git execution environments', () => {
       await execute('git', ['init', directory]);
       await execute(
         'git',
-        ['config', 'core.sshCommand', "sh -c 'echo ORIGINAL_SSH_COMMAND >&2; exit 1'"],
+        [
+          'config',
+          'core.sshCommand',
+          'sh -c \'echo ORIGINAL_SSH_COMMAND > "$MAR_TEST_SSH_MARKER"; echo ORIGINAL_SSH_COMMAND >&2; exit 1\''
+        ],
         { cwd: directory }
       );
       const lease = await service.acquire(1, {
@@ -166,10 +191,19 @@ describe('Git execution environments', () => {
         await expect(
           execute('git', ['ls-remote', 'git@unmatched.invalid:team/repo.git'], {
             cwd: directory,
-            env: { ...process.env, ...lease.environment },
+            env: {
+              ...process.env,
+              ...lease.environment,
+              MAR_TEST_SSH_MARKER: join(directory, 'ssh-command-executed')
+            },
             timeout: 5000
           })
-        ).rejects.toMatchObject({ stderr: expect.stringContaining('ORIGINAL_SSH_COMMAND') });
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining('ORIGINAL_SSH_COMMAND')
+        });
+        expect(await readFile(join(directory, 'ssh-command-executed'), 'utf8')).toBe(
+          'ORIGINAL_SSH_COMMAND\n'
+        );
       } finally {
         lease.release();
       }
@@ -214,7 +248,11 @@ describe('Git execution environments', () => {
     services.push(service);
     try {
       await execute('git', ['init', directory]);
-      await writeFile(command, `#!/bin/sh\necho ${expected} >&2\nexit 1\n`, { mode: 0o700 });
+      await writeFile(
+        command,
+        `#!/bin/sh\necho ${expected} > "$MAR_TEST_SSH_MARKER"\necho ${expected} >&2\nexit 1\n`,
+        { mode: 0o700 }
+      );
       const lease = await service.acquire(1, {
         ...configuration,
         credentials: [
@@ -237,10 +275,20 @@ describe('Git execution environments', () => {
         await expect(
           execute('git', args(command), {
             cwd: directory,
-            env: { ...process.env, ...lease.environment, ...environment(command) },
+            env: {
+              ...process.env,
+              ...lease.environment,
+              ...environment(command),
+              MAR_TEST_SSH_MARKER: join(directory, 'ssh-command-executed')
+            },
             timeout: 5000
           })
-        ).rejects.toMatchObject({ stderr: expect.stringContaining(expected) });
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(expected)
+        });
+        expect(await readFile(join(directory, 'ssh-command-executed'), 'utf8')).toBe(
+          `${expected}\n`
+        );
       } finally {
         lease.release();
       }

@@ -46,7 +46,7 @@ function preparedInput(): PreparedExecutionInput {
 }
 
 describe('restart execution state', () => {
-  it.each([1, 2, 3])('rejects plaintext state with schema version %s', (schemaVersion) => {
+  it.each([1, 2, 3, 4])('rejects plaintext state with schema version %s', (schemaVersion) => {
     expect(() => openRestartState(JSON.stringify({ schemaVersion }), credential)).toThrow();
   });
 
@@ -56,38 +56,44 @@ describe('restart execution state', () => {
     expect(() => openRestartState(JSON.stringify(sealed), credential)).toThrow();
   });
 
-  it('captures the original execution context, environment, usage grant, and optional attribution', () => {
+  it('captures only per-input configuration and optional attribution', () => {
     const input = preparedInput();
     const captured = captureRestartExecution(input, 41);
 
     expect(captured).toEqual({
       configuration: { modelId: input.modelId, effort: input.effort, access: input.access },
-      executionContext: input.executionContext,
-      secretEnvironment: input.secretEnvironment,
-      personalInstructions: input.personalInstructions,
-      usageGrant: input.usageGrant,
       initiatedByUserId: 41
     });
-    expect(captured?.executionContext).not.toBe(input.executionContext);
+    expect(captured).not.toHaveProperty('executionContext');
+    expect(captured).not.toHaveProperty('secretEnvironment');
+    expect(captured).not.toHaveProperty('personalInstructions');
+    expect(captured).not.toHaveProperty('usageGrant');
 
     const withoutAttribution = captureRestartExecution(input);
-    expect(withoutAttribution).toMatchObject({
-      executionContext: input.executionContext,
-      secretEnvironment: input.secretEnvironment,
-      personalInstructions: input.personalInstructions,
-      usageGrant: input.usageGrant
+    expect(withoutAttribution).toEqual({
+      configuration: { modelId: input.modelId, effort: input.effort, access: input.access }
     });
     expect(withoutAttribution).not.toHaveProperty('initiatedByUserId');
     expect(captureRestartExecution(undefined)).toBeUndefined();
   });
 
-  it('round-trips a sealed execution state without exposing its contents', () => {
+  it('round-trips a sealed checkpoint without carrying prepared credentials or execution data', () => {
     const state = captureRestartExecution(preparedInput(), 41)!;
     const sealed = sealRestartState(state, credential);
+    const opened = openRestartState(sealed, credential);
 
     expect(sealed).not.toContain(secret);
     expect(sealed).not.toContain(usageToken);
-    expect(openRestartState(sealed, credential)).toEqual(state);
+    expect(sealed).not.toContain('mcp-secret-do-not-log');
+    expect(sealed).not.toContain('private per-user instructions');
+    expect(JSON.stringify(opened)).not.toContain(secret);
+    expect(JSON.stringify(opened)).not.toContain(usageToken);
+    expect(JSON.stringify(opened)).not.toContain('mcp-secret-do-not-log');
+    expect(JSON.stringify(opened)).not.toContain('private per-user instructions');
+    expect(JSON.stringify(opened)).not.toContain('executionContext');
+    expect(JSON.stringify(opened)).not.toContain('secretEnvironment');
+    expect(JSON.stringify(opened)).not.toContain('usageGrant');
+    expect(opened).toEqual(state);
   });
 
   it('uses a fresh nonce for each sealing operation', () => {

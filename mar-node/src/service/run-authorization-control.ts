@@ -1,15 +1,19 @@
 import {
   createEnvelope,
   scheduledRunAuthorizeRequestSchema,
-  scheduledRunAuthorizeResponseSchema,
+  executionPrepareResponseSchema,
+  executionPrepareRequestSchema,
+  type ExecutionPrepareRequest,
   type NodeEnvelope,
   type ScheduledRunAuthorizeRequest,
-  type ScheduledRunAuthorizeResponse
+  type ExecutionPrepareResponse
 } from '@myagentroam/protocol';
 
 interface Pending {
   readonly generation: number;
-  readonly resolve: (value: ScheduledRunAuthorizeResponse) => void;
+  readonly responseType: string;
+  readonly prefix: string;
+  readonly resolve: (value: ExecutionPrepareResponse) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
 }
@@ -22,10 +26,6 @@ export class RunAuthorizationControl {
 
   constructor(private readonly send: (envelope: NodeEnvelope) => void) {}
 
-  private code(suffix: string): string {
-    return `SCHEDULE_${suffix}`;
-  }
-
   connected(): void {
     this.disconnected();
     this.#connected = true;
@@ -35,7 +35,7 @@ export class RunAuthorizationControl {
     this.#connected = false;
     this.#generation++;
     for (const pending of [...this.#pending.values()])
-      pending.reject(new Error(this.code('SERVER_UNAVAILABLE')));
+      pending.reject(new Error(`${pending.prefix}_SERVER_UNAVAILABLE`));
   }
 
   close(): void {
@@ -44,25 +44,53 @@ export class RunAuthorizationControl {
   }
 
   handle(envelope: NodeEnvelope): boolean {
-    if (envelope.type !== 'schedule.authorize.response') return false;
+    if (
+      envelope.type !== 'schedule.authorize.response' &&
+      envelope.type !== 'execution.prepare.response'
+    )
+      return false;
     const pending =
       envelope.replyTo === undefined ? undefined : this.#pending.get(envelope.replyTo);
-    if (pending === undefined || pending.generation !== this.#generation) return true;
-    const parsed = scheduledRunAuthorizeResponseSchema.safeParse(envelope.payload);
-    if (!parsed.success) pending.reject(new Error(this.code('AUTH_RESPONSE_INVALID')));
+    if (
+      pending === undefined ||
+      pending.generation !== this.#generation ||
+      pending.responseType !== envelope.type
+    )
+      return true;
+    const parsed = executionPrepareResponseSchema.safeParse(envelope.payload);
+    if (!parsed.success) pending.reject(new Error(`${pending.prefix}_AUTH_RESPONSE_INVALID`));
     else pending.resolve(parsed.data);
     return true;
   }
 
   authorize(
     request: ScheduledRunAuthorizeRequest
-  ): Promise<Extract<ScheduledRunAuthorizeResponse, { context: unknown }>['context']> {
-    if (!this.#connected || this.#closed)
-      return Promise.reject(new Error(this.code('SERVER_UNAVAILABLE')));
-    const envelope = createEnvelope(
+  ): Promise<Extract<ExecutionPrepareResponse, { context: unknown }>['context']> {
+    return this.request(
       'schedule.authorize',
-      scheduledRunAuthorizeRequestSchema.parse(request)
+      scheduledRunAuthorizeRequestSchema.parse({ ...request, executionResources: 1 }),
+      'SCHEDULE'
     );
+  }
+
+  prepare(
+    request: ExecutionPrepareRequest
+  ): Promise<Extract<ExecutionPrepareResponse, { context: unknown }>['context']> {
+    return this.request(
+      'execution.prepare',
+      executionPrepareRequestSchema.parse(request),
+      'EXECUTION'
+    );
+  }
+
+  private request(
+    type: string,
+    request: unknown,
+    prefix: string
+  ): Promise<Extract<ExecutionPrepareResponse, { context: unknown }>['context']> {
+    if (!this.#connected || this.#closed)
+      return Promise.reject(new Error(`${prefix}_SERVER_UNAVAILABLE`));
+    const envelope = createEnvelope(type, request);
     return new Promise((resolve, reject) => {
       const settle = (action: () => void) => {
         const pending = this.#pending.get(envelope.id);
@@ -72,12 +100,14 @@ export class RunAuthorizationControl {
         action();
       };
       const timer = setTimeout(
-        () => settle(() => reject(new Error(this.code('AUTH_TIMEOUT')))),
+        () => settle(() => reject(new Error(`${prefix}_AUTH_TIMEOUT`))),
         15_000
       );
       timer.unref();
       this.#pending.set(envelope.id, {
         generation: this.#generation,
+        responseType: `${type}.response`,
+        prefix,
         timer,
         resolve: (response) =>
           settle(() => {
@@ -89,7 +119,7 @@ export class RunAuthorizationControl {
       try {
         this.send(envelope);
       } catch {
-        settle(() => reject(new Error(this.code('SERVER_UNAVAILABLE'))));
+        settle(() => reject(new Error(`${prefix}_SERVER_UNAVAILABLE`)));
       }
     });
   }
