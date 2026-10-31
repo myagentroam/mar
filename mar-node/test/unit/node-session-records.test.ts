@@ -302,10 +302,48 @@ describe('Node session records and external discovery merge', () => {
       const graph = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'root'
-      })) as { nodes: { id: string }[]; truncated: boolean };
+      })) as { nodes: { id: string; status: string }[]; truncated: boolean };
       expect(graph.nodes).toHaveLength(100);
       expect(graph.nodes[0]?.id).toBe('root');
+      expect(graph.nodes.every((node) => node.status === 'IDLE')).toBe(true);
       expect(graph.truncated).toBe(true);
+      const runtime = (connector as unknown as { runtime: NodeRuntimeState }).runtime;
+      const created = runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        cwd: workspace.path
+      });
+      runtime.promoteSessionIdentity(created.id, 'root');
+      const { run } = runtime.createMessageRun({
+        sessionId: 'root',
+        clientMessageId: 'tree-status',
+        content: 'Work'
+      });
+      runtime.transitionRun(run.id, 'RUNNING');
+      const rootStatus = async () =>
+        (
+          (await execute('session.graph', {
+            workspaceId: workspace.id,
+            sessionId: 'root',
+            limit: 1
+          })) as { nodes: { status: string }[] }
+        ).nodes[0]?.status;
+      expect(await rootStatus()).toBe('RUNNING');
+      runtime.appendRunEvent({
+        runId: run.id,
+        sequence: 1,
+        eventType: 'conversation.item',
+        payload: {
+          itemId: 'sleep',
+          kind: 'tool_call',
+          status: 'IN_PROGRESS',
+          payload: {
+            toolName: 'sleep',
+            toolPresentation: { kind: 'SLEEP', startedAt: '2026-10-20T01:00:00.000Z' }
+          }
+        }
+      });
+      expect(await rootStatus()).toBe('SLEEPING');
       const targetTree = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'child-99',

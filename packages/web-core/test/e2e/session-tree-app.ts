@@ -5,7 +5,7 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import Header from '../../src/view/conversation/ConversationHeader.vue';
-import Tree from '../../src/view/workspace/WorkspaceSessionTreeDialog.vue';
+import Tree from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -14,76 +14,157 @@ const query = new URLSearchParams(location.search);
 const rootOnly = query.get('rootOnly') === '1';
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
-const open = ref(false);
+const requests = ref(0);
+const aborts = ref(0);
 const selected = ref('');
 const session = {
-  id: 'child',
-  externalSessionId: 'child',
+  id: rootOnly ? 'parent' : 'child',
+  externalSessionId: rootOnly ? 'parent' : 'child',
   runner: 'mar-agent',
-  sessionGroup: 'CHILD'
+  sessionGroup: rootOnly ? 'MAIN' : 'CHILD'
 } as Session;
 const title = 'Review BMP compatibility changes and lifecycle edge cases';
 createTooltipApp({
   render: () =>
     h('main', { style: 'padding: 16px' }, [
-      h(Header, {
-        session,
-        runner: 'mar-agent',
-        filesReady: false,
-        terminalReady: false,
-        contentSearchReady: false,
-        runnerIcon: () => '',
-        sessionTitle: () => title,
-        onOpenTree: () => {
-          open.value = true;
+      h(
+        Header,
+        {
+          session,
+          runner: 'mar-agent',
+          filesReady: false,
+          terminalReady: false,
+          contentSearchReady: false,
+          runnerIcon: () => '',
+          sessionTitle: () => title
+        },
+        {
+          tree: () =>
+            h(Tree, {
+              nodeId: 'node',
+              workspaceId: 'workspace',
+              sessionId: rootOnly ? 'parent' : 'child',
+              request: async <T>(_path: string, init?: RequestInit) => {
+                requests.value++;
+                if (query.has('pending')) {
+                  await new Promise<void>((_resolve, reject) => {
+                    init?.signal?.addEventListener('abort', () => {
+                      aborts.value++;
+                      reject(new Error('aborted'));
+                    });
+                  });
+                }
+                if (query.has('failure') && requests.value === 1)
+                  throw new Error('tree unavailable');
+                return {
+                  rootSessionId: 'parent',
+                  truncated: false,
+                  nodes: query.has('long')
+                    ? Array.from({ length: 100 }, (_, index) => ({
+                        id: index === 0 ? 'parent' : `node-${index}`,
+                        parentSessionId:
+                          index === 0 ? null : index === 1 ? 'parent' : `node-${index - 1}`,
+                        title: `Node ${index}`,
+                        runner: 'mar-agent',
+                        status: 'IDLE'
+                      }))
+                    : query.has('mixed')
+                      ? [
+                          {
+                            id: 'parent',
+                            parentSessionId: null,
+                            title: 'Root',
+                            runner: 'mar-agent',
+                            status: 'IDLE'
+                          },
+                          {
+                            id: 'idle-branch',
+                            parentSessionId: 'parent',
+                            title: 'Idle branch',
+                            runner: 'mar-agent',
+                            status: 'IDLE'
+                          },
+                          {
+                            id: 'running',
+                            parentSessionId: 'parent',
+                            title: 'Running branch',
+                            runner: 'mar-agent',
+                            status: 'RUNNING'
+                          },
+                          {
+                            id: 'sleeping',
+                            parentSessionId: 'parent',
+                            title: 'Sleeping branch',
+                            runner: 'mar-agent',
+                            status: 'SLEEPING'
+                          },
+                          {
+                            id: 'idle',
+                            parentSessionId: 'parent',
+                            title: 'Idle leaf',
+                            runner: 'mar-agent',
+                            status: 'IDLE'
+                          },
+                          {
+                            id: 'idle-two',
+                            parentSessionId: 'parent',
+                            title: 'Idle leaf two',
+                            runner: 'mar-agent',
+                            status: 'IDLE'
+                          },
+                          {
+                            id: 'grandchild',
+                            parentSessionId: 'idle-branch',
+                            title: 'Active descendant',
+                            runner: 'mar-agent',
+                            status: 'RUNNING'
+                          }
+                        ]
+                      : [
+                          {
+                            id: 'parent',
+                            status: 'IDLE',
+                            parentSessionId: null,
+                            title: rootOnly
+                              ? 'forge#maintainer'
+                              : '图片上传报错: MAR_AGENT_HOST_LIMIT_EXCEEDED',
+                            runner: 'mar-agent'
+                          },
+                          {
+                            id: 'child',
+                            parentSessionId: 'parent',
+                            title,
+                            runner: 'mar-agent',
+                            status: 'IDLE'
+                          },
+                          {
+                            id: 'grandchild',
+                            status: 'IDLE',
+                            parentSessionId: 'child',
+                            title: 'Verify image decoding and cleanup',
+                            runner: 'mar-agent'
+                          },
+                          {
+                            id: 'sibling',
+                            status: 'IDLE',
+                            parentSessionId: 'parent',
+                            title: 'Review upload boundary tests and verify image compatibility. '
+                              .repeat(6)
+                              .trim(),
+                            runner: 'codex'
+                          }
+                        ].filter((node) => !rootOnly || node.id === 'parent')
+                } as T;
+              },
+              onOpen: (id: string) => {
+                selected.value = id;
+              }
+            })
         }
-      }),
+      ),
       h('output', { 'data-testid': 'selected' }, selected.value),
-      open.value
-        ? h(Tree, {
-            modelValue: true,
-            nodeId: 'node',
-            workspaceId: 'workspace',
-            sessionId: rootOnly ? 'parent' : 'child',
-            request: async <T>() =>
-              ({
-                rootSessionId: 'parent',
-                truncated: false,
-                nodes: [
-                  {
-                    id: 'parent',
-                    parentSessionId: null,
-                    title: rootOnly
-                      ? 'forge#maintainer'
-                      : '图片上传报错: MAR_AGENT_HOST_LIMIT_EXCEEDED',
-                    runner: 'mar-agent'
-                  },
-                  { id: 'child', parentSessionId: 'parent', title, runner: 'mar-agent' },
-                  {
-                    id: 'grandchild',
-                    parentSessionId: 'child',
-                    title: 'Verify image decoding and cleanup',
-                    runner: 'mar-agent'
-                  },
-                  {
-                    id: 'sibling',
-                    parentSessionId: 'parent',
-                    title: 'Review upload boundary tests and verify image compatibility. '
-                      .repeat(6)
-                      .trim(),
-                    runner: 'codex'
-                  }
-                ].filter((node) => !rootOnly || node.id === 'parent')
-              }) as T,
-            onClose: () => {
-              open.value = false;
-            },
-            onOpen: (id: string) => {
-              selected.value = id;
-              open.value = false;
-            }
-          })
-        : null
+      h('output', { 'data-testid': 'requests' }, requests.value),
+      h('output', { 'data-testid': 'aborts' }, aborts.value)
     ])
 })
   .use(i18n)

@@ -2,18 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
-import {
-  mountMobileDialogReturn,
-  unmountMobileDialogReturn
-} from '../../service/mobile-dialog-return-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import { marIcon } from '../../util/mar-icons.js';
 
 interface TreeNode {
   readonly id: string;
   readonly parentSessionId: string | null;
   readonly title: string;
   readonly runner: string;
+  readonly status: 'RUNNING' | 'SLEEPING' | 'IDLE';
 }
 interface TreeResult {
   readonly rootSessionId: string;
@@ -22,7 +18,6 @@ interface TreeResult {
 }
 
 const props = defineProps<{
-  readonly modelValue: boolean;
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly sessionId: string;
@@ -41,6 +36,20 @@ const rows = computed(() => {
     const siblings = children.get(parent) ?? [];
     siblings.push(node);
     children.set(parent, siblings);
+  }
+  function hasActiveDescendant(node: TreeNode): boolean {
+    return (children.get(node.id) ?? []).some(
+      (child) => child.status !== 'IDLE' || hasActiveDescendant(child)
+    );
+  }
+  const priority = { RUNNING: 0, SLEEPING: 1, IDLE: 2 };
+  for (const siblings of children.values()) {
+    siblings.sort(
+      (a, b) =>
+        Number(b.status !== 'IDLE' || hasActiveDescendant(b)) -
+          Number(a.status !== 'IDLE' || hasActiveDescendant(a)) ||
+        priority[a.status] - priority[b.status]
+    );
   }
   const flattened: Array<{ node: TreeNode; branches: boolean[] }> = [];
   function visit(parent: string | null, branches: boolean[]): void {
@@ -74,52 +83,51 @@ onBeforeUnmount(() => controller.abort());
 </script>
 
 <template>
-  <el-dialog
-    v-if="modelValue"
-    :model-value="modelValue"
-    :title="translate('sessionGroups.tree')"
-    :close-icon="marIcon('close')"
-    width="min(520px, calc(100vw - 32px))"
-    @update:model-value="emit('close')"
-    @vue:mounted="mountMobileDialogReturn"
-    @vue:before-unmount="unmountMobileDialogReturn"
-  >
-    <div v-loading="loading" class="session-tree" :aria-busy="loading">
-      <ul v-if="result" class="session-tree-list">
-        <li v-for="row in rows" :key="row.node.id" class="session-tree-row">
-          <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
-            <span v-if="rows.length > 1" class="session-tree-origin-stem" />
-          </span>
-          <span
-            v-for="(continues, level) in row.branches"
-            :key="level"
-            aria-hidden="true"
-            class="session-tree-branch"
-            :class="{ 'is-continuing': continues, 'is-leaf': level === row.branches.length - 1 }"
-            :style="{ insetInlineStart: `${level * 1.25 + 0.75}rem` }"
-          />
-          <button
-            type="button"
-            class="session-tree-node"
-            :style="{ marginInlineStart: `${(row.branches.length + 1) * 1.25}rem` }"
-            :aria-current="row.node.id === sessionId ? 'true' : undefined"
-            :aria-label="row.node.title"
-            @click="emit('open', row.node.id)"
+  <div v-loading="loading" class="session-tree" :aria-busy="loading">
+    <ul v-if="result" class="session-tree-list">
+      <li v-for="row in rows" :key="row.node.id" class="session-tree-row">
+        <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
+          <span v-if="rows.length > 1" class="session-tree-origin-stem" />
+        </span>
+        <span
+          v-for="(continues, level) in row.branches"
+          :key="level"
+          aria-hidden="true"
+          class="session-tree-branch"
+          :class="{ 'is-continuing': continues, 'is-leaf': level === row.branches.length - 1 }"
+          :style="{ insetInlineStart: `${level * 1.25 + 0.75}rem` }"
+        />
+        <button
+          type="button"
+          class="session-tree-node"
+          :style="{ marginInlineStart: `${(row.branches.length + 1) * 1.25}rem` }"
+          :aria-current="row.node.id === sessionId ? 'true' : undefined"
+          :aria-label="`${row.node.title}, ${translate(`sessionGroups.status${row.node.status}`)}`"
+          @click="emit('open', row.node.id)"
+        >
+          <span class="session-tree-title">{{ row.node.title }}</span>
+          <el-tag
+            class="session-tree-status"
+            size="small"
+            :type="row.node.status === 'RUNNING' ? 'success' : 'info'"
+            >{{ translate(`sessionGroups.status${row.node.status}`) }}</el-tag
           >
-            <span class="session-tree-title">{{ row.node.title }}</span>
-          </button>
-        </li>
-      </ul>
-      <p v-if="result?.truncated" class="session-tree-truncated">
-        {{ translate('sessionGroups.treeTruncated') }}
-      </p>
-    </div>
-  </el-dialog>
+        </button>
+      </li>
+    </ul>
+    <p v-if="result?.truncated" class="session-tree-truncated">
+      {{ translate('sessionGroups.treeTruncated') }}
+    </p>
+  </div>
 </template>
 
 <style scoped>
 .session-tree[aria-busy='true'] {
   min-height: 4rem;
+}
+.session-tree {
+  max-height: min(60vh, 32rem);
+  overflow-y: auto;
 }
 .session-tree-list {
   list-style: none;
@@ -129,9 +137,10 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-node {
   display: flex;
   flex: 1;
-  min-width: 0;
+  min-width: 10rem;
   min-height: 2.25rem;
   align-items: center;
+  gap: 0.75rem;
   padding: 0.375rem 0.75rem;
   border: 0;
   border-radius: var(--mar-radius-control);
@@ -151,6 +160,17 @@ onBeforeUnmount(() => controller.abort());
 .session-tree-node[aria-current='true'] .session-tree-title {
   color: var(--mar-color-brand-text);
   font-weight: 600;
+}
+.session-tree-status {
+  flex: none;
+  margin-inline-start: auto;
+  height: 20px;
+  padding: 0 0.38rem;
+  font-size: var(--mar-font-size-meta);
+  line-height: 18px;
+}
+.session-tree-status.el-tag--success {
+  --el-tag-text-color: var(--mar-color-success-text);
 }
 .session-tree-title {
   display: -webkit-box;

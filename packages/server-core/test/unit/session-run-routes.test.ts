@@ -75,7 +75,11 @@ function fixture(
 describe('shared ordinary Session and Run routes', () => {
   it('relays the session tree with the same workspace authorization context', async () => {
     const { app, requestNode, headers } = fixture();
-    const tree = { rootSessionId: 'root', nodes: [], truncated: false };
+    const tree = {
+      rootSessionId: 'root',
+      nodes: [{ id: 'root', status: 'SLEEPING' }],
+      truncated: false
+    };
     requestNode.mockResolvedValueOnce(tree);
     const response = await app.inject({
       url: '/api/agent-sessions/child/tree?nodeId=node-one&workspaceId=workspace-one',

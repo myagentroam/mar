@@ -143,6 +143,7 @@ for (const [width, theme, locale] of [
       await page
         .getByRole('menuitem', { name: locale === 'zh-CN' ? '查看会话树' : 'View session tree' })
         .click();
+      await page.locator('.session-tree-node').click();
       await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
       await page.locator('.activity-center-trigger').click();
       await page.locator('.activity-tabs [data-page="recent-sessions"]:visible').click();
