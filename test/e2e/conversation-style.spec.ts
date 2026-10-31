@@ -10,6 +10,71 @@ test.afterAll(async () => {
 });
 
 for (const width of [1280, 390]) {
+  test(`Paged timeline renders older messages without another scroll at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&timeline-history=1`
+    );
+    const region = page.locator('.conversation-scroll');
+    for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
+      await region.focus();
+      await region.press('Home');
+      await expect(page.getByTestId('older-requests')).toHaveText(String(pageNumber));
+      const anchor = region.locator('.conversation-item').first();
+      const entryKey = await anchor.getAttribute('data-entry-key');
+      const retained = region.locator(`[data-entry-key="${entryKey}"]`);
+      await expect(retained).toBeInViewport();
+      const before = (await retained.boundingBox())!.y;
+      await page.getByTestId('finish-older').click();
+      await expect(region.locator('.busy-indicator')).toHaveCount(0);
+      await expect(region.locator('.conversation-item')).toHaveCount(3 + pageNumber * 72);
+      await expect(page.getByText(`earlier-${pageNumber}-0-item-0`, { exact: true })).toBeVisible();
+      await expect(retained).toBeInViewport();
+      await expect.poll(async () => (await retained.boundingBox())!.y).toBeCloseTo(before, 0);
+      await expect(page.getByTestId('following')).toHaveText('false');
+    }
+  });
+}
+
+test('Older page becomes renderable when it arrives during initial progressive rendering', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&timeline-history=1&rendering-history=1`
+  );
+  const snapshot = await page.locator('.conversation-scroll').evaluate(async (element) => {
+    (document.querySelector('[data-testid="load-timeline-history"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+    const count = () => element.querySelectorAll('.conversation-item').length;
+    const before = count();
+    element.scrollTop = 0;
+    const anchor = element.querySelector('.conversation-item')!;
+    const anchorTop = anchor.getBoundingClientRect().top;
+    element.dispatchEvent(new WheelEvent('wheel', { deltaY: -160, bubbles: true }));
+    (document.querySelector('[data-testid="finish-older"]') as HTMLButtonElement).click();
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    return {
+      before,
+      anchorShift: anchor.getBoundingClientRect().top - anchorTop,
+      total: count(),
+      busy: element.querySelector('.conversation-history-control')?.getAttribute('aria-busy'),
+      older: [...element.querySelectorAll('[data-entry-key]')].filter((entry) =>
+        entry.getAttribute('data-entry-key')?.includes(':earlier-1-')
+      ).length
+    };
+  });
+  expect(snapshot.before).toBeGreaterThan(0);
+  expect(snapshot.before).toBeLessThan(600);
+  expect(snapshot.busy).toBe('false');
+  expect(snapshot.older).toBe(72);
+  expect(snapshot.total).toBe(672);
+  expect(snapshot.anchorShift).toBeCloseTo(0, 0);
+});
+
+for (const width of [1280, 390]) {
   test(`Top-boundary history preserves the viewport without chaining at ${width}px`, async ({
     browser
   }) => {

@@ -330,7 +330,7 @@ async function prepareInitialRender(version: number, turns: readonly Conversatio
 
 watch(
   [() => props.initialRenderVersion, () => props.turns],
-  ([version, turns]) => {
+  ([version, turns], previous) => {
     const total = conversationItemCount(turns);
     const sessionId = turns[0]?.sessionId;
     const switching = sessionId !== renderedSessionId;
@@ -351,6 +351,15 @@ watch(
     if (switching) {
       scheduleProgressiveRender();
       return;
+    }
+    const previousFirstTurn = previous?.[1]?.[0];
+    if (
+      progressiveRenderPending &&
+      previousFirstTurn !== undefined &&
+      turns.findIndex((turn) => turn.id === previousFirstTurn.id) > 0
+    ) {
+      // A completed older page must not wait behind the initial render window.
+      cancelProgressiveRender();
     }
     if (!progressiveRenderPending) renderedItemCount.value = total;
   },
