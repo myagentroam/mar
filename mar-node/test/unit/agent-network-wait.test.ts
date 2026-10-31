@@ -35,6 +35,25 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('Agent Network waiting', () => {
+  it.each([1, 1000])(
+    'uses the requested %i ms deadline without a hidden minimum',
+    async (waitMs) => {
+      vi.useFakeTimers();
+      const f = fixture();
+      let settled = false;
+      const result = waitForAgentTargets({ ...f, targets: [f.targets[0]!], single: true, waitMs });
+      void result.then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(waitMs - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      expect(await result).toMatchObject({ waitOutcome: 'timeout', status: 'RUNNING' });
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
   it.each(['FAILED', 'CANCELLED'] as const)(
     'does not return a final summary when the execution ends as %s',
     async (status) => {

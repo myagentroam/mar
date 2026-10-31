@@ -54,7 +54,7 @@ ${configurationHelp}
     [--client-message-id <id>] [--json]
   {program} wait [<id>] [--agent <id> ...] [--mode any|all]
     [--wait-for message|completion] [--timeout <duration>] [--json]
-  {program} stop <id> --execution <execution-id> [--json]
+  {program} stop <id> [--json]
   {program} list [--scope tree|active] [--query <title>]
     [--limit <1..100>] [--json]
   {program} view [<id>] [--json]
@@ -83,13 +83,14 @@ ${configurationHelp}
   --parent。start 不等待。
   send 默认追加；--steer 优先补充，--queue 排队。--goal 设置或替换目标，
   --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
-  stop 清除目标会话的 Goal。wait 默认等待直接子会话终态 30 秒，
-  0ms 为快照；正数小于 10 秒按 10 秒等待，最多 5 分钟。等待不会停止任务。
+  stop 停止目标当前执行并清除 Goal。wait 默认等待直接子会话终态 30 秒，
+  0ms 为快照；正数按传入时长等待，最多 5 分钟。等待不会停止任务。
   -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
   list 默认查询所在会话树，包含空闲会话；
   没有当前会话时默认 active，显式 tree 须有会话上下文。active 包含当前
   Workspace 中运行及睡眠的会话。返回 currentAgentId（无会话时为 null）、
-  扁平 sessions 和 truncated。limit 默认及上限均为 100，无 cursor 或分页。
+  扁平 sessions 和 truncated。limit 默认 10、上限 100，无 cursor 或分页。
+  活跃会话优先，其后按最近活动时间倒序。
   配置和持久提示从后续执行生效。
   即时沟通或纠偏优先使用 --steer。
   建议仅将 --queue 用于明确要求延后的输入：当前工作及前面的队列项结束后才消费，
@@ -100,8 +101,8 @@ ${configurationHelp}
 
   show --json 包含 session.status、session.modelId、session.effort、
   session.title、session.runId、session.recentTools、session.queuedCount 和
-  session.latestMessage。list 每项仅含 id、parentSessionId、title、runner 和
-  status；wait 可能包含 progress；
+  session.latestMessage。list 每项仅含 id、parentSessionId、title 和 status；
+  wait 可能包含 progress；view 不公开 Run 或 Execution ID。
   状态为 RUNNING/IDLE/SLEEPING。历史中 segments[].items[] 的
   kind === "assistant_message" 包含 payload.text。
 

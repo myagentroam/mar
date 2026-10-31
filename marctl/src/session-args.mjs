@@ -42,7 +42,7 @@ const commands = {
     'approval',
     'decision'
   ],
-  stop: ['execution'],
+  stop: [],
   'goal.get': [],
   'goal.set': ['message', 'message-file'],
   'goal.clear': [],
@@ -57,7 +57,6 @@ const fieldNames = {
   run: 'runId',
   approval: 'approvalId',
   timeout: 'timeoutMs',
-  execution: 'executionId',
   'wait-for': 'waitFor',
   'clear-goal': 'clearGoal'
 };
@@ -177,7 +176,6 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     !['mar-agent', 'codex', 'claude-code', 'opencode'].includes(args.runner)
   )
     throw invalid();
-  if (action === 'stop' && !args.executionId) throw invalid();
   if (action === 'wait' && args.sessionId && args.agentIds?.length) throw invalid();
   if (
     args.until !== undefined &&

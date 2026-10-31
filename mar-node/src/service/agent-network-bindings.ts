@@ -33,7 +33,7 @@ export function actorForAuthenticatedTerminal(
   return authenticated;
 }
 
-import { marctlSessionDetail } from './session-recent-activity.js';
+import { agentNetworkSessionView } from './session-recent-activity.js';
 import { listAgentNetworkSessions } from './agent-network-list.js';
 
 interface Bindings {
@@ -426,14 +426,16 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         throw error;
       }
     },
-    stop: (actor, session, executionId) =>
-      publicReceipt(
-        options.runs.stopAgentExecution({
-          sessionId: session.id,
-          executionId,
-          ...(actor.requestUserId === undefined ? {} : { requestUserId: actor.requestUserId })
-        })
-      ),
+    stop: (actor, session) => {
+      const result = options.runs.stopAgentSession({
+        sessionId: session.id,
+        ...(actor.requestUserId === undefined ? {} : { requestUserId: actor.requestUserId })
+      });
+      return {
+        ...publicReceipt(result),
+        ...(isPlainRecord(result) && result.status === 'IDLE' ? { status: 'IDLE' } : {})
+      };
+    },
     goal: (sessionId) => publicGoal(options.goals.get(sessionId)),
     list: async (actor, input) => {
       const terminal = terminalCalls.get(actor);
@@ -453,7 +455,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       assertSessionControlOwner(options.runtime, session.id, actor.requestUserId);
       await onResolved?.([session]);
       return {
-        session: marctlSessionDetail(
+        session: agentNetworkSessionView(
           options.runtime,
           session,
           options.runtime.sessionQueue(session.id).itemIds.length

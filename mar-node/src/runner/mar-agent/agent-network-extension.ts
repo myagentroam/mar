@@ -94,9 +94,9 @@ const tools: readonly {
   },
   {
     action: 'stop',
-    description: 'Stop the specified Agent Execution and clear its Goal.',
-    properties: { agentId: text, executionId: text },
-    required: ['agentId', 'executionId']
+    description: 'Stop the Agent’s current execution and clear its Goal.',
+    properties: { agentId: text },
+    required: ['agentId']
   },
   {
     action: 'list',
@@ -113,7 +113,7 @@ const tools: readonly {
         maxLength: 160,
         description: 'Optional case-insensitive title fragment within the scope.'
       },
-      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 100.' }
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 10.' }
     }
   },
   {

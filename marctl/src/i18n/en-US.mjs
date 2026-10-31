@@ -55,7 +55,7 @@ Usage:
     [--client-message-id <id>] [--json]
   {program} wait [<id>] [--agent <id> ...] [--mode any|all]
     [--wait-for message|completion] [--timeout <duration>] [--json]
-  {program} stop <id> --execution <execution-id> [--json]
+  {program} stop <id> [--json]
   {program} list [--scope tree|active] [--query <title>]
     [--limit <1..100>] [--json]
   {program} view [<id>] [--json]
@@ -84,15 +84,18 @@ Input and results:
   Session must specify --runner or --parent. Start returns without waiting.
   Send appends by default; --steer provides timely input and --queue defers.
   --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal
-  without text; omitted Goal is unchanged. Stop clears the target Session Goal.
+  without text; omitted Goal is unchanged. Stop targets the current execution
+  and clears the target Session Goal.
   Wait defaults to direct-child completion and 30s; 0ms is a snapshot.
-  Positive timeouts below 10s become 10s; maximum is 5m. Waiting does not stop.
+  Positive timeouts use the requested duration; maximum is 5m.
+  Waiting does not stop the task.
   -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
   List defaults to the containing tree, including idle Sessions. Without a
   current Session it defaults to active; explicit tree requires a Session.
   Active includes running and sleeping Sessions in the current Workspace.
   List returns currentAgentId (null without a Session), flat sessions and
-  truncated. Limit defaults to 100, maximum 100; no cursor or pagination.
+  truncated. Limit defaults to 10, maximum 100; no cursor or pagination.
+  Active Sessions come first, then recent activity descending.
   Configuration and prompt changes apply to future executions.
   Prefer --steer for timely communication or course correction.
   Reserve --queue for explicitly requested deferred input: it is consumed after
@@ -106,8 +109,8 @@ Input and results:
 
   show --json includes session.status, session.modelId, session.effort,
   session.title, session.runId, session.recentTools, session.queuedCount and
-  session.latestMessage. List entries have id, parentSessionId, title, runner
-  and status; wait may include progress.
+  session.latestMessage. List entries have id, parentSessionId, title and
+  status; wait may include progress. View omits Run and Execution IDs.
   Status is RUNNING/IDLE/SLEEPING. In history, segments[].items[] with
   kind === "assistant_message" expose payload.text.
 

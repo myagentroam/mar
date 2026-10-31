@@ -98,7 +98,7 @@ export async function waitForAgentTargets(input: {
             );
           listener();
         }),
-      waitMs: Math.max(waitMs, 10_000),
+      waitMs,
       signal: input.signal,
       interrupt: input.interrupt
     });

@@ -115,11 +115,7 @@ interface AgentNetworkServiceOptions {
       readonly decision: 'approve' | 'reject';
     }
   ) => Promise<void>;
-  readonly stop: (
-    actor: AgentNetworkActor,
-    session: NodeAgentSession,
-    executionId: string
-  ) => unknown;
+  readonly stop: (actor: AgentNetworkActor, session: NodeAgentSession) => unknown;
   readonly goal: (sessionId: string) => unknown;
   readonly list: (actor: AgentNetworkActor, input: AgentNetworkListInput) => Promise<unknown>;
   readonly view: (
@@ -362,30 +358,27 @@ export class AgentNetworkService {
     actor: AgentNetworkActor,
     input: {
       readonly agentId: string;
-      readonly executionId: string;
     },
     onResolved?: ResolvedTargets
   ): Promise<unknown> {
     if (
       typeof input.agentId !== 'string' ||
-      !input.agentId ||
-      typeof input.executionId !== 'string' ||
-      !input.executionId
+      !input.agentId.trim() ||
+      Object.keys(input).some((key) => key !== 'agentId')
     )
-      throw new AgentError(
-        'AGENT_STOP_INVALID',
-        'An agent ID and execution ID are required to stop an agent.'
-      );
+      throw new AgentError('AGENT_STOP_INVALID', 'Agent stop accepts only a target agent ID.');
     const session = await this.options.target(actor, input.agentId);
     await this.options.authorize(actor, session, 'stop');
     await onResolved?.([session]);
     const goalBefore = this.options.goal(session.id);
     try {
-      const result = this.options.stop(actor, session, input.executionId);
+      const result = this.options.stop(actor, session);
       return {
         agentId: session.id,
-        executionId: input.executionId,
-        cancel: { status: 'accepted', result },
+        cancel: {
+          status: isPlainRecord(result) && result.status === 'IDLE' ? 'idle' : 'accepted',
+          result
+        },
         goal: {
           status:
             goalBefore != null && this.options.goal(session.id) == null ? 'cleared' : 'unchanged'
@@ -393,11 +386,10 @@ export class AgentNetworkService {
       };
     } catch (error) {
       const code = safeErrorCode(error, 'AGENT_STOP_FAILED');
-      if (code === 'RUN_EXECUTION_STALE' || code === 'RUN_OWNED_BY_ANOTHER_USER') throw error;
+      if (code === 'RUN_OWNED_BY_ANOTHER_USER') throw error;
       const current = this.options.goal(session.id);
       return {
         agentId: session.id,
-        executionId: input.executionId,
         cancel: { status: 'unknown', code },
         goal: { status: goalBefore != null && current == null ? 'cleared' : 'unchanged' }
       };

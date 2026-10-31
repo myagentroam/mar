@@ -495,7 +495,7 @@ describe('Node Agent Network owner integration', () => {
       action: 'stop' as const,
       nested: false,
       operation: 'CANCEL',
-      input: { agentId: 'child', executionId: 'execution-1' }
+      input: { agentId: 'child' }
     },
     {
       action: 'send' as const,
@@ -1176,12 +1176,7 @@ describe('Node Agent Network owner integration', () => {
         expect.objectContaining({ kind: 'message', value: 'unread progress' })
       );
       expect(
-        await invoke(
-          executionId,
-          'stop',
-          { agentId: created.agentId, executionId: childExecutionId },
-          context
-        )
+        await invoke(executionId, 'stop', { agentId: created.agentId }, context)
       ).toMatchObject({ agentId: created.agentId, cancel: { status: 'accepted' } });
     } finally {
       observer.close();
@@ -1711,14 +1706,10 @@ describe('Node Agent Network owner integration', () => {
           await invoke(executionId, 'wait', { agentId: target.id, waitMs: 0 }, context)
         ).toMatchObject({ agentId: target.id, waitOutcome: 'snapshot' });
         expect(observer.capture(target.id)).toBeUndefined();
-        expect(
-          await invoke(
-            executionId,
-            'stop',
-            { agentId: target.id, executionId: core.runtime.currentExecutionId(targetRun.id)! },
-            context
-          )
-        ).toMatchObject({ cancel: { status: 'accepted' }, goal: { status: 'cleared' } });
+        expect(await invoke(executionId, 'stop', { agentId: target.id }, context)).toMatchObject({
+          cancel: { status: 'accepted' },
+          goal: { status: 'cleared' }
+        });
         if (ancestorTarget) {
           await vi.waitFor(() => expect(core.runtime.activeSessionRun(target.id)).toBeUndefined());
           const delivered = requests.length;
@@ -1985,7 +1976,7 @@ describe('Node Agent Network owner integration', () => {
         internals.agentNetworkService.send(actor, { agentId: child.id, goal: { clear: true } })
       ).rejects.toThrow('RUN_OWNED_BY_ANOTHER_USER');
       await expect(
-        internals.agentNetworkService.stop(actor, { agentId: child.id, executionId: 'execution' })
+        internals.agentNetworkService.stop(actor, { agentId: child.id })
       ).rejects.toThrow('RUN_OWNED_BY_ANOTHER_USER');
       await expect(
         internals.agentNetworkService.wait(actor, { agentId: child.id, waitMs: 0 })
@@ -2081,7 +2072,7 @@ describe('Node Agent Network owner integration', () => {
       return { run, execution, approval };
     };
     try {
-      active(child.id, 'child-approval');
+      const childExecution = active(child.id, 'child-approval');
       active(sibling.id, 'sibling-approval');
       const foreignApproval = active(foreignOwner.id, 'foreign-approval', 8).approval;
       const rootExecution = active(root.id, 'root-approval').execution;
@@ -2105,6 +2096,8 @@ describe('Node Agent Network owner integration', () => {
         }
       });
       expect(JSON.stringify(view)).not.toContain('PRIVATE_INPUT');
+      expect(JSON.stringify(view)).not.toContain(childExecution.run.id);
+      expect(JSON.stringify(view)).not.toContain(childExecution.execution.id);
       for (const [agentId, approvalId] of [
         [sibling.id, 'sibling-approval'],
         [root.id, 'root-approval']
@@ -2386,9 +2379,10 @@ describe('Node Agent Network owner integration', () => {
         .itemIds.map((id) => internals.runtime.getQueueItem(id))
         .find((item) => item?.content.includes('Continue later'));
       expect(queued?.suppressNotifications).toBe(true);
-      expect(
-        await internals.agentNetworkService.stop(actor, { agentId: child.id, executionId })
-      ).toMatchObject({ agentId: child.id, cancel: { status: 'accepted' } });
+      expect(await internals.agentNetworkService.stop(actor, { agentId: child.id })).toMatchObject({
+        agentId: child.id,
+        cancel: { status: 'accepted' }
+      });
       expect(internals.goalRuntime.get(child.id)).toBeUndefined();
       await vi.waitFor(() => {
         expect(internals.runtime.executionSnapshot(executionId)?.status).toMatch(
@@ -2401,6 +2395,14 @@ describe('Node Agent Network owner integration', () => {
           waitMs: 1_000
         })
       ).toMatchObject({ agentId: child.id, executionId, waitOutcome: 'completion' });
+      await vi.waitFor(() => {
+        expect(internals.runtime.activeSessionRun(child.id)).toBeUndefined();
+      });
+      expect(await internals.agentNetworkService.stop(actor, { agentId: child.id })).toMatchObject({
+        agentId: child.id,
+        cancel: { status: 'idle', result: { status: 'IDLE' } },
+        goal: { status: 'unchanged' }
+      });
     } finally {
       observations.close();
       await connector.stop();

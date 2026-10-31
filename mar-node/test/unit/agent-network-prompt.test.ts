@@ -123,6 +123,13 @@ it.each([false, true])('views state by identity with Code Mode %s', async (codeM
   expect(test.invoke.mock.calls[0]![2]).toEqual({ agentId: 'child' });
 });
 
+it.each([false, true])('stops by Session identity with Code Mode %s', async (codeMode) => {
+  const test = await fixture(codeMode, { name: 'agent_stop', input: { agentId: 'child' } });
+  expect(test.failures).toEqual([]);
+  expect(test.invoke).toHaveBeenCalledOnce();
+  expect(test.invoke.mock.calls[0]![2]).toEqual({ agentId: 'child' });
+});
+
 it.each([false, true])(
   'provides focused network and management guidance with Code Mode %s',
   async (codeMode) => {

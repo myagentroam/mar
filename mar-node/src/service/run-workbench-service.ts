@@ -6,7 +6,7 @@ import type { NodeRuntimeState } from '../runtime-state.js';
 import { isTerminalRunStatus } from '../session/runtime/type-guards.js';
 import { isPlainRecord } from '../util/records.js';
 import { isHostedConversationImageRunId } from '../runner/mar-agent/generated-images.js';
-import { assertRunOwner } from './run-ownership-policy.js';
+import { assertRunOwner, assertSessionControlOwner } from './run-ownership-policy.js';
 import { imagePreviews } from './image-preview-service.js';
 
 export interface RunWorkbenchServiceOptions {
@@ -48,22 +48,27 @@ export class RunWorkbenchService {
     };
   }
 
-  /** Atomically validate the target Execution before invoking the existing stop path. */
-  stopAgentExecution(input: {
+  /** Resolve and stop the current Session execution inside its existing control owner. */
+  stopAgentSession(input: {
     readonly sessionId: string;
-    readonly executionId: string;
     readonly requestUserId?: number;
   }): unknown {
     const run = this.options.runtime.activeSessionRun(input.sessionId);
-    if (
-      run === undefined ||
-      (this.options.runtime.currentExecutionId(run.id) ?? run.id) !== input.executionId
-    )
-      throw new Error('RUN_EXECUTION_STALE');
-    return this.cancelOrInterrupt('run.cancel', {
-      runId: run.id,
-      ...(input.requestUserId === undefined ? {} : { __requestUserId: input.requestUserId })
-    });
+    if (run !== undefined)
+      return this.cancelOrInterrupt('run.cancel', {
+        runId: run.id,
+        ...(input.requestUserId === undefined ? {} : { __requestUserId: input.requestUserId })
+      });
+    if (!this.options.runtime.getAgentSession(input.sessionId))
+      throw new Error('SESSION_NOT_FOUND');
+    assertSessionControlOwner(this.options.runtime, input.sessionId, input.requestUserId);
+    let result: Readonly<Record<string, unknown>> | undefined;
+    try {
+      this.options.pauseQueue(input.sessionId);
+    } finally {
+      result = this.options.runInterrupted(input.sessionId);
+    }
+    return { status: 'IDLE', ...result };
   }
 
   private async modelResource(input: Record<string, unknown>): Promise<unknown> {

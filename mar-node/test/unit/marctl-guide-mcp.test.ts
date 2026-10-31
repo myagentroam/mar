@@ -36,7 +36,7 @@ it('publishes concise Agent tool descriptions and delivery parameter guidance', 
       'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
     agent_send: 'Send a message to an Agent, update its Goal, or decide an approval.',
     agent_wait: 'Wait for Agent messages or execution completion.',
-    agent_stop: 'Stop the specified Agent Execution and clear its Goal.',
+    agent_stop: 'Stop the Agent’s current execution and clear its Goal.',
     agent_list: 'List the current collaboration tree or active Agents in the Workspace.',
     agent_view: "View an Agent's state, Goal and recent activity."
   });

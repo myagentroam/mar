@@ -17,8 +17,7 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     'parentSessionId',
     'scope',
     'waitFor',
-    'mode',
-    'executionId'
+    'mode'
   ])
     if (args[name] !== undefined) input[name] = args[name];
   if (['send', 'stop', 'view', 'wait'].includes(args.action) && sessionId)

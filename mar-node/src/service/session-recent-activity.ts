@@ -178,6 +178,35 @@ export function marctlSessionDetail(
   };
 }
 
+/** Agent state views omit execution identities; low-level CLI queries keep their own contract. */
+export function agentNetworkSessionView(
+  runtime: NodeRuntimeState,
+  session: NodeAgentSession,
+  queuedCount: number
+) {
+  const {
+    runId: _runId,
+    latestMessage,
+    recentTools,
+    pendingApprovals: approvals,
+    ...state
+  } = marctlSessionDetail(runtime, session, queuedCount);
+  return {
+    ...state,
+    latestMessage:
+      latestMessage === null
+        ? null
+        : {
+            text: latestMessage.text,
+            state: latestMessage.state,
+            at: latestMessage.at,
+            truncated: latestMessage.truncated
+          },
+    recentTools: recentTools.map(({ runId: _runId, ...tool }) => tool),
+    pendingApprovals: approvals.map(({ runId: _runId, ...approval }) => approval)
+  };
+}
+
 function time(item: NodeConversationItem): number | null {
   return item.updatedAt ?? item.completedAt ?? item.startedAt;
 }

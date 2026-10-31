@@ -3174,12 +3174,13 @@ describe('Node continuous Run lifecycle', () => {
     expect(control).toHaveBeenCalledWith('run.interrupt', { runId: executionId });
   });
 
-  it('does not clear the new Goal when agent stop targets an obsolete execution', () => {
+  it('stops the current Session execution while preserving the existing user ownership check', () => {
     const { runtime, session } = fixture();
     const run = runtime.createMessageRun({
       sessionId: session.id,
       clientMessageId: 'new-task',
-      content: 'new objective'
+      content: 'new objective',
+      initiatedByUserId: 7
     }).run;
     const execution = runtime.createExecution(run.id);
     const clearGoal = vi.fn(() => ({ goalExit: { status: 'stopped' } }));
@@ -3194,15 +3195,15 @@ describe('Node continuous Run lifecycle', () => {
       control,
       markInterrupted: vi.fn()
     });
-    expect(() =>
-      service.stopAgentExecution({ sessionId: session.id, executionId: 'old-execution' })
-    ).toThrow('RUN_EXECUTION_STALE');
+    expect(() => service.stopAgentSession({ sessionId: session.id, requestUserId: 8 })).toThrow(
+      'RUN_OWNED_BY_ANOTHER_USER'
+    );
     expect(clearGoal).not.toHaveBeenCalled();
     expect(control).not.toHaveBeenCalled();
     expect(runtime.getRun(run.id)?.status).toBe('STARTING');
-    expect(
-      service.stopAgentExecution({ sessionId: session.id, executionId: execution.id })
-    ).toMatchObject({ goalExit: { status: 'stopped' } });
+    expect(service.stopAgentSession({ sessionId: session.id, requestUserId: 7 })).toMatchObject({
+      goalExit: { status: 'stopped' }
+    });
     expect(clearGoal).toHaveBeenCalledOnce();
     expect(control).toHaveBeenCalledWith('run.cancel', { runId: execution.id });
   });
