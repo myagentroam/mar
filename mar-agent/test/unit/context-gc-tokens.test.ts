@@ -7,6 +7,7 @@ import {
   contextGcPrefixTokens
 } from '../../src/runtime/context/gc-tokens.js';
 import * as tokenBudget from '../../src/runtime/token-budget.js';
+import { openAiInput } from '../../src/model/openai-responses.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -17,6 +18,63 @@ describe('GC token estimates', () => {
     system: '',
     tools: []
   };
+
+  it.each(['function_call', 'tool_search_call'] as const)(
+    'counts search definitions only when the Responses %s wire output contains them',
+    (type) => {
+      const definition = {
+        name: 'mcp__test__search',
+        description: 'definition '.repeat(3000),
+        inputSchema: { type: 'object', properties: {} }
+      };
+      const before: ModelMessage[] = [
+        {
+          role: 'provider',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          content: '',
+          item: {
+            type,
+            id: 'item-search',
+            call_id: 'search',
+            ...(type === 'function_call'
+              ? { name: 'tool_search', arguments: '{"query":"x"}' }
+              : { execution: 'client', status: 'completed', arguments: { query: 'x' } })
+          }
+        },
+        {
+          role: 'tool_call',
+          name: 'tool_search',
+          callId: 'search',
+          arguments: { query: 'x' },
+          content: ''
+        },
+        {
+          role: 'tool',
+          callId: 'search',
+          content: '{"tools":["mcp__test__search"]}',
+          toolSearchTools: [definition]
+        }
+      ];
+      const after = before.map((message) =>
+        message.role === 'tool' ? { ...message, toolSearchTools: [] } : message
+      );
+      const wireBefore = openAiInput(before, undefined, 'coding', true);
+      const wireAfter = openAiInput(after, undefined, 'coding', true);
+      const reclaimed = contextGcReclaimedTokens(
+        { ...input, modelProtocol: 'OPENAI_RESPONSES' },
+        before,
+        after
+      );
+      if (type === 'function_call') {
+        expect(wireBefore).toEqual(wireAfter);
+        expect(reclaimed).toBe(0);
+      } else {
+        expect(wireBefore).not.toEqual(wireAfter);
+        expect(reclaimed).toBeGreaterThan(0);
+      }
+    }
+  );
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     'uses resource identity, not media byte size, for %s framing and cache boundaries',

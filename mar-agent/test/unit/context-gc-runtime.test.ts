@@ -84,6 +84,11 @@ class ContextGcAdapter implements ModelAdapter {
       continuation: false,
       credentialReason: 'REQUEST'
     });
+    yield {
+      type: 'response.item',
+      provider: 'ANTHROPIC_MESSAGES',
+      item: { type: 'thinking', thinking: 'private fixture', signature: `signature-${call}` }
+    };
     if (call === 1)
       yield {
         type: 'client_tool.call',
@@ -106,7 +111,7 @@ class ContextGcAdapter implements ModelAdapter {
           '*** End Patch'
         ].join('\n')
       };
-    else if (call === 3 || call === 4)
+    else if (call >= 3 && call <= 8)
       yield {
         type: 'client_tool.call',
         callId: `todo-${call}`,
@@ -124,7 +129,7 @@ class ContextGcAdapter implements ModelAdapter {
         outputTokens: 10
       }
     };
-    yield { type: 'completed', reason: call < 5 ? 'tool_use' : 'completed' };
+    yield { type: 'completed', reason: call < 9 ? 'tool_use' : 'completed' };
     await request.onAttemptDiagnostic?.({
       protocol: 'ANTHROPIC_MESSAGES',
       transport: 'HTTP',
@@ -168,7 +173,7 @@ describe('context GC runtime integration', () => {
         this: ContextGcRuntime,
         input
       ) {
-        if (!paused && timing === 'included' && adapter.requests.length === 4) {
+        if (!paused && timing === 'included' && adapter.requests.length === 8) {
           paused = true;
           notifyPaused();
           await released;
@@ -221,7 +226,7 @@ describe('context GC runtime integration', () => {
         expect(adapter.resetCount).toBe(1);
         expect(captured.messages()).toBe(messages);
         expect(captured.runtime(session.id).contextualWorldState).toBe(latestWorld);
-        const next = adapter.requests[4]!.messages;
+        const next = adapter.requests[8]!.messages;
         expect(next.filter((message) => message.content === 'GC_ADOPTION_APPEND')).toHaveLength(1);
         expect(
           next.some((message) => message.content.includes('# Retained Session resources'))
@@ -295,7 +300,7 @@ describe('context GC runtime integration', () => {
       expect(worldBeforeFailure).toBeDefined();
       expect(captured.runtime(session.id).contextualWorldState).toBe(worldBeforeFailure);
       expect(worldBeforeFailure!.generation).not.toBe(committedGeneration);
-      expect(adapter.requests).toHaveLength(4);
+      expect(adapter.requests).toHaveLength(8);
       expect(
         agent
           .extensionDiagnostics()
@@ -313,7 +318,7 @@ describe('context GC runtime integration', () => {
     } finally {
       await store.close();
     }
-    const resumedAdapter = new ContextGcAdapter(model, 4);
+    const resumedAdapter = new ContextGcAdapter(model, 8);
     const resumed = await createMarAgent(
       {
         mode: 'normal',
@@ -442,7 +447,7 @@ describe('context GC runtime integration', () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-sdk-gate-'));
     homes.push(home);
     const configured = { ...model, contextWindowTokens: 272_000 };
-    const adapter = new ContextGcAdapter(configured, 4);
+    const adapter = new ContextGcAdapter(configured, 8);
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
     const resources = vi.spyOn(host, 'listSessionResources');
     const agent = await createMarAgent(
@@ -515,7 +520,7 @@ describe('context GC runtime integration', () => {
       const records = await reopenedStore.read(child.id);
       expect(records.some((record) => record.type === 'context.gc.completed')).toBe(true);
       expect(adapter.resetCount).toBe(1);
-      expect(JSON.stringify(adapter.requests[4]?.messages)).not.toContain(
+      expect(JSON.stringify(adapter.requests[8]?.messages)).not.toContain(
         'old context old context'
       );
     } finally {
@@ -546,7 +551,7 @@ describe('context GC runtime integration', () => {
       configuration: model,
       async *start(request) {
         const call = ++normalCalls;
-        if (call < 4) {
+        if (call < 8) {
           for await (const event of initial.start(request))
             yield event.type === 'usage'
               ? {
@@ -566,17 +571,26 @@ describe('context GC runtime integration', () => {
           credentialReason: 'REQUEST'
         });
         yield {
-          type: 'text.completed',
-          itemId: call === 4 ? 'latest-message-before-gc' : 'finished-after-compact',
-          text: call === 4 ? 'The file change is verified.' : 'Finished after Compact.'
+          type: 'response.item',
+          provider: 'ANTHROPIC_MESSAGES',
+          item: {
+            type: 'thinking',
+            thinking: 'private fixture',
+            signature: `signature-anchor-${call}`
+          }
         };
-        if (call === 4)
+        yield {
+          type: 'text.completed',
+          itemId: call === 8 ? 'latest-message-before-gc' : 'finished-after-compact',
+          text: call === 8 ? 'The file change is verified.' : 'Finished after Compact.'
+        };
+        if (call === 8)
           await context.session.append({ content: 'Continue after GC.', delivery: 'boundary' });
         yield {
           type: 'usage',
           usage: {
-            inputTokens: call === 4 ? 6_400 : 100,
-            contextInputTokens: call === 4 ? 6_400 : 100,
+            inputTokens: call === 8 ? 6_400 : 100,
+            contextInputTokens: call === 8 ? 6_400 : 100,
             outputTokens: 10
           }
         };
@@ -629,7 +643,7 @@ describe('context GC runtime integration', () => {
       );
       expect(gcCommitted).toBe(true);
       expect(compactRequested).toBe(true);
-      expect(normalCalls).toBe(5);
+      expect(normalCalls).toBe(9);
     } finally {
       await agent.dispose();
     }
@@ -665,7 +679,7 @@ describe('context GC runtime integration', () => {
     for (const path of ['first.txt', 'second.txt'])
       await writeFile(join(home, path), `before\n${'old context '.repeat(2_000)}\n`);
     const first = new ContextGcAdapter(model, 0, 'first.txt');
-    const overflow = new ContextGcAdapter(model, 3);
+    const overflow = new ContextGcAdapter(model, 7);
     const second = new ContextGcAdapter(model, 0, 'second.txt');
     let normalCalls = 0;
     const adapter: ModelAdapter = {
@@ -685,7 +699,7 @@ describe('context GC runtime integration', () => {
           return;
         }
         normalCalls++;
-        const delegate = normalCalls < 5 ? first : normalCalls === 5 ? overflow : second;
+        const delegate = normalCalls < 9 ? first : normalCalls === 9 ? overflow : second;
         for await (const event of delegate.start(request))
           yield event.type === 'usage'
             ? {
@@ -693,7 +707,7 @@ describe('context GC runtime integration', () => {
                 usage: {
                   ...event.usage,
                   rolloutBudgetUnits: 400_000,
-                  ...(normalCalls === 5 ? { inputTokens: 9_500, contextInputTokens: 9_500 } : {})
+                  ...(normalCalls === 9 ? { inputTokens: 9_500, contextInputTokens: 9_500 } : {})
                 }
               }
             : event;
@@ -715,7 +729,7 @@ describe('context GC runtime integration', () => {
         'completed'
       );
       expect(
-        second.requests[4]?.messages.some((message) =>
+        second.requests[8]?.messages.some((message) =>
           message.content.includes('kind="stale_read"')
         )
       ).toBe(true);
@@ -782,7 +796,7 @@ describe('context GC runtime integration', () => {
       expect(await handle.result()).toMatchObject({ status: 'completed', finalAnswer: 'finished' });
       expect(events.some((event) => (event.type as string).includes('gc'))).toBe(false);
       expect(adapter.resetCount).toBe(1);
-      const retainedContext = adapter.requests[4]!.messages.filter(
+      const retainedContext = adapter.requests[8]!.messages.filter(
         (message) => message.role === 'user'
       )
         .map((message) => message.content)
@@ -794,25 +808,25 @@ describe('context GC runtime integration', () => {
         afterCompact
       );
       expect(retainedContext).not.toContain('survived the previous Execution');
-      expect(adapter.requests[4]!.tools).toEqual(adapter.requests[0]!.tools);
+      expect(adapter.requests[8]!.tools).toEqual(adapter.requests[0]!.tools);
       expect(
-        adapter.requests[4]?.messages.some((message) =>
+        adapter.requests[8]?.messages.some((message) =>
           message.content.includes('kind="stale_read"')
         )
       ).toBe(true);
       expect(
-        adapter.requests[4]?.messages.some(
+        adapter.requests[8]?.messages.some(
           (message) =>
             message.role === 'tool_call' &&
             typeof message.arguments === 'string' &&
             message.arguments.includes('kind="successful_apply_patch_input"')
         )
       ).toBe(true);
-      expect(JSON.stringify(adapter.requests[4]?.messages)).not.toContain(
+      expect(JSON.stringify(adapter.requests[8]?.messages)).not.toContain(
         'old context old context'
       );
       expect(await readFile(join(workspace, 'large.txt'), 'utf8')).toContain('after');
-      const projectedBeforeRestart = structuredClone(adapter.requests[4]?.messages ?? []).filter(
+      const projectedBeforeRestart = structuredClone(adapter.requests[8]?.messages ?? []).filter(
         (message) =>
           !message.content.startsWith('# AGENTS.md instructions') &&
           message.contextualBlock?.authority !== 'instruction'
@@ -844,7 +858,7 @@ describe('context GC runtime integration', () => {
       expect(readState).toHaveBeenCalledTimes(1);
       expect(getActiveProcessIds).not.toHaveBeenCalled();
       // Normal rollouts behind the growth gate still consume the scheduling interval.
-      await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_600 } });
+      await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_800 } });
       expect(readState).toHaveBeenCalledTimes(2);
       runtime.reset();
       await runtime.run(runtimeInput);
@@ -885,7 +899,7 @@ describe('context GC runtime integration', () => {
       await rm(join(activeDirectory, 'context-world-state.json'), {
         force: true
       });
-      const reopenedAdapter = new ContextGcAdapter(model, 4);
+      const reopenedAdapter = new ContextGcAdapter(model, 8);
       const resumedHost = new LocalAgentHost({ homeDirectory: home, workspace });
       const resumedResources = vi.spyOn(resumedHost, 'listSessionResources').mockResolvedValue({
         processes: [],
@@ -912,6 +926,11 @@ describe('context GC runtime integration', () => {
         projectedBeforeRestart
       );
       expect(restoredMessages[projectedBeforeRestart.length]).toMatchObject({
+        role: 'provider',
+        provider: 'ANTHROPIC_MESSAGES',
+        item: { type: 'thinking', signature: expect.any(String) }
+      });
+      expect(restoredMessages[projectedBeforeRestart.length + 1]).toMatchObject({
         role: 'assistant',
         content: 'finished'
       });
@@ -1024,9 +1043,31 @@ describe('context GC runtime integration', () => {
         type: 'model.context',
         payload: { role: 'tool', callId: 'patch-1', content: JSON.stringify(patchData) }
       });
-      for (let index = 0; index < 2; index++) {
+      for (let index = 0; index < 6; index++) {
         await store.append(session.id, {
           type: 'model.attempt',
+          executionId: 'gc-test',
+          payload: { purpose: 'EXECUTION', state: 'STARTED' }
+        });
+        await store.append(session.id, {
+          type: 'model.context',
+          executionId: 'gc-test',
+          payload: {
+            role: 'provider',
+            content: '',
+            provider: 'OPENAI_RESPONSES',
+            providerModelId: model.id,
+            item: {
+              type: 'reasoning',
+              id: `item-${index}`,
+              encrypted_content: 'opaque',
+              summary: []
+            }
+          }
+        });
+        await store.append(session.id, {
+          type: 'model.attempt',
+          executionId: 'gc-test',
           payload: {
             purpose: 'EXECUTION',
             protocol: 'ANTHROPIC_MESSAGES',
@@ -1042,8 +1083,8 @@ describe('context GC runtime integration', () => {
           type: 'usage.updated',
           payload: {
             type: 'usage.updated',
-            inputTokens: 6_000 + index * 100,
-            contextInputTokens: 6_000 + index * 100,
+            inputTokens: 6_100,
+            contextInputTokens: 6_100,
             cacheReadTokens: 0,
             cacheWriteTokens: 0
           }

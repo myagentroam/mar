@@ -150,7 +150,19 @@ export function applyContextGcReplacementsToMessages(
           replacement.kind === 'WEB_OUTPUT') &&
         next.role === 'tool'
       )
-        next = { ...next, content: replacement.replacementContent };
+        next = {
+          ...next,
+          content: replacement.replacementContent,
+          ...(replacement.kind === 'TOOL_OUTPUT' &&
+          replacement.retainedToolNames !== undefined &&
+          next.toolSearchTools !== undefined
+            ? {
+                toolSearchTools: next.toolSearchTools.filter((tool) =>
+                  replacement.retainedToolNames!.includes(tool.name)
+                )
+              }
+            : {})
+        };
     }
     if (next.textBlocks !== undefined && next.content !== message.content)
       next = {

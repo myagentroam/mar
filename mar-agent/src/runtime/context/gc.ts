@@ -13,6 +13,7 @@ import {
 } from '../../session/context-gc-checkpoint.js';
 
 import type { SessionRecord } from '../../session/record-contract.js';
+import { buildContextGcProtection } from '../../session/context-gc-protection.js';
 
 import {
   CONTEXT_GC_TOKEN_ESTIMATOR,
@@ -32,7 +33,6 @@ import {
   contextGcMinimumGrossReductionRate,
   contextGcMinimumReclaimedTokens,
   contextGcEligibleUsage,
-  contextGcMarginalCacheInvestmentPaysBack,
   contextGcImminentCompactAvoidanceCredit,
   contextGcAppliedCompactCreditCostUnits,
   modelContextUsage,
@@ -51,7 +51,7 @@ import { buildToolGroups, countSuccessfulNormalRollouts, isRecord } from './gc-c
 
 import { collectCodeModeCandidates } from './gc-candidates-code.js';
 
-import { collectStageACandidates } from './gc-candidates-read-patch.js';
+import { collectDeterministicCandidates } from './gc-candidates-read-patch.js';
 
 import { collectExecCandidates } from './gc-candidates-exec.js';
 
@@ -64,7 +64,6 @@ export {
   contextGcMinimumGrossReductionRate,
   contextGcMinimumReclaimedTokens,
   contextGcEligibleUsage,
-  contextGcMarginalCacheInvestmentPaysBack,
   contextGcImminentCompactAvoidanceCredit,
   contextGcAppliedCompactCreditCostUnits
 } from './gc-economics.js';
@@ -150,7 +149,8 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
   input = {
     ...input,
     tokenCache: new Map(),
-    checkpointCache: input.checkpointCache ?? new ContextGcCheckpointCache()
+    checkpointCache: input.checkpointCache ?? new ContextGcCheckpointCache(),
+    protection: buildContextGcProtection(input.records, input.modelId, input.contextWindowTokens)
   };
   const usageRatio = contextUsageTokens / input.contextWindowTokens;
   const usageRecord = latestUsageRecord(input.records, input.modelId);
@@ -200,81 +200,19 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
         : [])
     ])
   );
-  const stageA = collectStageACandidates(
+  const deterministic = collectDeterministicCandidates(
     input,
     groups,
     existing,
     existingTargets,
     candidateSavings
   );
-  const deterministicCandidates = stageA.eligible;
-  const deterministicProtectedTokens = stageA.protectedTokens;
-  const stageAPlan = evaluateCandidateSet(input, existing, deterministicCandidates, {
-    stage: 'STAGE_A',
-    contextUsageTokens,
-    usageRatio,
-    usageRecord,
-    normalRolloutOrdinal,
-    protectedCandidateTokens: deterministicProtectedTokens
-  });
-  if (stageAPlan?.economics.passes) {
-    const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
-    const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
-    const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
-    const tools = collectToolOutputCandidates(input, groups, existingTargets, candidateSavings);
-    const protectedCandidateTokens =
-      deterministicProtectedTokens +
-      exec.protectedTokens +
-      codeMode.protectedTokens +
-      web.protectedTokens +
-      tools.protectedTokens;
-    const stageAPlanWithProtectedCandidates =
-      evaluateCandidateSet(input, existing, deterministicCandidates, {
-        stage: 'STAGE_A',
-        contextUsageTokens,
-        usageRatio,
-        usageRecord,
-        normalRolloutOrdinal,
-        protectedCandidateTokens
-      }) ?? stageAPlan;
-    const marginal = mergeMarginalLargeOutputCandidates(
-      input,
-      existing,
-      deterministicCandidates,
-      [...exec.eligible, ...codeMode.eligible, ...web.eligible, ...tools.eligible],
-      stageAPlanWithProtectedCandidates,
-      {
-        contextUsageTokens,
-        usageRatio,
-        usageRecord,
-        normalRolloutOrdinal,
-        protectedCandidateTokens
-      }
-    );
-    const plan = checkpointEligible
-      ? finalizePlan(input, marginal ?? stageAPlanWithProtectedCandidates)
-      : undefined;
-    const retryAfterRollouts = Math.min(
-      exec.retryAfterRollouts,
-      codeMode.retryAfterRollouts,
-      web.retryAfterRollouts,
-      tools.retryAfterRollouts
-    );
-    if (!plan && checkpointEligible) return {};
-    return {
-      ...(plan ? { plan } : {}),
-      ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
-        ? { retryAfterRollouts }
-        : {})
-    };
-  }
-
   const exec = collectExecCandidates(input, groups, existingTargets, candidateSavings);
   const codeMode = collectCodeModeCandidates(input, groups, existingTargets, candidateSavings);
   const web = collectWebCandidates(input, groups, existingTargets, candidateSavings);
   const tools = collectToolOutputCandidates(input, groups, existingTargets, candidateSavings);
   const protectedCandidateTokens =
-    deterministicProtectedTokens +
+    deterministic.protectedTokens +
     exec.protectedTokens +
     codeMode.protectedTokens +
     web.protectedTokens +
@@ -283,14 +221,14 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     input,
     existing,
     [
-      ...deterministicCandidates,
+      ...deterministic.eligible,
       ...exec.eligible,
       ...codeMode.eligible,
       ...web.eligible,
       ...tools.eligible
     ],
     {
-      stage: 'STAGE_A_AND_EXEC',
+      stage: 'UNIFIED',
       contextUsageTokens,
       usageRatio,
       usageRecord,
@@ -298,19 +236,24 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
       protectedCandidateTokens
     }
   );
-  if (combined?.economics.passes && checkpointEligible) {
-    const plan = finalizePlan(input, combined);
-    return plan ? { plan } : {};
-  }
   const retryAfterRollouts = Math.min(
-    stageA.retryAfterRollouts,
+    deterministic.retryAfterRollouts,
     exec.retryAfterRollouts,
     codeMode.retryAfterRollouts,
     web.retryAfterRollouts,
     tools.retryAfterRollouts
   );
-  // A worthwhile mixed set retains every positive protected candidate's retry
-  // hint even when the checkpoint interval prevents a durable draft.
+  if (combined?.economics.passes && checkpointEligible) {
+    const plan = finalizePlan(input, combined);
+    return plan
+      ? {
+          plan,
+          ...(protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
+            ? { retryAfterRollouts }
+            : {})
+        }
+      : {};
+  }
   return protectedCandidateTokens > 0 &&
     (combined?.economics.passes ||
       protectedCandidateTokens >=
@@ -318,71 +261,6 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     Number.isFinite(retryAfterRollouts)
     ? { retryAfterRollouts }
     : {};
-}
-
-function mergeMarginalLargeOutputCandidates(
-  input: ContextGcPlannerInput,
-  existing: readonly ContextGcReplacement[],
-  deterministicCandidates: readonly ContextCandidate[],
-  execCandidates: readonly ContextCandidate[],
-  stageAPlan: NonNullable<ReturnType<typeof evaluateCandidateSet>>,
-  state: {
-    readonly contextUsageTokens: number;
-    readonly usageRatio: number;
-    readonly usageRecord: SessionRecord;
-    readonly normalRolloutOrdinal: number;
-    readonly protectedCandidateTokens: number;
-  }
-): ReturnType<typeof evaluateCandidateSet> {
-  let selected = [...deterministicCandidates];
-  let current = stageAPlan;
-  const stageAEarliestSequence = contextGcEarliestReplacementSequence(
-    deterministicCandidates.flatMap((candidate) => candidate.replacements)
-  );
-  for (const candidate of [...execCandidates].sort(
-    (left, right) => right.evidenceSequence - left.evidenceSequence
-  )) {
-    const evaluated = evaluateCandidateSet(input, existing, [...selected, candidate], {
-      stage: 'STAGE_A_AND_EXEC',
-      ...state
-    });
-    if (!evaluated?.economics.passes || evaluated.reclaimedTokens <= current.reclaimedTokens)
-      continue;
-    const doesNotMoveInvalidationEarlier =
-      contextGcEarliestReplacementSequence(candidate.replacements) >= stageAEarliestSequence;
-    if (
-      !doesNotMoveInvalidationEarlier &&
-      !contextGcMarginalCacheInvestmentPaysBack(
-        {
-          reclaimedTokens: current.reclaimedTokens,
-          reclaimedCachedTokens: current.reclaimedCachedTokens,
-          cacheRebuildPenaltyCostUnits: current.economics.cacheRebuildPenaltyCostUnits
-        },
-        {
-          reclaimedTokens: evaluated.reclaimedTokens,
-          reclaimedCachedTokens: evaluated.reclaimedCachedTokens,
-          cacheRebuildPenaltyCostUnits: evaluated.economics.cacheRebuildPenaltyCostUnits
-        }
-      )
-    )
-      continue;
-    selected = [...selected, candidate];
-    current = evaluated;
-  }
-  return current === stageAPlan ? undefined : current;
-}
-
-export function contextGcEarliestReplacementSequence(
-  replacements: readonly ContextGcReplacement[]
-): number {
-  return Math.min(
-    ...replacements.flatMap((replacement) => [
-      replacement.target.sequence,
-      ...(replacement.kind === 'TOOL_CALL_INPUT'
-        ? replacement.providerAliasTargets.map((target) => target.sequence)
-        : [])
-    ])
-  );
 }
 
 function finalizePlan(

@@ -54,7 +54,7 @@ export type ContextGcReplacement =
     }
   | {
       readonly kind: 'TOOL_CALL_INPUT';
-      readonly toolName: 'apply_patch' | 'exec' | 'exec_wait' | 'code_exec';
+      readonly toolName: 'apply_patch' | 'exec' | 'exec_wait' | 'code_exec' | 'todo_write';
       readonly callId: string;
       readonly target: ContextGcTarget;
       readonly replacementArguments: unknown;
@@ -82,6 +82,7 @@ export type ContextGcReplacement =
       readonly callId: string;
       readonly target: ContextGcTarget;
       readonly replacementContent: string;
+      readonly retainedToolNames?: readonly string[];
       readonly evidenceSequence: number;
     }
   | {
@@ -109,7 +110,7 @@ export type ContextGcReplacement =
     };
 
 export interface ContextGcMetrics {
-  readonly stage: 'STAGE_A' | 'STAGE_A_AND_EXEC' | 'INLINE_MEDIA';
+  readonly stage: 'UNIFIED' | 'STAGE_A' | 'STAGE_A_AND_EXEC' | 'INLINE_MEDIA';
   readonly tokenEstimator?: 'UTF8_BYTES_V1';
   readonly beforeTokens: number;
   readonly afterTokens: number;

@@ -709,7 +709,7 @@ function boundedError(value: string | undefined, maximum: number): string | unde
   return [...normalized].slice(0, maximum).join('');
 }
 
-function anthropicMessages(
+export function anthropicMessages(
   messages: ModelRequest['messages'],
   images?: ModelRequest['images'],
   tools: ModelRequest['tools'] = [],

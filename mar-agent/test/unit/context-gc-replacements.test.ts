@@ -5,6 +5,7 @@ import {
   contextGcExecInputReplacement,
   contextGcExecOutputReplacement,
   contextGcStaleReadReplacement,
+  contextGcToolOutputReplacement,
   contextGcWebOutputReplacement,
   type ContextGcExecResult
 } from '../../src/session/context-gc-replacements.js';
@@ -28,6 +29,20 @@ const exec: ContextGcExecResult = {
 };
 
 describe('context GC structured records and message placeholders', () => {
+  it('uses a shared 768 Unicode character preview for generic output and values', () => {
+    const original = '😀'.repeat(768) + 'MIDDLE' + '界'.repeat(768);
+    for (const rendered of [
+      contextGcToolOutputReplacement('extension', original, false),
+      contextGcCodeModeOutputReplacement(original, false, true)
+    ]) {
+      const value = JSON.parse(rendered);
+      expect(value.preview).toBe(
+        '😀'.repeat(768) + '\n...[context GC omitted middle]...\n' + '界'.repeat(768)
+      );
+      expect(value.previewComplete).toBe(false);
+    }
+  });
+
   it('constructs the current stale-read format without consulting a format selector', () => {
     const input = {
       path: 'src/a.ts',

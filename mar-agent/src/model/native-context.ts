@@ -1,6 +1,33 @@
 import { anthropicThinkingBlock } from './anthropic-thinking.js';
 import type { ModelMessage } from './contracts.js';
 
+/** Identity of a persisted complete native thinking item; payload content is never compared. */
+export function completedNativeThinkingIdentity(
+  payload: Record<string, unknown>,
+  recordId: string
+): string | undefined {
+  if (payload.role !== 'provider') return undefined;
+  if (payload.provider === 'ANTHROPIC_MESSAGES') {
+    const item = payload.item;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
+    const block = item as Record<string, unknown>;
+    return (block.type === 'thinking' &&
+      typeof block.thinking === 'string' &&
+      typeof block.signature === 'string' &&
+      block.signature.length > 0) ||
+      (block.type === 'redacted_thinking' &&
+        typeof block.data === 'string' &&
+        block.data.length > 0)
+      ? recordId
+      : undefined;
+  }
+  const message = restoreNativeModelContext(payload);
+  if (!message?.item) return undefined;
+  if (message.provider !== 'OPENAI_RESPONSES' || message.item.type !== 'reasoning')
+    return undefined;
+  return typeof message.item.id === 'string' ? message.item.id : recordId;
+}
+
 /** Interpret only the existing native context record shapes and their model ownership. */
 export function restoreNativeModelContext(
   payload: Record<string, unknown>,

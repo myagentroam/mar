@@ -1,12 +1,15 @@
 import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { describe, expect, it } from 'vitest';
 import { HISTORY_INPUT_LIMITS } from '../../src/session/history-input-limits.js';
+import { contextGcCacheImpact } from '../../src/runtime/context/gc-tokens.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
+  renderObservations,
+  type CodeObservation
+} from '../../src/session/code-observation-projection.js';
+import {
   CONTEXT_GC_POLICY,
-  contextGcEarliestReplacementSequence,
-  contextGcMarginalCacheInvestmentPaysBack,
   evaluateContextGcEconomics,
   inspectContextGc,
   planContextGc
@@ -73,50 +76,98 @@ function successfulRollout(
     cacheWriteTokens: 0
   }
 ) {
-  add('model.attempt', {
-    purpose: 'EXECUTION',
-    protocol: 'ANTHROPIC_MESSAGES',
-    transport: 'HTTP',
-    state: 'STARTED',
-    attempt: 1,
-    maxAttempts: 5,
-    continuation: false,
-    credentialReason: 'REQUEST'
-  });
+  add(
+    'model.attempt',
+    {
+      purpose: 'EXECUTION',
+      protocol: 'OPENAI_RESPONSES',
+      transport: 'HTTP',
+      state: 'STARTED',
+      attempt: 1,
+      maxAttempts: 5,
+      continuation: false,
+      credentialReason: 'REQUEST'
+    },
+    { executionId: 'execution' }
+  );
+  add(
+    'model.context',
+    {
+      role: 'provider',
+      content: '',
+      provider: 'OPENAI_RESPONSES',
+      providerModelId: 'coding',
+      item: {
+        type: 'reasoning',
+        id: 'complete-native-item',
+        encrypted_content: 'opaque',
+        summary: []
+      }
+    },
+    { executionId: 'execution' }
+  );
   add('usage.updated', { type: 'usage.updated', ...usage });
-  return add('model.attempt', {
-    purpose: 'EXECUTION',
-    protocol: 'ANTHROPIC_MESSAGES',
-    transport: 'HTTP',
-    state: 'SUCCEEDED',
-    attempt: 1,
-    maxAttempts: 5,
-    continuation: false,
-    credentialReason: 'REQUEST'
-  });
+  return add(
+    'model.attempt',
+    {
+      purpose: 'EXECUTION',
+      protocol: 'OPENAI_RESPONSES',
+      transport: 'HTTP',
+      state: 'SUCCEEDED',
+      attempt: 1,
+      maxAttempts: 5,
+      continuation: false,
+      credentialReason: 'REQUEST'
+    },
+    { executionId: 'execution' }
+  );
 }
 
 function successfulRolloutWithoutUsage(add: ReturnType<typeof records>['add']) {
-  add('model.attempt', {
-    purpose: 'EXECUTION',
-    protocol: 'ANTHROPIC_MESSAGES',
-    transport: 'HTTP',
-    state: 'STARTED',
-    attempt: 1,
-    maxAttempts: 5,
-    continuation: false,
-    credentialReason: 'REQUEST'
-  });
-  return add('model.attempt', {
-    purpose: 'EXECUTION',
-    protocol: 'ANTHROPIC_MESSAGES',
-    transport: 'HTTP',
-    state: 'SUCCEEDED',
-    attempt: 1,
-    maxAttempts: 5,
-    continuation: false,
-    credentialReason: 'REQUEST'
-  });
+  add(
+    'model.attempt',
+    {
+      purpose: 'EXECUTION',
+      protocol: 'OPENAI_RESPONSES',
+      transport: 'HTTP',
+      state: 'STARTED',
+      attempt: 1,
+      maxAttempts: 5,
+      continuation: false,
+      credentialReason: 'REQUEST'
+    },
+    { executionId: 'execution' }
+  );
+  add(
+    'model.context',
+    {
+      role: 'provider',
+      content: '',
+      provider: 'OPENAI_RESPONSES',
+      providerModelId: 'coding',
+      item: {
+        type: 'reasoning',
+        id: 'complete-native-item',
+        encrypted_content: 'opaque',
+        summary: []
+      }
+    },
+    { executionId: 'execution' }
+  );
+  return add(
+    'model.attempt',
+    {
+      purpose: 'EXECUTION',
+      protocol: 'OPENAI_RESPONSES',
+      transport: 'HTTP',
+      state: 'SUCCEEDED',
+      attempt: 1,
+      maxAttempts: 5,
+      continuation: false,
+      credentialReason: 'REQUEST'
+    },
+    { executionId: 'execution' }
+  );
 }
 
 function requestProjection(values: readonly SessionRecord[]) {
@@ -353,8 +404,7 @@ describe('context GC planner', () => {
     );
     const data = (completed?.payload as { data?: { files?: Array<{ path?: string }> } }).data;
     data!.files![0]!.path = 'src/a.ts';
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
 
     expect(plan(fixture.values)).toBeUndefined();
   });
@@ -378,8 +428,7 @@ describe('context GC planner', () => {
       }
     ).data?.totals;
     totals!.addedLines = 2;
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
 
     expect(plan(fixture.values)).toBeUndefined();
   });
@@ -399,8 +448,7 @@ describe('context GC planner', () => {
     );
     const data = (completed?.payload as { data?: { files?: Array<{ path?: string }> } }).data;
     data!.files![0]!.path = 'src/a.ts';
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const projection = requestProjection(fixture.values);
     const selected = planContextGc({
       records: fixture.values,
@@ -486,6 +534,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
+    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 4_999,
       contextInputTokens: 4_999,
@@ -513,7 +562,7 @@ describe('context GC planner', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0
       })?.stage
-    ).toBe('STAGE_A');
+    ).toBe('UNIFIED');
     expect(
       plan(fixture.values, {
         inputTokens: 9_000,
@@ -524,7 +573,7 @@ describe('context GC planner', () => {
     ).toBeUndefined();
   });
 
-  it('protects a successful patch group for two observed rollouts before collecting it', () => {
+  it('protects a successful patch group for six observed rollouts before collecting it', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -592,11 +641,11 @@ describe('context GC planner', () => {
       })
     });
 
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
     expect(plan(fixture.values)).toBeUndefined();
     successfulRollout(fixture.add);
     const selected = plan(fixture.values);
-    expect(selected?.stage).toBe('STAGE_A');
+    expect(selected?.stage).toBe('UNIFIED');
     expect(selected?.draft.replacements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -610,7 +659,7 @@ describe('context GC planner', () => {
         })
       ])
     );
-    expect(selected?.metrics.minimumObservedRollouts).toBe(2);
+    expect(selected?.metrics.minimumObservedRollouts).toBe(6);
     const staleRead = selected?.draft.replacements.find(
       (replacement) => replacement.kind === 'READ_OUTPUT_ITEMS'
     );
@@ -748,7 +797,7 @@ describe('context GC planner', () => {
       expect(plan(fixture.values)).toBeUndefined();
       successfulRollout(fixture.add);
       const selected = plan(fixture.values);
-      expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+      expect(selected?.stage).toBe('UNIFIED');
       const inputReplacement = selected?.draft.replacements.find(
         (replacement) => replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === toolName
       );
@@ -907,7 +956,7 @@ describe('context GC planner', () => {
     expect(plan(fixture.values)).toBeUndefined();
     successfulRollout(fixture.add);
     const selected = plan(fixture.values);
-    expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+    expect(selected?.stage).toBe('UNIFIED');
     expect(selected?.draft.replacements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -922,7 +971,6 @@ describe('context GC planner', () => {
       ])
     );
   });
-
   it.each(['web_search', 'web_fetch'] as const)(
     'collects a large successful %s output after the exec protection period',
     (toolName) => {
@@ -981,7 +1029,7 @@ describe('context GC planner', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0
       });
-      expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+      expect(selected?.stage).toBe('UNIFIED');
       expect(selected?.draft.replacements).toEqual([
         expect.objectContaining({
           kind: 'WEB_OUTPUT',
@@ -1069,14 +1117,14 @@ describe('context GC planner', () => {
     }
   });
 
-  it('marginally merges a safe later exec when Stage A already passes', () => {
+  it('combines deterministic and exec candidates when the deterministic candidates already pass', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
       contextWindowTokens: 10_000,
       mode: 'run'
     });
-    addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(2_000)}` });
+    const patch = addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(2_000)}` });
     const output = 'verification '.repeat(2_000);
     const execCall = modelContext(fixture.add, {
       role: 'tool_call',
@@ -1116,6 +1164,47 @@ describe('context GC planner', () => {
         stderr: ''
       })
     });
+    modelContext(fixture.add, {
+      role: 'tool_call',
+      callId: 'web-mixed',
+      name: 'web_fetch',
+      content: '',
+      arguments: { url: 'https://example.test/mixed' }
+    });
+    fixture.add('tool.completed', {
+      type: 'tool.completed',
+      toolName: 'web_fetch',
+      callId: 'web-mixed',
+      truncated: false
+    });
+    const webResult = modelContext(fixture.add, {
+      role: 'tool',
+      callId: 'web-mixed',
+      content: 'web evidence '.repeat(3000)
+    });
+    modelContext(fixture.add, {
+      role: 'tool_call',
+      callId: 'cell-mixed',
+      name: 'code_exec',
+      content: '',
+      arguments: 'small'
+    });
+    fixture.add('tool.completed', {
+      type: 'tool.completed',
+      toolName: 'code_exec',
+      callId: 'cell-mixed',
+      data: { cellId: 'cell', status: 'running' },
+      truncated: false
+    });
+    const observations: CodeObservation[] = [
+      { type: 'value', id: 'value-mixed', format: 'text', value: 'value evidence '.repeat(3000) }
+    ];
+    const valueResult = modelContext(fixture.add, {
+      role: 'tool',
+      callId: 'cell-mixed',
+      content: renderObservations(observations),
+      observations
+    });
     for (let index = 0; index < 6; index++)
       successfulRollout(fixture.add, {
         inputTokens: 8_000,
@@ -1130,68 +1219,192 @@ describe('context GC planner', () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0
     });
-    expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+    expect(selected?.stage).toBe('UNIFIED');
     expect(selected?.draft.replacements).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          target: expect.objectContaining({ sequence: patch.readResult.sequence })
+        }),
         expect.objectContaining({
           target: expect.objectContaining({ sequence: execCall.sequence })
         }),
         expect.objectContaining({
           target: expect.objectContaining({ sequence: execResult.sequence })
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({ sequence: webResult.sequence })
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({
+            sequence: valueResult.sequence,
+            observationId: 'value-mixed'
+          })
+        })
+      ])
+    );
+    const cached = plan(fixture.values, {
+      inputTokens: 8000,
+      contextInputTokens: 8000,
+      cacheReadTokens: 3000,
+      cacheWriteTokens: 0
+    });
+
+    expect(cached).toBeDefined();
+    const original = requestProjection(fixture.values);
+    const projected = applyContextGcReplacementsToMessages(
+      original.messages,
+      original.messageSources,
+      cached!.draft.replacements
+    );
+    const impact = contextGcCacheImpact(
+      { system: 'System.', tools: [], modelId: 'coding' },
+      original.messages,
+      projected.messages,
+      3000,
+      cached!.metrics.reclaimedTokens
+    );
+    expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeCloseTo(
+      (3000 - impact.preservedCachedPrefixTokens - impact.reclaimedCachedTokens) *
+        (CONTEXT_GC_POLICY.cacheWriteCostRate - CONTEXT_GC_POLICY.cacheReadCostRate)
+    );
+    expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeGreaterThan(0);
+    expect(cached!.draft.replacements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: expect.objectContaining({ sequence: patch.readResult.sequence })
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({ sequence: execResult.sequence })
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({ sequence: webResult.sequence })
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({ observationId: 'value-mixed' })
         })
       ])
     );
   });
 
-  it('requires an earlier exec marginal cache investment to reach target ROI in three rollouts', () => {
-    expect(
-      contextGcMarginalCacheInvestmentPaysBack(
-        {
-          reclaimedTokens: 20_000,
-          reclaimedCachedTokens: 20_000,
-          cacheRebuildPenaltyCostUnits: 10_000
-        },
-        {
-          reclaimedTokens: 25_000,
-          reclaimedCachedTokens: 25_000,
-          cacheRebuildPenaltyCostUnits: 16_000
-        }
-      )
-    ).toBe(false);
-    expect(
-      contextGcMarginalCacheInvestmentPaysBack(
-        {
-          reclaimedTokens: 20_000,
-          reclaimedCachedTokens: 20_000,
-          cacheRebuildPenaltyCostUnits: 10_000
-        },
-        {
-          reclaimedTokens: 25_000,
-          reclaimedCachedTokens: 20_000,
-          cacheRebuildPenaltyCostUnits: 13_000
-        }
-      )
-    ).toBe(true);
+  it('accounts for the full combined cache invalidation, rather than a marginal gate', () => {
+    const base = {
+      contextUsageTokens: 150_000,
+      reclaimedTokens: 30_000,
+      reclaimedCachedTokens: 30_000,
+      cacheReadTokens: 100_000,
+      compactDeferralCreditCostUnits: 0,
+      projectedRolloutsUntilCompactAfterGc: 100,
+      contextGrowthSampleCount: 16
+    };
+    const late = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 60_000 });
+    const early = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 0 });
+    expect(early.cacheRebuildPenaltyCostUnits).toBeGreaterThan(late.cacheRebuildPenaltyCostUnits);
+    expect(early.requiredTargetRoiRollouts).toBeGreaterThan(late.requiredTargetRoiRollouts);
   });
 
-  it('uses provider aliases when locating the earliest cache invalidation point', () => {
-    const target = (sequence: number, role: 'tool_call' | 'provider') => ({
-      sequence,
-      recordId: `record-${sequence}`,
-      role,
-      callId: 'exec-alias',
-      toolName: 'exec'
+  it('does not fall back to deterministic-only when the full eligible set fails cache economics', () => {
+    const fixture = records();
+    fixture.add('execution.header', { modelId: 'coding', contextWindowTokens: 10000, mode: 'run' });
+    modelContext(fixture.add, {
+      role: 'tool_call',
+      name: 'exec',
+      callId: 'early',
+      content: '',
+      arguments: { command: 'echo early' }
     });
-    const replacement: ContextGcReplacement = {
-      kind: 'TOOL_CALL_INPUT',
+    const output = 'early output '.repeat(250);
+    const terminal = fixture.add('tool.completed', {
+      type: 'tool.completed',
       toolName: 'exec',
-      callId: 'exec-alias',
-      target: target(300, 'tool_call'),
-      replacementArguments: { action: 'start' },
-      providerAliasTargets: [target(100, 'provider')],
-      evidenceSequence: 400
+      callId: 'early',
+      truncated: false,
+      data: {
+        status: 'completed',
+        exitCode: 0,
+        stdoutBytes: output.length,
+        stderrBytes: 0,
+        stdoutDroppedBytes: 0,
+        stderrDroppedBytes: 0
+      }
+    });
+    modelContext(fixture.add, {
+      role: 'tool',
+      callId: 'early',
+      content: JSON.stringify({
+        status: 'completed',
+        exitCode: 0,
+        truncated: false,
+        stdoutBytes: output.length,
+        stderrBytes: 0,
+        stdoutDroppedBytes: 0,
+        stderrDroppedBytes: 0,
+        stdout: output,
+        stderr: ''
+      })
+    });
+    modelContext(fixture.add, { role: 'user', content: 'retained cache filler '.repeat(2500) });
+    addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(2000)}` });
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    const usage = {
+      inputTokens: 6000,
+      contextInputTokens: 6000,
+      cacheReadTokens: 6000,
+      cacheWriteTokens: 0
     };
-    expect(contextGcEarliestReplacementSequence([replacement])).toBe(100);
+    const deterministicOnly = fixture.values.map((record) =>
+      record === terminal
+        ? {
+            ...record,
+            type: 'tool.failed',
+            payload: { type: 'tool.failed', toolName: 'exec', callId: 'early' }
+          }
+        : record
+    );
+    expect(plan(deterministicOnly, usage)).toBeDefined();
+    expect(plan(fixture.values, usage)).toBeUndefined();
+  });
+
+  it('retains protected-candidate retry information alongside a unified plan', () => {
+    const fixture = records();
+    fixture.add('execution.header', { modelId: 'coding', contextWindowTokens: 10000, mode: 'run' });
+    addSuccessfulPatchScenario(fixture);
+    for (let i = 0; i < 4; i++) successfulRollout(fixture.add);
+    modelContext(fixture.add, {
+      role: 'tool_call',
+      callId: 'young',
+      name: 'web_fetch',
+      content: '',
+      arguments: { url: 'https://example.test/young' }
+    });
+    fixture.add('tool.completed', {
+      type: 'tool.completed',
+      callId: 'young',
+      toolName: 'web_fetch',
+      truncated: false,
+      data: { url: 'https://example.test/young', status: 200 }
+    });
+    modelContext(fixture.add, { role: 'tool', callId: 'young', content: 'young '.repeat(3000) });
+    for (let i = 0; i < 2; i++) successfulRollout(fixture.add);
+    const inspection = inspectContextGc({
+      records: fixture.values,
+      ...requestProjection(fixture.values),
+      system: 'System.',
+      tools: [],
+      modelId: 'coding',
+      contextWindowTokens: 10000,
+      usage: {
+        inputTokens: 6000,
+        contextInputTokens: 6000,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0
+      },
+      workspace: '/workspace',
+      platform: 'linux',
+      activeProcessIds: new Set()
+    });
+    expect(inspection.plan?.stage).toBe('UNIFIED');
+    expect(inspection.plan!.metrics.protectedCandidateTokens).toBeGreaterThan(0);
+    expect(inspection.retryAfterRollouts).toBe(4);
   });
 
   it.each([
@@ -1286,10 +1499,27 @@ describe('context GC planner', () => {
           stderrDroppedBytes: 0
         })
       });
+      modelContext(fixture.add, {
+        role: 'tool_call',
+        name: 'exec_wait',
+        callId: 'failed-cached-poll',
+        content: '',
+        arguments: { processId }
+      });
+      fixture.add('tool.failed', {
+        type: 'tool.failed',
+        toolName: 'exec_wait',
+        callId: 'failed-cached-poll'
+      });
+      const failedResult = modelContext(fixture.add, {
+        role: 'tool',
+        callId: 'failed-cached-poll',
+        content: 'cached poll failed'
+      });
       for (let index = 0; index < 6; index++) successfulRollout(fixture.add);
       expect(plan(fixture.values, undefined, new Set([processId]))).toBeUndefined();
       const selected = plan(fixture.values);
-      expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+      expect(selected?.stage).toBe('UNIFIED');
       if (waitTool === 'exec_wait') {
         expect(selected?.draft.replacements).toContainEqual(
           expect.objectContaining({
@@ -1303,6 +1533,7 @@ describe('context GC planner', () => {
       const selectedSequences = selected?.draft.replacements.map(
         (replacement) => replacement.target.sequence
       );
+      expect(selectedSequences).not.toContain(failedResult.sequence);
       expect(selectedSequences).toEqual(
         expect.arrayContaining([
           startCall.sequence,
@@ -1473,6 +1704,7 @@ describe('context GC planner', () => {
       )}`
     });
     addSuccessfulPatch(fixture, { path: 'src/a.ts', callId: 'patch-a' });
+    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 5_000,
       contextInputTokens: 5_000,
@@ -1499,6 +1731,7 @@ describe('context GC planner', () => {
     });
 
     addSuccessfulPatch(fixture, { path: 'src/b.ts', callId: 'patch-b' });
+    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 7_000,
       contextInputTokens: 7_000,
@@ -1563,6 +1796,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture);
+      for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
       if (baseline === 'matching') {
         successfulRollout(fixture.add, {
           inputTokens: 3_000,
@@ -1633,8 +1867,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     const scenario = addSuccessfulPatchScenario(fixture, { providerAlias: true });
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     const replacement = selected?.draft.replacements.find(
       (item) => item.kind === 'TOOL_CALL_INPUT' && item.toolName === 'apply_patch'
@@ -1664,8 +1897,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture, { providerAlias });
-      successfulRollout(fixture.add);
-      successfulRollout(fixture.add);
+      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
       return planContextGc({
         records: fixture.values,
         ...requestProjection(fixture.values),
@@ -1692,8 +1924,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     expect(plan(fixture.values)).toBeDefined();
     modelContext(fixture.add, {
       role: 'tool',
@@ -1804,8 +2035,8 @@ describe('context GC planner', () => {
       platform: 'linux' as const,
       activeProcessIds: new Set<string>()
     };
-    expect(inspectContextGc(input)).toEqual({ retryAfterRollouts: 1 });
-    successfulRollout(fixture.add);
+    expect(inspectContextGc(input)).toEqual({ retryAfterRollouts: 5 });
+    for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values)!;
     expect(selected.metrics.tokenEstimator).toBe('UTF8_BYTES_V1');
     fixture.add('context.gc.completed', {
@@ -1838,62 +2069,67 @@ describe('context GC planner', () => {
     expect(cache.read(corrupted)).toBeUndefined();
   });
 
-  it('restores the latest committed checkpoint without replaying archived integrity evidence', () => {
-    const fixture = records();
-    fixture.add('execution.header', {
-      modelId: 'coding',
-      contextWindowTokens: 10_000,
-      mode: 'run'
-    });
-    addSuccessfulPatchScenario(fixture);
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
-    const selected = plan(fixture.values)!;
-    const previous = fixture.add('context.gc.completed', {
-      ...selected.draft,
-      checkpointId: 'previous-committed',
-      generation: 1
-    });
-    fixture.add('context.gc.completed', {
-      ...selected.draft,
-      checkpointId: 'latest-committed',
-      generation: 2
-    });
-    const source = fixture.values.find(
-      (record) =>
-        record.type === 'model.context' &&
-        (record.payload as ModelMessage).role === 'tool_call' &&
-        (record.payload as ModelMessage).callId === 'patch-1'
-    )!;
-    (source.payload as ModelMessage).arguments = 'Archived input changed after checkpoint commit.';
-    Object.defineProperty(previous, 'payload', {
-      get() {
-        throw new Error('Older checkpoint payloads must not be decoded.');
-      }
-    });
-    fixture.add('model.context', { role: 'user', content: 'Continue with the retained facts.' });
+  it.each(['STAGE_A', 'STAGE_A_AND_EXEC', 'UNIFIED'] as const)(
+    'restores a %s checkpoint without replaying archived integrity evidence',
+    (stage) => {
+      const fixture = records();
+      fixture.add('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10_000,
+        mode: 'run'
+      });
+      addSuccessfulPatchScenario(fixture);
+      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      const selected = plan(fixture.values)!;
+      const previous = fixture.add('context.gc.completed', {
+        ...selected.draft,
+        checkpointId: 'previous-committed',
+        generation: 1
+      });
+      fixture.add('context.gc.completed', {
+        ...selected.draft,
+        metrics: { ...selected.draft.metrics, stage },
+        checkpointId: 'latest-committed',
+        generation: 2
+      });
+      const source = fixture.values.find(
+        (record) =>
+          record.type === 'model.context' &&
+          (record.payload as ModelMessage).role === 'tool_call' &&
+          (record.payload as ModelMessage).callId === 'patch-1'
+      )!;
+      (source.payload as ModelMessage).arguments =
+        'Archived input changed after checkpoint commit.';
+      Object.defineProperty(previous, 'payload', {
+        get() {
+          throw new Error('Older checkpoint payloads must not be decoded.');
+        }
+      });
+      fixture.add('model.context', { role: 'user', content: 'Continue with the retained facts.' });
 
-    const projection = buildContextProjection(fixture.values);
-    expect(projection.checkpoint?.checkpointId).toBe('latest-committed');
-    for (const replacement of projection.checkpoint!.replacements) {
-      expect(replacement.target).not.toHaveProperty('sourceHash');
-      if (replacement.kind === 'TOOL_CALL_INPUT')
-        for (const alias of replacement.providerAliasTargets)
-          expect(alias).not.toHaveProperty('sourceHash');
+      const projection = buildContextProjection(fixture.values);
+      expect(projection.checkpoint?.checkpointId).toBe('latest-committed');
+      expect(projection.checkpoint?.metrics.stage).toBe(stage);
+      for (const replacement of projection.checkpoint!.replacements) {
+        expect(replacement.target).not.toHaveProperty('sourceHash');
+        if (replacement.kind === 'TOOL_CALL_INPUT')
+          for (const alias of replacement.providerAliasTargets)
+            expect(alias).not.toHaveProperty('sourceHash');
+      }
+      const replacement = selected.draft.replacements.find(
+        (item) => item.kind === 'TOOL_CALL_INPUT' && item.target.recordId === source.recordId
+      )!;
+      expect(replacement.kind).toBe('TOOL_CALL_INPUT');
+      expect(
+        projection.entries.find(
+          ({ message }) => message.role === 'tool_call' && message.callId === 'patch-1'
+        )?.message.arguments
+      ).toEqual(
+        replacement.kind === 'TOOL_CALL_INPUT' ? replacement.replacementArguments : undefined
+      );
+      expect(projection.entries.at(-1)?.message.content).toBe('Continue with the retained facts.');
     }
-    const replacement = selected.draft.replacements.find(
-      (item) => item.kind === 'TOOL_CALL_INPUT' && item.target.recordId === source.recordId
-    )!;
-    expect(replacement.kind).toBe('TOOL_CALL_INPUT');
-    expect(
-      projection.entries.find(
-        ({ message }) => message.role === 'tool_call' && message.callId === 'patch-1'
-      )?.message.arguments
-    ).toEqual(
-      replacement.kind === 'TOOL_CALL_INPUT' ? replacement.replacementArguments : undefined
-    );
-    expect(projection.entries.at(-1)?.message.content).toBe('Continue with the retained facts.');
-  });
+  );
 
   it.each(['shape', 'base', 'boundary'] as const)(
     'falls back when the latest checkpoint has an unusable %s',
@@ -1905,8 +2141,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture);
-      successfulRollout(fixture.add);
-      successfulRollout(fixture.add);
+      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
       const selected = plan(fixture.values);
       expect(selected).toBeDefined();
       fixture.add('context.gc.completed', {
@@ -1940,8 +2175,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     expect(selected).toBeDefined();
     const checkpoint = fixture.add('context.gc.completed', {
@@ -1970,8 +2204,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values)!;
     const readResult = fixture.values.find(
       (record) =>
@@ -2007,8 +2240,7 @@ describe('context GC planner', () => {
       path: 'src/unrelated.ts',
       callId: 'patch-unrelated'
     });
-    successfulRollout(fixture.add);
-    successfulRollout(fixture.add);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     expect(selected).toBeDefined();
     const checkpointRecord = fixture.add('context.gc.completed', {

@@ -22,6 +22,7 @@ import {
 import type { ModelAttemptDiagnostic } from '../../src/model/contracts.js';
 import { waitForModelRetry } from '../../src/model/http.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { buildContextGcProtection } from '../../src/session/context-gc-protection.js';
 import {
   startResponsesWebSocketServer,
   startSocks5Proxy,
@@ -430,7 +431,7 @@ describe('Responses retry boundaries', () => {
   for (const encoding of ['STANDARD'] as const) {
     it.each(internalPrefixes)(
       `${encoding} retries overload after $name without exposing a failed attempt`,
-      async ({ events: prefix }) => {
+      async ({ name, events: prefix }) => {
         const server = await startResponsesWebSocketServer([], {
           responsesByRequest: [
             [
@@ -484,6 +485,69 @@ describe('Responses retry boundaries', () => {
       }
     );
   }
+
+  it('does not count or replay an unpersisted failed-prelude native item', async () => {
+    const item = {
+      type: 'reasoning',
+      id: 'failed-reasoning',
+      encrypted_content: 'synthetic-private-envelope',
+      summary: []
+    };
+    const server = await startResponsesWebSocketServer([], {
+      responsesByRequest: [
+        [
+          { type: 'response.created', response: { id: 'failed-response' } },
+          { type: 'response.output_item.done', item },
+          overload
+        ],
+        completed()
+      ]
+    });
+    servers.push(server.server);
+    const { home, directory } = await workspace();
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
+    const agent = await createMarAgent({
+      mode: 'normal',
+      host,
+      models: [configuration(server.baseUrl)]
+    });
+    try {
+      const session = await agent.createSession({
+        workspace: directory,
+        title: 'Native completion evidence'
+      });
+      expect(await session.run({ prompt: 'Continue.' }).result()).toMatchObject({
+        status: 'completed',
+        finalAnswer: 'Recovered'
+      });
+      expect(server.requests).toHaveLength(2);
+      expect(JSON.stringify(server.requests[1])).not.toContain('synthetic-private-envelope');
+      expect(JSON.stringify(host.events)).not.toContain('synthetic-private-envelope');
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const records = await store.read(session.id);
+        const firstAttempt = records.find(
+          (record) =>
+            record.type === 'model.attempt' &&
+            (record.payload as { state?: string }).state === 'STARTED'
+        )!;
+        expect(
+          buildContextGcProtection(records, 'responses', 200_000).after(firstAttempt.sequence - 1)
+        ).toEqual({ rollouts: 1, thinking: 0 });
+        expect(
+          records.filter(
+            (record) =>
+              record.type === 'model.context' &&
+              JSON.stringify(record.payload).includes('synthetic-private-envelope')
+          )
+        ).toEqual([]);
+      } finally {
+        await store.close();
+      }
+    } finally {
+      await agent.dispose();
+    }
+  });
 
   it('preserves successful private reasoning in order without exposing an unknown placeholder', async () => {
     const item = {

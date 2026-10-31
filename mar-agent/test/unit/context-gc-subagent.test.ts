@@ -95,6 +95,18 @@ function successfulRollout(
     continuation: false,
     credentialReason: 'REQUEST'
   });
+  add('model.context', {
+    role: 'provider',
+    content: '',
+    provider: 'OPENAI_RESPONSES',
+    providerModelId: 'coding',
+    item: {
+      type: 'reasoning',
+      id: 'complete-native-item',
+      encrypted_content: 'opaque',
+      summary: []
+    }
+  });
   add('usage.updated', { type: 'usage.updated', ...usage });
   add('model.attempt', {
     purpose: 'EXECUTION',

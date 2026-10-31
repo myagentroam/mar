@@ -9,6 +9,9 @@ import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js'
 import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import { type ModelEvent, type ModelMessage } from '../../src/model/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { buildContextGcProtection } from '../../src/session/context-gc-protection.js';
+import { contextGcReclaimedTokens } from '../../src/runtime/context/gc-tokens.js';
+import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
 import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import {
@@ -99,6 +102,164 @@ async function collect(adapter: AnthropicMessagesAdapter, messages: ModelMessage
 }
 
 describe('Anthropic native thinking context', () => {
+  it('does not count unprojected search-definition metadata when Anthropic wire payload is unchanged', async () => {
+    const { model, requests } = await serverFor([
+      events([{ type: 'text', text: 'ok' }]),
+      events([{ type: 'text', text: 'ok' }])
+    ]);
+    const adapter = new AnthropicMessagesAdapter(model);
+    const search = {
+      name: 'mcp__test__large',
+      description: 'definition '.repeat(2000),
+      inputSchema: { type: 'object', properties: {} }
+    };
+    const before: ModelMessage[] = [
+      { role: 'user', content: 'Find a tool.' },
+      {
+        role: 'tool_call',
+        name: 'tool_search',
+        callId: 'search',
+        arguments: { query: 'test' },
+        content: ''
+      },
+      {
+        role: 'tool',
+        callId: 'search',
+        content: '{"tools":["mcp__test__large"]}',
+        toolSearchTools: [search]
+      }
+    ];
+    const after: ModelMessage[] = before.map((message) =>
+      message.role === 'tool' ? { ...message, toolSearchTools: [] } : message
+    );
+    await collect(adapter, before);
+    await collect(adapter, after);
+    expect(requests[0]?.messages).toEqual(requests[1]?.messages);
+    expect(
+      contextGcReclaimedTokens(
+        { modelId: 'thinking', modelProtocol: 'ANTHROPIC_MESSAGES', system: 'System.', tools: [] },
+        before,
+        after
+      )
+    ).toBe(0);
+  });
+  it('counts Code Mode search definitions when they actually enter Anthropic tool-result content', async () => {
+    const { model, requests } = await serverFor([
+      events([{ type: 'text', text: 'ok' }]),
+      events([{ type: 'text', text: 'ok' }])
+    ]);
+    const adapter = new AnthropicMessagesAdapter(model);
+    const search = {
+      name: 'mcp__test__large',
+      description: 'definition '.repeat(2000),
+      inputSchema: { type: 'object', properties: {} }
+    };
+    const before: ModelMessage[] = [
+      { role: 'user', content: 'Find a tool.' },
+      {
+        role: 'tool_call',
+        name: 'tool_search',
+        callId: 'search',
+        arguments: { query: 'test' },
+        content: ''
+      },
+      {
+        role: 'tool',
+        callId: 'search',
+        content: '{"tools":["mcp__test__large"]}',
+        toolSearchTools: [search]
+      }
+    ];
+    const after: ModelMessage[] = before.map((message) =>
+      message.role === 'tool' ? { ...message, toolSearchTools: [] } : message
+    );
+    await collect(
+      adapter,
+      before.map((message) => projectCodeModeSearchResult(message, true))
+    );
+    await collect(
+      adapter,
+      after.map((message) => projectCodeModeSearchResult(message, true))
+    );
+    expect(requests[0]?.messages).not.toEqual(requests[1]?.messages);
+    expect(
+      contextGcReclaimedTokens(
+        {
+          modelId: 'thinking',
+          modelProtocol: 'ANTHROPIC_MESSAGES',
+          system: 'System.',
+          tools: [
+            { name: 'code_exec', description: '', inputSchema: { type: 'object', properties: {} } }
+          ]
+        },
+        before,
+        after
+      )
+    ).toBeGreaterThan(0);
+  });
+  it('records complete private blocks on a failed semantic attempt without changing Anthropic replay', async () => {
+    const failed = events([{ ...signed, thinking: '' }, redacted]).slice(0, -2);
+    failed.push({
+      type: 'error',
+      error: { type: 'overloaded_error', message: 'synthetic overload' }
+    });
+    const { model, requests } = await serverFor([
+      failed,
+      events([{ type: 'text', text: 'Recovered' }])
+    ]);
+    const home = await mkdtemp(join(tmpdir(), 'mar-anthropic-prelude-'));
+    roots.push(home);
+    const workspace = join(home, 'workspace');
+    await mkdir(workspace);
+    const agent = await createAgent({
+      mode: 'normal',
+      host: new LocalAgentHost({ homeDirectory: home, workspace }),
+      models: [model]
+    });
+    const publicEvents: unknown[] = [];
+    try {
+      const session = await agent.createSession({ workspace, title: 'Failed thinking prelude' });
+      const execution = session.run({ prompt: 'Continue.' });
+      for await (const event of execution) publicEvents.push(event);
+      expect(await execution.result()).toMatchObject({
+        status: 'completed',
+        finalAnswer: 'Recovered'
+      });
+      expect(requests).toHaveLength(2);
+      expect(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/.test(JSON.stringify(requests[1]))).toBe(true);
+      expect(JSON.stringify(publicEvents)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const records = await store.read(session.id);
+        const first = records.find(
+          (record) =>
+            record.type === 'model.attempt' &&
+            (record.payload as { state?: string }).state === 'STARTED'
+        )!;
+        expect(
+          buildContextGcProtection(records, 'thinking', 200_000).after(first.sequence - 1)
+        ).toEqual({ rollouts: 1, thinking: 2 });
+        expect(
+          records.find(
+            (record) =>
+              record.type === 'model.attempt' &&
+              (record.payload as { state?: string }).state === 'FAILED'
+          )?.payload
+        ).toMatchObject({ semanticEventObserved: true, willRetry: false });
+        expect(
+          records.filter(
+            (record) =>
+              record.type === 'model.context' &&
+              /SIGNATURE_PRIVATE|REDACTED_PRIVATE/.test(JSON.stringify(record.payload))
+          )
+        ).toHaveLength(2);
+      } finally {
+        await store.close();
+      }
+    } finally {
+      await agent.dispose();
+    }
+  });
   it('sends discovered Code Mode schemas in ordinary tool-result content', async () => {
     const { model, requests } = await serverFor([events([{ type: 'text', text: 'done' }])]);
     const definition = {

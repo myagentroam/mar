@@ -1,4 +1,5 @@
 import { contextGcMarkup } from './context-gc-markup.js';
+import type { ParsedReadContextItem } from '../prompts/read-context.js';
 import {
   parseApplyPatchResult,
   parseApplyPatchPartialResult
@@ -9,6 +10,11 @@ const EXEC_INPUT_COMPLETE_CHARACTERS = 512;
 const EXEC_INPUT_PREVIEW_CHARACTERS = 256;
 const EXEC_OUTPUT_PREVIEW_CHARACTERS = 512;
 const CODE_MODE_OUTPUT_PREVIEW_CHARACTERS = 512;
+const GENERIC_OUTPUT_PREVIEW_CHARACTERS = 768;
+
+export function hasGenericContextGcPreview(originalContent: string): boolean {
+  return [...originalContent].length > GENERIC_OUTPUT_PREVIEW_CHARACTERS * 2;
+}
 
 import type { ContextGcWebToolName } from './context-gc-contract.js';
 export type { ContextGcWebToolName } from './context-gc-contract.js';
@@ -50,9 +56,13 @@ export function contextGcCodeModeInputReplacement(
 
 export function contextGcCodeModeOutputReplacement(
   originalContent: string,
-  truncated: boolean
+  truncated: boolean,
+  value = false
 ): string {
-  const preview = unicodeHeadTail(originalContent, CODE_MODE_OUTPUT_PREVIEW_CHARACTERS);
+  const preview = unicodeHeadTail(
+    originalContent,
+    value ? GENERIC_OUTPUT_PREVIEW_CHARACTERS : CODE_MODE_OUTPUT_PREVIEW_CHARACTERS
+  );
   return JSON.stringify({
     originalBytes: Buffer.byteLength(originalContent),
     lines: lineCount(originalContent),
@@ -164,6 +174,44 @@ export function contextGcStaleReadReplacement(input: {
   });
 }
 
+export function contextGcReadRangeCovers(
+  original: ParsedReadContextItem,
+  later: ParsedReadContextItem
+): boolean {
+  const oldStart = original.metadata.startLine;
+  const oldEnd = original.metadata.endLine;
+  const newStart = later.metadata.startLine;
+  const newEnd = later.metadata.endLine;
+  return (
+    !original.pathTruncated &&
+    !later.pathTruncated &&
+    later.metadata.previewComplete === true &&
+    later.metadata.oversizedLine === undefined &&
+    !later.content.startsWith('<mar_context_gc ') &&
+    typeof oldStart === 'number' &&
+    typeof oldEnd === 'number' &&
+    typeof newStart === 'number' &&
+    typeof newEnd === 'number' &&
+    newStart <= oldStart &&
+    newEnd >= oldEnd
+  );
+}
+
+export function contextGcCoveredReadReplacement(
+  original: ParsedReadContextItem,
+  successorCallId: string
+): string {
+  return contextGcMarkup('stale_read', {
+    path: original.path,
+    formatVersion: 2,
+    originalBytes: Buffer.byteLength(original.content),
+    startLine: original.metadata.startLine,
+    endLine: original.metadata.endLine,
+    supersededByCallId: successorCallId,
+    contextGc: 'This visible range was covered by a later read.'
+  });
+}
+
 export function contextGcWebOutputReplacement(
   toolName: ContextGcWebToolName,
   originalContent: string,
@@ -194,7 +242,12 @@ export function isGenericContextGcTool(toolName: string): boolean {
       'code_exec',
       'code_exec_wait',
       'web_search',
-      'web_fetch'
+      'web_fetch',
+      'skill',
+      'question',
+      'todo_read',
+      'todo_write',
+      'tool_search'
     ].includes(toolName)
   );
 }
@@ -204,7 +257,7 @@ export function contextGcToolOutputReplacement(
   originalContent: string,
   truncated: boolean
 ): string {
-  const preview = unicodeHeadTail(originalContent, EXEC_OUTPUT_PREVIEW_CHARACTERS);
+  const preview = unicodeHeadTail(originalContent, GENERIC_OUTPUT_PREVIEW_CHARACTERS);
   return JSON.stringify({
     toolName,
     originalBytes: Buffer.byteLength(originalContent),
@@ -214,6 +267,22 @@ export function contextGcToolOutputReplacement(
     previewComplete: !truncated && preview === originalContent,
     contextGc:
       'Detailed tool output was reclaimed after six successful rollouts. An incomplete preview is not the complete result; the tool was not replayed.'
+  });
+}
+
+export function contextGcSkillOutputReplacement(
+  name: string,
+  originalContent: string,
+  successorCallId: string
+): string {
+  const firstLine = originalContent.split('\n', 1)[0] ?? '';
+  return JSON.stringify({
+    name,
+    ...(firstLine.startsWith('<mar_skill ') && firstLine.length <= 1024
+      ? { source: firstLine }
+      : {}),
+    supersededByCallId: successorCallId,
+    contextGc: 'This guidance was replaced by a later visible load of the same Skill.'
   });
 }
 
@@ -270,7 +339,7 @@ export function contextGcExecOutputReplacement(result: ContextGcExecResult): str
       ),
       contextGcFormatVersion: 3,
       contextGc:
-        'The model-visible terminal result was truncated after execution and is no longer valid JSON. Detailed terminal input/output was reclaimed after the process reached a stable terminal state. Re-run the command if full output is required.'
+        'The model-visible terminal result was truncated after execution and is no longer valid JSON. Detailed terminal input/output was reclaimed after the process reached a stable terminal state.'
     });
   const stdout = result.stdout;
   const stderr = result.stderr;
@@ -301,7 +370,7 @@ export function contextGcExecOutputReplacement(result: ContextGcExecResult): str
       stderrPreview === stderr,
     contextGcFormatVersion: 3,
     contextGc:
-      'Detailed terminal input/output was reclaimed after the process reached a stable terminal state. An incomplete preview is not the complete result. Re-run the command if full output is required.'
+      'Detailed terminal input/output was reclaimed after the process reached a stable terminal state. An incomplete preview is not the complete result.'
   });
 }
 
