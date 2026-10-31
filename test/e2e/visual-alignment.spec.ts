@@ -9,6 +9,42 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Element Plus tags do not zoom during entry or exit', async ({ page }) => {
+  await page.goto(`${fixture.url}visual-alignment.html?resource-details=1`);
+  const result = await page
+    .locator('.node-details-dialog .el-tag')
+    .first()
+    .evaluate((tag) => {
+      return ['enter', 'leave'].map((phase) => {
+        const probe = tag.cloneNode(true) as HTMLElement;
+        probe.classList.add(`el-zoom-in-center-${phase}-active`);
+        probe.classList.add(`el-zoom-in-center-${phase === 'enter' ? 'enter-from' : 'leave-to'}`);
+        document.body.append(probe);
+        const style = getComputedStyle(probe);
+        const values = {
+          transition: style.transitionDuration,
+          opacity: style.opacity,
+          transform: style.transform
+        };
+        probe.remove();
+        return values;
+      });
+    });
+  expect(result).toEqual([
+    { transition: '0s', opacity: '1', transform: 'none' },
+    { transition: '0s', opacity: '1', transform: 'none' }
+  ]);
+  const otherTransition = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.className = 'el-zoom-in-center-enter-active';
+    document.body.append(probe);
+    const duration = getComputedStyle(probe).transitionDuration;
+    probe.remove();
+    return duration;
+  });
+  expect(otherTransition).not.toBe('0s');
+});
+
 test('Node detail actions stay above Close and capability refresh stays within its section', async ({
   page
 }) => {
