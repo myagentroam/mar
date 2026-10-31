@@ -717,10 +717,6 @@ export const scheduledRunAuthorizeRequestSchema = z
   })
   .strict();
 export type ScheduledRunAuthorizeRequest = z.infer<typeof scheduledRunAuthorizeRequestSchema>;
-export const restartRunAuthorizeRequestSchema = scheduledRunAuthorizeRequestSchema
-  .omit({ taskId: true, revision: true, occurrenceId: true })
-  .extend({ handoffId: boundedIdentifierSchema, runner: z.literal('mar-agent') });
-export type RestartRunAuthorizeRequest = z.infer<typeof restartRunAuthorizeRequestSchema>;
 export const scheduledRunAuthorizeResponseSchema = z.union([
   z
     .object({
@@ -749,8 +745,6 @@ export const scheduledRunAuthorizeResponseSchema = z.union([
     .strict()
 ]);
 export type ScheduledRunAuthorizeResponse = z.infer<typeof scheduledRunAuthorizeResponseSchema>;
-export const restartRunAuthorizeResponseSchema = scheduledRunAuthorizeResponseSchema;
-export type RestartRunAuthorizeResponse = z.infer<typeof restartRunAuthorizeResponseSchema>;
 const marAgentInlineApiKeyCredentialSchema = z
   .object({
     type: z.literal('INLINE_API_KEY'),

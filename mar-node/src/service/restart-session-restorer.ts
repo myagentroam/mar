@@ -1,8 +1,4 @@
-import {
-  parseComposerTags,
-  serializeComposerTag,
-  type RestartRunAuthorizeRequest
-} from '@myagentroam/protocol';
+import { parseComposerTags, serializeComposerTag } from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
@@ -11,7 +7,7 @@ import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
 import type { GoalRuntime, GoalState } from './goal-runtime.js';
 import type { SessionMessageService } from '../session/session-message-service.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
-import type { ScheduledRunContext } from './scheduled-session-coordinator.js';
+import type { RestartExecution } from './restart-execution-state.js';
 import {
   RESTART_NOTICE,
   type RestartSession,
@@ -25,15 +21,11 @@ interface Options {
   readonly coordinator: ContinuousRunCoordinator<unknown>;
   readonly messages: SessionMessageService;
   readonly resolve: (id: string) => Promise<NodeAgentSession>;
-  readonly authorize: (request: RestartRunAuthorizeRequest) => Promise<ScheduledRunContext>;
   readonly inputState: (
     entry: RestartSession,
     message: RestartMessage
   ) => Promise<'missing' | 'completed' | 'interrupted' | 'paused'>;
-  readonly withGrant: (
-    context: ScheduledRunContext,
-    work: () => Promise<unknown>
-  ) => Promise<unknown>;
+  readonly withGrant: (context: RestartExecution, work: () => Promise<unknown>) => Promise<unknown>;
   readonly goalReference: (sessionId: string) => {
     readonly id: string;
     readonly revision: number;
@@ -48,27 +40,21 @@ export class RestartSessionRestorer {
   constructor(private readonly options: Options) {}
 
   async restore(entry: RestartSession, handoffId: string): Promise<void> {
-    const contexts = new Map<number, ScheduledRunContext>();
-    const authorize = async (ownerUserId: number) => {
-      if (!contexts.has(ownerUserId))
-        contexts.set(
-          ownerUserId,
-          await this.options.authorize({
-            handoffId,
-            sessionId: entry.session.id,
-            workspaceId: entry.session.workspaceId,
-            ownerUserId,
-            runner: 'mar-agent',
-            modelId: entry.session.modelId
-          })
-        );
-      return contexts.get(ownerUserId)!;
+    const execution = (context: RestartExecution | undefined): RestartExecution => {
+      if (context === undefined) throw new Error('RESTART_EXECUTION_CONTEXT_UNAVAILABLE');
+      return context;
     };
-    await authorize(entry.ownerUserId);
-    for (const input of [...entry.queue, ...(entry.current ? [entry.current] : [])]) {
-      parseMessageAttachments(input.attachments);
-      await authorize(input.initiatedByUserId);
-    }
+    const current =
+      entry.current &&
+      entry.goal?.goal.status !== 'active' &&
+      !entry.queue.some((item) => item.immediate)
+        ? entry.current
+        : undefined;
+    const currentState = current && (await this.options.inputState(entry, current));
+    const inputs = [...entry.queue, ...(current && currentState !== 'completed' ? [current] : [])];
+    for (const input of inputs) parseMessageAttachments(input.attachments);
+    for (const input of inputs) execution(input.execution);
+    if (entry.goal?.goal.status === 'active') execution(entry.execution);
     let session = await this.options.resolve(entry.session.id);
     if (
       session.runner !== 'mar-agent' ||
@@ -109,7 +95,7 @@ export class RestartSessionRestorer {
         closeInput: '/goal --clear'
       });
     const submit = async (input: RestartMessage, content = input.content) => {
-      const context = contexts.get(input.initiatedByUserId)!;
+      const context = execution(input.execution);
       await this.options.withGrant(context, () =>
         this.options.messages.restoreQueued({
           sessionId: session.id,
@@ -120,7 +106,9 @@ export class RestartSessionRestorer {
             : {}),
           attachments: input.attachments,
           __queueItemId: input.id,
-          __requestUserId: input.initiatedByUserId,
+          ...(context.initiatedByUserId === undefined
+            ? {}
+            : { __requestUserId: context.initiatedByUserId }),
           __suppressNotifications: input.suppressNotifications === true,
           secretEnvironment: context.secretEnvironment,
           personalInstructions: context.personalInstructions,
@@ -131,18 +119,13 @@ export class RestartSessionRestorer {
       if (input.immediate) coordinator.restoreImmediate(input.id);
     };
     try {
-      if (
-        entry.current &&
-        entry.goal?.goal.status !== 'active' &&
-        !entry.queue.some((item) => item.immediate)
-      ) {
-        const state = await this.options.inputState(entry, entry.current);
-        if (state === 'paused') entry.paused = true;
-        if (state === 'missing') await submit(entry.current);
-        else if (state !== 'completed')
+      if (current) {
+        if (currentState === 'paused') entry.paused = true;
+        if (currentState === 'missing') await submit(current);
+        else if (currentState !== 'completed')
           await submit(
             {
-              ...entry.current,
+              ...current,
               id: `restart:${handoffId}:${session.id}`,
               clientMessageId: `restart:${handoffId}:${session.id}`,
               attachments: []
@@ -152,7 +135,7 @@ export class RestartSessionRestorer {
       }
       for (const input of entry.queue) await submit(input);
       if (entry.goal?.goal.status === 'active') {
-        const context = contexts.get(entry.ownerUserId)!;
+        const context = execution(entry.execution);
         await this.options.withGrant(context, () =>
           this.options.messages.submitGoal({
             sessionId: session.id,
@@ -161,7 +144,9 @@ export class RestartSessionRestorer {
             content: `${goals.prompt(session.id, 'continue')}
 ${RESTART_NOTICE}`,
             goal: this.options.goalReference(session.id),
-            initiatedByUserId: entry.ownerUserId,
+            ...(context.initiatedByUserId === undefined
+              ? {}
+              : { initiatedByUserId: context.initiatedByUserId }),
             suppressNotifications: entry.suppressNotifications === true,
             secretEnvironment: context.secretEnvironment,
             restoreQueued: true,

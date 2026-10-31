@@ -17,6 +17,7 @@ import type {
 import type { SessionMessageService } from '../session/session-message-service.js';
 import type { NodeRunEventBridge } from './node-run-event-bridge.js';
 import { composerResourceInputTags } from './composer-message-input.js';
+import { captureRestartExecution } from './restart-execution-state.js';
 
 type GoalStartInput = Omit<
   Parameters<SessionMessageService['submitGoal']>[0],
@@ -56,6 +57,11 @@ interface Options {
 
 interface GoalRetry {
   readonly timer: NodeJS.Timeout;
+  readonly context: Pick<
+    PreparedExecutionInput,
+    'executionContext' | 'secretEnvironment' | 'personalInstructions' | 'usageGrant'
+  >;
+  readonly initiatedByUserId: number | undefined;
   sessionId: string;
 }
 
@@ -118,6 +124,10 @@ export class GoalContinuationCoordinator {
   }
   freeze(): void {
     this.frozen = true;
+  }
+  restartExecution(sessionId: string) {
+    const retry = this.goalRetryTimers.get(sessionId);
+    return captureRestartExecution(retry?.context, retry?.initiatedByUserId);
   }
   dispose(): void {
     this.frozen = true;
@@ -182,6 +192,9 @@ export class GoalContinuationCoordinator {
     const continuationEpoch = this.continuationEpoch(pending.sessionId);
     const retry: GoalRetry = {
       sessionId: pending.sessionId,
+      context: pending,
+      initiatedByUserId: this.options.runtime.activeSessionRun(pending.sessionId)
+        ?.initiatedByUserId,
       timer: setTimeout(() => {
         this.goalRetryTimers.delete(retry.sessionId);
         void this.enqueueGoalContinuation({
@@ -633,6 +646,8 @@ export class GoalContinuationCoordinator {
       if (previousRetry !== undefined) clearTimeout(previousRetry.timer);
       const retry: GoalRetry = {
         sessionId: attempt.sessionId,
+        context: input,
+        initiatedByUserId: input.initiatedByUserId,
         timer: setTimeout(() => {
           if (!this.goalGenerationCurrent(retry.sessionId, generation)) return;
           void this.enqueueGoalContinuation({

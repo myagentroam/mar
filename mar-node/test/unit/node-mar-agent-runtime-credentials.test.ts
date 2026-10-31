@@ -13,7 +13,8 @@ import type {
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import {
   MarAgentRuntimeModelFactory,
-  sdkModelConfigurations
+  sdkModelConfigurations,
+  snapshotRuntimeModel
 } from '../../src/runner/mar-agent/runtime-model-factory.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../../src/runner/execution-context.js';
@@ -273,6 +274,15 @@ describe('Node MAR Agent runtime credentials', () => {
     const credential = await refreshed;
     expect(credential.bearer.reveal()).toBe('bearer-2');
     expect(credential.headers['chatgpt-account-id']).toBeDefined();
+    const snapshot = snapshotRuntimeModel(model!, 'scope-1');
+    expect(snapshot?.credential).toMatchObject({
+      type: 'RUNTIME_TICKET',
+      ticket: { nonce: 'ticket-3' }
+    });
+    expect(snapshotRuntimeModel(model!, 'another-scope')).toBeUndefined();
+    expect(JSON.stringify(snapshot)).not.toContain('bearer-2');
+    await provider.close();
+    expect(snapshotRuntimeModel(model!, 'scope-1')).toBeUndefined();
   });
 
   it('reuses one unauthorized refresh across WebSocket handshake and response.create', async () => {

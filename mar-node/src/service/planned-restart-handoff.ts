@@ -6,6 +6,14 @@ import { parseComposerTags } from '@myagentroam/protocol';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
 import type { GoalRuntime } from './goal-runtime.js';
+import { safeErrorCode } from '../util/safe-error.js';
+import {
+  captureRestartExecution,
+  openRestartState,
+  restartExecutionSchema,
+  sealRestartState,
+  type RestartExecution
+} from './restart-execution-state.js';
 
 const identifier = z.string().min(1).max(512);
 const count = z.number().int().nonnegative();
@@ -22,7 +30,7 @@ const messageSchema = z
     clientMessageId: identifier,
     content: z.string().max(1_000_000),
     attachments: z.array(attachmentSchema).max(5),
-    initiatedByUserId: z.number().int().positive(),
+    execution: restartExecutionSchema.optional(),
     immediate: z.boolean(),
     suppressNotifications: z.boolean().optional()
   })
@@ -60,7 +68,7 @@ const sessionSchema = z
         access: z.string().nullable()
       })
       .strict(),
-    ownerUserId: z.number().int().positive(),
+    execution: restartExecutionSchema.optional(),
     paused: z.boolean(),
     plan: z.boolean(),
     awaitingGoal: z.boolean(),
@@ -72,7 +80,7 @@ const sessionSchema = z
   .strict();
 export const plannedRestartSchema = z
   .object({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(3),
     id: identifier,
     nodeId: identifier,
     serverUrl: z.string().min(1),
@@ -80,10 +88,22 @@ export const plannedRestartSchema = z
     sessions: z.array(sessionSchema)
   })
   .strict();
-const legacyPlannedRestartSchema = plannedRestartSchema.extend({
+const legacyMessageSchema = messageSchema.omit({ execution: true }).extend({
+  initiatedByUserId: z.number().int().positive().optional()
+});
+const legacySessionSchema = sessionSchema.omit({ execution: true }).extend({
+  ownerUserId: z.number().int().positive().optional(),
+  current: legacyMessageSchema.optional(),
+  queue: z.array(legacyMessageSchema)
+});
+const legacyV2Schema = plannedRestartSchema.extend({
+  schemaVersion: z.literal(2),
+  sessions: z.array(legacySessionSchema)
+});
+const legacyV1Schema = legacyV2Schema.extend({
   schemaVersion: z.literal(1),
   sessions: z.array(
-    sessionSchema.extend({
+    legacySessionSchema.extend({
       session: sessionSchema.shape.session.omit({ modelId: true }).extend({
         model: z.string().nullable()
       })
@@ -151,16 +171,22 @@ export const RESTART_NOTICE =
 interface Options {
   readonly directory: () => string;
   readonly identity: () => { nodeId: string; serverUrl: string };
+  readonly credential: () => string;
   readonly runtime: NodeRuntimeState;
   readonly coordinator: Pick<ContinuousRunCoordinator<unknown>, 'pending' | 'isImmediate'>;
   readonly goals: GoalRuntime;
+  readonly goalExecution?: (sessionId: string) => RestartExecution | undefined;
+  readonly executionContext?: (
+    sessionId: string,
+    context: RestartExecution['executionContext']
+  ) => RestartExecution['executionContext'];
   readonly commandActive: (sessionId: string, command: string) => boolean;
   readonly inputState: (
     session: RestartSession,
     message: RestartMessage
   ) => Promise<'missing' | 'completed' | 'interrupted' | 'paused'>;
   readonly restore: (session: RestartSession, handoffId: string) => Promise<void>;
-  readonly diagnose: (code: string, sessionId?: string) => void;
+  readonly diagnose: (code: string, sessionId?: string, errorCode?: string) => void;
 }
 
 /** A one-shot orderly-shutdown handoff, not a crash-recovery journal. */
@@ -168,7 +194,6 @@ export class PlannedRestartHandoff {
   private pending: PlannedRestart | undefined;
   private readonly blocked = new Set<string>();
   private recovery: Promise<void> | undefined;
-  private readonly owners = new Map<string, number>();
 
   constructor(private readonly options: Options) {}
 
@@ -205,10 +230,6 @@ export class PlannedRestartHandoff {
     );
   }
 
-  rememberUser(sessionId: string, userId: number): void {
-    this.owners.set(sessionId, userId);
-  }
-
   async load(): Promise<void> {
     this.recovery = undefined;
     this.pending = undefined;
@@ -222,16 +243,32 @@ export class PlannedRestartHandoff {
       return;
     }
     try {
-      const saved: unknown = JSON.parse(text);
-      const legacy = legacyPlannedRestartSchema.safeParse(saved);
+      const saved = openRestartState(text, this.options.credential());
+      const legacy = z.union([legacyV1Schema, legacyV2Schema]).safeParse(saved);
       const value = plannedRestartSchema.parse(
         legacy.success
           ? {
               ...legacy.data,
-              schemaVersion: 2,
+              schemaVersion: 3,
               sessions: legacy.data.sessions.map((entry) => {
-                const { model, ...session } = entry.session;
-                return { ...entry, session: { ...session, modelId: model } };
+                const { ownerUserId: _owner, current, queue, ...state } = entry;
+                const message = (input: z.infer<typeof legacyMessageSchema>) => {
+                  const { initiatedByUserId: _origin, ...value } = input;
+                  return value;
+                };
+                const session =
+                  'model' in entry.session
+                    ? (() => {
+                        const { model, ...value } = entry.session;
+                        return { ...value, modelId: model };
+                      })()
+                    : entry.session;
+                return {
+                  ...state,
+                  session,
+                  ...(current === undefined ? {} : { current: message(current) }),
+                  queue: queue.map(message)
+                };
               })
             }
           : saved
@@ -260,19 +297,27 @@ export class PlannedRestartHandoff {
       const awaitingGoal = goal === undefined && this.options.commandActive(session.id, 'goal');
       const currentId = active && (runtime.currentExecutionId(active.id) ?? active.id);
       const pending = currentId === undefined ? undefined : coordinator.pending(currentId);
+      const checkpoint = (execution: RestartExecution | undefined) => {
+        if (execution !== undefined && this.options.executionContext !== undefined)
+          execution.executionContext = this.options.executionContext(
+            session.id,
+            execution.executionContext
+          );
+        return execution;
+      };
       const toMessage = (
         id: string,
         clientMessageId: string,
         content: string,
         attachments: RestartMessage['attachments'],
-        owner: number | undefined,
+        originatingUser: number | undefined,
         suppressNotifications: boolean | undefined
       ): RestartMessage => ({
         id,
         clientMessageId,
         content: withoutAttachmentTags(content),
         attachments,
-        initiatedByUserId: owner!,
+        execution: checkpoint(captureRestartExecution(coordinator.pending(id), originatingUser)),
         immediate: coordinator.isImmediate(id),
         ...(suppressNotifications === true ? { suppressNotifications: true } : {})
       });
@@ -311,12 +356,14 @@ export class PlannedRestartHandoff {
         captureDiagnostics.set(error, { reason: 'session_not_ready' });
         throw error;
       }
-      const ownerUserId =
-        active?.initiatedByUserId ??
-        items[0]?.initiatedByUserId ??
-        this.owners.get(session.id) ??
-        runtime.listRunsForSession(session.id).find((run) => run.initiatedByUserId !== undefined)
-          ?.initiatedByUserId;
+      const goalItem = goalItemId === undefined ? undefined : runtime.getQueueItem(goalItemId);
+      const execution =
+        captureRestartExecution(
+          goalItem === undefined ? undefined : coordinator.pending(goalItem.id),
+          goalItem?.initiatedByUserId
+        ) ??
+        captureRestartExecution(pending, active?.initiatedByUserId) ??
+        this.options.goalExecution?.(session.id);
       sessions.push({
         session: {
           id: session.externalSessionId,
@@ -326,7 +373,7 @@ export class PlannedRestartHandoff {
           effort: session.effort,
           access: session.access
         },
-        ownerUserId: ownerUserId!,
+        ...(execution === undefined ? {} : { execution: checkpoint(execution) }),
         paused: queue.paused,
         plan: this.options.commandActive(session.id, 'plan'),
         awaitingGoal,
@@ -343,7 +390,7 @@ export class PlannedRestartHandoff {
     return parseCapture(
       plannedRestartSchema,
       {
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: randomUUID(),
         ...this.options.identity(),
         createdAt: Date.now(),
@@ -367,9 +414,13 @@ export class PlannedRestartHandoff {
     const temporary = `${this.path()}.${process.pid}.tmp`;
     await mkdir(this.options.directory(), { recursive: true, mode: 0o700 });
     try {
-      await writeFile(temporary, JSON.stringify(plannedRestartSchema.parse(snapshot)), {
-        mode: 0o600
-      });
+      await writeFile(
+        temporary,
+        sealRestartState(plannedRestartSchema.parse(snapshot), this.options.credential()),
+        {
+          mode: 0o600
+        }
+      );
       await rename(temporary, this.path());
     } finally {
       await rm(temporary, { force: true });
@@ -393,11 +444,15 @@ export class PlannedRestartHandoff {
       await rename(this.path(), this.path(true));
       for (const entry of value.sessions) {
         try {
-          this.rememberUser(entry.session.id, entry.ownerUserId);
           await this.options.restore(entry, value.id);
-        } catch {
+        } catch (error) {
           failed = true;
-          this.options.diagnose('RESTART_SESSION_RESTORE_FAILED', entry.session.id);
+          const errorCode = safeErrorCode(error, 'RESTART_SESSION_RESTORE_FAILED');
+          this.options.diagnose(
+            'RESTART_SESSION_RESTORE_FAILED',
+            entry.session.id,
+            errorCode === 'RESTART_SESSION_RESTORE_FAILED' ? undefined : errorCode
+          );
         } finally {
           this.blocked.delete(entry.session.id);
         }

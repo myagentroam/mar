@@ -53,9 +53,6 @@ export function createTestNodeControl(
     scheduleAuthorizer: async () => {
       throw new Error('TEST_SCHEDULE_NOT_CONFIGURED');
     },
-    restartAuthorizer: async () => {
-      throw new Error('TEST_RESTART_NOT_CONFIGURED');
-    },
     marctlExecutionCredential: async () => {
       throw new Error('TEST_MARCTL_EXECUTION_CREDENTIAL_NOT_CONFIGURED');
     },
@@ -81,7 +78,6 @@ export function createTestNodeControl(
       mailNotifications: { send: (...args) => consumers.mailNotifications.send(...args) },
       notificationChannels: { send: (...args) => consumers.notificationChannels.send(...args) },
       scheduleAuthorizer: (...args) => consumers.scheduleAuthorizer(...args),
-      restartAuthorizer: (...args) => consumers.restartAuthorizer(...args),
       marctlExecutionCredential: (...args) => consumers.marctlExecutionCredential(...args),
       runtimeCredentials: consumers.runtimeCredentials
     },
