@@ -47,7 +47,6 @@ const bundled = await build({
   define: {
     __MAR_BUILD_ID__: JSON.stringify(version.hash),
     __MAR_BUILD_VERSION__: JSON.stringify(version.version),
-    __MAR_IMMUTABLE_URLS__: JSON.stringify([...immutable]),
     'process.env.NODE_ENV': '"production"'
   },
   plugins: [

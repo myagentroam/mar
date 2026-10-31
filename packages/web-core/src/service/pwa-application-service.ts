@@ -77,27 +77,18 @@ export function createPwaApplicationService(
 
   function message(worker: ServiceWorker, data: object, timeoutMs = 3_000): Promise<unknown> {
     if (disposed || typeof MessageChannel === 'undefined') return Promise.resolve(undefined);
-    return new Promise((resolve) => {
-      const channel = new MessageChannel();
-      let done = false;
-      const finish = (value: unknown) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timeout);
-        channel.port1.close();
-        pending.delete(cancel);
-        resolve(value);
-      };
-      const cancel = () => finish(undefined);
-      const timeout = setTimeout(cancel, timeoutMs);
-      pending.add(cancel);
-      channel.port1.onmessage = (event) => finish(event.data);
+    const channel = new MessageChannel();
+    const reply = new Promise<unknown>((resolve, reject) => {
+      channel.port1.onmessage = (event) => resolve(event.data);
       try {
         worker.postMessage(data, [channel.port2]);
-      } catch {
-        channel.port2.close();
-        finish(undefined);
+      } catch (error) {
+        reject(error);
       }
+    });
+    return bounded(reply, timeoutMs).finally(() => {
+      channel.port1.close();
+      channel.port2.close();
     });
   }
 
@@ -138,23 +129,11 @@ export function createPwaApplicationService(
         backgroundCheck();
     };
     const online = () => backgroundCheck();
-    const workerMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; buildId?: unknown } | undefined;
-      if (
-        event.source !== container?.controller ||
-        data?.type !== 'MAR_PWA_DEGRADED' ||
-        data.buildId !== identity.buildId
-      )
-        return;
-      if (state.value.offline === 'ready') publish({ ...state.value, offline: 'degraded' });
-    };
     container?.addEventListener('controllerchange', controllerChanged);
-    container?.addEventListener('message', workerMessage);
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visible);
     if (typeof window !== 'undefined') window.addEventListener('online', online);
     cleanupLifecycle = () => {
       container?.removeEventListener('controllerchange', controllerChanged);
-      container?.removeEventListener('message', workerMessage);
       if (typeof document !== 'undefined')
         document.removeEventListener('visibilitychange', visible);
       if (typeof window !== 'undefined') window.removeEventListener('online', online);
@@ -307,21 +286,14 @@ export function createPwaApplicationService(
           waitingStatus.entry &&
           !waitingStatus.degraded
         ) {
-          if (waitingStatus.buildId !== identity.buildId) {
-            update = {
-              mode: 'worker',
-              action: 'activate',
-              version: waitingStatus.version,
-              buildId: waitingStatus.buildId
-            };
-          } else {
-            reload = {
-              mode: 'worker',
-              action: 'activate',
-              version: waitingStatus.version,
-              buildId: waitingStatus.buildId
-            };
-          }
+          const prepared: PwaUpdate = {
+            mode: 'worker',
+            action: 'activate',
+            version: waitingStatus.version,
+            buildId: waitingStatus.buildId
+          };
+          if (waitingStatus.buildId !== identity.buildId) update = prepared;
+          else reload = prepared;
         } else if (
           waiting === null &&
           activeStatus?.supported === true &&

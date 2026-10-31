@@ -149,16 +149,16 @@ describe('PWA application update coordination', () => {
     f.service.dispose();
   });
 
-  it('revokes readiness when its controller reports a static cache miss', async () => {
+  it('shows unavailable shell resources when a check finds the controller entry missing', async () => {
     const f = fixture('active');
+    const health = { degraded: false, entry: true };
+    const active = f.makeWorker('active', health) as unknown as ServiceWorker;
+    f.registration.active = active;
+    f.container.controller = active;
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.offline).toBe('ready'));
-    const event = new Event('message');
-    Object.assign(event, {
-      source: f.active,
-      data: { type: 'MAR_PWA_DEGRADED', buildId: 'active' }
-    });
-    f.container.dispatchEvent(event);
+    health.entry = false;
+    await f.service.checkForUpdate(false);
     expect(f.service.state.value.offline).toBe('degraded');
     f.service.dispose();
   });
@@ -338,6 +338,35 @@ describe('PWA application update coordination', () => {
     ).toBe(true);
     expect(f.reload).not.toHaveBeenCalled();
     remove();
+    f.service.dispose();
+  });
+
+  it('leaves a prepared update waiting until clicked, then reloads the browser once after takeover', async () => {
+    const f = fixture('active');
+    const waiting = f.makeWorker('next');
+    const status = waiting.postMessage.getMockImplementation()!;
+    let reply: MessagePort | undefined;
+    waiting.postMessage.mockImplementation((data, ports) => {
+      if (data.type === 'MAR_PWA_APPLY') reply = ports[0];
+      else status(data, ports);
+    });
+    f.registration.waiting = waiting as unknown as ServiceWorker;
+    await f.service.start();
+    await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
+    expect(reply).toBeUndefined();
+    expect(f.reload).not.toHaveBeenCalled();
+
+    const applying = f.service.applyUpdate(() => true);
+    await vi.waitFor(() => expect(reply).toBeDefined());
+    reply!.postMessage({ applied: true });
+    await Promise.resolve();
+    expect(f.reload).not.toHaveBeenCalled();
+    f.container.controller = waiting as unknown as ServiceWorker;
+    f.container.dispatchEvent(new Event('controllerchange'));
+    await expect(applying).resolves.toBe('APPLIED');
+    expect(f.reload).toHaveBeenCalledOnce();
+    f.container.dispatchEvent(new Event('controllerchange'));
+    expect(f.reload).toHaveBeenCalledOnce();
     f.service.dispose();
   });
 

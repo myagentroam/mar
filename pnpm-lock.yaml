@@ -26,6 +26,9 @@ importers:
       '@vue/server-renderer':
         specifier: 3.5.41
         version: 3.5.41
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       eslint:
         specifier: ^9.39.1
         version: 9.39.5(supports-color@7.2.0)

@@ -27,17 +27,17 @@ export const workbenchPageZhCN = {
     about: '关于'
   },
   webUpdate: {
-    title: '应用版本已更新',
-    message: '发现新版本 v{value0}，点击此提示进行更新。',
+    title: '有可用应用更新',
+    message: '新版本 v{value0} 可用，点击刷新当前页面并更新。',
     blocked: '请先保存或放弃未保存的修改，并结束文件传输，再更新应用。',
     otherWindows: '请先关闭其他应用窗口，再更新当前窗口。',
     unavailable: '更新尚不能应用，请检查更新后重试。',
-    offlineLabel: '离线应用',
+    offlineLabel: '应用资源缓存',
     offline: {
-      preparing: '正在为此窗口准备离线资源。',
-      ready: '此浏览器的离线资源已就绪。',
-      degraded: '部分离线资源不可用，请联网检查更新。',
-      online: '当前为在线模式，离线资源不可用。'
+      preparing: '正在准备应用界面资源。',
+      ready: '应用外壳已缓存，功能使用仍需联网。',
+      degraded: '应用外壳缓存不可用，请联网检查更新。',
+      online: '当前仅在线加载应用资源。'
     },
     check: '检查更新',
     apply: '应用更新',

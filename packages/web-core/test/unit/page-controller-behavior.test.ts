@@ -739,8 +739,10 @@ describe('Workbench controller composition behavior', () => {
   it('projects lifecycle updates once and clears the notification after alignment', async () => {
     let listener!: (state: PwaApplicationState) => void;
     const initial: PwaApplicationState = { offline: 'ready', checked: true };
+    const applyUpdate = vi.fn().mockResolvedValue('APPLIED');
     const pwa = {
       state: ref(initial),
+      applyUpdate,
       subscribe(callback: (state: PwaApplicationState) => void) {
         listener = callback;
         callback(initial);
@@ -758,6 +760,10 @@ describe('Workbench controller composition behavior', () => {
     expect(page.workbenchNotificationService.notifications.value).toEqual([
       expect.objectContaining({ kind: 'web-update', action: 'RELOAD_PAGE' })
     ]);
+    expect(applyUpdate).not.toHaveBeenCalled();
+    await page.openWorkbenchNotification(page.workbenchNotificationService.notifications.value[0]!);
+    expect(applyUpdate).toHaveBeenCalledOnce();
+    expect(await applyUpdate.mock.calls[0]![0]()).toBe(true);
     listener({
       offline: 'preparing',
       checked: true,

@@ -28,16 +28,16 @@ export const workbenchPageEnUS = {
   },
   webUpdate: {
     title: 'Application update available',
-    message: 'Version v{value0} is available. Click this notification to update.',
+    message: 'Version v{value0} is available. Click to reload this page and update.',
     blocked: 'Save or discard unsaved changes and finish file transfers before updating.',
     otherWindows: 'Close other application windows before updating this window.',
     unavailable: 'The update is not ready to apply. Check for updates and try again.',
-    offlineLabel: 'Offline application',
+    offlineLabel: 'Application resource cache',
     offline: {
-      preparing: 'Preparing offline resources for this window.',
-      ready: 'Offline resources are ready in this browser.',
-      degraded: 'Some offline resources are unavailable. Connect and check for an update.',
-      online: 'Online mode; offline resources are not available.'
+      preparing: 'Preparing application interface resources.',
+      ready: 'The app shell is cached. Features still require a connection.',
+      degraded: 'The app shell cache is unavailable. Connect and check for an update.',
+      online: 'Application resources are loaded online only.'
     },
     check: 'Check for updates',
     apply: 'Apply update',

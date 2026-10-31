@@ -108,17 +108,15 @@ test('final PWA artifact cold-starts Console offline without caching docs or non
             pathname === '/manifest.webmanifest' ||
             pathname === '/favicon.ico' ||
             pathname === '/icons/app-icon-192.png' ||
-            pathname === '/icons/app-icon-512.png' ||
-            pathname.startsWith('/__mar_pwa_metadata__/');
+            pathname === '/icons/app-icon-512.png';
           if (!allowed) unexpected.push(pathname);
         }
       }
       return unexpected;
     });
-    expect(
-      forbiddenCacheEntries,
-      'only app bundles, install metadata, and Worker state may be cached'
-    ).toEqual([]);
+    expect(forbiddenCacheEntries, 'only app bundles and install metadata may be cached').toEqual(
+      []
+    );
 
     const unvisitedScript = fixture.scriptAssets.find((asset) => !visitedPaths.has(asset.path));
     expect(
