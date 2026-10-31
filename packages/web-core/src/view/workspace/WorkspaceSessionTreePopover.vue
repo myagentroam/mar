@@ -21,6 +21,7 @@ const virtualReference = computed(() => {
     : undefined;
 });
 const mode = ref<'hover' | 'explicit' | undefined>(props.anchor ? 'explicit' : undefined);
+const snapshotKey = ref(0);
 let timer: ReturnType<typeof setTimeout> | undefined;
 const history = createMobileLayerHistoryService({ isOpen: () => mode.value !== undefined, close });
 onMounted(() => {
@@ -44,14 +45,17 @@ function onEscape(event: KeyboardEvent): void {
 function close(): void {
   clearTimeout(timer);
   mode.value = undefined;
-  emit('close');
+}
+function open(nextMode: 'hover' | 'explicit'): void {
+  if (!mode.value) snapshotKey.value++;
+  mode.value = nextMode;
 }
 function enter(event: PointerEvent): void {
   if (event.pointerType !== 'mouse') return;
   clearTimeout(timer);
   if (!mode.value)
     timer = setTimeout(() => {
-      mode.value = 'hover';
+      open('hover');
     }, 200);
 }
 function leave(event: PointerEvent): void {
@@ -62,7 +66,7 @@ function leave(event: PointerEvent): void {
 function toggle(): void {
   clearTimeout(timer);
   if (mode.value === 'explicit') close();
-  else mode.value = 'explicit';
+  else open('explicit');
 }
 function select(id: string): void {
   close();
@@ -86,28 +90,33 @@ function select(id: string): void {
     <MarIcon name="session-tree" />
   </button>
   <el-popover
-    v-if="mode && virtualReference"
-    :visible="true"
+    v-if="virtualReference"
+    :visible="mode !== undefined"
     virtual-triggering
     :virtual-ref="virtualReference"
     role="group"
     trigger="click"
     :trigger-keys="[]"
+    :hide-after="0"
     placement="bottom-start"
     width="min(520px, calc(100vw - 32px))"
     :persistent="false"
     popper-class="session-tree-popover"
     :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }"
     @update:visible="!$event && close()"
+    @after-leave="emit('close')"
   >
     <div
       class="session-tree-popover-content"
+      :inert="mode === undefined"
       role="dialog"
       :aria-label="translate('sessionGroups.tree')"
       @pointerenter="enter"
       @pointerleave="leave"
     >
       <WorkspaceSessionTree
+        :key="snapshotKey"
+        :active="mode !== undefined"
         :node-id="nodeId"
         :workspace-id="workspaceId"
         :session-id="sessionId"
@@ -136,5 +145,10 @@ function select(id: string): void {
 }
 .session-tree-popover-content {
   padding: 0.75rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-tree-popover.el-popper {
+    transition: none;
+  }
 }
 </style>

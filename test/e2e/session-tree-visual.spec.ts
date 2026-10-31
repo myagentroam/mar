@@ -53,6 +53,122 @@ test('tree popover keeps one snapshot, orders active branches and closes by keyb
   await expect(tree).toHaveCount(0);
 });
 
+for (const width of [390, 1280]) {
+  test(`session tree preserves its content through the native leave transition at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 850 });
+    for (const entry of ['title', 'list']) {
+      await page.goto(
+        `${fixture.url}${entry === 'title' ? 'session-tree' : 'session-groups'}.html?locale=en-US`
+      );
+      if (entry === 'title') {
+        await page.getByRole('button', { name: 'View session tree' }).click();
+      } else {
+        const chats = page.locator('.conversation-sidebar');
+        await chats.getByRole('tab').nth(1).click();
+        await chats.locator('.session-link').hover();
+        await chats.locator('.session-more-button').click();
+        await page.getByRole('menuitem', { name: 'View session tree', exact: true }).click();
+      }
+      const tree = page.getByRole('dialog', { name: 'View session tree' });
+      const popover = page.locator('.session-tree-popover');
+      await expect(tree.locator('.session-tree-node').first()).toBeVisible();
+      await expect(popover).not.toHaveClass(/enter-active/);
+      const leaving = await page.evaluate(async () => {
+        const panel = document.querySelector<HTMLElement>('.session-tree-popover')!;
+        const content = panel.textContent;
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        return {
+          connected: panel.isConnected,
+          active: panel.classList.contains('el-fade-in-linear-leave-active'),
+          duration: Number.parseFloat(getComputedStyle(panel).transitionDuration),
+          contentUnchanged: panel.textContent === content,
+          inert: panel.querySelector('.session-tree-popover-content')?.hasAttribute('inert')
+        };
+      });
+      expect(leaving.connected, entry).toBe(true);
+      expect(leaving.active, entry).toBe(true);
+      expect(leaving.duration, entry).toBeGreaterThan(0);
+      expect(leaving.contentUnchanged, entry).toBe(true);
+      expect(leaving.inert, entry).toBe(true);
+      await expect(popover).toHaveCount(0);
+    }
+  });
+}
+
+test('reopening during the leave transition reads a fresh snapshot and stays open', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.click();
+  const popover = page.locator('.session-tree-popover');
+  await expect(page.getByTestId('requests')).toHaveText('1');
+  await expect(popover).not.toHaveClass(/enter-active/);
+  await trigger.evaluate(async (button) => {
+    button.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    button.click();
+  });
+  await expect(page.getByTestId('requests')).toHaveText('2');
+  await expect(popover).not.toHaveClass(/enter-active/);
+  await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('session tree respects reduced motion when opening and closing', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  const duration = await trigger.evaluate(async (button) => {
+    button.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return getComputedStyle(document.querySelector('.session-tree-popover')!).transitionDuration;
+  });
+  expect(Number.parseFloat(duration)).toBe(0);
+  await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
+});
+
+for (const outcome of ['success', 'failure']) {
+  test(`closing cancels the snapshot before leave and ignores its late ${outcome}`, async ({
+    page
+  }) => {
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&delayed=1`);
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await trigger.click();
+    await expect(page.getByTestId('requests')).toHaveText('1');
+    const popover = page.locator('.session-tree-popover');
+    await expect(popover).not.toHaveClass(/enter-active/);
+    const closed = await trigger.evaluate(async (button) => {
+      button.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      return {
+        aborted: document.querySelector('[data-testid="aborts"]')!.textContent,
+        connected: document.querySelector('.session-tree-popover') !== null
+      };
+    });
+    expect.soft(closed).toEqual({ aborted: '1', connected: true });
+    const retired = await page.evaluate(async (outcome) => {
+      const control = document.querySelector<HTMLButtonElement>(
+        `[data-testid="${outcome === 'success' ? 'resolve' : 'reject'}-snapshot"]`
+      )!;
+      control.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      return {
+        busy: document.querySelector('.session-tree')?.getAttribute('aria-busy'),
+        nodes: document.querySelectorAll('.session-tree-node').length,
+        errors: document.querySelectorAll('.el-message--error').length
+      };
+    }, outcome);
+    expect(retired).toEqual({ busy: 'true', nodes: 0, errors: 0 });
+    await expect(popover).toHaveCount(0);
+  });
+}
+
 test('closing an in-flight snapshot aborts it and a failed snapshot can be reopened', async ({
   page
 }) => {
@@ -267,6 +383,34 @@ for (const width of [390, 1280]) {
       expect(connectorEdges.ancestor).toBeCloseTo(connectorEdges.continuing, 1);
       expect(connectorEdges.grandchildElbow).toBeCloseTo(connectorEdges.grandchild, 1);
       expect(connectorEdges.lastElbow).toBeCloseTo(connectorEdges.continuing, 1);
+      const childStem = treeRows.nth(1).locator('.session-tree-child-stem');
+      await expect(childStem).toHaveCSS('border-inline-start-width', '1px');
+      await expect(treeRows.nth(2).locator('.session-tree-child-stem')).toHaveCount(0);
+      const nestedConnector = await treeRows.evaluateAll((elements) => {
+        const parent = elements[1]!.getBoundingClientRect();
+        const elbow = elements[1]!.querySelector('.session-tree-branch')!.getBoundingClientRect();
+        const stem = elements[1]!
+          .querySelector('.session-tree-child-stem')!
+          .getBoundingClientRect();
+        const child = elements[2]!
+          .querySelectorAll('.session-tree-branch')[1]!
+          .getBoundingClientRect();
+        return {
+          parentCenter: parent.top + parent.height / 2,
+          elbowLeft: elbow.left,
+          elbowRight: elbow.right,
+          stemLeft: stem.left,
+          stemTop: stem.top,
+          stemBottom: stem.bottom,
+          childLeft: child.left,
+          childTop: child.top
+        };
+      });
+      expect(Math.abs(nestedConnector.stemTop - nestedConnector.parentCenter)).toBeLessThan(1);
+      expect(nestedConnector.stemLeft).toBeGreaterThanOrEqual(nestedConnector.elbowLeft);
+      expect(nestedConnector.stemLeft).toBeLessThanOrEqual(nestedConnector.elbowRight);
+      expect(nestedConnector.stemLeft).toBeCloseTo(nestedConnector.childLeft, 1);
+      expect(Math.abs(nestedConnector.stemBottom - nestedConnector.childTop)).toBeLessThan(1);
       const ending = await lastBranch.evaluate((element) => {
         const style = getComputedStyle(element, '::before');
         return {
@@ -323,6 +467,7 @@ for (const theme of ['dark', 'daylight']) {
     await expect(dialog.locator('.session-tree-node')).toHaveCount(1);
     await expect(dialog.locator('.session-tree-origin')).toBeVisible();
     await expect(dialog.locator('.session-tree-origin-stem')).toHaveCount(0);
+    await expect(dialog.locator('.session-tree-child-stem')).toHaveCount(0);
     await expect(dialog.locator('.session-tree-branch')).toHaveCount(0);
     await expect(dialog.locator('.session-tree')).toHaveCSS('min-height', '0px');
     await expect(dialog.locator('.el-loading-mask')).toBeHidden();
