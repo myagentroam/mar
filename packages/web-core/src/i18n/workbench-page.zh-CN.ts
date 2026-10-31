@@ -32,6 +32,8 @@ export const workbenchPageZhCN = {
     blocked: '请先保存或放弃未保存的修改，并结束文件传输，再更新应用。',
     otherWindows: '请先关闭其他应用窗口，再更新当前窗口。',
     unavailable: '更新尚不能应用，请检查更新后重试。',
+    displayModeLabel: '运行方式',
+    displayMode: { browser: '浏览器标签页', standalone: 'PWA 独立窗口' },
     offlineLabel: '应用资源缓存',
     offline: {
       preparing: '正在准备应用界面资源。',

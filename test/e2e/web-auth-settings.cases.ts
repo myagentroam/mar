@@ -814,6 +814,8 @@ test('About shows versions, documentation, and third-party notices without dupli
   await page.getByRole('button', { name: '关于', exact: true }).click();
 
   await expect(page.getByLabel('关于').getByText('MyAgentRoam', { exact: true })).toBeVisible();
+  await expect(page.getByText('运行方式', { exact: true })).toBeVisible();
+  await expect(page.getByText('浏览器标签页', { exact: true })).toBeVisible();
   await expect(page.getByText('Visual Studio Code Seti File Icon Theme')).toBeVisible();
   await expect(page.getByRole('link', { name: '打开文档中心' })).toHaveAttribute(
     'href',
@@ -845,6 +847,8 @@ test('Switching appearance to English keeps navigation and settings actions acce
   await expect(page.getByRole('button', { name: 'Keyboard Shortcuts' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
   await page.getByRole('button', { name: 'About', exact: true }).click();
+  await expect(page.getByText('Display mode', { exact: true })).toBeVisible();
+  await expect(page.getByText('Browser tab', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open documentation' })).toHaveAttribute(
     'href',
     '/docs/en-US/getting-started/overview'

@@ -11,7 +11,12 @@ import type { SettingsSection } from '../../src/model/settings.js';
 import InteractiveSettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
 import { iconThemePreferenceService } from '../../src/service/icon-theme-preference-service.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
-import { renderComponent, trigger } from './support/component-renderer.js';
+import {
+  flushComponent,
+  renderComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 
 vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
@@ -66,6 +71,62 @@ async function render(section: SettingsSection, slots = {}) {
 }
 
 describe('Shared personal settings components', () => {
+  it.each(
+    (['en-US', 'zh-CN'] as const).flatMap((locale) =>
+      [
+        { mode: 'browser', matches: false, ios: false },
+        { mode: 'standalone', matches: true, ios: false },
+        { mode: 'ios-standalone', matches: false, ios: true }
+      ].map((mode) => ({ locale, ...mode }))
+    )
+  )('shows the current window mode and removes its listener: $locale / $mode', async (mode) => {
+    localePreferenceService().setLocale(mode.locale);
+    const media = Object.assign(new EventTarget(), { matches: mode.matches });
+    const addListener = vi.spyOn(media, 'addEventListener');
+    const removeListener = vi.spyOn(media, 'removeEventListener');
+    const matchMedia = vi.fn(() => media);
+    vi.stubGlobal('window', { matchMedia });
+    vi.stubGlobal('navigator', { standalone: mode.ios });
+    const view = renderComponent(InteractiveSettingsContent, {
+      section: 'about',
+      webVersion: 'test-version',
+      sessions: [],
+      newPassword: '',
+      changePassword: async () => false,
+      passwordValidationError: '',
+      registrationToken: undefined,
+      loading: false,
+      formatSessionTime: String,
+      request: vi.fn(),
+      quickPrompts: [],
+      quickPromptsLoading: false,
+      quickPromptsFailed: false,
+      refreshQuickPrompts: async () => undefined
+    });
+    const labels =
+      mode.locale === 'zh-CN'
+        ? { label: '运行方式', browser: '浏览器标签页', standalone: 'PWA 独立窗口' }
+        : { label: 'Display mode', browser: 'Browser tab', standalone: 'Standalone PWA window' };
+    const displayMode = () =>
+      view.findAll('ElDescriptionsItem').find((node) => node.props.label === labels.label)!;
+    try {
+      await flushComponent();
+      expect(textContent(displayMode())).toBe(
+        mode.matches || mode.ios ? labels.standalone : labels.browser
+      );
+      expect(matchMedia).toHaveBeenCalledWith('(display-mode: standalone)');
+      media.matches = !media.matches;
+      media.dispatchEvent(new Event('change'));
+      await flushComponent();
+      expect(textContent(displayMode())).toBe(
+        media.matches || mode.ios ? labels.standalone : labels.browser
+      );
+    } finally {
+      view.unmount();
+    }
+    expect(removeListener).toHaveBeenCalledWith('change', addListener.mock.calls[0]![1]);
+  });
+
   it.each(['en-US', 'zh-CN'] as const)(
     'retains the saved icon selection, reports each failed save and allows retry: %s',
     async (locale) => {
