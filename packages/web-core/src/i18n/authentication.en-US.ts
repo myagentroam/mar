@@ -5,7 +5,12 @@ export const authenticationEnUS = {
     summary: 'Sign in to access verified nodes, workspaces, and sessions.',
     username: 'Account',
     password: 'Password',
-    login: 'Open console'
+    login: 'Open console',
+    unavailableTitle: 'Sign-in status unavailable',
+    unavailableSummary:
+      'The server could not verify your sign-in status. Reconnect to retry or open documentation; workspaces and account data require a connection.',
+    retry: 'Retry connection',
+    help: 'Open documentation'
   },
   passwordGate: {
     firstUse: 'First use',
@@ -20,7 +25,7 @@ export const authenticationEnUS = {
   },
   generated: {
     adminAuthService: {
-      authenticationRecoveryFailed: 'Unable to verify sign-in status. Refresh to retry: {value0}',
+      authenticationRecoveryFailed: 'Unable to verify sign-in status. Try again: {value0}',
       workbenchRecoveryFailed: 'Workbench recovery failed: {value0}',
       unableToLoadSignInSessions: 'Unable to load sign-in sessions: {value0}',
       unableToRevokeTheSignInSession: 'Unable to revoke the sign-in session: {value0}',

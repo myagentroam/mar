@@ -26,7 +26,28 @@ export const workbenchPageZhCN = {
     shortcuts: '快捷键',
     about: '关于'
   },
-  webUpdate: { title: '应用版本已更新', message: '发现新版本 v{value0}，点击此提示立即刷新应用。' },
+  webUpdate: {
+    title: '应用版本已更新',
+    message: '发现新版本 v{value0}，点击此提示进行更新。',
+    blocked: '请先保存或放弃未保存的修改，并结束文件传输，再更新应用。',
+    otherWindows: '请先关闭其他应用窗口，再更新当前窗口。',
+    unavailable: '更新尚不能应用，请检查更新后重试。',
+    offlineLabel: '离线应用',
+    offline: {
+      preparing: '正在为此窗口准备离线资源。',
+      ready: '此浏览器的离线资源已就绪。',
+      degraded: '部分离线资源不可用，请联网检查更新。',
+      online: '当前为在线模式，离线资源不可用。'
+    },
+    check: '检查更新',
+    apply: '应用更新',
+    reloadPrepared: '重新加载已准备版本',
+    usePrepared: '使用已准备版本',
+    reloadAvailable: '可在当前窗口重新加载已准备版本。',
+    upToDate: '没有可用更新。',
+    available: '有可用更新。',
+    checkFailed: '无法检查更新，请联网后重试。'
+  },
   generated: {
     workbenchSurface: {
       workspaceMetadataUnavailable: '工作区信息暂不可用',

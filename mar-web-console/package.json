@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm build:app && pnpm build:docs",
+    "build": "pnpm build:app && pnpm build:docs && pnpm build:pwa",
     "build:app": "node ../scripts/clean-build-output.mjs dist && vite build",
     "build:docs": "pnpm docs:assets && pnpm docs:validate && vitepress build docs",
+    "build:pwa": "tsx scripts/build-pwa.ts",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit",
     "dev": "node scripts/dev.mjs",
     "dev:app": "vite",
@@ -22,7 +23,9 @@
   "devDependencies": {
     "@myagentroam/web-core": "workspace:*",
     "@vitejs/plugin-vue": "^6.0.8",
-    "vue-tsc": "^3.3.9"
+    "esbuild": "^0.28.2",
+    "vue-tsc": "^3.3.9",
+    "workbox-build": "^7.4.1"
   },
   "license": "LicenseRef-MAR-ESAL-1.0"
 }

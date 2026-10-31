@@ -353,7 +353,20 @@ export const enUS = {
   },
   webUpdate: {
     title: workbenchPageEnUS.webUpdate.title,
-    message: workbenchPageEnUS.webUpdate.message
+    message: workbenchPageEnUS.webUpdate.message,
+    blocked: workbenchPageEnUS.webUpdate.blocked,
+    otherWindows: workbenchPageEnUS.webUpdate.otherWindows,
+    unavailable: workbenchPageEnUS.webUpdate.unavailable,
+    offlineLabel: workbenchPageEnUS.webUpdate.offlineLabel,
+    offline: workbenchPageEnUS.webUpdate.offline,
+    check: workbenchPageEnUS.webUpdate.check,
+    apply: workbenchPageEnUS.webUpdate.apply,
+    reloadPrepared: workbenchPageEnUS.webUpdate.reloadPrepared,
+    usePrepared: workbenchPageEnUS.webUpdate.usePrepared,
+    reloadAvailable: workbenchPageEnUS.webUpdate.reloadAvailable,
+    upToDate: workbenchPageEnUS.webUpdate.upToDate,
+    available: workbenchPageEnUS.webUpdate.available,
+    checkFailed: workbenchPageEnUS.webUpdate.checkFailed
   },
   performanceDiagnostics: {
     pingLatency: workbenchShellEnUS.performanceDiagnostics.pingLatency,

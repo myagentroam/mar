@@ -4,6 +4,7 @@
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
 import LoginPage from '../../view/LoginPage.vue';
+import AuthenticationUnavailable from '../../view/AuthenticationUnavailable.vue';
 import logoIcon from '../../assets/logo-icon.png';
 import QuickOpenDialog from '../../view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../view/workbench/WorkbenchNavigation.vue';
@@ -102,6 +103,12 @@ function closeStandaloneFileWindow(): void {
     >
       <BusyIndicator />
     </div>
+    <AuthenticationUnavailable
+      v-else-if="page.authenticationUnknown"
+      :loading="page.authenticationRestoring"
+      :logo-url="logoIcon"
+      @retry="page.refreshAdmin"
+    />
     <LoginPage
       v-else-if="!page.admin.authenticated"
       :loading="page.loading"

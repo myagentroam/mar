@@ -16,6 +16,7 @@ import MarkdownFilePreview from './MarkdownFilePreview.vue';
 import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { createStandaloneWorkspaceDirectTransferService } from '../../service/standalone-workspace-direct-transfer-service.js';
+import { usePwaApplicationService } from '../../service/pwa-application-service.js';
 import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
 import { directFileContentRevision } from '../../service/workspace-direct-file-read-service.js';
 import {
@@ -42,6 +43,8 @@ import {
   type WorkspaceFileTab
 } from '../../util/workspace-file-tab.js';
 import type { DirtyTextDraft } from './WorkspaceTextFilePage.vue';
+
+const pwaApplication = usePwaApplicationService();
 
 interface FileRead {
   readonly path: string;
@@ -320,6 +323,7 @@ onMounted(async () => {
     directTransfer = createStandaloneWorkspaceDirectTransferService({
       nodeId,
       workspaceId,
+      activeDownloadWorker: pwaApplication.activeWorker,
       ...fileTarget
     });
   document.title = `${path.split('/').at(-1) ?? path} · MyAgentRoam`;

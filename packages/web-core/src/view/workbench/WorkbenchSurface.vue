@@ -820,6 +820,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       <slot name="settings">
         <SettingsContent
           :web-version="page.webVersion"
+          :pwa-state="page.pwaState"
+          :checking-for-updates="page.checkingForUpdates"
           v-model:new-password="page.newPassword"
           :section="page.settingsSection"
           :sessions="page.adminSessions"
@@ -839,6 +841,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :change-password="page.changePassword"
           @logout="page.logout"
           @create-registration-token="page.createRegistrationToken"
+          @check-for-updates="page.checkForUpdates"
+          @apply-web-update="page.applyWebUpdate"
         />
       </slot>
     </template>

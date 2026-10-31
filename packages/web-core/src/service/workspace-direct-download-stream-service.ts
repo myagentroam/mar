@@ -10,13 +10,14 @@ export async function downloadWorkspaceDirectFile(input: {
   readonly nodeGeneration: string;
   readonly resource: DirectTransferResource;
   readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
+  readonly activeWorker: () => Promise<ServiceWorker | undefined>;
 }): Promise<WorkspaceDirectDownloadResult> {
   let target: WorkspaceDirectDownloadStream | undefined;
   try {
     const identity = await input.metadata();
     if (identity === undefined) return 'UNAVAILABLE';
     const fileName = input.resource.path.split('/').at(-1) ?? 'download';
-    target = await createWorkspaceDirectDownloadStream(fileName, identity.size);
+    target = await createWorkspaceDirectDownloadStream(fileName, identity.size, input.activeWorker);
     await input.direct.download({
       nodeId: input.nodeId,
       nodeGeneration: input.nodeGeneration,
@@ -49,9 +50,10 @@ const BACKPRESSURE_TIMEOUT_MS = 30_000;
 
 export async function createWorkspaceDirectDownloadStream(
   fileName: string,
-  size: number
+  size: number,
+  activeWorker: () => Promise<ServiceWorker | undefined>
 ): Promise<WorkspaceDirectDownloadStream> {
-  const worker = await activeServiceWorker();
+  const worker = await activeWorker();
   if (worker === undefined) throw new Error('DIRECT_DOWNLOAD_STREAM_UNAVAILABLE');
   const channel = new MessageChannel();
   const id = crypto.randomUUID().replaceAll('-', '');
@@ -193,26 +195,4 @@ export async function createWorkspaceDirectDownloadStream(
       }
     }
   };
-}
-
-async function activeServiceWorker(): Promise<ServiceWorker | undefined> {
-  if (!('serviceWorker' in navigator)) return undefined;
-  const container = navigator.serviceWorker;
-  if (container.controller !== null) return container.controller;
-  await container.register('/service-worker.js', { scope: '/' }).catch(() => undefined);
-  await container.ready.catch(() => undefined);
-  if (container.controller !== null) return container.controller;
-  return new Promise<ServiceWorker | undefined>((resolve) => {
-    const timeout = setTimeout(() => {
-      container.removeEventListener('controllerchange', changed);
-      resolve(undefined);
-    }, CONTROL_TIMEOUT_MS);
-    const changed = () => {
-      if (container.controller === null) return;
-      clearTimeout(timeout);
-      container.removeEventListener('controllerchange', changed);
-      resolve(container.controller);
-    };
-    container.addEventListener('controllerchange', changed);
-  });
 }

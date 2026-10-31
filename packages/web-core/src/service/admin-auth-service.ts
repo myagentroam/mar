@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { UserSessionSummary } from '../model/workbench.js';
-import type { Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import type { AppLocale } from '../i18n/locale-config.js';
 import { ApiError } from '../util/api-error.js';
 
@@ -49,6 +49,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   let identityGeneration = 0;
   let refreshGeneration = 0;
   let sessionRefreshGeneration = 0;
+  const authenticationUnknown = ref(false);
+  const restoring = ref(false);
 
   async function syncBrowserLocale(
     serverLocale: AppLocale | undefined,
@@ -96,6 +98,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     replaceIdentity();
     options.admin.value = { authenticated: false, mustChangePassword: false };
     options.loaded.value = true;
+    authenticationUnknown.value = false;
+    restoring.value = false;
     options.loading.value = false;
     options.sessions.value = [];
     options.csrfToken.value = '';
@@ -107,6 +111,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     const generation = ++refreshGeneration;
     const identity = identityGeneration;
     const isCurrent = () => generation === refreshGeneration && identity === identityGeneration;
+    restoring.value = true;
     try {
       const nextAdmin = await options.request<AdminState>('/api/auth/me');
       if (!isCurrent()) return;
@@ -119,6 +124,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       if (!isCurrent()) return;
       if (storedCsrfToken.length > 0) options.csrfToken.value = storedCsrfToken;
       options.admin.value = nextAdmin;
+      authenticationUnknown.value = false;
       // Authentication is a Server-local fact. Reveal the shell before Node-backed
       // restoration so a busy or offline Node cannot leave the refresh gate blank.
       options.loaded.value = true;
@@ -129,7 +135,11 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     } catch (error) {
       if (!isCurrent()) return;
       if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') returnToLogin();
-      else
+      else {
+        if (!options.admin.value.authenticated) {
+          authenticationUnknown.value = true;
+          options.loaded.value = true;
+        }
         options.notice(
           translate('generated.adminAuthService.authenticationRecoveryFailed', {
             value0: options.errorMessage(error)
@@ -137,6 +147,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
           'error',
           error
         );
+      }
+    } finally {
+      if (isCurrent()) restoring.value = false;
     }
   }
 
@@ -209,6 +222,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       options.csrfToken.value = result.csrfToken;
       window.sessionStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken);
       options.admin.value = result;
+      authenticationUnknown.value = false;
       await syncBrowserLocale(result.locale, () => generation === identityGeneration);
       if (generation !== identityGeneration) return;
       if (!result.mustChangePassword) await restoreAuthenticatedWorkbench(generation);
@@ -327,6 +341,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   }
 
   return {
+    authenticationUnknown,
+    restoring,
     returnToLogin,
     refresh,
     refreshSessions,

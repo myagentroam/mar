@@ -1,6 +1,6 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-10-29
+lastUpdated: 2026-10-31
 ---
 
 # What Is MyAgentRoam?
@@ -23,6 +23,16 @@ Browsers authenticate and obtain authorization through Server, while each Node o
 ## Interface Language
 
 Console and the documentation center use the language saved in the current browser. The independent marketing website has a separate language preference. Opening documentation from Console takes you to the matching language. When you sign in or return to Console, the browser's language is synchronized to your account and used for notifications created afterward; changing the language in Settings also updates the account preference. A notification keeps the final text generated when it was created, so later language changes do not rewrite it. Switching languages in the documentation center opens the matching version of the current page; a direct documentation link takes precedence over the saved language.
+
+## Offline use and updates
+
+After opening the application online for the first time, wait until **Settings → About** reports that offline resources are ready. The Console interface and its static resources can then open without a network. Documentation and search require a connection. Browser tabs and applications installed through the browser behave the same way, but their browser storage may be separate, so prepare each one independently. Browsers may also reclaim cached resources. If the required capabilities are unavailable, the application remains usable online.
+
+To install it, use the browser's install-app control in the address bar or menu. On supported mobile browsers, you can also choose **Add to Home Screen** from the share or browser menu. The name and location vary by browser and operating system; installation is not required for offline use.
+
+Offline resources do not include sign-in state, permissions, sessions, Workspace files, or terminals. If Server cannot be reached on a cold start, the interface reports that your identity is unconfirmed; reconnect to open documentation or retry. Identity and Server- or Node-dependent functions require a connection. An already open page does not sign you out merely because the network is lost.
+
+Use **Settings → About** to check for updates and see the offline status. Apply a prepared update from Settings or its notification after saving or discarding unsaved edits and finishing file transfers. If other application windows are open, close them and retry; the application does not refresh them automatically. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
 
 ## Fastest path to success
 

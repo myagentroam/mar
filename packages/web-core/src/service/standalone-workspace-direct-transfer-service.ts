@@ -20,6 +20,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
   readonly workspaceId: string;
   readonly repositoryPath?: string;
   readonly worktreePath?: string;
+  readonly activeDownloadWorker?: () => Promise<ServiceWorker | undefined>;
 }) {
   function fileTarget() {
     return {
@@ -154,7 +155,9 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
 
   async function download(path: string): Promise<WorkspaceDirectDownloadResult> {
     const target = await fileOperation(path, false);
-    return target === undefined ? 'UNAVAILABLE' : downloadWorkspaceDirectFile(target);
+    return target === undefined || input.activeDownloadWorker === undefined
+      ? 'UNAVAILABLE'
+      : downloadWorkspaceDirectFile({ ...target, activeWorker: input.activeDownloadWorker });
   }
 
   function networkChanged(): void {

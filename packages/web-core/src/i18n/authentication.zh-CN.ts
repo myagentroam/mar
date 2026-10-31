@@ -5,7 +5,12 @@ export const authenticationZhCN = {
     summary: '登录后查看已验证的节点、工作区与会话。',
     username: '账户',
     password: '密码',
-    login: '进入控制台'
+    login: '进入控制台',
+    unavailableTitle: '无法确认登录状态',
+    unavailableSummary:
+      '暂时无法连接服务器确认登录状态。请恢复网络后重试或打开帮助；工作区和账户数据需要联网。',
+    retry: '重试连接',
+    help: '打开帮助文档'
   },
   passwordGate: {
     firstUse: '首次使用',
@@ -19,7 +24,7 @@ export const authenticationZhCN = {
   },
   generated: {
     adminAuthService: {
-      authenticationRecoveryFailed: '无法确认登录状态，请刷新重试：{value0}',
+      authenticationRecoveryFailed: '无法确认登录状态，请重试：{value0}',
       workbenchRecoveryFailed: '工作台恢复失败：{value0}',
       unableToLoadSignInSessions: '无法读取登录会话：{value0}',
       unableToRevokeTheSignInSession: '无法注销登录会话：{value0}',

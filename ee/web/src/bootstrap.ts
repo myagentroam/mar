@@ -5,6 +5,7 @@ import './styles.css';
 import { createEnterpriseManagementComposition } from './composition/enterprise-management';
 
 bootstrapConsole({
+  webBuild: { version: __MAR_WEB_VERSION__, buildId: __MAR_WEB_BUILD_HASH__ },
   documentationAvailable: true,
   workbench: defineAsyncComponent(() => import('./view/workbench/WorkbenchPage.vue')),
   filePreview: defineAsyncComponent(

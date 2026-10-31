@@ -273,8 +273,8 @@ describe('shared browser authentication lifecycle', () => {
         expect(f.restore).not.toHaveBeenCalled();
         expect(f.notice).toHaveBeenLastCalledWith(
           locale === 'zh-CN'
-            ? `无法确认登录状态，请刷新重试：${error.message}`
-            : `Unable to verify sign-in status. Refresh to retry: ${error.message}`,
+            ? `无法确认登录状态，请重试：${error.message}`
+            : `Unable to verify sign-in status. Try again: ${error.message}`,
           'error',
           error
         );
@@ -287,7 +287,9 @@ describe('shared browser authentication lifecycle', () => {
     f.storage.set('mar.user.csrf-token', 'saved-csrf');
     f.request.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     await f.service.refresh();
-    expect(f.state.loaded.value).toBe(false);
+    expect(f.state.loaded.value).toBe(true);
+    expect(f.service.authenticationUnknown.value).toBe(true);
+    expect(f.state.admin.value.authenticated).toBe(false);
     expect(f.storage.get('mar.user.csrf-token')).toBe('saved-csrf');
     expect(f.signedOut).not.toHaveBeenCalled();
     expect(f.restore).not.toHaveBeenCalled();
@@ -295,6 +297,7 @@ describe('shared browser authentication lifecycle', () => {
     await f.service.refresh();
     expect(f.state.loaded.value).toBe(true);
     expect(f.state.admin.value.authenticated).toBe(true);
+    expect(f.service.authenticationUnknown.value).toBe(false);
     expect(f.restore).toHaveBeenCalledOnce();
   });
 
@@ -318,7 +321,7 @@ describe('shared browser authentication lifecycle', () => {
     expect(f.signedOut).not.toHaveBeenCalled();
     expect(f.restore).not.toHaveBeenCalled();
     expect(f.notice).toHaveBeenCalledWith(
-      '无法确认登录状态，请刷新重试：Failed to fetch',
+      '无法确认登录状态，请重试：Failed to fetch',
       'error',
       error
     );

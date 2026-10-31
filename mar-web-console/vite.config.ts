@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import { SUPPORTED_LOCALES, localeFromLanguages } from '@myagentroam/web-core/locale-config';
+import { pwaBuildMetadata } from './scripts/pwa-build-metadata.js';
 
 const webPackage = JSON.parse(
   readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')
@@ -103,6 +104,7 @@ export default defineConfig({
     directDownloadServiceWorkerPlugin(),
     docsRootRedirectPlugin(),
     webVersionManifestPlugin(),
+    pwaBuildMetadata('/'),
     thirdPartyNoticesPlugin({ outputDirectory: resolve(import.meta.dirname, 'dist') })
   ],
   build: { sourcemap: false },

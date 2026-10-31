@@ -350,7 +350,20 @@ export const zhCN = {
   },
   webUpdate: {
     title: workbenchPageZhCN.webUpdate.title,
-    message: workbenchPageZhCN.webUpdate.message
+    message: workbenchPageZhCN.webUpdate.message,
+    blocked: workbenchPageZhCN.webUpdate.blocked,
+    otherWindows: workbenchPageZhCN.webUpdate.otherWindows,
+    unavailable: workbenchPageZhCN.webUpdate.unavailable,
+    offlineLabel: workbenchPageZhCN.webUpdate.offlineLabel,
+    offline: workbenchPageZhCN.webUpdate.offline,
+    check: workbenchPageZhCN.webUpdate.check,
+    apply: workbenchPageZhCN.webUpdate.apply,
+    reloadPrepared: workbenchPageZhCN.webUpdate.reloadPrepared,
+    usePrepared: workbenchPageZhCN.webUpdate.usePrepared,
+    reloadAvailable: workbenchPageZhCN.webUpdate.reloadAvailable,
+    upToDate: workbenchPageZhCN.webUpdate.upToDate,
+    available: workbenchPageZhCN.webUpdate.available,
+    checkFailed: workbenchPageZhCN.webUpdate.checkFailed
   },
   performanceDiagnostics: {
     pingLatency: workbenchShellZhCN.performanceDiagnostics.pingLatency,

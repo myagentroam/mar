@@ -36,6 +36,7 @@ interface WorkbenchPageLifecycleOptions {
   readonly handleSessionWatchVisibility: () => void;
   readonly onGlobalKeydown: (event: KeyboardEvent) => ConsoleShortcutResult;
   readonly refreshAdmin: () => Promise<unknown>;
+  readonly recoverAuthentication: () => void;
   readonly cancelFileReferenceSearch: () => void;
   readonly disposeNavigation: () => void;
   readonly disposeWorkspaceUploads: () => void;
@@ -103,6 +104,7 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
     options.restoreWorkspaceUploads();
     options.startNavigation();
     document.addEventListener('visibilitychange', options.handleSessionWatchVisibility);
+    window.addEventListener('online', options.recoverAuthentication);
     unregisterShortcut = consoleKeyboardShortcutService.register({
       priority: 10,
       handle: options.onGlobalKeydown
@@ -115,6 +117,7 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
     options.cancelFileReferenceSearch();
     options.disposeNavigation();
     document.removeEventListener('visibilitychange', options.handleSessionWatchVisibility);
+    window.removeEventListener('online', options.recoverAuthentication);
     unregisterShortcut?.();
     options.disposeWorkspaceUploads();
     options.disposeWorkbenchNotifications();

@@ -4,10 +4,11 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
+import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
@@ -51,6 +52,9 @@ const draft = reactive({
 const baseline = ref(draft.source);
 const dirty = computed(() => !isBuiltin.value && draft.source !== baseline.value);
 const unsaved = computed(() => !isBuiltin.value && (!selectedId.value || dirty.value));
+const pwaApplication = inject(PWA_APPLICATION_SERVICE_KEY, undefined);
+const removeUpdateBlocker = pwaApplication?.registerUpdateBlocker(() => unsaved.value);
+onBeforeUnmount(() => removeUpdateBlocker?.());
 const analysis = computed(() => analyzeCustomTheme(draft.source));
 const previewColors = computed(() =>
   paletteReady.value ? service.resolveColors(draft.source) : analysis.value.colors
