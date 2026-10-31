@@ -112,27 +112,123 @@ test('History retry and exhaustion preserve the viewport and keyboard focus', as
   await expect(page.getByTestId('older-requests')).toHaveText('2');
 });
 
-test('Exhausted cursor recovery preserves the current reading viewport', async ({ page }) => {
-  await page.goto(
-    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&recover-exhausted=1&exhaust-history=1`
-  );
-  const region = page.locator('.conversation-scroll');
-  await region.focus();
-  await region.press('Home');
-  await expect(page.getByTestId('older-requests')).toHaveText('1');
-  await page.getByTestId('fail-older').click();
-  await expect(page.getByTestId('older-requests')).toHaveText('2');
-  await region.evaluate((element) => {
-    element.scrollTop = 300;
-    element.dispatchEvent(new Event('scroll'));
+for (const nativeAnchoring of [true, false]) {
+  test(`Exhausted cursor recovery preserves the reading viewport with native anchoring ${nativeAnchoring}`, async ({
+    page
+  }) => {
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&recover-exhausted=1&exhaust-history=1`
+    );
+    if (!nativeAnchoring)
+      await page.addStyleTag({
+        content: '.conversation-scroll { overflow-anchor: none !important; }'
+      });
+    const region = page.locator('.conversation-scroll');
+    await region.focus();
+    await region.press('Home');
+    await expect(page.getByTestId('older-requests')).toHaveText('1');
+    await page.getByTestId('fail-older').click();
+    await expect(page.getByTestId('older-requests')).toHaveText('2');
+    await region.evaluate((element) => {
+      element.scrollTop = 300;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    const anchor = region.locator('.history');
+    const before = (await anchor.boundingBox())!.y;
+    await page.getByTestId('finish-older').click();
+    await expect(region.locator('.conversation-history-control')).toHaveCount(0);
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('older-requests')).toHaveText('2');
   });
-  const anchor = region.locator('.history');
-  const before = (await anchor.boundingBox())!.y;
-  await page.getByTestId('finish-older').click();
-  await expect(region.locator('.conversation-history-control')).toHaveCount(0);
-  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
-  await expect(page.getByTestId('older-requests')).toHaveText('2');
-});
+}
+
+for (const { nearBottom, trailingGrowth } of [
+  { nearBottom: false, trailingGrowth: 0 },
+  { nearBottom: true, trailingGrowth: 0 },
+  { nearBottom: true, trailingGrowth: 5 }
+]) {
+  test(`Native anchoring preserves the reading viewport and intent when content above expands: near-bottom=${nearBottom}, trailing-growth=${trailingGrowth}`, async ({
+    page
+  }) => {
+    test.skip(
+      !(await page.evaluate(() => CSS.supports('overflow-anchor', 'auto'))),
+      'This engine does not support native scroll anchoring.'
+    );
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+    await page.addStyleTag({
+      content: '.history { height: auto !important; display: block !important; }'
+    });
+    const region = page.locator('.conversation-scroll');
+    await region.evaluate((element, nearBottom) => {
+      const history = element.querySelector<HTMLElement>('.history')!;
+      history.style.display = 'block';
+      history.innerHTML = Array.from(
+        { length: 20 },
+        (_, index) =>
+          `<p data-reading-row="${index}" style="height:200px;margin:0">Existing message ${index}</p>`
+      ).join('');
+      element.scrollTop = nearBottom ? element.scrollHeight - element.clientHeight - 20 : 420;
+      element.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
+      element.dispatchEvent(new Event('scroll'));
+    }, nearBottom);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const anchor = page.locator(`[data-reading-row="${nearBottom ? 19 : 3}"]`);
+    await expect(anchor).toBeInViewport();
+    const before = (await anchor.boundingBox())!.y;
+    await page.locator('.history').evaluate((history, trailingGrowth) => {
+      const expanded = document.createElement('div');
+      expanded.style.height = '200px';
+      expanded.textContent = 'Expanded content above the reading viewport';
+      history.prepend(expanded);
+      if (trailingGrowth > 0) {
+        const trailing = document.createElement('div');
+        trailing.style.height = `${trailingGrowth}px`;
+        history.append(trailing);
+      }
+    }, trailingGrowth);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('following')).toHaveText('false');
+    await region.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect(page.getByTestId('following')).toHaveText('true');
+  });
+}
+
+for (const nativeAnchoring of [true, false]) {
+  test(`Appending below does not consume later downward reading: native anchoring ${nativeAnchoring}`, async ({
+    page
+  }) => {
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+    if (!nativeAnchoring)
+      await page.addStyleTag({
+        content: '.conversation-scroll { overflow-anchor: none !important; }'
+      });
+    const region = page.locator('.conversation-scroll');
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await region.dispatchEvent('wheel', { deltaY: -1 });
+    await expect(page.getByTestId('following')).toHaveText('false');
+    const before = await region.evaluate((element) => element.scrollTop);
+    await page.locator('.history').evaluate((history) => {
+      const appended = document.createElement('div');
+      appended.style.height = '240px';
+      appended.textContent = 'A later message below the reading viewport';
+      history.after(appended);
+    });
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBeCloseTo(before, 0);
+    await expect(page.getByTestId('following')).toHaveText('false');
+    await region.focus();
+    await region.press('End');
+    await expect(page.getByTestId('following')).toHaveText('true');
+  });
+}
 
 test('Bottom following survives content shrink and subsequent growth', async ({ page }) => {
   await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1`);

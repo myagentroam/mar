@@ -430,7 +430,6 @@ onBeforeUnmount(() => {
   height: 100%;
   min-width: 0;
   overflow: auto;
-  overflow-anchor: none;
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
   background: var(--mar-conversation-canvas);
 }

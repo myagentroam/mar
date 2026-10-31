@@ -6,7 +6,29 @@ function scrollElement(values: {
   readonly scrollTop: number;
   readonly clientHeight: number;
 }): HTMLElement {
-  return { ...values } as HTMLElement;
+  return {
+    ...values,
+    ownerDocument: { elementFromPoint: () => null },
+    getBoundingClientRect: () => ({ top: 0, left: 0, width: 100, height: values.clientHeight }),
+    contains: () => false
+  } as unknown as HTMLElement;
+}
+
+function readingAnchor(element: HTMLElement): { shiftContent: (delta: number) => void } {
+  let contentTop = element.scrollTop;
+  const anchor = {
+    isConnected: true,
+    getBoundingClientRect: () => ({ top: contentTop - element.scrollTop })
+  };
+  Object.assign(element, {
+    ownerDocument: { elementFromPoint: () => anchor },
+    contains: (candidate: unknown) => candidate === anchor
+  });
+  return {
+    shiftContent: (delta) => {
+      contentTop += delta;
+    }
+  };
 }
 
 describe('Web session scrolling status', () => {
@@ -80,6 +102,82 @@ describe('Web session scrolling status', () => {
     element.scrollTop = 1000;
     state.handleScroll(vi.fn());
     expect(state.following.value).toBe(true);
+  });
+
+  it.each(['together', 'after-layout', 'after-resize'] as const)(
+    'does not treat native anchor compensation as downward reading: %s',
+    (delivery) => {
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: 780, clientHeight: 200 });
+      const anchor = readingAnchor(element);
+      const state = createConversationScrollService();
+      state.setElement(element);
+      state.stopFollowing();
+      Object.defineProperty(element, 'scrollHeight', { value: 1200 });
+      anchor.shiftContent(200);
+      const loadOlder = vi.fn();
+      if (delivery === 'after-layout') state.handleScroll(loadOlder);
+      if (delivery === 'after-resize') state.handleResize();
+      element.scrollTop = 980;
+      state.handleScroll(loadOlder);
+      state.handleScroll(loadOlder);
+      expect(state.following.value).toBe(false);
+      expect(loadOlder).not.toHaveBeenCalled();
+      element.scrollTop = 1000;
+      state.handleScroll(loadOlder);
+      expect(state.following.value).toBe(true);
+    }
+  );
+
+  it('does not load another page when native anchoring follows content shrinking above the viewport', () => {
+    const element = scrollElement({ scrollHeight: 500, scrollTop: 280, clientHeight: 200 });
+    const anchor = readingAnchor(element);
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    Object.defineProperty(element, 'scrollHeight', { value: 260 });
+    anchor.shiftContent(-240);
+    element.scrollTop = 40;
+    const loadOlder = vi.fn();
+    state.handleScroll(loadOlder);
+    expect(loadOlder).not.toHaveBeenCalled();
+    expect(state.following.value).toBe(false);
+  });
+
+  it('resumes following after real downward scrolling matches an earlier height change', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    readingAnchor(element);
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    Object.defineProperty(element, 'scrollHeight', { value: 1200 });
+    state.handleScroll(vi.fn());
+    element.scrollTop = 1000;
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(true);
+  });
+
+  it('preserves reading intent when content grows above and below the visible anchor together', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 780, clientHeight: 200 });
+    const anchor = readingAnchor(element);
+    const state = createConversationScrollService();
+    state.setElement(element);
+    state.stopFollowing();
+    Object.defineProperty(element, 'scrollHeight', { value: 1205 });
+    anchor.shiftContent(200);
+    element.scrollTop = 980;
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(false);
+  });
+
+  it('adopts the current reading position when upward intent follows an unobserved layout change', () => {
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+    const state = createConversationScrollService();
+    state.setElement(element);
+    Object.defineProperty(element, 'scrollHeight', { value: 1200 });
+    element.scrollTop = 980;
+    state.stopFollowing();
+    state.handleScroll(vi.fn());
+    expect(state.following.value).toBe(false);
   });
 
   it.each([
