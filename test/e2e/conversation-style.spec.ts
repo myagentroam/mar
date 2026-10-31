@@ -10,7 +10,7 @@ test.afterAll(async () => {
 });
 
 for (const width of [1280, 390]) {
-  test(`Top-boundary history immediately reveals the loaded page without chaining at ${width}px`, async ({
+  test(`Top-boundary history preserves the viewport without chaining at ${width}px`, async ({
     browser
   }) => {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
@@ -18,24 +18,36 @@ for (const width of [1280, 390]) {
       const page = await context.newPage();
       await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1`);
       const region = page.locator('.conversation-scroll');
+      const anchor = region.locator('.history');
       const requests = page.getByTestId('older-requests');
-      await region.focus();
-      await region.press('Home');
+      const before = await region.evaluate((element) => {
+        element.scrollTop = 0;
+        const y = element.querySelector('.history')!.getBoundingClientRect().y;
+        element.dispatchEvent(new WheelEvent('wheel', { deltaY: -160, bubbles: true }));
+        return y;
+      });
       await expect(requests).toHaveText('1');
       await expect(region.locator('.busy-indicator')).toHaveCount(1);
+      expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
       await page.getByTestId('finish-older').click();
       await expect(region.locator('.busy-indicator')).toHaveCount(0);
-      await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+      await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+      await expect(page.getByTestId('earlier-1-0')).not.toBeInViewport();
       await expect(region.locator('.prepended-page')).toHaveCount(3);
       await page.evaluate(
         () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       );
       await expect(requests).toHaveText('1');
-      await region.hover();
-      await page.mouse.wheel(0, -160);
+      await region.focus();
+      await region.press('Home');
       await expect(requests).toHaveText('2');
+      const previousPage = page.getByTestId('earlier-1-0');
+      const nextBefore = (await previousPage.boundingBox())!.y;
       await page.getByTestId('finish-older').click();
-      await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+      await expect
+        .poll(async () => (await previousPage.boundingBox())!.y)
+        .toBeCloseTo(nextBefore, 0);
+      await expect(page.getByTestId('earlier-2-0')).not.toBeInViewport();
       await expect(region.locator('.prepended-page')).toHaveCount(6);
     } finally {
       await context.close();
@@ -44,7 +56,7 @@ for (const width of [1280, 390]) {
 }
 
 for (const width of [1280, 390]) {
-  test(`Top-boundary history remains visible throughout progressive timeline mounting at ${width}px`, async ({
+  test(`Top-boundary history keeps its reading anchor throughout progressive mounting at ${width}px`, async ({
     page
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -55,11 +67,72 @@ for (const width of [1280, 390]) {
     await region.focus();
     await page.keyboard.press('Home');
     await expect(page.getByTestId('older-requests')).toHaveText('1');
-    await page.getByTestId('finish-older').click();
-    await expect(page.getByText('earlier-1-0-item-0', { exact: true })).toBeInViewport();
+    const anchor = region.locator('.history');
+    const before = (await anchor.boundingBox())!.y;
+    const offsets = await page.getByTestId('finish-older').evaluate(async (button) => {
+      const history = document.querySelector('.history')!;
+      const positions: number[] = [];
+      (button as HTMLButtonElement).click();
+      for (let frame = 0; frame < 12; frame++) {
+        await new Promise(requestAnimationFrame);
+        positions.push(history.getBoundingClientRect().y);
+      }
+      return positions;
+    });
+    await expect(page.getByText('earlier-1-0-item-0', { exact: true })).toHaveCount(1);
+    for (const offset of offsets) expect(offset).toBeCloseTo(before, 0);
+    await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
     await expect(page.getByTestId('older-requests')).toHaveText('1');
   });
 }
+
+test('History retry and exhaustion preserve the viewport and keyboard focus', async ({ page }) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&exhaust-history=1`
+  );
+  const region = page.locator('.conversation-scroll');
+  await region.focus();
+  await region.press('Home');
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+  const anchor = region.locator('.history');
+  const before = (await anchor.boundingBox())!.y;
+  await page.getByTestId('fail-older').click();
+  const retry = region.getByRole('button', { name: 'Failed to load. Retry' });
+  await expect(retry).toBeVisible();
+  expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await retry.focus();
+  await retry.press('Enter');
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+  expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await page.getByTestId('finish-older').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(region.locator('.conversation-history-control')).toHaveCount(0);
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await expect(region).toBeFocused();
+  await expect(region.locator('.prepended-page')).toHaveCount(3);
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+});
+
+test('Exhausted cursor recovery preserves the current reading viewport', async ({ page }) => {
+  await page.goto(
+    `${fixture.url}conversation-style.html?cached-scroll=1&prepend-history=1&recover-exhausted=1&exhaust-history=1`
+  );
+  const region = page.locator('.conversation-scroll');
+  await region.focus();
+  await region.press('Home');
+  await expect(page.getByTestId('older-requests')).toHaveText('1');
+  await page.getByTestId('fail-older').click();
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+  await region.evaluate((element) => {
+    element.scrollTop = 300;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  const anchor = region.locator('.history');
+  const before = (await anchor.boundingBox())!.y;
+  await page.getByTestId('finish-older').click();
+  await expect(region.locator('.conversation-history-control')).toHaveCount(0);
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
+  await expect(page.getByTestId('older-requests')).toHaveText('2');
+});
 
 test('Bottom following survives content shrink and subsequent growth', async ({ page }) => {
   await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1`);
@@ -97,8 +170,10 @@ test('Near-bottom geometry does not override upward intent while earlier history
   });
   await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.getByTestId('following')).toHaveText('false');
+  const anchor = region.locator('.history');
+  const before = (await anchor.boundingBox())!.y;
   await page.getByTestId('finish-older').click();
-  await expect(page.getByTestId('earlier-1-0')).toBeInViewport();
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
   await expect(page.getByTestId('older-requests')).toHaveText('1');
 });
 
@@ -117,8 +192,10 @@ test('Automatic history backfill preserves the latest message before a manual to
   await region.focus();
   await region.press('Home');
   await expect(requests).toHaveText('2');
+  const anchor = page.getByTestId('earlier-1-0');
+  const before = (await anchor.boundingBox())!.y;
   await page.getByTestId('finish-older').click();
-  await expect(page.getByTestId('earlier-2-0')).toBeInViewport();
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
   await expect(requests).toHaveText('2');
 });
 

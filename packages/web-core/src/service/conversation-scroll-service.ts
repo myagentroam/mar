@@ -82,7 +82,6 @@ export function createConversationScrollService() {
     const previousHeight = target.scrollHeight;
     const previousTop = target.scrollTop;
     const wasFollowing = followBottom && following.value;
-    const revealPrepend = !following.value && previousTop < LOAD_OLDER_THRESHOLD_PX;
     return () => {
       if (element.value !== target || target.scrollTop !== previousTop) return;
       if (wasFollowing) {
@@ -92,9 +91,7 @@ export function createConversationScrollService() {
         }
         return;
       }
-      target.scrollTop = revealPrepend
-        ? previousTop
-        : previousTop + (target.scrollHeight - previousHeight);
+      target.scrollTop = previousTop + (target.scrollHeight - previousHeight);
       lastScrollTop = target.scrollTop;
       updateLayout(target);
     };

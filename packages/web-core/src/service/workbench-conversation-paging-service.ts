@@ -78,12 +78,27 @@ export function createWorkbenchConversationPagingService(options: {
           requestCursor,
           revision
         );
-        if (recoveredCursor === undefined) return;
+        if (
+          recoveredCursor === undefined ||
+          options.workspaceTarget.value?.nodeId !== nodeId ||
+          options.selectedSessionId.value !== sessionId ||
+          windowRevision !== revision ||
+          options.nextCursor.value !== (recoveredCursor ?? requestCursor)
+        )
+          return;
         if (recoveredCursor === null) {
+          const restoreAnchor = options.capturePrependAnchor();
           options.clearCursor();
+          await nextTick();
+          if (
+            windowRevision === revision &&
+            options.workspaceTarget.value?.nodeId === nodeId &&
+            options.selectedSessionId.value === sessionId &&
+            options.nextCursor.value === null
+          )
+            restoreAnchor();
           return;
         }
-        await nextTick();
         requestCursor = recoveredCursor;
         page = await requestOlderPage(nodeId, sessionId, limit, requestCursor);
       }
@@ -148,7 +163,18 @@ export function createWorkbenchConversationPagingService(options: {
       options.nextCursor.value !== expiredCursor
     )
       return undefined;
-    options.recoverWindow(page);
+    // Render recovered content before removing an exhausted history boundary so that
+    // its anchor compensation excludes any newly appended recent content.
+    const recoveryPage = page.nextCursor === null ? { ...page, nextCursor: expiredCursor } : page;
+    options.recoverWindow(recoveryPage);
+    await nextTick();
+    if (
+      options.workspaceTarget.value?.nodeId !== nodeId ||
+      options.selectedSessionId.value !== sessionId ||
+      windowRevision !== revision ||
+      options.nextCursor.value !== recoveryPage.nextCursor
+    )
+      return undefined;
     return page.nextCursor;
   }
 

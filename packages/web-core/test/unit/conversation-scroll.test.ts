@@ -11,7 +11,7 @@ function scrollElement(values: {
 
 describe('Web session scrolling status', () => {
   it.each(['capturePrependAnchor', 'captureRenderAnchor'] as const)(
-    'reveals prepended history at the top without chaining through %s',
+    'preserves the top reading anchor without chaining through %s',
     (capture) => {
       const element = scrollElement({ scrollHeight: 1000, scrollTop: 0, clientHeight: 200 });
       const state = createConversationScrollService();
@@ -20,7 +20,7 @@ describe('Web session scrolling status', () => {
       const restore = state[capture]();
       Object.defineProperty(element, 'scrollHeight', { value: 1600 });
       restore();
-      expect(element.scrollTop).toBe(0);
+      expect(element.scrollTop).toBe(600);
       const loadOlder = vi.fn();
       state.handleScroll(loadOlder);
       expect(loadOlder).not.toHaveBeenCalled();
@@ -37,7 +37,7 @@ describe('Web session scrolling status', () => {
     restore();
     state.handleResize();
     expect(state.following.value).toBe(false);
-    expect(element.scrollTop).toBe(0);
+    expect(element.scrollTop).toBe(600);
   });
 
   it.each([
@@ -57,7 +57,7 @@ describe('Web session scrolling status', () => {
       const restore = state.capturePrependAnchor();
       Object.defineProperty(element, 'scrollHeight', { value: height + 600 });
       restore();
-      expect(element.scrollTop).toBe(0);
+      expect(element.scrollTop).toBe(600);
     }
   );
 

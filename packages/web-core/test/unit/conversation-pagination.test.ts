@@ -199,6 +199,56 @@ describe('Conversation History Pagination', () => {
     expect(scrollElement.scrollTop).toBe(150);
   });
 
+  it.each([false, true])(
+    'preserves the viewport when recovery exhausts history without clearing another session: switch=%s',
+    async (switchSession) => {
+      const selectedSessionId = ref('session-1');
+      const turns = ref([turn('already-loaded'), turn('current')]);
+      const nextCursor = ref<string | null>('expired-cursor');
+      const projection = conversationProjectionFixture(turns, nextCursor);
+      const element = {
+        scrollTop: 100,
+        get scrollHeight() {
+          return turns.value.length * 100 + (nextCursor.value === null ? 0 : 38);
+        }
+      };
+      const capture = vi.fn(pagingAnchor(element as never));
+      const request = vi.fn(async (path: string) => {
+        if (path.includes('cursor=')) throw new ApiError('EVENT_CURSOR_INVALID', 'Cursor expired');
+        return segmentPage([turn('current'), turn('latest')], null) as never;
+      });
+      const service = createWorkbenchConversationPagingService({
+        workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+        selectedSessionId,
+        nextCursor,
+        loadingOlder: ref(false),
+        ...projection,
+        recoverWindow: (page) => {
+          projection.recoverWindow(page);
+          if (switchSession) {
+            selectedSessionId.value = 'session-2';
+            nextCursor.value = 'session-2-cursor';
+          }
+        },
+        capturePrependAnchor: capture,
+        pageSize: 3,
+        recentSegmentWindowSize: 15,
+        replaceRecent: vi.fn(),
+        request,
+        sessionPathId: (value) => value,
+        notice: vi.fn(),
+        errorMessage: String
+      });
+
+      await service.loadOlderConversationTurns();
+
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(nextCursor.value).toBe(switchSession ? 'session-2-cursor' : null);
+      expect(element.scrollTop).toBe(switchSession ? 100 : 62);
+      expect(capture).toHaveBeenCalledTimes(switchSession ? 0 : 1);
+    }
+  );
+
   it('Reports cursor-repair failure until a later explicit load retries successfully', async () => {
     const turns = { value: [turn('current')] };
     const nextCursor = { value: 'expired-cursor' as string | null };
