@@ -34,11 +34,6 @@ const query = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const pagination = service.catalogPage;
-const catalogError = computed(() =>
-  service.catalogPage.error.value === undefined
-    ? ''
-    : mcpErrorMessage(service.catalogPage.error.value)
-);
 const installingEntryId = ref('');
 const showInstallProgress = ref(false);
 const detailsOpen = ref(false);
@@ -348,12 +343,6 @@ function mcpErrorMessage(error: unknown): string {
       </el-select>
     </section>
     <el-alert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
-    <el-alert
-      v-if="activeConfigTab === 'available' && catalogError"
-      :title="catalogError"
-      type="error"
-      :closable="false"
-    />
     <el-tabs v-model="activeConfigTab" class="mcp-config-tabs">
       <el-tab-pane
         :label="translate('generated.mcpCenterPanel.availableMCPServers')"
@@ -560,6 +549,10 @@ function mcpErrorMessage(error: unknown): string {
         :loading="pagination.loading.value"
         :loading-more="pagination.loadingMore.value"
         @page="pagination.setPage"
+        :failed="pagination.failure.value !== undefined"
+        :error="pagination.failure.value?.error"
+        :context-key="pagination.contextKey.value"
+        @retry="pagination.retry"
         @load-more="pagination.loadMore"
       />
     </div>

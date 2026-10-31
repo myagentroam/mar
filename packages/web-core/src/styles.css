@@ -1062,15 +1062,15 @@ pre {
   display: inline-flex;
   flex: none;
   align-items: center;
-  border: 0;
+  border: 1px solid color-mix(in srgb, var(--mar-text-secondary) 45%, var(--mar-bg-panel));
   border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--mar-text-secondary) 14%, var(--mar-bg-panel));
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.2;
   white-space: nowrap;
-  padding: 1px 0.1875rem;
+  padding: 0 0.0625rem;
 }
 
 .utility-control {
@@ -1219,6 +1219,10 @@ pre {
 @media (max-width: 767px) {
   .management-page {
     padding: 12px;
+  }
+
+  .management-page .el-table {
+    flex-shrink: 0;
   }
 
   .management-page > header {
@@ -1504,10 +1508,10 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 }
 
 .session-activity.managed_active i {
-  background: var(--mar-color-brand);
+  background: var(--el-color-success);
   box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--mar-color-brand) 11%, transparent),
-    0 0 4px 0 color-mix(in srgb, var(--mar-color-brand) 20%, transparent);
+    0 0 0 1.5px color-mix(in srgb, var(--el-color-success) 11%, transparent),
+    0 0 4px 0 color-mix(in srgb, var(--el-color-success) 20%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .session-activity.managed_active i {

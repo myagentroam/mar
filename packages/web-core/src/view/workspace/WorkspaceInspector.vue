@@ -10,6 +10,7 @@ import { ElMessageBox } from '../../service/message-box-service.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type {
   FileNavigationRequest,
+  WorkspaceNavigationNotice,
   WorkspaceNavigationTarget as NavigationTarget
 } from '../../model/workspace-navigation.js';
 import { createWorkspaceCodeNavigationService } from '../../service/workspace-code-navigation-service.js';
@@ -116,6 +117,7 @@ interface PreviewFrame extends ReturnType<
   readonly navigationLoading: Readonly<Ref<boolean>>;
   readonly navigationTargets: Readonly<Ref<readonly NavigationTarget[]>>;
   readonly navigationNoDefinition: Readonly<Ref<boolean>>;
+  readonly navigationNotice: Readonly<Ref<WorkspaceNavigationNotice | undefined>>;
 }
 interface LoadedPreviewFrame extends PreviewFrame {
   readonly fileContent: Readonly<Ref<FilePreviewContent>>;
@@ -2260,6 +2262,7 @@ onBeforeUnmount(() => filePreviews.reset());
           :navigation-loading="preview.navigationLoading.value"
           :navigation-targets="preview.navigationTargets.value"
           :navigation-no-definition="preview.navigationNoDefinition.value"
+          :navigation-notice="preview.navigationNotice.value"
           :editor-identity="preview.id"
           :tab-identity="tab.identity"
           :initial-dirty-draft="restoredDirtyDrafts.get(tab.identity)"

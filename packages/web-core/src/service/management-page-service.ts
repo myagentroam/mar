@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { managementPageMetadataSchema, type ManagementPage } from '@myagentroam/protocol';
 import { createManagementPaginationService } from './management-pagination-service.js';
+import { AuthenticationContextChangedError } from './workbench-http-service.js';
 
 export function parseManagementPage<T>(
   raw: unknown,
@@ -38,17 +39,22 @@ export function createManagementPageService<T>(input: {
   readonly read: (page: number) => Promise<ManagementPage<T>>;
   readonly key: (item: T) => string | number;
   readonly context: () => string;
-  readonly reportError: (error: unknown) => void;
+  readonly reloadOnViewportChange?: boolean;
 }) {
   const viewport = createManagementPaginationService();
   const items = shallowRef<readonly T[]>([]);
   const result = shallowRef<ManagementPage<T>>();
+  const contextKey = ref(input.context());
   const loading = ref(false);
   const loadingMore = ref(false);
+  const failure = shallowRef<{
+    readonly error: unknown;
+    readonly page: number;
+    readonly append: boolean;
+  }>();
   const page = ref(1);
   let generation = 0;
   let context = input.context();
-  let autoFailed = false;
   let disposed = false;
   const total = computed(() => result.value?.total ?? 0);
   const hasMore = computed(() => result.value?.hasMore ?? false);
@@ -57,20 +63,44 @@ export function createManagementPageService<T>(input: {
     items.value = [];
     result.value = undefined;
     page.value = 1;
-    autoFailed = false;
+    failure.value = undefined;
   }
 
-  async function request(nextPage: number, append: boolean): Promise<void> {
+  function invalidate(clearData = false): void {
+    generation++;
+    loading.value = false;
+    loadingMore.value = false;
+    failure.value = undefined;
+    if (clearData) clear();
+  }
+
+  function replace(response: ManagementPage<T>): void {
+    invalidate();
+    context = input.context();
+    contextKey.value = context;
+    const identities = new Set<string | number>();
+    items.value = response.items.filter((item) => {
+      const identity = input.key(item);
+      if (identities.has(identity)) return false;
+      identities.add(identity);
+      return true;
+    });
+    result.value = response;
+    page.value = response.page;
+  }
+
+  async function request(nextPage: number, append: boolean, retrying = false): Promise<void> {
     if (disposed) return;
     const key = input.context();
     if (context !== key) {
       clear();
       context = key;
+      contextKey.value = key;
     }
     const current = ++generation;
+    if (!retrying) failure.value = undefined;
     loading.value = true;
     loadingMore.value = append;
-    autoFailed = false;
     try {
       let response = await input.read(nextPage);
       if (current !== generation || key !== input.context() || disposed) return;
@@ -90,10 +120,13 @@ export function createManagementPageService<T>(input: {
       );
       result.value = response;
       page.value = response.page;
+      failure.value = undefined;
     } catch (error) {
       if (current === generation && key === input.context() && !disposed) {
-        autoFailed = true;
-        input.reportError(error);
+        failure.value =
+          error instanceof AuthenticationContextChangedError
+            ? undefined
+            : { error, page: nextPage, append };
       }
     } finally {
       if (current === generation && key === input.context() && !disposed) {
@@ -112,15 +145,20 @@ export function createManagementPageService<T>(input: {
     return request(nextPage, false);
   }
   function loadMore(automatic = false): Promise<void> {
-    if (loading.value || !hasMore.value || (automatic && autoFailed)) return Promise.resolve();
+    if (loading.value || !hasMore.value || (automatic && failure.value !== undefined))
+      return Promise.resolve();
     return request(page.value + 1, true);
   }
+  function retry(): Promise<void> {
+    if (loading.value || failure.value === undefined) return Promise.resolve();
+    return request(failure.value.page, failure.value.append, true);
+  }
   const stop = watch(viewport.mobileViewport, () => {
-    void load(true);
+    if (input.reloadOnViewportChange !== false) void load(true);
   });
   function dispose(): void {
     disposed = true;
-    generation++;
+    invalidate(true);
     stop();
     viewport.dispose();
   }
@@ -133,11 +171,16 @@ export function createManagementPageService<T>(input: {
     hasMore,
     loading,
     loadingMore,
+    failure,
+    contextKey,
     mobileViewport: viewport.mobileViewport,
     mobileVisibleCount: computed(() => items.value.length),
     load,
     setPage,
     loadMore,
+    retry,
+    invalidate,
+    replace,
     start: viewport.start,
     dispose
   };

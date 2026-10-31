@@ -103,18 +103,6 @@ watch(targetNodes, (nodes) => {
 watch(activeConfigTab, (tab) => {
   if (tab === 'available') void run(service.loadCatalog);
 });
-watch(service.catalogPage.error, (error) => {
-  if (error !== undefined)
-    showMessage(
-      skillErrorMessage(
-        error,
-        translate('generated.skillSourceManagementPage.theSkillSourceOperationDidNotComplete')
-      ),
-      'error',
-      error
-    );
-});
-
 async function ensureTargets(): Promise<void> {
   if (targetsLoaded) return;
   if (targetsLoading !== undefined) return targetsLoading;
@@ -139,6 +127,7 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
     await operation();
     if (success !== undefined) showMessage(success, 'success');
   } catch (error) {
+    if (error === service.catalogPage.error.value) return;
     showMessage(
       skillErrorMessage(
         error,
@@ -738,6 +727,10 @@ function scopeLabel(scope: string): string {
                 :loading="availablePagination.loading.value"
                 :loading-more="availablePagination.loadingMore.value"
                 @page="availablePagination.setPage"
+                :failed="availablePagination.failure.value !== undefined"
+                :error="availablePagination.failure.value?.error"
+                :context-key="availablePagination.contextKey.value"
+                @retry="availablePagination.retry"
                 @load-more="availablePagination.loadMore"
               />
             </template>

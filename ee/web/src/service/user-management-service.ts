@@ -16,7 +16,6 @@ export function createUserManagementService<T extends { readonly id: number }>(i
   readonly request: <Response>(path: string, init?: RequestInit) => Promise<Response>;
   readonly endpoint: '/api/management/users' | '/api/enterprise/users';
   readonly query: () => UserManagementQuery;
-  readonly reportError: (error: unknown) => void;
 }) {
   const context = () => JSON.stringify(input.query());
   return createManagementPageService<T>({
@@ -30,7 +29,6 @@ export function createUserManagementService<T extends { readonly id: number }>(i
       );
     },
     key: (user) => user.id,
-    context,
-    reportError: input.reportError
+    context
   });
 }

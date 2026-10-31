@@ -610,6 +610,19 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     });
     expect(noDefinition).toContain(i18n.global.t('fileEditor.noDefinition'));
 
+    for (const notice of ['LIMITED', 'UNAVAILABLE'] as const) {
+      const html = await render(WorkspaceFilePage, { ...base, navigationNotice: notice });
+      expect(html).toContain(
+        i18n.global.t(
+          notice === 'LIMITED' ? 'fileEditor.navigationLimited' : 'fileEditor.navigationUnavailable'
+        )
+      );
+      expect(html).toContain('role="status"');
+      expect(html).not.toContain('role="alert"');
+      expect(html).not.toContain(i18n.global.t('fileEditor.noDefinition'));
+      expect(html).not.toContain('SYMBOL_INDEX_');
+    }
+
     const multiple = await render(WorkspaceFilePage, {
       ...base,
       tabs: [

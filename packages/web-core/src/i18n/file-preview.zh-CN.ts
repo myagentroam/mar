@@ -92,6 +92,8 @@ export const filePreviewZhCN = {
     files: '文件',
     navigationResults: '跳转位置',
     preparingNavigation: '正在准备代码导航…',
+    navigationLimited: '符号索引已达到容量上限，导航结果可能不完整。',
+    navigationUnavailable: '当前 Node 的符号索引暂不可用。',
     noDefinition: '未找到定义或引用。'
   },
   filePreviewContext: {

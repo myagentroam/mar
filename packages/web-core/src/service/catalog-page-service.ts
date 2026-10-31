@@ -12,7 +12,6 @@ export function createCatalogPageService<T extends { readonly id: string }>(
   const category = ref('');
   const sortBy = ref<string>();
   const sortOrder = ref<string>();
-  const error = ref<unknown>();
   const context = () =>
     JSON.stringify([keyword.value, category.value, sortBy.value, sortOrder.value]);
   const paging = createManagementPageService<T>({
@@ -27,18 +26,14 @@ export function createCatalogPageService<T extends { readonly id: string }>(
       return parseManagementPage<T>(await request<unknown>(`${path}?${query}`), field);
     },
     key: (item) => item.id,
-    context,
-    reportError: (caught) => {
-      error.value = caught;
-    }
+    context
   });
+  const error = computed(() => paging.failure.value?.error);
   const tags = computed(() => paging.result.value?.facets?.tags ?? []);
   const stop = watch(context, () => {
-    error.value = undefined;
     void paging.load(true);
   });
   async function refresh(): Promise<void> {
-    error.value = undefined;
     await paging.load(true);
     if (error.value !== undefined) throw error.value;
   }

@@ -116,13 +116,40 @@ test('Mobile append pauses on a failed backend page and retries the same page ma
   const queries = await setupNodes(page, true);
   const table = page.locator('.resource-management-panel .el-table');
   await expect(table.locator('tbody tr.el-table__row')).toHaveCount(20);
-  const more = page.getByRole('button', { name: '加载更多', exact: true });
-  await more.scrollIntoViewIfNeeded();
+  const container = page.locator('.resource-management-panel');
+  const body = table.locator('.el-table__body-wrapper .el-scrollbar__wrap');
+  const geometry = await container.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop
+  }));
+  const bodyGeometry = await body.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight
+  }));
+  console.log('Mobile pagination geometry:', { container: geometry, tableBody: bodyGeometry });
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  expect(geometry.scrollTop).toBe(0);
+  expect(bodyGeometry.scrollHeight).toBeLessThanOrEqual(bodyGeometry.clientHeight + 1);
+  await page.waitForTimeout(300);
+  expect(queries.filter((query) => query.get('page') === '2')).toHaveLength(0);
+  const boundary = page.locator('.resource-management-panel .management-mobile-status');
+  await boundary.scrollIntoViewIfNeeded();
   await expect.poll(() => queries.filter((query) => query.get('page') === '2').length).toBe(1);
-  await expect(more).toBeEnabled();
-  await more.click();
+  const retry = boundary.getByRole('button', { name: '加载失败，点击重试' });
+  await expect(retry).toBeEnabled();
+  await retry.click();
   await expect.poll(() => queries.filter((query) => query.get('page') === '2').length).toBe(2);
   await expect(table.getByText('Fixture Node 20', { exact: true })).toBeVisible();
-  // A successful manual retry resumes automatic loading of later pages.
+  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(40);
+  await page.waitForTimeout(300);
+  expect(queries.filter((query) => query.get('page') === '3')).toHaveLength(0);
+  await container.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(boundary).not.toBeInViewport();
+  await page.waitForTimeout(300);
+  // A new boundary entry, not a retry or observer recreation, advances the page.
+  await boundary.scrollIntoViewIfNeeded();
   await expect(table.locator('tbody tr.el-table__row')).toHaveCount(45);
 });

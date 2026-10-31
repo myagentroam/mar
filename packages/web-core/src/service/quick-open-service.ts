@@ -148,7 +148,15 @@ export function openWorkspaceTabIndex(
 
 export type QuickOpenTab = 'ALL' | 'WORKSPACE' | 'SESSION' | 'SYMBOL' | 'FILE';
 export type QuickOpenQueryPhase =
-  'IDLE' | 'SEARCHING' | 'BUILDING' | 'READY' | 'FAILED' | 'UNAVAILABLE' | 'TIMED_OUT' | 'INVALID';
+  | 'IDLE'
+  | 'SEARCHING'
+  | 'BUILDING'
+  | 'READY'
+  | 'FAILED'
+  | 'UNAVAILABLE'
+  | 'LIMITED'
+  | 'TIMED_OUT'
+  | 'INVALID';
 export interface QuickOpenSourceStatus {
   phase: QuickOpenQueryPhase;
   error: unknown;
@@ -426,6 +434,10 @@ export function createQuickOpenQueryService(options: QuickOpenQueryOptions) {
       return true;
     }
     if (result.state !== 'FAILED') return false;
+    if (result.failureCode === 'SYMBOL_INDEX_LIMIT_EXCEEDED') {
+      source.phase = 'LIMITED';
+      return true;
+    }
     source.phase = 'FAILED';
     source.error = apiErrorFromResponse(
       { error: result.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED' },

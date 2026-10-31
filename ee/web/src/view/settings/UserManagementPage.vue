@@ -39,8 +39,7 @@ const form = ref({ username: '', email: '', nickname: '' });
 const usersPage = createUserManagementService<ManagedUser>({
   request: props.request,
   endpoint: '/api/management/users',
-  query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value }),
-  reportError: (error) => showMessage(errorMessage(error), 'error', error)
+  query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value })
 });
 const pageReady = ref(false);
 watch(usersPage.result, (result) => {
@@ -182,7 +181,7 @@ onUnmounted(() => usersPage.dispose());
 </script>
 <template>
   <section
-    v-loading="usersPage.loading.value && !pageReady"
+    v-loading="usersPage.loading.value && !pageReady && !usersPage.failure.value"
     element-loading-custom-class="mar-page-loading"
     class="management-page"
   >
@@ -192,7 +191,12 @@ onUnmounted(() => usersPage.dispose());
       }}</el-button>
     </div>
     <el-table
-      v-loading="usersPage.loading.value && pageReady && !usersPage.loadingMore.value"
+      v-loading="
+        usersPage.loading.value &&
+        pageReady &&
+        !usersPage.loadingMore.value &&
+        !usersPage.failure.value
+      "
       class="clickable-rows"
       :data="usersPage.items.value"
       row-key="id"
@@ -246,6 +250,10 @@ onUnmounted(() => usersPage.dispose());
       :mobile="usersPage.mobileViewport.value"
       :mobile-visible-count="usersPage.mobileVisibleCount.value"
       @page="usersPage.setPage"
+      :failed="usersPage.failure.value !== undefined"
+      :error="usersPage.failure.value?.error"
+      :context-key="usersPage.contextKey.value"
+      @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
     <el-dialog

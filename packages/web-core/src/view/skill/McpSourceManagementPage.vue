@@ -659,7 +659,12 @@ function scopeLabel(scope: string): string {
           </el-select>
         </div>
         <div
-          v-loading="sourcesReady && pagination.loading.value && !pagination.loadingMore.value"
+          v-loading="
+            sourcesReady &&
+            pagination.loading.value &&
+            !pagination.loadingMore.value &&
+            !pagination.failure.value
+          "
           class="mcp-table-section"
         >
           <el-table
@@ -777,6 +782,10 @@ function scopeLabel(scope: string): string {
             :loading-more="pagination.loadingMore.value"
             :has-more="pagination.hasMore.value"
             @page="pagination.setPage"
+            :failed="pagination.failure.value !== undefined"
+            :error="pagination.failure.value?.error"
+            :context-key="pagination.contextKey.value"
+            @retry="pagination.retry"
             @load-more="pagination.loadMore"
           />
         </div>

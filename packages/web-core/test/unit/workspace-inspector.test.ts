@@ -53,6 +53,7 @@ vi.mock('../../src/view/workspace/WorkspaceTextFilePage.vue', async () => {
         'navigationLoading',
         'navigationTargets',
         'navigationNoDefinition',
+        'navigationNotice',
         'editorIdentity',
         'tabIdentity',
         'initialDirtyDraft'

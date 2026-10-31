@@ -214,7 +214,7 @@ describe('Public Workspace tree controller', () => {
     expect(f.request).not.toHaveBeenCalled();
   });
 
-  it('passes the current or remembered session from the full Workspace identity on Tab clicks', async () => {
+  it('selects a priority session using the full Workspace identity on Tab clicks', async () => {
     const f = fixture();
     const tab = {
       id: 'node-1:workspace-1',
@@ -225,15 +225,15 @@ describe('Public Workspace tree controller', () => {
       selectedSessionId: 'remembered'
     };
     await f.controller.openWorkspaceTab(tab);
-    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1', 'session-1');
+    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1');
 
     f.selectedNodeId.value = 'node-2';
     await f.controller.openWorkspaceTab(tab);
-    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1', 'remembered');
+    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1');
 
     f.selectedWorkspaceId.value = 'workspace-2';
     await f.controller.openWorkspaceTab(tab);
-    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1', 'remembered');
+    expect(f.workspaceTabSession).toHaveBeenLastCalledWith('node-1', 'workspace-1');
   });
 
   it('opens each chosen session on repeated Tab clicks without reactivating the Workspace', async () => {

@@ -498,6 +498,49 @@ describe('Server shared conversation audit', () => {
     await app.close();
   });
 
+  it('accepts only audit page queries and rejects legacy cursors before reading', async () => {
+    const app = Fastify();
+    const query = vi.fn(async () => ({
+      events: [],
+      page: 2,
+      pageSize: 20,
+      total: 21,
+      hasMore: false
+    }));
+    registerAuditRoutes({
+      app,
+      database: routeDatabase(),
+      audits: { query } as unknown as AuditService
+    });
+    const valid = await app.inject({
+      method: 'GET',
+      url: '/api/audit-events?page=2&limit=20&from=1&to=3',
+      headers
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toEqual({ events: [], page: 2, pageSize: 20, total: 21, hasMore: false });
+    expect(query).toHaveBeenCalledWith(7, { page: 2, limit: 20, from: 1, to: 3 });
+    for (const queryString of [
+      'cursor=old',
+      'page=0',
+      'page=2&cursor=old',
+      'page=2&page=3',
+      'limit=20&limit=30',
+      'limit=501',
+      'from=-1'
+    ]) {
+      const invalid = await app.inject({
+        method: 'GET',
+        url: `/api/audit-events?${queryString}`,
+        headers
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toMatchObject({ error: { code: 'AUDIT_QUERY_INVALID' } });
+    }
+    expect(query).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
   it('marks successful audit details as private and non-cacheable', async () => {
     const app = Fastify();
     registerAuditRoutes({

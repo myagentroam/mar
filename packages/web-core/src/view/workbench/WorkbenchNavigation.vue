@@ -524,7 +524,7 @@ function openBlankMenu(event: MouseEvent): void {
   position: fixed;
   z-index: 7;
   top: calc((var(--mar-workbench-header-height) - var(--mar-utility-control-size)) / 2);
-  right: 50px;
+  right: 8px;
   display: flex;
   height: var(--mar-utility-control-size);
   align-items: center;

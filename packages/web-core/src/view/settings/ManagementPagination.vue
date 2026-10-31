@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { MANAGEMENT_PAGE_SIZE } from '../../service/management-pagination-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
+import { errorMessage } from '../../util/error-presentation.js';
 
 const props = withDefaults(
   defineProps<{
@@ -14,99 +15,105 @@ const props = withDefaults(
     readonly mobileVisibleCount: number;
     readonly loading?: boolean;
     readonly loadingMore?: boolean;
-    readonly cursor?: { readonly hasNext: boolean };
-    readonly hasMore?: boolean | undefined;
+    readonly failed?: boolean;
+    readonly contextKey?: string;
+    readonly error?: unknown;
+    readonly hasMore: boolean;
   }>(),
   {
     total: 0,
     pageSize: MANAGEMENT_PAGE_SIZE,
     loading: false,
     loadingMore: false,
-    hasMore: undefined
+    failed: false
   }
 );
 const emit = defineEmits<{
   page: [value: number];
   loadMore: [automatic?: boolean];
+  retry: [];
 }>();
-const hasMore = computed(() => props.hasMore ?? props.mobileVisibleCount < props.total);
-const cursorPagination = computed(() => props.cursor !== undefined);
+const hasMore = computed(() => props.hasMore);
 const sentinel = ref<HTMLElement>();
-const manualLoading = ref(false);
 let observer: IntersectionObserver | undefined;
-let triggered = false;
+let armed = true;
+let visible = false;
+
+function maybeLoad(): void {
+  if (!visible || !armed || !props.mobile || !hasMore.value || props.loading || props.failed)
+    return;
+  armed = false;
+  emit('loadMore', true);
+}
 
 function observe(): void {
   observer?.disconnect();
-  if (cursorPagination.value || !props.mobile || !hasMore.value || sentinel.value === undefined)
+  visible = false;
+  if (!props.mobile || sentinel.value === undefined || typeof IntersectionObserver === 'undefined')
     return;
   observer = new IntersectionObserver(([entry]) => {
-    if (!entry?.isIntersecting || props.loading || triggered) return;
-    triggered = true;
-    emit('loadMore', true);
+    visible = entry?.isIntersecting ?? false;
+    if (!visible) {
+      if (!props.loading) armed = true;
+      return;
+    }
+    maybeLoad();
   });
   observer.observe(sentinel.value);
 }
-async function loadManually(): Promise<void> {
-  if (props.loading || manualLoading.value) return;
-  manualLoading.value = true;
-  emit('loadMore', false);
-  await nextTick();
-  if (!props.loading) manualLoading.value = false;
-}
 
+watch(() => [props.mobile, sentinel.value], observe, { flush: 'post' });
 watch(
-  () => [
-    props.mobile,
-    props.mobileVisibleCount,
-    props.total,
-    props.hasMore,
-    props.loading,
-    cursorPagination.value
-  ],
-  async () => {
-    if (!props.loading) {
-      triggered = false;
-      manualLoading.value = false;
-    }
-    await nextTick();
-    observe();
-  }
+  () => [hasMore.value, props.loading, props.failed],
+  () => {
+    if (!hasMore.value && !props.loading) armed = true;
+    if (!props.loading) observe();
+  },
+  { flush: 'post' }
+);
+watch(
+  () => props.contextKey,
+  () => {
+    armed = true;
+    maybeLoad();
+  },
+  { flush: 'post' }
 );
 onMounted(observe);
 onUnmounted(() => observer?.disconnect());
 </script>
 
 <template>
-  <div :class="['management-pagination', { 'is-desktop': cursorPagination || !mobile }]">
+  <div :class="['management-pagination', { 'is-desktop': !mobile }]">
     <el-pagination
-      v-if="cursorPagination || !mobile"
+      v-if="!mobile"
       :current-page="page"
       :page-size="pageSize"
-      :total="cursorPagination ? undefined : total"
-      :page-count="cursorPagination ? page + (cursor?.hasNext ? 1 : 0) : undefined"
+      :total="total"
       :disabled="loading"
-      :layout="cursorPagination ? 'prev, pager, next' : 'total, prev, pager, next'"
+      layout="total, prev, pager, next"
       background
       @current-change="emit('page', $event)"
       :prev-icon="marIcon('chevron-left')"
       :next-icon="marIcon('chevron-right')"
     />
-    <div v-else-if="total > pageSize" class="management-mobile-status">
+    <div v-else class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
-      <el-button
-        v-if="hasMore"
-        link
-        :loading="manualLoading"
-        :disabled="loading || manualLoading"
-        @click="loadManually"
-        :loading-icon="marIcon('loading-action')"
+      <button
+        v-if="failed"
+        v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
+        :aria-description="!loading && error !== undefined ? errorMessage(error) : undefined"
+        type="button"
+        :aria-label="loading ? translate('common.loading') : undefined"
+        :aria-disabled="loading"
+        :aria-busy="loading || undefined"
+        @click="!loading && emit('retry')"
       >
-        {{ translate('common.loadMore') }}
-      </el-button>
-      <span v-if="!hasMore">{{ translate('common.noMore') }}</span>
+        <BusyIndicator v-if="loading" class="read-loading-indicator" />
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </button>
       <span
-        v-else-if="loading && loadingMore && !manualLoading"
+        v-else-if="loading && loadingMore"
         class="management-mobile-loading"
         role="status"
         :aria-label="translate('common.loading')"
@@ -114,6 +121,19 @@ onUnmounted(() => observer?.disconnect());
         <BusyIndicator class="read-loading-indicator" />
       </span>
     </div>
+    <button
+      v-if="!mobile && failed"
+      v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
+      :aria-description="!loading && error !== undefined ? errorMessage(error) : undefined"
+      type="button"
+      :aria-label="loading ? translate('common.loading') : undefined"
+      :aria-disabled="loading"
+      :aria-busy="loading || undefined"
+      @click="!loading && emit('retry')"
+    >
+      <BusyIndicator v-if="loading" class="read-loading-indicator" />
+      <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+    </button>
   </div>
 </template>
 

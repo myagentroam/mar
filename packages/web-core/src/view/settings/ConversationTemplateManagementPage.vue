@@ -64,9 +64,7 @@ const sortOrder = ref<string>();
 const pagination = createManagementPageService<AdminConversationTemplateSummary>({
   read: (page) => service.listAdminPage(page, sortBy.value, sortOrder.value),
   key: (template) => template.id,
-  context: () => JSON.stringify([sortBy.value, sortOrder.value]),
-  reportError: (error) =>
-    showMessage(templateError(error, 'conversationTemplates.loadFailed'), 'error', error)
+  context: () => JSON.stringify([sortBy.value, sortOrder.value])
 });
 const templates = pagination.items;
 const models = ref<readonly ConversationTemplateModelOption[]>([]);
@@ -731,7 +729,7 @@ onMounted(() => {
 
 <template>
   <section
-    v-loading="pagination.loading.value && !pageReady"
+    v-loading="pagination.loading.value && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
     class="management-page conversation-template-management"
     :aria-busy="pagination.loading.value && !pageReady"
@@ -763,7 +761,11 @@ onMounted(() => {
     ></el-alert>
     <el-table
       v-loading="
-        pagination.loading.value && pageReady && !pagination.loadingMore.value && !refreshLoading
+        pagination.loading.value &&
+        pageReady &&
+        !pagination.loadingMore.value &&
+        !refreshLoading &&
+        !pagination.failure.value
       "
       class="clickable-rows"
       :data="displayedTemplates"
@@ -855,6 +857,10 @@ onMounted(() => {
       :loading="loading"
       :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
+      :failed="pagination.failure.value !== undefined"
+      :error="pagination.failure.value?.error"
+      :context-key="pagination.contextKey.value"
+      @retry="pagination.retry"
       @load-more="pagination.loadMore"
     />
 

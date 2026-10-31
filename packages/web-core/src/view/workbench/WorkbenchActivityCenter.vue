@@ -200,10 +200,14 @@ onBeforeUnmount(() => {
       :hide-after="0"
       :placement="mobileMode ? 'bottom-start' : 'right-start'"
       width="min(390px, calc(100vw - 16px))"
-      :show-arrow="false"
+      :show-arrow="!mobileMode && previewId !== undefined"
       :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }"
       :persistent="false"
-      popper-class="workbench-activity-popover"
+      :popper-class="
+        previewId !== undefined
+          ? 'workbench-activity-popover is-preview'
+          : 'workbench-activity-popover'
+      "
     >
       <WorkbenchNotificationList
         v-if="previewId !== undefined"
@@ -326,7 +330,7 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--mar-color-brand);
+  background: var(--el-color-success);
   box-shadow: 0 0 0 1.5px var(--activity-marker-surface);
   pointer-events: none;
 }
@@ -348,8 +352,13 @@ onBeforeUnmount(() => {
 }
 .activity-preview {
   max-height: min(24rem, calc(100dvh - var(--sidebar-header-height) - 1rem));
+  border-radius: inherit;
+  overflow: hidden;
 }
 :global(.workbench-activity-popover.el-popover) {
   padding: 0;
+}
+:global(.workbench-activity-popover.el-popover.is-preview) {
+  --el-bg-color-overlay: var(--mar-bg-subtle);
 }
 </style>

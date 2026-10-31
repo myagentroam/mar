@@ -123,15 +123,7 @@ const usersPage = createUserManagementService<EnterpriseUser>({
       enabledFilter.value === undefined ? undefined : enabledFilter.value ? 'enabled' : 'disabled',
     sortBy: sortBy.value,
     sortOrder: sortOrder.value
-  }),
-  reportError: (error) =>
-    showMessage(
-      error instanceof Error
-        ? errorMessage(error)
-        : translate('generated.organizationUserManagementPage.unableToLoadOrganizationsAndUsers'),
-      'error',
-      error
-    )
+  })
 });
 const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
 const organizationsReady = ref(false);
@@ -431,7 +423,7 @@ onUnmounted(() => {
 
 <template>
   <section
-    v-loading="loading && !pageReady"
+    v-loading="loading && !pageReady && !usersPage.failure.value"
     element-loading-custom-class="mar-page-loading"
     class="management-page"
   >
@@ -506,7 +498,11 @@ onUnmounted(() => {
     </div>
     <el-table
       v-loading="
-        usersPage.loading.value && pageReady && !usersPage.loadingMore.value && !refreshLoading
+        usersPage.loading.value &&
+        pageReady &&
+        !usersPage.loadingMore.value &&
+        !refreshLoading &&
+        !usersPage.failure.value
       "
       class="clickable-rows"
       :data="usersPage.items.value"
@@ -591,6 +587,10 @@ onUnmounted(() => {
       :mobile="usersPage.mobileViewport.value"
       :mobile-visible-count="usersPage.mobileVisibleCount.value"
       @page="usersPage.setPage"
+      :failed="usersPage.failure.value !== undefined"
+      :error="usersPage.failure.value?.error"
+      :context-key="usersPage.contextKey.value"
+      @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
     <el-dialog

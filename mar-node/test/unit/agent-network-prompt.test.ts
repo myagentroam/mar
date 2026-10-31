@@ -132,7 +132,14 @@ it.each([false, true])(
       ]) {
         expect(instructions.split(`# ${heading}`)).toHaveLength(2);
       }
-      expect(instructions).toContain('Keep simple or tightly coupled work local.');
+      expect(instructions).toContain(
+        [
+          '# Delegation and coordination',
+          'Handle focused or tightly coupled work locally by default.',
+          'Delegate a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
+          'Do not split work merely because agents are available.'
+        ].join('\n\n')
+      );
       expect(instructions).toContain('Follow up through the direct delegate by default');
       expect(instructions).toContain('only when a concrete issue needs independent verification');
       expect(instructions).toContain('avoid unnecessary cross-Session coordination');

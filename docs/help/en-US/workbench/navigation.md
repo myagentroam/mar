@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -31,7 +31,7 @@ On mobile, use **Work** in the top bar to open the same resource tree. Selecting
 
 Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme and Material file icons, with light/dark color themes and Seti/Material icon themes available. Changes apply immediately and are saved only in the current browser; valid saved choices are not overridden by the defaults. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. Node bundles tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
 
-The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right blue dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
+The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right green dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
 
 ## Themes
 
@@ -73,7 +73,7 @@ Open **Settings → Usage statistics** to view Agent usage for the current accou
 
 Custom date ranges can span up to 90 days and may include future dates, such as the rest of the current month, or lie entirely in the future. Statistics include only data recorded by the current refresh; future periods have no data.
 
-The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging, sorting, or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, scrolling to the bottom loads more; you can also select **Load more** to append the next batch. Column sorting applies to the current desktop page or the already loaded mobile records. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes. The last refresh time does not mean every Node has finished syncing.
+The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging, sorting, or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, more records load automatically near the bottom; if loading fails, retry in place. Column sorting applies to the current desktop page or the already loaded mobile records. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes. The last refresh time does not mean every Node has finished syncing.
 
 Input includes cache reads and writes; output includes identifiable reasoning tokens. Cache and reasoning details are not added to the total again. Main and subagent conversation requests, compaction, prediction, and title generation are recorded in their respective categories rather than mixed into Conversation. Failed or cancelled requests retain usage already reported by the provider. Missing token fields are recorded and displayed as 0. Total tokens are input plus output; later usage updates revise the same record.
 

@@ -97,6 +97,9 @@ export const filePreviewEnUS = {
     files: 'Files',
     navigationResults: 'Navigation results',
     preparingNavigation: 'Preparing code navigation…',
+    navigationLimited:
+      'The symbol index has reached its size limit. Navigation results may be incomplete.',
+    navigationUnavailable: 'Symbol indexing is unavailable on this Node.',
     noDefinition: 'No definitions or references found.'
   },
   filePreviewContext: {

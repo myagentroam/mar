@@ -106,7 +106,10 @@ import { SessionScheduleService } from './session/session-schedule-service.js';
 import { ScheduledSessionCoordinator } from './service/scheduled-session-coordinator.js';
 import { ScheduledSessionStore } from './service/scheduled-session-store.js';
 import { RunAuthorizationControl } from './service/run-authorization-control.js';
-import { PlannedRestartHandoff } from './service/planned-restart-handoff.js';
+import {
+  PlannedRestartHandoff,
+  plannedRestartCaptureDiagnostic
+} from './service/planned-restart-handoff.js';
 import { NodeUpgradeCredentialControl } from './service/node-upgrade-credential-control.js';
 import { RestartSessionRestorer } from './service/restart-session-restorer.js';
 import { ScheduleMcpBridge } from './service/schedule-mcp-bridge.js';
@@ -271,7 +274,8 @@ export class NodeConnector {
       diagnose: (stage, error) =>
         nodeLog('node.shutdown.failed', {
           stage,
-          errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED')
+          errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED'),
+          ...(stage === 'capture' ? plannedRestartCaptureDiagnostic(error) : undefined)
         })
     }
   );

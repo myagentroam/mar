@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 ---
 
 # Configure and Use MAR Agent
@@ -133,7 +133,7 @@ Within the same authorized Node and Workspace, messaging, explicit waits, Goals,
 
 Unread public child messages and new terminal results are delivered automatically before the parent's next normal model request, including direct children created through the native Extension API. The parent need not repeatedly use message waits to check progress. Delivery does not wake an idle parent or postpone a normal final answer: join results required for delivery before finishing, and use `agent_wait` when genuinely blocked. Automatic delivery and model waits share their observation position, so subsequent waits do not repeat already delivered message bodies or terminal evidence. Child content is context to verify, not new user instructions or authorization.
 
-For Node's native `agent_send`, messages with text or images default to `REPLACE_CURRENT` (steer) when `deliveryIntent` is omitted. Explicit `SEND` retains its existing semantics; Goal-only updates and approval decisions are unaffected, and public message API and CLI defaults remain unchanged. Other Runners use `marctl agents send <id> --steer -m <text>`. Choose `QUEUE` or `--queue` only for deliberately deferred input: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
+Node's native `agent_send` accepts a `delivery` parameter of `STEER` or `QUEUE`. For messages with text or images, omitting it defaults to `STEER`; Goal-only updates and approval decisions are unaffected, and public message API and CLI defaults remain unchanged. Other Runners use `marctl agents send <id> --steer -m <text>`. Choose `QUEUE` or `--queue` only for deliberately deferred input: it is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
 
 Native `agent_list` accepts only `scope`, an optional title fragment `query`, and `limit`. Omit `scope` or choose `tree` to list the current session's containing collaboration tree, including registered, authorized roots, ancestors, peers, and descendants; idle sessions and sessions with completed executions remain visible. Choose `active` for running or sleeping sessions in the current Workspace. Recent conversations, enabled Goals, and nonempty queues do not imply activity. Reuse known session IDs directly; titles do not automatically select or route to a target.
 

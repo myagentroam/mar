@@ -77,13 +77,12 @@ const emit = defineEmits<{
   gap: 0.35rem;
   border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-chrome);
-  padding: 0 42px 0 4px;
+  padding: 0 64px 0 4px;
 }
 
 .workbench-header.workspace-tabs-active {
   gap: 0;
   padding-left: 0;
-  padding-right: 110px;
 }
 
 .workbench-tree-toggle {

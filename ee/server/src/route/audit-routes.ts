@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AuditService } from '../audit/audit-service.js';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import { databaseError, protectedAdmin, sendError } from '../util/http-request.js';
+import { managementPageQuery } from '@myagentroam/server-core/management-pagination';
 
 export function registerAuditRoutes(input: {
   readonly app: FastifyInstance;
@@ -14,14 +15,20 @@ export function registerAuditRoutes(input: {
   }>('/api/audit-events', async (request, reply) => {
     const actor = protectedAdmin(database, request, reply);
     if (actor === undefined) return;
-    const limit = request.query.limit === undefined ? undefined : Number(request.query.limit);
-    const page = request.query.page === undefined ? undefined : Number(request.query.page);
+    let pagination;
+    try {
+      pagination = managementPageQuery(request.query) ?? { page: 1, limit: 20 };
+    } catch {
+      return sendError(reply, 400, 'AUDIT_QUERY_INVALID');
+    }
     const from = request.query.from === undefined ? undefined : Number(request.query.from);
     const to = request.query.to === undefined ? undefined : Number(request.query.to);
     if (
-      (limit !== undefined && !Number.isSafeInteger(limit)) ||
-      (page !== undefined && (!Number.isSafeInteger(page) || page < 1)) ||
-      (page !== undefined && request.query.cursor !== undefined) ||
+      request.query.cursor !== undefined ||
+      (request.query.from !== undefined &&
+        (typeof request.query.from !== 'string' || !/^\d+$/u.test(request.query.from))) ||
+      (request.query.to !== undefined &&
+        (typeof request.query.to !== 'string' || !/^\d+$/u.test(request.query.to))) ||
       (from !== undefined && (!Number.isSafeInteger(from) || from < 0)) ||
       (to !== undefined && (!Number.isSafeInteger(to) || to < 0)) ||
       (from !== undefined && to !== undefined && from > to)
@@ -30,9 +37,7 @@ export function registerAuditRoutes(input: {
     try {
       return reply.send(
         await audits.query(actor.userId, {
-          ...(request.query.cursor === undefined ? {} : { cursor: request.query.cursor }),
-          ...(limit === undefined ? {} : { limit }),
-          ...(page === undefined ? {} : { page }),
+          ...pagination,
           ...(from === undefined ? {} : { from }),
           ...(to === undefined ? {} : { to })
         })

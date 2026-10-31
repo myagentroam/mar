@@ -93,6 +93,58 @@ const legacyPlannedRestartSchema = plannedRestartSchema.extend({
 export type RestartMessage = z.infer<typeof messageSchema>;
 export type RestartSession = z.infer<typeof sessionSchema>;
 export type PlannedRestart = z.infer<typeof plannedRestartSchema>;
+interface CaptureDiagnostic {
+  readonly reason: 'session_not_ready' | 'goal_schema_invalid' | 'snapshot_schema_invalid';
+  readonly issues?: readonly { readonly code: string; readonly path: string }[];
+  readonly issuesTruncated?: boolean;
+}
+
+// Only this producer can associate log-safe metadata with an original failure.
+const captureDiagnostics = new WeakMap<Error, CaptureDiagnostic>();
+const captureFields = new Set([
+  ...Object.keys(plannedRestartSchema.shape),
+  ...Object.keys(sessionSchema.shape),
+  ...Object.keys(sessionSchema.shape.session.shape),
+  ...Object.keys(goalSchema.shape),
+  ...Object.keys(goalSchema.shape.goal.shape),
+  ...Object.keys(messageSchema.shape),
+  ...Object.keys(attachmentSchema.shape)
+]);
+
+export function plannedRestartCaptureDiagnostic(error: unknown): CaptureDiagnostic | undefined {
+  return error instanceof Error ? captureDiagnostics.get(error) : undefined;
+}
+
+function parseCapture<T extends z.ZodType>(
+  schema: T,
+  input: unknown,
+  reason: 'goal_schema_invalid' | 'snapshot_schema_invalid'
+): z.output<T> {
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+  captureDiagnostics.set(result.error, {
+    reason,
+    issues: result.error.issues.slice(0, 12).map((issue) => ({
+      code: issue.code,
+      // Only schema-owned fields and array offsets, never unknown keys or input values.
+      path: issue.path
+        .slice(0, 8)
+        .map((part) =>
+          typeof part === 'number'
+            ? `[${part}]`
+            : captureFields.has(String(part))
+              ? String(part)
+              : '*'
+        )
+        .join('.')
+        .replaceAll('.[', '[')
+        .slice(0, 160)
+    })),
+    issuesTruncated: result.error.issues.length > 12
+  });
+  throw result.error;
+}
+
 export const RESTART_NOTICE =
   'The previous execution was interrupted by a system restart. Check the session history and current workspace, then continue unfinished work. Verify completed or uncertain actions before proceeding; do not blindly repeat actions with external side effects.';
 
@@ -252,7 +304,13 @@ export class PlannedRestartHandoff {
             );
       if (current === undefined && items.length === 0 && goal === undefined && !awaitingGoal)
         continue;
-      if (session.externalSessionId === null) throw new Error('RESTART_SESSION_NOT_READY');
+      if (session.externalSessionId === null) {
+        const error = Object.assign(new Error('RESTART_SESSION_NOT_READY'), {
+          code: 'RESTART_SESSION_NOT_READY'
+        });
+        captureDiagnostics.set(error, { reason: 'session_not_ready' });
+        throw error;
+      }
       const ownerUserId =
         active?.initiatedByUserId ??
         items[0]?.initiatedByUserId ??
@@ -275,18 +333,24 @@ export class PlannedRestartHandoff {
         ...(notificationSource?.suppressNotifications === true
           ? { suppressNotifications: true }
           : {}),
-        ...(goal === undefined ? {} : { goal: goalSchema.parse(goal) }),
+        ...(goal === undefined
+          ? {}
+          : { goal: parseCapture(goalSchema, goal, 'goal_schema_invalid') }),
         ...(current === undefined ? {} : { current }),
         queue: items
       });
     }
-    return plannedRestartSchema.parse({
-      schemaVersion: 2,
-      id: randomUUID(),
-      ...this.options.identity(),
-      createdAt: Date.now(),
-      sessions
-    });
+    return parseCapture(
+      plannedRestartSchema,
+      {
+        schemaVersion: 2,
+        id: randomUUID(),
+        ...this.options.identity(),
+        createdAt: Date.now(),
+        sessions
+      },
+      'snapshot_schema_invalid'
+    );
   }
 
   async publish(snapshot: PlannedRestart): Promise<void> {

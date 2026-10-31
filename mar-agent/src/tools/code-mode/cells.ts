@@ -188,6 +188,7 @@ function options(value: unknown, wait: boolean) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Code Exec options must be an object.');
   const input = value as Record<string, unknown>;
+  const action = wait && input.action === null ? undefined : input.action;
   const yieldMs =
     input.yieldMs ?? (wait ? limits.codeDefaultWaitYieldMs : limits.codeDefaultYieldMs);
   if (
@@ -195,13 +196,13 @@ function options(value: unknown, wait: boolean) {
     Number(yieldMs) < 0 ||
     Number(yieldMs) > (wait ? limits.codeMaxWaitYieldMs : limits.codeMaxYieldMs) ||
     (wait && (typeof input.cellId !== 'string' || !input.cellId)) ||
-    (input.action !== undefined && input.action !== 'poll' && input.action !== 'cancel')
+    (action !== undefined && action !== 'poll' && action !== 'cancel')
   )
     throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Code Exec options are out of range.');
   return {
     cellId: input.cellId as string,
     yieldMs: Number(yieldMs),
-    action: input.action ?? 'poll'
+    action: action ?? 'poll'
   };
 }
 

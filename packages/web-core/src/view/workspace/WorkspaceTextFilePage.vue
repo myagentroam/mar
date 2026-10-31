@@ -33,6 +33,7 @@ import {
 } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import type { EditorSymbol, FileNavigationRequest } from './CodeFileEditor.vue';
+import type { WorkspaceNavigationNotice } from '../../model/workspace-navigation.js';
 import InlineFindBar from './InlineFindBar.vue';
 import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
 import WorkspacePreviewContextMenu from './WorkspacePreviewContextMenu.vue';
@@ -92,6 +93,7 @@ const props = withDefaults(
     readonly navigationLoading?: boolean;
     readonly navigationTargets?: readonly NavigationTarget[];
     readonly navigationNoDefinition?: boolean;
+    readonly navigationNotice?: WorkspaceNavigationNotice | undefined;
     readonly editorIdentity?: string | number | undefined;
     readonly tabIdentity?: string | undefined;
     readonly initialDirtyDraft?: DirtyTextDraft | undefined;
@@ -932,7 +934,12 @@ defineExpose({
       </div>
     </div>
     <div
-      v-if="navigationLoading || navigationNoDefinition || (navigationTargets?.length ?? 0) > 0"
+      v-if="
+        navigationLoading ||
+        navigationNotice ||
+        navigationNoDefinition ||
+        (navigationTargets?.length ?? 0) > 0
+      "
       ref="navigationDropdown"
       class="file-symbol-dropdown file-navigation-dropdown"
       @pointerdown.stop
@@ -942,10 +949,19 @@ defineExpose({
         {{ translate('fileEditor.preparingNavigation') }}
       </p>
       <template v-else>
-        <p v-if="navigationNoDefinition" class="file-navigation-loading">
+        <p v-if="navigationNotice" class="file-navigation-loading" role="status">
+          {{
+            translate(
+              navigationNotice === 'LIMITED'
+                ? 'fileEditor.navigationLimited'
+                : 'fileEditor.navigationUnavailable'
+            )
+          }}
+        </p>
+        <p v-else-if="navigationNoDefinition" class="file-navigation-loading">
           {{ translate('fileEditor.noDefinition') }}
         </p>
-        <template v-else>
+        <template v-if="(navigationTargets?.length ?? 0) > 0">
           <p class="file-navigation-title">{{ translate('fileEditor.navigationResults') }}</p>
           <section v-if="definitionTargets.length > 0" class="file-navigation-group is-definition">
             <p class="file-navigation-group-title">{{ translate('fileEditor.definitions') }}</p>

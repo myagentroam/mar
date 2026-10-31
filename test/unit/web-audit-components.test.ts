@@ -48,6 +48,7 @@ const events = modes.map(([inputMode], index) => ({
   hasConversationPayload: true
 }));
 
+let intersection: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
 function browser(mobile: boolean) {
   const location = new URL('https://fixture.test/console');
   vi.stubGlobal('window', {
@@ -60,6 +61,9 @@ function browser(mobile: boolean) {
   vi.stubGlobal(
     'IntersectionObserver',
     class {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        intersection = callback;
+      }
       observe() {}
       disconnect() {}
     }
@@ -70,7 +74,14 @@ function detailFixture() {
   browser(false);
   const pending: { resolve: (value: unknown) => void; reject: (error: Error) => void }[] = [];
   const request = vi.fn((path: string) => {
-    if (path.includes('?')) return Promise.resolve({ events, total: events.length, page: 1 });
+    if (path.includes('?'))
+      return Promise.resolve({
+        events,
+        total: events.length,
+        page: 1,
+        pageSize: 20,
+        hasMore: false
+      });
     return new Promise((resolve, reject) => pending.push({ resolve, reject }));
   });
   const view = renderComponent(Audit, { request });
@@ -214,7 +225,8 @@ describe('Audit management behavior', () => {
       browser(false);
       i18n.global.locale.value = locale;
       const request = vi.fn(async (path: string, _init?: RequestInit) => {
-        if (path.startsWith('/api/audit-events?')) return { events, total: 47, page: 3 };
+        if (path.startsWith('/api/audit-events?'))
+          return { events, total: 47, page: 3, pageSize: 20, hasMore: false };
         const event = events.find((entry) => path.endsWith(encodeURIComponent(entry.id)))!;
         return {
           ...event,
@@ -266,27 +278,31 @@ describe('Audit management behavior', () => {
     }
   );
 
-  it('appends mobile cursor pages without duplicate events', async () => {
+  it('appends mobile pages at the visible boundary without duplicate events', async () => {
     browser(true);
     const firstPage = Array.from({ length: 20 }, (_, index) => ({
       ...events[0],
       id: `event-${index}`
     }));
     const request = vi.fn(async (path: string) =>
-      path.includes('cursor=next')
-        ? { events: [firstPage[0], { ...events[1], id: 'next-event' }] }
-        : { events: firstPage, total: 21, page: 1, nextCursor: 'next' }
+      path.includes('page=2')
+        ? {
+            events: [firstPage[0], { ...events[1], id: 'next-event' }],
+            total: 21,
+            page: 2,
+            pageSize: 20,
+            hasMore: false
+          }
+        : { events: firstPage, total: 21, page: 1, pageSize: 20, hasMore: true }
     );
     const view = renderComponent(Audit, { request });
     try {
       await flushComponent();
       expect(view.findAll('ElPagination')).toHaveLength(0);
-      const loadMore = view
-        .findAll('ElButton')
-        .find((button) => textContent(button) === i18n.global.t('common.loadMore'))!;
-      await trigger(loadMore, 'onClick');
+      expect(intersection).toBeDefined();
+      intersection!([{ isIntersecting: true }]);
       await flushComponent();
-      expect(request.mock.calls.at(-1)![0]).toContain('cursor=next');
+      expect(request.mock.calls.at(-1)![0]).toContain('page=2');
       expect(view.findAll('ElTable')[0]!.props.data).toEqual([
         ...firstPage,
         { ...events[1], id: 'next-event' }

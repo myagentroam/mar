@@ -7,6 +7,7 @@ import {
 import type { ScopedHttpService } from './scoped-http-service.js';
 import type {
   FileNavigationRequest,
+  WorkspaceNavigationNotice,
   WorkspaceNavigationTarget
 } from '../model/workspace-navigation.js';
 
@@ -21,8 +22,18 @@ function createPageState() {
   return {
     navigationLoading: ref(false),
     navigationTargets: shallowRef<readonly WorkspaceNavigationTarget[]>([]),
-    navigationNoDefinition: ref(false)
+    navigationNoDefinition: ref(false),
+    navigationNotice: ref<WorkspaceNavigationNotice>()
   };
+}
+
+function navigationNotice(
+  definition: WorkspaceSymbolDefinition
+): WorkspaceNavigationNotice | undefined {
+  if (definition.state === 'UNAVAILABLE') return 'UNAVAILABLE';
+  if (definition.state === 'FAILED' && definition.failureCode === 'SYMBOL_INDEX_LIMIT_EXCEEDED')
+    return 'LIMITED';
+  return;
 }
 
 export function createWorkspaceCodeNavigationService(options: {
@@ -44,7 +55,8 @@ export function createWorkspaceCodeNavigationService(options: {
     return {
       navigationLoading: readonly(state.navigationLoading),
       navigationTargets: readonly(state.navigationTargets),
-      navigationNoDefinition: readonly(state.navigationNoDefinition)
+      navigationNoDefinition: readonly(state.navigationNoDefinition),
+      navigationNotice: readonly(state.navigationNotice)
     };
   }
 
@@ -63,6 +75,7 @@ export function createWorkspaceCodeNavigationService(options: {
     state.navigationLoading.value = false;
     state.navigationTargets.value = [];
     state.navigationNoDefinition.value = false;
+    state.navigationNotice.value = undefined;
   }
 
   function release(pageId: number): void {
@@ -106,9 +119,8 @@ export function createWorkspaceCodeNavigationService(options: {
         await wait();
         continue;
       }
-      if (parsed.data.state === 'FAILED')
+      if (parsed.data.state === 'FAILED' && navigationNotice(parsed.data) === undefined)
         throw new Error(parsed.data.failureCode ?? 'SYMBOL_INDEX_BUILD_FAILED');
-      if (parsed.data.state === 'UNAVAILABLE') throw new Error('SYMBOL_INDEX_UNAVAILABLE');
       return parsed.data;
     }
     if (current()) throw new Error('SYMBOL_INDEX_BUILD_FAILED');
@@ -157,43 +169,44 @@ export function createWorkspaceCodeNavigationService(options: {
         current
       );
       if (definition === undefined || !current()) return;
+      const notice = navigationNotice(definition);
+      if (notice !== undefined) {
+        state.navigationNotice.value = notice;
+        return;
+      }
       if (symbol !== undefined) {
         const definitions = definition.targets.map((target) => ({
           ...target,
           source: 'DEFINITION' as const
         }));
         state.navigationTargets.value = definitions;
-        state.navigationLoading.value = false;
+        state.navigationLoading.value = definitions.length === 0;
         // References supplement the accepted declarations without blocking their presentation.
-        void (async () => {
+        const loadReferences = async () => {
           try {
-            const result = await symbolRequest(symbol, '1');
-            if (!current()) return;
-            const parsed = workspaceSymbolDefinitionSchema.safeParse(
-              (result as { readonly definition?: unknown } | null)?.definition
-            );
-            if (!parsed.success) return;
-            if (parsed.data.state !== 'READY' && parsed.data.state !== 'STALE') {
-              state.navigationNoDefinition.value = definitions.length === 0;
-              return;
-            }
+            const result = await query(() => symbolRequest(symbol, '1'), current);
+            if (result === undefined || !current()) return;
+            state.navigationNotice.value = navigationNotice(result);
+            if (state.navigationNotice.value !== undefined) return;
             const targets =
-              parsed.data.targets.length === 0
+              result.targets.length === 0
                 ? definitions
-                : parsed.data.targets.map((target) => ({
+                : result.targets.map((target) => ({
                     ...target,
                     source: 'DEFINITION' as const
                   }));
-            const references = parsed.data.references.map((target) => ({
+            const references = result.references.map((target) => ({
               ...target,
               source: 'REFERENCE' as const
             }));
             state.navigationTargets.value = [...targets, ...references];
             state.navigationNoDefinition.value = targets.length === 0 && references.length === 0;
-          } catch {
-            if (current() && definitions.length === 0) state.navigationNoDefinition.value = true;
+          } catch (error) {
+            if (current()) options.onFailure(error);
           }
-        })();
+        };
+        if (definitions.length === 0) await loadReferences();
+        else void loadReferences();
       } else {
         const targets = definition.paths.map((target) => ({ ...target, source: 'FILE' as const }));
         if (targets.length === 0) state.navigationNoDefinition.value = true;

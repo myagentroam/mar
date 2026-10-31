@@ -1,33 +1,47 @@
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
 import type {
   PersonalUsageOverview,
   PersonalUsageQuery,
   PersonalUsageRecords
 } from '@myagentroam/protocol';
+import { createManagementPageService } from './management-page-service.js';
 
 const REFRESH_INTERVAL = 60_000;
 
 /** Owns request cancellation, paging and the short-lived personal usage projection. */
 export class UsageStatisticsService {
+  readonly pagination = createManagementPageService<PersonalUsageRecords['records'][number]>({
+    context: () => JSON.stringify(this.recordsQuery ?? null),
+    key: recordIdentity,
+    reloadOnViewportChange: false,
+    read: async (page) => {
+      if (!this.recordsQuery) throw new Error('USAGE_QUERY_INVALID');
+      this.begin();
+      const result = await this.request<PersonalUsageRecords>(
+        this.path('records', this.recordsQuery, page),
+        { signal: this.abort!.signal, cache: 'no-store' }
+      );
+      return usagePage(result, page);
+    }
+  });
   readonly state = reactive({
     loading: false,
-    loadingPage: false,
+    loadingPage: computed(() => this.pagination.loading.value),
     refreshing: false,
     failed: false,
     refreshFailed: false,
     lastRefreshedAt: null as number | null,
     recordsStale: false,
-    page: 1,
-    total: '0',
+    page: computed(() => this.pagination.page.value),
+    total: computed(() => String(this.pagination.total.value)),
     overview: undefined as PersonalUsageOverview | undefined,
-    records: [] as PersonalUsageRecords['records'],
+    records: computed(() => this.pagination.items.value),
     availableModels: [] as PersonalUsageOverview['models']
   });
   private generation = 0;
   private abort: AbortController | undefined;
   private query: PersonalUsageQuery | undefined;
   private recordsQuery: PersonalUsageQuery | undefined;
-  private pageFailed = false;
   private rollingWindow: number | undefined;
   private interacting = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -43,6 +57,7 @@ export class UsageStatisticsService {
     query: PersonalUsageQuery,
     options: { reset?: boolean; rolling?: boolean } = {}
   ): Promise<boolean> {
+    this.pagination.invalidate(options.reset !== false);
     const generation = this.begin();
     this.query = { ...query };
     this.rollingWindow = options.rolling ? query.to - query.from : undefined;
@@ -51,12 +66,8 @@ export class UsageStatisticsService {
     if (options.reset !== false) {
       this.interacting = false;
       this.state.overview = undefined;
-      this.state.records = [];
-      this.state.total = '0';
       this.state.lastRefreshedAt = null;
       this.state.recordsStale = false;
-      this.state.page = 1;
-      this.pageFailed = false;
       this.recordsQuery = undefined;
     }
     return await this.readOverview(query, generation, false);
@@ -77,7 +88,12 @@ export class UsageStatisticsService {
   }
 
   private get preserveRecords(): boolean {
-    return this.state.page > 1 || this.interacting || this.state.recordsStale;
+    return (
+      this.state.page > 1 ||
+      this.interacting ||
+      this.state.recordsStale ||
+      this.pagination.failure.value !== undefined
+    );
   }
 
   private async readOverview(
@@ -95,10 +111,12 @@ export class UsageStatisticsService {
           : this.request<PersonalUsageRecords>(this.path('records', query), init)
       ]);
       if (generation !== this.generation) return false;
+      const nextPage =
+        records && (!automatic || !this.preserveRecords) ? usagePage(records, 1) : undefined;
       this.state.overview = overview;
-      if (records && (!automatic || !this.preserveRecords)) {
-        this.applyPage(records, 1);
+      if (nextPage) {
         this.recordsQuery = { ...query };
+        this.pagination.replace(nextPage);
         this.state.recordsStale = false;
       } else {
         this.state.recordsStale = true;
@@ -130,61 +148,27 @@ export class UsageStatisticsService {
   }
 
   async goToPage(page: number): Promise<void> {
-    await this.readPage(page, false);
-  }
-
-  async loadMore(automatic = false): Promise<void> {
-    if (automatic && this.pageFailed) return;
-    await this.readPage(this.state.page + 1, true);
-  }
-
-  private async readPage(page: number, append: boolean): Promise<void> {
     if (
       !this.recordsQuery ||
       this.state.loading ||
       this.state.loadingPage ||
-      !Number.isInteger(page) ||
-      page === this.state.page ||
       page < 1 ||
       page > Math.ceil(Number(this.state.total) / 20)
     )
       return;
-    const generation = this.begin();
-    this.pageFailed = false;
-    this.state.loadingPage = true;
-    try {
-      const records = await this.request<PersonalUsageRecords>(
-        this.path('records', this.recordsQuery, page),
-        { signal: this.abort!.signal, cache: 'no-store' }
-      );
-      if (generation !== this.generation) return;
-      this.applyPage(records, page, append);
-    } catch (error) {
-      if (generation === this.generation) {
-        this.pageFailed = true;
-        this.reportError(error);
-      }
-    } finally {
-      if (generation === this.generation) {
-        this.state.loadingPage = false;
-        this.schedule();
-      }
-    }
+    await this.pagination.setPage(page);
+    this.schedule();
   }
 
-  private applyPage(page: PersonalUsageRecords, number: number, append = false): void {
-    const identities = new Set<string>();
-    this.state.records = (append ? [...this.state.records, ...page.records] : page.records).filter(
-      (record) => {
-        const identity = recordIdentity(record);
-        if (identities.has(identity)) return false;
-        identities.add(identity);
-        return true;
-      }
-    );
-    this.state.total = page.total;
-    this.state.page = page.page ?? number;
-    this.pageFailed = false;
+  async loadMore(automatic = false): Promise<void> {
+    if (!this.recordsQuery || this.state.loading) return;
+    await this.pagination.loadMore(automatic);
+    this.schedule();
+  }
+
+  async retryPage(): Promise<void> {
+    await this.pagination.retry();
+    this.schedule();
   }
 
   private begin(): number {
@@ -192,7 +176,6 @@ export class UsageStatisticsService {
     this.abort?.abort();
     this.abort = new AbortController();
     this.state.loading = false;
-    this.state.loadingPage = false;
     this.state.refreshing = false;
     return ++this.generation;
   }
@@ -245,13 +228,10 @@ export class UsageStatisticsService {
     this.abort?.abort();
     this.query = undefined;
     this.recordsQuery = undefined;
-    this.pageFailed = false;
+    this.pagination.dispose();
     this.state.loading = false;
-    this.state.loadingPage = false;
     this.state.refreshing = false;
     this.state.overview = undefined;
-    this.state.records = [];
-    this.state.total = '0';
     this.state.availableModels = [];
   }
   private path(kind: string, query: PersonalUsageQuery, page = 1): string {
@@ -264,6 +244,21 @@ export class UsageStatisticsService {
   private isUnfiltered(query: PersonalUsageQuery): boolean {
     return query.runner === undefined && query.model === undefined && query.mode === undefined;
   }
+}
+
+function usagePage(result: PersonalUsageRecords, requestedPage: number) {
+  if (!/^(0|[1-9]\d*)$/u.test(result.total)) throw new Error('USAGE_PAGE_RESPONSE_INVALID');
+  const total = Number(result.total);
+  const page = result.page ?? requestedPage;
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(page) || page < 1)
+    throw new Error('USAGE_PAGE_RESPONSE_INVALID');
+  return {
+    items: result.records,
+    page,
+    pageSize: 20,
+    total,
+    hasMore: BigInt(page) * 20n < BigInt(result.total)
+  };
 }
 
 function recordIdentity(record: { recordId: string; ledgerId?: string }): string {

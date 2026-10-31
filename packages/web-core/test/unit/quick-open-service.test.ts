@@ -62,6 +62,28 @@ afterEach(() => {
 });
 
 describe('Quick Open progressive queries', () => {
+  it.each([false, true])(
+    'treats an index limit as a notice (references=%s)',
+    async (references) => {
+      const { service, request } = fixture();
+      request.mockImplementation(async (path) => ({
+        definition:
+          references && path.includes('references=0')
+            ? ready
+            : { ...ready, state: 'FAILED', failureCode: 'SYMBOL_INDEX_LIMIT_EXCEEDED', targets: [] }
+      }));
+      service.scheduleSearch();
+      await vi.advanceTimersByTimeAsync(180);
+      const status = references ? service.referenceStatus : service.symbolStatus;
+      expect(status.phase).toBe('LIMITED');
+      expect(status.error).toBeUndefined();
+      expect(service.symbols.value.map((entry) => entry.source)).toEqual(
+        references ? ['DEFINITION'] : []
+      );
+      expect(request).toHaveBeenCalledTimes(references ? 2 : 1);
+    }
+  );
+
   it('shows definitions before a slow reference query and keeps them on reference failure', async () => {
     const { service, request } = fixture();
     let failReferences!: (error: unknown) => void;
