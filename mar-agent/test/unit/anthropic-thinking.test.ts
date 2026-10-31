@@ -364,6 +364,19 @@ describe('Anthropic native thinking context', () => {
     }
   });
 
+  it.each([signed, redacted])(
+    'does not emit an unfinished $type block as a native context item',
+    async (block) => {
+      const response = events([block]).filter(
+        (event) => (event as { type: string }).type !== 'content_block_stop'
+      );
+      const { model } = await serverFor([response]);
+      const result = await collect(new AnthropicMessagesAdapter(model));
+      expect(result.filter((event) => event.type === 'response.item')).toEqual([]);
+      expect(result.filter((event) => event.type === 'reasoning.completed')).toEqual([]);
+    }
+  );
+
   it('assembles signature deltas and preserves empty and redacted blocks without public leakage', async () => {
     const response = events([signed, redacted]);
     response.splice(

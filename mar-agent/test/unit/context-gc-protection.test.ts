@@ -27,6 +27,38 @@ function fixture() {
 }
 
 describe('GC protection evidence', () => {
+  it.each([
+    ['OPENAI_RESPONSES', { type: 'reasoning', id: 'native' }],
+    ['ANTHROPIC_MESSAGES', { type: 'thinking' }],
+    ['ANTHROPIC_MESSAGES', { type: 'redacted_thinking' }]
+  ] as const)(
+    'counts persisted complete %s %s items without inspecting their payload',
+    (provider, item) => {
+      const f = fixture();
+      f.attempt('STARTED');
+      f.item(provider, {
+        ...item,
+        get thinking() {
+          throw new Error('GC must not inspect thinking content');
+        },
+        get signature() {
+          throw new Error('GC must not inspect signatures');
+        },
+        get data() {
+          throw new Error('GC must not inspect redacted content');
+        },
+        get encrypted_content() {
+          throw new Error('GC must not inspect encrypted content');
+        }
+      });
+      f.attempt('SUCCEEDED');
+      expect(buildContextGcProtection(f.records, 'm', 10000).after(0)).toEqual({
+        rollouts: 1,
+        thinking: 1
+      });
+    }
+  );
+
   it('does not let concurrent compaction replace or finish an execution attempt', () => {
     const f = fixture();
     const anchor = f.add('model.context', { role: 'tool', content: 'target' });
@@ -87,13 +119,7 @@ describe('GC protection evidence', () => {
           providerModelId: 'm',
           item: { type: 'thinking', thinking: 'private', signature: `s${i}` }
         });
-      if (i === 2)
-        add('model.context', {
-          role: 'provider',
-          provider: 'ANTHROPIC_MESSAGES',
-          providerModelId: 'm',
-          item: { type: 'thinking', thinking: 'partial' }
-        });
+      if (i === 2) add('reasoning.delta', { text: 'partial' });
       attempt('SUCCEEDED');
     }
     let index = buildContextGcProtection(values, 'm', 10000);
