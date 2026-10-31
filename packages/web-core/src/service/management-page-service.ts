@@ -101,16 +101,19 @@ export function createManagementPageService<T>(input: {
     if (!retrying) failure.value = undefined;
     loading.value = true;
     loadingMore.value = append;
+    let requestPage = nextPage;
+    let requestAppend = append;
     try {
-      let response = await input.read(nextPage);
+      let response = await input.read(requestPage);
       if (current !== generation || key !== input.context() || disposed) return;
-      if (append && response.page <= page.value) {
-        response = await input.read(1);
+      if (requestAppend && response.page <= page.value) {
+        requestPage = 1;
+        requestAppend = false;
+        response = await input.read(requestPage);
         if (current !== generation || key !== input.context() || disposed) return;
-        append = false;
       }
       const identities = new Set<string | number>();
-      items.value = (append ? [...items.value, ...response.items] : response.items).filter(
+      items.value = (requestAppend ? [...items.value, ...response.items] : response.items).filter(
         (item) => {
           const identity = input.key(item);
           if (identities.has(identity)) return false;
@@ -126,7 +129,7 @@ export function createManagementPageService<T>(input: {
         failure.value =
           error instanceof AuthenticationContextChangedError
             ? undefined
-            : { error, page: nextPage, append };
+            : { error, page: requestPage, append: requestAppend };
       }
     } finally {
       if (current === generation && key === input.context() && !disposed) {
