@@ -137,6 +137,106 @@ describe('PWA application update coordination', () => {
     return { reload, makeWorker, active, registration, container, service };
   }
 
+  it('rechecks the current worker when its state changes', async () => {
+    const f = fixture('active');
+    const health = { degraded: false, entry: true };
+    const active = f.makeWorker('active', health);
+    f.registration.active = active as unknown as ServiceWorker;
+    f.container.controller = active as unknown as ServiceWorker;
+
+    await f.service.start();
+    await vi.waitFor(() => expect(f.service.state.value.offline).toBe('ready'));
+    health.entry = false;
+    active.dispatchEvent(new Event('statechange'));
+    await vi.waitFor(() => expect(f.service.state.value.offline).toBe('degraded'));
+    f.service.dispose();
+  });
+
+  it('releases redundant worker observers across successive registrations', async () => {
+    const f = fixture('active');
+    const activeAdd = vi.spyOn(f.active, 'addEventListener');
+    const activeRemove = vi.spyOn(f.active, 'removeEventListener');
+    const settleChecks = async () => {
+      await f.service.checkForUpdate(false);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    };
+    const retire = async (
+      worker: ReturnType<typeof f.makeWorker> & { state: string },
+      add: ReturnType<typeof vi.spyOn>,
+      remove: ReturnType<typeof vi.spyOn>
+    ) => {
+      await settleChecks();
+      const checksBeforeRetirement = f.active.postMessage.mock.calls.length;
+      worker.state = 'redundant';
+      worker.dispatchEvent(new Event('statechange'));
+      await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
+      expect(remove).toHaveBeenCalledWith('statechange', add.mock.calls[0]![1]);
+      await vi.waitFor(() =>
+        expect(f.active.postMessage.mock.calls.length).toBeGreaterThan(checksBeforeRetirement)
+      );
+      await settleChecks();
+
+      const checksAfterRetirement = f.active.postMessage.mock.calls.length;
+      worker.dispatchEvent(new Event('statechange'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(f.active.postMessage).toHaveBeenCalledTimes(checksAfterRetirement);
+
+      f.registration.dispatchEvent(new Event('updatefound'));
+      await settleChecks();
+    };
+
+    await f.service.start();
+    await vi.waitFor(() => expect(f.service.state.value.checked).toBe(true));
+    expect(activeAdd).toHaveBeenCalledOnce();
+
+    const first = Object.assign(f.makeWorker('first'), { state: 'installing' });
+    const firstAdd = vi.spyOn(first, 'addEventListener');
+    const firstRemove = vi.spyOn(first, 'removeEventListener');
+    f.registration.installing = first as unknown as ServiceWorker;
+    f.registration.dispatchEvent(new Event('updatefound'));
+    await vi.waitFor(() => expect(firstAdd).toHaveBeenCalledOnce());
+    f.registration.dispatchEvent(new Event('updatefound'));
+    expect(firstAdd).toHaveBeenCalledOnce();
+    await retire(first, firstAdd, firstRemove);
+    expect(firstAdd).toHaveBeenCalledOnce();
+
+    const second = Object.assign(f.makeWorker('second'), { state: 'installing' });
+    const secondAdd = vi.spyOn(second, 'addEventListener');
+    const secondRemove = vi.spyOn(second, 'removeEventListener');
+    f.registration.installing = second as unknown as ServiceWorker;
+    f.registration.dispatchEvent(new Event('updatefound'));
+    await vi.waitFor(() => expect(secondAdd).toHaveBeenCalledOnce());
+    f.registration.dispatchEvent(new Event('updatefound'));
+    expect(secondAdd).toHaveBeenCalledOnce();
+    await retire(second, secondAdd, secondRemove);
+    expect(secondAdd).toHaveBeenCalledOnce();
+
+    const alreadyRedundant = Object.assign(f.makeWorker('already-redundant'), {
+      state: 'redundant'
+    });
+    const alreadyRedundantAdd = vi.spyOn(alreadyRedundant, 'addEventListener');
+    f.registration.installing = alreadyRedundant as unknown as ServiceWorker;
+    f.registration.dispatchEvent(new Event('updatefound'));
+    expect(alreadyRedundantAdd).not.toHaveBeenCalled();
+
+    const remaining = f.makeWorker('remaining');
+    const remainingAdd = vi.spyOn(remaining, 'addEventListener');
+    const remainingRemove = vi.spyOn(remaining, 'removeEventListener');
+    f.registration.waiting = remaining as unknown as ServiceWorker;
+    f.registration.dispatchEvent(new Event('updatefound'));
+    await vi.waitFor(() => expect(remainingAdd).toHaveBeenCalledOnce());
+    f.registration.dispatchEvent(new Event('updatefound'));
+    expect(remainingAdd).toHaveBeenCalledOnce();
+
+    f.service.dispose();
+    expect(activeRemove).toHaveBeenCalledOnce();
+    expect(activeRemove).toHaveBeenCalledWith('statechange', activeAdd.mock.calls[0]![1]);
+    expect(firstRemove).toHaveBeenCalledOnce();
+    expect(secondRemove).toHaveBeenCalledOnce();
+    expect(remainingRemove).toHaveBeenCalledOnce();
+    expect(remainingRemove).toHaveBeenCalledWith('statechange', remainingAdd.mock.calls[0]![1]);
+  });
+
   it('requires the matching actual controller before declaring this page offline ready', async () => {
     const f = fixture('active');
     f.container.controller = null;
