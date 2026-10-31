@@ -78,7 +78,7 @@ const networkCommand = z.discriminatedUnion('operation', [
   z
     .object({
       operation: z.literal('stop'),
-      input: z.object({ agentId: id, executionId: id }).strict()
+      input: z.object({ agentId: id }).strict()
     })
     .strict(),
   z

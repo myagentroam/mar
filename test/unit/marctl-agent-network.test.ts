@@ -295,7 +295,7 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
         await h.command('send', h.session.id, '--queue', '-m', 'Old second');
         const executionId = h.node.runtime.currentExecutionId(initialRunId);
         expect(executionId).toBeDefined();
-        await h.command('stop', h.session.id, '--execution', executionId!);
+        await h.command('stop', h.session.id);
         expect(h.node.runtime.activeSessionRun(h.session.id)?.status).toBe('CANCELLING');
         if (explicitResume)
           await h.node.executeNodeOperation('workspace.queue.resume', {
