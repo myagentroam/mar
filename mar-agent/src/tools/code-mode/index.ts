@@ -1,5 +1,4 @@
 import type { ClientToolDefinition } from '../contracts.js';
-import type { SessionModelMessage as ModelMessage } from '../../session/model-request.js';
 import { randomUUID } from 'node:crypto';
 import {
   isToolPermissionFailure,
@@ -15,11 +14,9 @@ import { AgentError, describeAgentError } from '../../error.js';
 import type { LocalProcessExecutor } from '../../process/contracts.js';
 
 import { allowsDirectTool, allowsToolCaller } from '../callers.js';
-import {
-  orderToolDefinitions,
-  stableToolSchema,
-  stableToolDefinition
-} from '../definition-projection.js';
+import { projectProgrammaticTool } from '../../session/code-mode-search-projection.js';
+export { projectCodeModeSearchResult } from '../../session/code-mode-search-projection.js';
+import { orderToolDefinitions, stableToolDefinition } from '../definition-projection.js';
 import { CodeCells, type CellOutput } from './cells.js';
 import type { CodeModeEngineFactory } from './engine.js';
 import { newObservationId } from './observations.js';
@@ -135,16 +132,6 @@ export const codeExecWaitToolDefinition: ClientToolDefinition = {
   parallelSafety: 'safe'
 };
 
-function projectProgrammaticTool(
-  tool: ClientToolDefinition
-): Pick<ClientToolDefinition, 'name' | 'description' | 'inputSchema'> {
-  return {
-    name: tool.name,
-    description: `${allowsDirectTool(tool, true) ? `Call directly or as tools.${tool.name} inside code_exec.` : `Call only as tools.${tool.name} inside code_exec, never as a direct model tool.`}\n${tool.description}`,
-    inputSchema: stableToolSchema(tool.inputSchema)
-  };
-}
-
 /** Deferred definitions travel in search results, not in the stable Code Mode description. */
 export function projectCodeModeTools(
   tools: readonly ClientToolDefinition[],
@@ -177,46 +164,6 @@ export function projectCodeModeTools(
         }
       : tool
   );
-}
-
-/** Preserve native search definitions while providing the same discovery evidence to other protocols. */
-export function projectCodeModeSearchResult(
-  message: ModelMessage,
-  codeModeEnabled: boolean
-): ModelMessage {
-  if (!message.toolSearchTools) return message;
-  if (!codeModeEnabled)
-    return {
-      ...message,
-      toolSearchTools: message.toolSearchTools
-        .filter((tool) => allowsToolCaller(tool, 'direct'))
-        .map(stableToolDefinition)
-    };
-  const tools = message.toolSearchTools.map((tool) => ({
-    ...(allowsToolCaller(tool, 'programmatic')
-      ? {
-          ...projectProgrammaticTool(tool),
-          ...(allowsDirectTool(tool, true)
-            ? { inputMode: tool.inputMode ?? ('json' as const) }
-            : {})
-        }
-      : {
-          name: tool.name,
-          description: tool.description,
-          inputSchema: stableToolSchema(tool.inputSchema),
-          inputMode: tool.inputMode ?? ('json' as const)
-        }),
-    caller: allowsToolCaller(tool, 'programmatic')
-      ? allowsDirectTool(tool, true)
-        ? 'both'
-        : 'programmatic'
-      : 'direct'
-  }));
-  return {
-    ...message,
-    content: JSON.stringify({ tools }),
-    toolSearchTools: tools.map(({ caller: _caller, ...tool }) => tool)
-  };
 }
 
 function defaultEngineFactory(): CodeModeEngineFactory {

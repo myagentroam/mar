@@ -3,7 +3,7 @@ import type { SessionModelMessage as ModelMessage } from '../../session/model-re
 
 import { openAiInput } from '../../model/openai-responses.js';
 import { anthropicMessages } from '../../model/anthropic-messages.js';
-import { projectCodeModeSearchResult } from '../../tools/code-mode/index.js';
+import { projectCodeModeSearchResult } from '../../session/code-mode-search-projection.js';
 import { countModelTokens } from '../token-budget.js';
 import {
   observationModelParts,
