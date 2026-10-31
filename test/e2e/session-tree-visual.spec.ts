@@ -204,6 +204,8 @@ test('standard MessageBox respects reduced motion on desktop and mobile', async 
     await page.setViewportSize({ width, height: 850 });
     await page.goto(`${fixture.url}session-tree.html?locale=en-US&confirmation=1`);
     const durations = await page.getByTestId('show-confirmation').evaluate(async (button) => {
+      if (!(button instanceof HTMLElement))
+        throw new Error('Confirmation trigger is not an HTML element');
       button.click();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
