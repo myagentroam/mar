@@ -20,7 +20,8 @@ import {
   type ToolGroup
 } from './gc-contracts.js';
 
-import { successfulRolloutsAfter, targetFor, isRecord } from './gc-candidates.js';
+import { targetFor, isRecord } from './gc-candidates.js';
+import { terminalExecLifecycles } from '../../session/context-gc-exec-lifecycle.js';
 
 interface ExecInvocation {
   readonly group: ToolGroup;
@@ -67,66 +68,18 @@ export function collectExecCandidates(
         result
       });
   }
-  for (const startGroup of execGroups) {
-    const start = invocations.get(startGroup.callId);
-    if (!start) continue;
-    const isStart =
-      start.group.toolName === 'exec' &&
-      (start.input.action === 'start' ||
-        (start.input.action == null && typeof start.input.command === 'string'));
-    const processId =
-      typeof start.input.processId === 'string'
-        ? start.input.processId
-        : typeof start.result.processId === 'string'
-          ? start.result.processId
-          : undefined;
-    if (!isStart) {
-      if (start.group.toolName !== 'exec_wait' || !processId) continue;
-      // A process may start inside a cell or before the visible history boundary.
-      // Begin with its first visible wait, but never split an unfinished lifecycle.
-      const previous = execGroups.findLast(
-        (group) =>
-          (group.call?.record.sequence ?? Infinity) < start.group.call!.record.sequence &&
-          ((isRecord(group.call?.message.arguments) &&
-            group.call.message.arguments.processId === processId) ||
-            invocations.get(group.callId)?.result.processId === processId)
-      );
-      const previousStatus = previous && invocations.get(previous.callId)?.result.status;
-      if (previous && previousStatus !== 'completed' && previousStatus !== 'cancelled') continue;
-    }
-    const lifecycle: ExecInvocation[] = [start];
-    let terminal = start.result.status !== 'running';
-    if (!terminal) {
-      if (!processId) continue;
-      const relatedGroups = execGroups.filter(
-        (group) =>
-          (group.call?.record.sequence ?? 0) > start.group.call!.record.sequence &&
-          isRecord(group.call?.message.arguments) &&
-          group.call.message.arguments.processId === processId
-      );
-      if (
-        relatedGroups.some((group) => !invocations.has(group.callId)) ||
-        relatedGroups.length === 0
-      )
-        continue;
-      for (const relatedGroup of relatedGroups) {
-        const invocation = invocations.get(relatedGroup.callId)!;
-        lifecycle.push(invocation);
-        if (invocation.result.status !== 'running') {
-          terminal = true;
-          break;
-        }
-      }
-    }
-    if (!terminal || (processId && input.activeProcessIds.has(processId))) continue;
+  const facts = execGroups.map((group) => ({
+    value: group,
+    callId: group.callId,
+    toolName: group.toolName,
+    sequence: group.call?.record.sequence ?? Number.MAX_SAFE_INTEGER,
+    ...(isRecord(group.call?.message.arguments) ? { input: group.call.message.arguments } : {}),
+    ...(invocations.get(group.callId) ? { result: invocations.get(group.callId)!.result } : {})
+  }));
+  for (const selected of terminalExecLifecycles(facts, input.activeProcessIds)) {
+    const lifecycle = selected.map((fact) => invocations.get(fact.callId)!);
     const final = lifecycle.at(-1)!;
     const evidenceSequence = final.group.result!.record.sequence;
-    const observedRollouts = successfulRolloutsAfter(
-      input.records,
-      evidenceSequence,
-      input.modelId,
-      input.contextWindowTokens
-    );
     const replacements: ContextGcReplacement[] = [];
     for (const invocation of lifecycle) {
       if (invocation.group.evidenceOnly) continue;
@@ -165,21 +118,41 @@ export function collectExecCandidates(
         });
     }
     if (replacements.length === 0) continue;
+    const mature: ContextGcReplacement[] = [];
+    const awaitingRollouts: ContextGcReplacement[] = [];
+    let observedRollouts = Infinity;
+    for (const replacement of replacements) {
+      const protection = input.protection!.after(
+        Math.max(evidenceSequence, replacement.target.sequence)
+      );
+      if (
+        protection.rollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
+        protection.thinking >= 3
+      ) {
+        mature.push(replacement);
+        observedRollouts = Math.min(observedRollouts, protection.rollouts);
+      } else if (protection.rollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+        awaitingRollouts.push(replacement);
+        retryAfterRollouts = Math.min(
+          retryAfterRollouts,
+          CONTEXT_GC_POLICY.largeExecProtectionRollouts - protection.rollouts
+        );
+      }
+    }
+    if (awaitingRollouts.length)
+      protectedTokens += Math.max(
+        0,
+        candidateSavings({ replacements: awaitingRollouts, observedRollouts: 0, evidenceSequence })
+      );
+    if (!mature.length) continue;
     const candidate: ContextCandidate = {
-      replacements,
+      replacements: mature,
       observedRollouts,
       evidenceSequence
     };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    if (observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts) eligible.push(candidate);
-    else {
-      protectedTokens += reclaimedTokens;
-      retryAfterRollouts = Math.min(
-        retryAfterRollouts,
-        CONTEXT_GC_POLICY.largeExecProtectionRollouts - observedRollouts
-      );
-    }
+    eligible.push(candidate);
   }
   return { eligible, protectedTokens, retryAfterRollouts };
 }

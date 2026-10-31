@@ -9,7 +9,7 @@ export const CONTEXT_GC_POLICY: ContextGcEconomicsPolicy = {
   contextGrowthSampleWindow: 16,
   minimumContextGrowthSamples: 6,
   minimumObservationRollouts: 1,
-  stageAProtectionRollouts: 2,
+  stageAProtectionRollouts: 6,
   largeExecProtectionRollouts: 6,
   normalInputCostRate: 1,
   cacheReadCostRate: 0.1,
@@ -54,12 +54,6 @@ export interface ContextGcEconomicsResult {
   readonly cacheInvestmentRoi: number;
   readonly grossReductionRate: number;
   readonly passes: boolean;
-}
-
-interface ContextGcCacheEconomicsProfile {
-  readonly reclaimedTokens: number;
-  readonly reclaimedCachedTokens: number;
-  readonly cacheRebuildPenaltyCostUnits: number;
 }
 
 export function evaluateContextGcEconomics(
@@ -193,40 +187,6 @@ export function contextGcEligibleUsage(
   if (usageRatio < CONTEXT_GC_START_RATIO || usageRatio >= COMPACT_THRESHOLD_RATIO)
     return undefined;
   return contextUsageTokens;
-}
-
-export function contextGcMarginalCacheInvestmentPaysBack(
-  current: ContextGcCacheEconomicsProfile,
-  combined: ContextGcCacheEconomicsProfile
-): boolean {
-  const marginalPenalty =
-    combined.cacheRebuildPenaltyCostUnits - current.cacheRebuildPenaltyCostUnits;
-  if (marginalPenalty <= 0) return true;
-  const firstRolloutSavings = (profile: ContextGcCacheEconomicsProfile) => {
-    const reclaimedCachedTokens = clamp(
-      profile.reclaimedCachedTokens,
-      0,
-      Math.max(0, profile.reclaimedTokens)
-    );
-    return (
-      reclaimedCachedTokens * CONTEXT_GC_POLICY.cacheReadCostRate +
-      Math.max(0, profile.reclaimedTokens - reclaimedCachedTokens) *
-        CONTEXT_GC_POLICY.normalInputCostRate
-    );
-  };
-  const marginalFirstRolloutSavings = firstRolloutSavings(combined) - firstRolloutSavings(current);
-  const marginalSteadyRolloutSavings =
-    Math.max(0, combined.reclaimedTokens - current.reclaimedTokens) *
-    CONTEXT_GC_POLICY.cacheReadCostRate;
-  for (let rollouts = 1; rollouts <= CONTEXT_GC_POLICY.immediatePaybackRollouts; rollouts++) {
-    const net =
-      -marginalPenalty +
-      marginalFirstRolloutSavings +
-      Math.max(0, rollouts - 1) * marginalSteadyRolloutSavings;
-    if (net > 0 && net / marginalPenalty >= CONTEXT_GC_POLICY.minimumCacheInvestmentRoi)
-      return true;
-  }
-  return false;
 }
 
 export function contextGcImminentCompactAvoidanceCredit(input: {

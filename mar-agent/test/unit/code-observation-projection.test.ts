@@ -249,7 +249,12 @@ describe('Code Mode model observation projection', () => {
       if (modelProtocol === 'ANTHROPIC_MESSAGES')
         expect(before).toBe(
           contextGcMessageTokens({ modelId: 'test', modelProtocol, system: '', tools: [] }, [
-            { role: 'tool', callId: 'cell', content: modelText(message) }
+            {
+              role: 'tool',
+              callId: 'cell',
+              content: modelText(message),
+              contentParts: observationModelParts(message)
+            }
           ])
         );
     }

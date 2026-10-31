@@ -407,8 +407,15 @@ function gcFixture(
       callId: 'patch',
       content: JSON.stringify({ error: 'MAR_AGENT_PATCH_PARTIAL', data: partialData })
     });
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 6; i++) {
     add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+    context({
+      role: 'provider',
+      content: '',
+      provider: 'OPENAI_RESPONSES',
+      providerModelId: 'coding',
+      item: { type: 'reasoning', id: `thinking-${i}`, encrypted_content: 'opaque' }
+    });
     add('usage.updated', {
       type: 'usage.updated',
       inputTokens: 6000,
@@ -529,7 +536,15 @@ describe('partial patch stale-read GC', () => {
           (record.payload as { toolName?: string }).toolName === 'code_exec'
       )!;
       (outer.payload as { data: { status: string } }).data.status = status;
-      expect(plan(fixture.values)).toBeUndefined();
+      const planned = plan(fixture.values)!;
+      expect(planned.draft.replacements.map((replacement) => replacement.kind)).toEqual([
+        'READ_OUTPUT_ITEMS'
+      ]);
+      expect(retainedCodeInputs(fixture.values, 'code')).toContainEqual({
+        callId: 'patch',
+        toolName: 'apply_patch',
+        input: patch
+      });
     }
   );
 

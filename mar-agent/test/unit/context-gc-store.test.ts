@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildContextProjection } from '../../src/runtime/context/projection.js';
+import { planContextGc } from '../../src/runtime/context/gc.js';
+import {
+  renderObservations,
+  type CodeObservation
+} from '../../src/session/code-observation-projection.js';
+import { formatExecResult, type ExecResult } from '../../src/tools/local/exec.js';
 import {
   contextGcCheckpointIntervalEligible,
   normalizeContextGcReplacements,
@@ -71,6 +77,7 @@ async function appendSuccessfulRollout(
 ) {
   await store.append(sessionId, {
     type: 'model.attempt',
+    executionId: 'execution',
     payload: {
       purpose: 'EXECUTION',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -80,6 +87,22 @@ async function appendSuccessfulRollout(
       maxAttempts: 5,
       continuation: false,
       credentialReason: 'REQUEST'
+    }
+  });
+  await store.append(sessionId, {
+    type: 'model.context',
+    executionId: 'execution',
+    payload: {
+      role: 'provider',
+      content: '',
+      provider: 'OPENAI_RESPONSES',
+      providerModelId: 'coding',
+      item: {
+        type: 'reasoning',
+        id: 'complete-native-item',
+        encrypted_content: 'opaque',
+        summary: []
+      }
     }
   });
   const usage = await store.append(sessionId, {
@@ -94,6 +117,7 @@ async function appendSuccessfulRollout(
   });
   const completed = await store.append(sessionId, {
     type: 'model.attempt',
+    executionId: 'execution',
     payload: {
       purpose: 'EXECUTION',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -167,7 +191,8 @@ async function appendPatchDraft(
     payload: { role: 'tool', callId: input.callId, content: JSON.stringify(data) },
     ...recordInput
   });
-  await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
+  for (let i = 0; i < 5; i++)
+    await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const latest = await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const draft: ContextGcCheckpointDraft = {
     version: 1,
@@ -204,7 +229,7 @@ async function appendPatchDraft(
       usageSequence: latest.usage.sequence,
       contextInputTokens: input.contextInputTokens,
       contextWindowTokens: 10_000,
-      normalRolloutOrdinal: input.normalRolloutOrdinal,
+      normalRolloutOrdinal: input.normalRolloutOrdinal * 3,
       modelId: 'coding',
       platform: 'linux'
     },
@@ -242,6 +267,929 @@ async function createFixture(title: string) {
 }
 
 describe('context GC checkpoint store', () => {
+  it('commits and restores a whole-cell summary with a terminal nested exec input', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-exec-cell-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({
+      workspace: '/workspace',
+      title: 'Exec cell checkpoint'
+    });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    const command = 'echo ' + 'LONG_COMMAND_'.repeat(1000);
+    const input = { command };
+    const result = {
+      status: 'completed',
+      processId: 'process',
+      exitCode: 4,
+      truncated: false,
+      stdout: '',
+      stderr: '',
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      stdoutDroppedBytes: 0,
+      stderrDroppedBytes: 0
+    };
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'code_exec',
+        callId: 'cell',
+        content: '',
+        arguments: { code: 'cell source '.repeat(10000) }
+      });
+      await append('tool.started', {
+        type: 'tool.started',
+        toolName: 'exec',
+        callId: 'exec',
+        parentCallId: 'cell',
+        input
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'exec',
+        callId: 'exec',
+        parentCallId: 'cell',
+        truncated: false,
+        data: result
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        callId: 'cell',
+        truncated: false,
+        data: { cellId: 'cell', status: 'completed' }
+      });
+      const observations: CodeObservation[] = [
+        { type: 'value', id: 'value', format: 'text', value: 'done' }
+      ];
+      await append('model.context', {
+        role: 'tool',
+        name: 'code_exec',
+        callId: 'cell',
+        content: renderObservations(observations),
+        observations,
+        calls: [
+          { callId: 'exec', toolName: 'exec', input, status: 'completed', result: { content: '' } }
+        ]
+      });
+      for (let i = 0; i < 6; i++) await appendSuccessfulRollout(store, session.id, 6000);
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan).toBeDefined();
+      await store.commitContextGc(session.id, plan!.draft);
+      const restored = buildContextProjection(
+        (await store.readExecutionState(session.id)).contextRecords
+      );
+      const call = restored.entries.find(
+        (entry) => entry.message?.role === 'tool_call' && entry.message.callId === 'cell'
+      )?.message;
+      expect(JSON.stringify(call?.arguments)).toContain('terminal_exec_input');
+      expect(JSON.stringify(call?.arguments).includes(command)).toBe(false);
+    } finally {
+      await store.close();
+    }
+  });
+  it('persists partial tool-search deduplication across successive checkpoint generations', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-search-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({
+      workspace: '/workspace',
+      title: 'Search checkpoints'
+    });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    const definition = (name: string, version: string) => ({
+      name,
+      description: `${version} `.repeat(6000),
+      inputSchema: { type: 'object', properties: {} }
+    });
+    const search = async (id: string, tools: ReturnType<typeof definition>[]) => {
+      await append('model.context', {
+        role: 'provider',
+        provider: 'OPENAI_RESPONSES',
+        providerModelId: 'coding',
+        content: '',
+        item: {
+          type: 'tool_search_call',
+          id: `item-${id}`,
+          call_id: id,
+          execution: 'client',
+          status: 'completed',
+          arguments: { query: id }
+        }
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'tool_search',
+        callId: id,
+        arguments: { query: id },
+        content: ''
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'tool_search',
+        callId: id,
+        truncated: false
+      });
+      await append('model.context', {
+        role: 'tool',
+        name: 'tool_search',
+        callId: id,
+        content: JSON.stringify({ tools: tools.map((tool) => tool.name) }),
+        toolSearchTools: tools
+      });
+    };
+    const mature = async (tag: string, usage: number) => {
+      for (let i = 0; i < 6; i++) {
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        await append('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `${tag}-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        await append('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: usage,
+          contextInputTokens: usage,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+    };
+    const commit = async (usage: number) => {
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        modelProtocol: 'OPENAI_RESPONSES',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: usage,
+          contextInputTokens: usage,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan).toBeDefined();
+      await store.commitContextGc(session.id, plan!.draft);
+    };
+    const definitions = async (id: string) =>
+      buildContextProjection(
+        (await store.readExecutionState(session.id)).contextRecords
+      ).entries.find((entry) => entry.message?.role === 'tool' && entry.message.callId === id)
+        ?.message?.toolSearchTools;
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      await search('old', [definition('a', 'OLD_A'), definition('b', 'OLD_B')]);
+      await search('new-a', [definition('a', 'LATEST_A')]);
+      await mature('first', 6000);
+      await commit(6000);
+      expect((await definitions('old'))?.map((tool) => tool.name)).toEqual(['b']);
+      await search('empty', []);
+      await search('new-b', [definition('b', 'LATEST_B')]);
+      await mature('second', 8000);
+      await commit(8000);
+      expect(await definitions('old')).toEqual([]);
+      expect((await definitions('new-a'))?.map((tool) => tool.name)).toEqual(['a']);
+      expect((await definitions('new-b'))?.map((tool) => tool.name)).toEqual(['b']);
+      expect(await definitions('empty')).toEqual([]);
+    } finally {
+      await store.close();
+    }
+  });
+  it('commits and restores superseded Direct and cell Todo inputs and a visible snapshot', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-todo-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({ workspace: '/workspace', title: 'Todo revisions' });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      const items = Array.from({ length: 30 }, (_, i) => ({
+        id: `old-${i}`,
+        step: 'OLD_TODO '.repeat(70),
+        status: 'pending'
+      }));
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'todo_write',
+        callId: 'direct',
+        arguments: { items },
+        content: ''
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'todo_write',
+        callId: 'direct',
+        truncated: false,
+        data: { revision: 1, items }
+      });
+      await append('model.context', {
+        role: 'tool',
+        name: 'todo_write',
+        callId: 'direct',
+        content: '{"revision":1,"count":30}'
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'code_exec',
+        callId: 'cell',
+        arguments: { code: 'task '.repeat(4000) },
+        content: ''
+      });
+      await append('tool.started', {
+        type: 'tool.started',
+        toolName: 'todo_write',
+        callId: 'nested',
+        parentCallId: 'cell',
+        input: { items }
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'todo_write',
+        callId: 'nested',
+        parentCallId: 'cell',
+        truncated: false,
+        data: { revision: 2, items }
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        callId: 'cell',
+        truncated: false,
+        data: { cellId: 'cell', status: 'completed' }
+      });
+      const observations: CodeObservation[] = [
+        {
+          type: 'tool_result',
+          id: 'nested-result',
+          outcome: 'completed',
+          source: { callId: 'nested', toolName: 'todo_write', input: { items } },
+          result: { content: '{"revision":2,"count":30}' }
+        }
+      ];
+      await append('model.context', {
+        role: 'tool',
+        name: 'code_exec',
+        callId: 'cell',
+        observations,
+        content: renderObservations(observations),
+        calls: [
+          {
+            callId: 'nested',
+            toolName: 'todo_write',
+            input: { items },
+            status: 'completed',
+            result: { content: '{"revision":2,"count":30}' }
+          }
+        ]
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'todo_read',
+        callId: 'read',
+        arguments: {},
+        content: ''
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'todo_read',
+        callId: 'read',
+        truncated: false,
+        data: { revision: 2, items }
+      });
+      await append('model.context', {
+        role: 'tool',
+        name: 'todo_read',
+        callId: 'read',
+        content: JSON.stringify({ revision: 2, items })
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'todo_write',
+        callId: 'unseen',
+        truncated: false,
+        data: { revision: 3, items: [{ id: 'secret', step: 'UNOBSERVED_TODO', status: 'pending' }] }
+      });
+      for (let i = 0; i < 6; i++) {
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        await append('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `item-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        await append('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan?.draft.replacements).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'TOOL_CALL_INPUT', toolName: 'todo_write' }),
+          expect.objectContaining({ kind: 'TOOL_CALL_INPUT', toolName: 'code_exec' }),
+          expect.objectContaining({ kind: 'TOOL_OUTPUT', toolName: 'todo_read' })
+        ])
+      );
+      await store.commitContextGc(session.id, plan!.draft);
+      const visible = JSON.stringify(
+        buildContextProjection(
+          (await store.readExecutionState(session.id)).contextRecords
+        ).entries.map(({ message }) =>
+          message?.role === 'tool_call' ? message.arguments : message?.content
+        )
+      );
+      expect(visible.includes('OLD_TODO')).toBe(false);
+      expect(visible.includes('UNOBSERVED_TODO')).toBe(false);
+      expect(visible).toContain('supersededByRevision');
+    } finally {
+      await store.close();
+    }
+  });
+  it('commits a same-cell Skill successor selected after another Skill alongside an exec replacement', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-skill-cell-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({ workspace: '/workspace', title: 'Skill cell' });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'skill',
+        callId: 'old-x',
+        arguments: { name: 'X' },
+        content: ''
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'skill',
+        callId: 'old-x',
+        truncated: false
+      });
+      await append('model.context', {
+        role: 'tool',
+        name: 'skill',
+        callId: 'old-x',
+        content: 'OLD_X '.repeat(4000)
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'code_exec',
+        callId: 'cell',
+        arguments: { code: 'observe tools' },
+        content: ''
+      });
+      const nested = async (name: string, id: string, input: unknown, data: unknown) => {
+        await append('tool.started', {
+          type: 'tool.started',
+          toolName: name,
+          callId: id,
+          parentCallId: 'cell',
+          input
+        });
+        await append('tool.completed', {
+          type: 'tool.completed',
+          toolName: name,
+          callId: id,
+          parentCallId: 'cell',
+          truncated: false,
+          data
+        });
+      };
+      await nested('skill', 'new-y', { name: 'Y' }, {});
+      await nested('skill', 'new-x', { name: 'X' }, {});
+      const stdout = 'EXEC_OUTPUT '.repeat(4000);
+      const execData = {
+        processId: 'done',
+        status: 'completed',
+        exitCode: 0,
+        truncated: false,
+        stdout,
+        stderr: '',
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: 0,
+        stdoutDroppedBytes: 0,
+        stderrDroppedBytes: 0
+      };
+      await nested('exec', 'exec', { command: 'verify' }, execData);
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        callId: 'cell',
+        truncated: false,
+        data: { cellId: 'cell', status: 'completed' }
+      });
+      const observations: CodeObservation[] = [
+        {
+          type: 'tool_result',
+          id: 'y',
+          outcome: 'completed',
+          source: { callId: 'new-y', toolName: 'skill', input: { name: 'Y' } },
+          result: { content: 'LATEST_Y '.repeat(1000) }
+        },
+        {
+          type: 'tool_result',
+          id: 'x',
+          outcome: 'completed',
+          source: { callId: 'new-x', toolName: 'skill', input: { name: 'X' } },
+          result: { content: 'LATEST_X '.repeat(1000) }
+        },
+        {
+          type: 'tool_result',
+          id: 'exec-result',
+          outcome: 'completed',
+          source: { callId: 'exec', toolName: 'exec', input: { command: 'verify' } },
+          result: { content: formatExecResult(execData as ExecResult).content }
+        }
+      ];
+      await append('model.context', {
+        role: 'tool',
+        name: 'code_exec',
+        callId: 'cell',
+        observations,
+        content: renderObservations(observations)
+      });
+      for (let i = 0; i < 6; i++) {
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        await append('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `item-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        await append('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan?.draft.replacements).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'TOOL_OUTPUT', toolName: 'skill', callId: 'old-x' }),
+          expect.objectContaining({
+            kind: 'EXEC_OUTPUT',
+            target: expect.objectContaining({ observationId: 'exec-result' })
+          })
+        ])
+      );
+      await store.commitContextGc(session.id, plan!.draft);
+      const visible = JSON.stringify(
+        buildContextProjection(
+          (await store.readExecutionState(session.id)).contextRecords
+        ).entries.map((entry) => entry.message)
+      );
+      expect(visible).not.toContain('OLD_X OLD_X');
+      expect(visible).toContain('LATEST_X');
+      expect(visible).toContain('LATEST_Y');
+      expect(visible.includes(stdout)).toBe(false);
+      expect(visible).toContain('context GC omitted middle');
+    } finally {
+      await store.close();
+    }
+  });
+  it('commits and restores an observed nested read after its outer cell fails', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-outer-failure-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({
+      workspace: '/workspace',
+      title: 'Failed outer cell'
+    });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      await append('model.context', {
+        role: 'tool_call',
+        name: 'code_exec',
+        callId: 'cell',
+        arguments: { code: 'observe.result(await tools.read({reads:[{path:"src/a.ts"}]}));' },
+        content: ''
+      });
+      await append('tool.started', {
+        type: 'tool.started',
+        toolName: 'read',
+        callId: 'nested-read',
+        parentCallId: 'cell',
+        input: {}
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'read',
+        callId: 'nested-read',
+        parentCallId: 'cell',
+        truncated: false
+      });
+      const patch = '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch';
+      const patchData = {
+        files: [{ path: 'src/a.ts', operation: 'modified', addedLines: 1, deletedLines: 1 }],
+        totals: { files: 1, addedLines: 1, deletedLines: 1 }
+      };
+      await append('tool.started', {
+        type: 'tool.started',
+        toolName: 'apply_patch',
+        callId: 'nested-patch',
+        parentCallId: 'cell',
+        input: patch
+      });
+      await append('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'apply_patch',
+        callId: 'nested-patch',
+        parentCallId: 'cell',
+        truncated: false,
+        data: patchData
+      });
+      await append('tool.failed', {
+        type: 'tool.failed',
+        toolName: 'code_exec',
+        callId: 'cell',
+        error: { code: 'TEST_FAILURE' }
+      });
+      const observations: CodeObservation[] = [
+        {
+          type: 'tool_result',
+          id: 'read-result',
+          outcome: 'completed',
+          source: {
+            callId: 'nested-read',
+            toolName: 'read',
+            input: { reads: [{ path: 'src/a.ts' }] }
+          },
+          result: {
+            content: formatReadContextItem(
+              0,
+              {
+                path: 'src/a.ts',
+                encoding: 'utf-8',
+                newline: 'lf',
+                startLine: 1,
+                endLine: 2,
+                eof: true,
+                truncated: false,
+                previewComplete: true
+              },
+              'STALE_SOURCE '.repeat(4000)
+            )
+          }
+        }
+      ];
+      await append('model.context', {
+        role: 'tool',
+        name: 'code_exec',
+        callId: 'cell',
+        observations,
+        content: renderObservations(observations),
+        calls: [
+          {
+            callId: 'nested-patch',
+            toolName: 'apply_patch',
+            input: patch,
+            status: 'completed',
+            result: { content: '' }
+          }
+        ]
+      });
+      for (let i = 0; i < 6; i++) {
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        await append('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `item-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        await append('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan?.draft.replacements).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: 'READ_OUTPUT_ITEMS' })])
+      );
+      await store.commitContextGc(session.id, plan!.draft);
+      const visible = JSON.stringify(
+        buildContextProjection(
+          (await store.readExecutionState(session.id)).contextRecords
+        ).entries.map((entry) => entry.message)
+      );
+      expect(visible).not.toContain('STALE_SOURCE STALE_SOURCE');
+      expect(visible).toContain('stale_read');
+    } finally {
+      await store.close();
+    }
+  });
+  it('commits and restores visible Skill and read successors selected by the planner', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-successors-'));
+    homes.push(home);
+    const store = await JsonlSessionStore.open(home);
+    const session = await store.createSession({
+      workspace: '/workspace',
+      title: 'Successor checkpoint'
+    });
+    const append = (type: string, payload: unknown) =>
+      store.append(session.id, { type, payload, executionId: 'execution', turnId: 'turn' });
+    try {
+      await append('execution.header', {
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        mode: 'run'
+      });
+      const result = async (name: string, callId: string, args: unknown, content: string) => {
+        await append('model.context', {
+          role: 'tool_call',
+          name,
+          callId,
+          arguments: args,
+          content: ''
+        });
+        await append('tool.completed', {
+          type: 'tool.completed',
+          toolName: name,
+          callId,
+          truncated: false
+        });
+        return append('model.context', { role: 'tool', name, callId, content });
+      };
+      await result('skill', 's1', { name: 'guide' }, 'OLD_SKILL '.repeat(2500));
+      await result('skill', 's2', { name: 'guide' }, 'LATEST_SKILL '.repeat(2500));
+      const read = (startLine: number, endLine: number, body: string) =>
+        formatReadContextItem(
+          0,
+          {
+            path: 'src/a.ts',
+            encoding: 'utf-8',
+            newline: 'lf',
+            startLine,
+            endLine,
+            eof: false,
+            truncated: false,
+            previewComplete: true
+          },
+          body
+        );
+      await result(
+        'read',
+        'r1',
+        { reads: [{ path: 'src/a.ts' }] },
+        read(5, 10, 'OLD_READ '.repeat(3000))
+      );
+      await result(
+        'read',
+        'r2',
+        { reads: [{ path: 'src/a.ts' }] },
+        read(1, 20, 'LATEST_READ '.repeat(3000))
+      );
+      const decision = `${'BEFORE '.repeat(1000)}KEEP_DECISION_IN_MIDDLE${' AFTER'.repeat(1000)}`;
+      const question = { questionId: 'question-1', prompt: 'Choose a direction' };
+      await result('question', 'q1', question, decision);
+      for (const status of ['running', 'failed'] as const) {
+        const callId = `code-${status}`;
+        await append('model.context', {
+          role: 'tool_call',
+          name: 'code_exec',
+          callId,
+          arguments: 'observe.text(value)',
+          content: ''
+        });
+        const type = status === 'failed' ? 'tool.failed' : 'tool.completed';
+        await append(type, {
+          type,
+          toolName: 'code_exec',
+          callId,
+          truncated: false,
+          data: { cellId: `cell-${status}`, status }
+        });
+        const observation = {
+          type: 'value' as const,
+          id: `value-${status}`,
+          format: 'text' as const,
+          value: `VALUE_${status} `.repeat(5000)
+        };
+        await append('model.context', {
+          role: 'tool',
+          name: 'code_exec',
+          callId,
+          content: renderObservations([observation]),
+          observations: [observation]
+        });
+      }
+      for (let i = 0; i < 6; i++) {
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        await append('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `item-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        await append('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        await append('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const records = await store.read(session.id);
+      const projection = buildContextProjection(records);
+      const plan = planContextGc({
+        records,
+        messages: projection.entries.flatMap((entry) => (entry.message ? [entry.message] : [])),
+        messageSources: projection.entries.flatMap((entry) =>
+          entry.message ? [entry.record] : []
+        ),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        contextWindowTokens: 10000,
+        usage: {
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(plan).toBeDefined();
+      expect(
+        plan!.draft.replacements.filter(
+          (replacement) =>
+            replacement.kind === 'CODE_MODE_OUTPUT' &&
+            replacement.target.observationId?.startsWith('value-')
+        )
+      ).toHaveLength(2);
+      await store.commitContextGc(session.id, plan!.draft);
+      const restored = buildContextProjection(
+        (await store.readExecutionState(session.id)).contextRecords
+      );
+      const visible = JSON.stringify(restored.entries.map((entry) => entry.message));
+      expect(visible).not.toContain('OLD_SKILL OLD_SKILL');
+      expect(visible).not.toContain('OLD_READ OLD_READ');
+      expect(visible).toContain('LATEST_SKILL');
+      expect(visible).toContain('LATEST_READ');
+      const messages = restored.entries.flatMap((entry) => (entry.message ? [entry.message] : []));
+      expect(
+        messages.find((message) => message.role === 'tool_call' && message.callId === 'q1')
+      ).toMatchObject({ arguments: question });
+      expect(
+        messages.find((message) => message.role === 'tool' && message.callId === 'q1')
+      ).toMatchObject({ content: decision });
+      for (const status of ['running', 'failed'] as const) {
+        const message = messages.find(
+          (entry) => entry.role === 'tool' && entry.callId === `code-${status}`
+        );
+        const observation = message?.observations?.find((entry) => entry.id === `value-${status}`);
+        expect(observation?.type).toBe('value');
+        if (observation?.type !== 'value') throw new Error('Missing restored value');
+        expect(observation.value.length).toBeLessThan(`VALUE_${status} `.repeat(5000).length);
+      }
+    } finally {
+      await store.close();
+    }
+  });
   it.each([
     { window: 10_000, growth: 1_999, rollouts: 2, allowed: false },
     { window: 10_000, growth: 2_000, rollouts: 2, allowed: true },

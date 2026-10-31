@@ -2,6 +2,8 @@ import type { ClientToolDefinition } from '../../tools/contracts.js';
 import type { SessionModelMessage as ModelMessage } from '../../session/model-request.js';
 
 import { openAiInput } from '../../model/openai-responses.js';
+import { anthropicMessages } from '../../model/anthropic-messages.js';
+import { projectCodeModeSearchResult } from '../../session/code-mode-search-projection.js';
 import { countModelTokens } from '../token-budget.js';
 import {
   observationModelParts,
@@ -44,6 +46,8 @@ function serializedEntries(input: TokenContext, messages: readonly ModelMessage[
         }
       : message
   );
+  const codeMode = input.tools.some((tool) => tool.name === 'code_exec');
+  messages = messages.map((message) => projectCodeModeSearchResult(message, codeMode));
   const responses =
     input.modelProtocol === 'OPENAI_RESPONSES' ||
     (input.modelProtocol === undefined &&
@@ -59,21 +63,35 @@ function serializedEntries(input: TokenContext, messages: readonly ModelMessage[
         true,
         input.responsesConfigurationUpdates !== false
       )
-    : messages
-        .filter(
-          (message) =>
-            message.role !== 'provider' ||
-            (message.provider === 'ANTHROPIC_MESSAGES' && message.providerModelId === input.modelId)
+    : input.modelProtocol === 'ANTHROPIC_MESSAGES'
+      ? anthropicMessages(
+          messages.map((message) => {
+            const contentParts =
+              message.role === 'tool' ? observationModelParts(message) : undefined;
+            return contentParts === undefined ? message : { ...message, contentParts };
+          }),
+          undefined,
+          input.tools,
+          input.modelId,
+          false
         )
-        .map((original) => {
-          const {
-            observations: _observations,
-            observationId: _observationId,
-            ...message
-          } = original;
-          const content = original.role === 'tool' ? observationModelText(original) : undefined;
-          return content === undefined ? message : { ...message, content };
-        });
+      : messages
+          .filter(
+            (message) =>
+              message.role !== 'provider' ||
+              (message.provider === 'ANTHROPIC_MESSAGES' &&
+                message.providerModelId === input.modelId)
+          )
+          .map((original) => {
+            const {
+              observations: _observations,
+              observationId: _observationId,
+              toolSearchTools: _toolSearchTools,
+              ...message
+            } = original;
+            const content = original.role === 'tool' ? observationModelText(original) : undefined;
+            return content === undefined ? message : { ...message, content };
+          });
   return values.map((value, index) => {
     const item = value as Record<string, unknown>;
     const callId = item.call_id ?? item.callId;

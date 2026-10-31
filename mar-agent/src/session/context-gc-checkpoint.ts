@@ -1,6 +1,14 @@
 import { posix, win32 } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { inlineMediaGcAnchored, parseInlineMediaGc } from './inline-media.js';
+import { buildContextGcProtection } from './context-gc-protection.js';
+import {
+  completedTodoWrite,
+  todoInputReplacement,
+  todoSnapshotReplacement,
+  visibleTodoSnapshot
+} from './context-gc-todo.js';
+import { contextGcRetainedInputMarkup } from './context-gc-markup.js';
 import {
   codeCallEvidence,
   codePartialPatchCallEvidence,
@@ -20,6 +28,9 @@ import {
   contextGcPatchResultFromCompletedPayload,
   contextGcPatchResultFromFailedPayload,
   contextGcStaleReadReplacement,
+  contextGcReadRangeCovers,
+  contextGcCoveredReadReplacement,
+  contextGcSkillOutputReplacement,
   contextGcToolOutputReplacement,
   contextGcWebOutputReplacement,
   isGenericContextGcTool,
@@ -296,6 +307,11 @@ export function validateContextGcCheckpoint(
     ...(replacement.kind === 'TOOL_CALL_INPUT' ? replacement.providerAliasTargets : [])
   ]);
   if (new Set(targets.map(contextGcTargetKey)).size !== targets.length) return undefined;
+  const protection = buildContextGcProtection(
+    records,
+    payload.trigger.modelId,
+    payload.trigger.contextWindowTokens
+  );
   for (const replacement of changed) {
     for (const target of [
       replacement.target,
@@ -324,13 +340,53 @@ export function validateContextGcCheckpoint(
       )
     )
       return undefined;
+    const anchors =
+      replacement.kind === 'READ_OUTPUT_ITEMS'
+        ? replacement.items.map((item) =>
+            Math.max(replacement.target.sequence, item.evidenceSequence)
+          )
+        : [Math.max(replacement.target.sequence, ...evidence)];
+    if (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'todo_write') {
+      const terminal = records.find(
+        (item) => completedTodoWrite(item)?.callId === replacement.callId
+      );
+      if (terminal) anchors[0] = Math.max(anchors[0]!, terminal.sequence);
+    }
+    if (
+      (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'code_exec') ||
+      (replacement.kind === 'CODE_MODE_OUTPUT' && !replacement.target.observationId)
+    ) {
+      const result = recordsBySequence.get(replacement.evidenceSequence);
+      if (result && isRecord(result.payload) && typeof result.payload.callId === 'string') {
+        const callId = result.payload.callId;
+        const terminal = records.findLast(
+          (item) =>
+            item.sequence < result.sequence &&
+            item.type === 'tool.completed' &&
+            isRecord(item.payload) &&
+            item.payload.callId === callId
+        );
+        const completion = terminal && codeCellCompletionSequence(records, terminal);
+        if (completion !== undefined) anchors[0] = Math.max(anchors[0]!, completion);
+      }
+    }
+    if (
+      anchors.some((anchor) => {
+        const count = protection.after(anchor);
+        return count.rollouts < 6 || count.thinking < 3;
+      })
+    )
+      return undefined;
     if (
       !replacementMatchesRecords(
         replacement,
         records,
         recordsBySequence,
         workspace,
-        payload.trigger.platform
+        payload.trigger.platform,
+        payload.replacements,
+        protection,
+        committed.get(contextGcReplacementKey(replacement))
       )
     )
       return undefined;
@@ -393,13 +449,31 @@ function targetMatchesRecord(target: ContextGcTarget, record: SessionRecord): bo
   );
 }
 
+function resultVisibleAfter(
+  source: SessionRecord,
+  observationId: string | undefined,
+  successor: SessionRecord
+): boolean {
+  if (successor.sequence !== source.sequence) return successor.sequence > source.sequence;
+  if (!isRecord(successor.payload)) return false;
+  const observations = observationsFromRecord(source) ?? [];
+  const sourceIndex = observations.findIndex((value) => value.id === observationId);
+  const successorId = successor.payload.observationId;
+  return (
+    sourceIndex >= 0 && observations.findIndex((value) => value.id === successorId) > sourceIndex
+  );
+}
+
 /** A checkpoint draft is valid only when its replacements match the source records and evidence. */
 function replacementMatchesRecords(
   replacement: ContextGcReplacement,
   records: readonly SessionRecord[],
   recordsBySequence: ReadonlyMap<number, SessionRecord>,
   workspace: string | undefined,
-  platform: ContextGcPlatform
+  platform: ContextGcPlatform,
+  allReplacements: readonly ContextGcReplacement[],
+  protection: ReturnType<typeof buildContextGcProtection>,
+  previous: ContextGcReplacement | undefined
 ): boolean {
   let source = recordsBySequence.get(replacement.target.sequence);
   if (!source || !isRecord(source.payload)) return false;
@@ -422,7 +496,6 @@ function replacementMatchesRecords(
         }
       };
     } else source = { ...source, payload: { ...source.payload, content: selected.value } };
-    recordsBySequence = new Map(recordsBySequence).set(source.sequence, source);
   }
   if (!isRecord(source.payload)) return false;
   if (replacement.kind === 'READ_OUTPUT_ITEMS') {
@@ -446,6 +519,47 @@ function replacementMatchesRecords(
         sourceToolSequence,
         item.supersededByCallId
       );
+      if (original && !evidence && item.supersededByCallId) {
+        const later = successfulToolEvidence(
+          records,
+          recordsBySequence,
+          item.evidenceSequence,
+          'read',
+          item.supersededByCallId
+        );
+        if (
+          !later ||
+          !resultVisibleAfter(source, replacement.target.observationId, later.result) ||
+          !isRecord(later.result.payload) ||
+          typeof later.result.payload.content !== 'string'
+        )
+          return false;
+        const laterItems = parseReadContextOutput(later.result.payload.content)?.items ?? [];
+        const pathKey = contextGcLogicalPathKey(original.path, workspace, platform);
+        const observationId =
+          typeof later.result.payload.observationId === 'string'
+            ? later.result.payload.observationId
+            : undefined;
+        const laterRecord = recordsBySequence.get(item.evidenceSequence);
+        if (laterRecord && observationsFromRecord(laterRecord) !== undefined && !observationId)
+          return false;
+        const covered = laterItems.some(
+          (next) =>
+            pathKey !== undefined &&
+            contextGcLogicalPathKey(next.path, workspace, platform) === pathKey &&
+            contextGcReadRangeCovers(original, next) &&
+            !allReplacements.some(
+              (prior) =>
+                prior.kind === 'READ_OUTPUT_ITEMS' &&
+                prior.target.sequence === later.result.sequence &&
+                prior.target.observationId === observationId &&
+                prior.items.some((existing) => existing.index === next.index)
+            )
+        );
+        return (
+          covered && item.replacement === contextGcCoveredReadReplacement(original, later.callId)
+        );
+      }
       return (
         original?.pathTruncated === false &&
         original?.path === item.path &&
@@ -477,6 +591,24 @@ function replacementMatchesRecords(
       )
     );
   }
+  if (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'todo_write') {
+    const own = records.find((item) => completedTodoWrite(item)?.callId === replacement.callId);
+    const original = own && completedTodoWrite(own);
+    const successorRecord = recordsBySequence.get(replacement.evidenceSequence);
+    const successor = successorRecord && completedTodoWrite(successorRecord);
+    const args = source.payload.arguments;
+    return (
+      original !== undefined &&
+      successor !== undefined &&
+      successor.revision > original.revision &&
+      isRecord(args) &&
+      Array.isArray(args.items) &&
+      isDeepStrictEqual(
+        replacement.replacementArguments,
+        todoInputReplacement(original.revision, args.items.length, successor.revision)
+      )
+    );
+  }
   if (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'code_exec') {
     const evidence = successfulToolEvidence(
       records,
@@ -495,13 +627,76 @@ function replacementMatchesRecords(
         contextGcCodeModeInputReplacement(
           input,
           observationsFromRecord(evidence.result)
-            ? retainedCodeInputs(records, replacement.callId)
+            ? retainedCodeInputs(
+                records,
+                replacement.callId,
+                (original, successor) => {
+                  const count = protection.after(
+                    Math.max(
+                      replacement.target.sequence,
+                      replacement.evidenceSequence,
+                      codeCellCompletionSequence(records, evidence.completed) ?? 0,
+                      original.sequence,
+                      successor.sequence
+                    )
+                  );
+                  return count.rollouts >= 6 && count.thinking >= 3;
+                },
+                {
+                  activeProcessIds: new Set(),
+                  evidenceMature: (sequence) => {
+                    const count = protection.after(
+                      Math.max(
+                        replacement.target.sequence,
+                        replacement.evidenceSequence,
+                        codeCellCompletionSequence(records, evidence.completed) ?? 0,
+                        sequence
+                      )
+                    );
+                    return count.rollouts >= 6 && count.thinking >= 3;
+                  },
+                  selected: (callId, toolName, summary) => {
+                    const argument = replacement.replacementArguments;
+                    const content =
+                      typeof argument === 'string'
+                        ? argument
+                        : isRecord(argument)
+                          ? argument.code
+                          : undefined;
+                    return (
+                      typeof content === 'string' &&
+                      content.includes(
+                        contextGcRetainedInputMarkup({ callId, toolName, input: summary })
+                      )
+                    );
+                  }
+                }
+              )
             : []
         )
       )
     );
   }
   if (replacement.kind === 'CODE_MODE_OUTPUT') {
+    if (replacement.target.observationId) {
+      const observation = observationsFromRecord(source)?.find(
+        (value) => value.id === replacement.target.observationId && value.type === 'value'
+      );
+      return (
+        observation?.type === 'value' &&
+        source.payload.callId === replacement.callId &&
+        replacement.evidenceSequence === source.sequence &&
+        ['code_exec', 'code_exec_wait'].includes(
+          toolNameForCallId(records, replacement.callId, source.sequence) ?? ''
+        ) &&
+        replacement.replacementContent ===
+          contextGcCodeModeOutputReplacement(
+            observation.value,
+            observation.truncated === true,
+            true
+          )
+      );
+    }
     const evidence = (['code_exec', 'code_exec_wait'] as const)
       .map((name) =>
         successfulToolEvidence(records, recordsBySequence, replacement.evidenceSequence, name)
@@ -518,18 +713,178 @@ function replacementMatchesRecords(
       replacement.replacementContent ===
         contextGcCodeModeOutputReplacement(
           source.payload.content as string,
-          replacement.target.observationId
-            ? observationsFromRecord(source)?.some(
-                (value) =>
-                  value.id === replacement.target.observationId &&
-                  value.type === 'value' &&
-                  value.truncated === true
-              ) === true
-            : evidence.completed.payload.truncated
+          evidence.completed.payload.truncated,
+          false
         )
     );
   }
   if (replacement.kind === 'TOOL_OUTPUT') {
+    if (replacement.toolName === 'tool_search') {
+      const original = successfulToolEvidence(
+        records,
+        recordsBySequence,
+        source.sequence,
+        'tool_search',
+        replacement.callId
+      );
+      if (
+        !original ||
+        !isRecord(source.payload) ||
+        !Array.isArray(source.payload.toolSearchTools) ||
+        replacement.retainedToolNames === undefined ||
+        replacement.replacementContent !== source.payload.content
+      )
+        return false;
+      const sourceNames = source.payload.toolSearchTools.flatMap((tool) =>
+        isRecord(tool) && typeof tool.name === 'string' ? [tool.name] : []
+      );
+      const priorNames =
+        previous?.kind === 'TOOL_OUTPUT' && previous.retainedToolNames !== undefined
+          ? previous.retainedToolNames
+          : sourceNames;
+      if (
+        replacement.retainedToolNames.some((name) => !priorNames.includes(name)) ||
+        !isDeepStrictEqual(
+          replacement.retainedToolNames,
+          priorNames.filter((name) => replacement.retainedToolNames!.includes(name))
+        )
+      )
+        return false;
+      const removed = priorNames.filter((name) => !replacement.retainedToolNames!.includes(name));
+      if (removed.length === 0) return false;
+      const successors = records.filter(
+        (item) =>
+          item.sequence > source.sequence &&
+          item.sequence <= replacement.evidenceSequence &&
+          item.type === 'model.context' &&
+          isRecord(item.payload) &&
+          item.payload.role === 'tool' &&
+          typeof item.payload.callId === 'string' &&
+          Array.isArray(item.payload.toolSearchTools) &&
+          successfulToolEvidence(
+            records,
+            recordsBySequence,
+            item.sequence,
+            'tool_search',
+            item.payload.callId
+          ) !== undefined
+      );
+      return (
+        removed.every((name) =>
+          successors.some((item) => {
+            if (!isRecord(item.payload) || !Array.isArray(item.payload.toolSearchTools))
+              return false;
+            const target = {
+              sequence: item.sequence,
+              recordId: item.recordId,
+              role: 'tool' as const,
+              ...(typeof item.payload.callId === 'string' ? { callId: item.payload.callId } : {})
+            };
+            const applied = allReplacements.find(
+              (candidate) => contextGcTargetKey(candidate.target) === contextGcTargetKey(target)
+            );
+            return (
+              item.payload.toolSearchTools.some((tool) => isRecord(tool) && tool.name === name) &&
+              !(
+                applied?.kind === 'TOOL_OUTPUT' &&
+                applied.retainedToolNames !== undefined &&
+                !applied.retainedToolNames.includes(name)
+              )
+            );
+          })
+        ) && successors.some((item) => item.sequence === replacement.evidenceSequence)
+      );
+    }
+    if (replacement.toolName === 'todo_read') {
+      const original = successfulToolEvidence(
+        records,
+        recordsBySequence,
+        source.sequence,
+        'todo_read',
+        replacement.callId
+      );
+      const successorRecord = recordsBySequence.get(replacement.evidenceSequence);
+      const successor = successorRecord && completedTodoWrite(successorRecord);
+      const snapshot =
+        typeof source.payload.content === 'string'
+          ? visibleTodoSnapshot(source.payload.content)
+          : undefined;
+      return (
+        original !== undefined &&
+        snapshot !== undefined &&
+        successor !== undefined &&
+        successor.revision > snapshot.revision &&
+        replacement.replacementContent ===
+          todoSnapshotReplacement(snapshot.revision, snapshot.count, successor.revision)
+      );
+    }
+    if (replacement.toolName === 'skill') {
+      const original = successfulToolEvidence(
+        records,
+        recordsBySequence,
+        source.sequence,
+        'skill',
+        replacement.callId
+      );
+      let successorCallId: unknown;
+      try {
+        successorCallId = JSON.parse(replacement.replacementContent).supersededByCallId;
+      } catch {
+        return false;
+      }
+      if (typeof successorCallId !== 'string') return false;
+      const successor = successfulToolEvidence(
+        records,
+        recordsBySequence,
+        replacement.evidenceSequence,
+        'skill',
+        successorCallId
+      );
+      const successorRecord = recordsBySequence.get(replacement.evidenceSequence);
+      const successorObservationId = isRecord(successor?.result.payload)
+        ? successor.result.payload.observationId
+        : undefined;
+      if (
+        !successorRecord ||
+        !isRecord(successorRecord.payload) ||
+        (observationsFromRecord(successorRecord) !== undefined &&
+          typeof successorObservationId !== 'string')
+      )
+        return false;
+      const successorKey = contextGcTargetKey({
+        sequence: successorRecord.sequence,
+        recordId: successorRecord.recordId,
+        role: 'tool',
+        ...(typeof successorRecord.payload.callId === 'string'
+          ? { callId: successorRecord.payload.callId }
+          : {}),
+        ...(typeof successorObservationId === 'string'
+          ? { observationId: successorObservationId }
+          : {})
+      });
+      if (
+        !original ||
+        !successor ||
+        !resultVisibleAfter(source, replacement.target.observationId, successor.result) ||
+        !isRecord(original.call.payload) ||
+        !isRecord(successor.call.payload) ||
+        !isRecord(original.call.payload.arguments) ||
+        !isRecord(successor.call.payload.arguments) ||
+        typeof original.call.payload.arguments.name !== 'string' ||
+        original.call.payload.arguments.name !== successor.call.payload.arguments.name ||
+        typeof source.payload.content !== 'string' ||
+        allReplacements.some((item) => contextGcTargetKey(item.target) === successorKey)
+      )
+        return false;
+      return (
+        replacement.replacementContent ===
+        contextGcSkillOutputReplacement(
+          original.call.payload.arguments.name,
+          source.payload.content,
+          successor.callId
+        )
+      );
+    }
     const evidence = successfulToolEvidence(
       records,
       recordsBySequence,
@@ -545,8 +900,6 @@ function replacementMatchesRecords(
       isRecord(evidence.completed.payload) &&
       typeof evidence.completed.payload.truncated === 'boolean' &&
       typeof source.payload.content === 'string' &&
-      isRecord(evidence.result.payload) &&
-      evidence.result.payload.content === source.payload.content &&
       replacement.replacementContent ===
         contextGcToolOutputReplacement(
           replacement.toolName,
@@ -739,7 +1092,9 @@ function successfulToolEvidence(
     call.payload.name !== toolName ||
     (expectedCallId && expectedCallId !== callId)
   ) {
-    for (const observation of observationsFromRecord(result) ?? []) {
+    const observations = observationsFromRecord(result) ?? [];
+    // Repeated observations of a known call use its last visible occurrence.
+    for (const observation of expectedCallId ? [...observations].reverse() : observations) {
       if (
         observation.type !== 'tool_result' ||
         observation.source.toolName !== toolName ||
@@ -1188,7 +1543,8 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
       (value.toolName === 'apply_patch' ||
         value.toolName === 'exec' ||
         value.toolName === 'exec_wait' ||
-        value.toolName === 'code_exec') &&
+        value.toolName === 'code_exec' ||
+        value.toolName === 'todo_write') &&
       value.target.toolName === value.toolName &&
       Array.isArray(value.providerAliasTargets) &&
       value.providerAliasTargets.every(
@@ -1262,13 +1618,23 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
         'callId',
         'target',
         'replacementContent',
+        'retainedToolNames',
         'evidenceSequence'
       ]) &&
       value.target.role === 'tool' &&
       isNonemptyString(value.toolName) &&
-      isGenericContextGcTool(value.toolName) &&
+      (value.toolName === 'skill' ||
+        value.toolName === 'todo_read' ||
+        value.toolName === 'tool_search' ||
+        isGenericContextGcTool(value.toolName)) &&
       (value.target.toolName === undefined || value.target.toolName === value.toolName) &&
-      isNonemptyString(value.replacementContent) &&
+      (isNonemptyString(value.replacementContent) ||
+        (value.toolName === 'tool_search' && value.replacementContent === '')) &&
+      (value.retainedToolNames === undefined ||
+        (value.toolName === 'tool_search' &&
+          Array.isArray(value.retainedToolNames) &&
+          value.retainedToolNames.every(isNonemptyString) &&
+          new Set(value.retainedToolNames).size === value.retainedToolNames.length)) &&
       isPositiveInteger(value.evidenceSequence)
     );
   if (value.kind === 'CODE_MODE_OUTPUT')
@@ -1358,7 +1724,8 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
 function isContextGcMetrics(value: unknown): boolean {
   if (
     !isRecord(value) ||
-    (value.stage !== 'STAGE_A' &&
+    (value.stage !== 'UNIFIED' &&
+      value.stage !== 'STAGE_A' &&
       value.stage !== 'STAGE_A_AND_EXEC' &&
       value.stage !== 'INLINE_MEDIA')
   )

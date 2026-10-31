@@ -1,5 +1,9 @@
 import { markupAttributes, markupText } from '../prompts/markup.js';
 
+export function contextGcRetainedInputMarkup(input: unknown): string {
+  return markupText('retained_input', typeof input === 'string' ? input : JSON.stringify(input));
+}
+
 // Render message placeholders only; structured GC records keep their JSON shape.
 export function contextGcMarkup(kind: string, fields: Record<string, unknown>): string {
   const attributes: Record<string, unknown> = { kind };
@@ -7,10 +11,7 @@ export function contextGcMarkup(kind: string, fields: Record<string, unknown>): 
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
     if (key === 'retainedInputs' && Array.isArray(value)) {
-      for (const input of value)
-        children.push(
-          markupText('retained_input', typeof input === 'string' ? input : JSON.stringify(input))
-        );
+      for (const input of value) children.push(contextGcRetainedInputMarkup(input));
     } else if (key === 'contextGc') children.push(markupText('instruction', String(value)));
     else attributes[key] = value;
   }

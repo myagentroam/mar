@@ -10,6 +10,7 @@ import {
   codeCellCompletionSequence,
   contextGcCodeModeInputReplacement,
   contextGcCodeModeOutputReplacement,
+  hasGenericContextGcPreview,
   normalizeContextGcCodeModeInput
 } from '../../session/context-gc-replacements.js';
 
@@ -22,7 +23,7 @@ import {
   type ToolGroup
 } from './gc-contracts.js';
 
-import { successfulRolloutsAfter, targetFor, isRecord } from './gc-candidates.js';
+import { targetFor, isRecord } from './gc-candidates.js';
 
 export function collectCodeModeCandidates(
   input: ContextGcPlannerInput,
@@ -39,13 +40,53 @@ export function collectCodeModeCandidates(
     if (
       !group.call ||
       !group.result ||
-      group.failed ||
-      !group.completed ||
       group.call.message.role !== 'tool_call' ||
       group.result.message.role !== 'tool' ||
       typeof group.result.message.content !== 'string'
     )
       continue;
+    for (const observation of group.result.message.observations ?? []) {
+      if (observation.type !== 'value' || !hasGenericContextGcPreview(observation.value)) continue;
+      const target = targetFor(group.result.record, {
+        ...group.result.message,
+        observationId: observation.id
+      });
+      if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
+      const evidenceSequence = group.result.record.sequence;
+      const protection = input.protection!.after(evidenceSequence);
+      const candidate: ContextCandidate = {
+        replacements: [
+          {
+            kind: 'CODE_MODE_OUTPUT',
+            callId: group.callId,
+            target,
+            replacementContent: contextGcCodeModeOutputReplacement(
+              observation.value,
+              observation.truncated === true,
+              true
+            ),
+            evidenceSequence
+          }
+        ],
+        observedRollouts: protection.rollouts,
+        evidenceSequence
+      };
+      const reclaimedTokens = candidateSavings(candidate);
+      if (reclaimedTokens <= 0) continue;
+      if (
+        candidate.observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
+        protection.thinking >= 3
+      )
+        eligible.push(candidate);
+      else if (candidate.observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+        protectedTokens += reclaimedTokens;
+        retryAfterRollouts = Math.min(
+          retryAfterRollouts,
+          CONTEXT_GC_POLICY.largeExecProtectionRollouts - candidate.observedRollouts
+        );
+      }
+    }
+    if (group.failed || !group.completed) continue;
     const code = normalizeContextGcCodeModeInput(group.call.message.arguments);
     const completedPayload = group.completed.payload;
     const completionSequence = codeCellCompletionSequence(input.records, group.completed);
@@ -56,47 +97,6 @@ export function collectCodeModeCandidates(
       typeof completedPayload.truncated !== 'boolean'
     )
       continue;
-    for (const observation of group.result.message.observations ?? []) {
-      if (observation.type !== 'value') continue;
-      const target = targetFor(group.result.record, {
-        ...group.result.message,
-        observationId: observation.id
-      });
-      if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
-      const evidenceSequence = group.result.record.sequence;
-      const candidate: ContextCandidate = {
-        replacements: [
-          {
-            kind: 'CODE_MODE_OUTPUT',
-            callId: group.callId,
-            target,
-            replacementContent: contextGcCodeModeOutputReplacement(
-              observation.value,
-              observation.truncated === true
-            ),
-            evidenceSequence
-          }
-        ],
-        observedRollouts: successfulRolloutsAfter(
-          input.records,
-          Math.max(evidenceSequence, completionSequence),
-          input.modelId,
-          input.contextWindowTokens
-        ),
-        evidenceSequence
-      };
-      const reclaimedTokens = candidateSavings(candidate);
-      if (reclaimedTokens <= 0) continue;
-      if (candidate.observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts)
-        eligible.push(candidate);
-      else {
-        protectedTokens += reclaimedTokens;
-        retryAfterRollouts = Math.min(
-          retryAfterRollouts,
-          CONTEXT_GC_POLICY.largeExecProtectionRollouts - candidate.observedRollouts
-        );
-      }
-    }
     const callTarget = targetFor(group.call.record, group.call.message);
     const resultTarget = targetFor(group.result.record, group.result.message);
     if (!callTarget || !resultTarget) continue;
@@ -110,7 +110,32 @@ export function collectCodeModeCandidates(
         target: callTarget,
         replacementArguments: contextGcCodeModeInputReplacement(
           code,
-          group.result.message.observations ? retainedCodeInputs(input.records, group.callId) : []
+          group.result.message.observations
+            ? retainedCodeInputs(
+                input.records,
+                group.callId,
+                (original, successor) => {
+                  const maturity = input.protection!.after(
+                    Math.max(
+                      evidenceSequence,
+                      completionSequence,
+                      original.sequence,
+                      successor.sequence
+                    )
+                  );
+                  return maturity.rollouts >= 6 && maturity.thinking >= 3;
+                },
+                {
+                  activeProcessIds: input.activeProcessIds,
+                  evidenceMature: (sequence) => {
+                    const maturity = input.protection!.after(
+                      Math.max(evidenceSequence, completionSequence, sequence)
+                    );
+                    return maturity.rollouts >= 6 && maturity.thinking >= 3;
+                  }
+                }
+              )
+            : []
         ),
         providerAliasTargets: group.aliases
           .map(({ record, message }) => targetFor(record, message))
@@ -132,17 +157,17 @@ export function collectCodeModeCandidates(
         evidenceSequence
       });
     if (replacements.length === 0) continue;
-    const observedRollouts = successfulRolloutsAfter(
-      input.records,
-      Math.max(evidenceSequence, completionSequence),
-      input.modelId,
-      input.contextWindowTokens
-    );
+    const protection = input.protection!.after(Math.max(evidenceSequence, completionSequence));
+    const observedRollouts = protection.rollouts;
     const candidate: ContextCandidate = { replacements, observedRollouts, evidenceSequence };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    if (observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts) eligible.push(candidate);
-    else {
+    if (
+      observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
+      protection.thinking >= 3
+    )
+      eligible.push(candidate);
+    else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(
         retryAfterRollouts,

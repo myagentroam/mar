@@ -13,6 +13,7 @@ import {
 } from '../../session/context-gc-checkpoint.js';
 
 import type { SessionRecord } from '../../session/record-contract.js';
+import type { buildContextGcProtection } from '../../session/context-gc-protection.js';
 
 export interface ContextGcPlan {
   readonly stage: ContextGcMetrics['stage'];
@@ -42,6 +43,7 @@ export interface ContextGcPlannerInput {
   readonly activeProcessIds: ReadonlySet<string>;
   readonly tokenCache?: Map<string, number>;
   readonly checkpointCache?: ContextGcCheckpointCache;
+  readonly protection?: ReturnType<typeof buildContextGcProtection>;
 }
 
 export interface ContextCandidate {

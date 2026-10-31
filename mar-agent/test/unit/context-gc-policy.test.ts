@@ -66,7 +66,8 @@ function modelContext(
 function successfulRollout(
   add: ReturnType<typeof records>['add'],
   contextInputTokens: number,
-  cacheReadTokens = 0
+  cacheReadTokens = 0,
+  modelId = 'coding'
 ) {
   add('model.attempt', {
     purpose: 'EXECUTION',
@@ -77,6 +78,18 @@ function successfulRollout(
     maxAttempts: 5,
     continuation: false,
     credentialReason: 'REQUEST'
+  });
+  add('model.context', {
+    role: 'provider',
+    content: '',
+    provider: 'OPENAI_RESPONSES',
+    providerModelId: modelId,
+    item: {
+      type: 'reasoning',
+      id: 'complete-native-item',
+      encrypted_content: 'opaque',
+      summary: []
+    }
   });
   const usage = add('usage.updated', {
     type: 'usage.updated',
@@ -304,6 +317,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       const session = await store.createSession({ workspace: '/workspace' });
       const fixture = records();
       addPatchCandidate(fixture);
+      for (let index = 0; index < 4; index++) successfulRollout(fixture.add, 6_000);
       addTerminalExec(fixture, 'mature-output', 'verification '.repeat(1_000));
       for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
       let copied = 1;
@@ -444,6 +458,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         const session = await store.createSession({ workspace: '/workspace' });
         const fixture = records();
         addPatchCandidate(fixture);
+        for (let index = 0; index < 4; index++) successfulRollout(fixture.add, 6_000);
         if (pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
         for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
         let copied = 1;
@@ -551,7 +566,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         });
         expect(result && result.projection.checkpoint).toMatchObject({
           generation: 2,
-          metrics: { stage: 'STAGE_A_AND_EXEC', minimumObservedRollouts: 8 }
+          metrics: { stage: 'UNIFIED', minimumObservedRollouts: 8 }
         });
         expect(
           result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
@@ -583,11 +598,11 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       allowed: false
     },
     { label: 'candidate still protected', rollouts: 0, usage: 8_000, allowed: false },
-    { label: 'model scope changed', rollouts: 2, usage: 6_000, modelId: 'other', allowed: true },
-    { label: 'window scope changed', rollouts: 2, usage: 6_000, window: 12_000, allowed: true },
+    { label: 'model scope changed', rollouts: 6, usage: 6_000, modelId: 'other', allowed: true },
+    { label: 'window scope changed', rollouts: 6, usage: 6_000, window: 12_000, allowed: true },
     {
       label: 'model scope changed without protected candidates',
-      rollouts: 2,
+      rollouts: 6,
       usage: 6_000,
       modelId: 'other',
       protected: false,
@@ -595,7 +610,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
     },
     {
       label: 'window scope changed without protected candidates',
-      rollouts: 2,
+      rollouts: 6,
       usage: 6_000,
       window: 12_000,
       protected: false,
@@ -622,7 +637,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         addPatchCandidate(fixture);
         successfulRollout(fixture.add, 6_000);
         if (pending) addPatchCandidate(fixture, 'second');
-        successfulRollout(fixture.add, 6_000);
+        for (let index = 0; index < 5; index++) successfulRollout(fixture.add, 6_000);
         let copied = 1;
         const appendNewRecords = async () => {
           for (const record of fixture.values.slice(copied))
@@ -640,7 +655,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         expect(first).toBeDefined();
         expect(first!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
         expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
-        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(2);
+        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(6);
         expect(first!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(false);
         await store.commitContextGc(session.id, first!.draft, initialRecords);
 
@@ -651,7 +666,8 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
             contextWindowTokens: window,
             mode: 'run'
           });
-        for (let index = 0; index < rollouts; index++) successfulRollout(fixture.add, usage);
+        for (let index = 0; index < rollouts; index++)
+          successfulRollout(fixture.add, usage, 0, modelId);
         // A fresh usage alone cannot advance either the interval or candidate age.
         if (rollouts === 0)
           fixture.add('usage.updated', { type: 'usage.updated', contextInputTokens: usage });
@@ -703,7 +719,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
 
           // The newly committed scope becomes the next interval/growth baseline.
           addPatchCandidate(fixture, 'third');
-          for (let index = 0; index < 2; index++) successfulRollout(fixture.add, usage);
+          for (let index = 0; index < 6; index++) successfulRollout(fixture.add, usage);
           const nextRecords = await appendNewRecords();
           expect(plan(nextRecords, { contextInputTokens: usage }, overrides)).toBeUndefined();
           const bypass = plan(
@@ -812,7 +828,7 @@ describe('context GC high-water policy', () => {
     });
     const replacement = selected?.draft.replacements.find((item) => item.kind === 'EXEC_OUTPUT');
 
-    expect(selected?.stage).toBe('STAGE_A_AND_EXEC');
+    expect(selected?.stage).toBe('UNIFIED');
     expect(replacement).toMatchObject({
       kind: 'EXEC_OUTPUT',
       target: expect.objectContaining({ sequence: exec.result.sequence })
@@ -1056,14 +1072,14 @@ describe('context GC high-water policy', () => {
         cacheReadTokens: 0,
         outputTokens: 10
       })?.stage
-    ).toBe('STAGE_A_AND_EXEC');
+    ).toBe('UNIFIED');
     expect(
       plan(fixture.values, {
         contextInputTokens: 8_000,
         cacheReadTokens: 0,
         outputTokens: 10
       })?.stage
-    ).toBe('STAGE_A_AND_EXEC');
+    ).toBe('UNIFIED');
   });
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'])(
@@ -1187,7 +1203,7 @@ describe('context GC high-water policy', () => {
   it('keeps dependent stale-read and patch replacements grouped when patch input expands', () => {
     const fixture = records();
     addPatchCandidate(fixture);
-    for (let i = 0; i < 2; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add, 6_000);
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
     const patch = selected?.draft.replacements.find((r) => r.kind === 'TOOL_CALL_INPUT');
     expect(patch).toBeDefined();
@@ -1246,7 +1262,7 @@ describe('context GC high-water policy', () => {
       callId: 'later-patch',
       content: JSON.stringify(data)
     });
-    for (let i = 0; i < 2; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 6; i++) successfulRollout(fixture.add, 6_000);
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
     expect(selected).toBeDefined();
     expect(selected!.draft.replacements.some((r) => r.callId === 'patch-source')).toBe(false);
@@ -1373,8 +1389,7 @@ describe('unified inline media GC', () => {
       });
     if (text) addPatchCandidate(fixture);
     const tokens = text ? 6_000 : 1_000;
-    successfulRollout(fixture.add, tokens);
-    successfulRollout(fixture.add, tokens);
+    for (let i = 0; i < (text ? 6 : 2); i++) successfulRollout(fixture.add, tokens);
     fixture.add('resource.window', {
       version: 1,
       consideredThrough: { sourceId: 'tool:b', imageIndex: 0 }

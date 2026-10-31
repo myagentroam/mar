@@ -9,7 +9,9 @@ import {
   contextGcApplyPatchInputReplacement,
   contextGcPatchResultFromCompletedPayload,
   contextGcPatchResultFromFailedPayload,
-  contextGcStaleReadReplacement
+  contextGcStaleReadReplacement,
+  contextGcReadRangeCovers,
+  contextGcCoveredReadReplacement
 } from '../../session/context-gc-replacements.js';
 
 import { parseReadContextOutput } from '../../prompts/read-context.js';
@@ -23,9 +25,9 @@ import {
   type ToolGroup
 } from './gc-contracts.js';
 
-import { successfulRolloutsAfter, targetFor } from './gc-candidates.js';
+import { targetFor } from './gc-candidates.js';
 
-export function collectStageACandidates(
+export function collectDeterministicCandidates(
   input: ContextGcPlannerInput,
   groups: ReadonlyMap<string, ToolGroup>,
   existingReplacements: readonly ContextGcReplacement[],
@@ -42,12 +44,14 @@ export function collectStageACandidates(
         : []
     )
   );
-  const reads = [...groups.values()].filter(
-    (group) =>
-      group.toolName === 'read' &&
-      group.call?.message.role === 'tool_call' &&
-      group.result?.message.role === 'tool'
-  );
+  const reads = [...groups.values()]
+    .filter(
+      (group) =>
+        group.toolName === 'read' &&
+        group.call?.message.role === 'tool_call' &&
+        group.result?.message.role === 'tool'
+    )
+    .sort((left, right) => left.result!.record.sequence - right.result!.record.sequence);
   const claimedReadItems = new Set(
     [...existingReadReplacements.values()].flatMap((replacement) =>
       replacement.items.map(
@@ -71,12 +75,6 @@ export function collectStageACandidates(
     .sort((left, right) => left.evidenceSequence - right.evidenceSequence);
   for (const { patch, result, terminal, evidenceSequence } of patches) {
     const patchCall = patch.call!;
-    const observedRollouts = successfulRolloutsAfter(
-      input.records,
-      evidenceSequence,
-      input.modelId,
-      input.contextWindowTokens
-    );
     const replacements: ContextGcReplacement[] = [];
     const candidateReadItems = new Set<string>();
     const patchTarget = targetFor(patchCall.record, patchCall.message);
@@ -121,7 +119,7 @@ export function collectStageACandidates(
               operation: matched.operation
             }),
             evidenceSequence,
-            ...(read.result!.message.observationId ? { supersededByCallId: patch.callId } : {})
+            supersededByCallId: patch.callId
           }
         ];
       });
@@ -140,21 +138,109 @@ export function collectStageACandidates(
       });
     }
     if (replacements.length === 0) continue;
+    const mature: ContextGcReplacement[] = [];
+    const awaitingRollouts: ContextGcReplacement[] = [];
+    let observedRollouts = Infinity;
+    for (const replacement of replacements) {
+      const protection = input.protection!.after(
+        Math.max(evidenceSequence, replacement.target.sequence)
+      );
+      if (
+        protection.rollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
+        protection.thinking >= 3
+      ) {
+        mature.push(replacement);
+        observedRollouts = Math.min(observedRollouts, protection.rollouts);
+      } else if (protection.rollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+        awaitingRollouts.push(replacement);
+        retryAfterRollouts = Math.min(
+          retryAfterRollouts,
+          CONTEXT_GC_POLICY.largeExecProtectionRollouts - protection.rollouts
+        );
+      }
+    }
+    if (awaitingRollouts.length) {
+      protectedTokens += Math.max(
+        0,
+        candidateSavings({ replacements: awaitingRollouts, observedRollouts: 0, evidenceSequence })
+      );
+    }
+    if (!mature.length) continue;
     const candidate: ContextCandidate = {
-      replacements,
+      replacements: mature,
       observedRollouts,
       evidenceSequence
     };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    for (const itemKey of candidateReadItems) claimedReadItems.add(itemKey);
-    if (observedRollouts >= CONTEXT_GC_POLICY.stageAProtectionRollouts) eligible.push(candidate);
-    else {
-      protectedTokens += reclaimedTokens;
-      retryAfterRollouts = Math.min(
-        retryAfterRollouts,
-        CONTEXT_GC_POLICY.stageAProtectionRollouts - observedRollouts
-      );
+    for (const replacement of mature) {
+      if (replacement.kind !== 'READ_OUTPUT_ITEMS') continue;
+      for (const item of replacement.items) {
+        const key = `${replacement.target.recordId}:${replacement.target.observationId ?? ''}:${item.index}`;
+        if (candidateReadItems.has(key)) claimedReadItems.add(key);
+      }
+    }
+    eligible.push(candidate);
+  }
+  const visibleReads = reads.flatMap((group) => {
+    if (group.evidenceOnly || group.failed || !group.completed) return [];
+    const target = targetFor(group.result!.record, group.result!.message);
+    const parsed = parseReadContextOutput(group.result!.message.content);
+    return target && parsed ? [{ group, target, items: parsed.items }] : [];
+  });
+  for (const [index, old] of visibleReads.entries()) {
+    for (const item of old.items) {
+      const itemKey = `${old.target.recordId}:${old.target.observationId ?? ''}:${item.index}`;
+      if (claimedReadItems.has(itemKey) || item.content.startsWith('<mar_context_gc ')) continue;
+      const pathKey = contextGcLogicalPathKey(item.path, input.workspace, input.platform);
+      if (!pathKey) continue;
+      const later = visibleReads
+        .slice(index + 1)
+        .filter((entry) =>
+          entry.items.some(
+            (candidate) =>
+              contextGcLogicalPathKey(candidate.path, input.workspace, input.platform) ===
+                pathKey &&
+              contextGcReadRangeCovers(item, candidate) &&
+              !existingReadReplacements
+                .get(contextGcTargetKey(entry.target))
+                ?.items.some((prior) => prior.index === candidate.index)
+          )
+        );
+      const successor = later.findLast((entry) => {
+        const count = input.protection!.after(entry.target.sequence);
+        return count.rollouts >= 6 && count.thinking >= 3;
+      });
+      if (!successor) continue;
+      const existingRead = existingReadReplacements.get(contextGcTargetKey(old.target));
+      const evidenceSequence = successor.target.sequence;
+      const replacement: ContextGcReplacement = {
+        kind: 'READ_OUTPUT_ITEMS',
+        callId: old.group.callId,
+        target: old.target,
+        items: [
+          ...(existingRead?.items ?? []),
+          {
+            index: item.index,
+            path: item.path,
+            replacement: contextGcCoveredReadReplacement(item, successor.group.callId),
+            evidenceSequence,
+            supersededByCallId: successor.group.callId
+          }
+        ],
+        evidenceSequences: [
+          ...new Set([...(existingRead?.evidenceSequences ?? []), evidenceSequence])
+        ]
+      };
+      const candidate: ContextCandidate = {
+        replacements: [replacement],
+        observedRollouts: input.protection!.after(evidenceSequence).rollouts,
+        evidenceSequence
+      };
+      if (candidateSavings(candidate) > 0) {
+        eligible.push(candidate);
+        claimedReadItems.add(itemKey);
+      }
     }
   }
   return { eligible, protectedTokens, retryAfterRollouts };

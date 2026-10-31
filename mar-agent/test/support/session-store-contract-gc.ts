@@ -12,7 +12,7 @@ const economics = {
   contextGrowthSampleWindow: 16,
   minimumContextGrowthSamples: 6,
   minimumObservationRollouts: 1,
-  stageAProtectionRollouts: 2,
+  stageAProtectionRollouts: 6,
   largeExecProtectionRollouts: 6,
   normalInputCostRate: 1,
   cacheReadCostRate: 0.1,
@@ -23,7 +23,7 @@ const economics = {
 } as const;
 
 const metrics: ContextGcMetrics = {
-  stage: 'STAGE_A',
+  stage: 'UNIFIED',
   beforeTokens: 10,
   afterTokens: 8,
   reclaimedTokens: 2,
@@ -37,7 +37,7 @@ const metrics: ContextGcMetrics = {
   contextGrowthP75Tokens: 0,
   expectedNetSavedCostUnits: 2,
   cacheInvestmentRoi: 0,
-  minimumObservedRollouts: 2,
+  minimumObservedRollouts: 6,
   protectedCandidateTokens: 0,
   eligibleCandidateCount: 1,
   eligibleTargetCount: 1,
@@ -51,6 +51,7 @@ async function appendSuccessfulRollout(
 ) {
   await store.append(sessionId, {
     type: 'model.attempt',
+    executionId: 'execution',
     payload: {
       purpose: 'EXECUTION',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -60,6 +61,17 @@ async function appendSuccessfulRollout(
       maxAttempts: 5,
       continuation: false,
       credentialReason: 'REQUEST'
+    }
+  });
+  await store.append(sessionId, {
+    type: 'model.context',
+    executionId: 'execution',
+    payload: {
+      role: 'provider',
+      content: '',
+      provider: 'ANTHROPIC_MESSAGES',
+      providerModelId: 'coding',
+      item: { type: 'thinking', thinking: 'private fixture', signature: 'fixture-signature' }
     }
   });
   const usage = await store.append(sessionId, {
@@ -74,6 +86,7 @@ async function appendSuccessfulRollout(
   });
   const completed = await store.append(sessionId, {
     type: 'model.attempt',
+    executionId: 'execution',
     payload: {
       purpose: 'EXECUTION',
       protocol: 'ANTHROPIC_MESSAGES',
@@ -147,7 +160,8 @@ async function appendPatchDraft(
     payload: { role: 'tool', callId: input.callId, content: JSON.stringify(data) },
     ...recordInput
   });
-  await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
+  for (let i = 0; i < 5; i++)
+    await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const latest = await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const draft: ContextGcCheckpointDraft = {
     version: 1,
@@ -211,7 +225,7 @@ export async function prepareContractGcDraft(store: SessionStore, sessionId: str
     callId: 'patch-1',
     path: 'src/a.ts',
     contextInputTokens: 6_000,
-    normalRolloutOrdinal: 2,
+    normalRolloutOrdinal: 6,
     turnId: 'turn-1'
   });
 }
