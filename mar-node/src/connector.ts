@@ -267,7 +267,11 @@ export class NodeConnector {
         await this.sessionMessageService.drain();
       },
       closeResume: () => this.externalSessionResumeService.close(),
-      capture: () => (this.config?.nodeId ? this.restartHandoff.capture() : undefined),
+      capture: async () => {
+        if (!this.config?.nodeId) return;
+        await this.marAgentRuntimeModels.waitForPendingCredentials();
+        return this.restartHandoff.capture();
+      },
       dispose: () => this.disposeRuntime(),
       publish: (snapshot) => this.restartHandoff.publish(snapshot),
       diagnose: (stage, error) =>
@@ -1368,11 +1372,11 @@ export class NodeConnector {
       coordinator: this.continuousRunCoordinator,
       goals: this.goalRuntime,
       goalExecution: (id) => this.goalCoordinator.restartExecution(id),
-      executionContext: (id, context) =>
+      executionContext: (id, context, modelId) =>
         this.marAgentRunController.restartExecutionContext(
           id,
           context,
-          this.runtime.getAgentSession(id)?.modelId
+          modelId === undefined ? this.runtime.getAgentSession(id)?.modelId : modelId
         ),
       commandActive: (id, command) => this.commandStates.get(id, command)?.active === true,
       inputState,

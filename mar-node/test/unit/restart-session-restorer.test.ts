@@ -185,6 +185,84 @@ async function fixture(parentSessionId?: string) {
 }
 
 describe('Orderly restart input reconstruction', () => {
+  it('keeps each queued input configuration instead of borrowing the latest Session settings', async () => {
+    const f = await fixture();
+    delete f.entry.current;
+    f.entry.paused = true;
+    f.entry.queue = [
+      {
+        id: 'original-configuration',
+        clientMessageId: 'original-configuration',
+        content: 'original queued request',
+        attachments: [],
+        execution: {
+          ...f.execution,
+          configuration: { modelId: 'original-model', effort: 'low', access: 'read-only' }
+        },
+        immediate: false
+      },
+      {
+        id: 'later-configuration',
+        clientMessageId: 'later-configuration',
+        content: 'later queued request',
+        attachments: [],
+        execution: {
+          ...f.execution,
+          configuration: { modelId: 'later-model', effort: 'medium', access: 'full-access' }
+        },
+        immediate: false
+      }
+    ];
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.coordinator.pending('original-configuration')).toMatchObject({
+      modelId: 'original-model',
+      effort: 'low',
+      access: 'read-only'
+    });
+    expect(f.coordinator.pending('later-configuration')).toMatchObject({
+      modelId: 'later-model',
+      effort: 'medium',
+      access: 'full-access'
+    });
+    expect(f.runtime.getAgentSession(f.session.id)).toMatchObject({
+      modelId: 'model',
+      effort: 'high',
+      access: 'auto'
+    });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('restores resolved personal instructions for ordinary inputs and FIFO items', async () => {
+    const f = await fixture();
+    f.entry.paused = true;
+    f.entry.current!.execution = {
+      ...f.execution,
+      personalInstructions: 'Original ordinary input instructions'
+    };
+    f.entry.queue = [
+      {
+        id: 'queued-instructions',
+        clientMessageId: 'queued-instructions',
+        content: 'queued request',
+        attachments: [],
+        execution: { ...f.execution, personalInstructions: 'Original queued instructions' },
+        immediate: false
+      }
+    ];
+
+    await f.restorer.restore(f.entry, 'handoff');
+
+    expect(f.coordinator.pending('restart:handoff:session')?.personalInstructions).toBe(
+      'Original ordinary input instructions'
+    );
+    expect(f.coordinator.pending('queued-instructions')?.personalInstructions).toBe(
+      'Original queued instructions'
+    );
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
   it('continues the original execution state without an initiating user or restart authorization', async () => {
     const f = await fixture();
     f.entry.current!.execution = { ...f.execution, initiatedByUserId: undefined };
@@ -351,6 +429,8 @@ describe('Orderly restart input reconstruction', () => {
     async (suppressNotifications) => {
       const f = await fixture();
       const submitGoal = vi.spyOn(f.messages, 'submitGoal');
+      const configuration = { modelId: 'goal-model', effort: 'low', access: 'read-only' };
+      f.entry.execution = { ...f.execution, configuration };
       f.entry.suppressNotifications = suppressNotifications;
       f.goals.start('session', 'finish the feature');
       f.goals.recordTurn('session');
@@ -375,6 +455,7 @@ describe('Orderly restart input reconstruction', () => {
         expect.objectContaining({
           sessionId: 'session',
           restoreQueued: true,
+          restartConfiguration: configuration,
           goal: { id: f.entry.goal.goal.id, revision: f.entry.goal.goal.revision, epoch: 19 }
         })
       );
@@ -382,6 +463,11 @@ describe('Orderly restart input reconstruction', () => {
       await vi.waitFor(() => expect(f.control).toHaveBeenCalledOnce());
       expect(f.control.mock.calls[0]![1].input).toContain('finish the feature');
       expect(f.control.mock.calls[0]![1].input).toContain(RESTART_NOTICE);
+      expect(f.control.mock.calls[0]![1]).toMatchObject({
+        model: 'goal-model',
+        effort: 'low',
+        access: 'read-only'
+      });
       expect(f.inputState).not.toHaveBeenCalled();
       expect(f.runtime.sessionQueue('session').itemIds).toEqual(['ordinary']);
       expect(f.runtime.activeSessionRun('session')!.suppressNotifications === true).toBe(

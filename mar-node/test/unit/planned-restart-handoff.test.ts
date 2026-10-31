@@ -196,6 +196,11 @@ function handoff(
     readonly goals?: GoalRuntime;
     readonly credential?: () => string;
     readonly goalExecution?: (sessionId: string) => RestartExecution | undefined;
+    readonly executionContext?: (
+      sessionId: string,
+      context: RestartExecution['executionContext'],
+      modelId?: string | null
+    ) => RestartExecution['executionContext'];
     readonly inputState?: (
       session: RestartSession,
       message: RestartMessage
@@ -212,6 +217,9 @@ function handoff(
     coordinator: f.coordinator,
     goals: callbacks.goals ?? f.goals,
     ...(callbacks.goalExecution === undefined ? {} : { goalExecution: callbacks.goalExecution }),
+    ...(callbacks.executionContext === undefined
+      ? {}
+      : { executionContext: callbacks.executionContext }),
     commandActive: (sessionId, command) => f.activeCommands.has(sessionId + ':' + command),
     inputState: callbacks.inputState ?? (async () => 'interrupted'),
     restore: callbacks.restore ?? (async () => undefined),
@@ -240,6 +248,63 @@ function asLegacySession(entry: RestartSession) {
 }
 
 describe('PlannedRestartHandoff', () => {
+  it('keeps the effective Goal configuration when only a retry context remains', async () => {
+    const f = fixture();
+    const session = f.sessions[0]!;
+    f.goals.start(session.id, 'Continue after a model switch');
+    const retry: RestartExecution = {
+      executionContext: { runner: 'mar-agent', runnerInput: { model: { id: 'original-model' } } },
+      secretEnvironment: {},
+      configuration: { modelId: 'original-model', effort: 'low', access: 'read-only' }
+    };
+    const current = { modelId: 'effective-goal-model', effort: 'high', access: 'auto' };
+    f.runtime.updateAgentSessionConfiguration({ sessionId: session.id, ...current });
+
+    const saved = handoff(f, await temporaryDirectory(), { goalExecution: () => retry }).capture()!
+      .sessions[0]!;
+
+    expect(saved.current).toBeUndefined();
+    expect(saved.execution!.configuration).toEqual(current);
+  });
+
+  it('keeps queued configuration but checkpoints the active input with its current effective configuration', async () => {
+    const f = fixture();
+    const session = f.sessions[0]!;
+    prepareCurrent(f, session, 'active input', 'active-secret');
+    prepareQueue(f, session, 'queued', 'queued input');
+    const activeConfiguration = {
+      modelId: 'live-selected-model',
+      effort: 'low',
+      access: 'read-only'
+    };
+    f.runtime.updateAgentSessionConfiguration({ sessionId: session.id, ...activeConfiguration });
+    const executionContext = vi.fn(
+      (_id: string, context: RestartExecution['executionContext'], _modelId?: string | null) =>
+        context
+    );
+    const saved = handoff(f, await temporaryDirectory(), { executionContext }).capture()!
+      .sessions[0]!;
+
+    expect(saved.current!.execution!.configuration).toEqual(activeConfiguration);
+    expect(saved.queue[0]!.execution!.configuration).toEqual({
+      modelId: 'model-under-test',
+      effort: 'high',
+      access: 'full-access'
+    });
+    expect(executionContext).toHaveBeenNthCalledWith(
+      1,
+      session.id,
+      expect.anything(),
+      'model-under-test'
+    );
+    expect(executionContext).toHaveBeenNthCalledWith(
+      2,
+      session.id,
+      expect.anything(),
+      'live-selected-model'
+    );
+  });
+
   it('keeps the application error code when capture rejects an unready Session', async () => {
     const f = fixture([]);
     const session = f.runtime.createAgentSession({

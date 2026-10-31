@@ -5,6 +5,14 @@ import type { PreparedExecutionInput } from './continuous-run-coordinator.js';
 
 export const restartExecutionSchema = z
   .object({
+    configuration: z
+      .object({
+        modelId: z.string().nullable(),
+        effort: z.string().nullable(),
+        access: z.string().nullable()
+      })
+      .strict()
+      .optional(),
     executionContext: z
       .object({ runner: z.literal('mar-agent'), runnerInput: z.unknown().optional() })
       .strict(),
@@ -21,15 +29,19 @@ export type RestartExecution = z.infer<typeof restartExecutionSchema>;
 
 export function captureRestartExecution(
   input:
-    | Pick<
+    | (Pick<
         PreparedExecutionInput,
         'executionContext' | 'secretEnvironment' | 'personalInstructions' | 'usageGrant'
-      >
+      > &
+        Partial<Pick<PreparedExecutionInput, 'modelId' | 'effort' | 'access'>>)
     | undefined,
   initiatedByUserId?: number
 ): RestartExecution | undefined {
   if (input === undefined) return;
   return restartExecutionSchema.parse({
+    ...(input.modelId === undefined || input.effort === undefined || input.access === undefined
+      ? {}
+      : { configuration: { modelId: input.modelId, effort: input.effort, access: input.access } }),
     executionContext: structuredClone(input.executionContext),
     secretEnvironment: { ...input.secretEnvironment },
     ...(input.personalInstructions === undefined

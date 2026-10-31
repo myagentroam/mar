@@ -8,6 +8,7 @@ import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import { NODE_PROTOCOL_VERSION } from '../../../packages/protocol/src/index.js';
 import type {
   NodeEnvelope,
+  RuntimeCredentialResolveResponse,
   RuntimeCredentialTicket
 } from '../../../packages/protocol/src/index.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
@@ -24,6 +25,64 @@ import { SessionLifecycleService } from '../../src/session/session-lifecycle-ser
 import { SessionMessageService } from '../../src/session/session-message-service.js';
 
 describe('Node MAR Agent runtime credentials', () => {
+  it('preserves the last ticket if an in-flight renewal fails without retrying during shutdown', async () => {
+    const failure = new Error('temporary credential resolution failure');
+    const resolve = vi.fn(async () => {
+      throw failure;
+    });
+    const factory = new MarAgentRuntimeModelFactory({ resolve }, () => 1_000);
+    const model = factory.create([runtimeModel(ticket('original-ticket', 1_000))], {
+      runtimeScopeId: 'scope-1',
+      executionId: 'execution-1'
+    })[0]!;
+    try {
+      const acquisition = expect(model.credentialProvider!.acquire('REQUEST')).rejects.toBe(
+        failure
+      );
+      await expect(factory.waitForPendingCredentials()).resolves.toBeUndefined();
+      await acquisition;
+      expect(snapshotRuntimeModel(model, 'scope-1')?.credential).toMatchObject({
+        type: 'RUNTIME_TICKET',
+        ticket: { nonce: 'original-ticket' }
+      });
+      expect(resolve).toHaveBeenCalledTimes(1);
+    } finally {
+      await model.credentialProvider!.close();
+    }
+  });
+
+  it('waits for an in-flight renewal before snapshotting restart tickets without resolving again', async () => {
+    const renewal = deferred<RuntimeCredentialResolveResponse>();
+    const resolve = vi.fn(() => renewal.promise);
+    const factory = new MarAgentRuntimeModelFactory({ resolve }, () => 1_000);
+    const model = factory.create([runtimeModel(ticket('original-ticket', 1_000))], {
+      runtimeScopeId: 'scope-1',
+      executionId: 'execution-1'
+    })[0]!;
+    const acquisition = model.credentialProvider!.acquire('REQUEST');
+    let captured = false;
+    const checkpoint = factory.waitForPendingCredentials().then(() => {
+      captured = true;
+      return snapshotRuntimeModel(model, 'scope-1');
+    });
+    try {
+      await Promise.resolve();
+      expect(captured).toBe(false);
+      renewal.resolve({
+        credential: resolvedCredential(2),
+        nextTicket: ticket('renewed-ticket', 2_000)
+      });
+      await acquisition;
+      expect((await checkpoint)?.credential).toMatchObject({
+        type: 'RUNTIME_TICKET',
+        ticket: { nonce: 'renewed-ticket' }
+      });
+      expect(resolve).toHaveBeenCalledTimes(1);
+    } finally {
+      await model.credentialProvider!.close();
+    }
+  });
+
   it('relays unknown nested model options safely through the SDK', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-node-model-options-'));
     const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });

@@ -10,6 +10,7 @@ import {
   marAgentRuntimeModelConfigurationSchema,
   resolveMarAgentDefaultReasoningEffort,
   type MarAgentRuntimeModelConfiguration,
+  type RuntimeCredentialResolveResponse,
   type RuntimeCredentialTicket
 } from '@myagentroam/protocol';
 import type { RuntimeCredentialControlService } from '../../service/runtime-credential-control-service.js';
@@ -94,10 +95,29 @@ const CREDENTIAL_REFRESH_WINDOW_MS = 60_000;
 const CREDENTIAL_REFRESH_RETRY_MS = 30_000;
 
 export class MarAgentRuntimeModelFactory {
+  private readonly control: Pick<RuntimeCredentialControlService, 'resolve'>;
+  private readonly pendingCredentials = new Set<Promise<RuntimeCredentialResolveResponse>>();
+
   constructor(
-    private readonly control: Pick<RuntimeCredentialControlService, 'resolve'>,
+    control: Pick<RuntimeCredentialControlService, 'resolve'>,
     private readonly now: () => number = Date.now
-  ) {}
+  ) {
+    this.control = {
+      resolve: (...args) => {
+        const pending = control.resolve(...args);
+        this.pendingCredentials.add(pending);
+        void pending.then(
+          () => this.pendingCredentials.delete(pending),
+          () => this.pendingCredentials.delete(pending)
+        );
+        return pending;
+      }
+    };
+  }
+
+  async waitForPendingCredentials(): Promise<void> {
+    await Promise.allSettled([...this.pendingCredentials]);
+  }
 
   create(
     configurations: readonly MarAgentRuntimeModelConfiguration[],

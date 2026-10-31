@@ -7,6 +7,7 @@ import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
 import type { GoalRuntime, GoalState } from './goal-runtime.js';
 import type { SessionMessageService } from '../session/session-message-service.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
+import { resolvedPersonalInstructions } from '../runner/personal-instructions.js';
 import type { RestartExecution } from './restart-execution-state.js';
 import {
   RESTART_NOTICE,
@@ -97,24 +98,31 @@ export class RestartSessionRestorer {
     const submit = async (input: RestartMessage, content = input.content) => {
       const context = execution(input.execution);
       await this.options.withGrant(context, () =>
-        this.options.messages.restoreQueued({
-          sessionId: session.id,
-          content,
-          clientMessageId: input.clientMessageId,
-          ...(parseComposerTags(content)[0]?.kind === 'mar_restart'
-            ? { __runnerContent: `${content}${RESTART_NOTICE}` }
-            : {}),
-          attachments: input.attachments,
-          __queueItemId: input.id,
-          ...(context.initiatedByUserId === undefined
-            ? {}
-            : { __requestUserId: context.initiatedByUserId }),
-          __suppressNotifications: input.suppressNotifications === true,
-          secretEnvironment: context.secretEnvironment,
-          personalInstructions: context.personalInstructions,
-          [RUNNER_EXECUTION_CONTEXT]: context.executionContext,
-          __usageGrant: context.usageGrant
-        })
+        this.options.messages.restoreQueued(
+          {
+            sessionId: session.id,
+            content,
+            clientMessageId: input.clientMessageId,
+            ...(parseComposerTags(content)[0]?.kind === 'mar_restart'
+              ? { __runnerContent: `${content}${RESTART_NOTICE}` }
+              : {}),
+            attachments: input.attachments,
+            __queueItemId: input.id,
+            ...(context.initiatedByUserId === undefined
+              ? {}
+              : { __requestUserId: context.initiatedByUserId }),
+            __suppressNotifications: input.suppressNotifications === true,
+            secretEnvironment: context.secretEnvironment,
+            ...(context.personalInstructions === undefined
+              ? {}
+              : {
+                  personalInstructions: resolvedPersonalInstructions(context.personalInstructions)
+                }),
+            [RUNNER_EXECUTION_CONTEXT]: context.executionContext,
+            __usageGrant: context.usageGrant
+          },
+          context.configuration
+        )
       );
       if (input.immediate) coordinator.restoreImmediate(input.id);
     };
@@ -150,6 +158,9 @@ ${RESTART_NOTICE}`,
             suppressNotifications: entry.suppressNotifications === true,
             secretEnvironment: context.secretEnvironment,
             restoreQueued: true,
+            ...(context.configuration === undefined
+              ? {}
+              : { restartConfiguration: context.configuration }),
             ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant }),
             ...(typeof context.personalInstructions === 'string'
               ? { personalInstructions: context.personalInstructions }

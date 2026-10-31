@@ -178,7 +178,8 @@ interface Options {
   readonly goalExecution?: (sessionId: string) => RestartExecution | undefined;
   readonly executionContext?: (
     sessionId: string,
-    context: RestartExecution['executionContext']
+    context: RestartExecution['executionContext'],
+    selectedModelId?: string | null
   ) => RestartExecution['executionContext'];
   readonly commandActive: (sessionId: string, command: string) => boolean;
   readonly inputState: (
@@ -297,11 +298,18 @@ export class PlannedRestartHandoff {
       const awaitingGoal = goal === undefined && this.options.commandActive(session.id, 'goal');
       const currentId = active && (runtime.currentExecutionId(active.id) ?? active.id);
       const pending = currentId === undefined ? undefined : coordinator.pending(currentId);
-      const checkpoint = (execution: RestartExecution | undefined) => {
+      const checkpoint = (execution: RestartExecution | undefined, activeInput = false) => {
+        if (execution !== undefined && activeInput)
+          execution.configuration = {
+            modelId: session.modelId,
+            effort: session.effort,
+            access: session.access
+          };
         if (execution !== undefined && this.options.executionContext !== undefined)
           execution.executionContext = this.options.executionContext(
             session.id,
-            execution.executionContext
+            execution.executionContext,
+            execution.configuration?.modelId
           );
         return execution;
       };
@@ -311,13 +319,17 @@ export class PlannedRestartHandoff {
         content: string,
         attachments: RestartMessage['attachments'],
         originatingUser: number | undefined,
-        suppressNotifications: boolean | undefined
+        suppressNotifications: boolean | undefined,
+        activeInput = false
       ): RestartMessage => ({
         id,
         clientMessageId,
         content: withoutAttachmentTags(content),
         attachments,
-        execution: checkpoint(captureRestartExecution(coordinator.pending(id), originatingUser)),
+        execution: checkpoint(
+          captureRestartExecution(coordinator.pending(id), originatingUser),
+          activeInput
+        ),
         immediate: coordinator.isImmediate(id),
         ...(suppressNotifications === true ? { suppressNotifications: true } : {})
       });
@@ -345,7 +357,8 @@ export class PlannedRestartHandoff {
               pending.restartMessage.content,
               [...pending.restartMessage.attachments],
               pending.restartMessage.initiatedByUserId ?? active?.initiatedByUserId,
-              active?.suppressNotifications
+              active?.suppressNotifications,
+              true
             );
       if (current === undefined && items.length === 0 && goal === undefined && !awaitingGoal)
         continue;
@@ -373,7 +386,9 @@ export class PlannedRestartHandoff {
           effort: session.effort,
           access: session.access
         },
-        ...(execution === undefined ? {} : { execution: checkpoint(execution) }),
+        ...(execution === undefined
+          ? {}
+          : { execution: checkpoint(execution, goalItem === undefined) }),
         paused: queue.paused,
         plan: this.options.commandActive(session.id, 'plan'),
         awaitingGoal,

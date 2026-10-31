@@ -51,6 +51,7 @@ describe('restart execution state', () => {
     const captured = captureRestartExecution(input, 41);
 
     expect(captured).toEqual({
+      configuration: { modelId: input.modelId, effort: input.effort, access: input.access },
       executionContext: input.executionContext,
       secretEnvironment: input.secretEnvironment,
       personalInstructions: input.personalInstructions,

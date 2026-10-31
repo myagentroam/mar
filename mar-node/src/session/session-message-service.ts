@@ -47,8 +47,11 @@ import {
 const INTERNAL_GOAL = Symbol('internalGoal');
 const INTERNAL_SCHEDULE = Symbol('internalSchedule');
 const INTERNAL_RESTORE = Symbol('internalRestore');
+const RESTORE_CONFIGURATION = Symbol('restoreConfiguration');
+type RestoredConfiguration = Pick<NodeAgentSession, 'modelId' | 'effort' | 'access'>;
 type MessageInput = Record<string | symbol, unknown> & {
   readonly [RUNNER_EXECUTION_CONTEXT]?: RunnerExecutionContext;
+  readonly [RESTORE_CONFIGURATION]?: RestoredConfiguration;
 };
 
 interface SessionMessageServiceOptions {
@@ -106,8 +109,15 @@ export class SessionMessageService {
     this.accepting = accepting;
   }
 
-  restoreQueued(input: Record<string, unknown>): Promise<unknown> {
-    return this.message({ ...input, [INTERNAL_RESTORE]: true });
+  restoreQueued(
+    input: Record<string, unknown>,
+    configuration?: RestoredConfiguration
+  ): Promise<unknown> {
+    return this.message({
+      ...input,
+      [INTERNAL_RESTORE]: true,
+      ...(configuration === undefined ? {} : { [RESTORE_CONFIGURATION]: configuration })
+    });
   }
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
@@ -132,6 +142,7 @@ export class SessionMessageService {
     readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
     readonly restoreQueued?: boolean;
+    readonly restartConfiguration?: RestoredConfiguration;
     readonly messageContent?: string;
     readonly clientMessageId?: string;
     readonly messageOrigin?: unknown;
@@ -141,6 +152,9 @@ export class SessionMessageService {
     return this.message({
       [INTERNAL_GOAL]: true,
       [INTERNAL_RESTORE]: input.restoreQueued === true,
+      ...(input.restoreQueued !== true || input.restartConfiguration === undefined
+        ? {}
+        : { [RESTORE_CONFIGURATION]: input.restartConfiguration }),
       sessionId: input.sessionId,
       __suppressNotifications:
         input.suppressNotifications === true ||
@@ -271,10 +285,11 @@ export class SessionMessageService {
     const executionContext =
       input[RUNNER_EXECUTION_CONTEXT] ??
       this.options.runners.require(session.runner).prepareExecutionContext(input);
+    const restoredConfiguration = input[RESTORE_CONFIGURATION];
     if (session.parentSessionId != null)
       this.options.runners
         .require(session.runner)
-        .assertChildModel(session.modelId, executionContext);
+        .assertChildModel((restoredConfiguration ?? session).modelId, executionContext);
     const sourceContent = withSessionMessageOrigin(
       content,
       input.__marctlOrigin,
@@ -467,9 +482,9 @@ export class SessionMessageService {
             cwd,
             workspacePath,
             externalSessionId: currentSession.externalSessionId,
-            modelId: currentSession.modelId,
-            effort: currentSession.effort,
-            access: currentSession.access,
+            modelId: (restoredConfiguration ?? currentSession).modelId,
+            effort: (restoredConfiguration ?? currentSession).effort,
+            access: (restoredConfiguration ?? currentSession).access,
             collaborationMode: planActive ? 'plan' : 'default',
             secretEnvironment,
             ...(personalInstructions === undefined ? {} : { personalInstructions }),
