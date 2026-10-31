@@ -66,6 +66,7 @@ it.each(['initial', 'older'] as const)(
       matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
     });
     vi.stubGlobal('HTMLElement', class {});
+    vi.stubGlobal('document', { activeElement: null });
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 1)
@@ -109,14 +110,16 @@ it.each(['initial', 'older'] as const)(
       await activate();
       expect(state![pendingKey]).toBeFalsy();
       if (kind === 'older') {
-        const button = { getAttribute: () => 'load' };
-        state!['element'] = { querySelector: () => button };
+        const button = {};
+        const focus = vi.fn();
+        state!['element'] = { querySelector: () => button, focus };
         vi.stubGlobal('document', { activeElement: button });
         props.value = { ...props.value, loadingOlder: true };
         await nextTick();
-        expect(state!['olderAction']).toBe('load');
+        expect(state!['olderAction']).toBeUndefined();
         props.value = { ...props.value, loadingOlder: false };
         await nextTick();
+        expect(focus).toHaveBeenCalledWith({ preventScroll: true });
         vi.stubGlobal('document', { activeElement: null });
         props.value = { ...props.value, loadingOlder: true };
         await nextTick();

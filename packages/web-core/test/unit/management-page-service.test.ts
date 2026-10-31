@@ -5,10 +5,30 @@ import {
   parseManagementPage
 } from '../../src/service/management-page-service.js';
 import { createCatalogPageService } from '../../src/service/catalog-page-service.js';
+import { AuthenticationContextChangedError } from '../../src/service/workbench-http-service.js';
 
 interface Item {
   readonly id: string;
 }
+
+it('clears a previous page failure when retry loses its authentication context', async () => {
+  const read = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('page unavailable'))
+    .mockRejectedValueOnce(new AuthenticationContextChangedError());
+  const service = createManagementPageService<Item>({
+    read,
+    key: (item) => item.id,
+    context: () => 'fixture'
+  });
+  await service.load();
+  expect(service.failure.value?.error).toBeInstanceOf(Error);
+  await service.retry();
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(service.failure.value).toBeUndefined();
+  expect(service.loading.value).toBe(false);
+  service.dispose();
+});
 
 function page(
   items: readonly Item[],

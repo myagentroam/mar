@@ -29,23 +29,49 @@ describe('Public environment secret management', () => {
     [new AuthenticationContextChangedError(), 0],
     [new DOMException('Request aborted', 'AbortError'), 1],
     [new Error('Request failed'), 1]
-  ] as const)('reports only current pagination failures (%s)', async (cause, expectedMessages) => {
-    vi.stubGlobal('window', {
-      location: { search: '', href: 'http://fixture/console' },
-      history: { replaceState: vi.fn() },
-      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
-    });
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
-    const request = vi.fn().mockRejectedValue(cause);
-    const view = renderComponent(SecretManager, { request, scopes: ['PERSONAL'], writable: true });
-    try {
-      await flushComponent();
-      expect(request).toHaveBeenCalledOnce();
-      expect(error).toHaveBeenCalledTimes(expectedMessages);
-    } finally {
-      view.unmount();
+  ] as const)(
+    'offers retry only for current pagination failures (%s)',
+    async (cause, expectedFailures) => {
+      vi.stubGlobal('window', {
+        location: { search: '', href: 'http://fixture/console' },
+        history: { replaceState: vi.fn() },
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+      });
+      const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+      const request = vi.fn().mockRejectedValue(cause);
+      const view = renderComponent(SecretManager, {
+        request,
+        scopes: ['PERSONAL'],
+        writable: true
+      });
+      try {
+        await flushComponent();
+        expect(request).toHaveBeenCalledOnce();
+        expect(error).not.toHaveBeenCalled();
+        const retry = view
+          .findAll('button')
+          .filter((button) =>
+            textContent(button).includes(i18n.global.t('common.loadFailedRetry'))
+          );
+        expect(retry).toHaveLength(expectedFailures);
+        if (retry[0]) {
+          request.mockResolvedValueOnce({
+            secrets: [],
+            page: 1,
+            pageSize: 20,
+            total: 0,
+            hasMore: false
+          });
+          await trigger(retry[0], 'onClick');
+          await flushComponent();
+          expect(request).toHaveBeenCalledTimes(2);
+          expect(textContent(view.root)).not.toContain(i18n.global.t('common.loadFailedRetry'));
+        }
+      } finally {
+        view.unmount();
+      }
     }
-  });
+  );
 
   it.each([undefined, false, true])(
     'reads only the permitted Workspace scope (permission=%s) and resets on target change',

@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { managementPageMetadataSchema, type ManagementPage } from '@myagentroam/protocol';
 import { createManagementPaginationService } from './management-pagination-service.js';
+import { AuthenticationContextChangedError } from './workbench-http-service.js';
 
 export function parseManagementPage<T>(
   raw: unknown,
@@ -122,7 +123,10 @@ export function createManagementPageService<T>(input: {
       failure.value = undefined;
     } catch (error) {
       if (current === generation && key === input.context() && !disposed) {
-        failure.value = { error, page: nextPage, append };
+        failure.value =
+          error instanceof AuthenticationContextChangedError
+            ? undefined
+            : { error, page: nextPage, append };
       }
     } finally {
       if (current === generation && key === input.context() && !disposed) {
