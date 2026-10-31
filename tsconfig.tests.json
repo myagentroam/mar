@@ -14,7 +14,8 @@
     "vitest.config.ts",
     "playwright.config.mts",
     "ee/web/src/vite-env.d.ts",
-    "packages/web-core/test/unit/support/component-fixtures.d.ts"
+    "packages/web-core/test/unit/support/component-fixtures.d.ts",
+    "packages/web-core/test/e2e/management-page-app.ts"
   ],
   "exclude": ["test/runs"]
 }

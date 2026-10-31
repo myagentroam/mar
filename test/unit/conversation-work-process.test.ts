@@ -16,6 +16,7 @@ import {
 } from '../../mar-node/src/runner/codex/conversation-parser.js';
 import type { PublicConversationItem } from '../../mar-node/src/native-transcript-model.js';
 import { conversationWorkProcessBlocks } from '../../packages/web-core/src/util/conversation-work-process.js';
+import { parseConversationSegmentPage } from '../../packages/web-core/src/util/conversation-segments.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
@@ -119,9 +120,13 @@ describe('Conversation work process projection', () => {
         groups
       );
 
-      const blocks = conversationWorkProcessBlocks(conversationSegments(projected), [
-        { id: runId, status: 'RUNNING' }
-      ]);
+      const page = parseConversationSegmentPage({
+        unit: 'SEGMENT',
+        segments: conversationSegments(projected),
+        nextCursor: null
+      });
+      expect(page).toBeDefined();
+      const blocks = conversationWorkProcessBlocks(page!.turns, [{ id: runId, status: 'RUNNING' }]);
       expect(blocks.map(({ groupId }) => groupId)).toEqual([
         beforeGroup?.id,
         undefined,
