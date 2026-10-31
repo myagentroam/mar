@@ -144,11 +144,11 @@ createTooltipApp({
                             parentSessionId: 'parent',
                             title,
                             runner: 'mar-agent',
-                            status: 'IDLE'
+                            status: query.has('activity') ? 'RUNNING' : 'IDLE'
                           },
                           {
                             id: 'grandchild',
-                            status: 'IDLE',
+                            status: query.has('activity') ? 'SLEEPING' : 'IDLE',
                             parentSessionId: 'child',
                             title: 'Verify image decoding and cleanup',
                             runner: 'mar-agent'
@@ -162,7 +162,13 @@ createTooltipApp({
                               .trim(),
                             runner: 'codex'
                           }
-                        ].filter((node) => !rootOnly || node.id === 'parent')
+                        ]
+                          .filter((node) => !rootOnly || node.id === 'parent')
+                          .map((node, index) => ({
+                            ...node,
+                            lastActivityAt:
+                              Date.now() - [12 * 60_000, 20_000, 5 * 60_000, 2 * 3_600_000][index]!
+                          }))
                 } as T;
               },
               onOpen: (id: string) => {

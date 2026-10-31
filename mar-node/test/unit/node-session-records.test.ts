@@ -302,10 +302,14 @@ describe('Node session records and external discovery merge', () => {
       const graph = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'root'
-      })) as { nodes: { id: string; status: string }[]; truncated: boolean };
+      })) as {
+        nodes: { id: string; status: string; lastActivityAt: number }[];
+        truncated: boolean;
+      };
       expect(graph.nodes).toHaveLength(100);
       expect(graph.nodes[0]?.id).toBe('root');
       expect(graph.nodes.every((node) => node.status === 'IDLE')).toBe(true);
+      expect(graph.nodes.every((node) => node.lastActivityAt === 0)).toBe(true);
       expect(graph.truncated).toBe(true);
       const runtime = (connector as unknown as { runtime: NodeRuntimeState }).runtime;
       const created = runtime.createAgentSession({
@@ -1062,6 +1066,7 @@ describe('Node session records and external discovery merge', () => {
         nativeSessionProjectionService: NativeSessionProjectionService;
         discoverWorkspaceSessions(): Promise<readonly NodeAgentSession[]>;
         executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
+        runtime: NodeRuntimeState;
       };
       const discovered = ['configuration', 'metadata'].map((action) =>
         internals.nativeSessionProjectionService.project({
@@ -1109,6 +1114,38 @@ describe('Node session records and external discovery merge', () => {
           lastActivityAt,
           lastActivityAt
         ]);
+        // A graph is a local snapshot, including dormant native sessions already discovered.
+        for (const session of discovered) internals.runtime.removeAgentSession(session.id);
+        const discovery = vi.spyOn(internals, 'discoverWorkspaceSessions');
+        const graph = (await internals.executeNodeOperation('session.graph', {
+          workspaceId: workspace.id,
+          sessionId: discovered[0]!.id
+        })) as { nodes: { id: string; lastActivityAt: number }[] };
+        expect(graph.nodes).toEqual([
+          expect.objectContaining({ id: discovered[0]!.id, lastActivityAt })
+        ]);
+        const resumed = internals.runtime.createAgentSession({
+          workspaceId: workspace.id,
+          runner,
+          cwd: workspace.path
+        });
+        internals.runtime.promoteSessionIdentity(resumed.id, discovered[0]!.id);
+        internals.runtime.createMessageRun({
+          sessionId: discovered[0]!.id,
+          clientMessageId: 'graph-live-activity',
+          content: 'Continue'
+        });
+        const liveActivityAt = internals.runtime.getAgentSession(discovered[0]!.id)!.lastActivityAt;
+        expect(liveActivityAt).toBeGreaterThan(lastActivityAt);
+        await expect(
+          internals.executeNodeOperation('session.graph', {
+            workspaceId: workspace.id,
+            sessionId: discovered[0]!.id
+          })
+        ).resolves.toMatchObject({
+          nodes: [expect.objectContaining({ lastActivityAt: liveActivityAt })]
+        });
+        expect(discovery).not.toHaveBeenCalled();
       } finally {
         await connector.stop();
       }
