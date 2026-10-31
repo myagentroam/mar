@@ -1081,9 +1081,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const headingHeight = await heading.evaluate(
           (element) => element.getBoundingClientRect().height
         );
-        await expect(command.locator('.conversation-command-output')).toHaveCount(0);
+        await expect(command.getByRole('region', { name: 'Output' })).toHaveCount(0);
         await heading.click();
-        const detail = command.locator('.conversation-command-output');
+        const detail = command.getByRole('region', { name: 'Output' });
         await expect(detail).toBeVisible();
         expect(await detail.textContent()).toContain(fullCommand);
         await expect(detail).toContainText('Review output');
@@ -1112,7 +1112,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(detail).toHaveCount(0);
         const withoutOutput = group.locator(':scope > details').nth(1);
         await withoutOutput.locator(':scope > summary').click();
-        await expect(withoutOutput.locator('.conversation-command-output')).toContainText(
+        await expect(withoutOutput.getByRole('region', { name: 'Output' })).toContainText(
           'echo review-1'
         );
       } finally {

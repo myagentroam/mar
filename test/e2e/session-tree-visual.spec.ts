@@ -108,6 +108,8 @@ test('reopening during the leave transition reads a fresh snapshot and stays ope
   await expect(page.getByTestId('requests')).toHaveText('1');
   await expect(popover).not.toHaveClass(/enter-active/);
   await trigger.evaluate(async (button) => {
+    if (!(button instanceof HTMLElement))
+      throw new Error('Session tree trigger is not an HTML element');
     button.click();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     button.click();
@@ -123,6 +125,8 @@ test('session tree respects reduced motion when opening and closing', async ({ p
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
   const duration = await trigger.evaluate(async (button) => {
+    if (!(button instanceof HTMLElement))
+      throw new Error('Session tree trigger is not an HTML element');
     button.click();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     return getComputedStyle(document.querySelector('.session-tree-popover')!).transitionDuration;
@@ -144,6 +148,8 @@ for (const outcome of ['success', 'failure']) {
     const popover = page.locator('.session-tree-popover');
     await expect(popover).not.toHaveClass(/enter-active/);
     const closed = await trigger.evaluate(async (button) => {
+      if (!(button instanceof HTMLElement))
+        throw new Error('Session tree trigger is not an HTML element');
       button.click();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       return {
