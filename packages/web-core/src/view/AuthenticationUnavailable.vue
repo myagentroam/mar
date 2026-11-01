@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElButton, ElLink } from 'element-plus';
+import 'element-plus/es/components/button/style/css';
+import 'element-plus/es/components/link/style/css';
 import { marIcon } from '../util/mar-icons.js';
 import { useDocumentationAvailability } from '../service/documentation-availability.js';
 import {

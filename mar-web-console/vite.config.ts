@@ -1,6 +1,8 @@
 import { thirdPartyNoticesPlugin } from '@myagentroam/web-core/build/third-party-notices';
 import { directDownloadServiceWorkerPlugin } from '@myagentroam/web-core/build/direct-download-service-worker';
 import vue from '@vitejs/plugin-vue';
+import Components from 'unplugin-vue-components/vite';
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
@@ -101,6 +103,7 @@ const docsTarget = `http://127.0.0.1:${process.env.MAR_DOCS_PORT ?? '5092'}`;
 export default defineConfig({
   plugins: [
     vue(),
+    Components({ dirs: [], dts: false, resolvers: [ElementPlusResolver()] }),
     directDownloadServiceWorkerPlugin(),
     docsRootRedirectPlugin(),
     webVersionManifestPlugin(),

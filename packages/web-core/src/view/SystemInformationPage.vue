@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ElTag } from 'element-plus';
+import 'element-plus/es/components/tag/style/css';
 import { translate } from '../service/locale-preference-service.js';
 import type { Component } from 'vue';
 

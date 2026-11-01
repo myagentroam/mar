@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ElTooltip, useZIndex } from 'element-plus';
+import 'element-plus/es/components/tooltip/style/css';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 import { tableTooltipOptions } from '../../util/tooltip.js';
 

@@ -468,8 +468,11 @@ for (const width of [1280, 390]) {
       const query = new URLSearchParams({ hosted: '1', theme, 'template-name': name });
       if (width < 768) query.set('mobile', '1');
       await page.goto(`${fixture.url}visual-alignment.html?${query}`);
-      const savedTemplate = page.locator('.hosted-template-name');
+      const savedTemplate = page.locator('.hosted-template-trigger');
       await expect(savedTemplate).toBeVisible();
+      await expect(savedTemplate).toBeDisabled();
+      await expect(savedTemplate).toHaveAccessibleName('Load template');
+      await expect(savedTemplate).toHaveAccessibleDescription(name);
       await expect(savedTemplate).toHaveCSS('color', draftStyle.color);
       await expect(savedTemplate).toHaveCSS('background-color', draftStyle.background);
       await expect(savedTemplate).toHaveCSS('font-size', draftStyle.fontSize);
@@ -477,15 +480,15 @@ for (const width of [1280, 390]) {
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toBeVisible();
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('width', '14px');
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
-      await expect(savedTemplate.locator('[data-mar-icon="chevron-down"]')).toHaveCount(0);
-      expect(await savedTemplate.evaluate((element) => element.tagName)).toBe('SPAN');
-      await assertToolbar('.hosted-template-name');
+      await expect(savedTemplate.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
+      await assertToolbar('.hosted-template-trigger');
       await page
         .locator('.composer-host > .composer')
         .screenshot({ path: testInfo.outputPath('existing.png') });
       await savedTemplate.hover();
       await expect(page.locator('.mar-tooltip:visible')).toContainText(name);
-      await savedTemplate.click();
+      const savedBox = (await savedTemplate.boundingBox())!;
+      await page.mouse.click(savedBox.x + savedBox.width / 2, savedBox.y + savedBox.height / 2);
       await expect(page.getByRole('menu')).toHaveCount(0);
     });
   }

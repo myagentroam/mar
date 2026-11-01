@@ -1,5 +1,4 @@
 import { h, ref } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
@@ -7,7 +6,6 @@ import { ElMessageBox } from '../../src/service/message-box-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import Header from '../../src/view/conversation/ConversationHeader.vue';
 import Tree from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
-import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
@@ -20,7 +18,7 @@ const aborts = ref(0);
 const selected = ref('');
 let settleSnapshot: ((fail: boolean) => void) | undefined;
 const session = {
-  id: rootOnly ? 'parent' : 'child',
+  id: query.has('long-id') ? 'session-'.repeat(40) : rootOnly ? 'parent' : 'child',
   externalSessionId: rootOnly ? 'parent' : 'child',
   runner: 'mar-agent',
   sessionGroup: rootOnly ? 'MAIN' : 'CHILD'
@@ -45,7 +43,7 @@ createTooltipApp({
             h(Tree, {
               nodeId: 'node',
               workspaceId: 'workspace',
-              sessionId: rootOnly ? 'parent' : 'child',
+              sessionId: session.id,
               request: async <T>(_path: string, init?: RequestInit) => {
                 requests.value++;
                 if (query.has('delayed') && requests.value === 1) {
@@ -211,5 +209,4 @@ createTooltipApp({
     ])
 })
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');

@@ -56,11 +56,10 @@ async function copySessionId(sessionId: string): Promise<void> {
               : sessionTitle(session!)
           }}
         </h2>
-        <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button
-          class="utility-control"
+          class="utility-control conversation-session-id-copy"
           v-tooltip="
             translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
           "
@@ -72,6 +71,7 @@ async function copySessionId(sessionId: string): Promise<void> {
         >
           <code>{{ session.id }}</code>
         </button>
+        <slot name="tree" :session-id="session.id" />
       </p>
     </div>
     <div
@@ -163,11 +163,6 @@ async function copySessionId(sessionId: string): Promise<void> {
   font-size: var(--mar-font-size-body);
 }
 
-.conversation-title-row h2 {
-  flex: 0 1 auto;
-  max-width: calc(100% - 2rem);
-}
-
 .conversation-header-draft {
   justify-content: flex-start;
 }
@@ -187,16 +182,27 @@ async function copySessionId(sessionId: string): Promise<void> {
   display: none;
 }
 
+.conversation-session-id {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 :global(.conversation-session-id code) {
+  display: block;
+  overflow: hidden;
   color: inherit;
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   line-height: 1rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.conversation-session-id button {
+.conversation-session-id-copy {
   display: inline-flex;
+  min-width: 0;
   max-width: 100%;
   border: 0;
   border-radius: 3px;
@@ -219,18 +225,7 @@ async function copySessionId(sessionId: string): Promise<void> {
 }
 
 @media (max-width: 767px) {
-  .conversation-session-id,
-  .conversation-session-id button,
-  :global(.conversation-header-title .conversation-session-id code) {
-    display: block;
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .conversation-session-id button:focus-visible {
+  .conversation-session-id-copy:focus-visible {
     outline-offset: -2px;
   }
 }

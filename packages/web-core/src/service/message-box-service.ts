@@ -1,5 +1,6 @@
 import { h, type AppContext } from 'vue';
 import { ElMessageBox as ElementMessageBox, type ElMessageBoxOptions } from 'element-plus';
+import 'element-plus/es/components/message-box/style/css';
 import { createMobileLayerHistoryService } from './mobile-layer-history-service.js';
 
 type Message = ElMessageBoxOptions['message'];

@@ -334,47 +334,12 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'workbenchNewSessionController.foldersCannotBeAttachedCompressTheFolder':
     workbenchCompositionEnUS.generated.workbenchNewSessionController
       .foldersCannotBeAttachedCompressTheFolder,
-  'workbenchPageController.noNodeSelected':
-    workbenchPageEnUS.generated.workbenchPageController.noNodeSelected,
-  'workbenchPageController.theNodeIsDisabledOnlyTheCurrent':
-    workbenchPageEnUS.generated.workbenchPageController.theNodeIsDisabledOnlyTheCurrent,
-  'workbenchPageController.theNodeIsOfflineLoadedContentIs':
-    workbenchPageEnUS.generated.workbenchPageController.theNodeIsOfflineLoadedContentIs,
-  'workbenchPageController.nodeWorkbenchCapabilitiesAreUnknownTheWorkspace':
-    workbenchPageEnUS.generated.workbenchPageController
-      .nodeWorkbenchCapabilitiesAreUnknownTheWorkspace,
-  'workbenchPageController.nodeWorkbenchCapabilitiesAreUnavailable':
-    workbenchPageEnUS.generated.workbenchPageController.nodeWorkbenchCapabilitiesAreUnavailable,
-  'workbenchPageController.unableToOpenTheSessionLinkedTo':
-    workbenchPageEnUS.generated.workbenchPageController.unableToOpenTheSessionLinkedTo,
-  'workbenchPageController.aNewerInstanceWithTheSameIdentity':
-    workbenchPageEnUS.generated.workbenchPageController.aNewerInstanceWithTheSameIdentity,
-  'workbenchPageController.receivedAnUnreadableLiveUpdate':
-    workbenchPageEnUS.generated.workbenchPageController.receivedAnUnreadableLiveUpdate,
-  'workbenchPageController.unknown': workbenchPageEnUS.generated.workbenchPageController.unknown,
-  'workbenchPageController.unableToCreateARegistrationToken':
-    workbenchPageEnUS.generated.workbenchPageController.unableToCreateARegistrationToken,
-  'workbenchPageController.createANewSessionBranchBeforeThis':
-    workbenchPageEnUS.generated.workbenchPageController.createANewSessionBranchBeforeThis,
-  'workbenchPageController.createANewSessionBranchThatRetains':
-    workbenchPageEnUS.generated.workbenchPageController.createANewSessionBranchThatRetains,
-  'workbenchPageController.createFallbackBranch':
-    workbenchPageEnUS.generated.workbenchPageController.createFallbackBranch,
-  'workbenchPageController.createBranch':
-    workbenchPageEnUS.generated.workbenchPageController.createBranch,
-  'workbenchPageController.cancel': workbenchPageEnUS.generated.workbenchPageController.cancel,
-  'workbenchPageController.fallbackBranchCreated':
-    workbenchPageEnUS.generated.workbenchPageController.fallbackBranchCreated,
-  'workbenchPageController.unableToCreateAFallbackBranch':
-    workbenchPageEnUS.generated.workbenchPageController.unableToCreateAFallbackBranch,
-  'workbenchPageController.rollbackConversationWarning':
-    workbenchPageEnUS.generated.workbenchPageController.rollbackConversationWarning,
-  'workbenchPageController.rollbackConversation':
-    workbenchPageEnUS.generated.workbenchPageController.rollbackConversation,
-  'workbenchPageController.confirmRollbackConversation':
-    workbenchPageEnUS.generated.workbenchPageController.confirmRollbackConversation,
-  'workbenchPageController.unableToRollbackConversation':
-    workbenchPageEnUS.generated.workbenchPageController.unableToRollbackConversation,
+  ...Object.fromEntries(
+    Object.entries(workbenchPageEnUS.generated.workbenchPageController).map(([key, value]) => [
+      `workbenchPageController.${key}`,
+      value
+    ])
+  ),
   'workspaceQueueService.theQueueOrderChangedTryAgain':
     composerEnUS.generated.workspaceQueueService.theQueueOrderChangedTryAgain,
   'workspaceQueueService.unableToEditTheQueuedMessage':

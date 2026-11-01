@@ -1,12 +1,13 @@
-import { h, nextTick } from 'vue';
-import ElementPlus from 'element-plus';
+import { defineAsyncComponent, h, nextTick } from 'vue';
 import { createTooltipApp } from './tooltip-app.js';
 import ResourceManagementPanel from '../../src/view/settings/ResourceManagementPanel.vue';
-import AuditManagementPage from '../../../../ee/web/src/view/settings/AuditManagementPage.vue';
 import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
+
+const AuditManagementPage = defineAsyncComponent(
+  () => import('../../../../ee/web/src/view/settings/AuditManagementPage.vue')
+);
 
 const audit = new URLSearchParams(location.search).get('area') === 'audit';
 const usage = new URLSearchParams(location.search).get('area') === 'usage';
@@ -148,6 +149,5 @@ createTooltipApp({
       ]
     )
 })
-  .use(ElementPlus)
   .use(i18n)
   .mount('#app');

@@ -51,6 +51,25 @@ test('tree dialog keeps one snapshot, orders active branches and closes by keybo
 });
 
 for (const width of [390, 1280]) {
+  test(`session tree remains visible next to a long session ID at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&long-id=1`);
+    const id = page.locator('.conversation-session-id-copy code');
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await expect(trigger).toBeVisible();
+    await expect(id).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await id.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    const [idBox, triggerBox, headerBox] = await Promise.all([
+      id.boundingBox(),
+      trigger.boundingBox(),
+      page.locator('.conversation-header').boundingBox()
+    ]);
+    expect(triggerBox!.x).toBeGreaterThanOrEqual(idBox!.x + idBox!.width);
+    expect(triggerBox!.x + triggerBox!.width).toBeLessThanOrEqual(headerBox!.x + headerBox!.width);
+    await trigger.click();
+    await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
+  });
+
   test(`session tree preserves its content through the native leave transition at ${width}px`, async ({
     page
   }) => {
@@ -411,6 +430,20 @@ for (const width of [390, 1280]) {
         name: locale === 'en-US' ? 'View session tree' : '查看会话树'
       });
       const treeIcon = trigger.locator('[data-mar-icon="session-tree"]');
+      const sessionId = page.locator('.conversation-session-id-copy');
+      await expect(
+        page
+          .locator('.conversation-session-id')
+          .getByRole('button', { name: locale === 'en-US' ? 'View session tree' : '查看会话树' })
+      ).toBeVisible();
+      const [idBox, triggerBox] = await Promise.all([
+        sessionId.boundingBox(),
+        trigger.boundingBox()
+      ]);
+      expect(triggerBox!.x).toBeGreaterThanOrEqual(idBox!.x + idBox!.width);
+      expect(
+        Math.abs(triggerBox!.y + triggerBox!.height / 2 - (idBox!.y + idBox!.height / 2))
+      ).toBeLessThan(1);
       await expect(treeIcon).toBeVisible();
       await expect(trigger.locator('svg')).toHaveCount(1);
       await expect(treeIcon).toHaveAttribute('aria-hidden', 'true');
@@ -419,6 +452,9 @@ for (const width of [390, 1280]) {
         'stroke',
         await trigger.evaluate((el) => getComputedStyle(el).color)
       );
+      await page
+        .locator('.conversation-header')
+        .screenshot({ path: testInfo.outputPath(`session-header-${width}-${theme}.png`) });
       await trigger.screenshot({ path: testInfo.outputPath(`tree-trigger-${width}-${theme}.png`) });
       await expect(trigger).toHaveCSS('border-top-width', '0px');
       await trigger.hover();

@@ -22,6 +22,7 @@ watch(
   <button
     type="button"
     class="icon-button utility-control conversation-tree-button"
+    v-tooltip="translate('sessionGroups.tree')"
     :aria-label="translate('sessionGroups.tree')"
     :aria-expanded="open"
     aria-haspopup="dialog"
@@ -46,7 +47,7 @@ watch(
   flex: none;
   align-items: center;
   justify-content: center;
-  width: var(--mar-utility-control-size);
-  height: var(--mar-utility-control-size);
+  width: 1.25rem;
+  height: 1.25rem;
 }
 </style>

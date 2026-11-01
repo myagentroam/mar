@@ -5,14 +5,19 @@ const productRoot = resolve(import.meta.dirname, '../../..');
 const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package.json'));
 
 export async function startCustomThemeFixture(entry?: string) {
-  const [{ createServer }, vue] = await Promise.all([
+  const [{ createServer }, vue, components, resolvers] = await Promise.all([
     import(webRequire.resolve('vite')),
-    import(webRequire.resolve('@vitejs/plugin-vue'))
+    import(webRequire.resolve('@vitejs/plugin-vue')),
+    import(webRequire.resolve('unplugin-vue-components/vite')),
+    import(webRequire.resolve('unplugin-vue-components/resolvers'))
   ]);
   const server = await createServer({
     root: productRoot,
     configFile: false,
-    plugins: [vue.default()],
+    plugins: [
+      vue.default(),
+      components.default({ dirs: [], dts: false, resolvers: [resolvers.ElementPlusResolver()] })
+    ],
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: {

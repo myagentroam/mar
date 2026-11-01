@@ -104,6 +104,62 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
+test('lazy loading directive displays and removes its styled mask', async ({ page }) => {
+  const sample = page.getByRole('region', { name: 'Loading directive sample' });
+  const panel = sample.locator('.page-loading-panel');
+  const mask = panel.locator('.el-loading-mask');
+  await expect(panel).toHaveAttribute('aria-busy', 'true');
+  await expect(mask).toBeVisible();
+  await expect(mask).toHaveCSS('position', 'absolute');
+  await sample.getByRole('button', { name: 'Toggle sample loading' }).click();
+  await expect(panel).toHaveAttribute('aria-busy', 'false');
+  await expect(mask).toBeHidden();
+});
+
+for (const scheme of ['Light', 'Dark']) {
+  test(`lazy dropdown retains ${scheme} and custom hover tokens and commands`, async ({ page }) => {
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({
+          has: page.getByRole('button', { name: 'Inspect Light', exact: true })
+        })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    const trigger = page.getByRole('button', { name: 'Sample menu', exact: true });
+    for (const custom of [false, true]) {
+      if (custom)
+        await page.locator('html').evaluate((root) => {
+          root.style.setProperty('--mar-fill-row-hover', '#345678');
+          root.style.setProperty('--mar-text-primary', '#e5d6c7');
+        });
+      await trigger.click();
+      const item = page.getByRole('menuitem', { name: 'Rename', exact: true });
+      await item.hover();
+      const colors = await item.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const token = (name: string) => {
+          probe.style.color = `var(${name})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          background: getComputedStyle(element).backgroundColor,
+          color: getComputedStyle(element).color,
+          hover: token('--mar-fill-row-hover'),
+          text: token('--mar-text-primary')
+        };
+        probe.remove();
+        return result;
+      });
+      expect(colors.background).toBe(colors.hover);
+      expect(colors.color).toBe(colors.text);
+      await item.click();
+      await expect(page.getByLabel('Selected menu action')).toHaveText('rename');
+    }
+  });
+}
+
 for (const scheme of ['Light', 'Dark']) {
   test(`Conversation file links retain pointer and keyboard activation in ${scheme}`, async ({
     page
@@ -1237,6 +1293,8 @@ for (const scheme of ['Light', 'Dark']) {
         });
       }
       await page.setViewportSize({ width: 1440, height: 900 });
+      // Resizing and screenshots can leave the pointer over a control; inspect its neutral state.
+      await page.mouse.move(-10, -10);
       const panel = scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
       await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
