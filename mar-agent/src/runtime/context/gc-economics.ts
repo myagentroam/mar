@@ -6,7 +6,6 @@ import { CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS } from '../../session/context-gc-pr
 
 export const CONTEXT_GC_POLICY = {
   version: 1,
-  immediatePaybackRollouts: 3,
   minimumPaybackRollouts: 30,
   maximumPaybackRollouts: 60,
   contextGrowthSampleWindow: 16,
@@ -15,24 +14,12 @@ export const CONTEXT_GC_POLICY = {
   stageAProtectionRollouts: CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
   largeExecProtectionRollouts: CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
   normalInputCostRate: 1,
-  cacheReadCostRate: 0.05,
-  outputCostRate: 1,
-  minimumGrossReductionRate: 0.2
+  cacheReadCostRate: 0.05
 } satisfies ContextGcEconomicsPolicy;
 
 const CONTEXT_GC_START_RATIO = 0.5;
 
-const HIGH_WATER_GROSS_REDUCTION_START_RATIO = 0.7;
-
-const HIGH_WATER_MINIMUM_GROSS_REDUCTION_RATE = 0.1;
-
-const MINIMUM_CONTEXT_WINDOW_REDUCTION_RATIO = 0.05;
-
-export const COMPACT_CREDIT_ACTIVATION_RATIO = 0.8;
-
 export const COMPACT_THRESHOLD_RATIO = AGENT_EXECUTION_POLICY.backgroundCompactionPercent / 100;
-
-const IMMINENT_COMPACT_CREDIT_DISCOUNT = 0.8;
 
 interface ContextGcEconomicsInput {
   readonly contextUsageTokens: number;
@@ -41,11 +28,6 @@ interface ContextGcEconomicsInput {
   readonly reclaimedCachedTokens: number;
   readonly cacheReadTokens: number;
   readonly preservedCachedPrefixTokens: number;
-  readonly compactDeferralCreditCostUnits: number;
-  readonly projectedRolloutsUntilCompactAfterGc: number;
-  readonly contextGrowthSampleCount: number;
-  readonly minimumGrossReductionRate?: number;
-  readonly minimumReclaimedTokens?: number;
 }
 
 export interface ContextGcEconomicsResult {
@@ -97,15 +79,7 @@ export function evaluateContextGcEconomics(
   const expectedNetSavedCostUnits =
     netAt(requiredPositiveNetRollouts ?? 0) * CONTEXT_GC_POLICY.cacheReadCostRate;
   const grossReductionRate = reclaimedTokens / Math.max(1, Math.max(0, input.contextUsageTokens));
-  const minimumGrossReductionRate = Math.max(
-    0,
-    input.minimumGrossReductionRate ?? CONTEXT_GC_POLICY.minimumGrossReductionRate
-  );
-  const minimumReclaimedTokens = Math.max(
-    0,
-    input.minimumReclaimedTokens ??
-      Math.ceil(Math.max(0, input.contextUsageTokens) * minimumGrossReductionRate)
-  );
+  const minimumReclaimedTokens = contextGcMinimumReclaimedTokens(input.contextWindowTokens);
   const usageRatio = input.contextUsageTokens / input.contextWindowTokens;
   const progress = clamp(
     (usageRatio - CONTEXT_GC_START_RATIO) / (COMPACT_THRESHOLD_RATIO - CONTEXT_GC_START_RATIO),
@@ -134,37 +108,8 @@ export function evaluateContextGcEconomics(
   };
 }
 
-export function contextGcMinimumGrossReductionRate(usageRatio: number): number {
-  if (!Number.isFinite(usageRatio) || usageRatio <= HIGH_WATER_GROSS_REDUCTION_START_RATIO)
-    return CONTEXT_GC_POLICY.minimumGrossReductionRate;
-  if (usageRatio >= COMPACT_THRESHOLD_RATIO) return HIGH_WATER_MINIMUM_GROSS_REDUCTION_RATE;
-  const progress =
-    (usageRatio - HIGH_WATER_GROSS_REDUCTION_START_RATIO) /
-    (COMPACT_THRESHOLD_RATIO - HIGH_WATER_GROSS_REDUCTION_START_RATIO);
-  return (
-    CONTEXT_GC_POLICY.minimumGrossReductionRate -
-    progress *
-      (CONTEXT_GC_POLICY.minimumGrossReductionRate - HIGH_WATER_MINIMUM_GROSS_REDUCTION_RATE)
-  );
-}
-
-export function contextGcMinimumReclaimedTokens(
-  contextUsageTokens: number,
-  contextWindowTokens: number
-): number {
-  if (
-    !Number.isFinite(contextUsageTokens) ||
-    contextUsageTokens < 0 ||
-    !Number.isFinite(contextWindowTokens) ||
-    contextWindowTokens <= 0
-  )
-    return 0;
-  const usageRatio = contextUsageTokens / contextWindowTokens;
-  const required = Math.max(
-    contextUsageTokens * contextGcMinimumGrossReductionRate(usageRatio),
-    contextWindowTokens * MINIMUM_CONTEXT_WINDOW_REDUCTION_RATIO
-  );
-  return Math.ceil(required - 1e-9);
+export function contextGcMinimumReclaimedTokens(contextWindowTokens: number): number {
+  return Math.ceil(contextWindowTokens / 20);
 }
 
 export function contextGcEligibleUsage(
@@ -182,39 +127,6 @@ export function contextGcEligibleUsage(
   if (usageRatio < CONTEXT_GC_START_RATIO || usageRatio >= COMPACT_THRESHOLD_RATIO)
     return undefined;
   return contextUsageTokens;
-}
-
-export function contextGcImminentCompactAvoidanceCredit(input: {
-  readonly contextUsageTokens: number;
-  readonly contextWindowTokens: number;
-  readonly compactThresholdTokens: number;
-  readonly projectedTokensBeforeGc: number;
-  readonly projectedTokensAfterGc: number;
-  readonly contextGrowthP75Tokens: number;
-}): number {
-  if (
-    input.contextUsageTokens >= input.compactThresholdTokens ||
-    input.contextGrowthP75Tokens <= 0 ||
-    input.projectedTokensBeforeGc < input.compactThresholdTokens
-  )
-    return 0;
-  const safetyMarginTokens = Math.max(
-    input.contextWindowTokens * MINIMUM_CONTEXT_WINDOW_REDUCTION_RATIO,
-    input.contextGrowthP75Tokens * CONTEXT_GC_POLICY.immediatePaybackRollouts
-  );
-  if (input.projectedTokensAfterGc > input.compactThresholdTokens - safetyMarginTokens) return 0;
-  return (
-    input.contextUsageTokens *
-    CONTEXT_GC_POLICY.normalInputCostRate *
-    IMMINENT_COMPACT_CREDIT_DISCOUNT
-  );
-}
-
-export function contextGcAppliedCompactCreditCostUnits(
-  compactDeferralCreditCostUnits: number,
-  imminentCompactAvoidanceCreditCostUnits: number
-): number {
-  return Math.max(0, compactDeferralCreditCostUnits, imminentCompactAvoidanceCreditCostUnits);
 }
 
 export function modelContextUsage(value: ModelUsage | Record<string, unknown>): number | undefined {

@@ -484,10 +484,7 @@ describe('context GC planner', () => {
       reclaimedTokens: 30_000,
       reclaimedCachedTokens: 30_000,
       cacheReadTokens: 100_000,
-      preservedCachedPrefixTokens: 0,
-      compactDeferralCreditCostUnits: 0,
-      projectedRolloutsUntilCompactAfterGc: 100,
-      contextGrowthSampleCount: 16
+      preservedCachedPrefixTokens: 0
     });
     expect(result.cacheRebuildPenaltyCostUnits).toBe(66_500);
     expect(result.requiredPositiveNetRollouts).toBe(45);
@@ -502,10 +499,7 @@ describe('context GC planner', () => {
         reclaimedTokens: 1_500,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0,
-        compactDeferralCreditCostUnits: 0,
-        projectedRolloutsUntilCompactAfterGc: 0,
-        contextGrowthSampleCount: 0
+        preservedCachedPrefixTokens: 0
       })
     ).toMatchObject({
       cacheRebuildPenaltyCostUnits: 0,
@@ -516,13 +510,10 @@ describe('context GC planner', () => {
       evaluateContextGcEconomics({
         contextUsageTokens: 6_000,
         contextWindowTokens: 10_000,
-        reclaimedTokens: 1_000,
+        reclaimedTokens: 499,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0,
-        compactDeferralCreditCostUnits: 0,
-        projectedRolloutsUntilCompactAfterGc: 0,
-        contextGrowthSampleCount: 0
+        preservedCachedPrefixTokens: 0
       }).passes
     ).toBe(false);
   });
@@ -1293,10 +1284,7 @@ describe('context GC planner', () => {
       contextWindowTokens: 200_000,
       reclaimedTokens: 30_000,
       reclaimedCachedTokens: 30_000,
-      cacheReadTokens: 100_000,
-      compactDeferralCreditCostUnits: 0,
-      projectedRolloutsUntilCompactAfterGc: 100,
-      contextGrowthSampleCount: 16
+      cacheReadTokens: 100_000
     };
     const late = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 60_000 });
     const early = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 0 });
@@ -1766,7 +1754,7 @@ describe('context GC planner', () => {
     expect(second!.metrics.reclaimedTokens).toBeGreaterThan(first!.metrics.reclaimedTokens - 100);
   });
 
-  it('uses Compact deferral credit only from a matching complete baseline at 80 percent', () => {
+  it('does not calculate Compact credit from previous baselines', () => {
     const fixtureWithBaseline = (
       compact: { modelId?: string; contextWindowTokens?: number },
       baseline: 'matching' | 'missing' | 'different-model',
@@ -1853,24 +1841,20 @@ describe('context GC planner', () => {
       'matching',
       1_000
     );
-    expect(noWrite?.metrics.compactDeferralCreditCostUnits).toBeCloseTo(
-      2_850 * Math.min(1, noWrite!.metrics.reclaimedTokens / 5_500)
-    );
-    expect(withWrite?.metrics.compactDeferralCreditCostUnits).toBe(
-      noWrite?.metrics.compactDeferralCreditCostUnits
+    expect(noWrite).toBeDefined();
+    expect(withWrite?.metrics.compactDeferralCreditCostUnits).toBeUndefined();
+    expect(withWrite?.metrics.requiredPositiveNetRollouts).toBe(
+      noWrite?.metrics.requiredPositiveNetRollouts
     );
     expect(
-      fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'missing')?.metrics
-        .compactDeferralCreditCostUnits
-    ).toBe(0);
+      fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'missing')
+    ).toBeDefined();
     expect(
       fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'different-model')
-        ?.metrics.compactDeferralCreditCostUnits
-    ).toBe(0);
+    ).toBeDefined();
     expect(
-      fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 20_000 }, 'matching')?.metrics
-        .compactDeferralCreditCostUnits
-    ).toBe(0);
+      fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 20_000 }, 'matching')
+    ).toBeDefined();
   });
 
   it('removes the provider tool-call alias when replacing a successful patch input', () => {

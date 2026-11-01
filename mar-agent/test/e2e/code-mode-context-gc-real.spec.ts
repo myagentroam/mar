@@ -452,6 +452,9 @@ describe.runIf(enabled)('Code Mode and Context GC real long-flow E2E', () => {
     expect(checkpoint!.trigger.contextInputTokens).toBeGreaterThanOrEqual(gcStartTokens);
     expect(checkpoint!.trigger.contextInputTokens).toBeLessThan(compactThresholdTokens);
     expect(checkpoint!.metrics.reclaimedTokens).toBeGreaterThan(4_096);
+    expect(checkpoint!.metrics.reclaimedTokens).toBeGreaterThanOrEqual(
+      Math.ceil(checkpoint!.trigger.contextWindowTokens / 20)
+    );
     expect(checkpoint!.metrics.grossReductionRate).toBeGreaterThan(0);
     expect(checkpoint!.replacements).toEqual(
       expect.arrayContaining([

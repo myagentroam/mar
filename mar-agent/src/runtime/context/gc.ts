@@ -27,16 +27,11 @@ import { applyContextGcReplacementsToMessages, providerToolCallId } from './proj
 
 import {
   CONTEXT_GC_POLICY,
-  COMPACT_CREDIT_ACTIVATION_RATIO,
   COMPACT_THRESHOLD_RATIO,
   evaluateContextGcEconomics,
-  contextGcMinimumGrossReductionRate,
   contextGcMinimumReclaimedTokens,
   contextGcEligibleUsage,
-  contextGcImminentCompactAvoidanceCredit,
-  contextGcAppliedCompactCreditCostUnits,
-  modelContextUsage,
-  clamp
+  modelContextUsage
 } from './gc-economics.js';
 
 import {
@@ -61,11 +56,8 @@ export {
   CONTEXT_GC_POLICY,
   type ContextGcEconomicsResult,
   evaluateContextGcEconomics,
-  contextGcMinimumGrossReductionRate,
   contextGcMinimumReclaimedTokens,
-  contextGcEligibleUsage,
-  contextGcImminentCompactAvoidanceCredit,
-  contextGcAppliedCompactCreditCostUnits
+  contextGcEligibleUsage
 } from './gc-economics.js';
 
 export {
@@ -96,7 +88,6 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
   const state = {
     stage: text.plan?.stage ?? ('INLINE_MEDIA' as const),
     contextUsageTokens,
-    usageRatio: contextUsageTokens / input.contextWindowTokens,
     usageRecord,
     normalRolloutOrdinal: countSuccessfulNormalRollouts(
       input.records,
@@ -152,7 +143,6 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     checkpointCache: input.checkpointCache ?? new ContextGcCheckpointCache(),
     protection: buildContextGcProtection(input.records, input.modelId, input.contextWindowTokens)
   };
-  const usageRatio = contextUsageTokens / input.contextWindowTokens;
   const usageRecord = latestUsageRecord(input.records, input.modelId);
   if (!usageRecord) return {};
   const normalRolloutOrdinal = countSuccessfulNormalRollouts(
@@ -230,7 +220,6 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     {
       stage: 'UNIFIED',
       contextUsageTokens,
-      usageRatio,
       usageRecord,
       normalRolloutOrdinal,
       protectedCandidateTokens
@@ -256,8 +245,7 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
   }
   return protectedCandidateTokens > 0 &&
     (combined?.economics.passes ||
-      protectedCandidateTokens >=
-        contextGcMinimumReclaimedTokens(contextUsageTokens, input.contextWindowTokens)) &&
+      protectedCandidateTokens >= contextGcMinimumReclaimedTokens(input.contextWindowTokens)) &&
     Number.isFinite(retryAfterRollouts)
     ? { retryAfterRollouts }
     : {};
@@ -285,12 +273,8 @@ function finalizePlan(
     afterTokens: evaluated.afterTokens,
     reclaimedTokens: evaluated.reclaimedTokens,
     grossReductionRate: evaluated.economics.grossReductionRate,
-    effectiveMinimumGrossReductionRate: evaluated.minimumGrossReductionRate,
     minimumRequiredReclaimedTokens: evaluated.minimumReclaimedTokens,
     cacheRebuildPenaltyCostUnits: evaluated.economics.cacheRebuildPenaltyCostUnits,
-    compactDeferralCreditCostUnits: evaluated.compactDeferralCreditCostUnits,
-    imminentCompactAvoidanceCreditCostUnits: evaluated.imminentCompactAvoidanceCreditCostUnits,
-    appliedCompactCreditCostUnits: evaluated.appliedCompactCreditCostUnits,
     requiredPositiveNetRollouts: evaluated.economics.requiredPositiveNetRollouts,
     projectedRolloutsUntilCompactAfterGc: evaluated.projectedRolloutsUntilCompactAfterGc,
     projectedTokensBeforeGc: evaluated.projectedTokensBeforeGc,
@@ -343,7 +327,6 @@ function evaluateCandidateSet(
     readonly stage: ContextGcMetrics['stage'];
     readonly mediaOnly?: boolean;
     readonly contextUsageTokens: number;
-    readonly usageRatio: number;
     readonly usageRecord: SessionRecord;
     readonly normalRolloutOrdinal: number;
     readonly protectedCandidateTokens: number;
@@ -363,11 +346,7 @@ function evaluateCandidateSet(
   );
   const projectedMessages = mediaProjection?.(projected.messages) ?? projected.messages;
   const reclaimedTokens = contextGcReclaimedTokens(input, input.messages, projectedMessages);
-  const minimumGrossReductionRate = contextGcMinimumGrossReductionRate(state.usageRatio);
-  const minimumReclaimedTokens = contextGcMinimumReclaimedTokens(
-    state.contextUsageTokens,
-    input.contextWindowTokens
-  );
+  const minimumReclaimedTokens = contextGcMinimumReclaimedTokens(input.contextWindowTokens);
   if (!state.mediaOnly && reclaimedTokens < minimumReclaimedTokens) return undefined;
   const beforeTokens = contextGcPrefixTokens(input) + contextGcMessageTokens(input, input.messages);
   const afterTokens =
@@ -405,32 +384,13 @@ function evaluateCandidateSet(
             (compactThresholdTokens - projectedTokensAfterGc) / Math.max(1, contextGrowthP75Tokens)
           )
         );
-  const compactDeferralCreditCostUnits =
-    state.usageRatio >= COMPACT_CREDIT_ACTIVATION_RATIO
-      ? compactDeferralCredit(input, reclaimedTokens, compactThresholdTokens)
-      : 0;
-  const imminentCompactAvoidanceCreditCostUnits = contextGcImminentCompactAvoidanceCredit({
-    contextUsageTokens: state.contextUsageTokens,
-    contextWindowTokens: input.contextWindowTokens,
-    compactThresholdTokens,
-    projectedTokensBeforeGc,
-    projectedTokensAfterGc,
-    contextGrowthP75Tokens
-  });
-  // Compact estimates remain diagnostic; only normal-request savings repay GC.
-  const appliedCompactCreditCostUnits = 0;
   const economics = evaluateContextGcEconomics({
     contextUsageTokens: state.contextUsageTokens,
     contextWindowTokens: input.contextWindowTokens,
     reclaimedTokens,
     reclaimedCachedTokens: cache.reclaimedCachedTokens,
     cacheReadTokens: input.usage.cacheReadTokens ?? 0,
-    preservedCachedPrefixTokens: cache.preservedCachedPrefixTokens,
-    compactDeferralCreditCostUnits: appliedCompactCreditCostUnits,
-    projectedRolloutsUntilCompactAfterGc,
-    contextGrowthSampleCount: growthSamples.length,
-    minimumGrossReductionRate,
-    minimumReclaimedTokens
+    preservedCachedPrefixTokens: cache.preservedCachedPrefixTokens
   });
   return {
     ...state,
@@ -442,14 +402,10 @@ function evaluateCandidateSet(
     reclaimedTokens,
     contextGrowthSamples: growthSamples,
     contextGrowthP75Tokens,
-    minimumGrossReductionRate,
     minimumReclaimedTokens,
     projectedRolloutsUntilCompactAfterGc,
     projectedTokensBeforeGc,
     projectedTokensAfterGc,
-    compactDeferralCreditCostUnits,
-    imminentCompactAvoidanceCreditCostUnits,
-    appliedCompactCreditCostUnits,
     boundarySequence: input.records.at(-1)?.sequence ?? state.usageRecord.sequence,
     minimumObservedRollouts: Math.min(...candidates.map((candidate) => candidate.observedRollouts)),
     eligibleCandidateCount: candidates.length
@@ -530,75 +486,6 @@ function collectContextGrowthSamples(
   return samples.slice(-CONTEXT_GC_POLICY.contextGrowthSampleWindow);
 }
 
-function compactDeferralCredit(
-  input: ContextGcPlannerInput,
-  reclaimedTokens: number,
-  compactThresholdTokens: number
-): number {
-  const base = contextGcBaseFromRecords(input.records);
-  if (base?.type !== 'COMPACT') return 0;
-  const compact = input.records.find((record) => record.sequence === base.sequence);
-  if (!compact || !isRecord(compact.payload)) return 0;
-  if (
-    compact.payload.modelId !== input.modelId ||
-    compact.payload.contextWindowTokens !== input.contextWindowTokens ||
-    !isRecord(compact.payload.usage)
-  )
-    return 0;
-  const usage = compact.payload.usage;
-  const contextInput = modelContextUsage(usage);
-  const cacheRead = nonnegativeNumber(usage.cacheReadTokens);
-  const output = nonnegativeNumber(usage.outputTokens);
-  if (contextInput === undefined || cacheRead === undefined || output === undefined) return 0;
-  const baseline = firstMatchingUsageAfter(
-    input.records,
-    compact.sequence,
-    input.modelId,
-    input.contextWindowTokens
-  );
-  if (baseline === undefined || baseline >= compactThresholdTokens) return 0;
-  const fresh = Math.max(0, contextInput - cacheRead);
-  const compactCost =
-    fresh * CONTEXT_GC_POLICY.normalInputCostRate +
-    cacheRead * CONTEXT_GC_POLICY.cacheReadCostRate +
-    output * CONTEXT_GC_POLICY.outputCostRate;
-  const cycleCapacity = Math.max(1, compactThresholdTokens - baseline);
-  return compactCost * clamp(reclaimedTokens / cycleCapacity, 0, 1);
-}
-
-function firstMatchingUsageAfter(
-  records: readonly SessionRecord[],
-  sequence: number,
-  modelId: string,
-  contextWindowTokens: number
-): number | undefined {
-  let activeModelId = modelId;
-  let activeContextWindowTokens = contextWindowTokens;
-  for (const record of records) {
-    if (record.sequence <= sequence) continue;
-    if (record.type === 'execution.header' && isRecord(record.payload)) {
-      if (typeof record.payload.modelId === 'string') activeModelId = record.payload.modelId;
-      if (
-        typeof record.payload.contextWindowTokens === 'number' &&
-        Number.isSafeInteger(record.payload.contextWindowTokens) &&
-        record.payload.contextWindowTokens > 0
-      )
-        activeContextWindowTokens = record.payload.contextWindowTokens;
-      continue;
-    }
-    if (
-      activeModelId !== modelId ||
-      activeContextWindowTokens !== contextWindowTokens ||
-      !isRecord(record.payload) ||
-      record.payload.type !== 'usage.updated'
-    )
-      continue;
-    const usage = modelContextUsage(record.payload);
-    if (usage !== undefined) return usage;
-  }
-  return undefined;
-}
-
 /** Measure only affected call families, retaining native aliases for provider lowering. */
 function createCandidateSavingsEstimator(
   input: ContextGcPlannerInput,
@@ -649,8 +536,4 @@ function percentile75(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.max(0, Math.ceil(sorted.length * 0.75) - 1)]!;
-}
-
-function nonnegativeNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }

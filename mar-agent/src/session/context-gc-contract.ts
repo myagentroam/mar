@@ -8,7 +8,7 @@ export type ContextGcPlatform = 'linux' | 'darwin' | 'win32';
 
 export interface ContextGcEconomicsPolicy {
   readonly version: 1;
-  readonly immediatePaybackRollouts: number;
+  readonly immediatePaybackRollouts?: number;
   readonly minimumPaybackRollouts?: number;
   readonly maximumPaybackRollouts: number;
   readonly contextGrowthSampleWindow: number;
@@ -19,8 +19,8 @@ export interface ContextGcEconomicsPolicy {
   readonly normalInputCostRate: number;
   readonly cacheReadCostRate: number;
   readonly cacheWriteCostRate?: number;
-  readonly outputCostRate: number;
-  readonly minimumGrossReductionRate: number;
+  readonly outputCostRate?: number;
+  readonly minimumGrossReductionRate?: number;
   readonly minimumCacheInvestmentRoi?: number;
 }
 
@@ -120,7 +120,7 @@ export interface ContextGcMetrics {
   readonly effectiveMinimumGrossReductionRate?: number;
   readonly minimumRequiredReclaimedTokens?: number;
   readonly cacheRebuildPenaltyCostUnits: number;
-  readonly compactDeferralCreditCostUnits: number;
+  readonly compactDeferralCreditCostUnits?: number;
   readonly imminentCompactAvoidanceCreditCostUnits?: number;
   readonly appliedCompactCreditCostUnits?: number;
   readonly requiredPositiveNetRollouts: number | null;

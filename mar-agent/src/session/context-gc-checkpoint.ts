@@ -1702,7 +1702,6 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
     isRecord(value) &&
     value.version === 1 &&
     [
-      'immediatePaybackRollouts',
       'maximumPaybackRollouts',
       'contextGrowthSampleWindow',
       'minimumContextGrowthSamples',
@@ -1710,17 +1709,16 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
       'stageAProtectionRollouts',
       'largeExecProtectionRollouts'
     ].every((key) => isNonnegativeInteger(value[key])) &&
-    (value.minimumPaybackRollouts === undefined ||
-      isNonnegativeInteger(value.minimumPaybackRollouts)) &&
+    ['minimumPaybackRollouts', 'immediatePaybackRollouts'].every(
+      (key) => value[key] === undefined || isNonnegativeInteger(value[key])
+    ) &&
+    ['normalInputCostRate', 'cacheReadCostRate'].every((key) => isNonnegativeFinite(value[key])) &&
     [
-      'normalInputCostRate',
-      'cacheReadCostRate',
-      'outputCostRate',
-      'minimumGrossReductionRate'
-    ].every((key) => isNonnegativeFinite(value[key])) &&
-    ['cacheWriteCostRate', 'minimumCacheInvestmentRoi'].every(
-      (key) => value[key] === undefined || isNonnegativeFinite(value[key])
-    )
+      'cacheWriteCostRate',
+      'minimumCacheInvestmentRoi',
+      'minimumGrossReductionRate',
+      'outputCostRate'
+    ].every((key) => value[key] === undefined || isNonnegativeFinite(value[key]))
   );
 }
 
@@ -1739,7 +1737,6 @@ function isContextGcMetrics(value: unknown): boolean {
     'reclaimedTokens',
     'grossReductionRate',
     'cacheRebuildPenaltyCostUnits',
-    'compactDeferralCreditCostUnits',
     'projectedRolloutsUntilCompactAfterGc',
     'contextGrowthSampleCount',
     'contextGrowthP75Tokens',
@@ -1750,6 +1747,7 @@ function isContextGcMetrics(value: unknown): boolean {
   ];
   const optionalNonnegative = [
     'effectiveMinimumGrossReductionRate',
+    'compactDeferralCreditCostUnits',
     'minimumRequiredReclaimedTokens',
     'imminentCompactAvoidanceCreditCostUnits',
     'appliedCompactCreditCostUnits',

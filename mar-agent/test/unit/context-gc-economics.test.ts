@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  contextGcMinimumGrossReductionRate,
-  evaluateContextGcEconomics
-} from '../../src/runtime/context/gc-economics.js';
+import { evaluateContextGcEconomics } from '../../src/runtime/context/gc-economics.js';
 
 describe('context GC payback', () => {
   const base = {
@@ -11,11 +8,41 @@ describe('context GC payback', () => {
     reclaimedTokens: 20_000,
     reclaimedCachedTokens: 20_000,
     cacheReadTokens: 60_000,
-    preservedCachedPrefixTokens: 0,
-    compactDeferralCreditCostUnits: 0,
-    projectedRolloutsUntilCompactAfterGc: 0,
-    contextGrowthSampleCount: 0
+    preservedCachedPrefixTokens: 0
   };
+
+  it.each([50_000, 70_000, 80_000, 84_999])(
+    'requires the same five percent of the window at usage %i',
+    (contextUsageTokens) => {
+      const input = {
+        ...base,
+        contextUsageTokens,
+        reclaimedCachedTokens: 0,
+        cacheReadTokens: 0
+      };
+      expect(evaluateContextGcEconomics({ ...input, reclaimedTokens: 4_999 }).passes).toBe(false);
+      expect(evaluateContextGcEconomics({ ...input, reclaimedTokens: 5_000 }).passes).toBe(true);
+      expect(
+        evaluateContextGcEconomics({
+          ...input,
+          reclaimedTokens: 5_000,
+          reclaimedCachedTokens: 5_000,
+          cacheReadTokens: 50_000
+        }).passes
+      ).toBe(false);
+    }
+  );
+
+  it('rounds the five percent window threshold upward', () => {
+    const input = {
+      ...base,
+      contextWindowTokens: 100_003,
+      reclaimedCachedTokens: 0,
+      cacheReadTokens: 0
+    };
+    expect(evaluateContextGcEconomics({ ...input, reclaimedTokens: 5_000 }).passes).toBe(false);
+    expect(evaluateContextGcEconomics({ ...input, reclaimedTokens: 5_001 }).passes).toBe(true);
+  });
 
   it.each([
     [50_000, 30, true],
@@ -36,27 +63,10 @@ describe('context GC payback', () => {
       contextUsageTokens: usage,
       reclaimedTokens: 19_000,
       reclaimedCachedTokens: 19_000,
-      cacheReadTokens: 19_000 + (Number(n) - 1) * 1_000,
-      minimumReclaimedTokens: 1
+      cacheReadTokens: 19_000 + (Number(n) - 1) * 1_000
     });
     expect(result.requiredPositiveNetRollouts).toBe(n);
     expect(result.passes).toBe(passes);
-  });
-
-  it('does not use Compact credit to bypass the normal-only payback limit', () => {
-    const input = {
-      ...base,
-      contextUsageTokens: 84_000,
-      reclaimedTokens: 19_000,
-      reclaimedCachedTokens: 19_000,
-      cacheReadTokens: 85_000,
-      minimumReclaimedTokens: 1
-    };
-    for (const credit of [0, 1e-15, 1_000_000]) {
-      expect(
-        evaluateContextGcEconomics({ ...input, compactDeferralCreditCostUnits: credit })
-      ).toMatchObject({ requiredPositiveNetRollouts: 67, passes: false });
-    }
   });
 
   it('uses normal input minus cache read and admits strictly positive net without forecast samples', () => {
@@ -88,7 +98,7 @@ describe('context GC payback', () => {
     ).toBeNull();
   });
 
-  it('rejects exact zero at the window without applying even a small Compact credit', () => {
+  it('rejects exact zero at the window', () => {
     const input = {
       ...base,
       reclaimedTokens: 19_038,
@@ -102,18 +112,9 @@ describe('context GC payback', () => {
       passes: false
     });
     expect(exactZero.expectedNetSavedCostUnits).toBeCloseTo(951.9);
-    for (const credit of [1e-9, 1e-15]) {
-      const smallPositive = evaluateContextGcEconomics({
-        ...input,
-        compactDeferralCreditCostUnits: credit
-      });
-      expect(smallPositive.requiredPositiveNetRollouts).toBe(31);
-      expect(smallPositive.expectedNetSavedCostUnits).toBeGreaterThan(0);
-      expect(smallPositive.passes).toBe(false);
-    }
   });
 
-  it('keeps strict zero semantics for uncached savings regardless of Compact credit', () => {
+  it('keeps strict zero semantics for uncached savings', () => {
     const uncached = {
       ...base,
       reclaimedTokens: 19_000,
@@ -121,10 +122,6 @@ describe('context GC payback', () => {
       cacheReadTokens: 20_000
     };
     expect(evaluateContextGcEconomics(uncached).requiredPositiveNetRollouts).toBe(2);
-    expect(
-      evaluateContextGcEconomics({ ...uncached, compactDeferralCreditCostUnits: 19_000 })
-        .requiredPositiveNetRollouts
-    ).toBe(2);
     for (let a = 1_000; a <= 2_000; a++) {
       const result = evaluateContextGcEconomics({
         ...base,
@@ -143,8 +140,7 @@ describe('context GC payback', () => {
       contextUsageTokens: 84_999.99,
       reclaimedTokens: 1,
       reclaimedCachedTokens: 1,
-      cacheReadTokens: 1_001,
-      minimumReclaimedTokens: 1
+      cacheReadTokens: 1_001
     });
     expect(result.requiredPositiveNetRollouts).toBe(19_001);
     expect(result.passes).toBe(false);
@@ -159,10 +155,9 @@ describe('context GC payback', () => {
     const input = {
       ...base,
       contextUsageTokens: usage,
-      reclaimedTokens: 1_000,
-      reclaimedCachedTokens: 1_000,
-      cacheReadTokens: 1_000 + ((n - 0.5) * 50) / 0.95,
-      minimumReclaimedTokens: 1
+      reclaimedTokens: 5_000,
+      reclaimedCachedTokens: 5_000,
+      cacheReadTokens: 5_000 + ((n - 0.5) * 250) / 0.95
     };
     expect(evaluateContextGcEconomics(input)).toMatchObject({
       requiredPositiveNetRollouts: n,
@@ -171,14 +166,8 @@ describe('context GC payback', () => {
     expect(
       evaluateContextGcEconomics({
         ...input,
-        cacheReadTokens: input.cacheReadTokens + 50 / 0.95
+        cacheReadTokens: input.cacheReadTokens + 250 / 0.95
       })
     ).toMatchObject({ requiredPositiveNetRollouts: n + 1, passes: false });
-  });
-
-  it('reaches ten percent at the async threshold', () => {
-    expect(contextGcMinimumGrossReductionRate(0.7)).toBeCloseTo(0.2);
-    expect(contextGcMinimumGrossReductionRate(0.8)).toBeCloseTo(2 / 15);
-    expect(contextGcMinimumGrossReductionRate(0.85)).toBeCloseTo(0.1);
   });
 });
