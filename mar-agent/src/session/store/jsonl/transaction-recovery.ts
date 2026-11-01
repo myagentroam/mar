@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { AgentError } from '../../../error.js';
+import { forEachTransactionFile } from './transaction-files.js';
 
 const JOURNAL = 'storage-transaction.json';
 const SEGMENT = /^events-\d{6}\.jsonl$/u;
@@ -367,22 +368,24 @@ export async function recoverSessionStorageTransaction(
       ? directory
       : join(sessionDirectory, 'v2', transaction.targetGeneration);
   const originals = new Set(transaction.originalSegments);
-  for (const name of transaction.originalSegments) {
+  await forEachTransactionFile([...originals], async (name) => {
     const canonical = join(directory, name);
     const backup = `${canonical}.${transaction.id}.${transaction.kind}-backup`;
-    if (!(await exists(backup))) continue;
     if (committed) await rm(backup, { force: true });
     else {
+      if (!(await exists(backup))) return;
       await rm(canonical, { force: true });
       await rename(backup, canonical);
     }
-  }
+  });
   if (!committed)
-    for (const entry of transaction.stagedSegments)
+    await forEachTransactionFile(transaction.stagedSegments, async (entry) => {
       if (stagedDirectory !== directory || !originals.has(entry.path))
         await rm(join(stagedDirectory, entry.path), { force: true });
-  for (const entry of transaction.stagedSegments)
-    await rm(join(stagedDirectory, entry.temporary), { force: true });
+    });
+  await forEachTransactionFile(transaction.stagedSegments, (entry) =>
+    rm(join(stagedDirectory, entry.temporary), { force: true })
+  );
   if (!committed && transaction.targetGeneration !== undefined)
     await rm(stagedDirectory, { recursive: true, force: true });
 
@@ -405,12 +408,14 @@ export async function recoverSessionStorageTransaction(
       throw error;
     }
     const suffix = `.${transaction.id}.rollback-trash`;
-    for (const name of names) {
-      if (!name.startsWith('.') || !name.endsWith(suffix)) continue;
-      const trash = join(path, name);
-      if (committed) await rm(trash, { force: true });
-      else await rename(trash, join(path, name.slice(1, -suffix.length)));
-    }
+    await forEachTransactionFile(
+      names.filter((name) => name.startsWith('.') && name.endsWith(suffix)),
+      async (name) => {
+        const trash = join(path, name);
+        if (committed) await rm(trash, { force: true });
+        else await rename(trash, join(path, name.slice(1, -suffix.length)));
+      }
+    );
   }
   for (const path of transaction.retiredPaths ?? []) {
     const source = join(sessionDirectory, path);
@@ -424,8 +429,10 @@ export async function recoverSessionStorageTransaction(
 }
 
 async function removeUnjournaledTransactionFiles(directory: string): Promise<void> {
-  for (const name of await readdir(directory))
-    if (isUnjournaledTransactionFile(name)) await rm(join(directory, name), { force: true });
+  await forEachTransactionFile(
+    (await readdir(directory)).filter(isUnjournaledTransactionFile),
+    (name) => rm(join(directory, name), { force: true })
+  );
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -12,6 +12,7 @@ import { deriveExecutionState } from '../execution-state.js';
 import {
   renameIfExists,
   retainedSessionTitle,
+  stageRollbackSegments,
   stageSessionSegments,
   stageUnreferencedImages
 } from './history.js';
@@ -65,15 +66,26 @@ export type HistoryIndexOutcome =
 /** Execute one rollback/clear transaction while its caller holds maintenance. */
 export async function replaceSessionHistory(
   meta: SessionMeta,
-  retained: readonly SessionRecord[],
-  operation: { kind: 'rollback' } | { kind: 'clear'; clearedAt: string },
+  prefix: readonly SessionRecord[],
+  operation: { kind: 'rollback'; reuseSegments: boolean } | { kind: 'clear'; clearedAt: string },
   context: HistoryReplacementContext
 ) {
+  const retained =
+    operation.kind === 'rollback'
+      ? prefix.filter((record) => record.type !== 'responses.continuation')
+      : prefix;
   const targetDirectory =
     context.targetGeneration === undefined
       ? context.directory
       : join(context.sessionDirectory, 'v2', context.targetGeneration);
-  const staged = await stageSessionSegments(targetDirectory, retained);
+  const incremental =
+    operation.kind === 'rollback' &&
+    operation.reuseSegments &&
+    meta.storage?.encoding === 2 &&
+    meta.segments !== undefined;
+  const staged = incremental
+    ? await stageRollbackSegments(targetDirectory, prefix, meta.segments!)
+    : await stageSessionSegments(targetDirectory, retained);
   const transactionId = randomUUID();
   const targetNextSequence = operation.kind === 'clear' ? 2 : (retained.at(-1)?.sequence ?? 0) + 1;
   const contextualWorldStatePath = join(context.directory, CONTEXTUAL_WORLD_STATE_FILE);
@@ -85,15 +97,17 @@ export async function replaceSessionHistory(
     context.directory,
     targetDirectory
   );
-  const backups = originalPaths.map((path) => ({
-    path,
-    backup: `${path}.${transactionId}.${operation.kind}-backup`
-  }));
+  const backups = originalPaths
+    .filter((path) => !staged.reused?.has(basename(path)))
+    .map((path) => ({
+      path,
+      backup: `${path}.${transactionId}.${operation.kind}-backup`
+    }));
   const transaction: SessionStorageTransaction = {
     version: 1,
     id: transactionId,
     kind: operation.kind,
-    originalSegments: originalPaths.map((path) => basename(path)),
+    originalSegments: backups.map((item) => basename(item.path)),
     stagedSegments: staged.files.map((item) => ({
       path: basename(item.path),
       temporary: basename(item.temporaryPath)

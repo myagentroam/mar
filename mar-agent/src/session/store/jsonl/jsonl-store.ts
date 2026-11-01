@@ -914,14 +914,33 @@ export class JsonlSessionStore implements SessionStore {
     try {
       const meta = this.#shared.index.sessions.find((item) => item.id === sessionId);
       if (!meta) throw new AgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
-      const records = await this.read(sessionId);
+      const indexedSegments = meta.segments;
+      let segmentIndex = 0;
+      let matchingSegments = indexedSegments !== undefined;
+      // Check optional cache bounds during the history read already required by rollback.
+      const records = await this.#serializeRecordOperation(sessionId, () =>
+        this.#readRecords(sessionId, undefined, (path, segment) => {
+          const indexed = indexedSegments?.[segmentIndex];
+          segmentIndex++;
+          matchingSegments &&=
+            indexed !== undefined &&
+            path === this.#segmentPath(sessionId, indexed.number, meta) &&
+            segment[0]?.sequence === indexed.firstSequence &&
+            segment.at(-1)?.sequence === indexed.lastSequence;
+        })
+      );
       if (records[0]?.type !== 'session.created')
         throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session history is corrupt.');
       const boundaryIndex = rollbackBoundaryIndex(records, input);
-      const retained = records
-        .slice(0, boundaryIndex + 1)
-        .filter((record) => record.type !== 'responses.continuation');
-      return await this.#replaceHistory(meta, retained, { kind: 'rollback' });
+      const retained = records.slice(0, boundaryIndex + 1);
+      // Migrated v1 histories may preserve duplicate or non-increasing sequences.
+      const reuseSegments =
+        matchingSegments &&
+        segmentIndex === indexedSegments?.length &&
+        records.every(
+          (record, index) => index === 0 || record.sequence > records[index - 1]!.sequence
+        );
+      return await this.#replaceHistory(meta, retained, { kind: 'rollback', reuseSegments });
     } catch (error) {
       failed = true;
       throw error;
@@ -1015,7 +1034,7 @@ export class JsonlSessionStore implements SessionStore {
   async #replaceHistory(
     meta: SessionMeta,
     retained: readonly SessionRecord[],
-    operation: { kind: 'rollback' } | { kind: 'clear'; clearedAt: string }
+    operation: { kind: 'rollback'; reuseSegments: boolean } | { kind: 'clear'; clearedAt: string }
   ) {
     const sessionId = meta.id;
     const shared = this.#shared;
@@ -1343,7 +1362,11 @@ export class JsonlSessionStore implements SessionStore {
   async read(sessionId: string): Promise<SessionRecord[]> {
     return this.#serializeRecordOperation(sessionId, () => this.#readRecords(sessionId));
   }
-  async #readRecords(sessionId: string, selectedMeta?: SessionMeta): Promise<SessionRecord[]> {
+  async #readRecords(
+    sessionId: string,
+    selectedMeta?: SessionMeta,
+    onSegment?: (path: string, records: readonly SessionRecord[]) => void
+  ): Promise<SessionRecord[]> {
     return withSessionReadPin(this.#sessionRoot(sessionId), async () => {
       this.#assertOpen();
       if (!selectedMeta) await this.#refreshIndex();
@@ -1356,8 +1379,11 @@ export class JsonlSessionStore implements SessionStore {
         const meta =
           selectedMeta ?? this.#shared.index.sessions.find((item) => item.id === sessionId);
         const encoding = meta?.storage?.encoding ?? 1;
-        for (const path of await this.#segmentPaths(sessionId, meta))
-          records.push(...(await readRecords(path, encoding)));
+        for (const path of await this.#segmentPaths(sessionId, meta)) {
+          const segment = await readRecords(path, encoding);
+          onSegment?.(path, segment);
+          records.push(...segment);
+        }
         return records;
       } catch (cause) {
         if (cause instanceof AgentError) throw cause;

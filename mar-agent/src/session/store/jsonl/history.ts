@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { AgentError } from '../../../error.js';
 import { parseInlineMediaState } from '../../inline-media.js';
 import { MAX_SEGMENT_BYTES } from './records.js';
+import { forEachTransactionFile } from './transaction-files.js';
 import type { SessionMeta, SessionRecord } from '../types.js';
 
 export async function renameIfExists(from: string, to: string): Promise<boolean> {
@@ -19,6 +20,14 @@ export async function renameIfExists(from: string, to: string): Promise<boolean>
 interface StagedSessionSegments {
   readonly files: readonly { readonly path: string; readonly temporaryPath: string }[];
   readonly segments: NonNullable<SessionMeta['segments']>;
+  readonly reused?: ReadonlySet<string>;
+}
+
+interface SegmentGroup {
+  lines: string[];
+  bytes: number;
+  firstSequence: number;
+  lastSequence: number;
 }
 
 export async function stageSessionSegments(
@@ -26,14 +35,7 @@ export async function stageSessionSegments(
   records: readonly SessionRecord[],
   operation: 'rollback' | 'fork' = 'rollback'
 ): Promise<StagedSessionSegments> {
-  let group:
-    | {
-        lines: string[];
-        bytes: number;
-        firstSequence: number;
-        lastSequence: number;
-      }
-    | undefined;
+  let group: SegmentGroup | undefined;
   if (records.length === 0)
     throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session history is corrupt.');
   const transactionId = randomUUID();
@@ -42,22 +44,15 @@ export async function stageSessionSegments(
   const flush = async () => {
     if (group === undefined) return;
     const number = segments.length + 1;
-    const path = join(sessionDirectory, `events-${String(number).padStart(6, '0')}.jsonl`);
-    const temporaryPath = `${path}.${transactionId}.${operation}-tmp`;
-    const handle = await open(temporaryPath, 'wx', 0o600);
-    files.push({ path, temporaryPath });
-    try {
-      await handle.writeFile(group.lines.join(''));
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    segments.push({
+    const staged = await writeStagedSegment(
+      sessionDirectory,
+      group,
       number,
-      firstSequence: group.firstSequence,
-      lastSequence: group.lastSequence,
-      bytes: group.bytes
-    });
+      transactionId,
+      operation
+    );
+    files.push(staged.file);
+    segments.push(staged.segment);
     group = undefined;
   };
   try {
@@ -81,11 +76,101 @@ export async function stageSessionSegments(
     await flush();
     return { files, segments };
   } catch (error) {
-    await Promise.all(files.map((item) => rm(item.temporaryPath, { force: true }))).catch(
-      () => undefined
+    await forEachTransactionFile(files, (file) =>
+      rm(file.temporaryPath, { force: true }).catch(() => undefined)
     );
     throw error;
   }
+}
+
+/** Reuse intact files in ordered v2 histories; journal only replacements and removals. */
+export async function stageRollbackSegments(
+  directory: string,
+  prefix: readonly SessionRecord[],
+  originals: NonNullable<SessionMeta['segments']>
+): Promise<StagedSessionSegments & { readonly reused: ReadonlySet<string> }> {
+  const files: Array<{ path: string; temporaryPath: string }> = [];
+  const segments: NonNullable<SessionMeta['segments']> = [];
+  const reused = new Set<string>();
+  const transactionId = randomUUID();
+  let offset = 0;
+  try {
+    for (const original of originals) {
+      const start = offset;
+      while (offset < prefix.length && prefix[offset]!.sequence <= original.lastSequence) offset++;
+      const source = prefix.slice(start, offset);
+      if (source.length === 0) break;
+      const retained = source.filter((record) => record.type !== 'responses.continuation');
+      if (retained.length === source.length && source.at(-1)!.sequence === original.lastSequence) {
+        reused.add(`events-${String(original.number).padStart(6, '0')}.jsonl`);
+        segments.push({ ...original });
+      } else if (retained.length > 0) {
+        const lines = retained.map((record) => `${JSON.stringify(record)}\n`);
+        const staged = await writeStagedSegment(
+          directory,
+          {
+            lines,
+            bytes: lines.reduce((total, line) => total + Buffer.byteLength(line), 0),
+            firstSequence: retained[0]!.sequence,
+            lastSequence: retained.at(-1)!.sequence
+          },
+          original.number,
+          transactionId,
+          'rollback'
+        );
+        files.push(staged.file);
+        segments.push(staged.segment);
+      }
+    }
+    return { files, segments, reused };
+  } catch (error) {
+    await forEachTransactionFile(files, (file) =>
+      rm(file.temporaryPath, { force: true }).catch(() => undefined)
+    );
+    throw error;
+  }
+}
+
+async function writeStagedSegment(
+  directory: string,
+  group: SegmentGroup,
+  number: number,
+  transactionId: string,
+  operation: 'rollback' | 'fork'
+) {
+  const path = join(directory, `events-${String(number).padStart(6, '0')}.jsonl`);
+  const temporaryPath = `${path}.${transactionId}.${operation}-tmp`;
+  const handle = await open(temporaryPath, 'wx', 0o600);
+  let failed = false;
+  let failure: unknown;
+  try {
+    await handle.writeFile(group.lines.join(''));
+    await handle.sync();
+  } catch (error) {
+    failed = true;
+    failure = error;
+  }
+  try {
+    await handle.close();
+  } catch (error) {
+    if (!failed) {
+      failed = true;
+      failure = error;
+    }
+  }
+  if (failed) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw failure;
+  }
+  return {
+    file: { path, temporaryPath },
+    segment: {
+      number,
+      firstSequence: group.firstSequence,
+      lastSequence: group.lastSequence,
+      bytes: group.bytes
+    }
+  };
 }
 
 export async function stageUnreferencedImages(
@@ -104,13 +189,15 @@ export async function stageUnreferencedImages(
   }
   const moved: Array<{ from: string; to: string; trash: string }> = [];
   try {
-    for (const name of names) {
-      if (retained.has(name)) continue;
-      const from = join(directory, name);
-      const trash = join(directory, `.${name}.${transactionId}.rollback-trash`);
-      await rename(from, trash);
-      moved.push({ from: trash, to: from, trash });
-    }
+    await forEachTransactionFile(
+      names.filter((name) => !retained.has(name)),
+      async (name) => {
+        const from = join(directory, name);
+        const trash = join(directory, `.${name}.${transactionId}.rollback-trash`);
+        await rename(from, trash);
+        moved.push({ from: trash, to: from, trash });
+      }
+    );
     return moved;
   } catch (error) {
     await restoreRenamedFiles(moved);
@@ -121,7 +208,7 @@ export async function stageUnreferencedImages(
 export async function restoreRenamedFiles(
   files: readonly { readonly from: string; readonly to: string }[]
 ): Promise<void> {
-  for (const file of files.toReversed()) await rename(file.from, file.to).catch(() => undefined);
+  await forEachTransactionFile(files, (file) => rename(file.from, file.to).catch(() => undefined));
 }
 
 export function retainedSessionTitle(records: readonly SessionRecord[], fallback: string): string {
