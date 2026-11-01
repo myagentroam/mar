@@ -1002,19 +1002,6 @@ export function createWorkbenchPageController<
     remove: deleteWorkspaceUpload,
     dispose: disposeWorkspaceUploads
   } = workspaceUploadService;
-  let activeFileDownloads = 0;
-
-  async function runFileDownload(
-    operation: () => Promise<WorkspaceDirectDownloadResult>
-  ): Promise<WorkspaceDirectDownloadResult> {
-    activeFileDownloads += 1;
-    try {
-      return await operation();
-    } finally {
-      activeFileDownloads -= 1;
-    }
-  }
-
   async function checkForUpdates(): Promise<void> {
     if (checkingForUpdates.value || options.pwaApplication === undefined) return;
     checkingForUpdates.value = true;
@@ -1039,21 +1026,9 @@ export function createWorkbenchPageController<
   }
 
   async function applyWebUpdate(): Promise<void> {
-    const result = await options.pwaApplication?.applyUpdate(
-      () =>
-        activeFileDownloads === 0 &&
-        !workspaceUploadTasks.value.some(
-          (task) => task.status === 'QUEUED' || task.status === 'UPLOADING'
-        )
-    );
+    const result = await options.pwaApplication?.applyUpdate();
     if (result !== 'APPLIED') {
-      const key =
-        result === 'BLOCKED'
-          ? 'blocked'
-          : result === 'OTHER_WINDOWS'
-            ? 'otherWindows'
-            : 'unavailable';
-      showMessage(translate(`webUpdate.${key}`), 'warning');
+      showMessage(translate('webUpdate.unavailable'), 'warning');
     }
   }
 
@@ -1688,12 +1663,10 @@ export function createWorkbenchPageController<
     const target = workspaceDirectFile(path, worktreePath, repositoryPath);
     return target === undefined || options.pwaApplication === undefined
       ? 'UNAVAILABLE'
-      : runFileDownload(() =>
-          downloadWorkspaceDirectFile({
-            ...target,
-            activeWorker: options.pwaApplication!.activeWorker
-          })
-        );
+      : downloadWorkspaceDirectFile({
+          ...target,
+          activeWorker: options.pwaApplication.activeWorker
+        });
   }
 
   async function directGitFileObjectUrl(
@@ -1724,12 +1697,10 @@ export function createWorkbenchPageController<
     const target = gitDirectFile(commit, path, repositoryPath, refs);
     return target === undefined || options.pwaApplication === undefined
       ? 'UNAVAILABLE'
-      : runFileDownload(() =>
-          downloadWorkspaceDirectFile({
-            ...target,
-            activeWorker: options.pwaApplication!.activeWorker
-          })
-        );
+      : downloadWorkspaceDirectFile({
+          ...target,
+          activeWorker: options.pwaApplication.activeWorker
+        });
   }
 
   const adminAuthService = createAdminAuthService({

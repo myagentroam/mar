@@ -351,8 +351,6 @@ export const zhCN = {
   webUpdate: {
     title: workbenchPageZhCN.webUpdate.title,
     message: workbenchPageZhCN.webUpdate.message,
-    blocked: workbenchPageZhCN.webUpdate.blocked,
-    otherWindows: workbenchPageZhCN.webUpdate.otherWindows,
     unavailable: workbenchPageZhCN.webUpdate.unavailable,
     displayModeLabel: workbenchPageZhCN.webUpdate.displayModeLabel,
     displayMode: workbenchPageZhCN.webUpdate.displayMode,

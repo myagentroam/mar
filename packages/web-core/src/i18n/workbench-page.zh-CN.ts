@@ -28,9 +28,7 @@ export const workbenchPageZhCN = {
   },
   webUpdate: {
     title: '有可用应用更新',
-    message: '新版本 v{value0} 可用，点击刷新当前页面并更新。',
-    blocked: '请先保存或放弃未保存的修改，并结束文件传输，再更新应用。',
-    otherWindows: '请先关闭其他应用窗口，再更新当前窗口。',
+    message: '新版本 v{value0} 可用，点击更新并刷新所有应用窗口。',
     unavailable: '更新尚不能应用，请检查更新后重试。',
     displayModeLabel: '运行方式',
     displayMode: { browser: '浏览器标签页', standalone: 'PWA 独立窗口' },

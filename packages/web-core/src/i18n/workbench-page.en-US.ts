@@ -28,9 +28,7 @@ export const workbenchPageEnUS = {
   },
   webUpdate: {
     title: 'Application update available',
-    message: 'Version v{value0} is available. Click to reload this page and update.',
-    blocked: 'Save or discard unsaved changes and finish file transfers before updating.',
-    otherWindows: 'Close other application windows before updating this window.',
+    message: 'Version v{value0} is available. Click to update and reload all application windows.',
     unavailable: 'The update is not ready to apply. Check for updates and try again.',
     displayModeLabel: 'Display mode',
     displayMode: { browser: 'Browser tab', standalone: 'Standalone PWA window' },

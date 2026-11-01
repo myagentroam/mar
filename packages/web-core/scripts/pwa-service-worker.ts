@@ -10,6 +10,7 @@ const cacheName = 'mar-static-precache';
 const controller = new PrecacheController({ cacheName });
 const manifest = __MAR_PRECACHE_MANIFEST__;
 controller.addToCacheList(manifest);
+let updateSourceId: string | undefined;
 
 async function hasEntry(): Promise<boolean> {
   const key = controller.getCacheKeyForURL(new URL('/index.html', worker.location.origin).href);
@@ -21,7 +22,26 @@ worker.addEventListener('install', (event) => {
 });
 
 worker.addEventListener('activate', (event) => {
-  event.waitUntil(controller.activate(event).then(() => worker.clients.claim()));
+  event.waitUntil(
+    (async () => {
+      await controller.activate(event);
+      await worker.clients.claim();
+      if (updateSourceId === undefined) return;
+      const clients = await worker.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clients) {
+        const url = new URL(client.url);
+        if (
+          client.id !== updateSourceId &&
+          url.origin === worker.location.origin &&
+          (['/', '/index.html', '/console'].includes(url.pathname) ||
+            url.pathname.startsWith('/console/'))
+        ) {
+          // Navigation fetches must not wait on their own activation event.
+          void client.navigate(client.url).catch(() => undefined);
+        }
+      }
+    })()
+  );
 });
 
 function currentUrl(request: Request): string | undefined {
@@ -89,14 +109,14 @@ worker.addEventListener('message', (event) => {
         });
         return;
       }
-      const clients = await worker.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      if (clients.length !== 1 || clients[0]?.id !== source.id) {
-        port.postMessage({ applied: false, reason: 'OTHER_WINDOWS' });
-      } else if (!(await hasEntry())) {
+      if (!(await hasEntry())) {
         port.postMessage({ applied: false, reason: 'UNAVAILABLE' });
       } else {
-        await worker.skipWaiting();
+        // The requesting page reloads itself after controllerchange; refresh its peers here.
+        updateSourceId = source.id;
+        const activationRequest = worker.skipWaiting();
         port.postMessage({ applied: true });
+        await activationRequest;
       }
     })()
   );

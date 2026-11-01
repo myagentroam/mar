@@ -211,7 +211,36 @@ test('final PWA artifact cold-starts Console offline without caching docs or non
   }
 });
 
-test('failed Worker updates retain the previous artifact before a multi-window-safe retry', async ({
+test('a requested update reloads other open application windows', async ({ browser }) => {
+  const fixture = await startPwaOfflineFixture({ suffix: 'windows', includePrevious: true });
+  const context = await browser.newContext({ serviceWorkers: 'allow' });
+  try {
+    fixture.setRelease('previous');
+    const source = await context.newPage();
+    const peer = await context.newPage();
+    for (const page of [source, peer]) {
+      await page.goto(`${fixture.origin}/console`, { waitUntil: 'domcontentloaded' });
+      await waitForController(page);
+    }
+    fixture.setRelease('current');
+    expect(await observeWorkerUpdate(source)).toBe('installed');
+    await Promise.all([
+      applyWaitingWorker(source, fixture.previous!.buildId).then((result) => {
+        expect(result).toEqual({ applied: true });
+      }),
+      peer.waitForEvent('domcontentloaded', { timeout: 15_000 })
+    ]);
+    expect(await readWorkerStatus(peer, 'active')).toMatchObject({
+      buildId: fixture.current.buildId,
+      entry: true
+    });
+  } finally {
+    await context.close();
+    await fixture.close();
+  }
+});
+
+test('failed Worker updates retain the previous artifact before a successful retry', async ({
   browser
 }) => {
   test.setTimeout(240_000);
@@ -290,14 +319,6 @@ test('failed Worker updates retain the previous artifact before a multi-window-s
       supported: true,
       degraded: false,
       entry: true
-    });
-
-    expect(await applyWaitingWorker(oldWindow, previous.buildId)).toEqual({
-      applied: false,
-      reason: 'OTHER_WINDOWS'
-    });
-    expect(await readWorkerStatus(oldWindow, 'active')).toMatchObject({
-      buildId: previous.buildId
     });
 
     await secondWindow.close();

@@ -271,6 +271,31 @@ test('duplicate, draft protection and formatting work without changing the activ
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
 });
 
+test('PWA update reloads an unsaved theme without a leave confirmation', async ({ page }) => {
+  await page.route('**/web-version.json', (route) =>
+    route.fulfill({ json: { version: 'next', hash: 'next-build' } })
+  );
+  await page.goto(`${fixture.url}custom-theme.html?pwaUpdate`);
+  await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
+  await page.getByRole('textbox', { name: 'Theme JSON', exact: true }).fill('unsaved draft');
+  expect(
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))
+  ).toBe(false);
+  const dialogs: string[] = [];
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.type());
+    void dialog.accept();
+  });
+  await Promise.all([
+    page.waitForEvent('domcontentloaded'),
+    page.getByRole('button', { name: 'Apply PWA update', exact: true }).click()
+  ]);
+  expect(dialogs).toEqual([]);
+  await expect(page.getByRole('textbox', { name: 'Theme JSON', exact: true })).not.toHaveValue(
+    'unsaved draft'
+  );
+});
+
 test('built-ins are read-only, copies include every color, and reset restores saved or copied drafts', async ({
   page
 }) => {

@@ -354,8 +354,6 @@ export const enUS = {
   webUpdate: {
     title: workbenchPageEnUS.webUpdate.title,
     message: workbenchPageEnUS.webUpdate.message,
-    blocked: workbenchPageEnUS.webUpdate.blocked,
-    otherWindows: workbenchPageEnUS.webUpdate.otherWindows,
     unavailable: workbenchPageEnUS.webUpdate.unavailable,
     displayModeLabel: workbenchPageEnUS.webUpdate.displayModeLabel,
     displayMode: workbenchPageEnUS.webUpdate.displayMode,

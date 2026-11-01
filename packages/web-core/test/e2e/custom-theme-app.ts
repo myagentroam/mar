@@ -9,16 +9,36 @@ import ThemeControlsFixture from './theme-controls-fixture.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { SettingsSection } from '../../src/model/settings.js';
+import {
+  createPwaApplicationService,
+  PWA_APPLICATION_SERVICE_KEY
+} from '../../src/service/pwa-application-service.js';
 
 localePreferenceService().setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 const section = ref<SettingsSection>('custom-themes');
+const pwaApplication = createPwaApplicationService(undefined, {
+  version: 'fixture',
+  buildId: 'fixture'
+});
 const app = createApp({
   setup() {
     return () =>
       h('main', { style: 'height: 100vh; overflow: auto;' }, [
         h('nav', [
+          new URLSearchParams(location.search).has('pwaUpdate')
+            ? h(
+                'button',
+                {
+                  onClick: async () => {
+                    await pwaApplication.checkForUpdate();
+                    await pwaApplication.applyUpdate();
+                  }
+                },
+                'Apply PWA update'
+              )
+            : null,
           h(
             'button',
             {
@@ -61,4 +81,5 @@ const app = createApp({
       ]);
   }
 });
+app.provide(PWA_APPLICATION_SERVICE_KEY, pwaApplication);
 app.use(i18n).use(ElementPlus).mount('#app');
