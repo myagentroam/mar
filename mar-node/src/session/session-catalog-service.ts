@@ -142,6 +142,18 @@ export class SessionCatalogService {
       ancestors.add(parent.id);
       root = parent;
     }
+    const native = this.options
+      .cachedNative()
+      .filter((session) => session.workspaceId === input.workspaceId);
+    const projections = this.options.projection.projectionsForNative(native);
+    const activityById = new Map<string, number>();
+    for (const source of native) {
+      const id = projections.get(source)?.id ?? source.id;
+      activityById.set(
+        id,
+        latestSessionActivityAt(activityById.get(id) ?? 0, source.lastActivityAt)
+      );
+    }
     const queue = [root];
     const visited = new Set([root.id]);
     const nodes = [];
@@ -160,7 +172,11 @@ export class SessionCatalogService {
           'Untitled session',
         runner: session.runner,
         activity: live && 'activity' in live ? live.activity : 'IDLE',
-        status: sessionActivityStatus(this.options.runtime, session.id)
+        status: sessionActivityStatus(this.options.runtime, session.id),
+        lastActivityAt: latestSessionActivityAt(
+          live?.lastActivityAt ?? 0,
+          activityById.get(session.id) ?? 0
+        )
       });
       const children = [...database.listChildSessionRecords(input.workspaceId, session.id)];
       if (input.includeAncestors === true)

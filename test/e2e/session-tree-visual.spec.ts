@@ -22,27 +22,24 @@ test('tree dialog keeps one snapshot, orders active branches and closes by keybo
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.getByTestId('requests')).toHaveText('1');
   await tree.hover({ position: { x: 2, y: 2 } });
-  await expect(tree.locator('.session-tree-node')).toHaveText([
-    'RootIdle',
-    'Running branchRunning',
-    'Sleeping branchSleeping',
-    'Idle branchIdle',
-    'Active descendantRunning',
-    'Idle leafIdle',
-    'Idle leaf twoIdle'
+  await expect(tree.locator('.session-tree-title')).toHaveText([
+    'Root',
+    'Running branch',
+    'Sleeping branch',
+    'Idle branch',
+    'Active descendant',
+    'Idle leaf',
+    'Idle leaf two'
   ]);
-  await expect(tree.locator('.session-tree-status.el-tag')).toHaveCount(7);
-  await expect(tree.locator('.session-tree-status.el-tag--success')).toHaveText([
-    'Running',
-    'Running'
-  ]);
-  await expect(tree.locator('.session-tree-status.el-tag--info')).toHaveText([
-    'Idle',
-    'Sleeping',
-    'Idle',
-    'Idle',
-    'Idle'
-  ]);
+  await expect(tree.locator('.session-tree-status')).toHaveCount(0);
+  await expect(tree.locator('.session-activity.managed_active')).toHaveCount(3);
+  await expect(tree.locator('.session-tree-time')).toHaveText(Array(7).fill('—'));
+  await expect(
+    tree.getByRole('button', { name: 'Running branch, Running', exact: true })
+  ).toBeVisible();
+  await expect(
+    tree.getByRole('button', { name: 'Sleeping branch, Sleeping', exact: true })
+  ).toBeVisible();
   await expect(page.getByTestId('requests')).toHaveText('1');
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
@@ -382,7 +379,10 @@ test('a deep 100-node snapshot remains scrollable on a narrow viewport', async (
   expect(
     await last.locator('.session-tree-title').evaluate((el) => el.getBoundingClientRect().width)
   ).toBeGreaterThan(20);
-  await expect(last.locator('.session-tree-status')).toBeVisible();
+  await expect(last).toBeVisible();
+  await expect(last.locator('.session-tree-status')).toHaveCount(0);
+  await expect(last.locator('.session-tree-time')).toHaveText('—');
+  await expect(last.locator('.session-tree-time')).not.toHaveAttribute('datetime');
 });
 
 test.describe('touch interaction', () => {
@@ -406,7 +406,7 @@ for (const width of [390, 1280]) {
     test(`session tree controls at ${width}px in ${theme}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 850 });
       const locale = theme === 'dark' ? 'en-US' : 'zh-CN';
-      await page.goto(`${fixture.url}session-tree.html?theme=${theme}&locale=${locale}`);
+      await page.goto(`${fixture.url}session-tree.html?theme=${theme}&locale=${locale}&activity=1`);
       const trigger = page.getByRole('button', {
         name: locale === 'en-US' ? 'View session tree' : '查看会话树'
       });
@@ -430,18 +430,31 @@ for (const width of [390, 1280]) {
       await expect(dialog).toBeVisible();
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
-      await expect(rows.locator('.session-tree-status.el-tag')).toHaveCount(4);
+      await expect(rows.locator('.session-tree-status')).toHaveCount(0);
+      await expect(dialog.locator('.session-activity.managed_active')).toHaveCount(2);
+      await expect(rows.locator('.session-tree-time')).toHaveText(['>12m', '<1m', '>5m', '>2h']);
+      await expect(rows.first().locator('.session-tree-time')).toHaveAttribute(
+        'datetime',
+        /^\d{4}-\d{2}-\d{2}T/
+      );
+      await expect(rows.nth(1)).toHaveAccessibleName(
+        `Review BMP compatibility changes and lifecycle edge cases, ${locale === 'en-US' ? 'Running' : '运行中'}`
+      );
+      await expect(rows.nth(2)).toHaveAccessibleName(
+        `Verify image decoding and cleanup, ${locale === 'en-US' ? 'Sleeping' : '休眠中'}`
+      );
       const longTitle = rows.last().locator('.session-tree-title');
       await expect(rows.last()).toHaveAccessibleName(
         `${'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()}, ${locale === 'en-US' ? 'Idle' : '空闲'}`
       );
       const titleSize = await longTitle.evaluate((element) => ({
         height: element.clientHeight,
-        fullHeight: element.scrollHeight,
+        width: element.clientWidth,
+        fullWidth: element.scrollWidth,
         lineHeight: parseFloat(getComputedStyle(element).lineHeight)
       }));
-      expect(titleSize.height).toBeLessThanOrEqual(titleSize.lineHeight * 2 + 1);
-      expect(titleSize.fullHeight).toBeGreaterThan(titleSize.height);
+      expect(titleSize.height).toBeLessThanOrEqual(titleSize.lineHeight + 1);
+      expect(titleSize.fullWidth).toBeGreaterThan(titleSize.width);
       await expect(rows.locator('[data-mar-icon="collection"]')).toHaveCount(0);
       const treeRows = dialog.locator('.session-tree-row');
       const childBranch = treeRows.nth(1).locator('.session-tree-branch');
@@ -460,7 +473,6 @@ for (const width of [390, 1280]) {
       expect(ancestorLine!.x).toBe(childLine!.x);
       expect(Math.abs(childLine!.y + childLine!.height - ancestorLine!.y)).toBeLessThan(1);
       const connectorEdges = await treeRows.evaluateAll((elements) => {
-        const origin = elements[0]!.querySelector('.session-tree-origin')!;
         const stem = elements[0]!.querySelector('.session-tree-origin-stem')!;
         const child = elements[1]!.querySelector('.session-tree-branch')!;
         const ancestor = elements[2]!.querySelector('.session-tree-branch')!;
@@ -473,8 +485,6 @@ for (const width of [390, 1280]) {
           parseFloat(getComputedStyle(element, '::before').left);
         return {
           root: branchX(stem),
-          rootElbow: elbowX(origin),
-          rootCornerRadius: getComputedStyle(origin, '::before').borderEndStartRadius,
           continuing: branchX(child),
           continuingElbow: elbowX(child),
           ancestor: branchX(ancestor),
@@ -483,8 +493,6 @@ for (const width of [390, 1280]) {
           lastElbow: elbowX(last)
         };
       });
-      expect(connectorEdges.rootElbow).toBeCloseTo(connectorEdges.root, 1);
-      expect(connectorEdges.rootCornerRadius).toBe('0px');
       expect(connectorEdges.continuing).toBeCloseTo(connectorEdges.root, 1);
       expect(connectorEdges.continuingElbow).toBeCloseTo(connectorEdges.continuing, 1);
       expect(connectorEdges.ancestor).toBeCloseTo(connectorEdges.continuing, 1);
@@ -528,19 +536,73 @@ for (const width of [390, 1280]) {
       });
       expect(ending.border).toBe('1px');
       expect(Math.abs(ending.height - ending.parentHeight / 2)).toBeLessThan(1);
+      const branchStep = await lastBranch.evaluate((element) =>
+        parseFloat(getComputedStyle(element).width)
+      );
+      expect(branchStep).toBeCloseTo(
+        await page.evaluate(
+          () => parseFloat(getComputedStyle(document.documentElement).fontSize) * 1.25
+        ),
+        1
+      );
+      expect(
+        await lastBranch.evaluate((element) =>
+          parseFloat(getComputedStyle(element, '::before').borderEndStartRadius)
+        )
+      ).toBeGreaterThan(0);
+      const markers = dialog.locator('.session-tree-marker');
+      await expect(markers).toHaveCount(4);
+      await expect(markers.first()).toHaveAttribute('aria-hidden', 'true');
+      const markerGeometry = await treeRows.evaluateAll((elements) =>
+        elements.map((element) => {
+          const row = element.getBoundingClientRect();
+          const marker = element.querySelector('.session-tree-marker')!;
+          const dot = marker.getBoundingClientRect();
+          const style = getComputedStyle(marker);
+          return {
+            x: dot.left + dot.width / 2,
+            y: dot.top + dot.height / 2,
+            center: row.top + row.height / 2,
+            size: dot.width,
+            height: dot.height,
+            color: style.borderTopColor,
+            radius: style.borderRadius
+          };
+        })
+      );
+      for (const marker of markerGeometry) {
+        expect(Math.abs(marker.y - marker.center)).toBeLessThan(1);
+        expect(marker.size).toBeCloseTo(8, 1);
+        expect(marker.height).toBeCloseTo(marker.size, 1);
+        expect(marker.radius).toBe('50%');
+      }
+      expect(markerGeometry[0]!.x).toBeCloseTo(connectorEdges.root, 1);
+      expect(markerGeometry[1]!.x).toBeCloseTo(nestedConnector.stemLeft, 1);
+      expect(markerGeometry[2]!.x - markerGeometry[1]!.x).toBeCloseTo(branchStep, 1);
+      expect(markerGeometry[3]!.x).toBeCloseTo(markerGeometry[1]!.x, 1);
+      expect(markerGeometry[1]!.color).toBe(markerGeometry[0]!.color);
       for (const row of await rows.all()) {
         await expect(row).not.toContainText(/mar-agent|codex/);
         await expect(row).toHaveCSS('border-top-width', '0px');
         expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
-      await rows.first().hover();
+      const rowBackground = await rows
+        .nth(1)
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(rowBackground).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(rows.nth(2)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(rows.first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await rows.first().hover();
+      const hoverBackground = await rows
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(hoverBackground).not.toBe(rowBackground);
       const current = dialog.locator('.session-tree-node[aria-current="true"]');
       await current.focus();
       await expect(current).toHaveCSS('outline-width', '2px');
       await expect(current).toContainText('Review BMP');
-      await expect(current).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(current.locator('.session-tree-title')).toHaveCSS('font-weight', '600');
+      await expect(current).toHaveCSS('background-color', rowBackground);
+      await expect(current.locator('.session-tree-title')).toHaveCSS('font-weight', '400');
       await expect(rows.locator('[data-mar-icon]')).toHaveCount(0);
       const box = (await dialog.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
@@ -551,12 +613,28 @@ for (const width of [390, 1280]) {
         path: testInfo.outputPath(`tree-${width}-${theme}.png`),
         fullPage: true
       });
+      await longTitle.hover();
+      await expect(page.getByRole('tooltip')).toHaveText(
+        'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()
+      );
+      await current.locator('.session-tree-time').hover();
+      await expect(page.getByRole('tooltip')).toHaveText(
+        new RegExp(
+          `^${locale === 'en-US' ? 'Last activity: ' : '最后活动：'}\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$`
+        )
+      );
       await current.evaluate((element) => {
-        (element as HTMLElement).style.setProperty('--mar-color-brand-text', '#694198');
+        (element as HTMLElement).style.setProperty('--mar-text-primary', '#d7dde5');
+        (element as HTMLElement).style.setProperty('--mar-fill-selection', '#313f51');
+        (element as HTMLElement).style.setProperty('--el-color-success', '#36805a');
       });
       await current.hover();
-      await expect(current).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(current.locator('.session-tree-title')).toHaveCSS('color', 'rgb(105, 65, 152)');
+      await expect(current.locator('.session-tree-title')).toHaveCSS('color', 'rgb(215, 221, 229)');
+      await expect(current).toHaveCSS('background-color', 'rgb(49, 63, 81)');
+      await expect(current.locator('.session-activity i')).toHaveCSS(
+        'background-color',
+        'rgb(54, 128, 90)'
+      );
       await rows.first().press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect(page.getByTestId('selected')).toHaveText('parent');
@@ -580,7 +658,9 @@ for (const theme of ['dark', 'daylight']) {
     await expect(dialog.locator('.el-loading-mask')).toBeHidden();
     const root = dialog.getByRole('button', { name: 'forge#maintainer, 空闲' });
     await expect(root).toHaveAttribute('aria-current', 'true');
-    await expect(root).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    expect(await root.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
+      'rgba(0, 0, 0, 0)'
+    );
     await page.mouse.move(0, 0);
     await root.evaluate((element) => (element as HTMLElement).blur());
     await page.screenshot({

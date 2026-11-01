@@ -530,6 +530,16 @@ html.console-ui .el-tag--primary:not(.el-tag--dark) {
   --el-tag-text-color: var(--mar-control-link-text);
 }
 
+/* Tags should appear and disappear without the Element Plus zoom transition. */
+html.console-ui .el-tag:is(.el-zoom-in-center-enter-active, .el-zoom-in-center-leave-active) {
+  transition: none;
+}
+
+html.console-ui .el-tag:is(.el-zoom-in-center-enter-from, .el-zoom-in-center-leave-to) {
+  opacity: 1;
+  transform: none;
+}
+
 /* Element Plus otherwise assigns a fixed shade directly to disabled text actions. */
 html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   color: var(--mar-color-brand-disabled);

@@ -374,7 +374,8 @@ export function createSessionExecutionFactory(ports: {
         );
         const restored = await restoreMessages(store, sessionId, contextRecords, {
           messageSources,
-          includeImages: mode !== 'compact'
+          // Keep durable references for the retained tail; the Compact snapshot removes images.
+          includeImages: true
         });
         let modelLifecycle!: ExecutionModelLifecycle;
         let applyCompactBoundary: (value: number) => void = () => {};

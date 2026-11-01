@@ -678,6 +678,67 @@ describe('asynchronous Compact', () => {
     }
   });
 
+  it('does not carry old thinking when the asynchronous suffix already contains four complete blocks', async () => {
+    const release = barrier();
+    const native = (group: string, count: number): ModelEvent[] =>
+      Array.from({ length: count }, (_, index) => ({
+        type: 'response.item',
+        provider: 'ANTHROPIC_MESSAGES',
+        contextKind: 'private',
+        item: { type: 'thinking', thinking: '', signature: `${group}-${index}` }
+      }));
+    const f = await fixture(
+      (_request, index) => {
+        if (index === 1) return [...native('old', 4), ...response('seed', 100)];
+        if (index === 2) return readCall('before-snapshot', 8500);
+        if (index === 3) return [...native('new', 4), ...readCall('after-snapshot', 8500)];
+        if (index === 4) {
+          release.release();
+          return readCall('after-release', 9000);
+        }
+        return response('finished', 100);
+      },
+      async () => {
+        await release.promise;
+        return { summary: 'HANDOFF' };
+      }
+    );
+    await f.session.run({ prompt: 'Seed' }).result();
+    expect(await f.session.run({ prompt: 'Read three times' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(f.generations()).toBe(1);
+    const latest = f.requests.at(-1)!.messages;
+    const expected = native('new', 4).map((event) =>
+      event.type === 'response.item' ? event.item : undefined
+    );
+    expect(
+      latest.filter((message) => message.role === 'provider').map((message) => message.item)
+    ).toEqual(expected);
+    for (const callId of ['after-snapshot', 'after-release']) {
+      expect(
+        latest.filter((message) => message.role === 'tool_call' && message.callId === callId)
+      ).toHaveLength(1);
+      expect(
+        latest.filter((message) => message.role === 'tool' && message.callId === callId)
+      ).toHaveLength(1);
+    }
+    const store = await JsonlSessionStore.open(f.home);
+    try {
+      const state = await store.readExecutionState(f.session.id);
+      const restored = await restoreMessages(store, f.session.id, state.contextRecords, {
+        includeImages: false
+      });
+      expect(
+        restored.messages
+          .filter((message) => message.role === 'provider')
+          .map((message) => message.item)
+      ).toEqual(expected);
+    } finally {
+      await store.close();
+    }
+  });
+
   it('preserves an automatic child update committed after the Compact snapshot exactly once', async () => {
     const generated = barrier();
     const release = barrier();

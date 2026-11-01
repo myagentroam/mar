@@ -22,7 +22,7 @@ export function createExecutionCompaction(ports: {
   readonly sessionId: string;
   readonly executionId: string;
   readonly turnId: string;
-  readonly model: Pick<ResolvedModelConfiguration, 'id' | 'contextWindowTokens'>;
+  readonly model: Pick<ResolvedModelConfiguration, 'id' | 'protocol' | 'contextWindowTokens'>;
   readonly messages: SessionModelMessage[];
   readonly pendingInputs: Map<string, SessionRecord>;
   readonly messageSources: WeakMap<SessionModelMessage, SessionRecord>;
@@ -78,7 +78,6 @@ export function createExecutionCompaction(ports: {
     )
       return false;
     const history = structuredClone(prefix).map(({ images: _images, ...message }) => message);
-    const prefixInputs = modelContext.compactInputs(prefix);
     const tools = structuredClone(ports.snapshotTools());
     const generation = modelContext.worldState.generation;
     const usage = ports.usage();
@@ -127,11 +126,7 @@ export function createExecutionCompaction(ports: {
     await prepare();
     signal.throwIfAborted();
     const resources = await ports.retainedResources();
-    const replacementHistory = buildCompactedHistory(
-      candidate.summary,
-      prefixInputs,
-      ports.userTokenLimit
-    );
+    let replacementHistory!: ReturnType<typeof buildCompactedHistory>;
     let committed = false;
     let retained: SessionModelMessage[];
     try {
@@ -141,6 +136,7 @@ export function createExecutionCompaction(ports: {
         signal,
         prefix,
         messages,
+        model: ports.model,
         generation,
         messageSources: ports.messageSources,
         checkpoint: (value) => ports.resourceInput.checkpoint(value),
@@ -154,21 +150,29 @@ export function createExecutionCompaction(ports: {
           modelContext.replaceCompactMessages(replacementHistory, value);
           ports.updateBoundary(messages.length - value.length);
         },
-        draft: () => ({
-          summary: candidate.summary,
-          replacementHistory,
-          pendingInputs: [...ports.pendingInputs.values()],
-          snapshotMessageCount: prefix.length,
-          ...(anchorRecordId ? { snapshotRecordId: anchorRecordId } : {}),
-          automatic: ports.mode !== 'compact',
-          environment: ports.environment(),
-          modelId: ports.model.id,
-          contextWindowTokens: ports.model.contextWindowTokens,
-          ...(candidate.usage === undefined ? {} : { usage: candidate.usage }),
-          executionId: ports.executionId,
-          turnId: ports.turnId
-        })
+        draft: (retainedStart) => {
+          replacementHistory = buildCompactedHistory(
+            candidate.summary,
+            modelContext.compactInputs(prefix.slice(0, retainedStart)),
+            ports.userTokenLimit
+          );
+          return {
+            summary: candidate.summary,
+            replacementHistory,
+            pendingInputs: [...ports.pendingInputs.values()],
+            snapshotMessageCount: prefix.length,
+            ...(anchorRecordId ? { snapshotRecordId: anchorRecordId } : {}),
+            automatic: ports.mode !== 'compact',
+            environment: ports.environment(),
+            modelId: ports.model.id,
+            contextWindowTokens: ports.model.contextWindowTokens,
+            ...(candidate.usage === undefined ? {} : { usage: candidate.usage }),
+            executionId: ports.executionId,
+            turnId: ports.turnId
+          };
+        }
       });
+      if (!result) return false;
       retained = result.retained;
       await modelContext.adoptCompactCheckpoint(
         result.record.recordId,

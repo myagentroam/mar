@@ -1,31 +1,20 @@
 import { anthropicThinkingBlock } from './anthropic-thinking.js';
 import type { ModelMessage } from './contracts.js';
 
-/** Identity of a persisted complete native thinking item; payload content is never compared. */
+/** Adapters persist native items at completion; consumers need only type and identity. */
 export function completedNativeThinkingIdentity(
-  payload: Record<string, unknown>,
+  payload: { role?: unknown; provider?: unknown; item?: unknown },
   recordId: string
 ): string | undefined {
   if (payload.role !== 'provider') return undefined;
+  const item = payload.item;
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
+  const block = item as Record<string, unknown>;
   if (payload.provider === 'ANTHROPIC_MESSAGES') {
-    const item = payload.item;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
-    const block = item as Record<string, unknown>;
-    return (block.type === 'thinking' &&
-      typeof block.thinking === 'string' &&
-      typeof block.signature === 'string' &&
-      block.signature.length > 0) ||
-      (block.type === 'redacted_thinking' &&
-        typeof block.data === 'string' &&
-        block.data.length > 0)
-      ? recordId
-      : undefined;
+    return block.type === 'thinking' || block.type === 'redacted_thinking' ? recordId : undefined;
   }
-  const message = restoreNativeModelContext(payload);
-  if (!message?.item) return undefined;
-  if (message.provider !== 'OPENAI_RESPONSES' || message.item.type !== 'reasoning')
-    return undefined;
-  return typeof message.item.id === 'string' ? message.item.id : recordId;
+  if (payload.provider !== 'OPENAI_RESPONSES' || block.type !== 'reasoning') return undefined;
+  return typeof block.id === 'string' ? block.id : recordId;
 }
 
 /** Interpret only the existing native context record shapes and their model ownership. */
