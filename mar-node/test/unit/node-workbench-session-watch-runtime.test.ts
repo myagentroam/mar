@@ -310,7 +310,7 @@ describe('Node Workbench external session observation', () => {
     }
   });
 
-  it('reads a new full initial page after an in-flight periodic refresh', async () => {
+  it('reads a fresh bounded Segment page after an in-flight periodic refresh', async () => {
     const session = {
       id: 'session-periodic-reopen',
       workspaceId: 'workspace-periodic-reopen',
@@ -371,12 +371,12 @@ describe('Node Workbench external session observation', () => {
       await vi.waitFor(() =>
         expect(emitted.some((event) => event.watchId === 'watch-two')).toBe(true)
       );
-      expect(readPage.mock.calls.map((call) => call[1])).toEqual([30, 10, 30]);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([3, 10, 10]);
       expect(
         emitted
           .find((event) => event.watchId === 'watch-two')
           ?.payload?.turns?.map((turn) => turn.id)
-      ).toEqual(turns.slice(-30).map((turn) => turn.id));
+      ).toEqual(turns.slice(-10).map((turn) => turn.id));
     } finally {
       releasePeriodic();
       service.clear();
@@ -1141,7 +1141,7 @@ describe('Node Workbench external session observation', () => {
     expect(caughtUp.page.turns.map((turn) => turn.id)).toEqual(['old', 'official-new']);
   });
 
-  it('expands the initial Segment projection read window but builds the observation signature from the latest ten Turns', async () => {
+  it('bounds initial Segment reads without rebroadcasting an unchanged tail when observation expands', async () => {
     const session = {
       id: 'session-segment-signature',
       externalSessionId: 'external-segment-signature'
@@ -1191,7 +1191,7 @@ describe('Node Workbench external session observation', () => {
       });
       await service.refresh(session.id);
 
-      expect(readPage.mock.calls.map((call) => call[1])).toEqual([30, 10, 10]);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([3, 10, 10]);
       expect(emitWatchEvent).toHaveBeenLastCalledWith(
         expect.objectContaining({
           type: 'watch.session.snapshot',

@@ -42,6 +42,7 @@ export class ConversationObservation {
   private historyRead: Promise<ConversationObservationUpdate | undefined> | undefined;
   private refreshRead: Promise<ConversationObservationUpdate | undefined> | undefined;
   private refreshMode: 'initial' | 'observation' | undefined;
+  private refreshLimit = 0;
   private eventRevision = 0;
   private transitionGeneration = 0;
   private closed = false;
@@ -64,21 +65,26 @@ export class ConversationObservation {
     this.page = this.observedPage = this.runtimePage = undefined;
   }
 
-  async initial(): Promise<ConversationObservationUpdate | undefined> {
+  async initial(limit = INITIAL_TURN_LIMIT): Promise<ConversationObservationUpdate | undefined> {
     if (this.closed) return undefined;
     if (this.options.managedActive(this.session)) {
       this.mode = 'RUNNING';
       return { page: await this.runningWindow(), changed: false, handoff: false, snapshot: false };
     }
     // A fresh initial must not join an older observation's smaller or stale window.
-    if (
+    while (
       this.refreshRead !== undefined &&
-      (this.page !== undefined || this.refreshMode === 'observation')
+      (this.page !== undefined || this.refreshMode === 'observation' || this.refreshLimit < limit)
     )
       await this.refreshRead.catch(() => undefined);
     if (this.closed) return undefined;
     const joinedInitial = this.refreshRead !== undefined;
-    const update = await this.refresh('initial', INITIAL_TURN_LIMIT);
+    // A narrow initial must not discard coverage already shared with existing subscribers.
+    const initialLimit = Math.max(
+      limit,
+      Math.min(this.page?.turns.length ?? 0, EMITTED_TURN_LIMIT)
+    );
+    const update = await this.refresh('initial', initialLimit);
     if (this.closed || update === undefined) return undefined;
     if (this.options.managedActive(this.session)) {
       this.mode = 'RUNNING';
@@ -96,10 +102,12 @@ export class ConversationObservation {
       if (this.refreshRead === read) {
         this.refreshRead = undefined;
         this.refreshMode = undefined;
+        this.refreshLimit = 0;
       }
     });
     this.refreshRead = read;
     this.refreshMode = mode;
+    this.refreshLimit = limit;
     return read;
   }
 
@@ -157,7 +165,13 @@ export class ConversationObservation {
       source: accepted.source,
       turns: accepted.turns.slice(-EMITTED_TURN_LIMIT)
     });
-    const changed = signature !== this.signature;
+    // Expanding a bounded initial window with an unchanged older prefix is not a live update.
+    const previousCount = this.page?.turns.length ?? 0;
+    const comparison =
+      previousCount > 0 && previousCount < EMITTED_TURN_LIMIT
+        ? JSON.stringify({ source: accepted.source, turns: accepted.turns.slice(-previousCount) })
+        : signature;
+    const changed = comparison !== this.signature;
     this.signature = signature;
     // Keep coverage metadata current even when the visible content did not change.
     this.page = accepted;
