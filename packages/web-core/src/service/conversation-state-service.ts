@@ -7,6 +7,8 @@ export interface SessionContextUsage {
   readonly usedTokens: number;
   readonly maxTokens: number;
   readonly percentage: number;
+  readonly gcCount?: number;
+  readonly gcReclaimedTokens?: number;
 }
 
 export function isCompletedContextCompaction(item: unknown): boolean {
@@ -28,7 +30,15 @@ export function contextUsageAfterCompaction(
   if (hasRetainedContextCompaction(item)) return null;
   return current === null || current === undefined
     ? current
-    : { ...current, usedTokens: 0, percentage: 0 };
+    : {
+        ...current,
+        usedTokens: 0,
+        percentage: 0,
+        ...(current.gcCount === undefined ? {} : { gcCount: 0 }),
+        ...(current.gcCount === undefined && current.gcReclaimedTokens === undefined
+          ? {}
+          : { gcReclaimedTokens: 0 })
+      };
 }
 
 export function createConversationStateService(onRecentWindowOverflow: () => void) {

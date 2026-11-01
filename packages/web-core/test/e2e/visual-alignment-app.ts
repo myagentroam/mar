@@ -145,7 +145,7 @@ const toolbar = {
   accessDisabled: false,
   fastEnabled: false,
   contextUsage: { percentage: 42 },
-  contextUsageLabel: '42% used; 42000 of 100000 tokens',
+  contextUsageLabel: '42% used; 42000 of 100000 tokens\nGC: 3 · 12345 tokens',
   mobileViewport: mobile,
   activeRun: undefined,
   canInterrupt: new URLSearchParams(location.search).has('interrupt'),

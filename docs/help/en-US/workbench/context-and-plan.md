@@ -1,6 +1,6 @@
 ---
 title: Context, Compact, and Plan
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-02
 ---
 
 # Context, Compact, and Plan
@@ -10,6 +10,8 @@ When an Agent reports context usage, Composer shows used and maximum tokens. Use
 Before compacting a long conversation, preserve important decisions in files, a plan, or a clear follow-up. Wait for the operation's completion status rather than assuming a page refresh means failure. Compact does not delete the original conversation history and is not a redaction tool: review secrets, attachments, and tool output separately.
 
 MAR Agent Context GC differs from Compact: deterministic rules reclaim stale or otherwise eligible tool content from the active context sent to later requests, while Compact organizes semantic information for continuation. Neither provides unlimited memory or guarantees that every old detail remains visible. Preserve important decisions in project files or explicit task instructions.
+
+When MAR Agent reports context usage, the indicator details show the GC count followed by reclaimed tokens on one line, covering only the period since the latest successful Compact, or the session start before its first Compact. Tokens sum measured decreases between pre-GC and post-GC request inputs. Intervening additions affect this value; it is not an exact deletion count or billing savings. Unpaired usage is shown as `—`, without an estimated fallback. Refreshing preserves the statistics; successful Compact resets both, while failed or cancelled Compact does not. Skipped or failed GC attempts are not counted. Clear, rollback and fork use the retained session records. Agents without GC statistics omit this line.
 
 Tap context usage on a touchscreen to open the compact confirmation with full usage details. Compact runs only after confirmation. While compaction is unavailable, including during a run, tapping still shows full usage and the unavailable notice.
 

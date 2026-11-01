@@ -9,6 +9,8 @@ export interface SessionContextUsage {
   readonly usedTokens: number;
   readonly maxTokens: number;
   readonly percentage: number;
+  readonly gcCount?: number;
+  readonly gcReclaimedTokens?: number;
 }
 
 export interface SessionContextReadResult {
@@ -50,7 +52,11 @@ export class SessionContextService {
       model: usage.model ?? session.modelId,
       usedTokens: usage.usedTokens,
       maxTokens: usage.maxTokens,
-      percentage: Math.round((usage.usedTokens / usage.maxTokens) * 1000) / 10
+      percentage: Math.round((usage.usedTokens / usage.maxTokens) * 1000) / 10,
+      ...(usage.gcCount === undefined ? {} : { gcCount: usage.gcCount }),
+      ...(usage.gcReclaimedTokens === undefined
+        ? {}
+        : { gcReclaimedTokens: usage.gcReclaimedTokens })
     };
     this.snapshots.set(session.id, context);
     const previousTimer = this.snapshotTimers.get(session.id);
@@ -144,6 +150,8 @@ function sameUsage(left: SessionContextUsage, right: SessionContextUsage): boole
     left.model === right.model &&
     left.usedTokens === right.usedTokens &&
     left.maxTokens === right.maxTokens &&
-    left.percentage === right.percentage
+    left.percentage === right.percentage &&
+    left.gcCount === right.gcCount &&
+    left.gcReclaimedTokens === right.gcReclaimedTokens
   );
 }

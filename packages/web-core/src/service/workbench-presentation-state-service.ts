@@ -251,9 +251,18 @@ export function createWorkbenchPresentationStateService(
     const usage = options.sessionContextUsage.value;
     if (usage === undefined || usage === null) return '';
     const detail = `${options.formatTokenCount(usage.usedTokens)} / ${options.formatTokenCount(usage.maxTokens)} tokens (${options.formatPercentage(usage.percentage)})`;
-    return translate('generated.workbenchPresentationStateService.contextWindow', {
+    const label = translate('generated.workbenchPresentationStateService.contextWindow', {
       value0: detail
     });
+    if (usage.gcCount === undefined) return label;
+    const gc = translate('generated.workbenchPresentationStateService.gcCount', {
+      value0: usage.gcCount,
+      value1:
+        usage.gcReclaimedTokens === undefined
+          ? '—'
+          : options.formatTokenCount(usage.gcReclaimedTokens)
+    });
+    return `${label}\n${gc}`;
   });
   const {
     working: composerWorking,

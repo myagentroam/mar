@@ -647,7 +647,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         accessDisabled: true,
         fastEnabled: false,
         contextUsage: hidden ? undefined : { percentage: 25 },
-        contextUsageLabel: hidden ? '' : 'Original context summary',
+        contextUsageLabel: hidden ? '' : 'Original context summary\nGC: 3 · 12345 tokens',
         canCompactContext: false,
         mobileViewport: false,
         activeRun: { status: 'RUNNING' },
@@ -684,11 +684,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         expect(html).toContain('25%');
         expect(html).toContain('Original context summary');
         expect(html).toContain(
-          `aria-description="Original context summary\n${locale === 'zh-CN' ? '当前无法压缩上下文。' : 'Context compaction is currently unavailable.'}"`
+          `aria-description="Original context summary\nGC: 3 · 12345 tokens\n${locale === 'zh-CN' ? '当前无法压缩上下文。' : 'Context compaction is currently unavailable.'}"`
         );
         const compactable = await render(ComposerToolbar, { ...props, canCompactContext: true });
         expect(compactable).toContain(
-          `aria-description="Original context summary\n${locale === 'zh-CN' ? '点击压缩上下文' : 'Click to compact context'}"`
+          `aria-description="Original context summary\nGC: 3 · 12345 tokens\n${locale === 'zh-CN' ? '点击压缩上下文' : 'Click to compact context'}"`
         );
       }
       expect(html).toContain(

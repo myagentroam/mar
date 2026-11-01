@@ -5,6 +5,7 @@ import type { SessionStore } from './store/contracts.js';
 import type { SessionListInput, SessionSource } from './types.js';
 import type { AgentSessionRollbackInput } from './rollback.js';
 import { appliedInputRecord } from './deferred-input.js';
+import { compactSummaryFromCheckpoint } from './record-projection.js';
 
 const MAX_INPUT_IMAGE_BYTES = 5 * 1024 * 1024;
 const INPUT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -33,6 +34,9 @@ export interface AgentSessionInputReceipt {
 
 export interface AgentSessionContextUsage {
   inputTokens: number;
+  gcCount: number;
+  /** Measured input decreases since Compact; undefined when GC usage is not yet paired. */
+  gcReclaimedTokens?: number;
 }
 
 export interface AgentSessionDeleteResult {
@@ -311,21 +315,104 @@ export function createSessionCatalog(
     contextUsage: async (sessionId) => {
       assertOpen();
       const page = await store.readPage(sessionId, { limit: 1000 });
+      let inputTokens: number | undefined;
       for (const record of page.records.toReversed()) {
         if (!isAgentEvent(record.payload)) continue;
-        if (record.payload.type === 'context.compacted')
-          return record.payload.retainedContext === true ? undefined : { inputTokens: 0 };
+        if (record.payload.type === 'context.compacted') {
+          if (record.payload.retainedContext === true) return undefined;
+          inputTokens = 0;
+          break;
+        }
         if (record.payload.type === 'usage.updated' && record.payload.purpose !== 'compact') {
-          const inputTokens = record.payload.contextInputTokens ?? record.payload.inputTokens;
-          if (
-            typeof inputTokens === 'number' &&
-            Number.isSafeInteger(inputTokens) &&
-            inputTokens >= 0
-          )
-            return { inputTokens };
+          const tokens = record.payload.contextInputTokens ?? record.payload.inputTokens;
+          if (typeof tokens === 'number' && Number.isSafeInteger(tokens) && tokens >= 0) {
+            inputTokens = tokens;
+            break;
+          }
         }
       }
-      return undefined;
+      if (inputTokens === undefined) return undefined;
+      const usage = { inputTokens };
+      let gcCount = 0;
+      let gcReclaimedTokens = 0;
+      let tokensKnown = true;
+      let nextInputTokens: number | undefined;
+      let nextModelId: string | undefined;
+      let nextExecutionId: string | undefined;
+      let requestInputTokens: number | undefined;
+      const statistics = (): AgentSessionContextUsage => ({
+        ...usage,
+        gcCount,
+        ...(tokensKnown ? { gcReclaimedTokens } : {})
+      });
+      let countPage = page;
+      for (;;) {
+        for (const record of countPage.records.toReversed()) {
+          if (compactSummaryFromCheckpoint(record) !== undefined) return statistics();
+          if (
+            record.type === 'execution.header' &&
+            record.executionId === nextExecutionId &&
+            isRecord(record.payload)
+          )
+            nextModelId =
+              typeof record.payload.modelId === 'string' ? record.payload.modelId : undefined;
+          if (
+            isAgentEvent(record.payload) &&
+            record.payload.type === 'usage.updated' &&
+            record.payload.purpose !== 'compact'
+          ) {
+            const tokens = record.payload.contextInputTokens ?? record.payload.inputTokens;
+            if (typeof tokens === 'number' && Number.isSafeInteger(tokens) && tokens >= 0) {
+              requestInputTokens ??= tokens;
+              nextInputTokens = tokens;
+              nextModelId = undefined;
+              nextExecutionId = record.executionId;
+            }
+          }
+          if (
+            record.type === 'model.attempt' &&
+            isRecord(record.payload) &&
+            record.payload.state === 'STARTED' &&
+            record.payload.purpose === 'EXECUTION'
+          ) {
+            // Reverse traversal preserves the last usage update within each request.
+            if (requestInputTokens !== undefined) nextInputTokens = requestInputTokens;
+            requestInputTokens = undefined;
+          }
+          if (
+            record.type === 'context.gc.completed' &&
+            isRecord(record.payload) &&
+            typeof record.payload.generation === 'number' &&
+            Number.isSafeInteger(record.payload.generation) &&
+            record.payload.generation > 0
+          ) {
+            gcCount ||= record.payload.generation;
+            const trigger = isRecord(record.payload.trigger) ? record.payload.trigger : undefined;
+            const before = trigger?.contextInputTokens;
+            if (
+              typeof trigger?.usageSequence === 'number' &&
+              trigger.usageSequence > 0 &&
+              typeof before === 'number' &&
+              Number.isSafeInteger(before) &&
+              before >= 0 &&
+              nextInputTokens !== undefined &&
+              (nextModelId === undefined || nextModelId === trigger.modelId)
+            )
+              gcReclaimedTokens += Math.max(0, before - nextInputTokens);
+            else tokensKnown = false;
+            nextInputTokens = undefined;
+            nextModelId = undefined;
+            nextExecutionId = undefined;
+            requestInputTokens = undefined;
+            if (record.payload.generation === 1) return statistics();
+          }
+        }
+        if (countPage.previousBeforeSequence === undefined) return statistics();
+        countPage = await store.readPage(sessionId, {
+          limit: 1000,
+          beforeSequence: countPage.previousBeforeSequence
+        });
+      }
     },
     fork: async (sessionId, options) => {
       assertOpen();

@@ -1841,7 +1841,11 @@ describe('JSONL session store', () => {
     await store.close();
 
     const catalog = await openAgentSessionCatalog({ homeDirectory: home });
-    await expect(catalog.contextUsage(session.id)).resolves.toEqual({ inputTokens: 340 });
+    await expect(catalog.contextUsage(session.id)).resolves.toEqual({
+      inputTokens: 340,
+      gcCount: 0,
+      gcReclaimedTokens: 0
+    });
     await catalog.close();
 
     const reopened = await JsonlSessionStore.open(home);
@@ -1862,7 +1866,11 @@ describe('JSONL session store', () => {
     });
     await reopened.close();
     const compactedCatalog = await openAgentSessionCatalog({ homeDirectory: home });
-    await expect(compactedCatalog.contextUsage(session.id)).resolves.toEqual({ inputTokens: 0 });
+    await expect(compactedCatalog.contextUsage(session.id)).resolves.toEqual({
+      inputTokens: 0,
+      gcCount: 0,
+      gcReclaimedTokens: 0
+    });
     await compactedCatalog.close();
 
     const retained = await JsonlSessionStore.open(home);
