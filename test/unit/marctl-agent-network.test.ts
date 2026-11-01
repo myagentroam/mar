@@ -92,7 +92,7 @@ async function fixture(title?: string) {
     runner: 'codex',
     externalSessionId: 'network-thread',
     nativeControl: 'MAR_MANAGED',
-    customTitle: title ?? null,
+    ...(title === undefined ? {} : { customTitle: title }),
     parentSessionId: coordinator.id,
     cwd: directory
   });
