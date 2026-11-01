@@ -338,6 +338,7 @@ export function createSessionCatalog(
       let tokensKnown = true;
       let nextInputTokens: number | undefined;
       let nextModelId: string | undefined;
+      let nextExecutionId: string | undefined;
       let requestInputTokens: number | undefined;
       const statistics = (): AgentSessionContextUsage => ({
         ...usage,
@@ -348,7 +349,11 @@ export function createSessionCatalog(
       for (;;) {
         for (const record of countPage.records.toReversed()) {
           if (compactSummaryFromCheckpoint(record) !== undefined) return statistics();
-          if (record.type === 'execution.header' && isRecord(record.payload))
+          if (
+            record.type === 'execution.header' &&
+            record.executionId === nextExecutionId &&
+            isRecord(record.payload)
+          )
             nextModelId =
               typeof record.payload.modelId === 'string' ? record.payload.modelId : undefined;
           if (
@@ -361,6 +366,7 @@ export function createSessionCatalog(
               requestInputTokens ??= tokens;
               nextInputTokens = tokens;
               nextModelId = undefined;
+              nextExecutionId = record.executionId;
             }
           }
           if (
@@ -396,6 +402,7 @@ export function createSessionCatalog(
             else tokensKnown = false;
             nextInputTokens = undefined;
             nextModelId = undefined;
+            nextExecutionId = undefined;
             requestInputTokens = undefined;
             if (record.payload.generation === 1) return statistics();
           }

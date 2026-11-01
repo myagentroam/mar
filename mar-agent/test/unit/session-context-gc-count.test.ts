@@ -208,6 +208,54 @@ describe('Session GC count', () => {
     }
   );
 
+  it.each(['model', 'other'])(
+    'keeps measured model identity when a prior execution has no usage: %s',
+    async (modelId) => {
+      const { store, id } = await fixture();
+      await recordGc(store, id, 1, 5000);
+      await store.append(id, {
+        type: 'execution.header',
+        executionId: 'no-usage',
+        payload: { modelId: modelId === 'model' ? 'other' : 'model' }
+      });
+      for (const state of ['STARTED', 'FAILED'])
+        await store.append(id, {
+          type: 'model.attempt',
+          executionId: 'no-usage',
+          payload: { purpose: 'EXECUTION', state, requestId: 'no-usage' }
+        });
+      await store.append(id, {
+        type: 'execution.header',
+        executionId: 'measured',
+        payload: { modelId }
+      });
+      await store.append(id, {
+        type: 'model.attempt',
+        executionId: 'measured',
+        payload: { purpose: 'EXECUTION', state: 'STARTED', requestId: 'measured' }
+      });
+      await store.append(id, {
+        type: 'usage.updated',
+        executionId: 'measured',
+        payload: {
+          type: 'usage.updated',
+          eventId: 'measured',
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          sessionId: id,
+          executionId: 'measured',
+          inputTokens: 3800
+        }
+      });
+      expect(await gcUsage(store, id)).toEqual({
+        inputTokens: 3800,
+        gcCount: 1,
+        ...(modelId === 'model' ? { gcReclaimedTokens: 1200 } : {})
+      });
+      await store.close();
+    }
+  );
+
   it('does not double count consecutive GC checkpoints without intervening measured usage', async () => {
     const { store, id } = await fixture();
     const usage = await recordUsage(store, id, 5000);
