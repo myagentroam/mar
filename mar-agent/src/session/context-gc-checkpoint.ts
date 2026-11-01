@@ -1,7 +1,7 @@
 import { posix, win32 } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { inlineMediaGcAnchored, parseInlineMediaGc } from './inline-media.js';
-import { buildContextGcProtection } from './context-gc-protection.js';
+import { buildContextGcProtection, contextGcProtectionMature } from './context-gc-protection.js';
 import {
   completedTodoWrite,
   todoInputReplacement,
@@ -373,7 +373,7 @@ export function validateContextGcCheckpoint(
     if (
       anchors.some((anchor) => {
         const count = protection.after(anchor);
-        return count.rollouts < 6 || count.thinking < 3;
+        return !contextGcProtectionMature(count);
       })
     )
       return undefined;
@@ -640,7 +640,7 @@ function replacementMatchesRecords(
                       successor.sequence
                     )
                   );
-                  return count.rollouts >= 6 && count.thinking >= 3;
+                  return contextGcProtectionMature(count);
                 },
                 {
                   activeProcessIds: new Set(),
@@ -653,7 +653,7 @@ function replacementMatchesRecords(
                         sequence
                       )
                     );
-                    return count.rollouts >= 6 && count.thinking >= 3;
+                    return contextGcProtectionMature(count);
                   },
                   selected: (callId, toolName, summary) => {
                     const argument = replacement.replacementArguments;
@@ -1710,6 +1710,8 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
       'stageAProtectionRollouts',
       'largeExecProtectionRollouts'
     ].every((key) => isNonnegativeInteger(value[key])) &&
+    (value.minimumPaybackRollouts === undefined ||
+      isNonnegativeInteger(value.minimumPaybackRollouts)) &&
     [
       'normalInputCostRate',
       'cacheReadCostRate',

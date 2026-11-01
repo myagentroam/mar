@@ -2,21 +2,23 @@ import type { ModelUsage } from '../../model/contracts.js';
 
 import { type ContextGcEconomicsPolicy } from '../../session/context-gc-checkpoint.js';
 import { AGENT_EXECUTION_POLICY } from '../execution-policy.js';
+import { CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS } from '../../session/context-gc-protection.js';
 
-export const CONTEXT_GC_POLICY: ContextGcEconomicsPolicy = {
+export const CONTEXT_GC_POLICY = {
   version: 1,
   immediatePaybackRollouts: 3,
-  maximumPaybackRollouts: 20,
+  minimumPaybackRollouts: 30,
+  maximumPaybackRollouts: 60,
   contextGrowthSampleWindow: 16,
   minimumContextGrowthSamples: 6,
   minimumObservationRollouts: 1,
-  stageAProtectionRollouts: 6,
-  largeExecProtectionRollouts: 6,
+  stageAProtectionRollouts: CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
+  largeExecProtectionRollouts: CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
   normalInputCostRate: 1,
   cacheReadCostRate: 0.05,
   outputCostRate: 1,
   minimumGrossReductionRate: 0.2
-};
+} satisfies ContextGcEconomicsPolicy;
 
 const CONTEXT_GC_START_RATIO = 0.5;
 
@@ -79,15 +81,13 @@ export function evaluateContextGcEconomics(
   const firstRolloutSavings = reclaimedCachedTokens + reclaimedUncachedTokens * unitsPerNormalInput;
   const steadyRolloutSavings = reclaimedTokens;
   const netAt = (rollouts: number) =>
-    (rollouts <= 0
+    rollouts <= 0
       ? -cacheRebuildPenalty
       : firstRolloutSavings +
         Math.max(0, rollouts - 1) * steadyRolloutSavings -
-        cacheRebuildPenalty) +
-    input.compactDeferralCreditCostUnits / CONTEXT_GC_POLICY.cacheReadCostRate;
+        cacheRebuildPenalty;
   let requiredPositiveNetRollouts: number | null;
-  if (netAt(0) > 0) requiredPositiveNetRollouts = 0;
-  else if (netAt(1) > 0) requiredPositiveNetRollouts = 1;
+  if (netAt(1) > 0) requiredPositiveNetRollouts = 1;
   else if (steadyRolloutSavings <= 0) requiredPositiveNetRollouts = null;
   else {
     requiredPositiveNetRollouts = Math.max(2, Math.floor(-netAt(1) / steadyRolloutSavings) + 2);
@@ -107,21 +107,22 @@ export function evaluateContextGcEconomics(
       Math.ceil(Math.max(0, input.contextUsageTokens) * minimumGrossReductionRate)
   );
   const usageRatio = input.contextUsageTokens / input.contextWindowTokens;
-  const thresholdPercent = AGENT_EXECUTION_POLICY.backgroundCompactionPercent;
-  const activationPercent = COMPACT_CREDIT_ACTIVATION_RATIO * 100;
+  const progress = clamp(
+    (usageRatio - CONTEXT_GC_START_RATIO) / (COMPACT_THRESHOLD_RATIO - CONTEXT_GC_START_RATIO),
+    0,
+    1
+  );
+  const paybackWindow =
+    CONTEXT_GC_POLICY.minimumPaybackRollouts +
+    progress *
+      (CONTEXT_GC_POLICY.maximumPaybackRollouts - CONTEXT_GC_POLICY.minimumPaybackRollouts);
   const withinWindow =
-    requiredPositiveNetRollouts !== null &&
-    (usageRatio <= COMPACT_CREDIT_ACTIVATION_RATIO
-      ? requiredPositiveNetRollouts <= CONTEXT_GC_POLICY.maximumPaybackRollouts
-      : requiredPositiveNetRollouts *
-          (thresholdPercent * input.contextWindowTokens - 100 * input.contextUsageTokens) <=
-        CONTEXT_GC_POLICY.maximumPaybackRollouts *
-          (thresholdPercent - activationPercent) *
-          input.contextWindowTokens);
+    requiredPositiveNetRollouts !== null && requiredPositiveNetRollouts <= paybackWindow;
   const passes =
     reclaimedTokens > 0 &&
     reclaimedTokens >= minimumReclaimedTokens &&
     Number.isFinite(usageRatio) &&
+    usageRatio >= CONTEXT_GC_START_RATIO &&
     usageRatio < COMPACT_THRESHOLD_RATIO &&
     withinWindow;
   return {

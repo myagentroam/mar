@@ -104,7 +104,7 @@ it('commits Direct read invalidation against the matching unobserved patch in a 
       observations: [],
       calls
     });
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       await append('model.context', {
         role: 'provider',

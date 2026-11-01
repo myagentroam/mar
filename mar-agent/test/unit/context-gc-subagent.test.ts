@@ -223,7 +223,7 @@ describe('ordinary GC and legacy child-result checkpoints', () => {
         content: 'large content '.repeat(2000)
       });
       const result = modelContext(f.add, { role: 'tool', callId: 'call', content: original });
-      for (let i = 0; i < 5; i++) successfulRollout(f.add);
+      for (let i = 0; i < 9; i++) successfulRollout(f.add);
       expect(
         planContextGc(plannerInput(f.values))?.draft.replacements.some(
           (item) => item.kind === 'TOOL_OUTPUT'

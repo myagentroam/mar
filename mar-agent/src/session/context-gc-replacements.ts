@@ -48,7 +48,7 @@ export function contextGcCodeModeInputReplacement(
     lines: lineCount(input.code),
     inputMode: input.inputMode,
     contextGc:
-      'Completed Code Mode source was reclaimed after six successful rollouts. The paired output, images, completion evidence, and nested tool side effects remain in history.',
+      'Completed Code Mode source was reclaimed after the protection period. The paired output, images, completion evidence, and nested tool side effects remain in history.',
     retainedInputs
   });
   return input.inputMode === 'freeform' ? content : { code: content };
@@ -70,7 +70,7 @@ export function contextGcCodeModeOutputReplacement(
     preview,
     previewComplete: !truncated && preview === originalContent,
     contextGc:
-      'Detailed Code Mode output was reclaimed after six successful rollouts. An incomplete preview is not the complete cell output. The source was not replayed and nested tool side effects were not changed.'
+      'Detailed Code Mode output was reclaimed after the protection period. An incomplete preview is not the complete cell output. The source was not replayed and nested tool side effects were not changed.'
   });
 }
 
@@ -226,7 +226,7 @@ export function contextGcWebOutputReplacement(
     preview,
     previewComplete: preview === originalContent,
     contextGc:
-      'Detailed web tool output was reclaimed after six successful rollouts. An incomplete preview is not the complete search result or page, and GC did not access the network.'
+      'Detailed web tool output was reclaimed after the protection period. An incomplete preview is not the complete search result or page, and GC did not access the network.'
   });
 }
 
@@ -266,7 +266,7 @@ export function contextGcToolOutputReplacement(
     preview,
     previewComplete: !truncated && preview === originalContent,
     contextGc:
-      'Detailed tool output was reclaimed after six successful rollouts. An incomplete preview is not the complete result; the tool was not replayed.'
+      'Detailed tool output was reclaimed after the protection period. An incomplete preview is not the complete result; the tool was not replayed.'
   });
 }
 

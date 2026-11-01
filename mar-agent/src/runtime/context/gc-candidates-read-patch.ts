@@ -17,6 +17,7 @@ import {
 import { parseReadContextOutput } from '../../prompts/read-context.js';
 
 import { CONTEXT_GC_POLICY } from './gc-economics.js';
+import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -145,10 +146,7 @@ export function collectDeterministicCandidates(
       const protection = input.protection!.after(
         Math.max(evidenceSequence, replacement.target.sequence)
       );
-      if (
-        protection.rollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-        protection.thinking >= 3
-      ) {
+      if (contextGcProtectionMature(protection)) {
         mature.push(replacement);
         observedRollouts = Math.min(observedRollouts, protection.rollouts);
       } else if (protection.rollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
@@ -209,7 +207,7 @@ export function collectDeterministicCandidates(
         );
       const successor = later.findLast((entry) => {
         const count = input.protection!.after(entry.target.sequence);
-        return count.rollouts >= 6 && count.thinking >= 3;
+        return contextGcProtectionMature(count);
       });
       if (!successor) continue;
       const existingRead = existingReadReplacements.get(contextGcTargetKey(old.target));

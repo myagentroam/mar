@@ -9,6 +9,7 @@ export type ContextGcPlatform = 'linux' | 'darwin' | 'win32';
 export interface ContextGcEconomicsPolicy {
   readonly version: 1;
   readonly immediatePaybackRollouts: number;
+  readonly minimumPaybackRollouts?: number;
   readonly maximumPaybackRollouts: number;
   readonly contextGrowthSampleWindow: number;
   readonly minimumContextGrowthSamples: number;

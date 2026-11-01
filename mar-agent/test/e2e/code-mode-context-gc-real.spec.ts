@@ -117,7 +117,7 @@ function captureAdapter(
           message.role === 'tool' &&
           replacedCodeModeCallIds.has(message.callId) &&
           message.content.includes(
-            'Detailed Code Mode output was reclaimed after six successful rollouts.'
+            'Detailed Code Mode output was reclaimed after the protection period.'
           )
       );
       const gcApplied = serializedMessages.includes('<mar_context_gc kind=');
@@ -130,7 +130,7 @@ function captureAdapter(
           '<mar_context_gc kind=\\"completed_code_mode_input\\"'
         ),
         containsCodeOutputReplacement: serializedMessages.includes(
-          'Detailed Code Mode output was reclaimed after six successful rollouts.'
+          'Detailed Code Mode output was reclaimed after the protection period.'
         ),
         pairedCodeModeReplacement,
         estimatedInputTokens: estimatedRequestTokens(request, model)

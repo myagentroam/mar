@@ -16,6 +16,7 @@ import {
 } from '../../session/context-gc-replacements.js';
 
 import { CONTEXT_GC_POLICY } from './gc-economics.js';
+import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -81,11 +82,7 @@ export function collectWebCandidates(
     };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    if (
-      observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-      protection.thinking >= 3
-    )
-      eligible.push(candidate);
+    if (contextGcProtectionMature(protection)) eligible.push(candidate);
     else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(
@@ -134,7 +131,7 @@ export function collectToolOutputCandidates(
             const count = input.protection!.after(
               Math.max(target.sequence, candidate.result!.record.sequence)
             );
-            return count.rollouts >= 6 && count.thinking >= 3;
+            return contextGcProtectionMature(count);
           })()
       );
       if (successor) evidence.push(successor.result!.record.sequence);
@@ -185,12 +182,11 @@ export function collectToolOutputCandidates(
       .filter(
         (write) =>
           write.revision > currentRevision &&
-          input.protection!.after(
-            Math.max(target.sequence, group.completed!.sequence, write.record.sequence)
-          ).rollouts >= 6 &&
-          input.protection!.after(
-            Math.max(target.sequence, group.completed!.sequence, write.record.sequence)
-          ).thinking >= 3
+          contextGcProtectionMature(
+            input.protection!.after(
+              Math.max(target.sequence, group.completed!.sequence, write.record.sequence)
+            )
+          )
       )
       .sort((a, b) => b.revision - a.revision)[0];
     if (!successor) continue;
@@ -264,7 +260,7 @@ export function collectToolOutputCandidates(
       const count = input.protection!.after(
         Math.max(target.sequence, candidate.result!.record.sequence)
       );
-      return count.rollouts >= 6 && count.thinking >= 3;
+      return contextGcProtectionMature(count);
     });
     if (!successor) continue;
     const evidenceSequence = successor.result!.record.sequence;
@@ -335,11 +331,7 @@ export function collectToolOutputCandidates(
     };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    if (
-      observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-      protection.thinking >= 3
-    )
-      eligible.push(candidate);
+    if (contextGcProtectionMature(protection)) eligible.push(candidate);
     else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(

@@ -317,7 +317,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       const session = await store.createSession({ workspace: '/workspace' });
       const fixture = records();
       addPatchCandidate(fixture);
-      for (let index = 0; index < 4; index++) successfulRollout(fixture.add, 6_000);
+      for (let index = 0; index < 8; index++) successfulRollout(fixture.add, 6_000);
       addTerminalExec(fixture, 'mature-output', 'verification '.repeat(1_000));
       for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
       let copied = 1;
@@ -337,7 +337,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       expect(first!.metrics.protectedCandidateTokens).toBeGreaterThan(0);
       await store.commitContextGc(session.id, first!.draft, initialRecords);
       const commit = vi.spyOn(store, 'commitContextGc');
-      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+      for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 6_000);
       addTerminalExec(fixture, 'pending-output', output);
       for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
       const mixedRecords = await appendNewRecords();
@@ -358,10 +358,10 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
           activeProcessIds: new Set()
         });
       };
-      // One output is six rollouts old and passes combined economics; the other
+      // One output is ten rollouts old and passes combined economics; the other
       // is only two rollouts old. Draft admission must not erase its retry hint.
       cacheEconomics.mockClear();
-      expect.soft(inspect(mixedRecords)).toEqual({ retryAfterRollouts: 4 });
+      expect.soft(inspect(mixedRecords)).toEqual({ retryAfterRollouts: 8 });
       expect(cacheEconomics).toHaveBeenCalled();
       expect(
         cacheEconomics.mock.calls.some(([, , after]) =>
@@ -394,15 +394,15 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       expect(commit).not.toHaveBeenCalled();
 
       // Keep the same warm Runtime: clearing pending state would incorrectly
-      // suppress these evaluations until its ordinary six-rollout discovery.
-      for (const remaining of [2, 0]) {
+      // suppress these evaluations until its ordinary ten-rollout discovery.
+      for (const [iteration, remaining] of [6, 2, 0].entries()) {
         cacheEconomics.mockClear();
-        for (let index = 0; index < 2; index++) {
+        for (let index = 0; index < (iteration === 1 ? 4 : 2); index++) {
           successfulRollout(fixture.add, 6_000);
           await appendNewRecords();
           expect(await runtime.run(input)).toBe(false);
         }
-        expect(getActiveProcessIds).toHaveBeenCalledTimes(remaining === 2 ? 2 : 3);
+        expect(getActiveProcessIds).toHaveBeenCalledTimes(iteration + 2);
         expect(cacheEconomics).toHaveBeenCalled();
         const current = (await store.readExecutionState(session.id)).contextRecords;
         expect(inspect(current)).toEqual(remaining > 0 ? { retryAfterRollouts: remaining } : {});
@@ -458,7 +458,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         const session = await store.createSession({ workspace: '/workspace' });
         const fixture = records();
         addPatchCandidate(fixture);
-        for (let index = 0; index < 4; index++) successfulRollout(fixture.add, 6_000);
+        for (let index = 0; index < 8; index++) successfulRollout(fixture.add, 6_000);
         if (pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
         for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
         let copied = 1;
@@ -500,8 +500,8 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         };
 
         // Protected output is revisited before maturity; late output is not scanned
-        // on every low-growth request before its six-rollout discovery opportunity.
-        for (let index = 0; index < (pending ? 2 : 5); index++)
+        // on every low-growth request before its ten-rollout discovery opportunity.
+        for (let index = 0; index < (pending ? 6 : 9); index++)
           successfulRollout(fixture.add, 6_000);
         const immature = await appendNewRecords();
         cacheEconomics.mockClear();
@@ -566,7 +566,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         });
         expect(result && result.projection.checkpoint).toMatchObject({
           generation: 2,
-          metrics: { stage: 'UNIFIED', minimumObservedRollouts: 8 }
+          metrics: { stage: 'UNIFIED', minimumObservedRollouts: 12 }
         });
         expect(
           result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
@@ -589,20 +589,20 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
       allowed: false
     },
     { label: 'interval only one token below growth', rollouts: 2, usage: 7_999, allowed: false },
-    { label: 'six rollouts without growth', rollouts: 6, usage: 6_000, allowed: false },
+    { label: 'ten rollouts without growth', rollouts: 10, usage: 6_000, allowed: false },
     {
-      label: 'six rollouts without protected candidates or growth',
-      rollouts: 6,
+      label: 'ten rollouts without protected candidates or growth',
+      rollouts: 10,
       usage: 6_000,
       protected: false,
       allowed: false
     },
     { label: 'candidate still protected', rollouts: 0, usage: 8_000, allowed: false },
-    { label: 'model scope changed', rollouts: 6, usage: 6_000, modelId: 'other', allowed: true },
-    { label: 'window scope changed', rollouts: 6, usage: 6_000, window: 12_000, allowed: true },
+    { label: 'model scope changed', rollouts: 10, usage: 6_000, modelId: 'other', allowed: true },
+    { label: 'window scope changed', rollouts: 10, usage: 6_000, window: 12_000, allowed: true },
     {
       label: 'model scope changed without protected candidates',
-      rollouts: 6,
+      rollouts: 10,
       usage: 6_000,
       modelId: 'other',
       protected: false,
@@ -610,7 +610,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
     },
     {
       label: 'window scope changed without protected candidates',
-      rollouts: 6,
+      rollouts: 10,
       usage: 6_000,
       window: 12_000,
       protected: false,
@@ -637,7 +637,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         addPatchCandidate(fixture);
         successfulRollout(fixture.add, 6_000);
         if (pending) addPatchCandidate(fixture, 'second');
-        for (let index = 0; index < 5; index++) successfulRollout(fixture.add, 6_000);
+        for (let index = 0; index < 9; index++) successfulRollout(fixture.add, 6_000);
         let copied = 1;
         const appendNewRecords = async () => {
           for (const record of fixture.values.slice(copied))
@@ -655,7 +655,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         expect(first).toBeDefined();
         expect(first!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
         expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
-        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(6);
+        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(10);
         expect(first!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(false);
         await store.commitContextGc(session.id, first!.draft, initialRecords);
 
@@ -719,7 +719,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
 
           // The newly committed scope becomes the next interval/growth baseline.
           addPatchCandidate(fixture, 'third');
-          for (let index = 0; index < 6; index++) successfulRollout(fixture.add, usage);
+          for (let index = 0; index < 10; index++) successfulRollout(fixture.add, usage);
           const nextRecords = await appendNewRecords();
           expect(plan(nextRecords, { contextInputTokens: usage }, overrides)).toBeUndefined();
           const bypass = plan(
@@ -819,7 +819,7 @@ describe('context GC high-water policy', () => {
   it('recovers a model-truncated terminal exec result with deterministic evidence', () => {
     const fixture = records();
     const exec = addTruncatedExec(fixture, { toolResultTruncated: true });
-    for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 8_000);
+    for (let index = 0; index < 10; index++) successfulRollout(fixture.add, 8_000);
 
     const selected = plan(fixture.values, {
       contextInputTokens: 8_000,
@@ -862,7 +862,7 @@ describe('context GC high-water policy', () => {
   it('does not trust malformed exec text without an explicit model-result truncation marker', () => {
     const fixture = records();
     addTruncatedExec(fixture, { toolResultTruncated: false });
-    for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 8_000);
+    for (let index = 0; index < 10; index++) successfulRollout(fixture.add, 8_000);
 
     expect(
       plan(fixture.values, {
@@ -886,7 +886,7 @@ describe('context GC high-water policy', () => {
         data: { stdoutBytes: number };
       }
     ).data.stdoutBytes = -1;
-    for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 8_000);
+    for (let index = 0; index < 10; index++) successfulRollout(fixture.add, 8_000);
 
     expect(
       plan(fixture.values, {
@@ -974,7 +974,7 @@ describe('context GC high-water policy', () => {
           20_000
         )}\n...[tool output omitted middle]...\n${'y'.repeat(20_000)}","exitCode":0}`
       });
-      for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 8_000);
+      for (let index = 0; index < 10; index++) successfulRollout(fixture.add, 8_000);
 
       const selected = plan(fixture.values, {
         contextInputTokens: 8_000,
@@ -1064,7 +1064,7 @@ describe('context GC high-water policy', () => {
         stderr: ''
       })
     });
-    for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 8_000);
+    for (let index = 0; index < 10; index++) successfulRollout(fixture.add, 8_000);
 
     expect(
       plan(fixture.values, {
@@ -1088,7 +1088,7 @@ describe('context GC high-water policy', () => {
       const fixture = records();
       addTerminalExec(fixture, 'tiny', '');
       for (let i = 0; i < 4; i++) addTerminalExec(fixture, `medium-${i}`, 'line '.repeat(700));
-      for (let i = 0; i < 5; i++) successfulRollout(fixture.add, 6_000);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
       const usage = { contextInputTokens: 6_000, cacheReadTokens: 0, outputTokens: 10 };
       expect(plan(fixture.values, usage, { modelProtocol })).toBeUndefined();
       successfulRollout(fixture.add, 6_000);
@@ -1135,7 +1135,7 @@ describe('context GC high-water policy', () => {
   it('does not collect a medium terminal output that fails the aggregate gross gate', () => {
     const fixture = records();
     addTerminalExec(fixture, 'only-medium', 'line '.repeat(700));
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
     expect(plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 })).toBeUndefined();
   });
 
@@ -1145,7 +1145,7 @@ describe('context GC high-water policy', () => {
       const fixture = records();
       addWebResult(fixture, 'tiny-web', 'KEEP');
       for (let i = 0; i < 4; i++) addWebResult(fixture, `web-${i}`, 'evidence '.repeat(700));
-      for (let i = 0; i < 5; i++) successfulRollout(fixture.add, 6_000);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
       const usage = { contextInputTokens: 6_000, cacheReadTokens: 0 };
       expect(plan(fixture.values, usage, { modelProtocol })).toBeUndefined();
       successfulRollout(fixture.add, 6_000);
@@ -1180,7 +1180,7 @@ describe('context GC high-water policy', () => {
       addTerminalExec(fixture, `tiny-${i}`, '');
       addWebResult(fixture, `tiny-web-${i}`, 'KEEP');
     }
-    for (let i = 0; i < 5; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
     const projection = buildContextProjection(fixture.values);
     expect(
       inspectContextGc({
@@ -1203,7 +1203,7 @@ describe('context GC high-water policy', () => {
   it('keeps dependent stale-read and patch replacements grouped when patch input expands', () => {
     const fixture = records();
     addPatchCandidate(fixture);
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
     const patch = selected?.draft.replacements.find((r) => r.kind === 'TOOL_CALL_INPUT');
     expect(patch).toBeDefined();
@@ -1262,7 +1262,7 @@ describe('context GC high-water policy', () => {
       callId: 'later-patch',
       content: JSON.stringify(data)
     });
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add, 6_000);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
     expect(selected).toBeDefined();
     expect(selected!.draft.replacements.some((r) => r.callId === 'patch-source')).toBe(false);
@@ -1299,10 +1299,10 @@ describe('context GC high-water policy', () => {
     ).toBe(false);
   });
 
-  it('uses discounted imminent Compact value only when GC restores a safe high-water margin', () => {
+  it('does not let imminent Compact credit admit an uneconomic plan', () => {
     const fixture = records();
     addPatchCandidate(fixture);
-    for (let usage = 7_900; usage <= 8_400; usage += 100)
+    for (let usage = 7_500; usage <= 8_400; usage += 100)
       successfulRollout(fixture.add, usage, 8_000);
     const usage: ModelUsage = {
       contextInputTokens: 8_400,
@@ -1318,7 +1318,8 @@ describe('context GC high-water policy', () => {
       callId: 'pending-output',
       content: 'pending '.repeat(500)
     });
-    const selected = plan(fixture.values, usage);
+    expect(plan(fixture.values, usage)).toBeUndefined();
+    const selected = plan(fixture.values, { ...usage, cacheReadTokens: 0 });
 
     expect(selected?.metrics.grossReductionRate).toBeGreaterThan(0.1066666667);
     expect(selected?.metrics.effectiveMinimumGrossReductionRate).toBeCloseTo(0.1066666667);
@@ -1326,8 +1327,8 @@ describe('context GC high-water policy', () => {
     expect(selected?.metrics.projectedTokensBeforeGc).toBeGreaterThanOrEqual(8_500);
     expect(selected?.metrics.projectedTokensAfterGc).toBeLessThanOrEqual(8_000);
     expect(selected?.metrics.imminentCompactAvoidanceCreditCostUnits).toBe(6_720);
-    expect(selected?.metrics.appliedCompactCreditCostUnits).toBe(6_720);
-    expect(selected?.metrics.requiredPositiveNetRollouts).toBe(0);
+    expect(selected?.metrics.appliedCompactCreditCostUnits).toBe(0);
+    expect(selected?.metrics.requiredPositiveNetRollouts).toBeGreaterThan(0);
   });
 
   it('rejects imminent Compact credit unless every high-water safety condition holds', () => {
@@ -1390,7 +1391,7 @@ describe('unified inline media GC', () => {
       });
     if (text) addPatchCandidate(fixture);
     const tokens = text ? 6_000 : 1_000;
-    for (let i = 0; i < (text ? 6 : 2); i++) successfulRollout(fixture.add, tokens);
+    for (let i = 0; i < (text ? 10 : 2); i++) successfulRollout(fixture.add, tokens);
     fixture.add('resource.window', {
       version: 1,
       consideredThrough: { sourceId: 'tool:b', imageIndex: 0 }

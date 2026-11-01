@@ -404,7 +404,7 @@ describe('context GC planner', () => {
     );
     const data = (completed?.payload as { data?: { files?: Array<{ path?: string }> } }).data;
     data!.files![0]!.path = 'src/a.ts';
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
 
     expect(plan(fixture.values)).toBeUndefined();
   });
@@ -428,7 +428,7 @@ describe('context GC planner', () => {
       }
     ).data?.totals;
     totals!.addedLines = 2;
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
 
     expect(plan(fixture.values)).toBeUndefined();
   });
@@ -448,7 +448,7 @@ describe('context GC planner', () => {
     );
     const data = (completed?.payload as { data?: { files?: Array<{ path?: string }> } }).data;
     data!.files![0]!.path = 'src/a.ts';
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const projection = requestProjection(fixture.values);
     const selected = planContextGc({
       records: fixture.values,
@@ -491,7 +491,7 @@ describe('context GC planner', () => {
     });
     expect(result.cacheRebuildPenaltyCostUnits).toBe(66_500);
     expect(result.requiredPositiveNetRollouts).toBe(45);
-    expect(result.passes).toBe(false);
+    expect(result.passes).toBe(true);
   });
 
   it('keeps gross reduction and positive payback as separate gates when cache cost is zero', () => {
@@ -535,7 +535,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
+    for (let i = 0; i < 8; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 4_999,
       contextInputTokens: 4_999,
@@ -574,7 +574,7 @@ describe('context GC planner', () => {
     ).toBeUndefined();
   });
 
-  it('protects a successful patch group for six observed rollouts before collecting it', () => {
+  it('protects a successful patch group for ten observed rollouts before collecting it', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -642,7 +642,7 @@ describe('context GC planner', () => {
       })
     });
 
-    for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 9; i++) successfulRollout(fixture.add);
     expect(plan(fixture.values)).toBeUndefined();
     successfulRollout(fixture.add);
     const selected = plan(fixture.values);
@@ -660,7 +660,7 @@ describe('context GC planner', () => {
         })
       ])
     );
-    expect(selected?.metrics.minimumObservedRollouts).toBe(6);
+    expect(selected?.metrics.minimumObservedRollouts).toBe(10);
     const staleRead = selected?.draft.replacements.find(
       (replacement) => replacement.kind === 'READ_OUTPUT_ITEMS'
     );
@@ -743,7 +743,7 @@ describe('context GC planner', () => {
       callId: 'retired-call',
       content: 'output-'.repeat(3_000)
     });
-    for (let rollout = 0; rollout < 6; rollout++) successfulRollout(fixture.add);
+    for (let rollout = 0; rollout < 10; rollout++) successfulRollout(fixture.add);
     const replacements = plan(fixture.values)?.draft.replacements ?? [];
     expect(replacements.some((replacement) => replacement.kind === 'CODE_MODE_OUTPUT')).toBe(false);
     expect(replacements).toContainEqual(
@@ -755,7 +755,7 @@ describe('context GC planner', () => {
     ['freeform', (code: string) => code, 'code_exec'],
     ['json', (code: string) => ({ code }), 'code_exec']
   ] as const)(
-    'collects successful Code Mode %s input and output after six observed rollouts',
+    'collects successful Code Mode %s input and output after ten observed rollouts',
     (_inputMode, argumentsFor, toolName) => {
       const fixture = records();
       fixture.add('execution.header', {
@@ -787,14 +787,14 @@ describe('context GC planner', () => {
         content: output
       });
 
-      for (let rollout = 0; rollout < 6; rollout++) successfulRollout(fixture.add);
+      for (let rollout = 0; rollout < 10; rollout++) successfulRollout(fixture.add);
       expect(plan(fixture.values)).toBeUndefined();
       fixture.add('code.cell.completed', {
         cellId: 'cell-1',
         callId: 'code-mode-1',
         status: 'completed'
       });
-      for (let rollout = 0; rollout < 5; rollout++) successfulRollout(fixture.add);
+      for (let rollout = 0; rollout < 9; rollout++) successfulRollout(fixture.add);
       expect(plan(fixture.values)).toBeUndefined();
       successfulRollout(fixture.add);
       const selected = plan(fixture.values);
@@ -908,7 +908,7 @@ describe('context GC planner', () => {
     }
   );
 
-  it('protects a complete terminal exec lifecycle for six observed rollouts', () => {
+  it('protects a complete terminal exec lifecycle for ten observed rollouts', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -953,7 +953,7 @@ describe('context GC planner', () => {
         stderrDroppedBytes: 0
       })
     });
-    for (let index = 0; index < 5; index++) successfulRollout(fixture.add);
+    for (let index = 0; index < 9; index++) successfulRollout(fixture.add);
     expect(plan(fixture.values)).toBeUndefined();
     successfulRollout(fixture.add);
     const selected = plan(fixture.values);
@@ -1008,7 +1008,7 @@ describe('context GC planner', () => {
         callId: `${toolName}-1`,
         content
       });
-      for (let index = 0; index < 5; index++) successfulRollout(fixture.add);
+      for (let index = 0; index < 9; index++) successfulRollout(fixture.add);
       expect(
         plan(fixture.values, {
           inputTokens: 8_000,
@@ -1100,7 +1100,7 @@ describe('context GC planner', () => {
         callId: 'web-1',
         content: scenario === 'small' ? 'small result' : 'large result '.repeat(3_000)
       });
-      for (let index = 0; index < 6; index++)
+      for (let index = 0; index < 10; index++)
         successfulRollout(fixture.add, {
           inputTokens: 8_000,
           contextInputTokens: 8_000,
@@ -1206,7 +1206,7 @@ describe('context GC planner', () => {
       content: renderObservations(observations),
       observations
     });
-    for (let index = 0; index < 6; index++)
+    for (let index = 0; index < 10; index++)
       successfulRollout(fixture.add, {
         inputTokens: 8_000,
         contextInputTokens: 8_000,
@@ -1345,8 +1345,8 @@ describe('context GC planner', () => {
       })
     });
     modelContext(fixture.add, { role: 'user', content: 'retained cache filler '.repeat(2500) });
-    addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(2000)}` });
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(800)}` });
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const usage = {
       inputTokens: 8000,
       contextInputTokens: 8000,
@@ -1370,7 +1370,7 @@ describe('context GC planner', () => {
     const fixture = records();
     fixture.add('execution.header', { modelId: 'coding', contextWindowTokens: 10000, mode: 'run' });
     addSuccessfulPatchScenario(fixture);
-    for (let i = 0; i < 4; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 8; i++) successfulRollout(fixture.add);
     modelContext(fixture.add, {
       role: 'tool_call',
       callId: 'young',
@@ -1406,7 +1406,7 @@ describe('context GC planner', () => {
     });
     expect(inspection.plan?.stage).toBe('UNIFIED');
     expect(inspection.plan!.metrics.protectedCandidateTokens).toBeGreaterThan(0);
-    expect(inspection.retryAfterRollouts).toBe(4);
+    expect(inspection.retryAfterRollouts).toBe(8);
   });
 
   it.each([
@@ -1518,7 +1518,7 @@ describe('context GC planner', () => {
         callId: 'failed-cached-poll',
         content: 'cached poll failed'
       });
-      for (let index = 0; index < 6; index++) successfulRollout(fixture.add);
+      for (let index = 0; index < 10; index++) successfulRollout(fixture.add);
       expect(plan(fixture.values, undefined, new Set([processId]))).toBeUndefined();
       const selected = plan(fixture.values);
       expect(selected?.stage).toBe('UNIFIED');
@@ -1603,7 +1603,7 @@ describe('context GC planner', () => {
         callId: 'wait-cell-process',
         content: JSON.stringify(result)
       });
-      for (let index = 0; index < 6; index++) successfulRollout(fixture.add);
+      for (let index = 0; index < 10; index++) successfulRollout(fixture.add);
       expect(plan(fixture.values, undefined, new Set([processId]))).toBeUndefined();
       const selected = plan(fixture.values);
       expect(
@@ -1669,7 +1669,7 @@ describe('context GC planner', () => {
           stderrDroppedBytes: 0
         })
       });
-      for (let index = 0; index < 6; index++) successfulRollout(fixture.add);
+      for (let index = 0; index < 10; index++) successfulRollout(fixture.add);
       expect(plan(fixture.values)).toBeUndefined();
     }
   );
@@ -1706,7 +1706,7 @@ describe('context GC planner', () => {
       )}`
     });
     addSuccessfulPatch(fixture, { path: 'src/a.ts', callId: 'patch-a' });
-    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
+    for (let i = 0; i < 8; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 5_000,
       contextInputTokens: 5_000,
@@ -1733,7 +1733,7 @@ describe('context GC planner', () => {
     });
 
     addSuccessfulPatch(fixture, { path: 'src/b.ts', callId: 'patch-b' });
-    for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
+    for (let i = 0; i < 8; i++) successfulRolloutWithoutUsage(fixture.add);
     successfulRollout(fixture.add, {
       inputTokens: 7_000,
       contextInputTokens: 7_000,
@@ -1799,7 +1799,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture);
-      for (let i = 0; i < 4; i++) successfulRolloutWithoutUsage(fixture.add);
+      for (let i = 0; i < 8; i++) successfulRolloutWithoutUsage(fixture.add);
       if (baseline === 'matching') {
         successfulRollout(fixture.add, {
           inputTokens: 3_000,
@@ -1881,7 +1881,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     const scenario = addSuccessfulPatchScenario(fixture, { providerAlias: true });
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     const replacement = selected?.draft.replacements.find(
       (item) => item.kind === 'TOOL_CALL_INPUT' && item.toolName === 'apply_patch'
@@ -1911,7 +1911,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture, { providerAlias });
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       return planContextGc({
         records: fixture.values,
         ...requestProjection(fixture.values),
@@ -1938,7 +1938,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     expect(plan(fixture.values)).toBeDefined();
     modelContext(fixture.add, {
       role: 'tool',
@@ -2052,8 +2052,8 @@ describe('context GC planner', () => {
       platform: 'linux' as const,
       activeProcessIds: new Set<string>()
     };
-    expect(inspectContextGc(input)).toEqual({ retryAfterRollouts: 5 });
-    for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
+    expect(inspectContextGc(input)).toEqual({ retryAfterRollouts: 9 });
+    for (let i = 0; i < 9; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values)!;
     expect(selected.metrics.tokenEstimator).toBe('UTF8_BYTES_V1');
     fixture.add('context.gc.completed', {
@@ -2096,7 +2096,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture);
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const selected = plan(fixture.values)!;
       const previous = fixture.add('context.gc.completed', {
         ...selected.draft,
@@ -2158,7 +2158,7 @@ describe('context GC planner', () => {
         mode: 'run'
       });
       addSuccessfulPatchScenario(fixture);
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const selected = plan(fixture.values);
       expect(selected).toBeDefined();
       fixture.add('context.gc.completed', {
@@ -2192,7 +2192,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     expect(selected).toBeDefined();
     const checkpoint = fixture.add('context.gc.completed', {
@@ -2221,7 +2221,7 @@ describe('context GC planner', () => {
       mode: 'run'
     });
     addSuccessfulPatchScenario(fixture);
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values)!;
     const readResult = fixture.values.find(
       (record) =>
@@ -2257,7 +2257,7 @@ describe('context GC planner', () => {
       path: 'src/unrelated.ts',
       callId: 'patch-unrelated'
     });
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     expect(selected).toBeDefined();
     const checkpointRecord = fixture.add('context.gc.completed', {

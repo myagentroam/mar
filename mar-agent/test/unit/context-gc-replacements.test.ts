@@ -29,6 +29,20 @@ const exec: ContextGcExecResult = {
 };
 
 describe('context GC structured records and message placeholders', () => {
+  it('keeps replacement wording independent of the protection policy', () => {
+    const input = {
+      code: 'await tools.exec({ command: "test" });',
+      inputMode: 'freeform' as const
+    };
+    for (const summary of [
+      contextGcCodeModeInputReplacement(input),
+      contextGcCodeModeOutputReplacement(text, false),
+      contextGcWebOutputReplacement('web_fetch', text, false),
+      contextGcToolOutputReplacement('extension', text, false)
+    ])
+      expect(summary).toContain('after the protection period.');
+  });
+
   it('uses a shared 768 Unicode character preview for generic output and values', () => {
     const original = '😀'.repeat(768) + 'MIDDLE' + '界'.repeat(768);
     for (const rendered of [
