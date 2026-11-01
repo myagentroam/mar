@@ -248,10 +248,6 @@ function navigationPreviewHtml(target: NavigationTarget): string | undefined {
 const selectedSymbolIndex = ref(0);
 const dirty = computed(() => editorContent.value !== savedContent.value);
 const pwaApplication = inject(PWA_APPLICATION_SERVICE_KEY, undefined);
-const removeUpdateBlocker = pwaApplication?.registerUpdateBlocker(
-  () => dirty.value || saving.value
-);
-onBeforeUnmount(() => removeUpdateBlocker?.());
 watch(canWrite, (available) => {
   if (!available) editing.value = false;
 });
@@ -636,6 +632,7 @@ function selectSymbol(symbol: EditorSymbol): void {
 }
 
 function beforeUnload(event: BeforeUnloadEvent): void {
+  if (pwaApplication?.isReloadingForUpdate()) return;
   if (!dirty.value || confirmedClose) return;
   event.preventDefault();
   event.returnValue = '';

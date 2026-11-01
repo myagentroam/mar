@@ -411,7 +411,10 @@ export class NativeSessionWatchService {
       const watch = this.watches.get(session.id);
       if (watch === undefined) return;
       watch.observation.session = session;
-      const update = await watch.observation.initial();
+      // Every Turn contributes at least one Segment, including an empty Turn.
+      const update = await watch.observation.initial(
+        lease.unit === 'SEGMENT' ? INITIAL_SEGMENT_LIMIT : undefined
+      );
       if (this.leases.get(lease.ownerKey) !== lease || this.watches.get(session.id) !== watch)
         return;
       if (update === undefined) throw new Error('NATIVE_TRANSCRIPT_UNAVAILABLE');

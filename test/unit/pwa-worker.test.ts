@@ -65,6 +65,12 @@ async function workerFixture(
   const listeners = new Map<string, (event: any) => void>();
   const clientMessage = vi.fn();
   const source = { id: 'window-1', url: `${origin}/console`, postMessage: clientMessage };
+  const navigateOtherWindow = vi.fn(async () => null);
+  const otherWindow = {
+    id: 'window-2',
+    url: `${origin}/console?workspace=other#session`,
+    navigate: navigateOtherWindow
+  };
   const skipWaiting = vi.fn(async () => undefined);
   const network = vi.fn(async (_request: Request | string) => new Response('network'));
   const cacheStorage = {
@@ -86,7 +92,7 @@ async function workerFixture(
     },
     clients: {
       get: async () => source,
-      matchAll: async () => (fixtureOptions.otherWindow ? [source, { id: 'window-2' }] : [source]),
+      matchAll: async () => (fixtureOptions.otherWindow ? [source, otherWindow] : [source]),
       claim
     },
     skipWaiting,
@@ -114,6 +120,7 @@ async function workerFixture(
     network,
     clientMessage,
     claim,
+    navigateOtherWindow,
     async install() {
       const promises: Promise<unknown>[] = [];
       listeners.get('install')!({
@@ -220,12 +227,24 @@ describe('PWA worker app shell and user-requested updates', () => {
     expect(waiting.skipWaiting).toHaveBeenCalledOnce();
   });
 
-  it('refuses activation while another app window is still open', async () => {
+  it('activates on request and refreshes other app windows after taking control', async () => {
     const cache = new FixtureCache();
     await cache.put(`${origin}/index.html?__WB_REVISION__=index`, new Response('entry'));
     const waiting = await workerFixture(cache, 'C', { otherWindow: true });
-    expect(await waiting.apply('B')).toEqual({ applied: false, reason: 'OTHER_WINDOWS' });
-    expect(waiting.skipWaiting).not.toHaveBeenCalled();
+    expect(await waiting.apply('B')).toEqual({ applied: true });
+    expect(waiting.skipWaiting).toHaveBeenCalledOnce();
+    expect(waiting.navigateOtherWindow).not.toHaveBeenCalled();
+    await waiting.activate();
+    expect(waiting.claim).toHaveBeenCalledOnce();
+    expect(waiting.navigateOtherWindow).toHaveBeenCalledExactlyOnceWith(
+      `${origin}/console?workspace=other#session`
+    );
+  });
+
+  it('does not refresh open windows when activation was not requested by a user', async () => {
+    const worker = await workerFixture(new FixtureCache(), 'C', { otherWindow: true });
+    await worker.activate();
+    expect(worker.navigateOtherWindow).not.toHaveBeenCalled();
   });
 
   it('refuses activation if the prepared entry disappears after status', async () => {

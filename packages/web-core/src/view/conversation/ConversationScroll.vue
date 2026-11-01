@@ -17,6 +17,7 @@ const props = defineProps<{
   readonly contextKey?: string | undefined;
   readonly hasOlder: boolean;
   readonly loadingInitial: boolean;
+  readonly initialSyncPending?: boolean;
   readonly initialLoadFailed: boolean;
   readonly loadingOlder: boolean;
   readonly olderError?: string;
@@ -53,7 +54,7 @@ let initialLayoutFrame: number | undefined;
 function historyMarkerVisible(): boolean {
   const current = element.value;
   const marker = historyMarker.value;
-  if (current === undefined || current.clientHeight === 0 || marker === undefined) return false;
+  if (!current || current.clientHeight === 0 || !marker) return false;
   const markerRect = marker.getBoundingClientRect();
   const viewport = current.getBoundingClientRect();
   return markerRect.bottom > viewport.top && markerRect.top < viewport.bottom;
@@ -69,6 +70,7 @@ function scheduleInitialHistoryCheck(): void {
       current === undefined ||
       current.clientHeight === 0 ||
       props.loadingInitial ||
+      props.initialSyncPending ||
       props.initialLoadFailed ||
       props.loadingOlder ||
       !props.hasTurns
@@ -170,6 +172,12 @@ watch(
         element.value?.focus({ preventScroll: true });
       reloading.value = false;
     }
+  }
+);
+watch(
+  () => props.initialSyncPending,
+  (pending) => {
+    if (pending) initialLayoutChecked = false;
   }
 );
 watch(

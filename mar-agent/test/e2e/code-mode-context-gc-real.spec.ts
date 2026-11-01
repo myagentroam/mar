@@ -31,7 +31,7 @@ const directories: string[] = [];
 const issueId = 'CATALOG-842';
 const contextWindowTokens = 64_000;
 const gcStartTokens = contextWindowTokens / 2;
-const compactThresholdTokens = contextWindowTokens * 0.9;
+const compactThresholdTokens = contextWindowTokens * 0.85;
 const moduleCount = 6;
 const sourceMarker = 'CM_SOURCE_MARKER_CATALOG_842';
 const sourceFiles = Array.from(
@@ -639,7 +639,6 @@ describe.runIf(enabled)('Code Mode and Context GC real long-flow E2E', () => {
             reclaimedTokens: checkpoint!.metrics.reclaimedTokens,
             grossReductionRate: checkpoint!.metrics.grossReductionRate,
             requiredPositiveNetRollouts: checkpoint!.metrics.requiredPositiveNetRollouts,
-            requiredTargetRoiRollouts: checkpoint!.metrics.requiredTargetRoiRollouts,
             providerContextInputTokens,
             interRequestContextInputDelta:
               checkpoint!.trigger.contextInputTokens - providerContextInputTokens!,

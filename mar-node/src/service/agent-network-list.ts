@@ -2,7 +2,12 @@ import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NodeAgentSession } from '../session/contracts.js';
 import type { NativeSessionProjectionService } from '../session/native-session-projection-service.js';
-import { marctlSessionSummary } from './session-recent-activity.js';
+import { sessionActivityStatus } from './session-recent-activity.js';
+
+type AgentListSession = Pick<
+  NodeAgentSession,
+  'id' | 'workspaceId' | 'parentSessionId' | 'customTitle' | 'runnerTitle' | 'lastActivityAt'
+>;
 
 /** Read only registered relationships and live Node facts; never discover or resume a Runner. */
 export async function listAgentNetworkSessions(
@@ -31,14 +36,13 @@ export async function listAgentNetworkSessions(
       .map((session) => [session.id, session] as const)
   );
   if (source) known.set(source.id, source);
-  let sessions: readonly NodeAgentSession[];
+  let sessions: readonly AgentListSession[];
   if (scope === 'tree') {
     if (!source) throw new Error('AGENT_TARGET_REQUIRED');
     if (!options.database) throw new Error('DATABASE_UNAVAILABLE');
+    const records = options.database.listSessionRecords(options.workspaceId);
     const parents = new Map(
-      options.database
-        .listSessionRecords(options.workspaceId)
-        .map((record) => [record.id, record.metadata.parentSessionId ?? null] as const)
+      records.map((record) => [record.id, record.metadata.parentSessionId ?? null] as const)
     );
     for (const session of known.values()) parents.set(session.id, session.parentSessionId ?? null);
     let root = source.id;
@@ -62,24 +66,42 @@ export async function listAgentNetworkSessions(
     }
     const ids = [root];
     for (let i = 0; i < ids.length; i++) ids.push(...(children.get(ids[i]!) ?? []).sort());
-    sessions = (
-      await Promise.all(ids.map((id) => known.get(id) ?? options.projection.resolve(id, true)))
-    ).filter(
-      (session): session is NodeAgentSession =>
-        session !== undefined && session.workspaceId === options.workspaceId
+    const cached = new Map(
+      options.projection.cachedNative().map((session) => [session.id, session])
     );
+    const workspace = options.database.getWorkspace(options.workspaceId);
+    const registered = new Map<string, AgentListSession>(
+      workspace === undefined
+        ? []
+        : records.map((record) => [
+            record.id,
+            {
+              id: record.id,
+              workspaceId: record.workspaceId,
+              parentSessionId: record.metadata.parentSessionId ?? null,
+              customTitle: record.metadata.customTitle,
+              runnerTitle: record.metadata.runnerTitle,
+              lastActivityAt: 0
+            }
+          ])
+    );
+    sessions = ids
+      .map((id) => known.get(id) ?? cached.get(id) ?? registered.get(id))
+      .filter(
+        (session): session is AgentListSession =>
+          session !== undefined && session.workspaceId === options.workspaceId
+      );
   } else {
     sessions = [...known.values()];
   }
   const query = input.query?.trim().normalize('NFKC').toLocaleLowerCase() ?? '';
   const matches = sessions
     .map((session) => {
-      const { id, title, status } = marctlSessionSummary(options.runtime, session);
       return {
-        id,
+        id: session.id,
         parentSessionId: session.parentSessionId ?? null,
-        title,
-        status,
+        title: session.customTitle ?? session.runnerTitle ?? 'Untitled session',
+        status: sessionActivityStatus(options.runtime, session.id),
         lastActivityAt: session.lastActivityAt
       };
     })

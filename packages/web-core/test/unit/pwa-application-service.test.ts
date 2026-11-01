@@ -96,7 +96,7 @@ describe('PWA application registration', () => {
 });
 
 describe('PWA application update coordination', () => {
-  function fixture(pageBuild = 'page') {
+  function fixture(pageBuild = 'page', controlled = true) {
     const reload = vi.fn();
     const window = Object.assign(new EventTarget(), { location: { reload } });
     const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
@@ -127,7 +127,7 @@ describe('PWA application update coordination', () => {
       update: vi.fn().mockResolvedValue(undefined)
     });
     const container = Object.assign(new EventTarget(), {
-      controller: active as unknown as ServiceWorker | null,
+      controller: controlled ? (active as unknown as ServiceWorker) : null,
       register: vi.fn().mockResolvedValue(registration)
     });
     const service = createPwaApplicationService(container as unknown as ServiceWorkerContainer, {
@@ -136,6 +136,19 @@ describe('PWA application update coordination', () => {
     });
     return { reload, makeWorker, active, registration, container, service };
   }
+
+  it('recognizes a peer update before navigation but not the initial controller claim', async () => {
+    const f = fixture('active', false);
+    await f.service.start();
+    expect(f.service.isReloadingForUpdate()).toBe(false);
+    f.container.controller = f.active as unknown as ServiceWorker;
+    f.container.dispatchEvent(new Event('controllerchange'));
+    expect(f.service.isReloadingForUpdate()).toBe(false);
+    f.container.controller = f.makeWorker('next') as unknown as ServiceWorker;
+    expect(f.service.isReloadingForUpdate()).toBe(true);
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
 
   it('rechecks the current worker when its state changes', async () => {
     const f = fixture('active');
@@ -402,7 +415,7 @@ describe('PWA application update coordination', () => {
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
     Object.assign(health, unhealthy);
-    await expect(f.service.applyUpdate(() => true)).resolves.toBe('UNAVAILABLE');
+    await expect(f.service.applyUpdate()).resolves.toBe('UNAVAILABLE');
     expect(
       waiting.postMessage.mock.calls.every(([message]) => message.type !== 'MAR_PWA_APPLY')
     ).toBe(true);
@@ -425,24 +438,24 @@ describe('PWA application update coordination', () => {
     f.service.dispose();
   });
 
-  it('blocks activation before messaging when an owner reports unsaved work', async () => {
+  it('does not activate after the application service is disposed', async () => {
     const f = fixture('active');
     const waiting = f.makeWorker('next');
     f.registration.waiting = waiting as unknown as ServiceWorker;
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
-    const remove = f.service.registerUpdateBlocker(() => true);
-    await expect(f.service.applyUpdate(() => true)).resolves.toBe('BLOCKED');
+    f.service.dispose();
+    await expect(f.service.applyUpdate()).resolves.toBe('UNAVAILABLE');
     expect(
       waiting.postMessage.mock.calls.every(([message]) => message.type !== 'MAR_PWA_APPLY')
     ).toBe(true);
     expect(f.reload).not.toHaveBeenCalled();
-    remove();
-    f.service.dispose();
   });
 
   it('leaves a prepared update waiting until clicked, then reloads the browser once after takeover', async () => {
     const f = fixture('active');
+    expect(f.service.isReloadingForUpdate()).toBe(false);
+    f.reload.mockImplementation(() => expect(f.service.isReloadingForUpdate()).toBe(true));
     const waiting = f.makeWorker('next');
     const status = waiting.postMessage.getMockImplementation()!;
     let reply: MessagePort | undefined;
@@ -456,7 +469,7 @@ describe('PWA application update coordination', () => {
     expect(reply).toBeUndefined();
     expect(f.reload).not.toHaveBeenCalled();
 
-    const applying = f.service.applyUpdate(() => true);
+    const applying = f.service.applyUpdate();
     await vi.waitFor(() => expect(reply).toBeDefined());
     reply!.postMessage({ applied: true });
     await Promise.resolve();
@@ -470,20 +483,20 @@ describe('PWA application update coordination', () => {
     f.service.dispose();
   });
 
-  it('does not reload when the waiting worker rejects another open window', async () => {
+  it('does not reload when the waiting worker rejects activation', async () => {
     const f = fixture('active');
     const waiting = f.makeWorker('next');
     const status = waiting.postMessage.getMockImplementation()!;
     waiting.postMessage.mockImplementation((data, ports) => {
-      if (data.type === 'MAR_PWA_APPLY')
-        ports[0]!.postMessage({ applied: false, reason: 'OTHER_WINDOWS' });
+      if (data.type === 'MAR_PWA_APPLY') ports[0]!.postMessage({ applied: false });
       else status(data, ports);
     });
     f.registration.waiting = waiting as unknown as ServiceWorker;
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
-    await expect(f.service.applyUpdate(() => true)).resolves.toBe('OTHER_WINDOWS');
+    await expect(f.service.applyUpdate()).resolves.toBe('UNAVAILABLE');
     expect(f.reload).not.toHaveBeenCalled();
+    expect(f.service.isReloadingForUpdate()).toBe(false);
     f.service.dispose();
   });
 
@@ -499,13 +512,13 @@ describe('PWA application update coordination', () => {
     f.registration.waiting = waiting as unknown as ServiceWorker;
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
-    await expect(f.service.applyUpdate(() => true)).resolves.toBe('UNAVAILABLE');
+    await expect(f.service.applyUpdate()).resolves.toBe('UNAVAILABLE');
     expect(f.service.state.value.update).toBeUndefined();
     expect(f.reload).not.toHaveBeenCalled();
     f.service.dispose();
   });
 
-  it('checks guards again after activation when work begins while waiting for control', async () => {
+  it('does not reload after disposal while activation is pending', async () => {
     const f = fixture('active');
     const waiting = f.makeWorker('next');
     const status = waiting.postMessage.getMockImplementation()!;
@@ -517,31 +530,36 @@ describe('PWA application update coordination', () => {
     f.registration.waiting = waiting as unknown as ServiceWorker;
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
-    const applying = f.service.applyUpdate(() => true);
+    const applying = f.service.applyUpdate();
     await vi.waitFor(() => expect(reply).toBeDefined());
-    f.service.registerUpdateBlocker(() => true);
+    f.service.dispose();
     f.container.controller = waiting as unknown as ServiceWorker;
     f.container.dispatchEvent(new Event('controllerchange'));
     reply!.postMessage({ applied: true });
-    await expect(applying).resolves.toBe('BLOCKED');
+    await expect(applying).resolves.toBe('UNAVAILABLE');
     expect(f.reload).not.toHaveBeenCalled();
     f.service.dispose();
   });
 
-  it('does not reload after disposal while an asynchronous owner guard is pending', async () => {
+  it('does not reload after disposal while the active worker status is pending', async () => {
     const f = fixture('older-page');
     await f.service.start();
     await vi.waitFor(() => expect(f.service.state.value.reload).toBeDefined());
-    let release!: (allowed: boolean) => void;
-    const applying = f.service.applyUpdate(
-      () =>
-        new Promise<boolean>((resolve) => {
-          release = resolve;
-        })
-    );
+    let reply: MessagePort | undefined;
+    f.active.postMessage.mockImplementation((_data, ports) => {
+      reply = ports[0];
+    });
+    const applying = f.service.applyUpdate();
+    await vi.waitFor(() => expect(reply).toBeDefined());
     f.service.dispose();
-    release(true);
-    await expect(applying).resolves.toBe('BLOCKED');
+    reply!.postMessage({
+      buildId: 'active',
+      version: 'version-active',
+      supported: true,
+      degraded: false,
+      entry: true
+    });
+    await expect(applying).resolves.toBe('UNAVAILABLE');
     expect(f.reload).not.toHaveBeenCalled();
   });
 });

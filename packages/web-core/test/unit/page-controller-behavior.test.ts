@@ -763,7 +763,7 @@ describe('Workbench controller composition behavior', () => {
     expect(applyUpdate).not.toHaveBeenCalled();
     await page.openWorkbenchNotification(page.workbenchNotificationService.notifications.value[0]!);
     expect(applyUpdate).toHaveBeenCalledOnce();
-    expect(await applyUpdate.mock.calls[0]![0]()).toBe(true);
+    expect(applyUpdate).toHaveBeenCalledWith();
     listener({
       offline: 'preparing',
       checked: true,

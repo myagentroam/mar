@@ -1,6 +1,6 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-01
 ---
 
 # What Is MyAgentRoam?
@@ -32,7 +32,7 @@ To install a standalone application window, use the browser's install-app contro
 
 Offline resources do not include sign-in state, permissions, sessions, Workspace files, or terminals. If Server cannot be reached on a cold start, the interface reports that your identity is unconfirmed; reconnect to open documentation or retry. Identity and Server- or Node-dependent functions require a connection. An already open page does not sign you out merely because the network is lost.
 
-A notification appears when a new version is prepared; the current page continues running until you choose to update. Clicking the notification or applying the update in **Settings → About** activates the prepared version and reloads only the current page, in both browser tabs and installed applications. Save or discard unsaved edits and finish file transfers first. If other windows are open, close the other same-origin application windows and tabs and retry; they are not refreshed automatically. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
+A notification appears when a new version is prepared; the current page continues running until you choose to update. Clicking the notification or applying the update in **Settings → About** immediately activates the prepared version and automatically reloads all open same-origin application windows and tabs, without closing them individually, asking for extra confirmation, or waiting for edits and file transfers to finish. Browser tabs and installed applications behave the same way. Reloading may discard unsaved content and interrupt file transfers, so save first if needed. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
 
 ## Fastest path to success
 

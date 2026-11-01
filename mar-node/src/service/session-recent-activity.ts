@@ -73,13 +73,7 @@ function activity(runtime: NodeRuntimeState, sessionId: string) {
       }
       if (!['tool_call', 'command_execution', 'file_change'].includes(item.kind)) continue;
       const presentation = isPlainRecord(payload.toolPresentation) ? payload.toolPresentation : {};
-      if (
-        run?.status === 'RUNNING' &&
-        item.status === 'IN_PROGRESS' &&
-        presentation.kind === 'SLEEP' &&
-        typeof presentation.startedAt === 'string'
-      )
-        sleeping = true;
+      if (run?.status === 'RUNNING' && isSleepingTool(item)) sleeping = true;
       if (recentTools.length === 3 && !isLatest) continue;
       const tool = projectTool(item, payload, presentation);
       if (recentTools.length < 3) recentTools.push(tool);
@@ -107,7 +101,28 @@ export function marctlSessionProgress(runtime: NodeRuntimeState, sessionId: stri
 }
 
 export function sessionActivityStatus(runtime: NodeRuntimeState, sessionId: string) {
-  return activity(runtime, sessionId).status;
+  const run = runtime.activeSessionRun(sessionId);
+  if (run === undefined || isTerminalRunStatus(run.status)) return 'IDLE';
+  if (run.status !== 'RUNNING') return 'RUNNING';
+  const sleeping = runtime
+    .conversationTail(sessionId)
+    .some((turn) => turn.runId === run.id && turn.items.some(isSleepingTool));
+  return sleeping ? 'SLEEPING' : 'RUNNING';
+}
+
+function isSleepingTool(item: NodeConversationItem): boolean {
+  if (
+    item.parentItemId !== null ||
+    item.status !== 'IN_PROGRESS' ||
+    !['tool_call', 'command_execution', 'file_change'].includes(item.kind)
+  )
+    return false;
+  const presentation = isPlainRecord(item.payload) ? item.payload.toolPresentation : undefined;
+  return (
+    isPlainRecord(presentation) &&
+    presentation.kind === 'SLEEP' &&
+    typeof presentation.startedAt === 'string'
+  );
 }
 
 /** Summarizes current approval facts without exposing tool input or native payloads. */

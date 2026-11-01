@@ -53,8 +53,6 @@ const baseline = ref(draft.source);
 const dirty = computed(() => !isBuiltin.value && draft.source !== baseline.value);
 const unsaved = computed(() => !isBuiltin.value && (!selectedId.value || dirty.value));
 const pwaApplication = inject(PWA_APPLICATION_SERVICE_KEY, undefined);
-const removeUpdateBlocker = pwaApplication?.registerUpdateBlocker(() => unsaved.value);
-onBeforeUnmount(() => removeUpdateBlocker?.());
 const analysis = computed(() => analyzeCustomTheme(draft.source));
 const previewColors = computed(() =>
   paletteReady.value ? service.resolveColors(draft.source) : analysis.value.colors
@@ -226,6 +224,7 @@ function format(): void {
   else void form.value?.validate().catch(() => false);
 }
 function beforeUnload(event: BeforeUnloadEvent): void {
+  if (pwaApplication?.isReloadingForUpdate()) return;
   if (unsaved.value) {
     event.preventDefault();
     event.returnValue = '';

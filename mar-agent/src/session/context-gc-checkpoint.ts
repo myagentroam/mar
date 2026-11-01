@@ -1713,11 +1713,12 @@ function isContextGcEconomicsPolicy(value: unknown): boolean {
     [
       'normalInputCostRate',
       'cacheReadCostRate',
-      'cacheWriteCostRate',
       'outputCostRate',
-      'minimumGrossReductionRate',
-      'minimumCacheInvestmentRoi'
-    ].every((key) => isNonnegativeFinite(value[key]))
+      'minimumGrossReductionRate'
+    ].every((key) => isNonnegativeFinite(value[key])) &&
+    ['cacheWriteCostRate', 'minimumCacheInvestmentRoi'].every(
+      (key) => value[key] === undefined || isNonnegativeFinite(value[key])
+    )
   );
 }
 
@@ -1755,7 +1756,10 @@ function isContextGcMetrics(value: unknown): boolean {
   ];
   return (
     nonnegative.every((key) => isNonnegativeFinite(value[key])) &&
-    ['requiredPositiveNetRollouts', 'requiredTargetRoiRollouts'].every(
+    [
+      'requiredPositiveNetRollouts',
+      ...(value.requiredTargetRoiRollouts === undefined ? [] : ['requiredTargetRoiRollouts'])
+    ].every(
       (key) =>
         isNonnegativeFinite(value[key]) || (value.stage === 'INLINE_MEDIA' && value[key] === null)
     ) &&
@@ -1763,7 +1767,7 @@ function isContextGcMetrics(value: unknown): boolean {
       (key) => value[key] === undefined || isNonnegativeFinite(value[key])
     ) &&
     Number.isFinite(value.expectedNetSavedCostUnits) &&
-    Number.isFinite(value.cacheInvestmentRoi) &&
+    (value.cacheInvestmentRoi === undefined || Number.isFinite(value.cacheInvestmentRoi)) &&
     (value.tokenEstimator === undefined || value.tokenEstimator === 'UTF8_BYTES_V1') &&
     (value.cachePenaltyKnown === undefined || typeof value.cachePenaltyKnown === 'boolean')
   );

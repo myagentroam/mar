@@ -71,12 +71,17 @@ describe('Node Conversation Segment', () => {
       };
       const segments = new ConversationSegmentService(async () => page);
       const snapshots: ReturnType<typeof segments.projectInitial>[] = [];
+      const readPage = vi.fn(async (_session: unknown, limit: number) => ({
+        ...page,
+        turns: page.turns.slice(-limit),
+        nextCursor: page.turns.length > limit ? 'earlier-turns' : null
+      }));
       const service = createTestSessionWatch({
         resolve: async () => session,
         managedActive: () => running,
         refreshActivity: async () => undefined,
         present: () => ({ activity: running ? 'MANAGED_ACTIVE' : 'IDLE' }),
-        readPage: async () => page,
+        readPage,
         projectInitialPage: (selected, history, _unit, limit) =>
           segments.projectInitial(selected, history, limit),
         emitSession: vi.fn(),
@@ -105,6 +110,7 @@ describe('Node Conversation Segment', () => {
           ]);
           expect(snapshots[index]?.segments.every((entry) => entry.items.length === 2)).toBe(true);
         }
+        expect(readPage.mock.calls.map((call) => call[1])).toEqual(running ? [30, 30] : [3, 3]);
         const older = await segments.read(session, { cursor: snapshots[0]!.nextCursor!, limit: 3 });
         expect(older.segments.map((entry) => entry.turnId)).toEqual(['turn-1', 'turn-2', 'turn-3']);
         const oldest = await segments.read(session, { cursor: older.nextCursor!, limit: 3 });

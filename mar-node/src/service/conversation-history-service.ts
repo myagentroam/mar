@@ -687,6 +687,8 @@ export class ConversationHistoryService {
         nodeLog('native.session.history.official-read.completed', {
           runner: session.runner,
           sessionId: session.id,
+          limit: input.limit ?? null,
+          hasCursor: input.cursor !== undefined,
           durationMs
         });
     }

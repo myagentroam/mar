@@ -1013,13 +1013,13 @@ describe('context GC high-water policy', () => {
   it('decreases only the high-water gross threshold and keeps a window-relative floor', () => {
     expect(contextGcMinimumGrossReductionRate(0.5)).toBe(0.2);
     expect(contextGcMinimumGrossReductionRate(0.7)).toBe(0.2);
-    expect(contextGcMinimumGrossReductionRate(0.8)).toBeCloseTo(0.15);
-    expect(contextGcMinimumGrossReductionRate(0.85)).toBeCloseTo(0.125);
+    expect(contextGcMinimumGrossReductionRate(0.8)).toBeCloseTo(2 / 15);
+    expect(contextGcMinimumGrossReductionRate(0.85)).toBeCloseTo(0.1);
     expect(contextGcMinimumGrossReductionRate(0.9)).toBeCloseTo(0.1);
 
     expect(contextGcMinimumReclaimedTokens(7_000, 10_000)).toBe(1_400);
-    expect(contextGcMinimumReclaimedTokens(8_000, 10_000)).toBe(1_200);
-    expect(contextGcMinimumReclaimedTokens(8_800, 10_000)).toBe(968);
+    expect(contextGcMinimumReclaimedTokens(8_000, 10_000)).toBe(1_067);
+    expect(contextGcMinimumReclaimedTokens(8_800, 10_000)).toBe(880);
     expect(contextGcMinimumReclaimedTokens(1_000, 10_000)).toBe(500);
   });
 
@@ -1285,6 +1285,7 @@ describe('context GC high-water policy', () => {
     expect(
       evaluateContextGcEconomics({
         contextUsageTokens: 8_800,
+        contextWindowTokens: 10_000,
         reclaimedTokens: 0,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
@@ -1301,16 +1302,16 @@ describe('context GC high-water policy', () => {
   it('uses discounted imminent Compact value only when GC restores a safe high-water margin', () => {
     const fixture = records();
     addPatchCandidate(fixture);
-    for (let usage = 8_000; usage <= 8_800; usage += 100)
+    for (let usage = 7_900; usage <= 8_400; usage += 100)
       successfulRollout(fixture.add, usage, 8_000);
     const usage: ModelUsage = {
-      contextInputTokens: 8_800,
+      contextInputTokens: 8_400,
       cacheReadTokens: 8_000,
       outputTokens: 10
     };
 
     const beforePending = plan(fixture.values, usage);
-    expect(beforePending).toBeUndefined();
+    expect(beforePending?.metrics.imminentCompactAvoidanceCreditCostUnits ?? 0).toBe(0);
 
     modelContext(fixture.add, {
       role: 'tool',
@@ -1319,14 +1320,14 @@ describe('context GC high-water policy', () => {
     });
     const selected = plan(fixture.values, usage);
 
-    expect(selected?.metrics.grossReductionRate).toBeLessThan(0.2);
-    expect(selected?.metrics.effectiveMinimumGrossReductionRate).toBeCloseTo(0.11);
-    expect(selected?.metrics.minimumRequiredReclaimedTokens).toBe(968);
-    expect(selected?.metrics.projectedTokensBeforeGc).toBeGreaterThanOrEqual(9_000);
-    expect(selected?.metrics.projectedTokensAfterGc).toBeLessThanOrEqual(8_500);
-    expect(selected?.metrics.imminentCompactAvoidanceCreditCostUnits).toBe(7_040);
-    expect(selected?.metrics.appliedCompactCreditCostUnits).toBe(7_040);
-    expect(selected?.metrics.requiredTargetRoiRollouts).toBeLessThanOrEqual(20);
+    expect(selected?.metrics.grossReductionRate).toBeGreaterThan(0.1066666667);
+    expect(selected?.metrics.effectiveMinimumGrossReductionRate).toBeCloseTo(0.1066666667);
+    expect(selected?.metrics.minimumRequiredReclaimedTokens).toBe(896);
+    expect(selected?.metrics.projectedTokensBeforeGc).toBeGreaterThanOrEqual(8_500);
+    expect(selected?.metrics.projectedTokensAfterGc).toBeLessThanOrEqual(8_000);
+    expect(selected?.metrics.imminentCompactAvoidanceCreditCostUnits).toBe(6_720);
+    expect(selected?.metrics.appliedCompactCreditCostUnits).toBe(6_720);
+    expect(selected?.metrics.requiredPositiveNetRollouts).toBe(0);
   });
 
   it('rejects imminent Compact credit unless every high-water safety condition holds', () => {
@@ -1446,6 +1447,18 @@ describe('unified inline media GC', () => {
     ).toBeUndefined();
   });
 
+  it('keeps hard-limit media GC available at and above the async Compact threshold', async () => {
+    const { fixture, candidate } = await mediaFixture();
+    for (const contextInputTokens of [8_500, 9_000]) {
+      const selected = plan(
+        fixture.values,
+        { contextInputTokens },
+        { inlineMedia: { ...candidate!, reason: 'HARD_LIMIT' } }
+      );
+      expect(selected).toMatchObject({ stage: 'INLINE_MEDIA', draft: { replacements: [] } });
+    }
+  });
+
   it('persists media pressure even when there is no finite text-cache payback', async () => {
     const { fixture, candidate } = await mediaFixture(3 * 1_048_576);
     const selected = plan(
@@ -1457,8 +1470,7 @@ describe('unified inline media GC', () => {
     );
     expect(selected?.draft.metrics).toMatchObject({
       reclaimedTokens: 0,
-      requiredPositiveNetRollouts: null,
-      requiredTargetRoiRollouts: null
+      requiredPositiveNetRollouts: null
     });
     const record = {
       ...fixture.values.at(-1)!,

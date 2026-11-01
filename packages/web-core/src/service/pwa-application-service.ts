@@ -44,9 +44,10 @@ export function createPwaApplicationService(
   let registration: Promise<ServiceWorkerRegistration | undefined> | undefined;
   let registrationRejected = false;
   let disposed = false;
+  let pageController = container?.controller;
+  let reloadingForUpdate = false;
   const pending = new Set<() => void>();
   const listeners = new Set<(value: PwaApplicationState) => void>();
-  const blockers = new Set<() => boolean>();
   const observedWorkers = new Map<ServiceWorker, () => void>();
   const state = shallowRef<PwaApplicationState>({
     offline: container === undefined ? 'online' : 'preparing',
@@ -68,11 +69,6 @@ export function createPwaApplicationService(
     listeners.add(listener);
     listener(state.value);
     return () => listeners.delete(listener);
-  }
-
-  function registerUpdateBlocker(blocker: () => boolean): () => void {
-    blockers.add(blocker);
-    return () => blockers.delete(blocker);
   }
 
   function message(worker: ServiceWorker, data: object, timeoutMs = 3_000): Promise<unknown> {
@@ -131,7 +127,10 @@ export function createPwaApplicationService(
 
   function observeLifecycle(): void {
     if (identity === undefined || cleanupLifecycle !== undefined || disposed) return;
-    const controllerChanged = () => backgroundCheck(false);
+    const controllerChanged = () => {
+      pageController ??= container?.controller;
+      backgroundCheck(false);
+    };
     const visible = () => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible')
         backgroundCheck();
@@ -388,18 +387,22 @@ export function createPwaApplicationService(
     });
   }
 
-  async function applyUpdate(
-    canReload: () => boolean | Promise<boolean>
-  ): Promise<'APPLIED' | 'BLOCKED' | 'OTHER_WINDOWS' | 'UNAVAILABLE'> {
-    const blocked = () => [...blockers].some((blocker) => blocker());
-    const canProceed = async () => {
-      try {
-        return !disposed && !blocked() && (await canReload()) && !disposed && !blocked();
-      } catch {
-        return false;
-      }
-    };
-    if (identity === undefined || !(await canProceed())) return 'BLOCKED';
+  function isReloadingForUpdate(): boolean {
+    return (
+      reloadingForUpdate ||
+      (pageController != null &&
+        container?.controller != null &&
+        container.controller !== pageController)
+    );
+  }
+
+  function reloadForUpdate(): void {
+    reloadingForUpdate = true;
+    window.location.reload();
+  }
+
+  async function applyUpdate(): Promise<'APPLIED' | 'UNAVAILABLE'> {
+    if (identity === undefined || disposed) return 'UNAVAILABLE';
     const update = state.value.update ?? state.value.reload;
     if (update === undefined) return 'UNAVAILABLE';
     const clearUpdate = () => {
@@ -407,8 +410,7 @@ export function createPwaApplicationService(
         publish({ offline: state.value.offline, checked: state.value.checked });
     };
     if (update.mode === 'online') {
-      if (!(await canProceed())) return 'BLOCKED';
-      window.location.reload();
+      reloadForUpdate();
       return 'APPLIED';
     }
     const value = await bounded(start());
@@ -429,7 +431,7 @@ export function createPwaApplicationService(
           clearUpdate();
         return 'UNAVAILABLE';
       }
-      if (!(await canProceed())) return 'BLOCKED';
+      if (disposed) return 'UNAVAILABLE';
       let cancelWait: () => void = () => undefined;
       const changed = new Promise<boolean>((resolve) => {
         let finished = false;
@@ -464,15 +466,10 @@ export function createPwaApplicationService(
           (result as { reason?: unknown }).reason === 'UNAVAILABLE'
         )
           clearUpdate();
-        return typeof result === 'object' &&
-          result !== null &&
-          (result as { reason?: unknown }).reason === 'OTHER_WINDOWS'
-          ? 'OTHER_WINDOWS'
-          : 'UNAVAILABLE';
+        return 'UNAVAILABLE';
       }
       if (!(await changed) || disposed) return 'UNAVAILABLE';
-      if (!(await canProceed())) return 'BLOCKED';
-      window.location.reload();
+      reloadForUpdate();
       return 'APPLIED';
     }
     const active = value.active;
@@ -487,8 +484,8 @@ export function createPwaApplicationService(
       activeStatus.buildId === identity.buildId
     )
       return 'UNAVAILABLE';
-    if (!(await canProceed())) return 'BLOCKED';
-    window.location.reload();
+    if (disposed) return 'UNAVAILABLE';
+    reloadForUpdate();
     return 'APPLIED';
   }
 
@@ -499,7 +496,6 @@ export function createPwaApplicationService(
     for (const remove of observedWorkers.values()) remove();
     observedWorkers.clear();
     listeners.clear();
-    blockers.clear();
     for (const cancel of pending) cancel();
   }
 
@@ -508,7 +504,7 @@ export function createPwaApplicationService(
     activeWorker,
     checkForUpdate,
     applyUpdate,
-    registerUpdateBlocker,
+    isReloadingForUpdate,
     state: readonly(state),
     subscribe,
     dispose

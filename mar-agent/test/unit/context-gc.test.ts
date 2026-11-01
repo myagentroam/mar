@@ -477,9 +477,10 @@ describe('context GC planner', () => {
     expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
   });
 
-  it('uses the cache rebuild delta and computes the actual target ROI payback', () => {
+  it('uses the cache rebuild delta and computes the first strictly positive payback', () => {
     const result = evaluateContextGcEconomics({
       contextUsageTokens: 150_000,
+      contextWindowTokens: 200_000,
       reclaimedTokens: 30_000,
       reclaimedCachedTokens: 30_000,
       cacheReadTokens: 100_000,
@@ -488,9 +489,8 @@ describe('context GC planner', () => {
       projectedRolloutsUntilCompactAfterGc: 100,
       contextGrowthSampleCount: 16
     });
-    expect(result.cacheRebuildPenaltyCostUnits).toBe(80_500);
-    expect(result.requiredPositiveNetRollouts).toBe(27);
-    expect(result.requiredTargetRoiRollouts).toBe(30);
+    expect(result.cacheRebuildPenaltyCostUnits).toBe(66_500);
+    expect(result.requiredPositiveNetRollouts).toBe(45);
     expect(result.passes).toBe(false);
   });
 
@@ -498,6 +498,7 @@ describe('context GC planner', () => {
     expect(
       evaluateContextGcEconomics({
         contextUsageTokens: 6_000,
+        contextWindowTokens: 10_000,
         reclaimedTokens: 1_500,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
@@ -509,12 +510,12 @@ describe('context GC planner', () => {
     ).toMatchObject({
       cacheRebuildPenaltyCostUnits: 0,
       requiredPositiveNetRollouts: 1,
-      requiredTargetRoiRollouts: 1,
       passes: true
     });
     expect(
       evaluateContextGcEconomics({
         contextUsageTokens: 6_000,
+        contextWindowTokens: 10_000,
         reclaimedTokens: 1_000,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
@@ -526,7 +527,7 @@ describe('context GC planner', () => {
     ).toBe(false);
   });
 
-  it('evaluates from 50 percent and yields to Compact at the real 90 percent threshold', () => {
+  it('evaluates from 50 percent and yields at the async Compact threshold', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -565,8 +566,8 @@ describe('context GC planner', () => {
     ).toBe('UNIFIED');
     expect(
       plan(fixture.values, {
-        inputTokens: 9_000,
-        contextInputTokens: 9_000,
+        inputTokens: 8_500,
+        contextInputTokens: 8_500,
         cacheReadTokens: 0,
         cacheWriteTokens: 0
       })
@@ -1265,7 +1266,7 @@ describe('context GC planner', () => {
     );
     expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeCloseTo(
       (3000 - impact.preservedCachedPrefixTokens - impact.reclaimedCachedTokens) *
-        (CONTEXT_GC_POLICY.cacheWriteCostRate - CONTEXT_GC_POLICY.cacheReadCostRate)
+        (CONTEXT_GC_POLICY.normalInputCostRate - CONTEXT_GC_POLICY.cacheReadCostRate)
     );
     expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeGreaterThan(0);
     expect(cached!.draft.replacements).toEqual(
@@ -1289,6 +1290,7 @@ describe('context GC planner', () => {
   it('accounts for the full combined cache invalidation, rather than a marginal gate', () => {
     const base = {
       contextUsageTokens: 150_000,
+      contextWindowTokens: 200_000,
       reclaimedTokens: 30_000,
       reclaimedCachedTokens: 30_000,
       cacheReadTokens: 100_000,
@@ -1299,7 +1301,7 @@ describe('context GC planner', () => {
     const late = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 60_000 });
     const early = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 0 });
     expect(early.cacheRebuildPenaltyCostUnits).toBeGreaterThan(late.cacheRebuildPenaltyCostUnits);
-    expect(early.requiredTargetRoiRollouts).toBeGreaterThan(late.requiredTargetRoiRollouts);
+    expect(early.requiredPositiveNetRollouts).toBeGreaterThan(late.requiredPositiveNetRollouts);
   });
 
   it('does not fall back to deterministic-only when the full eligible set fails cache economics', () => {
@@ -1346,9 +1348,9 @@ describe('context GC planner', () => {
     addSuccessfulPatchScenario(fixture, { body: `1\t${'alpha '.repeat(2000)}` });
     for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
     const usage = {
-      inputTokens: 6000,
-      contextInputTokens: 6000,
-      cacheReadTokens: 6000,
+      inputTokens: 8000,
+      contextInputTokens: 8000,
+      cacheReadTokens: 8000,
       cacheWriteTokens: 0
     };
     const deterministicOnly = fixture.values.map((record) =>
@@ -1767,7 +1769,8 @@ describe('context GC planner', () => {
   it('uses Compact deferral credit only from a matching complete baseline at 80 percent', () => {
     const fixtureWithBaseline = (
       compact: { modelId?: string; contextWindowTokens?: number },
-      baseline: 'matching' | 'missing' | 'different-model'
+      baseline: 'matching' | 'missing' | 'different-model',
+      cacheWriteTokens?: number
     ) => {
       const fixture = records();
       if (baseline !== 'matching')
@@ -1786,7 +1789,7 @@ describe('context GC planner', () => {
           inputTokens: 9_000,
           contextInputTokens: 9_000,
           cacheReadTokens: 7_000,
-          cacheWriteTokens: 0,
+          ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
           outputTokens: 500
         }
       });
@@ -1841,10 +1844,21 @@ describe('context GC planner', () => {
       });
     };
 
-    expect(
-      fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'matching')?.metrics
-        .compactDeferralCreditCostUnits
-    ).toBeGreaterThan(0);
+    const noWrite = fixtureWithBaseline(
+      { modelId: 'coding', contextWindowTokens: 10_000 },
+      'matching'
+    );
+    const withWrite = fixtureWithBaseline(
+      { modelId: 'coding', contextWindowTokens: 10_000 },
+      'matching',
+      1_000
+    );
+    expect(noWrite?.metrics.compactDeferralCreditCostUnits).toBeCloseTo(
+      2_850 * Math.min(1, noWrite!.metrics.reclaimedTokens / 5_500)
+    );
+    expect(withWrite?.metrics.compactDeferralCreditCostUnits).toBe(
+      noWrite?.metrics.compactDeferralCreditCostUnits
+    );
     expect(
       fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'missing')?.metrics
         .compactDeferralCreditCostUnits
@@ -1916,7 +1930,7 @@ describe('context GC planner', () => {
     expect(reclaimed(true)).toBeGreaterThan(0);
   });
 
-  it('does not invest when pending tool results already consume the recovered capacity', () => {
+  it('keeps the pending-result projection diagnostic rather than an economic veto', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -1931,7 +1945,10 @@ describe('context GC planner', () => {
       callId: 'large-pending-result',
       content: 'new result '.repeat(8_000)
     });
-    expect(plan(fixture.values)).toBeUndefined();
+    const selected = plan(fixture.values);
+    expect(selected).toBeDefined();
+    expect(selected!.metrics.projectedTokensAfterGc).toBeGreaterThanOrEqual(8_500);
+    expect(selected!.metrics.projectedRolloutsUntilCompactAfterGc).toBe(0);
   });
 
   it('applies a cumulative checkpoint without changing the raw records', () => {
