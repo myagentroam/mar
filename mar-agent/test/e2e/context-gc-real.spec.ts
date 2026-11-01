@@ -317,13 +317,11 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
     expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThan(0);
     const usage = checkpoint!.payload.trigger.contextInputTokens;
     const window = checkpoint!.payload.trigger.contextWindowTokens;
-    const minimumRate = Math.max(0.1, 0.2 - (Math.max(0, usage / window - 0.7) / 0.15) * 0.1);
-    expect(checkpoint!.payload.metrics.grossReductionRate).toBeGreaterThanOrEqual(minimumRate);
-    expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThanOrEqual(window * 0.05);
+    expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThanOrEqual(
+      Math.ceil(window / 20)
+    );
     const payback = checkpoint!.payload.metrics.requiredPositiveNetRollouts!;
-    expect(
-      usage <= 0.8 * window ? payback <= 20 : payback * (85 * window - 100 * usage) <= 100 * window
-    ).toBe(true);
+    expect(payback).toBeLessThanOrEqual(30 + (30 * (usage / window - 0.5)) / 0.35);
     expect(checkpoint!.payload.trigger.contextWindowTokens).toBe(contextWindowTokens);
     expect(checkpoint!.payload.trigger.contextInputTokens).toBeGreaterThanOrEqual(gcStartTokens);
     expect(checkpoint!.payload.trigger.contextInputTokens).toBeLessThan(compactThresholdTokens);

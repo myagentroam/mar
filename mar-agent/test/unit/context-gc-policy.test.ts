@@ -5,9 +5,6 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
-  contextGcAppliedCompactCreditCostUnits,
-  contextGcImminentCompactAvoidanceCredit,
-  contextGcMinimumGrossReductionRate,
   contextGcMinimumReclaimedTokens,
   evaluateContextGcEconomics,
   inspectContextGc,
@@ -520,7 +517,7 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
           cacheEconomics.mock.calls.some(
             ([, before, after, cacheRead, reclaimed]) =>
               cacheRead === 0 &&
-              reclaimed >= contextGcMinimumReclaimedTokens(6_000, 10_000) &&
+              reclaimed >= contextGcMinimumReclaimedTokens(10_000) &&
               before.some((message) => message.callId === 'low-growth') &&
               after.some(
                 (message) =>
@@ -1010,18 +1007,39 @@ describe('context GC high-water policy', () => {
     }
   );
 
-  it('decreases only the high-water gross threshold and keeps a window-relative floor', () => {
-    expect(contextGcMinimumGrossReductionRate(0.5)).toBe(0.2);
-    expect(contextGcMinimumGrossReductionRate(0.7)).toBe(0.2);
-    expect(contextGcMinimumGrossReductionRate(0.8)).toBeCloseTo(2 / 15);
-    expect(contextGcMinimumGrossReductionRate(0.85)).toBeCloseTo(0.1);
-    expect(contextGcMinimumGrossReductionRate(0.9)).toBeCloseTo(0.1);
-
-    expect(contextGcMinimumReclaimedTokens(7_000, 10_000)).toBe(1_400);
-    expect(contextGcMinimumReclaimedTokens(8_000, 10_000)).toBe(1_067);
-    expect(contextGcMinimumReclaimedTokens(8_800, 10_000)).toBe(880);
-    expect(contextGcMinimumReclaimedTokens(1_000, 10_000)).toBe(500);
+  it('uses the fixed window-relative threshold', () => {
+    expect(contextGcMinimumReclaimedTokens(10_000)).toBe(500);
+    expect(contextGcMinimumReclaimedTokens(100_003)).toBe(5_001);
   });
+
+  it.each([
+    [600, undefined],
+    [700, 1]
+  ])(
+    'uses the fixed threshold for a protected candidate retry hint (%i lines)',
+    (length, retry) => {
+      const fixture = records();
+      addTerminalExec(fixture, 'protected', 'line '.repeat(length));
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
+      const projection = buildContextProjection(fixture.values);
+      const inspection = inspectContextGc({
+        records: fixture.values,
+        messages: projection.entries.map((entry) => entry.message),
+        messageSources: projection.entries.map((entry) => entry.record),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        modelProtocol: 'OPENAI_RESPONSES',
+        contextWindowTokens: 10_000,
+        usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      });
+      expect(inspection.plan).toBeUndefined();
+      expect(inspection.retryAfterRollouts).toBe(retry);
+    }
+  );
 
   it('uses the whole-plan gross gate rather than a per-exec size threshold', () => {
     const fixture = records();
@@ -1134,9 +1152,18 @@ describe('context GC high-water policy', () => {
 
   it('does not collect a medium terminal output that fails the aggregate gross gate', () => {
     const fixture = records();
-    addTerminalExec(fixture, 'only-medium', 'line '.repeat(700));
+    addTerminalExec(fixture, 'only-medium', 'line '.repeat(600));
     for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
     expect(plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 })).toBeUndefined();
+  });
+
+  it('collects a single mature terminal output when it clears the window threshold', () => {
+    const fixture = records();
+    addTerminalExec(fixture, 'only-medium', 'line '.repeat(700));
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+    const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
+    expect(selected?.metrics.reclaimedTokens).toBeGreaterThanOrEqual(500);
+    expect(selected?.draft.replacements.some((item) => item.kind === 'EXEC_OUTPUT')).toBe(true);
   });
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'])(
@@ -1281,7 +1308,7 @@ describe('context GC high-water policy', () => {
     );
   });
 
-  it('never accepts a zero-token reclaim even with a zero override and Compact credit', () => {
+  it('never accepts a zero-token reclaim', () => {
     expect(
       evaluateContextGcEconomics({
         contextUsageTokens: 8_800,
@@ -1289,17 +1316,12 @@ describe('context GC high-water policy', () => {
         reclaimedTokens: 0,
         reclaimedCachedTokens: 0,
         cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0,
-        compactDeferralCreditCostUnits: 7_040,
-        projectedRolloutsUntilCompactAfterGc: 20,
-        contextGrowthSampleCount: 16,
-        minimumGrossReductionRate: 0,
-        minimumReclaimedTokens: 0
+        preservedCachedPrefixTokens: 0
       }).passes
     ).toBe(false);
   });
 
-  it('does not let imminent Compact credit admit an uneconomic plan', () => {
+  it('keeps projections diagnostic and rejects an uneconomic plan', () => {
     const fixture = records();
     addPatchCandidate(fixture);
     for (let usage = 7_500; usage <= 8_400; usage += 100)
@@ -1311,7 +1333,7 @@ describe('context GC high-water policy', () => {
     };
 
     const beforePending = plan(fixture.values, usage);
-    expect(beforePending?.metrics.imminentCompactAvoidanceCreditCostUnits ?? 0).toBe(0);
+    expect(beforePending?.metrics.appliedCompactCreditCostUnits).toBeUndefined();
 
     modelContext(fixture.add, {
       role: 'tool',
@@ -1322,52 +1344,11 @@ describe('context GC high-water policy', () => {
     const selected = plan(fixture.values, { ...usage, cacheReadTokens: 0 });
 
     expect(selected?.metrics.grossReductionRate).toBeGreaterThan(0.1066666667);
-    expect(selected?.metrics.effectiveMinimumGrossReductionRate).toBeCloseTo(0.1066666667);
-    expect(selected?.metrics.minimumRequiredReclaimedTokens).toBe(896);
+    expect(selected?.metrics.minimumRequiredReclaimedTokens).toBe(500);
     expect(selected?.metrics.projectedTokensBeforeGc).toBeGreaterThanOrEqual(8_500);
     expect(selected?.metrics.projectedTokensAfterGc).toBeLessThanOrEqual(8_000);
-    expect(selected?.metrics.imminentCompactAvoidanceCreditCostUnits).toBe(6_720);
-    expect(selected?.metrics.appliedCompactCreditCostUnits).toBe(0);
+    expect(selected?.metrics.appliedCompactCreditCostUnits).toBeUndefined();
     expect(selected?.metrics.requiredPositiveNetRollouts).toBeGreaterThan(0);
-  });
-
-  it('rejects imminent Compact credit unless every high-water safety condition holds', () => {
-    const base = {
-      contextUsageTokens: 8_800,
-      contextWindowTokens: 10_000,
-      compactThresholdTokens: 9_000,
-      projectedTokensBeforeGc: 9_100,
-      projectedTokensAfterGc: 8_500,
-      contextGrowthP75Tokens: 100
-    };
-
-    expect(contextGcImminentCompactAvoidanceCredit(base)).toBe(7_040);
-    expect(
-      contextGcImminentCompactAvoidanceCredit({
-        ...base,
-        contextGrowthP75Tokens: 0
-      })
-    ).toBe(0);
-    expect(
-      contextGcImminentCompactAvoidanceCredit({
-        ...base,
-        projectedTokensBeforeGc: 8_999
-      })
-    ).toBe(0);
-    expect(
-      contextGcImminentCompactAvoidanceCredit({
-        ...base,
-        projectedTokensAfterGc: 8_501
-      })
-    ).toBe(0);
-    expect(
-      contextGcImminentCompactAvoidanceCredit({
-        ...base,
-        contextUsageTokens: 9_000
-      })
-    ).toBe(0);
-    expect(contextGcAppliedCompactCreditCostUnits(2_000, 7_040)).toBe(7_040);
-    expect(contextGcAppliedCompactCreditCostUnits(8_000, 7_040)).toBe(8_000);
   });
 });
 
@@ -1459,6 +1440,23 @@ describe('unified inline media GC', () => {
       expect(selected).toMatchObject({ stage: 'INLINE_MEDIA', draft: { replacements: [] } });
     }
   });
+
+  it.each(['size', 'protection', 'payback'] as const)(
+    'does not let image pressure relax the text %s gate',
+    async (gate) => {
+      const { fixture, candidate } = await mediaFixture();
+      if (gate === 'size') addTerminalExec(fixture, 'small', 'line '.repeat(600));
+      else addPatchCandidate(fixture);
+      for (let i = 0; i < (gate === 'protection' ? 9 : 10); i++)
+        successfulRollout(fixture.add, 6_000);
+      const usage = { contextInputTokens: 6_000, cacheReadTokens: gate === 'payback' ? 6_000 : 0 };
+      expect(plan(fixture.values, usage)).toBeUndefined();
+      for (const reason of ['SOFT_LIMIT', 'HARD_LIMIT'] as const) {
+        const selected = plan(fixture.values, usage, { inlineMedia: { ...candidate!, reason } });
+        expect(selected).toMatchObject({ stage: 'INLINE_MEDIA', draft: { replacements: [] } });
+      }
+    }
+  );
 
   it('persists media pressure even when there is no finite text-cache payback', async () => {
     const { fixture, candidate } = await mediaFixture(3 * 1_048_576);
