@@ -20,7 +20,7 @@ const aborts = ref(0);
 const selected = ref('');
 let settleSnapshot: ((fail: boolean) => void) | undefined;
 const session = {
-  id: rootOnly ? 'parent' : 'child',
+  id: query.has('long-id') ? 'session-'.repeat(40) : rootOnly ? 'parent' : 'child',
   externalSessionId: rootOnly ? 'parent' : 'child',
   runner: 'mar-agent',
   sessionGroup: rootOnly ? 'MAIN' : 'CHILD'
@@ -45,7 +45,7 @@ createTooltipApp({
             h(Tree, {
               nodeId: 'node',
               workspaceId: 'workspace',
-              sessionId: rootOnly ? 'parent' : 'child',
+              sessionId: session.id,
               request: async <T>(_path: string, init?: RequestInit) => {
                 requests.value++;
                 if (query.has('delayed') && requests.value === 1) {
