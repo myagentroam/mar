@@ -3583,6 +3583,7 @@ export function createWorkbenchPageController<
     loadingMoreWorkspaceSessions: loadingMoreVisibleWorkspaceSessions,
     loadingOlderConversation,
     loadingInitialConversation: workbenchSessionSelectionService.loadingInitialContent,
+    synchronizingInitialConversation: loadingInitialConversation,
     initialConversationLoadFailed,
     loadingWorkspaceDirectory,
     pendingWorkspaceDirectoryName,

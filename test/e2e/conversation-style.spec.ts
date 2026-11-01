@@ -597,8 +597,12 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('older-requests')).toHaveText('0');
 
       await region.hover();
+      const bottomTop = await region.evaluate((element) => element.scrollTop);
       await page.mouse.wheel(0, -300);
       await expect(page.getByTestId('following')).toHaveText('false');
+      await expect
+        .poll(() => region.evaluate((element) => element.scrollTop))
+        .toBeCloseTo(bottomTop - 300, 0);
       const readingTop = await region.evaluate((el) => el.scrollTop);
       await page.getByTestId('grow-content').click();
       await page.getByTestId('finish-watch').click();

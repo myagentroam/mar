@@ -444,6 +444,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
                 :has-older="page.conversationNextCursor !== null"
                 :loading-initial="page.loadingInitialConversation"
+                :initial-sync-pending="page.synchronizingInitialConversation"
                 :initial-load-failed="page.initialConversationLoadFailed"
                 :loading-older="page.loadingOlderConversation"
                 :older-error="page.olderHistoryError"
