@@ -26,7 +26,7 @@ const { WebSocketServer } = createRequire(join(__dirname, '../../marctl/package.
 ) as typeof import('../../mar-node/node_modules/@types/ws/index.js');
 const cliPath = join(__dirname, '../../marctl/bin/marctl.mjs');
 
-async function fixture() {
+async function fixture(title?: string) {
   const directory = await mkdtemp(join(tmpdir(), 'marctl-agent-network-'));
   vi.stubEnv('HOME', directory);
   vi.stubEnv('USERPROFILE', directory);
@@ -92,6 +92,7 @@ async function fixture() {
     runner: 'codex',
     externalSessionId: 'network-thread',
     nativeControl: 'MAR_MANAGED',
+    customTitle: title ?? null,
     parentSessionId: coordinator.id,
     cwd: directory
   });
@@ -181,6 +182,43 @@ async function fixture() {
 }
 
 describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
+  it('lists active Sessions from an authenticated terminal without inventing a source', async () => {
+    const h = await fixture('Ｎｅｔｗｏｒｋ Task');
+    try {
+      expect(await h.command('list')).toEqual({
+        currentAgentId: null,
+        sessions: [],
+        truncated: false
+      });
+      await h.command('send', h.session.id, '--queue', '-m', 'Public work');
+      await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
+      const listed = await h.command(
+        'list',
+        '--scope',
+        'active',
+        '--query',
+        'network task',
+        '--limit',
+        '1'
+      );
+      expect(listed).toEqual({
+        currentAgentId: null,
+        sessions: [
+          {
+            id: h.session.id,
+            parentSessionId: h.session.parentSessionId,
+            title: 'Ｎｅｔｗｏｒｋ Task',
+            status: 'RUNNING'
+          }
+        ],
+        truncated: false
+      });
+      h.finish('turn-1');
+    } finally {
+      await h.close();
+    }
+  });
+
   it('sets persistent instructions and reads their latest value when queued input executes', async () => {
     const h = await fixture();
     try {

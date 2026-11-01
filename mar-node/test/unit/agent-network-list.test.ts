@@ -156,6 +156,77 @@ describe('native Agent Network list', () => {
     expect(f.runtime.activeSessionRun(source.id)).toBeUndefined();
   });
 
+  it('reuses registered tree metadata without per-session database or idle content reads', async () => {
+    const f = await fixture();
+    const source = f.create('source');
+    for (let index = 0; index < 64; index++) {
+      const suffix = index.toString().padStart(3, '0');
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: `registered-${suffix}`,
+        workspaceId: f.workspace.id,
+        customTitle: `Registered ${suffix}`,
+        parentSessionId: source.id,
+        initializeParent: true
+      });
+    }
+    const records = vi.spyOn(f.database, 'getSessionRecord');
+    const workspaces = vi.spyOn(f.database, 'getWorkspace');
+    const content = vi.spyOn(f.runtime, 'conversationTail');
+    const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
+    expect(await f.list(source, { query: 'Registered 063', limit: 1 })).toEqual({
+      currentAgentId: source.id,
+      sessions: [
+        {
+          id: 'registered-063',
+          parentSessionId: source.id,
+          title: 'Registered 063',
+          status: 'IDLE'
+        }
+      ],
+      truncated: false
+    });
+    expect(records).not.toHaveBeenCalled();
+    expect(workspaces.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(content).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+  });
+
+  it('keeps runtime and discovered native facts ahead of persisted list metadata', async () => {
+    const f = await fixture();
+    const source = f.create('source');
+    f.create('live', source.id, 'Runtime title');
+    for (const id of ['live', 'native'])
+      f.database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: id,
+        workspaceId: f.workspace.id,
+        customTitle: 'Persisted title',
+        parentSessionId: source.id,
+        initializeParent: true
+      });
+    f.nativeSessionProjectionService.remember([
+      {
+        ...source,
+        id: 'native',
+        externalSessionId: 'native',
+        nativeControl: 'EXTERNAL',
+        parentSessionId: source.id,
+        customTitle: 'Cached native title',
+        lastActivityAt: 1000
+      }
+    ]);
+    expect(await f.list(source, { query: 'Runtime title' })).toMatchObject({
+      sessions: [{ id: 'live', title: 'Runtime title' }],
+      truncated: false
+    });
+    expect(await f.list(source, { query: 'Cached native title' })).toMatchObject({
+      sessions: [{ id: 'native', title: 'Cached native title' }],
+      truncated: false
+    });
+    expect(await f.list(source, { query: 'Persisted title' })).toMatchObject({ sessions: [] });
+  });
+
   it('includes registered idle ancestors and descendants without discovering Runner sessions', async () => {
     const f = await fixture();
     for (const [id, parentSessionId] of [

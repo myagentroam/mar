@@ -60,6 +60,44 @@ function fixture(start = true) {
 }
 
 describe('bounded marctl Session views', () => {
+  it('projects status without reading message or command bodies', () => {
+    const { runtime, session, emit } = fixture();
+    const message = { text: 'Public progress' };
+    const command = { command: 'pnpm test' };
+    emit('message', 'assistant_message', 'COMPLETED', message);
+    emit('command', 'command_execution', 'IN_PROGRESS', command);
+    const text = vi.fn(() => 'Public progress');
+    const source = vi.fn(() => 'pnpm test');
+    const items = runtime.conversationTail(session.id)[0]!.items;
+    Object.defineProperty(
+      items.find((item) => item.kind === 'assistant_message')!.payload,
+      'text',
+      {
+        get: text
+      }
+    );
+    Object.defineProperty(
+      items.find((item) => item.kind === 'command_execution')!.payload,
+      'command',
+      {
+        get: source
+      }
+    );
+    expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
+    expect(text).not.toHaveBeenCalled();
+    expect(source).not.toHaveBeenCalled();
+  });
+
+  it('does not inspect retained content to determine cancelling or idle status', () => {
+    const { runtime, session, run } = fixture();
+    runtime.transitionRun(run.id, 'CANCELLING');
+    const content = vi.spyOn(runtime, 'conversationTail');
+    expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
+    runtime.finishRun(run.id, 'INTERRUPTED');
+    expect(sessionActivityStatus(runtime, session.id)).toBe('IDLE');
+    expect(content).not.toHaveBeenCalled();
+  });
+
   it('projects only live pending approvals with public Run IDs and no raw input', () => {
     const { runtime, session, run, detail, emit } = fixture(false);
     const execution = runtime.createExecution(run.id);
@@ -300,7 +338,7 @@ describe('bounded marctl Session views', () => {
   it.each(['COMPLETED', 'FAILED', 'INTERRUPTED'])(
     'leaves sleeping after a tool becomes %s',
     (state) => {
-      const { emit, detail } = fixture();
+      const { runtime, session, emit, detail } = fixture();
       const payload = {
         toolName: 'sleep',
         toolPresentation: {
@@ -311,8 +349,10 @@ describe('bounded marctl Session views', () => {
       };
       emit('sleep', 'tool_call', 'IN_PROGRESS', payload);
       expect(detail().status).toBe('SLEEPING');
+      expect(sessionActivityStatus(runtime, session.id)).toBe('SLEEPING');
       emit('sleep', 'tool_call', state, payload);
       expect(detail()).toMatchObject({ status: 'RUNNING', recentTools: [{ state }] });
+      expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
     }
   );
 
@@ -425,6 +465,7 @@ describe('bounded marctl Session views', () => {
       }))
     );
     expect(detail()).toMatchObject({ status: 'RUNNING', recentTools: [] });
+    expect(sessionActivityStatus(runtime, session.id)).toBe('RUNNING');
     tail.mockRestore();
     const restarted = new NodeRuntimeState(
       () => 'node',
