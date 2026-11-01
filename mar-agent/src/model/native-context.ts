@@ -1,9 +1,9 @@
 import { anthropicThinkingBlock } from './anthropic-thinking.js';
 import type { ModelMessage } from './contracts.js';
 
-/** Adapters persist native items at completion; GC needs only their type and identity. */
+/** Adapters persist native items at completion; consumers need only type and identity. */
 export function completedNativeThinkingIdentity(
-  payload: Record<string, unknown>,
+  payload: { role?: unknown; provider?: unknown; item?: unknown },
   recordId: string
 ): string | undefined {
   if (payload.role !== 'provider') return undefined;

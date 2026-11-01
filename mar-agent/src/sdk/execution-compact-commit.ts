@@ -3,6 +3,7 @@ import type { SessionModelMessage } from '../session/model-request.js';
 import type { SessionRecord } from '../session/record-contract.js';
 import type { SessionStore, SessionStoreCompactInput } from '../session/store/contracts.js';
 import type { ResourceInputProjection } from './resource-input.js';
+import { compactRetainedStart } from '../runtime/compaction/retained-context.js';
 
 /** Commits one validated snapshot and records its fact before fallible live projection. */
 export async function commitExecutionCompaction(input: {
@@ -11,9 +12,12 @@ export async function commitExecutionCompaction(input: {
   readonly signal: AbortSignal;
   readonly prefix: readonly SessionModelMessage[];
   readonly messages: readonly SessionModelMessage[];
+  readonly model: Parameters<typeof compactRetainedStart>[2];
   readonly generation: string | undefined;
   readonly messageSources: WeakMap<SessionModelMessage, SessionRecord>;
-  draft(): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
+  draft(
+    retainedStart: number
+  ): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
   readonly checkpoint: ResourceInputProjection['checkpoint'];
   readonly withProjection: <T>(action: () => Promise<T>) => Promise<T>;
   readonly currentGeneration: () => string | undefined;
@@ -27,15 +31,17 @@ export async function commitExecutionCompaction(input: {
       input.prefix.some((message, index) => input.messages[index] !== message)
     )
       throw new AgentError('MAR_AGENT_COMPACT_STALE', 'The compaction prefix has changed.');
+    const retainedStart = compactRetainedStart(input.messages, input.prefix.length, input.model);
+    if (retainedStart === 0) return undefined;
     const retained = input.messages
-      .slice(input.prefix.length)
+      .slice(retainedStart)
       .filter((message) => message.contextKind !== 'private' || message.role === 'provider');
     const retainedModelContext = retained.map((message) => {
       const source = input.messageSources.get(message);
       const saved =
         source?.type === 'model.context' && (source.payload as Record<string, unknown>).inputRef
           ? source.payload
-          : source?.type === 'compact.completed'
+          : source?.type === 'compact.completed' && message.metadata?.recordId !== undefined
             ? (
                 (source.payload as { retainedModelContext?: Record<string, unknown>[] })
                   .retainedModelContext ?? []
@@ -56,7 +62,7 @@ export async function commitExecutionCompaction(input: {
     const record = await input.store.compact(
       input.sessionId,
       {
-        ...input.draft(),
+        ...input.draft(retainedStart),
         inlineMediaState: input.checkpoint(retained),
         retainedModelContext
       },

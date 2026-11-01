@@ -504,11 +504,19 @@ describe('Anthropic native thinking context', () => {
       expect(JSON.stringify(requests.at(-1).messages)).not.toContain(signed.signature);
       expect((await session.compact().result()).status).toBe('completed');
       expect(JSON.stringify(requests.at(-1))).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
-      expect((await session.run({ prompt: 'After compact.' }).result()).status).toBe('completed');
-      expect(JSON.stringify(requests.at(-1))).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
+      const continued = session.run({ prompt: 'After compact.' });
+      for await (const event of continued) publicEvents.push(event);
+      expect((await continued.result()).status).toBe('completed');
+      const native = requests
+        .at(-1)
+        .messages.flatMap((message) => (Array.isArray(message.content) ? message.content : []));
+      expect(
+        native.filter((block) => block.type === 'thinking' || block.type === 'redacted_thinking')
+      ).toEqual([signed, redacted]);
     } finally {
       await agent.dispose();
     }
+    expect(JSON.stringify(publicEvents)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
     const store = await JsonlSessionStore.open(home);
     try {
       const records = await store.read(id);
@@ -519,9 +527,21 @@ describe('Anthropic native thinking context', () => {
             (record.payload as { readonly provider?: unknown }).provider === 'ANTHROPIC_MESSAGES'
         )
       ).toHaveLength(2);
-      expect(JSON.stringify(records.filter((r) => r.type !== 'model.context'))).not.toMatch(
-        /SIGNATURE_PRIVATE|REDACTED_PRIVATE/
-      );
+      const checkpoint = records.findLast((record) => record.type === 'compact.completed')!;
+      const { retainedModelContext, ...summaryState } = checkpoint.payload as {
+        retainedModelContext: { role: string; item?: unknown }[];
+      };
+      expect(
+        retainedModelContext
+          .filter((message) => message.role === 'provider')
+          .map((message) => message.item)
+      ).toEqual([signed, redacted]);
+      expect(JSON.stringify(summaryState)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
+      expect(
+        JSON.stringify(
+          records.filter((r) => r.type !== 'model.context' && r.type !== 'compact.completed')
+        )
+      ).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
     } finally {
       await store.close();
     }
