@@ -343,7 +343,7 @@ describe('context GC runtime integration', () => {
     }
   });
 
-  it.each([0, 4_999, 9_000, 10_000, NaN])(
+  it.each([0, 4_999, 8_500, 9_000, 10_000, NaN])(
     'does not read history or acquire resources outside the GC window: %s',
     async (contextInputTokens) => {
       const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-preflight-'));
@@ -857,8 +857,12 @@ describe('context GC runtime integration', () => {
       // Learn the durable checkpoint once, then reject before history and resource I/O.
       expect(readState).toHaveBeenCalledTimes(1);
       expect(getActiveProcessIds).not.toHaveBeenCalled();
-      // Normal rollouts behind the growth gate still consume the scheduling interval.
-      await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_800 } });
+      // Below the async Compact boundary the 2,000-token growth gate still applies.
+      await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_400 } });
+      expect(readState).toHaveBeenCalledTimes(1);
+      // Rollouts still accumulate until the independent six-rollout interval expires.
+      for (let i = 0; i < 5; i++)
+        await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_400 } });
       expect(readState).toHaveBeenCalledTimes(2);
       runtime.reset();
       await runtime.run(runtimeInput);

@@ -19,6 +19,7 @@ import { compactSnapshotAnchor } from '../../src/runtime/compaction/retained-con
 import { effectiveInstructions } from './support/model-context.js';
 import { captureExecutionContext } from './support/checkpoint-context.js';
 import * as worldState from '../../src/runtime/context/world-state.js';
+import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
 
 const configuration: AgentModelConfiguration = {
   id: 'test',
@@ -589,6 +590,7 @@ describe('asynchronous Compact', () => {
     );
     await writeFile(join(f.home, 'workspace', 'AGENTS.md'), 'PRIVATE_CONTEXT_MARKER');
     await f.session.run({ prompt: 'Seed objective' }).result();
+    const gcRun = vi.spyOn(ContextGcRuntime.prototype, 'run');
     const seedAnswer = f.host.events.find(
       (event) => event.type === 'message.completed' && event.text === 'seed-answer'
     );
@@ -606,6 +608,7 @@ describe('asynchronous Compact', () => {
     );
     expect(f.requests).toHaveLength(3);
     expect(f.generations()).toBe(1);
+    expect(gcRun).not.toHaveBeenCalled();
     expect(
       f.host.events.find(
         (event) => event.type === 'context.compacting' && event.stage === 'GENERATING'

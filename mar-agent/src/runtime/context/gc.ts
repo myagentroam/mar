@@ -291,19 +291,13 @@ function finalizePlan(
     compactDeferralCreditCostUnits: evaluated.compactDeferralCreditCostUnits,
     imminentCompactAvoidanceCreditCostUnits: evaluated.imminentCompactAvoidanceCreditCostUnits,
     appliedCompactCreditCostUnits: evaluated.appliedCompactCreditCostUnits,
-    requiredPositiveNetRollouts: Number.isFinite(evaluated.economics.requiredPositiveNetRollouts)
-      ? evaluated.economics.requiredPositiveNetRollouts
-      : null,
-    requiredTargetRoiRollouts: Number.isFinite(evaluated.economics.requiredTargetRoiRollouts)
-      ? evaluated.economics.requiredTargetRoiRollouts
-      : null,
+    requiredPositiveNetRollouts: evaluated.economics.requiredPositiveNetRollouts,
     projectedRolloutsUntilCompactAfterGc: evaluated.projectedRolloutsUntilCompactAfterGc,
     projectedTokensBeforeGc: evaluated.projectedTokensBeforeGc,
     projectedTokensAfterGc: evaluated.projectedTokensAfterGc,
     contextGrowthSampleCount: evaluated.contextGrowthSamples.length,
     contextGrowthP75Tokens: evaluated.contextGrowthP75Tokens,
     expectedNetSavedCostUnits: evaluated.economics.expectedNetSavedCostUnits,
-    cacheInvestmentRoi: evaluated.economics.cacheInvestmentRoi,
     minimumObservedRollouts: evaluated.minimumObservedRollouts,
     protectedCandidateTokens: evaluated.protectedCandidateTokens,
     eligibleCandidateCount: evaluated.eligibleCandidateCount,
@@ -402,7 +396,6 @@ function evaluateCandidateSet(
     Math.max(0, input.usage.outputTokens ?? 0) + contextGcMessageTokens(input, pendingMessages);
   const projectedTokensBeforeGc = state.contextUsageTokens + pendingTokens;
   const projectedTokensAfterGc = Math.max(0, projectedTokensBeforeGc - reclaimedTokens);
-  if (!state.mediaOnly && projectedTokensAfterGc >= compactThresholdTokens) return undefined;
   const projectedRolloutsUntilCompactAfterGc =
     contextGrowthP75Tokens <= 0
       ? 0
@@ -430,6 +423,7 @@ function evaluateCandidateSet(
   );
   const economics = evaluateContextGcEconomics({
     contextUsageTokens: state.contextUsageTokens,
+    contextWindowTokens: input.contextWindowTokens,
     reclaimedTokens,
     reclaimedCachedTokens: cache.reclaimedCachedTokens,
     cacheReadTokens: input.usage.cacheReadTokens ?? 0,
@@ -556,15 +550,8 @@ function compactDeferralCredit(
   const usage = compact.payload.usage;
   const contextInput = modelContextUsage(usage);
   const cacheRead = nonnegativeNumber(usage.cacheReadTokens);
-  const cacheWrite = nonnegativeNumber(usage.cacheWriteTokens);
   const output = nonnegativeNumber(usage.outputTokens);
-  if (
-    contextInput === undefined ||
-    cacheRead === undefined ||
-    cacheWrite === undefined ||
-    output === undefined
-  )
-    return 0;
+  if (contextInput === undefined || cacheRead === undefined || output === undefined) return 0;
   const baseline = firstMatchingUsageAfter(
     input.records,
     compact.sequence,
@@ -572,11 +559,10 @@ function compactDeferralCredit(
     input.contextWindowTokens
   );
   if (baseline === undefined || baseline >= compactThresholdTokens) return 0;
-  const fresh = Math.max(0, contextInput - cacheRead - cacheWrite);
+  const fresh = Math.max(0, contextInput - cacheRead);
   const compactCost =
     fresh * CONTEXT_GC_POLICY.normalInputCostRate +
     cacheRead * CONTEXT_GC_POLICY.cacheReadCostRate +
-    cacheWrite * CONTEXT_GC_POLICY.cacheWriteCostRate +
     output * CONTEXT_GC_POLICY.outputCostRate;
   const cycleCapacity = Math.max(1, compactThresholdTokens - baseline);
   return compactCost * clamp(reclaimedTokens / cycleCapacity, 0, 1);
