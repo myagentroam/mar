@@ -36,7 +36,7 @@ export const iconShapes = {
   collection:
     '<rect x="6.5" y="7" width="13.5" height="13.5" rx="2.2"/><path d="M16 4H5.5a2 2 0 0 0-2 2v10m6.75-5h6m-6 4h4"/>',
   'session-tree':
-    '<path d="M12 7.75v4.5M5.25 16.25v-4h13.5v4"/><rect x="9" y="2.75" width="6" height="5" rx="1.3"/><rect x="2.5" y="16.25" width="5.5" height="5" rx="1.3"/><rect x="16" y="16.25" width="5.5" height="5" rx="1.3"/>',
+    '<path d="M7 8v9a1.5 1.5 0 0 0 1.5 1.5H13M7 10a1.5 1.5 0 0 0 1.5 1.5H13"/><rect x="3" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="9" width="8" height="5" rx="1.5"/><rect x="13" y="16" width="8" height="5" rx="1.5"/>',
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',
