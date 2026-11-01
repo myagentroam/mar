@@ -36,6 +36,7 @@ export const workbenchCompositionEnUS = {
     },
     workbenchPresentationStateService: {
       contextWindow: 'Context Window: {value0}',
+      gcCount: 'GC: {value0} · {value1} tokens',
       stopping: 'Stopping · {value0}'
     },
     workbenchPageInteractionService: {

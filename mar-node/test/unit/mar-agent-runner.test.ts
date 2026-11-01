@@ -1670,10 +1670,45 @@ describe('MAR Agent Node Runner', () => {
       await expect(runner.readContextUsage(session)).resolves.toEqual({
         model: 'provider-coding',
         usedTokens: 12500,
-        maxTokens: 200000
+        maxTokens: 200000,
+        gcCount: 0,
+        gcReclaimedTokens: 0
       });
 
       const compacted = await JsonlSessionStore.open(home);
+      await compacted.append(native.id, {
+        type: 'context.gc.completed',
+        payload: {
+          generation: 1,
+          trigger: { usageSequence: 1, contextInputTokens: 12500, modelId: 'coding' },
+          metrics: { reclaimedTokens: 99999 }
+        }
+      });
+      await expect(runner.readContextUsage(session)).resolves.toMatchObject({
+        gcCount: 1,
+        usedTokens: 12500
+      });
+      await compacted.append(native.id, {
+        type: 'usage.updated',
+        payload: {
+          type: 'usage.updated',
+          eventId: 'post-gc-usage',
+          sequence: 2,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          sessionId: native.id,
+          executionId: 'execution',
+          inputTokens: 12000,
+          contextInputTokens: 12000
+        }
+      });
+      await expect(runner.readContextUsage(session)).resolves.toEqual({
+        model: 'provider-coding',
+        usedTokens: 12000,
+        maxTokens: 200000,
+        gcCount: 1,
+        gcReclaimedTokens: 500
+      });
+      await compacted.compact(native.id, { summary: 'Start a new GC counting window.' });
       await compacted.append(native.id, {
         type: 'context.compacted',
         payload: {
@@ -1712,7 +1747,9 @@ describe('MAR Agent Node Runner', () => {
       await expect(runner.readContextUsage(session)).resolves.toEqual({
         model: 'provider-coding',
         usedTokens: 0,
-        maxTokens: 200000
+        maxTokens: 200000,
+        gcCount: 0,
+        gcReclaimedTokens: 0
       });
 
       const retained = await JsonlSessionStore.open(home);

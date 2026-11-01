@@ -709,7 +709,11 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
         : {
             model: model.modelId,
             usedTokens: usage.inputTokens,
-            maxTokens: model.contextWindowTokens
+            maxTokens: model.contextWindowTokens,
+            gcCount: usage.gcCount,
+            ...(usage.gcReclaimedTokens === undefined
+              ? {}
+              : { gcReclaimedTokens: usage.gcReclaimedTokens })
           };
     } catch {
       return undefined;

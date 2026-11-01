@@ -23,6 +23,7 @@ import {
 } from '../../src/session/context-gc-replacements.js';
 import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
+import { openAgentSessionCatalog } from '../../src/sdk/session-catalog.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
@@ -1728,6 +1729,69 @@ describe('context GC checkpoint store', () => {
       expect(restored.contextRecords.at(-1)?.payload).toEqual({ prompt: 'Continue.' });
     } finally {
       await rewritten.close();
+    }
+  });
+
+  it('reports GC counts and measured input decreases and resets them at Compact', async () => {
+    const { store, session, draft } = await createFixture('GC count');
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    const reportUsage = (inputTokens: number) =>
+      store.append(session.id, {
+        type: 'usage.updated',
+        payload: {
+          type: 'usage.updated',
+          eventId: `usage-${inputTokens}`,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          sessionId: session.id,
+          executionId: 'execution',
+          inputTokens
+        }
+      });
+    try {
+      await store.commitContextGc(session.id, draft);
+      await reportUsage(5000);
+      const second = await appendPatchDraft(store, session.id, {
+        callId: 'patch-2',
+        path: 'src/b.ts',
+        contextInputTokens: 8000,
+        normalRolloutOrdinal: 20
+      });
+      await store.commitContextGc(session.id, second);
+      await reportUsage(7000);
+      expect(await catalog.contextUsage(session.id)).toMatchObject({
+        gcCount: 2,
+        gcReclaimedTokens: 2000
+      });
+      await store.compact(session.id, {
+        summary: 'A new count window.',
+        modelId: 'coding',
+        contextWindowTokens: 10000
+      });
+      expect(await catalog.contextUsage(session.id)).toMatchObject({
+        gcCount: 0,
+        gcReclaimedTokens: 0
+      });
+      const compact = (await store.readExecutionState(session.id)).contextRecords[0]!;
+      const nextWindow = await appendPatchDraft(store, session.id, {
+        callId: 'patch-after-compact',
+        path: 'src/c.ts',
+        contextInputTokens: 8000,
+        normalRolloutOrdinal: 10
+      });
+      await store.commitContextGc(session.id, {
+        ...nextWindow,
+        base: { type: 'COMPACT', sequence: compact.sequence, recordId: compact.recordId }
+      });
+      expect((await catalog.contextUsage(session.id))?.gcReclaimedTokens).toBeUndefined();
+      await reportUsage(7000);
+      expect(await catalog.contextUsage(session.id)).toMatchObject({
+        gcCount: 1,
+        gcReclaimedTokens: 1000
+      });
+    } finally {
+      await catalog.close();
+      await store.close();
     }
   });
 

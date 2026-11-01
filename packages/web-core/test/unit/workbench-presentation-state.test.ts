@@ -151,6 +151,22 @@ describe('Workbench context usage label', () => {
       expect(f.state.contextUsageLabel.value).toBe(expected);
       f.sessionContextUsage.value = { ...f.sessionContextUsage.value, model: null };
       expect(f.state.contextUsageLabel.value).toBe(expected);
+      f.sessionContextUsage.value = { ...f.sessionContextUsage.value, gcCount: 3 };
+      expect(f.state.contextUsageLabel.value).toBe(
+        `${expected}\n${locale === 'zh-CN' ? 'GC：3 次 · — tokens' : 'GC: 3 · — tokens'}`
+      );
+      f.sessionContextUsage.value = { ...f.sessionContextUsage.value, gcReclaimedTokens: 12345 };
+      expect(f.state.contextUsageLabel.value).toBe(
+        `${expected}\n${locale === 'zh-CN' ? 'GC：3 次 · 12345 tokens' : 'GC: 3 · 12345 tokens'}`
+      );
+      f.sessionContextUsage.value = {
+        ...f.sessionContextUsage.value,
+        gcCount: 0,
+        gcReclaimedTokens: 0
+      };
+      expect(f.state.contextUsageLabel.value).toBe(
+        `${expected}\n${locale === 'zh-CN' ? 'GC：0 次 · 0 tokens' : 'GC: 0 · 0 tokens'}`
+      );
       f.sessionContextUsage.value = null;
       expect(f.state.contextUsageLabel.value).toBe('');
     } finally {

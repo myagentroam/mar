@@ -385,6 +385,7 @@ test('Unified hints preserve keyboard actions, details and disabled semantics', 
   await compact.focus();
   const hint = page.locator('.mar-tooltip:visible');
   await expect(hint).toContainText('42000 of 100000');
+  await expect(hint).toContainText('GC: 3 · 12345 tokens');
   await expect(hint).toContainText(/click to compact/iu);
   await expect(compact).not.toHaveAttribute('title');
   await compact.press('Escape');
@@ -447,6 +448,7 @@ test('Touch Context details stay readable without stealing the compact action', 
     expect(point.disabled).toBe(false);
     await page.touchscreen.tap(point.x, point.y);
     await expect(hint).toContainText('42000 of 100000');
+    await expect(hint).toContainText('GC: 3 · 12345 tokens');
     await expect(hint).toContainText('currently unavailable');
     await expect(compact).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByRole('dialog', { name: 'Compact Context', exact: true })).toHaveCount(0);
@@ -458,6 +460,7 @@ test('Touch Context details stay readable without stealing the compact action', 
     const dialog = page.getByRole('dialog', { name: 'Compact Context', exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('42000 of 100000');
+    await expect(dialog).toContainText('GC: 3 · 12345 tokens');
     await expect(hint).toHaveCount(0);
     await expect(page.getByTestId('compact-count')).toHaveText('0');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).tap();

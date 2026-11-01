@@ -260,6 +260,8 @@ describe('Session append and directory index concurrency', () => {
         payload: { prompt: 'retained' },
         turnId: 'turn'
       });
+      // Force a partial segment replacement rather than reusing the entire retained segment.
+      await store.append(session.id, { type: 'context.gc.completed', payload: {} });
       const other = await openStore(home);
       const started = signal();
       const resume = signal();

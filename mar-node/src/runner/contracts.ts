@@ -125,6 +125,8 @@ export interface RunnerContextUsage {
   readonly model?: string | null;
   readonly usedTokens: number;
   readonly maxTokens: number;
+  readonly gcCount?: number;
+  readonly gcReclaimedTokens?: number;
 }
 
 export interface RunnerProjectionTitleInput {

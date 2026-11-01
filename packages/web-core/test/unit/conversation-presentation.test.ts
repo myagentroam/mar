@@ -1587,6 +1587,24 @@ describe('Conversation Show Aggregation', () => {
     const zero = { model: 'coding', usedTokens: 0, maxTokens: 200_000, percentage: 0 };
     expect(
       contextUsageAfterCompaction(
+        { kind: 'context_compaction', status: 'COMPLETED', payload: { retainedContext: false } },
+        { ...previous, gcCount: 3, gcReclaimedTokens: 12345 }
+      )
+    ).toEqual({ ...zero, gcCount: 0, gcReclaimedTokens: 0 });
+    expect(
+      contextUsageAfterCompaction(
+        { kind: 'context_compaction', status: 'COMPLETED', payload: { retainedContext: false } },
+        { ...previous, gcCount: 3 }
+      )
+    ).toEqual({ ...zero, gcCount: 0, gcReclaimedTokens: 0 });
+    for (const status of ['IN_PROGRESS', 'FAILED', 'CANCELLED']) {
+      const usage = { ...previous, gcCount: 3, gcReclaimedTokens: 12345 };
+      expect(
+        contextUsageAfterCompaction({ kind: 'context_compaction', status, payload: {} }, usage)
+      ).toBe(usage);
+    }
+    expect(
+      contextUsageAfterCompaction(
         { kind: 'context_compaction', status: 'COMPLETED', payload: { retainedContext: true } },
         previous
       )

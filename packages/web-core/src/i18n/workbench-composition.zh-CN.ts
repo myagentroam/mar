@@ -36,6 +36,7 @@ export const workbenchCompositionZhCN = {
     },
     workbenchPresentationStateService: {
       contextWindow: '上下文窗口：{value0}',
+      gcCount: 'GC：{value0} 次 · {value1} tokens',
       stopping: '正在停止 · {value0}'
     },
     workbenchPageInteractionService: {
