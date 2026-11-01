@@ -1,5 +1,4 @@
 import { createApp, defineAsyncComponent, defineComponent, h, type Component } from 'vue';
-import ElementPlus from 'element-plus';
 import App from '../../src/App.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { tooltipPlugin } from '../../src/directive/tooltip.js';
@@ -35,6 +34,5 @@ createApp(App, {
   })
 })
   .use(i18n)
-  .use(ElementPlus)
   .use(tooltipPlugin)
   .mount('#app');

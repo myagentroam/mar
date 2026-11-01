@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElPopover } from 'element-plus';
+import 'element-plus/es/components/popover/style/css';
 import type { SessionGroup } from '@myagentroam/protocol';
 import MarIcon from '../common/MarIcon.vue';
 import WorkbenchActivityPanel from './WorkbenchActivityPanel.vue';

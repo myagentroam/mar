@@ -1,4 +1,5 @@
 import { ElMessage, type MessageHandler } from 'element-plus';
+import 'element-plus/es/components/message/style/css';
 import { h, nextTick } from 'vue';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';

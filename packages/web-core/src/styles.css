@@ -754,51 +754,52 @@ html.console-ui :where(input, textarea)::placeholder {
   opacity: 1;
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__nav {
+/* Theme overrides must outrank component CSS loaded by an asynchronous page. */
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__nav {
   gap: 0.25rem;
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__nav-wrap {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__nav-wrap {
   /* Keep the existing divider below tab surfaces and keyboard focus. */
   padding-bottom: 2px;
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs > .el-tabs__header .el-tabs__item:nth-child(n) {
+:is(html.console-ui, .theme-preview) .el-tabs > .el-tabs__header .el-tabs__item:nth-child(n) {
   padding-inline: var(--mar-compact-option-padding-inline);
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__item {
   border-radius: var(--mar-radius-selection) var(--mar-radius-selection) 0 0;
   background-color: var(--mar-bg-subtle);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:not(.is-disabled):hover {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:not(.is-disabled):hover {
   background-color: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-active:not(.is-disabled) {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-active:not(.is-disabled) {
   background-color: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-disabled {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__item.is-disabled {
   color: var(--mar-text-faint);
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:focus-visible {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__item:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
   box-shadow: none;
 }
 
-:where(html.console-ui, .theme-preview) .el-tabs .el-tabs__active-bar {
+:is(html.console-ui, .theme-preview) .el-tabs .el-tabs__active-bar {
   display: none;
 }
 
-:where(html.console-ui, .theme-preview) .el-segmented {
+:is(html.console-ui, .theme-preview) .el-segmented {
   --el-segmented-color: var(--mar-text-secondary);
   --el-segmented-bg-color: var(--mar-bg-subtle);
   --el-segmented-item-selected-color: var(--mar-text-primary);
@@ -812,28 +813,28 @@ html.console-ui :where(input, textarea)::placeholder {
   font-size: var(--mar-font-size-body);
 }
 
-:where(html.console-ui, .theme-preview) .el-segmented .el-segmented__item.is-selected.is-disabled {
+:is(html.console-ui, .theme-preview) .el-segmented .el-segmented__item.is-selected.is-disabled {
   color: var(--mar-text-faint);
 }
 
-:where(html.console-ui, .theme-preview)
+:is(html.console-ui, .theme-preview)
   .el-segmented
   .el-segmented__item-selected.is-focus-visible::before {
   outline-color: var(--mar-color-brand);
 }
 
-:where(html.console-ui, .theme-preview) .el-dropdown-menu {
+:is(html.console-ui, .theme-preview) .el-dropdown-menu {
   --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
   --el-dropdown-menuItem-hover-color: var(--mar-text-primary);
   --el-text-color-disabled: var(--mar-text-faint);
 }
 
-:where(html.console-ui, .theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
+:is(html.console-ui, .theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
 }
 
-:where(html.console-ui, .theme-preview) .el-select {
+:is(html.console-ui, .theme-preview) .el-select {
   --el-border-color-hover: var(--mar-border-medium);
 }
 
@@ -843,22 +844,22 @@ html.console-ui :where(input, textarea)::placeholder {
   line-height: var(--mar-compact-control-size);
 }
 
-:where(html.console-ui, .theme-preview) .el-select-dropdown__item:not(.is-disabled) {
+:is(html.console-ui, .theme-preview) .el-select-dropdown__item:not(.is-disabled) {
   color: var(--mar-text-primary);
   font-weight: 400;
 }
 
-:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-hovering:not(.is-disabled) {
+:is(html.console-ui, .theme-preview) .el-select-dropdown__item.is-hovering:not(.is-disabled) {
   background-color: var(--mar-fill-row-hover);
 }
 
-:where(html.console-ui, .theme-preview) .el-select-dropdown__item.is-selected:not(.is-disabled) {
+:is(html.console-ui, .theme-preview) .el-select-dropdown__item.is-selected:not(.is-disabled) {
   background-color: var(--mar-fill-selection);
   color: var(--mar-text-primary);
   font-weight: 400;
 }
 
-:where(html.console-ui, .theme-preview)
+:is(html.console-ui, .theme-preview)
   .el-select-dropdown.is-multiple
   .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
   background-color: currentColor;

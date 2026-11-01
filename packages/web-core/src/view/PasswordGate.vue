@@ -3,6 +3,8 @@ import { marIcon } from '../util/mar-icons.js';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElButton, ElInput } from 'element-plus';
+import 'element-plus/es/components/button/style/css';
+import 'element-plus/es/components/input/style/css';
 const props = defineProps<{
   readonly password: string;
   readonly validationError: string;

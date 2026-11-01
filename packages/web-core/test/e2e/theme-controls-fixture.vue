@@ -5,11 +5,13 @@ import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue
 import { ref } from 'vue';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 const value = ref('');
 const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
 const menuAction = ref('');
+const sampleLoading = ref(true);
 const activeTab = ref('settings');
 const configurationScope = ref('node');
 const scopeOptions = [
@@ -226,6 +228,10 @@ function saveFeedbackDialog(): void {
         Save and close
       </button>
     </el-dialog>
+  </section>
+  <section aria-label="Loading directive sample">
+    <button type="button" @click="sampleLoading = !sampleLoading">Toggle sample loading</button>
+    <LoadingPanel :loading="sampleLoading" variant="region">Content</LoadingPanel>
   </section>
 </template>
 

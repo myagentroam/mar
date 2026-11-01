@@ -759,6 +759,7 @@ onBeforeUnmount(() => {
           @visible-change="refreshDraftTemplates"
         >
           <button
+            v-tooltip="menuTemplateLabel"
             class="hosted-template-trigger hosted-model-trigger"
             type="button"
             :disabled="templateSelectionDisabled"

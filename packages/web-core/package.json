@@ -296,6 +296,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",
+    "unplugin-vue-components": "^32.1.0",
     "vue-tsc": "^3.3.9",
     "@types/markdown-it": "^14.1.2"
   }
