@@ -93,15 +93,15 @@ export const workbenchPageEnUS = {
         'Create a new session branch before this user message and prefill it. The original session and workspace files will not change.',
       createANewSessionBranchThatRetains:
         'Create a new session branch that retains the complete turn containing this agent message. The original session and workspace files will not change.',
-      createFallbackBranch: 'Create Fallback Branch',
+      createSessionBranch: 'Create session branch',
       createBranch: 'Create branch',
       cancel: 'Cancel',
-      fallbackBranchCreated: 'Fallback branch created.',
-      fallbackBranchCreatedButLoadFailed:
-        'The fallback branch was created, but could not be opened: {value0}',
+      sessionBranchCreated: 'Session branch created.',
+      sessionBranchCreatedButLoadFailed:
+        'The session branch was created, but could not be opened: {value0}',
       rollbackCompletedButLoadFailed:
         'The conversation was rolled back, but could not be reloaded: {value0}',
-      unableToCreateAFallbackBranch: 'Unable to create a fallback branch: {value0}',
+      unableToCreateSessionBranch: 'Unable to create a session branch: {value0}',
       rollbackConversationWarning:
         'This permanently deletes this user message and all later conversation history in the current session. Workspace files are not rolled back, and the message will be restored to the composer.',
       rollbackConversation: 'Rollback Conversation',

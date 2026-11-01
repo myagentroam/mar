@@ -3,7 +3,11 @@ import { mkdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AgentError } from '../../../error.js';
 import { inlineMediaHistory } from '../../inline-media.js';
-import { copyToolResultResources } from '../../tool-result-resources.js';
+import {
+  prepareToolResultResources,
+  writeToolResultResourceIndex,
+  type ToolResourceLocator
+} from '../../tool-result-resources.js';
 import type { SessionMeta, SessionRecord } from '../types.js';
 import { syncJsonlDirectory } from './fs-durability.js';
 import { forkedPayload, stageSessionSegments } from './history.js';
@@ -77,6 +81,16 @@ export async function forkSessionOperation(
       }
     ];
     const retained = input.boundaryTurnId === null ? [] : records.slice(1, boundaryIndex + 1);
+    const resourcesByOwner = new Map<string, Array<{ resourceRef: string; bytes: Buffer }>>();
+    for (const [resourceRef, { owner, bytes }] of await prepareToolResultResources(
+      sourceDirectory,
+      retained
+    )) {
+      const resources = resourcesByOwner.get(owner) ?? [];
+      resources.push({ resourceRef, bytes });
+      resourcesByOwner.set(owner, resources);
+    }
+    const resourceLocators = new Map<string, ToolResourceLocator>();
     const inlineState = inlineMediaHistory(retained).state;
     const stateAnchor =
       inlineState &&
@@ -85,9 +99,39 @@ export async function forkSessionOperation(
       );
     const forkIdentities = new Map<string, { recordId: string; sequence: number }>();
     for (const record of retained) {
-      if (record.type === 'context.gc.completed' || record.type === 'responses.continuation')
+      if (
+        record.type === 'context.gc.completed' ||
+        record.type === 'responses.continuation' ||
+        record.type === 'tool.resource'
+      )
         continue;
+      const pendingLocators: Array<{ resourceRef: string; bodySequences: number[] }> = [];
+      for (const { resourceRef, bytes } of resourcesByOwner.get(record.recordId) ?? []) {
+        const bodySequences: number[] = [];
+        // Small private records share normal segment durability and rollback boundaries.
+        for (let offset = 0; offset < Math.max(1, bytes.length); offset += 1024 * 1024) {
+          const sequence = copied.length + 1;
+          bodySequences.push(sequence);
+          copied.push({
+            recordId: randomUUID(),
+            sequence,
+            sessionId: target.id,
+            type: 'tool.resource',
+            payload: {
+              resourceRef,
+              dataBase64: bytes.subarray(offset, offset + 1024 * 1024).toString('base64')
+            },
+            ...(record.executionId === undefined ? {} : { executionId: record.executionId }),
+            ...(record.turnId === undefined ? {} : { turnId: record.turnId }),
+            timestamp: record.timestamp
+          });
+        }
+        pendingLocators.push({ resourceRef, bodySequences });
+      }
+      resourcesByOwner.delete(record.recordId);
       const identity = { recordId: randomUUID(), sequence: copied.length + 1 };
+      for (const { resourceRef, bodySequences } of pendingLocators)
+        resourceLocators.set(resourceRef, { ...identity, bodySequences });
       forkIdentities.set(record.recordId, identity);
       copied.push({
         ...identity,
@@ -118,7 +162,7 @@ export async function forkSessionOperation(
     for (const file of staged.files) await rename(file.temporaryPath, file.path);
     target.segments = staged.segments;
     target.nextSequence = copied.length + 1;
-    await copyToolResultResources(sourceDirectory, targetDirectory, copied);
+    await writeToolResultResourceIndex(targetDirectory, resourceLocators);
     await copyGeneratedImages(sourceRoot, publication.directory, generatedImageFileNames(retained));
     await copyResources(sourceDirectory, targetDirectory, retained);
     for (const path of [

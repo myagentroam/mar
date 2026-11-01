@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { AgentError } from '../error.js';
 import {
   parseToolResultExtensions,
@@ -121,18 +121,8 @@ async function bindToolResultResource(
 ): Promise<void> {
   const path = join(directory, 'tool_results', `${resource.resourceRef}.json`);
   try {
-    await writeFile(
-      path,
-      JSON.stringify({ sequence: record.sequence, recordId: record.recordId }),
-      { flag: 'wx', mode: 0o600, flush: true }
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    try {
-      const locator = JSON.parse(await readFile(path, 'utf8')) as {
-        sequence: number;
-        recordId: string;
-      };
+    const locator = await readToolResourceLocator(path, resource.resourceRef);
+    if (locator !== undefined) {
       const existing =
         locator.sequence === record.sequence && locator.recordId === record.recordId
           ? record
@@ -147,14 +137,20 @@ async function bindToolResultResource(
         )
       )
         throw resourceError('CORRUPT', 'Tool resource locator conflicts with committed history.');
-    } catch (cause) {
-      throw normalizedResourceError(cause);
+      return;
     }
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw normalizedResourceError(cause);
   }
+  await writeFile(path, JSON.stringify({ sequence: record.sequence, recordId: record.recordId }), {
+    flag: 'wx',
+    mode: 0o600,
+    flush: true
+  });
 }
 
 export function toolResultResourceFiles(records: readonly SessionRecord[]): Set<string> {
-  return new Set(
+  const files = new Set(
     records.flatMap((record) =>
       recordToolResources(record).flatMap((resource) => [
         `${resource.resourceRef}.diff`,
@@ -162,40 +158,107 @@ export function toolResultResourceFiles(records: readonly SessionRecord[]): Set<
       ])
     )
   );
+  if (files.size > 0) files.add('index.json');
+  return files;
 }
 
-export async function copyToolResultResources(
+export interface ToolResourceLocator {
+  sequence: number;
+  recordId: string;
+  bodySequences?: number[];
+}
+
+export async function prepareToolResultResources(
   source: string,
-  target: string,
   records: readonly SessionRecord[]
-): Promise<void> {
-  const copied = new Set<string>();
+): Promise<Map<string, { owner: string; bytes: Buffer }>> {
+  type RetainedResource = { record: SessionRecord; resource: AvailableToolResultResource };
+  const resources = new Map<string, RetainedResource>();
   for (const record of records) {
     for (const resource of recordToolResources(record)) {
-      if (copied.has(resource.resourceRef)) continue;
-      copied.add(resource.resourceRef);
-      try {
-        const bytes = await readResourceBytes(source, resource);
-        const directory = join(target, 'tool_results');
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        await writeFile(join(directory, `${resource.resourceRef}.diff`), bytes, {
-          flag: 'wx',
-          mode: 0o600,
-          flush: true
-        });
-      } catch (error) {
-        if (error instanceof AgentError && error.code === 'MAR_AGENT_TOOL_RESOURCE_NOT_FOUND')
-          continue;
-        throw error;
-      }
-    }
-    if (recordToolResources(record).length) {
-      await mkdir(join(target, 'tool_results'), { recursive: true, mode: 0o700 });
-      await bindToolResultResources(target, record, async (sequence) =>
-        records.find((item) => item.sequence === sequence)
-      );
+      const previous = resources.get(resource.resourceRef);
+      if (previous && previous.resource.sha256 !== resource.sha256)
+        throw resourceError('CORRUPT', 'Tool resource locator conflicts with committed history.');
+      if (!previous) resources.set(resource.resourceRef, { record, resource });
     }
   }
+  const bodies = new Map<string, { owner: string; bytes: Buffer }>();
+  if (resources.size === 0) return bodies;
+  const bySequence = new Map(records.map((record) => [record.sequence, record]));
+  const pending = resources.values();
+  let failure: { error: unknown } | undefined;
+  const read = async () => {
+    while (!failure) {
+      const next = pending.next();
+      if (next.done) return;
+      const { record, resource } = next.value;
+      try {
+        const bytes = await readResourceBytes(source, resource, async (sequence) =>
+          bySequence.get(sequence)
+        );
+        bodies.set(resource.resourceRef, { owner: record.recordId, bytes });
+      } catch (error) {
+        if (!(error instanceof AgentError && error.code === 'MAR_AGENT_TOOL_RESOURCE_NOT_FOUND'))
+          failure ??= { error };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, resources.size) }, read));
+  if (failure) throw failure.error;
+  return bodies;
+}
+
+export async function writeToolResultResourceIndex(
+  target: string,
+  locators: ReadonlyMap<string, ToolResourceLocator>
+): Promise<void> {
+  if (locators.size === 0) return;
+  const directory = join(target, 'tool_results');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(
+    join(directory, 'index.json'),
+    JSON.stringify({ version: 1, locators: Object.fromEntries(locators) }),
+    {
+      flag: 'wx',
+      mode: 0o600,
+      flush: true
+    }
+  );
+}
+
+async function readToolResourceLocator(
+  path: string,
+  resourceRef: string
+): Promise<ToolResourceLocator | undefined> {
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    text = await readFile(join(dirname(path), 'index.json'), 'utf8');
+  }
+  const value = JSON.parse(text);
+  const locator = value?.version === 1 ? value.locators?.[resourceRef] : value;
+  if (value?.version === 1 && locator === undefined) return undefined;
+  if (
+    !Number.isSafeInteger(locator?.sequence) ||
+    locator.sequence < 1 ||
+    typeof locator.recordId !== 'string'
+  )
+    throw resourceError('CORRUPT', 'Invalid tool resource locator.');
+  if (
+    locator.bodySequences !== undefined &&
+    (!Array.isArray(locator.bodySequences) ||
+      locator.bodySequences.length === 0 ||
+      !locator.bodySequences.every(
+        (sequence: unknown) =>
+          Number.isSafeInteger(sequence) &&
+          (sequence as number) > 0 &&
+          (sequence as number) < locator.sequence
+      ))
+  )
+    throw resourceError('CORRUPT', 'Invalid tool resource body locator.');
+  return locator;
 }
 
 export async function completeToolResultResources(
@@ -256,19 +319,14 @@ export async function readToolResultResource(
       (!Number.isSafeInteger(input.maxBytes) || input.maxBytes < 4 || input.maxBytes > 256 * 1024))
   )
     throw resourceError('INPUT_INVALID', 'Invalid tool resource request.');
-  let locator: { sequence: number; recordId: string };
+  let locator: ToolResourceLocator | undefined;
   try {
     const file = join(directory, 'tool_results', `${input.resourceRef}.json`);
-    locator = JSON.parse(await readFile(file, 'utf8')) as typeof locator;
+    locator = await readToolResourceLocator(file, input.resourceRef);
   } catch (error) {
     throw normalizedResourceError(error);
   }
-  if (
-    !Number.isSafeInteger(locator.sequence) ||
-    locator.sequence < 1 ||
-    typeof locator.recordId !== 'string'
-  )
-    throw resourceError('CORRUPT', 'Invalid tool resource locator.');
+  if (locator === undefined) throw resourceError('NOT_FOUND', 'Tool resource is unavailable.');
   const record = await readRecord(locator.sequence);
   const resource =
     record?.recordId === locator.recordId
@@ -276,7 +334,7 @@ export async function readToolResultResource(
       : undefined;
   if (!resource)
     throw resourceError('NOT_FOUND', 'Tool resource is not part of this session history.');
-  const bytes = await readResourceBytes(directory, resource);
+  const bytes = await readResourceBytes(directory, resource, readRecord, locator);
   let offset = 0;
   if (input.cursor !== undefined) {
     try {
@@ -330,10 +388,38 @@ export async function readToolResultResource(
 
 async function readResourceBytes(
   directory: string,
-  resource: AvailableToolResultResource
+  resource: AvailableToolResultResource,
+  readRecord?: (sequence: number) => Promise<SessionRecord | undefined>,
+  knownLocator?: ToolResourceLocator
 ): Promise<Buffer> {
   try {
     return await readFile(join(directory, 'tool_results', `${resource.resourceRef}.diff`));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw normalizedResourceError(error);
+  }
+  try {
+    const locator =
+      knownLocator ??
+      (await readToolResourceLocator(
+        join(directory, 'tool_results', `${resource.resourceRef}.json`),
+        resource.resourceRef
+      ));
+    if (!locator?.bodySequences || !readRecord)
+      throw resourceError('NOT_FOUND', 'Tool resource is unavailable.');
+    const chunks: Buffer[] = [];
+    for (const sequence of locator.bodySequences) {
+      const record = await readRecord(sequence);
+      const payload = record?.payload as
+        { resourceRef?: unknown; dataBase64?: unknown } | undefined;
+      if (
+        record?.type !== 'tool.resource' ||
+        payload?.resourceRef !== resource.resourceRef ||
+        typeof payload.dataBase64 !== 'string'
+      )
+        throw resourceError('CORRUPT', 'Invalid tool resource body.');
+      chunks.push(Buffer.from(payload.dataBase64, 'base64'));
+    }
+    return Buffer.concat(chunks);
   } catch (error) {
     throw normalizedResourceError(error);
   }

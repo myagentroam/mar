@@ -35,6 +35,7 @@ const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
+const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
 const loadingFixture = new URL(location.href).searchParams.has('loading-lifecycle');
@@ -162,6 +163,26 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (historyActionsFixture) {
+  localePreferenceService().setLocale(
+    new URL(location.href).searchParams.get('language') === 'zh-CN' ? 'zh-CN' : 'en-US'
+  );
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      rewind: { before: null, after: 'turn' },
+      items: [
+        items[0]!,
+        {
+          id: 'reply',
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: { text: 'Fixture reply' }
+        }
+      ]
+    }
+  ];
+}
 if (new URL(location.href).searchParams.has('disclosure-reset')) {
   turns.value[0]!.items = ['first', 'second'].flatMap((groupId) =>
     [
@@ -377,7 +398,7 @@ function finishPreview() {
 
 <template>
   <main class="conversation-style-fixture">
-    <section aria-label="Notifications fixture">
+    <section v-if="!historyActionsFixture" aria-label="Notifications fixture">
       <WorkbenchActivityCenter :service="notifications" :uploads="[]" :status-label="String" />
       <ThemePreview name="Fixture preview" :colors="previewColors" />
       <output data-testid="notification-loads">{{ notificationLoads }}</output>
@@ -453,8 +474,8 @@ function finishPreview() {
       :user-input-answer="() => ''"
       :user-input-submitted="() => false"
       :node-ready="false"
-      :rewind-enabled="false"
-      :rollback-enabled="false"
+      :rewind-enabled="historyActionsFixture"
+      :rollback-enabled="historyActionsFixture"
       @initial-rendered="renderedVersion = $event"
     />
     <template v-if="loadingFixture">

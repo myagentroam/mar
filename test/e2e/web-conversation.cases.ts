@@ -2669,7 +2669,7 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       .locator('.conversation-message-actions button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
     expect(userActionLabels.slice(-2)).toEqual([
-      '从此消息之前创建回退分支',
+      '从此消息之前创建会话分支',
       '永久删除此用户消息及其后的对话记录'
     ]);
     const assistantMessage = page.locator('.conversation-item.assistant_message', {
@@ -2679,7 +2679,7 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       assistantMessage.getByRole('button', { name: '永久删除此用户消息及其后的对话记录' })
     ).toHaveCount(0);
 
-    const rewindButton = userMessage.getByRole('button', { name: '从此消息之前创建回退分支' });
+    const rewindButton = userMessage.getByRole('button', { name: '从此消息之前创建会话分支' });
     const rollbackButton = userMessage.getByRole('button', {
       name: '永久删除此用户消息及其后的对话记录'
     });
@@ -2689,7 +2689,7 @@ for (const runner of ['mar-agent', 'codex'] as const) {
     await expect(rewindButton).toHaveCount(0);
     await expect(rollbackButton).toHaveCount(0);
     await expect(
-      assistantMessage.getByRole('button', { name: '从此消息之后创建回退分支' })
+      assistantMessage.getByRole('button', { name: '从此轮结束处创建会话分支' })
     ).toHaveCount(0);
     await expect(userMessage.getByRole('button', { name: /^复制.*消息$/u })).toBeVisible();
     await expect(page.locator('.composer-model-effort-select .el-select__wrapper')).toHaveClass(
@@ -2839,7 +2839,7 @@ for (const outcome of ['success', 'navigation-failure'] as const) {
     await composer.fill('Unsent source draft');
     await page
       .locator('.conversation-item.user_message', { hasText: 'Original user text' })
-      .getByRole('button', { name: '从此消息之前创建回退分支' })
+      .getByRole('button', { name: '从此消息之前创建会话分支' })
       .click();
     const confirmation = page.locator('.el-message-box');
     await expect(confirmation.locator('[data-mar-icon="warning"]')).toBeVisible();
@@ -2858,7 +2858,7 @@ for (const outcome of ['success', 'navigation-failure'] as const) {
       await expect(composer).toHaveValue('Original user text');
       await expect(composer).toBeFocused();
     } else {
-      await expect(page.getByText(/回退分支已创建，但无法打开/)).toBeVisible();
+      await expect(page.getByText(/会话分支已创建，但无法打开/)).toBeVisible();
       await expect(page.locator('.el-message--error [data-mar-icon="error"]')).toBeVisible();
       await expect(page.locator('.session-link', { hasText: 'Source conversation' })).toHaveClass(
         /selected/
@@ -2989,7 +2989,7 @@ for (const operation of ['rewind', 'rollback'] as const) {
         .getByRole('button', {
           name:
             operation === 'rewind'
-              ? '从此消息之前创建回退分支'
+              ? '从此消息之前创建会话分支'
               : '永久删除此用户消息及其后的对话记录'
         })
         .click();

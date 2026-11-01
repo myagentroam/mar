@@ -87,13 +87,13 @@ export const workbenchPageZhCN = {
         '将从此用户消息之前创建新会话分支，并回填该消息。原会话和工作区文件不会改变。',
       createANewSessionBranchThatRetains:
         '将保留此 Agent 消息所在的完整对话轮次并创建新会话分支。原会话和工作区文件不会改变。',
-      createFallbackBranch: '创建回退分支',
+      createSessionBranch: '创建会话分支',
       createBranch: '创建分支',
       cancel: '取消',
-      fallbackBranchCreated: '已创建回退分支。',
-      fallbackBranchCreatedButLoadFailed: '回退分支已创建，但无法打开：{value0}',
+      sessionBranchCreated: '已创建会话分支。',
+      sessionBranchCreatedButLoadFailed: '会话分支已创建，但无法打开：{value0}',
       rollbackCompletedButLoadFailed: '对话已回滚，但无法重新加载：{value0}',
-      unableToCreateAFallbackBranch: '无法创建回退分支：{value0}',
+      unableToCreateSessionBranch: '无法创建会话分支：{value0}',
       rollbackConversationWarning:
         '此操作会在当前会话中永久删除这条用户消息及其后的全部对话记录。工作区文件不会回滚，该消息将回填到输入框。',
       rollbackConversation: '回滚对话',

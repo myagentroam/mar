@@ -2484,7 +2484,7 @@ test('Interrupted hosted chats synchronize automatic titles and use Rollback ins
     hasText: '请重新执行托管检查'
   });
   await expect(userMessage).toBeVisible();
-  await expect(userMessage.getByRole('button', { name: '从此消息之前创建回退分支' })).toHaveCount(
+  await expect(userMessage.getByRole('button', { name: '从此消息之前创建会话分支' })).toHaveCount(
     0
   );
   const rollbackButton = userMessage.getByRole('button', {
