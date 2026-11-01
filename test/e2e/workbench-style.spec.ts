@@ -971,7 +971,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     });
     await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&overlapping-watch=1`);
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
-    await expect(inspector.locator('.watch-status')).toContainText('Loading…');
+    const watchStatus = inspector.locator('button.watch-status');
+    await expect(watchStatus).toContainText('Loading…');
+    await expect(watchStatus).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(watchStatus).toHaveCSS('border-top-width', '0px');
+    await expect(watchStatus).toHaveCSS('cursor', 'default');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const [statusBox, inspectorBox] = await Promise.all([
+        watchStatus.boundingBox(),
+        inspector.locator('.workspace-inspector').boundingBox()
+      ]);
+      expect(statusBox!.width).toBeLessThan(inspectorBox!.width / 2);
+    }
+    await page.setViewportSize({ width: 1280, height: 844 });
     await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
     await expect.poll(() => reads).toBe(1);
     await expect(inspector.locator('.watch-status')).toHaveCount(1);
@@ -1009,6 +1022,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
     const retry = inspector.locator('button.watch-status');
     await expect(retry).toHaveClass(/failed/);
+    await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(retry).toHaveCSS('border-top-width', '0px');
+    await expect(retry).toHaveCSS('cursor', 'pointer');
     await retry.focus();
     await retry.press('Enter');
     await expect(retry).toBeFocused();

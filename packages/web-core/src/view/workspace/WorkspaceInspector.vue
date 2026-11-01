@@ -1981,6 +1981,9 @@ onBeforeUnmount(() => filePreviews.reset());
           )
         "
         class="watch-status"
+        :class="{
+          failed: (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed'
+        }"
         type="button"
         :aria-disabled="
           (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'
@@ -2446,6 +2449,20 @@ onBeforeUnmount(() => filePreviews.reset());
   margin: 0.2rem 0.55rem;
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
+}
+
+button.watch-status {
+  align-self: flex-start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.watch-status[aria-disabled='true'] {
+  cursor: default;
 }
 
 .watch-status.failed {
