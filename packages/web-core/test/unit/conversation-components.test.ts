@@ -2280,13 +2280,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(eligible).toContain(
-      i18n.global.t('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+      i18n.global.t('generated.conversationTimeline.createSessionBranchBeforeMessage')
     );
     expect(eligible).toContain(
       i18n.global.t('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
     );
     expect(running).toContain(
-      i18n.global.t('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+      i18n.global.t('generated.conversationTimeline.createSessionBranchBeforeMessage')
     );
     expect(running).not.toContain(
       i18n.global.t('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
@@ -2298,7 +2298,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       turns: [conversationTurn([userMessage], { rewind: { before: 'before-1', after: 'after-1' } })]
     });
     expect(disabled).not.toContain(
-      i18n.global.t('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+      i18n.global.t('generated.conversationTimeline.createSessionBranchBeforeMessage')
     );
     expect(disabled).not.toContain(
       i18n.global.t('generated.conversationTimeline.rollbackConversationBeforeThisMessage')

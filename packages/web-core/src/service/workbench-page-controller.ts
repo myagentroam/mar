@@ -2754,7 +2754,7 @@ export function createWorkbenchPageController<
           before
             ? translate('generated.workbenchPageController.createANewSessionBranchBeforeThis')
             : translate('generated.workbenchPageController.createANewSessionBranchThatRetains'),
-          translate('generated.workbenchPageController.createFallbackBranch'),
+          translate('generated.workbenchPageController.createSessionBranch'),
           {
             closeIcon: marIcon('close'),
             icon: marIcon('warning'),
@@ -2829,13 +2829,13 @@ export function createWorkbenchPageController<
   async function rewindConversation(turn: ConversationTurn, item: ConversationItem): Promise<void> {
     const result = await sessionHistoryMutation.rewind(turn, item);
     if (result.status === 'APPLIED') {
-      showMessage(translate('generated.workbenchPageController.fallbackBranchCreated'), 'success');
+      showMessage(translate('generated.workbenchPageController.sessionBranchCreated'), 'success');
     } else if (result.status === 'FAILED') {
       showMessage(
         translate(
           result.phase === 'REQUEST'
-            ? 'generated.workbenchPageController.unableToCreateAFallbackBranch'
-            : 'generated.workbenchPageController.fallbackBranchCreatedButLoadFailed',
+            ? 'generated.workbenchPageController.unableToCreateSessionBranch'
+            : 'generated.workbenchPageController.sessionBranchCreatedButLoadFailed',
           {
             value0: message(result.error)
           }

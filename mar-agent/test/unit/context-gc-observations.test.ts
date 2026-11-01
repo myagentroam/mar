@@ -272,7 +272,7 @@ describe('Code Mode observation GC parity', () => {
         }
       ]
     });
-    for (let i = 0; i < 6; i++) successfulRollout(f.add);
+    for (let i = 0; i < 10; i++) successfulRollout(f.add);
     const selected = plan(f.values);
     const replacement = selected?.draft.replacements.find(
       (item) => item.kind === 'TOOL_CALL_INPUT' && item.target.sequence === cell.sequence
@@ -368,7 +368,7 @@ describe('Code Mode observation GC parity', () => {
           }
         ]
       });
-      for (let i = 0; i < 6; i++) successfulRollout(f.add);
+      for (let i = 0; i < 10; i++) successfulRollout(f.add);
       const selected = planContextGc({
         records: f.values,
         ...requestProjection(f.values),
@@ -453,7 +453,7 @@ describe('Code Mode observation GC parity', () => {
       };
       const old = search('search-old', [definition('A', 'OLD_A'), definition('B', 'OLD_B')]);
       search('search-new', [definition('A', 'NEW_A'), definition('C', 'NEW_C')]);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         f.add('model.context', {
           role: 'provider',
@@ -571,7 +571,7 @@ describe('Code Mode observation GC parity', () => {
       truncated: false,
       data: { revision: 2, items: [] }
     });
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       f.add('model.context', {
         role: 'provider',
@@ -665,7 +665,7 @@ describe('Code Mode observation GC parity', () => {
       truncated: false,
       data: { revision: 2, items: laterItems }
     });
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       f.add('model.context', {
         role: 'provider',
@@ -752,7 +752,7 @@ describe('Code Mode observation GC parity', () => {
     read('partial', 5, 9, true);
     read('incomplete', 1, 20, false);
     const successor = read('successor', 1, 20, true);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       f.add('model.context', {
         role: 'provider',
@@ -810,7 +810,7 @@ describe('Code Mode observation GC parity', () => {
     const old = skill('skill-old', 'guide', 'OLD_INSTRUCTION '.repeat(1200));
     const current = skill('skill-current', 'guide', 'CURRENT_INSTRUCTION '.repeat(1200));
     skill('other', 'another', 'OTHER_INSTRUCTION '.repeat(1200));
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       f.add('model.context', {
         role: 'provider',
@@ -901,7 +901,7 @@ describe('Code Mode observation GC parity', () => {
         observations,
         calls: []
       });
-      for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add);
       expect(plan(fixture.values, modelProtocol)).toBeUndefined();
       successfulRollout(fixture.add);
       const selected = plan(fixture.values, modelProtocol)!;
@@ -986,7 +986,7 @@ describe('Code Mode observation GC parity', () => {
           calls: []
         });
       }
-      for (let i = 0; i < 5; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add);
       expect(plan(fixture.values, modelProtocol)).toBeUndefined();
       successfulRollout(fixture.add);
       const selected = plan(fixture.values, modelProtocol);
@@ -1098,7 +1098,7 @@ describe('Code Mode observation GC parity', () => {
         observations,
         content: renderObservations(observations)
       });
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const selected = plan(fixture.values, modelProtocol);
       expect(selected).toBeDefined();
       expect(
@@ -1192,7 +1192,7 @@ describe('Code Mode observation GC parity', () => {
       if (record.type === 'tool.completed' && payload.toolName === 'code_exec' && payload.data)
         payload.data.status = 'running';
     }
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const selected = plan(fixture.values);
     expect(
       selected?.draft.replacements.some((replacement) => replacement.kind === 'READ_OUTPUT_ITEMS')
@@ -1558,7 +1558,7 @@ describe('Code Mode observation GC parity', () => {
   );
   it('does not let a later observation delay an older stale read and patch input', () => {
     const { fixture, result, observations } = scenario(false);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       fixture.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
       modelContext(fixture.add, {
         role: 'provider',
@@ -1618,7 +1618,7 @@ describe('Code Mode observation GC parity', () => {
     'accepts successful nested observations from a %s cell but rejects a failed nested result',
     (status) => {
       const { fixture } = scenario(false);
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const planned = plan(fixture.values)!;
       expect(planned).toBeDefined();
       const completed = fixture.values.find(
@@ -1714,7 +1714,7 @@ describe('Code Mode observation GC parity', () => {
         observations,
         ...(calls === undefined ? {} : { calls })
       });
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const planned = plan(fixture.values);
       if (cellId !== 'cell') {
         expect(planned).toBeUndefined();
@@ -1755,7 +1755,7 @@ describe('Code Mode observation GC parity', () => {
     'reclaims and restores stale read items with observed patch=$observePatch, result name=$resultName and protocol=$modelProtocol',
     ({ observePatch, resultName, modelProtocol }) => {
       const { fixture, observations } = scenario(observePatch, resultName);
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const original = requestProjection(fixture.values);
       const planned = plan(fixture.values, modelProtocol);
       expect(planned).toBeDefined();
@@ -1839,7 +1839,7 @@ describe('Code Mode observation GC parity', () => {
         content: renderObservations([observation]),
         observations: [observation]
       });
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const original = requestProjection(fixture.values);
       const planned = plan(fixture.values);
       expect(planned?.draft.replacements).toEqual(
@@ -1868,7 +1868,7 @@ describe('Code Mode observation GC parity', () => {
     'rejects forged %s at commit and restores committed observations by identity',
     (field) => {
       const { fixture } = scenario(false, 'code_exec');
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const planned = plan(fixture.values)!;
       expect(planned).toBeDefined();
       const replacement = structuredClone(
@@ -1902,7 +1902,7 @@ describe('Code Mode observation GC parity', () => {
     if (observations[0]?.type === 'tool_result') observations[0].source.callId = 'forged';
     if (result.payload && typeof result.payload === 'object')
       (result.payload as { content: string }).content = renderObservations(observations);
-    for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
     const planned = plan(fixture.values);
     expect(
       planned?.draft.replacements.some((value) => value.target.observationId === 'obs-read')
@@ -1986,7 +1986,7 @@ describe('Code Mode observation GC parity', () => {
         content: renderObservations([observation]),
         observations: [observation]
       });
-      for (let i = 0; i < 6; i++) successfulRollout(fixture.add);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add);
       const planned = plan(fixture.values);
       expect(planned?.draft.replacements).toEqual(
         expect.arrayContaining([

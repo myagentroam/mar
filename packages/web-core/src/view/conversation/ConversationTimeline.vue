@@ -1075,12 +1075,14 @@ function stepDuration(item: ConversationItem): string | undefined {
               <MarIcon name="copy" v-else />
             </button>
             <button
-              v-tooltip="translate('generated.conversationTimeline.rollBackBeforeThisMessage')"
+              v-tooltip="
+                translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
+              "
               v-if="props.rewindEnabled && turn.rewind"
               class="conversation-message-action icon-button utility-control"
               type="button"
               :aria-label="
-                translate('generated.conversationTimeline.createARollbackBranchBeforeThisMessage')
+                translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
               "
               @click.stop="emit('rewind', turn, displayItem.item)"
             >
@@ -1151,13 +1153,11 @@ function stepDuration(item: ConversationItem): string | undefined {
               <MarIcon name="copy" v-else />
             </button>
             <button
-              v-tooltip="translate('generated.conversationTimeline.rollBackAfterThisMessage')"
+              v-tooltip="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               v-if="props.rewindEnabled && turn.rewind"
               class="conversation-message-action icon-button utility-control"
               type="button"
-              :aria-label="
-                translate('generated.conversationTimeline.createARollbackBranchAfterThisMessage')
-              "
+              :aria-label="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               @click.stop="emit('rewind', turn, displayItem.item)"
             >
               <MarIcon name="undo" />

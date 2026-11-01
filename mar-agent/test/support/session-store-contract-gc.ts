@@ -12,8 +12,8 @@ const economics = {
   contextGrowthSampleWindow: 16,
   minimumContextGrowthSamples: 6,
   minimumObservationRollouts: 1,
-  stageAProtectionRollouts: 6,
-  largeExecProtectionRollouts: 6,
+  stageAProtectionRollouts: 10,
+  largeExecProtectionRollouts: 10,
   normalInputCostRate: 1,
   cacheReadCostRate: 0.1,
   cacheWriteCostRate: 1.25,
@@ -37,7 +37,7 @@ const metrics: ContextGcMetrics = {
   contextGrowthP75Tokens: 0,
   expectedNetSavedCostUnits: 2,
   cacheInvestmentRoi: 0,
-  minimumObservedRollouts: 6,
+  minimumObservedRollouts: 10,
   protectedCandidateTokens: 0,
   eligibleCandidateCount: 1,
   eligibleTargetCount: 1,
@@ -160,7 +160,7 @@ async function appendPatchDraft(
     payload: { role: 'tool', callId: input.callId, content: JSON.stringify(data) },
     ...recordInput
   });
-  for (let i = 0; i < 5; i++)
+  for (let i = 0; i < 9; i++)
     await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const latest = await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const draft: ContextGcCheckpointDraft = {
@@ -225,7 +225,7 @@ export async function prepareContractGcDraft(store: SessionStore, sessionId: str
     callId: 'patch-1',
     path: 'src/a.ts',
     contextInputTokens: 6_000,
-    normalRolloutOrdinal: 6,
+    normalRolloutOrdinal: 10,
     turnId: 'turn-1'
   });
 }

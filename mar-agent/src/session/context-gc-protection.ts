@@ -1,6 +1,15 @@
 import { completedNativeThinkingIdentity } from '../model/native-context.js';
 import type { SessionRecord } from './record-contract.js';
 
+export const CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS = 10;
+
+export function contextGcProtectionMature(count: {
+  readonly rollouts: number;
+  readonly thinking: number;
+}) {
+  return count.rollouts >= CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS && count.thinking >= 3;
+}
+
 /** One immutable boundary index, shared by all candidate anchors in this evaluation. */
 export function buildContextGcProtection(
   records: readonly SessionRecord[],

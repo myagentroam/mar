@@ -15,6 +15,7 @@ import {
 } from '../../session/context-gc-replacements.js';
 
 import { CONTEXT_GC_POLICY } from './gc-economics.js';
+import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -73,11 +74,7 @@ export function collectCodeModeCandidates(
       };
       const reclaimedTokens = candidateSavings(candidate);
       if (reclaimedTokens <= 0) continue;
-      if (
-        candidate.observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-        protection.thinking >= 3
-      )
-        eligible.push(candidate);
+      if (contextGcProtectionMature(protection)) eligible.push(candidate);
       else if (candidate.observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
         protectedTokens += reclaimedTokens;
         retryAfterRollouts = Math.min(
@@ -123,7 +120,7 @@ export function collectCodeModeCandidates(
                       successor.sequence
                     )
                   );
-                  return maturity.rollouts >= 6 && maturity.thinking >= 3;
+                  return contextGcProtectionMature(maturity);
                 },
                 {
                   activeProcessIds: input.activeProcessIds,
@@ -131,7 +128,7 @@ export function collectCodeModeCandidates(
                     const maturity = input.protection!.after(
                       Math.max(evidenceSequence, completionSequence, sequence)
                     );
-                    return maturity.rollouts >= 6 && maturity.thinking >= 3;
+                    return contextGcProtectionMature(maturity);
                   }
                 }
               )
@@ -162,11 +159,7 @@ export function collectCodeModeCandidates(
     const candidate: ContextCandidate = { replacements, observedRollouts, evidenceSequence };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
-    if (
-      observedRollouts >= CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-      protection.thinking >= 3
-    )
-      eligible.push(candidate);
+    if (contextGcProtectionMature(protection)) eligible.push(candidate);
     else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(

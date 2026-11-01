@@ -417,10 +417,8 @@ function evaluateCandidateSet(
     projectedTokensAfterGc,
     contextGrowthP75Tokens
   });
-  const appliedCompactCreditCostUnits = contextGcAppliedCompactCreditCostUnits(
-    compactDeferralCreditCostUnits,
-    imminentCompactAvoidanceCreditCostUnits
-  );
+  // Compact estimates remain diagnostic; only normal-request savings repay GC.
+  const appliedCompactCreditCostUnits = 0;
   const economics = evaluateContextGcEconomics({
     contextUsageTokens: state.contextUsageTokens,
     contextWindowTokens: input.contextWindowTokens,

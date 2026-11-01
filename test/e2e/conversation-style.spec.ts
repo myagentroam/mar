@@ -9,6 +9,41 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const locale of ['en-US', 'zh-CN']) {
+  for (const width of [1280, 390]) {
+    test(`Session branch actions distinguish Rewind from Rollback in ${locale} at ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}conversation-style.html?history-actions=1&language=${locale}`);
+      const labels =
+        locale === 'zh-CN'
+          ? ['从此消息之前创建会话分支', '从此轮结束处创建会话分支', '回退当前会话']
+          : [
+              'Create a session branch before this message',
+              'Create a session branch after this turn',
+              'Roll back this conversation'
+            ];
+      for (const [index, kind] of ['user_message', 'assistant_message'].entries()) {
+        const message = page.locator(`.conversation-item.${kind}`);
+        const branch = message.getByRole('button', { name: labels[index]!, exact: true });
+        await expect(branch).toBeVisible();
+        await branch.hover();
+        await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[index]!);
+        await expect(branch).not.toHaveAttribute('title');
+      }
+      const rollback = page
+        .locator('.conversation-item.user_message [data-mar-icon="back"]')
+        .locator('..');
+      await rollback.hover();
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[2]!);
+      await expect(
+        page.locator('.conversation-item.assistant_message [data-mar-icon="back"]')
+      ).toHaveCount(0);
+    });
+  }
+}
+
 for (const width of [1280, 390]) {
   test(`Paged timeline renders older messages without another scroll at ${width}px`, async ({
     page

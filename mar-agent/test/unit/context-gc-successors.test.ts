@@ -157,7 +157,7 @@ describe('GC successor visibility order', () => {
           });
           for (const observation of observations) results.set(observation.id, result.sequence);
         }
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 10; i++) {
           await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
           await append('model.context', {
             role: 'provider',

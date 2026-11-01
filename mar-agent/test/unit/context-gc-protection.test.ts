@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionRecord } from '../../src/session/store/index.js';
-import { buildContextGcProtection } from '../../src/session/context-gc-protection.js';
+import {
+  buildContextGcProtection,
+  contextGcProtectionMature
+} from '../../src/session/context-gc-protection.js';
 
 function fixture() {
   const records: SessionRecord[] = [];
@@ -27,6 +30,12 @@ function fixture() {
 }
 
 describe('GC protection evidence', () => {
+  it('requires ten successful rollouts and three independent complete blocks', () => {
+    expect(contextGcProtectionMature({ rollouts: 9, thinking: 30 })).toBe(false);
+    expect(contextGcProtectionMature({ rollouts: 10, thinking: 2 })).toBe(false);
+    expect(contextGcProtectionMature({ rollouts: 10, thinking: 3 })).toBe(true);
+    expect(contextGcProtectionMature({ rollouts: 6, thinking: 3 })).toBe(false);
+  });
   it.each([
     ['OPENAI_RESPONSES', { type: 'reasoning', id: 'native' }],
     ['ANTHROPIC_MESSAGES', { type: 'thinking' }],

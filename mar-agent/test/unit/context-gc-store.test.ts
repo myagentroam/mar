@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildContextProjection } from '../../src/runtime/context/projection.js';
-import { planContextGc } from '../../src/runtime/context/gc.js';
+import { CONTEXT_GC_POLICY, planContextGc } from '../../src/runtime/context/gc.js';
 import {
   renderObservations,
   type CodeObservation
@@ -140,6 +140,7 @@ async function appendPatchDraft(
     path: string;
     contextInputTokens: number;
     normalRolloutOrdinal: number;
+    rollouts?: number;
     turnId?: string;
   }
 ): Promise<ContextGcCheckpointDraft> {
@@ -191,7 +192,7 @@ async function appendPatchDraft(
     payload: { role: 'tool', callId: input.callId, content: JSON.stringify(data) },
     ...recordInput
   });
-  for (let i = 0; i < 5; i++)
+  for (let i = 1; i < (input.rollouts ?? 10); i++)
     await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const latest = await appendSuccessfulRollout(store, sessionId, input.contextInputTokens);
   const draft: ContextGcCheckpointDraft = {
@@ -229,17 +230,17 @@ async function appendPatchDraft(
       usageSequence: latest.usage.sequence,
       contextInputTokens: input.contextInputTokens,
       contextWindowTokens: 10_000,
-      normalRolloutOrdinal: input.normalRolloutOrdinal * 3,
+      normalRolloutOrdinal: input.normalRolloutOrdinal,
       modelId: 'coding',
       platform: 'linux'
     },
-    economics,
+    economics: CONTEXT_GC_POLICY,
     metrics
   };
   return draft;
 }
 
-async function createFixture(title: string) {
+async function createFixture(title: string, rollouts = 10) {
   const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-store-'));
   homes.push(home);
   const store = await JsonlSessionStore.open(home);
@@ -260,13 +261,61 @@ async function createFixture(title: string) {
     callId: 'patch-1',
     path: 'src/a.ts',
     contextInputTokens: 6_000,
-    normalRolloutOrdinal: 2,
+    normalRolloutOrdinal: rollouts,
+    rollouts,
     turnId: 'turn-1'
   });
   return { home, store, session, draft };
 }
 
 describe('context GC checkpoint store', () => {
+  it('rejects a new checkpoint below ten rollouts even if its draft records six', async () => {
+    const fixture = await createFixture('Current protection cannot be lowered by a draft', 6);
+    try {
+      await expect(
+        fixture.store.commitContextGc(fixture.session.id, {
+          ...fixture.draft,
+          economics
+        })
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
+    } finally {
+      await fixture.store.close();
+    }
+  });
+
+  it('cold-restores saved replacements without rechecking the current protection policy', async () => {
+    const fixture = await createFixture('Previously committed protection', 6);
+    let store = fixture.store;
+    try {
+      // Simulate an already persisted checkpoint, not a new GC commit.
+      const payload = {
+        ...fixture.draft,
+        economics,
+        checkpointId: 'persisted-checkpoint',
+        generation: 1
+      };
+      await store.append(fixture.session.id, { type: 'context.gc.completed', payload });
+      await store.close();
+      store = await JsonlSessionStore.open(fixture.home);
+      const restored = buildContextProjection(
+        (await store.readExecutionState(fixture.session.id)).contextRecords
+      );
+      expect(restored.checkpoint?.checkpointId).toBe(payload.checkpointId);
+      expect(restored.checkpoint?.economics.largeExecProtectionRollouts).toBe(6);
+      expect(restored.checkpoint?.replacements).toEqual(payload.replacements);
+      const replacement = payload.replacements[0] as Extract<
+        ContextGcReplacement,
+        { kind: 'TOOL_CALL_INPUT' }
+      >;
+      expect(
+        restored.entries.find((entry) => entry.record.recordId === replacement.target.recordId)
+          ?.message
+      ).toMatchObject({ role: 'tool_call', arguments: replacement.replacementArguments });
+    } finally {
+      await store.close();
+    }
+  });
+
   it('commits and restores a whole-cell summary with a terminal nested exec input', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-exec-cell-'));
     homes.push(home);
@@ -339,7 +388,7 @@ describe('context GC checkpoint store', () => {
           { callId: 'exec', toolName: 'exec', input, status: 'completed', result: { content: '' } }
         ]
       });
-      for (let i = 0; i < 6; i++) await appendSuccessfulRollout(store, session.id, 6000);
+      for (let i = 0; i < 10; i++) await appendSuccessfulRollout(store, session.id, 6000);
       const records = await store.read(session.id);
       const projection = buildContextProjection(records);
       const plan = planContextGc({
@@ -428,7 +477,7 @@ describe('context GC checkpoint store', () => {
       });
     };
     const mature = async (tag: string, usage: number) => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         await append('model.context', {
           role: 'provider',
@@ -621,7 +670,7 @@ describe('context GC checkpoint store', () => {
         truncated: false,
         data: { revision: 3, items: [{ id: 'secret', step: 'UNOBSERVED_TODO', status: 'pending' }] }
       });
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         await append('model.context', {
           role: 'provider',
@@ -792,7 +841,7 @@ describe('context GC checkpoint store', () => {
         observations,
         content: renderObservations(observations)
       });
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         await append('model.context', {
           role: 'provider',
@@ -963,7 +1012,7 @@ describe('context GC checkpoint store', () => {
           }
         ]
       });
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         await append('model.context', {
           role: 'provider',
@@ -1113,7 +1162,7 @@ describe('context GC checkpoint store', () => {
           observations: [observation]
         });
       }
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         await append('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
         await append('model.context', {
           role: 'provider',
@@ -1374,7 +1423,7 @@ describe('context GC checkpoint store', () => {
           callId: 'patch-2',
           path: 'src/b.ts',
           contextInputTokens: 8_000,
-          normalRolloutOrdinal: 4
+          normalRolloutOrdinal: 20
         });
         const records = (await store.readExecutionState(session.id)).contextRecords;
         const archived = records.find(
@@ -1450,7 +1499,7 @@ describe('context GC checkpoint store', () => {
         callId: 'patch-2',
         path: 'src/b.ts',
         contextInputTokens: 8_000,
-        normalRolloutOrdinal: 4
+        normalRolloutOrdinal: 20
       });
       const evidence = firstDraft.replacements.find(
         (replacement) => replacement.kind === 'TOOL_CALL_INPUT'
@@ -1481,7 +1530,7 @@ describe('context GC checkpoint store', () => {
         callId: 'patch-3',
         path: 'src/c.ts',
         contextInputTokens: 10_000,
-        normalRolloutOrdinal: 6
+        normalRolloutOrdinal: 30
       });
       const nextEvidence = next.replacements.find(
         (replacement) => replacement.kind === 'TOOL_CALL_INPUT'
@@ -1561,7 +1610,7 @@ describe('context GC checkpoint store', () => {
           callId: 'patch-2',
           path: 'src/b.ts',
           contextInputTokens: 8_000,
-          normalRolloutOrdinal: 2
+          normalRolloutOrdinal: 10
         });
         const records = (await store.readExecutionState(session.id)).contextRecords;
         expect(records[0]?.type).toBe('compact.completed');
@@ -1632,7 +1681,7 @@ describe('context GC checkpoint store', () => {
       callId: 'patch-2',
       path: 'src/b.ts',
       contextInputTokens: 8_000,
-      normalRolloutOrdinal: 4
+      normalRolloutOrdinal: 20
     });
     const second = await store.commitContextGc(session.id, secondDraft);
     expect(second).toMatchObject({
@@ -1753,7 +1802,7 @@ describe('context GC checkpoint store', () => {
       callId: 'patch-2',
       path: 'src/b.ts',
       contextInputTokens: 8_000,
-      normalRolloutOrdinal: 4
+      normalRolloutOrdinal: 20
     });
     await store.commitContextGc(session.id, secondDraft);
 
