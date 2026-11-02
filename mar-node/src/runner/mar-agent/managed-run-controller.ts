@@ -52,7 +52,7 @@ import type { RunnerExecutionContext } from '../execution-context.js';
 import { createImageGenerationExtensions } from './image-generation-extensions.js';
 import { createWebToolsExtensions } from './web-tools-extensions.js';
 import { combineExecutionExtensions } from './execution-extensions.js';
-import type { WebFetchHandler } from '../../service/web-fetch-contracts.js';
+import { webSessionScope, type WebFetchHandler } from '../../service/web-fetch-contracts.js';
 import {
   MarAgentSessionRuntimeRegistry,
   type MarAgentRuntimeUse
@@ -540,7 +540,14 @@ export class MarAgentManagedRunController {
           webSearch: (request, signal) => this.host.webSearch(request, signal),
           ...(this.host.webFetch === undefined
             ? {}
-            : { webFetch: (request, signal) => this.host.webFetch!(request, signal) })
+            : {
+                webFetch: (request, signal, sessionId) =>
+                  this.host.webFetch!(
+                    request,
+                    signal,
+                    webSessionScope('workspace', homedir(), sessionId)
+                  )
+              })
         })
       );
       executionMcpBinding = runtime.host.bindExecutionExtensions(

@@ -10,6 +10,7 @@ import { isImageAttachment } from './session/attachments.js';
 import { ModelUsageOutbox } from './service/model-usage-outbox.js';
 import { NodeModelUsageService } from './service/model-usage-service.js';
 import { dirname, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import {
   createEnvelope,
   directNodeCommandSchema,
@@ -129,6 +130,7 @@ import {
 import { isPlainRecord } from './util/records.js';
 import { isRunnerImageAttachment, parseRunnerImageAttachments } from './session/attachments.js';
 import { WebToolService } from './service/web-tool-service.js';
+import { webSessionScope } from './service/web-fetch-contracts.js';
 import { ModelResourcePublicationService } from './service/model-resource-publication-service.js';
 
 export { nodeConnectEndpoint, validatedCapabilities } from './connection/endpoints.js';
@@ -592,7 +594,12 @@ export class NodeConnector {
             image
           ),
         webSearch: (input, signal) => this.webToolService.webSearch(input, signal),
-        webFetch: (input, signal) => this.webToolService.webFetch(input, signal, false),
+        webFetch: (input, signal, scope) =>
+          this.webToolService.webFetch(input, signal, scope, false),
+        invalidateWebSession: (home, sessionId) => {
+          if (sessionId === undefined) this.webToolService.clearHostedStorage(home);
+          else this.webToolService.clearSession(webSessionScope('hosted', home, sessionId));
+        },
         modelFactory: this.marAgentRuntimeModels,
         registerNativeImages: (runId, roots, images) =>
           this.runAttachmentService.registerNativeImages(runId, roots, images, {
@@ -795,7 +802,7 @@ export class NodeConnector {
         clearCommandState: (sessionId, commandId) => this.commandStates.clear(sessionId, commandId),
         commandStates: (sessionId) => this.commandStates.list(sessionId),
         webSearch: (input, signal) => this.webToolService.webSearch(input, signal),
-        webFetch: (input, signal) => this.webToolService.webFetch(input, signal),
+        webFetch: (input, signal, scope) => this.webToolService.webFetch(input, signal, scope),
         registerGeneratedImages: (runId, nativeSessionId, images) => {
           const turn = this.runtime.conversationTurnForRun(runId);
           const session =
@@ -861,6 +868,9 @@ export class NodeConnector {
     );
     this.marAgentClient.setSessionResourceReleaser((sessionId) =>
       this.marAgentRunController.releaseSession(sessionId)
+    );
+    this.marAgentClient.setWebSessionInvalidator((sessionId) =>
+      this.webToolService.clearSession(webSessionScope('workspace', homedir(), sessionId))
     );
     this.openCodeRunController = new OpenCodeManagedRunController(
       this.openCodeClient,

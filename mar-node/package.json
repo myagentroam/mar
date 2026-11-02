@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/node",
-  "version": "0.11.61",
+  "version": "0.11.62",
   "description": "MyAgentRoam Node runtime CLI.",
   "license": "Apache-2.0 AND GPL-2.0-or-later",
   "type": "module",
@@ -49,10 +49,13 @@
     "npm": "11.12.1",
     "playwright": "1.62.1",
     "sharp": "0.35.5",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2",
     "ws": "^8.21.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/turndown": "^5.0.6",
     "@types/ws": "^8.18.1"
   },
   "exports": {

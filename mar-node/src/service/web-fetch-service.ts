@@ -1,21 +1,26 @@
-import { request as httpRequest, type IncomingMessage } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { TLSSocket } from 'node:tls';
-import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
-import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { AgentError } from '@myagentroam/agent';
-import { chromium, errors, type Browser, type BrowserContext, type Response } from 'playwright';
+import {
+  chromium,
+  errors,
+  type Browser,
+  type BrowserContext,
+  type CDPSession,
+  type Response
+} from 'playwright';
+import { convertWebDocument } from './web-markdown.js';
 import {
   WEB_FETCH_MAX_BYTES,
-  webFetchRequestSchema,
-  type WebFetchRequest,
-  type WebFetchResult
+  browserFetchRequestSchema,
+  type BrowserFetchRequest,
+  type BrowserFetchResult
 } from './web-fetch-contracts.js';
 
 const TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
-const MAX_BROWSER_REQUESTS = 2;
+const MAX_BROWSER_REQUESTS = 4;
+const BROWSER_IDLE_MS = 30 * 60_000;
+const BROWSER_MAX_AGE_MS = 60 * 60_000;
 
 export class WebFetchError extends AgentError {
   constructor(
@@ -31,9 +36,15 @@ export class WebFetchError extends AgentError {
 /** Owns Node-side network access and the lifetime of isolated browser reads. */
 export class WebFetchService {
   readonly #shutdown = new AbortController();
-  readonly #active = new Set<Promise<WebFetchResult>>();
+  readonly #active = new Set<Promise<BrowserFetchResult>>();
   readonly #allowUntrustedTls: boolean;
   readonly #launchBrowser: typeof chromium.launch;
+  readonly #pendingContexts = new Set<Promise<unknown>>();
+  #browser: Browser | undefined;
+  #browserStartedAt: number | undefined;
+  #launching: Promise<Browser> | undefined;
+  #browserClosing: Promise<void> | undefined;
+  #idle: ReturnType<typeof setTimeout> | undefined;
   #browserRequests = 0;
   #closing: Promise<void> | undefined;
 
@@ -49,11 +60,11 @@ export class WebFetchService {
   }
 
   fetch(
-    input: WebFetchRequest,
+    input: BrowserFetchRequest,
     signal: AbortSignal,
     policy: { allowUntrustedTls?: boolean } = {}
-  ): Promise<WebFetchResult> {
-    const parsed = webFetchRequestSchema.safeParse(input);
+  ): Promise<BrowserFetchResult> {
+    const parsed = browserFetchRequestSchema.safeParse(input);
     if (!parsed.success)
       return Promise.reject(
         new WebFetchError('MAR_AGENT_TOOL_INPUT_INVALID', 400, 'Web fetch input is invalid.')
@@ -70,11 +81,7 @@ export class WebFetchService {
       if (combined.aborted)
         throw new WebFetchError('MAR_AGENT_WEB_FETCH_CANCELLED', 503, 'Web fetch was cancelled.');
       if (error instanceof WebFetchError) throw error;
-      throw upstreamFailure(
-        error,
-        parsed.data.mode,
-        parsed.data.mode === 'http' ? 'response' : 'browser'
-      );
+      throw upstreamFailure(error, 'browser', 'browser');
     });
     this.#active.add(task);
     void task.then(
@@ -90,112 +97,109 @@ export class WebFetchService {
 
   async #close(): Promise<void> {
     this.#shutdown.abort();
+    if (this.#idle) clearTimeout(this.#idle);
     await Promise.allSettled([...this.#active]);
+    await this.#launching?.catch(() => undefined);
+    await Promise.allSettled([...this.#pendingContexts]);
+    await this.#browserClosing;
+    await this.#browser?.close().catch(() => undefined);
+    this.#browser = undefined;
   }
 
-  async #execute(
-    input: WebFetchRequest,
-    signal: AbortSignal,
-    allowUntrustedTls: boolean
-  ): Promise<WebFetchResult> {
-    signal.throwIfAborted();
-    return input.mode === 'http'
-      ? this.#fetchHttp(input, signal, allowUntrustedTls)
-      : this.#fetchBrowser(input, signal, allowUntrustedTls);
-  }
-
-  async #fetchHttp(
-    input: WebFetchRequest,
-    signal: AbortSignal,
-    allowUntrustedTls: boolean
-  ): Promise<WebFetchResult> {
-    let url = new URL(input.url);
-    for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
-      const response = await requestHttp(url, signal, allowUntrustedTls);
-      const status = response.statusCode ?? 0;
-      const location = response.headers.location;
-      if ([301, 302, 303, 307, 308].includes(status) && location) {
-        response.destroy();
-        const next = new URL(location, url);
-        if (!webFetchRequestSchema.safeParse({ url: next.href, mode: 'http' }).success)
-          throw new WebFetchError(
-            'MAR_AGENT_TOOL_INPUT_INVALID',
-            400,
-            'Redirect URL is not supported.'
-          );
-        url = next;
-        continue;
-      }
-      const contentType = (response.headers['content-type'] ?? 'text/plain').slice(0, 256);
-      if (status < 200 || status >= 300 || !readableContentType(contentType)) {
-        response.destroy();
-        validateResponse(status, contentType);
-      }
-      const encoding = response.headers['content-encoding']?.trim().toLowerCase() ?? 'identity';
-      const decompressor =
-        encoding === 'gzip'
-          ? createGunzip()
-          : encoding === 'br'
-            ? createBrotliDecompress()
-            : encoding === 'deflate'
-              ? createInflate()
-              : undefined;
-      if (!decompressor && encoding !== 'identity' && encoding !== '') {
-        response.destroy();
-        throw new WebFetchError(
-          'MAR_AGENT_WEB_FETCH_UNSUPPORTED_CONTENT',
-          415,
-          'Response content encoding is not supported.'
-        );
-      }
-      const body = decompressor ?? response;
-      let transferError: unknown;
-      const transfer = decompressor
-        ? pipeline(response, decompressor, { signal }).catch((error: unknown) => {
-            transferError = error;
-          })
-        : undefined;
-      const chunks: Buffer[] = [];
-      let bytes = 0;
-      let truncated = false;
-      try {
-        for await (const chunk of body) {
-          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
-          const remaining = WEB_FETCH_MAX_BYTES - bytes;
-          chunks.push(buffer.subarray(0, remaining));
-          bytes += Math.min(remaining, buffer.byteLength);
-          if (buffer.byteLength > remaining) {
-            truncated = true;
-            break;
-          }
-        }
-      } finally {
-        response.destroy();
-        decompressor?.destroy();
-        await transfer;
-      }
-      if (!truncated && transferError) throw transferError;
-      signal.throwIfAborted();
-      const text = new TextDecoder().decode(Buffer.concat(chunks), { stream: truncated });
-      const output = Buffer.from(text);
-      truncated ||= output.byteLength > WEB_FETCH_MAX_BYTES;
-      const content = new TextDecoder().decode(output.subarray(0, WEB_FETCH_MAX_BYTES), {
-        stream: truncated
-      });
-      return { content, data: { url: url.href, mode: 'http', status, contentType }, truncated };
+  #scheduleIdle(): void {
+    if (this.#shutdown.signal.aborted || this.#browserRequests || !this.#browser || this.#idle)
+      return;
+    if (this.#expired()) {
+      this.#retireBrowser();
+      return;
     }
-    throw new WebFetchError(
-      'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      502,
-      'Too many web fetch redirects.'
+    this.#idle = setTimeout(() => {
+      this.#idle = undefined;
+      if (this.#browserRequests || !this.#browser) return;
+      this.#retireBrowser();
+    }, BROWSER_IDLE_MS);
+    this.#idle.unref();
+  }
+
+  #expired(): boolean {
+    return (
+      this.#browserStartedAt !== undefined &&
+      Date.now() - this.#browserStartedAt >= BROWSER_MAX_AGE_MS
     );
   }
 
-  async #fetchBrowser(
-    input: WebFetchRequest,
+  #retireBrowser(): void {
+    const browser = this.#browser;
+    if (!browser) return;
+    this.#browser = undefined;
+    this.#browserStartedAt = undefined;
+    const closing = browser
+      .close()
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.#browserClosing === closing) this.#browserClosing = undefined;
+      });
+    this.#browserClosing = closing;
+  }
+
+  #getBrowser(): Promise<Browser> {
+    if (this.#browserClosing)
+      return this.#browserClosing.then(() => {
+        this.#shutdown.signal.throwIfAborted();
+        return this.#getBrowser();
+      });
+    if (this.#browser?.isConnected()) return Promise.resolve(this.#browser);
+    if (!this.#launching) {
+      const launching = this.#launchBrowser({
+        headless: true,
+        channel: 'chromium',
+        timeout: 15_000
+      })
+        .then((browser) => {
+          this.#browser = browser;
+          this.#browserStartedAt = Date.now();
+          browser.on('disconnected', () => {
+            if (this.#browser === browser) {
+              this.#browser = undefined;
+              this.#browserStartedAt = undefined;
+            }
+          });
+          return browser;
+        })
+        .finally(() => {
+          this.#launching = undefined;
+          this.#scheduleIdle();
+        });
+      this.#launching = launching;
+    }
+    return this.#launching;
+  }
+
+  async #execute(
+    input: BrowserFetchRequest,
     signal: AbortSignal,
     allowUntrustedTls: boolean
-  ): Promise<WebFetchResult> {
+  ): Promise<BrowserFetchResult> {
+    signal.throwIfAborted();
+    return this.#fetchBrowser(input, signal, allowUntrustedTls);
+  }
+
+  async #fetchBrowser(
+    input: BrowserFetchRequest,
+    signal: AbortSignal,
+    allowUntrustedTls: boolean
+  ): Promise<BrowserFetchResult> {
+    if (this.#expired()) {
+      if (this.#browserRequests > 0)
+        throw new WebFetchError(
+          'MAR_AGENT_WEB_FETCH_BUSY',
+          429,
+          'Node web fetch browser capacity is exhausted.'
+        );
+      if (this.#idle) clearTimeout(this.#idle);
+      this.#idle = undefined;
+      this.#retireBrowser();
+    }
     if (this.#browserRequests >= MAX_BROWSER_REQUESTS)
       throw new WebFetchError(
         'MAR_AGENT_WEB_FETCH_BUSY',
@@ -203,20 +207,18 @@ export class WebFetchService {
         'Node web fetch browser capacity is exhausted.'
       );
     this.#browserRequests++;
+    if (this.#idle) clearTimeout(this.#idle);
+    this.#idle = undefined;
     let browser: Browser | undefined;
     let context: BrowserContext | undefined;
     let navigationFailure: WebFetchError | undefined;
     const cancel = () => {
-      void browser?.close().catch(() => undefined);
+      void context?.close().catch(() => undefined);
     };
     signal.addEventListener('abort', cancel, { once: true });
     try {
       try {
-        browser = await this.#launchBrowser({
-          headless: true,
-          channel: 'chromium',
-          timeout: 15_000
-        });
+        browser = await abortable(this.#getBrowser(), signal);
       } catch {
         throw new WebFetchError(
           'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE',
@@ -225,17 +227,28 @@ export class WebFetchService {
         );
       }
       signal.throwIfAborted();
-      context = await browser.newContext({
+      const creatingContext = browser.newContext({
         acceptDownloads: false,
         ignoreHTTPSErrors: allowUntrustedTls,
         serviceWorkers: 'block'
       });
+      const cleanup = creatingContext
+        .then(
+          async (created) => {
+            if (signal.aborted) await created.close().catch(() => undefined);
+          },
+          () => undefined
+        )
+        .finally(() => this.#pendingContexts.delete(cleanup));
+      this.#pendingContexts.add(cleanup);
+      context = await abortable(creatingContext, signal);
+      signal.throwIfAborted();
       let blockedNavigation = false;
       let resourceRequests = 0;
       await context.route('**/*', async (route) => {
         const request = route.request();
         resourceRequests++;
-        const valid = webFetchRequestSchema.safeParse({
+        const valid = browserFetchRequestSchema.safeParse({
           url: request.url(),
           mode: 'browser'
         }).success;
@@ -262,8 +275,27 @@ export class WebFetchService {
       const mainFrameId: string = frameTree.frame.id;
       let navigationRequests = 0;
       let interceptedRequests = 0;
+      let mainResponse:
+        { requestId: string; url: string; status: number; mimeType: string } | undefined;
+      cdp.on('Network.responseReceived', (event) => {
+        if (event.type === 'Document' && event.frameId === mainFrameId) {
+          mainResponse = {
+            requestId: event.requestId,
+            url: event.response.url,
+            status: event.response.status,
+            mimeType: event.response.mimeType
+          };
+          if (!navigationFailure && !readableContentType(mainResponse.mimeType)) {
+            try {
+              validateResponse(mainResponse.status, mainResponse.mimeType);
+            } catch (error) {
+              if (error instanceof WebFetchError) navigationFailure = error;
+            }
+          }
+        }
+      });
       cdp.on('Fetch.requestPaused', (event) => {
-        const valid = webFetchRequestSchema.safeParse({
+        const valid = browserFetchRequestSchema.safeParse({
           url: event.request.url,
           mode: 'browser'
         }).success;
@@ -300,6 +332,7 @@ export class WebFetchService {
             }
           });
       });
+      await cdp.send('Network.enable');
       await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
       let navigationResponse: Response | undefined;
       page.on('response', (response) => {
@@ -315,10 +348,18 @@ export class WebFetchService {
       page.on('dialog', (dialog) => {
         void dialog.dismiss().catch(() => undefined);
       });
-      const response = await page.goto(input.url, {
-        waitUntil: 'domcontentloaded',
-        timeout: 25_000
-      });
+      let response: Response | null;
+      try {
+        response = await page.goto(input.url, {
+          waitUntil: 'domcontentloaded',
+          timeout: 25_000
+        });
+      } catch (error) {
+        if (navigationFailure) throw navigationFailure;
+        if (!signal.aborted && mainResponse && !readableContentType(mainResponse.mimeType))
+          validateResponse(mainResponse.status, mainResponse.mimeType);
+        throw error;
+      }
       if (!response)
         throw new WebFetchError(
           'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
@@ -326,10 +367,10 @@ export class WebFetchService {
           'Page navigation returned no response.'
         );
       navigationResponse ??= response;
-      validateResponse(
-        response.status(),
-        (await response.allHeaders())['content-type'] ?? 'text/html'
-      );
+      const initialContentType = (await response.allHeaders())['content-type'] ?? 'text/html';
+      validateResponse(response.status(), initialContentType);
+      if (!/^text\/html\b/iu.test(initialContentType))
+        return await readTextResponse(response, initialContentType, mainResponse, cdp, signal);
       // Wait for visible text to settle, not for long-lived network connections to become idle.
       const start = Date.now();
       let previous = '';
@@ -370,14 +411,14 @@ export class WebFetchService {
       const finalUrl = page.url();
       if (
         blockedNavigation ||
-        !webFetchRequestSchema.safeParse({ url: finalUrl, mode: 'browser' }).success
+        !browserFetchRequestSchema.safeParse({ url: finalUrl, mode: 'browser' }).success
       )
         throw new WebFetchError(
           'MAR_AGENT_TOOL_INPUT_INVALID',
           400,
           'Page navigation URL is not supported.'
         );
-      if (!snapshot?.content || snapshot.url !== finalUrl)
+      if (!snapshot || snapshot.url !== finalUrl)
         throw new WebFetchError(
           'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT',
           422,
@@ -387,8 +428,75 @@ export class WebFetchService {
         (await navigationResponse.allHeaders())['content-type'] ?? 'text/html'
       ).slice(0, 256);
       validateResponse(navigationResponse.status(), contentType);
+      const html = /^text\/html\b/iu.test(contentType);
+      if (!html)
+        return await readTextResponse(navigationResponse, contentType, mainResponse, cdp, signal);
+      if (!snapshot.content)
+        throw new WebFetchError(
+          'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT',
+          422,
+          'The rendered page has no readable text.'
+        );
+      const source = html
+        ? await page.evaluate((maxBytes) => {
+            const original = document.body;
+            if (!original) return { content: '', truncated: false };
+            const clone = original.cloneNode(true) as HTMLElement;
+            const originals = [original, ...original.querySelectorAll('*')];
+            const copies = [clone, ...clone.querySelectorAll('*')];
+            for (let i = originals.length - 1; i >= 0; i--) {
+              const node = originals[i]!;
+              const copy = copies[i]!;
+              const style = getComputedStyle(node);
+              if (
+                ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName) ||
+                style.display === 'none'
+              ) {
+                if (i === 0) clone.replaceChildren();
+                else copy.remove();
+                continue;
+              }
+              if (style.visibility === 'hidden' || style.visibility === 'collapse') {
+                // Descendants can override visibility; only this node's text is hidden.
+                for (const child of [...copy.childNodes]) {
+                  if (child.nodeType === Node.TEXT_NODE) child.remove();
+                }
+                if (copy.children.length === 0) {
+                  if (i === 0) clone.replaceChildren();
+                  else copy.remove();
+                  continue;
+                }
+              }
+              for (const attribute of ['href', 'src']) {
+                const value = copy.getAttribute(attribute);
+                if (value) {
+                  try {
+                    copy.setAttribute(attribute, new URL(value, document.baseURI).href);
+                  } catch {
+                    /* Keep original. */
+                  }
+                }
+              }
+            }
+            const bytes = new TextEncoder().encode(clone.innerHTML);
+            return {
+              content: new TextDecoder().decode(bytes.subarray(0, maxBytes), {
+                stream: bytes.length > maxBytes
+              }),
+              truncated: bytes.length > maxBytes
+            };
+          }, WEB_FETCH_MAX_BYTES)
+        : { content: snapshot.content, truncated: snapshot.truncated };
+      signal.throwIfAborted();
+      const converted = convertWebDocument(source.content, html);
+      if (!converted.content)
+        throw new WebFetchError(
+          'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT',
+          422,
+          'The rendered page has no readable text.'
+        );
       return {
-        content: snapshot.content,
+        content: converted.content,
         data: {
           url: finalUrl,
           mode: 'browser',
@@ -396,7 +504,7 @@ export class WebFetchService {
           contentType,
           title: snapshot.title
         },
-        truncated: snapshot.truncated
+        truncated: source.truncated || converted.truncated
       };
     } catch (error) {
       if (navigationFailure) throw navigationFailure;
@@ -404,10 +512,69 @@ export class WebFetchService {
     } finally {
       signal.removeEventListener('abort', cancel);
       await context?.close().catch(() => undefined);
-      await browser?.close().catch(() => undefined);
       this.#browserRequests--;
+      this.#scheduleIdle();
     }
   }
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function readTextResponse(
+  response: Response,
+  contentType: string,
+  navigation: { requestId: string; url: string } | undefined,
+  cdp: CDPSession,
+  signal: AbortSignal
+): Promise<BrowserFetchResult> {
+  const failure = await abortable(response.finished(), signal);
+  if (failure) throw failure;
+  if (!navigation || navigation.url !== response.url())
+    throw new Error('BROWSER_RESPONSE_UNAVAILABLE');
+  // Response.body() can re-request an empty response; use this navigation only.
+  const body = await abortable(
+    cdp.send('Network.getResponseBody', { requestId: navigation.requestId }),
+    signal
+  );
+  const bytes = Buffer.from(body.body, body.base64Encoded ? 'base64' : 'utf8');
+  signal.throwIfAborted();
+  const charset = body.base64Encoded
+    ? (/charset\s*=\s*["']?([^\s;"']+)/iu.exec(contentType)?.[1] ?? 'utf-8')
+    : 'utf-8';
+  let decoder: TextDecoder;
+  try {
+    decoder = new TextDecoder(charset);
+  } catch {
+    decoder = new TextDecoder('utf-8');
+  }
+  const sourceTruncated = bytes.length > WEB_FETCH_MAX_BYTES;
+  const text = decoder.decode(bytes.subarray(0, WEB_FETCH_MAX_BYTES), {
+    stream: sourceTruncated
+  });
+  const converted = convertWebDocument(text, false);
+  if (!converted.content)
+    throw new WebFetchError(
+      'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT',
+      422,
+      'The rendered page has no readable text.'
+    );
+  return {
+    content: converted.content,
+    data: {
+      url: response.url(),
+      mode: 'browser',
+      status: response.status(),
+      contentType: contentType.slice(0, 256)
+    },
+    truncated: sourceTruncated || converted.truncated
+  };
 }
 
 function readableContentType(contentType: string): boolean {
@@ -416,7 +583,7 @@ function readableContentType(contentType: string): boolean {
 
 function upstreamFailure(
   error: unknown,
-  mode: WebFetchRequest['mode'],
+  mode: BrowserFetchRequest['mode'],
   phase: 'tls' | 'request' | 'response' | 'browser'
 ): WebFetchError {
   const upstreamCode =
@@ -454,39 +621,4 @@ function validateResponse(status: number, contentType: string): void {
       415,
       'Response is not readable text.'
     );
-}
-
-function requestHttp(
-  url: URL,
-  signal: AbortSignal,
-  allowUntrustedTls: boolean
-): Promise<IncomingMessage> {
-  return new Promise((resolve, reject) => {
-    let phase: 'tls' | 'request' = 'request';
-    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
-      url,
-      {
-        signal,
-        headers: {
-          accept: 'text/html,application/json,text/plain;q=0.9,*/*;q=0.1',
-          'accept-encoding': 'identity',
-          'user-agent': 'MyAgentRoam/0.9'
-        },
-        ...(url.protocol === 'https:' ? { rejectUnauthorized: !allowUntrustedTls } : {})
-      },
-      resolve
-    );
-    request.once('socket', (socket) => {
-      if (socket instanceof TLSSocket && !request.reusedSocket) {
-        socket.once('connect', () => {
-          phase = 'tls';
-        });
-        socket.once('secureConnect', () => {
-          phase = 'request';
-        });
-      }
-    });
-    request.once('error', (error: unknown) => reject(upstreamFailure(error, 'http', phase)));
-    request.end();
-  });
 }

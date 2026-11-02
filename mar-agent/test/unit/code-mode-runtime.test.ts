@@ -87,6 +87,51 @@ const answer = {
 };
 
 describe('Code Mode SDK and protocol integration', () => {
+  it('starts two independent outer code cells concurrently in one model batch', async () => {
+    const { home, workspace } = await fixture();
+    const host = new LocalAgentHost({ homeDirectory: home, workspace });
+    const original = host.executeTool.bind(host);
+    const release = Promise.withResolvers<void>();
+    let entered = 0;
+    host.executeTool = async (call, context) => {
+      if (call.name === 'read') {
+        entered++;
+        await release.promise;
+      }
+      return original(call, context);
+    };
+    let turn = 0;
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start() {
+        if (turn++ === 0) {
+          for (const id of ['one', 'two'])
+            yield {
+              type: 'client_tool.call',
+              name: 'code_exec',
+              callId: id,
+              arguments: 'observe.result(await tools.read({ reads: [{ path: "input.txt" }] }));'
+            };
+          yield { type: 'completed', reason: 'tool_use' };
+        } else {
+          yield { type: 'text.completed', itemId: 'answer', text: 'done' };
+          yield { type: 'completed', reason: 'completed' };
+        }
+      }
+    };
+    const agent = await createMarAgent({ mode: 'normal', host, models: [model] }, () => adapter);
+    try {
+      const session = await agent.createSession({ workspace, title: 'Parallel cells' });
+      const execution = session.run({ prompt: 'Run independent cells.' });
+      await expect.poll(() => entered, { timeout: 3000 }).toBe(2);
+      release.resolve();
+      expect((await execution.result()).status).toBe('completed');
+    } finally {
+      release.resolve();
+      await agent.dispose();
+    }
+  }, 15000);
+
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     'keeps new code execution available after an expired cell wait under %s',
     async (protocol) => {

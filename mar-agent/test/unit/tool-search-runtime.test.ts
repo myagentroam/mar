@@ -132,7 +132,8 @@ async function fixture(
   codeMode = false,
   catalogOptions?: Parameters<typeof catalog>[0],
   overrides: Partial<AgentModelConfiguration> = {},
-  extensions: readonly AgentExtension[] = []
+  extensions: readonly AgentExtension[] = [],
+  onMcpCall?: () => Promise<void>
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-discovery-'));
   directories.push(home);
@@ -148,6 +149,7 @@ async function fixture(
     },
     callMcp: async (call) => {
       calls.push(call.name);
+      await onMcpCall?.();
       return { content: 'Record found.' };
     }
   });
@@ -179,6 +181,31 @@ async function fixture(
 }
 
 describe('MCP discovery runtime', () => {
+  it('runs unmarked external MCP calls concurrently after discovery', async () => {
+    const release = Promise.withResolvers<void>();
+    let entered = 0;
+    const f = await fixture(false, undefined, {}, [], async () => {
+      entered++;
+      await release.promise;
+    });
+    try {
+      f.adapter.batches.push(
+        [{ name: 'tool_search', arguments: { query: externalName } }],
+        [
+          { name: externalName, arguments: { record: 'one' } },
+          { name: externalName, arguments: { record: 'two' } }
+        ]
+      );
+      const execution = f.session.run({ prompt: 'Discover and call independently.' });
+      await expect.poll(() => entered, { timeout: 3000 }).toBe(2);
+      release.resolve();
+      expect((await execution.result()).status).toBe('completed');
+    } finally {
+      release.resolve();
+      await f.agent.dispose();
+    }
+  }, 15000);
+
   it.each([
     ['OPENAI_RESPONSES', true, false],
     ['OPENAI_RESPONSES', true, true],

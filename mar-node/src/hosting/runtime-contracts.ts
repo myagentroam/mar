@@ -92,6 +92,7 @@ export interface HostedConversationRuntimeRunInput {
 }
 
 export interface HostedConversationRuntime {
+  invalidateWebStorage?(homeDirectory: string): void;
   readToolResultResource?(
     input: {
       homeDirectory: string;

@@ -134,8 +134,8 @@ export class LocalToolRegistry {
       ],
       [
         'apply_patch',
-        async (arguments_: unknown) => {
-          const result = await patch.execute(applyPatchToolInput(arguments_));
+        async (arguments_: unknown, context: LocalToolContext) => {
+          const result = await patch.execute(applyPatchToolInput(arguments_), context.signal);
           return { content: JSON.stringify(result), data: result };
         }
       ],

@@ -5,20 +5,7 @@ export interface ReasoningPreview {
 }
 
 /** Select the display line without scanning its prose boundaries. */
-function reasoningPreviewLine(text: string, representation: unknown): string {
-  if (representation === 'summary') {
-    const heading = [...text.matchAll(/(?:^|\n)[^\S\r\n]*\*\*([^\r\n*]+)\*\*/gu)]
-      .at(-1)?.[1]
-      ?.trim();
-    const paragraph =
-      text
-        .trim()
-        .split(/\n\s*\n/u)
-        .at(-1) ?? '';
-    const firstLine = paragraph.split(/\r?\n/u).find((line) => line.trim()) ?? '';
-    return (heading || firstLine).replace(/\s+/gu, ' ').trim();
-  }
-
+function reasoningPreviewLine(text: string): string {
   const firstLine = text.split(/\r?\n/u).find((line) => line.trim()) ?? '';
   return firstLine
     .trim()
@@ -77,9 +64,8 @@ function firstReasoningClause(line: string): string {
 }
 
 /** Normalize public display text only; never rewrite the underlying reasoning record. */
-export function reasoningPreview(text: string, representation: unknown = 'unspecified'): string {
-  const line = reasoningPreviewLine(text, representation);
-  return representation === 'summary' ? line : firstReasoningClause(line);
+export function reasoningPreview(text: string, _representation: unknown = 'unspecified'): string {
+  return firstReasoningClause(reasoningPreviewLine(text));
 }
 
 export function normalizeReasoningPreview(
@@ -87,15 +73,15 @@ export function normalizeReasoningPreview(
   text: string,
   representation: unknown
 ): ReasoningPreview | undefined {
-  const line = reasoningPreviewLine(text, representation);
+  const line = reasoningPreviewLine(text);
   let preview: string | undefined;
   return line
     ? {
         id,
-        // Budgeting and preview selection only need identity and representation.
+        // Budgeting and preview selection do not need the parsed clause.
         // Parse the clause at most once, and only when a view consumes its text.
         get text() {
-          return (preview ??= representation === 'summary' ? line : firstReasoningClause(line));
+          return (preview ??= firstReasoningClause(line));
         },
         representation:
           representation === 'summary' || representation === 'visible_thinking'
@@ -105,13 +91,10 @@ export function normalizeReasoningPreview(
     : undefined;
 }
 
-/** Inputs follow authoritative record order: latest summary wins, then latest thinking. */
+/** Inputs follow authoritative record order: latest valid record wins. */
 export function selectReasoningPreview(
   previous: ReasoningPreview | undefined,
   next: ReasoningPreview | undefined
 ): ReasoningPreview | undefined {
-  if (next === undefined) return previous;
-  return previous?.representation === 'summary' && next.representation !== 'summary'
-    ? previous
-    : next;
+  return next ?? previous;
 }

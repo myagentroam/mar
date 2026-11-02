@@ -1230,7 +1230,9 @@ describe('MAR Agent Node Runner', () => {
       await store.close();
       const runner = new MarAgentRunner(home);
       const release = vi.fn(async () => undefined);
+      const invalidate = vi.fn();
       runner.setSessionResourceReleaser(release);
+      runner.setWebSessionInvalidator(invalidate);
       const members = [first, second].map(
         ({ id }) => ({ id, runner: 'mar-agent', externalSessionId: id }) as NodeAgentSession
       );
@@ -1240,6 +1242,7 @@ describe('MAR Agent Node Runner', () => {
           { id: 'missing', runner: 'mar-agent', externalSessionId: 'missing' } as NodeAgentSession
         ])
       ).rejects.toThrow();
+      expect(invalidate).not.toHaveBeenCalled();
       let catalog = await openAgentSessionCatalog({ homeDirectory: home });
       try {
         expect((await catalog.list({ limit: 20 })).sessions.map((item) => item.id)).toEqual(
@@ -1251,6 +1254,9 @@ describe('MAR Agent Node Runner', () => {
       await runner.removeNativeMembers(members);
       expect(release).toHaveBeenCalledWith(first.id);
       expect(release).toHaveBeenCalledWith(second.id);
+      expect(invalidate.mock.calls.map(([id]) => id)).toEqual(
+        expect.arrayContaining([first.id, second.id])
+      );
       catalog = await openAgentSessionCatalog({ homeDirectory: home });
       try {
         expect((await catalog.list({ limit: 20 })).sessions).toEqual([]);
@@ -1276,7 +1282,9 @@ describe('MAR Agent Node Runner', () => {
       await store.close();
       const runner = new MarAgentRunner(home);
       const releaseSessionResources = vi.fn(async () => undefined);
+      const invalidate = vi.fn();
       runner.setSessionResourceReleaser(releaseSessionResources);
+      runner.setWebSessionInvalidator(invalidate);
 
       await expect(
         runner.clearNative({
@@ -1286,6 +1294,7 @@ describe('MAR Agent Node Runner', () => {
         } as NodeAgentSession)
       ).resolves.toBeTypeOf('number');
       expect(releaseSessionResources).toHaveBeenCalledWith(native.id);
+      expect(invalidate).toHaveBeenCalledExactlyOnceWith(native.id);
 
       const reopened = await JsonlSessionStore.open(home);
       await expect(reopened.read(native.id)).resolves.toHaveLength(1);
@@ -2338,8 +2347,11 @@ describe('MAR Agent Node Runner', () => {
         createdAt: 0
       } as const;
 
+      const invalidate = vi.fn();
+      runner.setWebSessionInvalidator(invalidate);
       await expect(runner.rollbackNative(session, 'turn-1')).resolves.toEqual(expect.any(Number));
       expect(releaseSessionResources).toHaveBeenCalledWith(native.id);
+      expect(invalidate).toHaveBeenCalledExactlyOnceWith(native.id);
       await expect(runner.readOfficialConversation(session, {})).resolves.toMatchObject({
         turns: [
           {

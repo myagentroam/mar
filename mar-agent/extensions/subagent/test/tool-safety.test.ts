@@ -23,15 +23,20 @@ function registeredTools() {
   return tools;
 }
 
-it('classifies observation tools as safe and lifecycle controls as serial', () => {
+it('classifies all agent tools as safe', () => {
   const tools = registeredTools();
-  for (const name of ['agent_list', 'agent_view', 'agent_wait'])
+  for (const name of [
+    'agent_list',
+    'agent_view',
+    'agent_wait',
+    'agent_start',
+    'agent_send',
+    'agent_stop'
+  ])
     expect(tools.get(name)?.parallelSafety, name).toBe('safe');
-  for (const name of ['agent_start', 'agent_send', 'agent_stop'])
-    expect(tools.get(name)?.parallelSafety, name).toBe('serial');
 });
 
-it('allows independent reads during a pending wait without bypassing lifecycle barriers', async () => {
+it('allows independent reads during a pending wait alongside lifecycle controls', async () => {
   const tools = registeredTools();
   const schedule = createSessionToolScheduler();
   const release = Promise.withResolvers<void>();
@@ -45,15 +50,31 @@ it('allows independent reads during a pending wait without bypassing lifecycle b
       started.push(name);
     })
   );
-  const send = schedule(tools.get('agent_send'), async () => {
-    started.push('send');
-  });
+  const controls = ['agent_start', 'agent_send', 'agent_stop'].map((name) =>
+    schedule(tools.get(name), async () => {
+      started.push(name);
+    })
+  );
   try {
     for (let index = 0; index < 20; index++) await Promise.resolve();
-    expect(started).toEqual(['wait', 'agent_list', 'agent_view']);
+    expect(started).toEqual([
+      'wait',
+      'agent_list',
+      'agent_view',
+      'agent_start',
+      'agent_send',
+      'agent_stop'
+    ]);
   } finally {
     release.resolve();
-    await Promise.all([wait, ...reads, send]);
+    await Promise.all([wait, ...reads, ...controls]);
   }
-  expect(started).toEqual(['wait', 'agent_list', 'agent_view', 'send']);
+  expect(started).toEqual([
+    'wait',
+    'agent_list',
+    'agent_view',
+    'agent_start',
+    'agent_send',
+    'agent_stop'
+  ]);
 });

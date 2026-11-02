@@ -96,7 +96,7 @@ observe.result(patched);
     additionalProperties: false
   },
   allowedCallers: ['direct'],
-  parallelSafety: 'serial'
+  parallelSafety: 'safe'
 };
 
 export const codeExecWaitToolDefinition: ClientToolDefinition = {

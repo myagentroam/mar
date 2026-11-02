@@ -1716,33 +1716,31 @@ describe('Conversation Show Aggregation', () => {
     expect(reasoningPreview('Inspect ``a`b,c`` then, next')).toBe('Inspect ``a`b,c`` then');
   });
 
-  it('previews explicit summary headings or paragraphs without synthetic truncation', () => {
+  it('previews the first summary line and clause without a character limit', () => {
     const summaryPreview = (text: string) => reasoningPreview(text, 'summary');
     expect(summaryPreview('  First\nsummary  and another thought ')).toBe('First');
     expect(summaryPreview('\n\n First\t summary  \r\nFurther reasoning\r\n')).toBe('First summary');
     expect(summaryPreview('Old paragraph\r\n\r\n Latest summary\r\nFurther detail')).toBe(
-      'Latest summary'
+      'Old paragraph'
     );
     expect(summaryPreview('  **Checking the implementation**\n\nFurther reasoning')).toBe(
       'Checking the implementation'
     );
     expect(summaryPreview('**检查实现**\n正文继续')).toBe('检查实现');
-    expect(summaryPreview('** ** further reasoning')).toBe('** ** further reasoning');
+    expect(summaryPreview('** ** further reasoning')).toBe('further reasoning');
     expect(summaryPreview('**unfinished reasoning')).toBe('**unfinished reasoning');
     expect(summaryPreview('Intro **emphasis** remains')).toBe('Intro **emphasis** remains');
-    expect(summaryPreview('First summary\n\nthen detailed thinking')).toBe(
-      'then detailed thinking'
-    );
+    expect(summaryPreview('First summary\n\nthen detailed thinking')).toBe('First summary');
     expect(
       summaryPreview('**Inspecting source and logs**\n\n**Checking service logs**\n\nMore detail')
-    ).toBe('Checking service logs');
+    ).toBe('Inspecting source and logs');
     const longSummary = `${'word '.repeat(30)}following`;
     expect(summaryPreview(`${longSummary}\nHidden detail`)).toBe(longSummary);
     expect(summaryPreview(`**${longSummary}**\n\nFurther reasoning`)).toBe(longSummary);
     expect(summaryPreview('思'.repeat(81))).toBe('思'.repeat(81));
     expect(summaryPreview('🧠'.repeat(81))).toBe('🧠'.repeat(81));
-    expect(summaryPreview('Narrowing the search...')).toBe('Narrowing the search...');
-    expect(summaryPreview('Checking the context…')).toBe('Checking the context…');
+    expect(summaryPreview('Narrowing the search...')).toBe('Narrowing the search');
+    expect(summaryPreview('Checking the context…')).toBe('Checking the context');
     expect(summaryPreview(' ')).toBe('');
   });
 

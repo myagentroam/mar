@@ -15,6 +15,7 @@ export interface ClientToolDefinition extends ModelToolDefinition {
   eventInputFields?: readonly string[];
   /** Runtime-only exposure override; retains both permitted entry points with Code Mode enabled. */
   codeModeExposure?: 'both';
+  /** Runtime-only scheduling policy; defaults to safe. Serial calls are exclusive barriers. */
   parallelSafety?: 'safe' | 'serial';
   /** Preserved business-schema eligibility after framework metadata projection. */
   parameterless?: boolean;

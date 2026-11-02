@@ -10,8 +10,9 @@ import {
 } from '../../src/runner/mar-agent/web-tools-extensions.js';
 import { combineExecutionExtensions } from '../../src/runner/mar-agent/execution-extensions.js';
 
-const context = (signal = new AbortController().signal) => ({ signal }) as ToolExecutionContext;
-const call = (name: string, args: unknown = { url: 'https://example.test', mode: 'browser' }) =>
+const context = (signal = new AbortController().signal) =>
+  ({ signal, sessionId: 'session' }) as ToolExecutionContext;
+const call = (name: string, args: unknown = { action: 'open', url: 'https://example.test' }) =>
   ({
     id: 'call-1',
     name,
@@ -55,10 +56,10 @@ describe('Node execution web tools', () => {
         'web_fetch'
       ]);
       await expect(
-        host.executeTool(call('web_search', { query: 'query' }), { ...root, ...context() })
+        host.executeTool(call('web_search', { query: 'query' }), { ...context(), ...root })
       ).rejects.toThrow();
       await expect(
-        host.executeTool(call('web_search', { query: 'query' }), { ...child, ...context() })
+        host.executeTool(call('web_search', { query: 'query' }), { ...context(), ...child })
       ).resolves.toEqual({ content: 'results' });
       expect(provider).toHaveBeenCalledOnce();
     } finally {
@@ -67,20 +68,24 @@ describe('Node execution web tools', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
-  it('projects explicit modes and forwards normalized input and cancellation', async () => {
+  it('projects actions and forwards normalized input, session and cancellation', async () => {
     const webFetch = vi.fn(async () => ({ content: 'rendered' }));
     const webSearch = vi.fn(async () => ({ content: 'search' }));
     const extensions = createWebToolsExtensions({ enabled: true, webFetch, webSearch });
     expect(extensions.tools?.map((tool) => tool.name)).toEqual(['web_search', 'web_fetch']);
-    expect(webFetchToolDefinition.inputSchema).toMatchObject({ required: ['url', 'mode'] });
+    expect(webFetchToolDefinition.inputSchema).toMatchObject({ required: ['action'] });
     const ctx = context();
     await extensions.executeTool!(call('web_fetch'), ctx);
     expect(webFetch).toHaveBeenCalledWith(
-      { url: 'https://example.test/', mode: 'browser' },
-      ctx.signal
+      { action: 'open', url: 'https://example.test/', maxTokens: 2000 },
+      ctx.signal,
+      'session'
     );
     await extensions.executeTool!(call('web_search', { query: '  query  ' }), ctx);
-    expect(webSearch).toHaveBeenCalledWith({ query: 'query', maxResults: 8 }, ctx.signal);
+    expect(webSearch).toHaveBeenCalledWith(
+      { query: 'query', maxResults: 8, maxTokens: 2000 },
+      ctx.signal
+    );
   });
 
   it.each([undefined, 'auto', 'invalid'])(

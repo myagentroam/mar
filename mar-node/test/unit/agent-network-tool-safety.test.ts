@@ -13,15 +13,20 @@ async function registeredTools() {
   return tools;
 }
 
-it('classifies network observations as safe and lifecycle controls as serial', async () => {
+it('classifies all network tools as safe', async () => {
   const tools = await registeredTools();
-  for (const name of ['agent_list', 'agent_view', 'agent_wait'])
+  for (const name of [
+    'agent_list',
+    'agent_view',
+    'agent_wait',
+    'agent_start',
+    'agent_send',
+    'agent_stop'
+  ])
     expect(tools.get(name)?.parallelSafety, name).toBe('safe');
-  for (const name of ['agent_start', 'agent_send', 'agent_stop'])
-    expect(tools.get(name)?.parallelSafety, name).toBe('serial');
 });
 
-it('starts network reads alongside a pending wait and keeps lifecycle controls ordered', async () => {
+it('starts network reads alongside a pending wait alongside lifecycle controls', async () => {
   const tools = await registeredTools();
   const release = Promise.withResolvers<void>();
   const started: string[] = [];
@@ -29,15 +34,34 @@ it('starts network reads alongside a pending wait and keeps lifecycle controls o
     started.push(call.name);
     if (call.name === 'agent_wait') await release.promise;
   });
-  const pending = ['agent_wait', 'agent_list', 'agent_view', 'agent_start'].map((name) =>
-    schedule({ name })
-  );
+  const pending = [
+    'agent_wait',
+    'agent_list',
+    'agent_view',
+    'agent_start',
+    'agent_send',
+    'agent_stop'
+  ].map((name) => schedule({ name }));
   try {
     for (let index = 0; index < 20; index++) await Promise.resolve();
-    expect(started).toEqual(['agent_wait', 'agent_list', 'agent_view']);
+    expect(started).toEqual([
+      'agent_wait',
+      'agent_list',
+      'agent_view',
+      'agent_start',
+      'agent_send',
+      'agent_stop'
+    ]);
   } finally {
     release.resolve();
     await Promise.all(pending);
   }
-  expect(started).toEqual(['agent_wait', 'agent_list', 'agent_view', 'agent_start']);
+  expect(started).toEqual([
+    'agent_wait',
+    'agent_list',
+    'agent_view',
+    'agent_start',
+    'agent_send',
+    'agent_stop'
+  ]);
 });

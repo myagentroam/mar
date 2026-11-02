@@ -2,8 +2,66 @@ import { describe, expect, it, vi } from 'vitest';
 import { readWebSearchError } from '../../src/service/web-search-error.js';
 import { WebToolService } from '../../src/service/web-tool-service.js';
 import type { NodeConfig } from '../../src/config.js';
+import { countModelTokens } from '@myagentroam/agent';
 
 describe('Node web tool relay', () => {
+  it.each(['closed', 'cancelled'] as const)(
+    'does not read identity or send a search request once %s',
+    async (state) => {
+      const config = vi.fn(
+        () =>
+          ({ serverUrl: 'https://server.test', nodeId: 'n', credential: 'fixture' }) as NodeConfig
+      );
+      const request = vi.fn(
+        async () => new Response(JSON.stringify({ query: 'query', results: [] }))
+      );
+      const tools = new WebToolService(config, request);
+      const controller = new AbortController();
+      try {
+        if (state === 'closed') await tools.close();
+        else controller.abort();
+        const result = tools.webSearch({ query: 'query', maxResults: 1 }, controller.signal);
+        if (state === 'closed')
+          await expect(result).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_SEARCH_FAILED' });
+        else await expect(result).rejects.toBe(controller.signal.reason);
+        expect(config).not.toHaveBeenCalled();
+        expect(request).not.toHaveBeenCalled();
+      } finally {
+        await tools.close();
+      }
+    }
+  );
+
+  it('budgets snippets first and keeps every selected source and its complete URL', async () => {
+    const results = Array.from({ length: 8 }, (_, index) => ({
+      title: `Source ${index}`,
+      url: `https://example.test/${index}`,
+      snippet: '搜索摘要'.repeat(1000)
+    }));
+    const request = vi.fn(async () => new Response(JSON.stringify({ query: 'query', results })));
+    const tools = new WebToolService(
+      () =>
+        ({ serverUrl: 'https://server.test', nodeId: 'n', credential: 'fixture' }) as NodeConfig,
+      request
+    );
+    try {
+      const result = await tools.webSearch(
+        { query: 'query', maxResults: 8, maxTokens: 512 },
+        new AbortController().signal
+      );
+      expect(countModelTokens(result.content)).toBeLessThanOrEqual(512);
+      expect(result.truncated).toBe(true);
+      const data = result.data as { results: typeof results };
+      expect(data.results).toHaveLength(8);
+      for (let index = 0; index < results.length; index++) {
+        expect(result.content).toContain(results[index]!.url);
+        expect(data.results[index]!.url).toBe(results[index]!.url);
+        expect(data.results[index]!.snippet.length).toBeLessThan(results[index]!.snippet.length);
+      }
+    } finally {
+      await tools.close();
+    }
+  });
   it('searches through Server with the Node identity and preserves upstream errors', async () => {
     const request = vi.fn(
       async () =>

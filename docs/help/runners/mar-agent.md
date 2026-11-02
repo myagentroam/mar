@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-02
 ---
 
 # 配置和使用 MAR Agent
@@ -169,7 +169,7 @@ agent_wait({
 
 开启 Hosted Web Search 时，Auto 与 Full access 均使用所选模型服务的原生托管搜索，不需要客户端 permission 声明，也不同时提供自托管搜索；关闭时使用 Server Compose 内置 SearXNG。Web Fetch 由 Node 本地直连执行，不读取模型凭据，也不会继承 Codex 凭据配置的 SOCKS5 代理；它可访问 Node 网络可达的任意 HTTP/HTTPS IP 或域名（包括内网），并默认接受自签名或其他不受信任的 HTTPS 证书。如需严格校验证书，在 Node 服务环境设置 `MAR_AGENT_WEB_FETCH_ALLOW_UNTRUSTED_TLS=0`。
 
-Web 工具由 Node 宿主按本次执行注入，不是 Agent SDK 的内置网络能力。`web_fetch` 必须显式选择 `http`（不运行 JavaScript，返回原始文本/HTML）或 `browser`（隔离无头 Chromium 渲染后返回可见文本与标题）；没有 `auto`、默认模式或失败后的自动切换，模型可明确改用另一种模式。子 Agent 的搜索目录按其实际选择的模型投影，不沿用父模型的选择。浏览器不共享用户登录态或 Cookie，不提供点击、登录、任意脚本和下载接口。托管对话的 `NONE` 网络策略不提供两种 Web 工具；允许联网的托管对话始终严格校验 HTTPS 证书。
+Web 工具由 Node 宿主按本次执行注入，不是 Agent SDK 的内置网络能力。`web_search` 返回有界的搜索片段；`web_fetch` 通过 Chromium 打开 URL，或使用页面引用继续阅读、按字面文本查找。HTML 转换为有界 Markdown 阅读窗口，引用和续读游标显示在工具结果中；引用仅在当前会话可用，失效后需重新打开 URL。网页内容是不可信的外部数据。共享 Chromium 空闲 30 分钟后关闭，运行满一小时后等待现有抓取结束并关闭；之后按需重新启动。子 Agent 的搜索目录按其实际选择的模型投影，不沿用父模型的选择。浏览器不共享用户登录态或 Cookie，不提供点击、登录、任意脚本和下载接口，也不自动回退到其他抓取后端。托管对话的 `NONE` 网络策略不提供两种 Web 工具；允许联网的托管对话始终严格校验 HTTPS 证书。
 
 Node 安装/升级时自动准备 Chromium，启动和抓取时不下载。浏览器不可用时检查服务账号的缓存与 Linux 系统库，详见[安装与注册 Node](../deployment/node-installation.md#web-fetch-浏览器准备)。
 
