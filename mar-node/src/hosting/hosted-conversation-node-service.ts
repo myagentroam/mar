@@ -650,6 +650,7 @@ export class HostedConversationNodeService {
         homeDirectory: paths.homeDirectory
       })
       .catch(() => undefined);
+    this.options.runtime.invalidateWebStorage?.(paths.homeDirectory);
   }
 
   dispose(): Promise<void> {
@@ -1187,6 +1188,7 @@ export class HostedConversationNodeService {
       await this.runs.settlement(conversation.id)?.catch(() => undefined);
       this.hostedWatch.removeConversation(conversation.id);
       await this.options.store.permanentDeleteConversation(conversation.id);
+      this.options.runtime.invalidateWebStorage?.(paths.homeDirectory);
       this.runs.forgetActivity(conversation.id);
       this.historyVersions.delete(conversation.id);
       return hostedConversationDeleteResultSchema.parse({

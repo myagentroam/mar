@@ -57,7 +57,7 @@ import {
   updateMarAgentCompactState,
   type MarAgentCompactState
 } from './compact-extensions.js';
-import type { WebFetchHandler } from '../../service/web-fetch-contracts.js';
+import { webSessionScope, type WebFetchHandler } from '../../service/web-fetch-contracts.js';
 
 export interface HostedLocalAgentHostInput {
   readonly publishModelResource?: AgentHost['publishModelResource'];
@@ -98,6 +98,7 @@ interface MarAgentHostedConversationRuntimeOptions {
     signal: AbortSignal
   ) => Promise<ToolExecutionResult>;
   readonly webFetch?: WebFetchHandler;
+  readonly invalidateWebSession?: (homeDirectory: string, sessionId?: string) => void;
   readonly modelFactory?: Pick<MarAgentRuntimeModelFactory, 'create'>;
   readonly registerNativeImages?: (
     runId: string,
@@ -131,6 +132,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
       ) => Promise<ToolExecutionResult>)
     | undefined;
   readonly #webFetch: WebFetchHandler | undefined;
+  readonly #invalidateWebSession: MarAgentHostedConversationRuntimeOptions['invalidateWebSession'];
   readonly #active = new Map<string, ActiveExecution>();
   readonly #modelFactory: Pick<MarAgentRuntimeModelFactory, 'create'>;
   readonly #registerNativeImages:
@@ -151,6 +153,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     this.#onEvent = options.onEvent;
     this.#webSearch = options.webSearch;
     this.#webFetch = options.webFetch;
+    this.#invalidateWebSession = options.invalidateWebSession;
     this.#registerNativeImages = options.registerNativeImages;
     this.#modelFactory =
       options.modelFactory ??
@@ -251,6 +254,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
           ? { boundaryTurnId: input.boundaryTurnId }
           : { beforeInput: input.beforeInput }
       );
+      this.#invalidateWebSession?.(input.homeDirectory, input.sessionId);
       return { lastActivityAt: Date.parse(rolledBack.lastActivityAt) };
     } catch (error) {
       if (error instanceof AgentError) throw new Error(error.code, { cause: error });
@@ -258,6 +262,10 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     } finally {
       await catalog.close().catch(() => undefined);
     }
+  }
+
+  invalidateWebStorage(homeDirectory: string): void {
+    this.#invalidateWebSession?.(homeDirectory);
   }
 
   async startRun(
@@ -500,7 +508,16 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
           hostedWebSearch:
             models.find((model) => model.id === selectedModelId)?.hostedWebSearch ?? false,
           ...(this.#webSearch === undefined ? {} : { webSearch: this.#webSearch }),
-          ...(this.#webFetch === undefined ? {} : { webFetch: this.#webFetch })
+          ...(this.#webFetch === undefined
+            ? {}
+            : {
+                webFetch: (request, signal, sessionId) =>
+                  this.#webFetch!(
+                    request,
+                    signal,
+                    webSessionScope('hosted', input.homeDirectory, sessionId)
+                  )
+              })
         })
       );
       host = this.#createHost({

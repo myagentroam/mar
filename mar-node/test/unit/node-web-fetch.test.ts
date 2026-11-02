@@ -1,9 +1,8 @@
 import { createServer, type Server, type RequestListener } from 'node:http';
-import dns from 'node:dns';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   WEB_FETCH_MAX_BYTES,
-  webFetchResultSchema
+  browserFetchResultSchema
 } from '../../src/service/web-fetch-contracts.js';
 import { WebFetchService } from '../../src/service/web-fetch-service.js';
 import { WebToolService } from '../../src/service/web-tool-service.js';
@@ -43,22 +42,112 @@ function service(options?: ConstructorParameters<typeof WebFetchService>[0]) {
 
 describe('Node web fetch service', () => {
   it.each([
+    ['text/plain; charset=utf-8', '  first line\n\nlast line\n'],
+    ['text/markdown; charset=utf-8', '\n    code indentation\n\n# heading\n'],
+    ['application/json; charset=utf-8', '  {\n    "hello": "world"\n  }\n'],
+    [
+      'application/xml; charset=utf-8',
+      '<?xml version="1.0"?>\n<root>\n  <item>value</item>\n</root>\n'
+    ]
+  ])(
+    'retains the exact source text for %s',
+    async (contentType, body) => {
+      const url = await target((_request, response) => {
+        response.writeHead(200, { 'content-type': contentType });
+        response.end(body);
+      });
+      const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
+      expect(result.content).toBe(body);
+      expect(result.truncated).toBe(false);
+    },
+    20_000
+  );
+
+  it('preserves whitespace when decoding a compressed non-UTF-8 response', async () => {
+    const url = await target((_request, response) => {
+      response.writeHead(200, {
+        'content-type': 'text/plain; charset=iso-8859-1',
+        'content-encoding': 'gzip'
+      });
+      response.end(gzipSync(Buffer.from([0x20, 0x63, 0x61, 0x66, 0xe9, 0x0a])));
+    });
+    const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
+    expect(result.content).toBe(' café\n');
+    expect(result.truncated).toBe(false);
+  }, 20_000);
+
+  it('reports an unsupported binary navigation rather than a generic browser failure', async () => {
+    const url = await target((_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/octet-stream' });
+      response.end(Buffer.from([0, 1, 2, 3]));
+    });
+    await expect(
+      service().fetch({ url, mode: 'browser' }, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_UNSUPPORTED_CONTENT' });
+  });
+
+  it('reports a binary main document reached by client-side navigation', async () => {
+    const url = await target((request, response) => {
+      if (request.url === '/binary') {
+        response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.end(Buffer.from([0, 1, 2, 3]));
+      } else {
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end(
+          '<p>Loading</p><script>setTimeout(() => location.href="/binary", 100)</script>'
+        );
+      }
+    });
+    await expect(
+      service().fetch({ url, mode: 'browser' }, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_UNSUPPORTED_CONTENT' });
+  });
+
+  it.each([
+    ['text/plain; charset=utf-8', '  first\n    second\n\n'],
+    [
+      'application/xml; charset=utf-8',
+      '<?xml version="1.0"?><root><value>XML-TARGET</value></root>'
+    ]
+  ])(
+    'uses the final response body after an HTML script navigates to %s',
+    async (type, body) => {
+      let destinationRequests = 0;
+      const url = await target((request, response) => {
+        if (request.url === '/final') {
+          destinationRequests++;
+          response.writeHead(200, { 'content-type': type });
+          response.end(body);
+          return;
+        }
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end(
+          '<p>Loading</p><script>setTimeout(() => location.href="/final", 100)</script>'
+        );
+      });
+      const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
+      expect(result.content).toBe(body);
+      expect(result.data).toMatchObject({ url: new URL('/final', url).href, contentType: type });
+      expect(destinationRequests).toBe(1);
+    },
+    20_000
+  );
+  it.each([
     ['gzip', gzipSync],
     ['br', brotliCompressSync],
     ['deflate', deflateSync]
   ] as const)(
-    'decodes compressed HTTP text without launching a browser (%s)',
+    'decodes compressed text in Chromium (%s)',
     async (encoding, compress) => {
-      const launchBrowser = vi.fn();
       const url = await target((_request, response) => {
         response.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': encoding });
         response.end(compress(Buffer.from('COMPRESSED_TEXT')));
       });
       await expect(
-        service({ launchBrowser }).fetch({ url, mode: 'http' }, new AbortController().signal)
+        service().fetch({ url, mode: 'browser' }, new AbortController().signal)
       ).resolves.toMatchObject({ content: 'COMPRESSED_TEXT', truncated: false });
-      expect(launchBrowser).not.toHaveBeenCalled();
-    }
+    },
+    20_000
   );
 
   it('enforces the browser redirect limit before fetching the excess target', async () => {
@@ -94,16 +183,16 @@ describe('Node web fetch service', () => {
     expect(requests).toEqual(['/']);
   }, 20_000);
 
-  it('bounds decompressed output and repaired invalid UTF-8 at the public byte budget', async () => {
+  it('bounds decompressed output and repaired invalid UTF-8 at the internal byte budget', async () => {
     const url = await target((_request, response) => {
       response.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' });
       response.end(gzipSync(Buffer.alloc(WEB_FETCH_MAX_BYTES + 1, 0xff)));
     });
-    const result = await service().fetch({ url, mode: 'http' }, new AbortController().signal);
+    const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
     expect(result.truncated).toBe(true);
     expect(Buffer.byteLength(result.content)).toBeLessThanOrEqual(WEB_FETCH_MAX_BYTES);
-    expect(webFetchResultSchema.safeParse(result).success).toBe(true);
-  });
+    expect(browserFetchResultSchema.safeParse(result).success).toBe(true);
+  }, 20_000);
 
   it.each([200, 404])(
     'settles client-side navigation and reports the destination response (%s)',
@@ -122,7 +211,7 @@ describe('Node web fetch service', () => {
       const pending = service().fetch({ url, mode: 'browser' }, new AbortController().signal);
       if (status === 200)
         await expect(pending).resolves.toMatchObject({
-          content: 'DESTINATION_BODY',
+          content: String.raw`DESTINATION\_BODY`,
           data: { url: `${url}/destination`, status, title: 'Destination' }
         });
       else
@@ -157,6 +246,8 @@ describe('Node web fetch service', () => {
       async () =>
         ({
           newContext: vi.fn(async () => context),
+          on: vi.fn(),
+          isConnected: () => true,
           close: vi.fn(async () => undefined)
         }) as unknown as Browser
     );
@@ -178,93 +269,15 @@ describe('Node web fetch service', () => {
       response.end('NODE_FETCH_OK');
     });
     const result = await service().fetch(
-      { url: `${url}/redirect`, mode: 'http' },
+      { url: `${url}/redirect`, mode: 'browser' },
       new AbortController().signal
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       content: 'NODE_FETCH_OK',
-      data: { url: `${url}/page`, mode: 'http', status: 200, contentType: 'text/plain' },
+      data: { url: `${url}/page`, mode: 'browser', status: 200, contentType: 'text/plain' },
       truncated: false
     });
-  });
-
-  it('does not execute JavaScript or launch Chromium in HTTP mode', async () => {
-    const launchBrowser = vi.fn();
-    const url = await target((_request, response) => {
-      response.writeHead(200, { 'content-type': 'text/html' });
-      response.end('<body><script>document.body.textContent="Rendered"</script></body>');
-    });
-    const result = await service({ launchBrowser }).fetch(
-      { url, mode: 'http' },
-      new AbortController().signal
-    );
-    expect(result.content).toContain('<script>');
-    expect(launchBrowser).not.toHaveBeenCalled();
-  });
-
-  it('preserves TLS handshake reset diagnostics without a browser fallback', async () => {
-    const launchBrowser = vi.fn();
-    const server = createServer();
-    servers.push(server);
-    server.on('connection', (socket) => socket.destroy());
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('Missing fixture port');
-    const failure = await service({ launchBrowser })
-      .fetch(
-        { url: `https://127.0.0.1:${address.port}/`, mode: 'http' },
-        new AbortController().signal
-      )
-      .catch((error: unknown) => error);
-    expect(failure).toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      publicMessage: 'Web fetch upstream failed during TLS negotiation (ECONNRESET).',
-      details: { status: 502, mode: 'http', phase: 'tls', upstreamCode: 'ECONNRESET' }
-    });
-    expect(launchBrowser).not.toHaveBeenCalled();
-  });
-
-  it('distinguishes an HTTP request reset from a TLS handshake failure', async () => {
-    const url = await target((request) => request.socket.destroy());
-    await expect(
-      service().fetch({ url, mode: 'http' }, new AbortController().signal)
-    ).rejects.toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      publicMessage: 'Web fetch upstream failed during the HTTP request (ECONNRESET).',
-      details: { status: 502, mode: 'http', phase: 'request', upstreamCode: 'ECONNRESET' }
-    });
-  });
-
-  it('does not label a DNS lookup failure as a TLS negotiation failure', async () => {
-    vi.spyOn(dns, 'lookup').mockImplementation((...args: unknown[]) => {
-      const callback = args.at(-1) as (error: NodeJS.ErrnoException) => void;
-      callback(Object.assign(new Error('private DNS diagnostics'), { code: 'ENOTFOUND' }));
-    });
-    await expect(
-      service().fetch(
-        { url: 'https://web-fetch-dns.invalid/', mode: 'http' },
-        new AbortController().signal
-      )
-    ).rejects.toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      publicMessage: 'Web fetch upstream failed during the HTTP request (ENOTFOUND).',
-      details: { status: 502, mode: 'http', phase: 'request', upstreamCode: 'ENOTFOUND' }
-    });
-  });
-
-  it('preserves response decoding failures after a successful HTTP status', async () => {
-    const url = await target((_request, response) => {
-      response.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' });
-      response.end('not a gzip stream');
-    });
-    await expect(
-      service().fetch({ url, mode: 'http' }, new AbortController().signal)
-    ).rejects.toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      publicMessage: 'Web fetch upstream failed during the HTTP response read (Z_DATA_ERROR).',
-      details: { status: 502, mode: 'http', phase: 'response', upstreamCode: 'Z_DATA_ERROR' }
-    });
-  });
+  }, 20_000);
 
   it.each([
     ['ENOTFOUND', 'ENOTFOUND'],
@@ -272,65 +285,70 @@ describe('Node web fetch service', () => {
     ['X'.repeat(81), undefined],
     ['invalid code fixture-secret', undefined],
     [undefined, undefined]
-  ])('bounds upstream codes and excludes private error messages (%s)', async (code, expected) => {
-    const privateMessage = 'https://user:fixture-secret@example.test/?token=fixture-token';
-    const launchBrowser = vi.fn(
-      async () =>
-        ({
-          newContext: vi.fn(async () => {
-            throw Object.assign(new Error(privateMessage), { code });
-          }),
-          close: vi.fn(async () => undefined)
-        }) as unknown as Browser
-    );
-    const failure = await service({ launchBrowser })
-      .fetch({ url: 'https://example.test/', mode: 'browser' }, new AbortController().signal)
-      .catch((error: unknown) => error);
-    expect(failure).toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
-      publicMessage: `Web fetch upstream failed during the browser read${expected ? ` (${expected})` : ''}.`,
-      details: {
-        status: 502,
-        mode: 'browser',
-        phase: 'browser',
-        ...(expected ? { upstreamCode: expected } : {})
-      }
-    });
-    expect(failure).not.toHaveProperty('cause', expect.anything());
-    if (expected) expect(failure).toHaveProperty('details.upstreamCode', expected);
-    else expect(failure).not.toHaveProperty('details.upstreamCode');
-    expect(JSON.stringify(failure)).not.toContain('fixture-secret');
-    expect(JSON.stringify(failure)).not.toContain('fixture-token');
-  });
+  ])(
+    'bounds upstream codes and excludes private error messages (%s)',
+    async (code, expected) => {
+      const privateMessage = 'https://user:fixture-secret@example.test/?token=fixture-token';
+      const launchBrowser = vi.fn(
+        async () =>
+          ({
+            newContext: vi.fn(async () => {
+              throw Object.assign(new Error(privateMessage), { code });
+            }),
+            on: vi.fn(),
+            isConnected: () => true,
+            close: vi.fn(async () => undefined)
+          }) as unknown as Browser
+      );
+      const failure = await service({ launchBrowser })
+        .fetch({ url: 'https://example.test/', mode: 'browser' }, new AbortController().signal)
+        .catch((error: unknown) => error);
+      expect(failure).toMatchObject({
+        code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
+        publicMessage: `Web fetch upstream failed during the browser read${expected ? ` (${expected})` : ''}.`,
+        details: {
+          status: 502,
+          mode: 'browser',
+          phase: 'browser',
+          ...(expected ? { upstreamCode: expected } : {})
+        }
+      });
+      expect(failure).not.toHaveProperty('cause', expect.anything());
+      if (expected) expect(failure).toHaveProperty('details.upstreamCode', expected);
+      else expect(failure).not.toHaveProperty('details.upstreamCode');
+      expect(JSON.stringify(failure)).not.toContain('fixture-secret');
+      expect(JSON.stringify(failure)).not.toContain('fixture-token');
+    },
+    20_000
+  );
 
   it('bounds UTF-8 output and stops an oversized response with a valid truncation result', async () => {
     const url = await target((_request, response) => {
       response.writeHead(200, { 'content-type': 'text/plain' });
       response.end('汉'.repeat(WEB_FETCH_MAX_BYTES));
     });
-    const result = await service().fetch({ url, mode: 'http' }, new AbortController().signal);
+    const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
     expect(result.truncated).toBe(true);
     expect(Buffer.byteLength(result.content)).toBeLessThanOrEqual(WEB_FETCH_MAX_BYTES);
     expect(result.content).not.toContain('\uFFFD');
-    expect(webFetchResultSchema.safeParse(result).success).toBe(true);
+    expect(browserFetchResultSchema.safeParse(result).success).toBe(true);
   });
 
   it.each([
     [403, 'text/html', 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED'],
     [200, 'application/pdf', 'MAR_AGENT_WEB_FETCH_UNSUPPORTED_CONTENT']
   ])(
-    'rejects unsupported status/content without browser fallback (%s)',
+    'rejects unsupported status/content without fallback (%s)',
     async (status, contentType, code) => {
-      const launchBrowser = vi.fn();
       const url = await target((_request, response) => {
         response.writeHead(status, { 'content-type': contentType });
         response.end('unreadable');
       });
       await expect(
-        service({ launchBrowser }).fetch({ url, mode: 'http' }, new AbortController().signal)
+        service().fetch({ url, mode: 'browser' }, new AbortController().signal)
       ).rejects.toMatchObject({ code });
-      expect(launchBrowser).not.toHaveBeenCalled();
-    }
+    },
+    20_000
   );
 
   it('rejects unsafe redirects and bounds redirect loops', async () => {
@@ -342,14 +360,14 @@ describe('Node web fetch service', () => {
     });
     const fetcher = service();
     await expect(
-      fetcher.fetch({ url: `${url}/unsafe`, mode: 'http' }, new AbortController().signal)
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_INPUT_INVALID' });
+      fetcher.fetch({ url: `${url}/unsafe`, mode: 'browser' }, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED' });
     await expect(
-      fetcher.fetch({ url: `${url}/loop`, mode: 'http' }, new AbortController().signal)
+      fetcher.fetch({ url: `${url}/loop`, mode: 'browser' }, new AbortController().signal)
     ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED' });
   });
 
-  it('cancels a pending HTTP response when Node closes and refuses later requests', async () => {
+  it('cancels a pending browser response when Node closes and refuses later requests', async () => {
     let requested!: () => void;
     const seen = new Promise<void>((resolve) => {
       requested = resolve;
@@ -358,15 +376,15 @@ describe('Node web fetch service', () => {
       requested();
     });
     const fetcher = service();
-    const pending = fetcher.fetch({ url, mode: 'http' }, new AbortController().signal);
+    const pending = fetcher.fetch({ url, mode: 'browser' }, new AbortController().signal);
     const failed = expect(pending).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_CANCELLED' });
     await seen;
     await fetcher.close();
     await failed;
     await expect(
-      fetcher.fetch({ url, mode: 'http' }, new AbortController().signal)
+      fetcher.fetch({ url, mode: 'browser' }, new AbortController().signal)
     ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_CANCELLED' });
-  });
+  }, 20_000);
 
   it('reports missing Chromium without fetching the target through HTTP', async () => {
     let requests = 0;
@@ -398,14 +416,128 @@ describe('Node web fetch service', () => {
     });
     try {
       await expect(
-        tools.webFetch({ url, mode: 'http' }, new AbortController().signal)
-      ).resolves.toMatchObject({ content: 'LOCAL_FETCH' });
+        tools.webFetch(
+          { action: 'open', url, maxTokens: 2000 },
+          new AbortController().signal,
+          'test-session'
+        )
+      ).resolves.toMatchObject({ content: expect.stringContaining(String.raw`LOCAL\_FETCH`) });
       expect(config).not.toHaveBeenCalled();
       expect(request).not.toHaveBeenCalled();
     } finally {
       await tools.close();
     }
-  });
+  }, 20_000);
+
+  it('keeps visible descendants without copying hidden HTML text', async () => {
+    const url = await target((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/html' });
+      response.end(`<body style="visibility:hidden">
+        HIDDEN_BODY_TEXT
+        <p style="visibility:visible">Visible outside</p>
+        <section>HIDDEN_CONTAINER_TEXT
+          <h2 style="visibility:visible">Visible descendant</h2>
+        </section>
+        <section style="display:none">
+          <span style="visibility:visible">HIDDEN_DISPLAY_NONE_TEXT</span>
+        </section>
+        <img src="/hidden.png" alt="HIDDEN_IMAGE_ALT">
+        <a href="/hidden-link">HIDDEN_LINK_TEXT</a>
+        <script>document.body.append(
+          document.createTextNode('HIDDEN_DYNAMIC_ONE'),
+          document.createTextNode('HIDDEN_DYNAMIC_TWO'))</script>
+      </body>`);
+    });
+    const result = await service().fetch({ url, mode: 'browser' }, new AbortController().signal);
+    expect(result.content).toContain('Visible outside');
+    expect(result.content).toContain('## Visible descendant');
+    expect(result.content).not.toContain('HIDDEN');
+    expect(result.content).not.toContain('/hidden-link');
+  }, 20_000);
+
+  it('rejects a display-none body instead of returning invisible HTML text', async () => {
+    const url = await target((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/html' });
+      response.end('<body style="display:none">HIDDEN_BODY_TEXT</body>');
+    });
+    await expect(
+      service().fetch({ url, mode: 'browser' }, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT' });
+  }, 20_000);
+
+  it('opens one rendered Markdown snapshot, finds and continues it only within its session', async () => {
+    let requests = 0;
+    const url = await target((_request, response) => {
+      requests++;
+      response.writeHead(200, { 'content-type': 'text/html' });
+      response.end(`<title>Fixture</title><h1>Heading</h1><a href="/relative">Link</a>
+        <ul><li>First</li><li>Second</li></ul><table><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Value</td></tr></tbody></table>
+        <pre><code>code block</code></pre><script>document.body.insertAdjacentHTML('beforeend','<p>dynamic target</p>')</script>
+        <p style="display:none">hidden secret</p>`);
+    });
+    const tools = new WebToolService(() => undefined);
+    const signal = new AbortController().signal;
+    const scope = JSON.stringify(['workspace', '/home/test', 'first']);
+    try {
+      const opened = await tools.webFetch({ action: 'open', url, maxTokens: 2000 }, signal, scope);
+      const data = opened.data as { ref: string; format: string };
+      expect(opened.content).toContain('# Heading');
+      expect(opened.content).toContain(`[Link](${url}/relative)`);
+      expect(opened.content).toContain('| Col |');
+      expect(opened.content).toContain('code block');
+      expect(opened.content).not.toContain('hidden secret');
+      expect(opened.content).not.toContain('insertAdjacentHTML');
+      expect(data.format).toBe('markdown');
+      const found = await tools.webFetch(
+        { action: 'find', ref: data.ref, pattern: 'DYNAMIC TARGET', maxTokens: 512 },
+        signal,
+        scope
+      );
+      expect(found.content).toContain('dynamic target');
+      expect(found.content).toContain(data.ref);
+      await expect(
+        tools.webFetch(
+          { action: 'open', ref: data.ref, maxTokens: 512 },
+          signal,
+          JSON.stringify(['workspace', '/home/test', 'second'])
+        )
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_SNAPSHOT_UNAVAILABLE' });
+      expect(requests).toBe(1);
+      tools.clearSession(scope);
+      await expect(
+        tools.webFetch({ action: 'open', ref: data.ref, maxTokens: 512 }, signal, scope)
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_SNAPSHOT_UNAVAILABLE' });
+    } finally {
+      await tools.close();
+    }
+  }, 20_000);
+
+  it('cancels an in-flight read when its session is invalidated', async () => {
+    let requested!: () => void;
+    const seen = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const url = await target((_request, response) => {
+      requested();
+      response.on('close', () => response.end());
+    });
+    const tools = new WebToolService(() => undefined);
+    try {
+      const pending = tools.webFetch(
+        { action: 'open', url, maxTokens: 512 },
+        new AbortController().signal,
+        'scope'
+      );
+      const cancelled = expect(pending).rejects.toMatchObject({
+        code: 'MAR_AGENT_WEB_FETCH_CANCELLED'
+      });
+      await seen;
+      tools.clearSession('scope');
+      await cancelled;
+    } finally {
+      await tools.close();
+    }
+  }, 20_000);
 
   it('cancels an active browser navigation and can use the freed capacity again', async () => {
     let requested!: () => void;
@@ -429,7 +561,7 @@ describe('Node web fetch service', () => {
     await failed;
     await expect(
       fetcher.fetch({ url, mode: 'browser' }, new AbortController().signal)
-    ).resolves.toMatchObject({ content: 'AFTER_CANCEL' });
+    ).resolves.toMatchObject({ content: 'AFTER\\_CANCEL' });
   }, 20_000);
 
   it('bounds browser concurrency and releases launch-failure slots', async () => {
@@ -442,24 +574,23 @@ describe('Node web fetch service', () => {
     );
     const fetcher = service({ launchBrowser });
     const input = { url: 'http://127.0.0.1/', mode: 'browser' as const };
-    const first = expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
-    });
-    const second = expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject(
-      { code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE' }
+    const first = Array.from({ length: 4 }, () =>
+      expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
+        code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
+      })
     );
     await expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
       code: 'MAR_AGENT_WEB_FETCH_BUSY'
     });
-    expect(launchBrowser).toHaveBeenCalledTimes(2);
+    expect(launchBrowser).toHaveBeenCalledTimes(1);
     releases.splice(0).forEach((release) => release());
-    await Promise.all([first, second]);
+    await Promise.all(first);
     const third = expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
       code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
     });
     releases.splice(0).forEach((release) => release());
     await third;
-    expect(launchBrowser).toHaveBeenCalledTimes(3);
+    expect(launchBrowser).toHaveBeenCalledTimes(2);
   });
 
   it('classifies deadline expiry separately from cancellation', async () => {
@@ -472,7 +603,7 @@ describe('Node web fetch service', () => {
     const url = await target(() => {
       requested();
     });
-    const pending = service().fetch({ url, mode: 'http' }, new AbortController().signal);
+    const pending = service().fetch({ url, mode: 'browser' }, new AbortController().signal);
     const failed = expect(pending).rejects.toMatchObject({ code: 'MAR_AGENT_WEB_FETCH_TIMEOUT' });
     await seen;
     timeout.abort();
@@ -484,7 +615,13 @@ describe('Node web fetch service', () => {
       throw new Error('stop after policy observation');
     });
     const launchBrowser = vi.fn(
-      async () => ({ newContext, close: vi.fn(async () => undefined) }) as unknown as Browser
+      async () =>
+        ({
+          newContext,
+          on: vi.fn(),
+          isConnected: () => true,
+          close: vi.fn(async () => undefined)
+        }) as unknown as Browser
     );
     const fetcher = service({ allowUntrustedTls: true, launchBrowser });
     const input = { url: 'https://example.test/', mode: 'browser' as const };
@@ -525,7 +662,7 @@ describe('Node web fetch service', () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await fetcher.fetch({ url, mode: 'browser' }, new AbortController().signal);
       expect(result).toMatchObject({
-        content: 'CLIENT_RENDERED_BODY',
+        content: String.raw`CLIENT\_RENDERED\_BODY`,
         data: { mode: 'browser', title: 'Dynamic page', status: 200 },
         truncated: false
       });

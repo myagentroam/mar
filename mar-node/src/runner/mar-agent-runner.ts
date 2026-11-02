@@ -75,6 +75,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   // Display and usage hints only; request admission/defaults use captured resources.
   #models: readonly MarAgentNodeModelSummary[] = [];
   #releaseSessionResources: ((sessionId: string) => Promise<void>) | undefined;
+  #invalidateWebSession: ((sessionId: string) => void) | undefined;
   #generatedImageRegistrar:
     | ((
         session: NodeAgentSession,
@@ -96,6 +97,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   }
   setSessionResourceReleaser(release: (sessionId: string) => Promise<void>): void {
     this.#releaseSessionResources = release;
+  }
+  setWebSessionInvalidator(invalidate: (sessionId: string) => void): void {
+    this.#invalidateWebSession = invalidate;
   }
   setGeneratedImageRegistrar(
     register: (
@@ -525,6 +529,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
               beforeInput: { turnId: targetTurnBoundary!, clientMessageId: targetClientMessageId }
             }
       );
+      this.#invalidateWebSession?.(session.externalSessionId);
       return Date.parse(rolledBack.lastActivityAt);
     } catch (error) {
       if (error instanceof AgentError) throw new Error(error.code, { cause: error });
@@ -541,7 +546,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     await this.#releaseSessionResources?.(session.externalSessionId);
     const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
-      return Date.parse((await catalog.clear(session.externalSessionId)).lastActivityAt);
+      const cleared = await catalog.clear(session.externalSessionId);
+      this.#invalidateWebSession?.(session.externalSessionId);
+      return Date.parse(cleared.lastActivityAt);
     } catch (error) {
       if (error instanceof AgentError) throw new Error(error.code, { cause: error });
       throw error;
@@ -557,7 +564,9 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     await this.#releaseSessionResources?.(nativeSessionId);
     const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
-      return (await catalog.delete(nativeSessionId)).deleted ? true : 'MISSING';
+      const deleted = await catalog.delete(nativeSessionId);
+      this.#invalidateWebSession?.(nativeSessionId);
+      return deleted.deleted ? true : 'MISSING';
     } finally {
       await catalog.close().catch(() => undefined);
     }
@@ -575,6 +584,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     const catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
     try {
       await catalog.deleteMembers(ids);
+      for (const id of ids) this.#invalidateWebSession?.(id);
     } finally {
       await catalog.close().catch(() => undefined);
     }

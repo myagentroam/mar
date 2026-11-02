@@ -531,10 +531,12 @@ describe('MAR Agent hosted conversation runtime', () => {
     }));
     const close = vi.fn(async () => undefined);
     const openCatalog = vi.fn(async () => ({ rollback, close }));
+    const invalidateWebSession = vi.fn();
     const runtime = new MarAgentHostedConversationRuntime({
       createAgent: vi.fn() as never,
       createHost: vi.fn() as never,
-      openCatalog: openCatalog as never
+      openCatalog: openCatalog as never,
+      invalidateWebSession
     });
 
     await expect(
@@ -547,6 +549,10 @@ describe('MAR Agent hosted conversation runtime', () => {
     ).resolves.toEqual({ lastActivityAt: Date.parse('2026-09-01T00:00:05.000Z') });
     expect(openCatalog).toHaveBeenCalledWith({ homeDirectory: '/private/hosted-home' });
     expect(rollback).toHaveBeenCalledWith('session-1', { boundaryTurnId: 'turn-1' });
+    expect(invalidateWebSession).toHaveBeenCalledExactlyOnceWith(
+      '/private/hosted-home',
+      'session-1'
+    );
     expect(close).toHaveBeenCalledOnce();
   });
 
