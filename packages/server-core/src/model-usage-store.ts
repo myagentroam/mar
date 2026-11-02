@@ -17,7 +17,7 @@ export function usageModelKey(record: ModelUsageRecord): string {
   return JSON.stringify([
     record.runner,
     record.provider ?? '',
-    record.actualModel ?? record.requestedModel ?? ''
+    record.modelConfigurationId ?? record.actualModel ?? record.requestedModel ?? ''
   ]);
 }
 

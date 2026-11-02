@@ -288,12 +288,69 @@ describe('native request usage normalizers', () => {
       reasoningTokens: '3',
       actualModel: 'actual',
       requestedModel: 'selected',
+      modelConfigurationId: 'selected',
       coverage: 'partial'
     });
     normalizer.observe('rawResponse/completed', { responseId: 'compact' }, true);
     expect(facts[1]).toMatchObject({ purpose: 'compact' });
     expect(facts[1]?.inputTokens).toBeUndefined();
     expect(facts[1]?.recordId).not.toBe(facts[0]?.recordId);
+  });
+
+  it('keeps published native identities stable when model metadata arrives later', () => {
+    const codexFacts: RunnerUsageFact[] = [];
+    const codex = new CodexUsageNormalizer('run', (value) => codexFacts.push(value), 'selected');
+    codex.observe('rawResponse/completed', { responseId: 'r', usage: { inputTokens: 1 } }, false);
+    codex.observe(
+      'rawResponse/completed',
+      { responseId: 'r', model: 'actual', usage: { inputTokens: 2 } },
+      false
+    );
+    expect(codexFacts.map((fact) => fact.modelConfigurationId)).toEqual(['selected', 'selected']);
+    expect(codexFacts[1]?.actualModel).toBe('actual');
+
+    const claudeFacts: RunnerUsageFact[] = [];
+    const claude = new ClaudeUsageNormalizer('run', (value) => claudeFacts.push(value));
+    claude.observe({
+      type: 'stream_event',
+      event: { type: 'message_start', message: { id: 'm', usage: { input_tokens: 1 } } }
+    });
+    claude.observe({
+      type: 'assistant',
+      message: { id: 'm', model: 'claude', usage: { input_tokens: 2 }, stop_reason: 'end_turn' }
+    });
+    expect(claudeFacts.map((fact) => fact.modelConfigurationId)).toEqual([undefined, undefined]);
+    expect(claudeFacts[1]?.actualModel).toBe('claude');
+
+    const openCodeFacts: RunnerUsageFact[] = [];
+    const openCode = new OpenCodeUsageNormalizer('run', (value) => openCodeFacts.push(value));
+    const message = (model?: string, provider?: string) => ({
+      type: 'message.updated',
+      properties: {
+        info: {
+          id: 'm',
+          role: 'assistant',
+          modelID: model,
+          providerID: provider,
+          time: { created: 1 }
+        }
+      }
+    });
+    const step = (input: number) => ({
+      type: 'message.part.updated',
+      properties: { part: { id: 's', messageID: 'm', type: 'step-finish', tokens: { input } } }
+    });
+    openCode.observe(message(), 1);
+    openCode.observe(step(1), 1);
+    openCode.observe(message('model', 'provider'), 1);
+    openCode.observe(step(2), 1);
+    expect(
+      openCodeFacts.map(({ modelConfigurationId, provider }) => [modelConfigurationId, provider])
+    ).toEqual([
+      [undefined, undefined],
+      [undefined, undefined]
+    ]);
+    expect(openCodeFacts[1]?.actualModel).toBe('model');
   });
 
   it('coalesces Claude streaming frames and final assistant messages without counting the result aggregate', () => {

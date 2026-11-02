@@ -13,11 +13,13 @@ import { ModelUsageQueryService } from '../../packages/server-core/src/model-usa
 import { registerModelUsageRoutes } from '../../packages/server-core/src/model-usage-routes.js';
 import {
   MODEL_USAGE_MIGRATION,
+  MODEL_USAGE_CONFIGURATION_MIGRATION,
   MODEL_USAGE_QUERY_INDEX_MIGRATION
 } from '../../packages/server-core/src/model-usage-schema.js';
 import { SESSION_COOKIE_NAME } from '../../packages/server-core/src/auth.js';
 import {
   createEnvelope,
+  personalUsageQuerySchema,
   type ModelUsageBatch,
   type ModelUsageRecord
 } from '../../packages/protocol/src/index.js';
@@ -31,7 +33,7 @@ const Fastify = createRequire(new URL('../../packages/server-core/package.json',
   'fastify'
 );
 
-test('Personal usage index migration preserves boundary totals and covers metadata and paging counts', async () => {
+test('Personal usage configuration migration preserves boundary totals and covers metadata and paging counts', async () => {
   const database = resolvePlaywrightTestDatabase(`usage_query_${randomUUID()}`);
   await createPlaywrightTestDatabase(database);
   const pool = mysql.createPool(database.databaseUrl);
@@ -59,7 +61,7 @@ test('Personal usage index migration preserves boundary totals and covers metada
   const filtered = {
     ...query,
     runner: 'codex' as const,
-    model: 'selected',
+    model: JSON.stringify(['codex', '', 'selected']),
     mode: 'conversation' as const
   };
   let sequence = 0;
@@ -134,6 +136,7 @@ test('Personal usage index migration preserves boundary totals and covers metada
     const connection = await pool.getConnection();
     try {
       await MODEL_USAGE_MIGRATION.up(connection);
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
     } finally {
       connection.release();
     }
@@ -144,6 +147,7 @@ test('Personal usage index migration preserves boundary totals and covers metada
     await insert(now - 1, '9007199254740993', {
       runner: 'codex',
       modelKey: 'selected',
+      actualModel: 'selected',
       mode: 'conversation'
     });
     await insert(now, '40');
@@ -154,20 +158,16 @@ test('Personal usage index migration preserves boundary totals and covers metada
     await insert(undefined, '0', { startedAt: now });
     await insert(now - 1, '100', { purpose: 'compact' });
     await insert(now - 1, '1000', { userId: 2 });
-    const beforeOverview = await service.overview(1, filtered);
-    const beforeRecords = await service.records(1, query);
     const connectionAfter = await pool.getConnection();
     try {
-      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connectionAfter);
-      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connectionAfter);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(connectionAfter);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(connectionAfter);
     } finally {
       connectionAfter.release();
     }
     calls.length = 0;
     const afterOverview = await service.overview(1, filtered);
     const afterRecords = await service.records(1, query);
-    expect(afterOverview).toEqual(beforeOverview);
-    expect(afterRecords).toEqual(beforeRecords);
     expect(afterOverview).toMatchObject({
       firstRecordedAt: now - 90 * day,
       lastReceivedAt: now,
@@ -193,8 +193,10 @@ test('Personal usage index migration preserves boundary totals and covers metada
     const count = calls.find(({ sql }) => sql.includes('CAST(COUNT(*) AS CHAR)'))!;
     for (const { sql, values } of [metadata, count]) {
       const [rows] = await pool.execute<mysql.RowDataPacket[]>('EXPLAIN ' + sql, values);
-      expect(rows[0]?.key).toBe('model_usage_user_time');
-      expect(String(rows[0]?.Extra).split('; ')).toContain('Using index');
+      // The optimizer may prefer the smaller covering index for an unfiltered count.
+      expect(['model_usage_user_time', 'model_usage_user_model_time']).toContain(rows[0]?.key);
+      if (rows[0]?.key === 'model_usage_user_time')
+        expect(String(rows[0]?.Extra).split('; ')).toContain('Using index');
     }
     const empty = await service.overview(3, query);
     expect(empty.last24Hours.requests).toBe('0');
@@ -206,6 +208,302 @@ test('Personal usage index migration preserves boundary totals and covers metada
     await dropPlaywrightTestDatabase(database);
   }
 });
+
+test('Personal usage separates model configurations while preserving native Runner groups and historical records', async () => {
+  const database = resolvePlaywrightTestDatabase(`usage_models_${randomUUID()}`);
+  await createPlaywrightTestDatabase(database);
+  const pool = mysql.createPool(database.databaseUrl);
+  const now = Date.now();
+  const grants = new ModelUsageGrants(Buffer.from('isolated-model-usage-key'), () => now);
+  const store = new ModelUsageStore(pool, grants, () => now);
+  const calls: { sql: string; values: (string | number | null)[] }[] = [];
+  const service = new ModelUsageQueryService(
+    {
+      async getConnection() {
+        const connection = await pool.getConnection();
+        return {
+          query: connection.query.bind(connection),
+          beginTransaction: connection.beginTransaction.bind(connection),
+          commit: connection.commit.bind(connection),
+          rollback: connection.rollback.bind(connection),
+          release: connection.release.bind(connection),
+          execute(sql: string, values: (string | number | null)[]) {
+            calls.push({ sql, values });
+            return connection.execute(sql, values);
+          }
+        };
+      }
+    } as mysql.Pool,
+    () => now
+  );
+  const grant = grants.issue('usage-node', 1, 'work');
+  const query = { from: now - 86_400_000, to: now, timeZone: 'Asia/Shanghai' };
+  const base: ModelUsageRecord = {
+    schemaVersion: 1,
+    recordId: 'personal',
+    requestId: 'personal',
+    revision: 1,
+    scopeId: grant.scopeId,
+    runner: 'mar-agent',
+    sessionId: 'session',
+    runId: 'run',
+    modelConfigurationId: 'personal-model',
+    modelName: 'Terra Personal',
+    provider: 'OPENAI_RESPONSES',
+    requestedModel: 'terra',
+    actualModel: 'terra',
+    purpose: 'conversation',
+    agentRole: 'root',
+    startedAt: now - 2000,
+    endedAt: now - 1000,
+    state: 'succeeded',
+    inputTokens: '20',
+    outputTokens: '2',
+    cacheReadTokens: '10',
+    cacheWriteTokens: '1',
+    coverage: 'request'
+  };
+  const records: ModelUsageRecord[] = [
+    base,
+    { ...base, recordId: 'org-1', modelConfigurationId: 'org-model', modelName: 'Terra Org' },
+    { ...base, recordId: 'org-2', modelConfigurationId: 'org-model', modelName: 'Terra Renamed' },
+    { ...base, recordId: 'fast', modelConfigurationId: 'fast-model', modelName: 'Terra Fast' },
+    // IDs are case-sensitive even when the historical ledger uses a case-insensitive collation.
+    {
+      ...base,
+      recordId: 'other-config',
+      modelConfigurationId: 'ORG-model',
+      modelName: 'Terra Renamed'
+    },
+    {
+      ...base,
+      recordId: 'other-actual',
+      modelConfigurationId: 'org-model',
+      actualModel: 'terra-v2'
+    },
+    { ...base, recordId: 'other-provider', modelConfigurationId: 'org-model', provider: 'other' },
+    { ...base, recordId: 'legacy', modelConfigurationId: undefined },
+    { ...base, recordId: 'codex-1', runner: 'codex', modelConfigurationId: undefined },
+    { ...base, recordId: 'codex-2', runner: 'codex', modelConfigurationId: undefined },
+    { ...base, recordId: 'claude', runner: 'claude-code', modelConfigurationId: undefined },
+    {
+      ...base,
+      recordId: 'long-a',
+      provider: '\\'.repeat(250),
+      modelConfigurationId: '模型"\\-a',
+      modelName: 'Long A'
+    },
+    {
+      ...base,
+      recordId: 'long-b',
+      provider: '\\'.repeat(250),
+      modelConfigurationId: '模型"\\-b',
+      modelName: 'Long B'
+    }
+  ];
+  const expectedGroups = [
+    ['personal'],
+    ['org-1', 'org-2', 'other-actual'],
+    ['fast'],
+    ['other-config'],
+    ['other-provider'],
+    ['legacy'],
+    ['codex-1', 'codex-2'],
+    ['claude'],
+    ['long-a'],
+    ['long-b']
+  ];
+  try {
+    const connection = await pool.getConnection();
+    try {
+      await connection.query('CREATE TABLE users (id bigint unsigned PRIMARY KEY)');
+      await connection.query('INSERT INTO users VALUES (1),(2)');
+      await MODEL_USAGE_MIGRATION.up(connection);
+      await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
+    } finally {
+      connection.release();
+    }
+    const ack = await store.consume('usage-node', {
+      apiVersion: 1,
+      entries: records.map((record) => ({ grant, record }))
+    });
+    expect(ack.results.every((result) => result.status === 'accepted')).toBe(true);
+    // Simulate the released native-model key without touching recorded payloads or hashes.
+    for (const record of records) {
+      await pool.execute('UPDATE model_usage_records SET model_key=? WHERE record_id=?', [
+        JSON.stringify([
+          record.runner,
+          record.provider ?? '',
+          record.actualModel ?? record.requestedModel ?? ''
+        ]),
+        record.recordId
+      ]);
+    }
+    const [before] = await pool.query<mysql.RowDataPacket[]>(
+      'SELECT source_key,payload_hash,identity_hash,record FROM model_usage_records ORDER BY source_key'
+    );
+    const migrationConnection = await pool.getConnection();
+    try {
+      const [oldKeys] = await pool.query<mysql.RowDataPacket[]>(
+        'SELECT source_key,model_key FROM model_usage_records ORDER BY source_key'
+      );
+      await expect(
+        MODEL_USAGE_CONFIGURATION_MIGRATION.up({
+          query: async (sql: string) => {
+            const result = await migrationConnection.query(sql);
+            if (sql.startsWith('UPDATE model_usage_records SET model_key='))
+              throw new Error('injected failure');
+            return result;
+          },
+          execute: migrationConnection.execute.bind(migrationConnection),
+          release: () => {}
+        })
+      ).rejects.toThrow('injected failure');
+      const [rolledBack] = await pool.query<mysql.RowDataPacket[]>(
+        'SELECT source_key,model_key FROM model_usage_records ORDER BY source_key'
+      );
+      expect(rolledBack).toEqual(oldKeys);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(migrationConnection);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(migrationConnection);
+    } finally {
+      migrationConnection.release();
+    }
+    const [after] = await pool.query<mysql.RowDataPacket[]>(
+      'SELECT source_key,payload_hash,identity_hash,record FROM model_usage_records ORDER BY source_key'
+    );
+    expect(after).toEqual(before);
+    expect(
+      (
+        await store.consume('usage-node', {
+          apiVersion: 1,
+          entries: records.map((record) => ({ grant, record }))
+        })
+      ).results.every((result) => result.status === 'accepted')
+    ).toBe(true);
+    // Existing records acquire the configuration identity in their indexed key.
+    const [nativeKeys] = await pool.query<mysql.RowDataPacket[]>(
+      'SELECT DISTINCT model_key FROM model_usage_records WHERE runner=? AND model_name=?',
+      ['mar-agent', 'Terra Org']
+    );
+    expect(nativeKeys).toHaveLength(1);
+    expect(nativeKeys[0]?.model_key).toBe(
+      JSON.stringify(['mar-agent', 'OPENAI_RESPONSES', 'org-model'])
+    );
+    const overview = await service.overview(1, query);
+    expect(overview.models).toHaveLength(expectedGroups.length);
+    expect(overview.selected).toMatchObject({ requests: '13', totalTokens: '286' });
+    const longKeys = overview.models
+      .filter((model) => model.label === 'Long A' || model.label === 'Long B')
+      .map((model) => model.key);
+    expect(longKeys).toHaveLength(2);
+    expect(longKeys[0]!.slice(0, 512)).toBe(longKeys[1]!.slice(0, 512));
+    expect(longKeys[0]).not.toBe(longKeys[1]);
+    const longA = overview.models.find((model) => model.label === 'Long A')!;
+    expect(longA.key).toBe(JSON.stringify(['mar-agent', '\\'.repeat(250), '模型"\\-a']));
+    const actualGroups: string[][] = [];
+    for (const model of overview.models) {
+      const selectedQuery = { ...query, model: model.key };
+      expect(personalUsageQuerySchema.safeParse(selectedQuery).success).toBe(true);
+      const details = await service.records(1, selectedQuery);
+      const ids = details.records.map((record) => record.recordId).sort();
+      actualGroups.push(ids);
+      const filtered = await service.overview(1, selectedQuery);
+      expect(filtered.models).toEqual([model]);
+      expect(filtered.selected).toEqual(modelTotals(model));
+      expect(details.total).toBe(String(ids.length));
+      expect(model).toMatchObject({
+        requests: String(ids.length),
+        totalTokens: String(22 * ids.length),
+        cacheReadTokens: String(10 * ids.length),
+        cacheWriteTokens: String(ids.length)
+      });
+      expect(details.records.some((record) => record.modelName === model.label)).toBe(true);
+      expect((await service.records(2, selectedQuery)).records).toEqual([]);
+    }
+    expect(actualGroups).toEqual(expect.arrayContaining(expectedGroups));
+    const longReplay = {
+      ...records.find((record) => record.recordId === 'long-a')!,
+      recordId: 'long-new'
+    };
+    expect(
+      (
+        await store.consume('usage-node', {
+          apiVersion: 1,
+          entries: [{ grant, record: longReplay }]
+        })
+      ).results[0]?.status
+    ).toBe('accepted');
+    expect(
+      (await service.records(1, { ...query, model: longA.key })).records
+        .map((record) => record.recordId)
+        .sort()
+    ).toEqual(['long-a', 'long-new']);
+    expect(overview.models.filter((model) => model.label === 'Terra Renamed')).toHaveLength(2);
+    for (const runner of ['codex', 'claude-code']) {
+      const model = overview.models.find(
+        (group) => group.key === JSON.stringify([runner, 'OPENAI_RESPONSES', 'terra'])
+      );
+      expect(model).toBeDefined();
+    }
+    // A selective configuration query must not scan all of this user's native-model records.
+    await pool.execute(
+      `INSERT INTO model_usage_records
+      (source_key,user_id,source_node_id,record_id,revision,payload_hash,identity_hash,runner,mode,purpose,
+       model_key,model_name,started_at,ended_at,received_at,input_tokens,output_tokens,record)
+      WITH RECURSIVE sequence AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM sequence WHERE n<150)
+      SELECT SHA2(CONCAT('noise-',a.n,'-',b.n),256),1,'usage-node',CONCAT('noise-',a.n,'-',b.n),1,REPEAT('0',64),REPEAT('0',64),
+        'mar-agent','work','conversation',?,'Unrelated configuration',?,?,?,20,2,
+        JSON_SET(CAST(? AS JSON),'$.modelConfigurationId','noise-config','$.recordId',CONCAT('noise-',a.n,'-',b.n))
+      FROM sequence a CROSS JOIN sequence b`,
+      [
+        JSON.stringify(['mar-agent', 'OPENAI_RESPONSES', 'noise-config']),
+        base.startedAt,
+        base.endedAt!,
+        now,
+        JSON.stringify(base)
+      ]
+    );
+    await pool.query('ANALYZE TABLE model_usage_records');
+    const org = overview.models.find(
+      (model) => JSON.parse(model.key)[2] === 'org-model' && model.requests === '3'
+    )!;
+    calls.length = 0;
+    await service.overview(1, { ...query, model: org.key });
+    await service.records(1, { ...query, model: org.key }, undefined, 1);
+    const filteredReads = calls.filter(({ sql }) => sql.includes('BINARY model_key=BINARY ?'));
+    expect(filteredReads).toHaveLength(3);
+    const plans: string[] = [];
+    for (const { sql, values } of filteredReads) {
+      const [plan] = await pool.execute<mysql.RowDataPacket[]>('EXPLAIN ' + sql, values);
+      expect(plan[0]?.key).toBe('model_usage_user_model_time');
+      expect(['ref', 'range']).toContain(plan[0]?.type);
+      expect(Number(plan[0]?.rows)).toBeLessThan(10);
+      plans.push(`${plan[0]?.key}/${plan[0]?.type}/${plan[0]?.rows}`);
+    }
+    console.log(`Selective query EXPLAIN (key/type/estimated rows): ${plans.join(', ')}`);
+    const durations: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const start = performance.now();
+      await service.overview(1, { ...query, model: org.key });
+      await service.records(1, { ...query, model: org.key }, undefined, 1);
+      durations.push(performance.now() - start);
+    }
+    console.log(
+      `Selective overview+page over 22514 rows, five samples (ms): ${durations.map((ms) => ms.toFixed(1)).join(', ')}`
+    );
+  } finally {
+    await pool.end();
+    await dropPlaywrightTestDatabase(database);
+  }
+});
+
+function modelTotals({
+  key: _key,
+  label: _label,
+  ...totals
+}: Awaited<ReturnType<ModelUsageQueryService['overview']>>['models'][number]) {
+  return totals;
+}
 
 test('Personal usage carries SDK facts through durable delivery, MySQL revisions and private HTTP queries', async () => {
   const database = resolvePlaywrightTestDatabase(`usage_${randomUUID()}`);
@@ -249,6 +547,8 @@ test('Personal usage carries SDK facts through durable delivery, MySQL revisions
       await MODEL_USAGE_MIGRATION.up(connection);
       await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
       await MODEL_USAGE_QUERY_INDEX_MIGRATION.up(connection);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(connection);
+      await MODEL_USAGE_CONFIGURATION_MIGRATION.up(connection);
     } finally {
       connection.release();
     }

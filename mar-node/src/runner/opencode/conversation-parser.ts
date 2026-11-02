@@ -57,7 +57,7 @@ export class OpenCodeUsageNormalizer {
       {
         purpose: 'conversation',
         agentRole: 'root',
-        ...(model.model ? { actualModel: model.model } : {}),
+        ...(model.model ? { actualModel: model.model, modelConfigurationId: model.model } : {}),
         ...(model.provider ? { provider: model.provider } : {}),
         ...(inputTokens === undefined ? {} : { inputTokens }),
         ...(outputTokens === undefined ? {} : { outputTokens }),

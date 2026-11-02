@@ -46,6 +46,10 @@ export class RunnerUsageTracker {
     const record: RunnerUsageFact = {
       ...previous,
       ...values,
+      // Identity is immutable once the first snapshot has been published.
+      ...(previous
+        ? { modelConfigurationId: previous.modelConfigurationId, provider: previous.provider }
+        : {}),
       schemaVersion: 1,
       recordId,
       requestId: recordId,

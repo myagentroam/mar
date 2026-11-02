@@ -189,6 +189,12 @@ describe('ModelUsageStore', () => {
 });
 
 describe('ModelUsageQueryService', () => {
+  it('bounds the model filter to the stored identity length', () => {
+    const model = 'm'.repeat(800);
+    expect(personalUsageQuerySchema.safeParse(query({ model })).success).toBe(true);
+    expect(personalUsageQuerySchema.safeParse(query({ model: `${model}x` })).success).toBe(false);
+  });
+
   it('keeps positive range and 90-day limits for future queries', () => {
     const range = { ...query(), from: NOW, to: NOW + MODEL_USAGE_RETENTION_MS };
     expect(personalUsageQuerySchema.safeParse(range).success).toBe(true);
@@ -692,7 +698,7 @@ class FakeQueryMysql {
     if (sql.includes('MIN(started_at) AS firstRecordedAt')) {
       return [[{ firstRecordedAt: NOW - 10_000, lastReceivedAt: NOW - 500 }], []];
     }
-    if (sql.includes('GROUP BY bucket,runner,model_key')) {
+    if (sql.includes('GROUP BY bucket,runner,BINARY model_key')) {
       return [
         [
           {

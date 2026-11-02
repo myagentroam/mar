@@ -41,10 +41,7 @@ const currentQueryIndex =
   'KEY `model_usage_user_time` (`user_id`,`purpose`,`ended_at`,`source_key`,`started_at`,`received_at`)';
 
 // Keep v20 immutable while projecting the current covering query index.
-export const MODEL_USAGE_CURRENT_SQL = MODEL_USAGE_SQL.replace(
-  releasedQueryIndex,
-  currentQueryIndex
-);
+const queryIndexSchema = MODEL_USAGE_SQL.replace(releasedQueryIndex, currentQueryIndex);
 const queryIndexSql = `ALTER TABLE model_usage_records DROP INDEX model_usage_user_time, ADD ${currentQueryIndex}`;
 
 export const MODEL_USAGE_QUERY_INDEX_MIGRATION: MysqlMigration = {
@@ -56,11 +53,55 @@ export const MODEL_USAGE_QUERY_INDEX_MIGRATION: MysqlMigration = {
     const actual = (rows as { 'Create Table': unknown }[])[0]?.['Create Table'];
     if (typeof actual !== 'string') throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
     const normalized = normalizeMysqlTableDefinition(actual);
-    if (normalized === normalizeMysqlTableDefinition(MODEL_USAGE_CURRENT_SQL)) return;
+    if (normalized === normalizeMysqlTableDefinition(queryIndexSchema)) return;
     if (normalized !== normalizeMysqlTableDefinition(MODEL_USAGE_SQL))
       throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
     // One atomic DDL statement leaves either the released or current index on retry.
     await connection.query(queryIndexSql);
+    await validateMysqlSchema(connection, { model_usage_records: queryIndexSchema });
+  }
+};
+
+const configurationIndex =
+  'KEY `model_usage_user_model_time` (`user_id`,`purpose`,`model_key`(512),`ended_at`,`source_key`)';
+const configurationSql = `ALTER TABLE model_usage_records ADD ${configurationIndex}`;
+const rebuildSql = `UPDATE model_usage_records SET model_key=CONCAT('[',
+  JSON_QUOTE(runner),',',
+  JSON_QUOTE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(record,'$.provider')),'')),',',
+  JSON_QUOTE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(record,'$.modelConfigurationId')),
+    JSON_UNQUOTE(JSON_EXTRACT(record,'$.actualModel')),
+    JSON_UNQUOTE(JSON_EXTRACT(record,'$.requestedModel')),'')),']')`;
+
+export const MODEL_USAGE_CURRENT_SQL = queryIndexSchema.replace(
+  '  PRIMARY KEY',
+  `  ${configurationIndex},\n  PRIMARY KEY`
+);
+
+export const MODEL_USAGE_CONFIGURATION_MIGRATION: MysqlMigration = {
+  version: 37,
+  name: 'personal_model_usage_configuration',
+  checksum: createHash('sha256')
+    .update(configurationSql + rebuildSql)
+    .digest('hex'),
+  async up(connection) {
+    const [rows] = await connection.query('SHOW CREATE TABLE model_usage_records');
+    const actual = (rows as { 'Create Table': unknown }[])[0]?.['Create Table'];
+    if (typeof actual !== 'string') throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
+    const normalized = normalizeMysqlTableDefinition(actual);
+    if (normalized !== normalizeMysqlTableDefinition(MODEL_USAGE_CURRENT_SQL)) {
+      if (normalized !== normalizeMysqlTableDefinition(queryIndexSchema))
+        throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
+      // DDL commits independently; the following data rewrite is repeatable after interruption.
+      await connection.query(configurationSql);
+    }
     await validateMysqlSchema(connection, { model_usage_records: MODEL_USAGE_CURRENT_SQL });
+    await connection.query('START TRANSACTION');
+    try {
+      await connection.query(rebuildSql);
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      throw error;
+    }
   }
 };

@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-02
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -74,6 +74,8 @@ Logout or Session revocation invalidates the corresponding mobile binding. Late 
 Open **Settings → Usage statistics** to view Agent usage for the current account. The default Conversation category includes main agents and subagents. **Conversation**, **Compact**, and **Composer Prediction** are separate categories; title generation and other requests are also available. Compact and prediction are excluded from Conversation. Switching categories updates the rolling last 24 hours and last 7 days (168 hours), charts, and records together. Top summaries for the current category do not change with the filters below. Filter charts and records by time, Runner, model, and Work/Conversation mode. Times use the browser time zone shown on the page.
 
 Custom date ranges can span up to 90 days and may include future dates, such as the rest of the current month, or lie entirely in the future. Statistics include only data recorded by the current refresh; future periods have no data.
+
+Model rankings and filters distinguish Runner, provider, and configuration identity. MAR Agent lists personal, organization, and Fast configurations separately even when they share an upstream model ID; other Runners use their native model IDs. Historical records without a configuration identity fall back to the recorded model without inferring configuration ownership. Usage from an organization configuration still belongs to the person who initiated it; this does not mean personal credentials were used.
 
 The visible page refreshes every 60 seconds and pauses when hidden or closed. Failed refreshes keep the existing data and retry later. While paging, sorting, or expanding records, summaries keep updating but records remain in place; choose **Update records** or **Refresh** to return to the latest first page. Records load in batches of 20. On desktop, the standard management pager shows the actual filtered record count and page count and supports direct page jumps. On mobile, more records load automatically near the bottom; if loading fails, retry in place. Column sorting applies to the current desktop page or the already loaded mobile records. Changing filters or explicitly refreshing resets the loaded records. Custom date ranges stay fixed during automatic refreshes. The last refresh time does not mean every Node has finished syncing.
 

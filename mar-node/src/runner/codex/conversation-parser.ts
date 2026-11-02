@@ -136,6 +136,9 @@ export class CodexUsageNormalizer {
       purpose: compact ? 'compact' : 'conversation',
       agentRole: 'root',
       ...(this.requestedModel ? { requestedModel: this.requestedModel } : {}),
+      ...(this.requestedModel || typeof params.model === 'string'
+        ? { modelConfigurationId: this.requestedModel || (params.model as string) }
+        : {}),
       ...(typeof params.model === 'string' ? { actualModel: params.model } : {}),
       responseId: params.responseId,
       ...(inputTokens === undefined ? {} : { inputTokens }),
