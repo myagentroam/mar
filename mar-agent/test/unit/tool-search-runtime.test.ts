@@ -184,15 +184,10 @@ describe('MCP discovery runtime', () => {
   it('runs unmarked external MCP calls concurrently after discovery', async () => {
     const release = Promise.withResolvers<void>();
     let entered = 0;
-    let overlapped = false;
     const f = await fixture(false, undefined, {}, [], async () => {
-      if (++entered === 2) {
-        overlapped = true;
-        release.resolve();
-      }
+      entered++;
       await release.promise;
     });
-    const fallback = setTimeout(() => release.resolve(), 3000);
     try {
       f.adapter.batches.push(
         [{ name: 'tool_search', arguments: { query: externalName } }],
@@ -201,13 +196,11 @@ describe('MCP discovery runtime', () => {
           { name: externalName, arguments: { record: 'two' } }
         ]
       );
-      expect(
-        (await f.session.run({ prompt: 'Discover and call independently.' }).result()).status
-      ).toBe('completed');
-      expect(entered).toBe(2);
-      expect(overlapped).toBe(true);
+      const execution = f.session.run({ prompt: 'Discover and call independently.' });
+      await expect.poll(() => entered, { timeout: 3000 }).toBe(2);
+      release.resolve();
+      expect((await execution.result()).status).toBe('completed');
     } finally {
-      clearTimeout(fallback);
       release.resolve();
       await f.agent.dispose();
     }

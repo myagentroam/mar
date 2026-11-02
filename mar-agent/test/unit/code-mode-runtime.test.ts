@@ -93,14 +93,9 @@ describe('Code Mode SDK and protocol integration', () => {
     const original = host.executeTool.bind(host);
     const release = Promise.withResolvers<void>();
     let entered = 0;
-    let overlapped = false;
     host.executeTool = async (call, context) => {
       if (call.name === 'read') {
         entered++;
-        if (entered === 2) {
-          overlapped = true;
-          release.resolve();
-        }
         await release.promise;
       }
       return original(call, context);
@@ -125,16 +120,13 @@ describe('Code Mode SDK and protocol integration', () => {
       }
     };
     const agent = await createMarAgent({ mode: 'normal', host, models: [model] }, () => adapter);
-    const fallback = setTimeout(() => release.resolve(), 3000);
     try {
       const session = await agent.createSession({ workspace, title: 'Parallel cells' });
-      expect((await session.run({ prompt: 'Run independent cells.' }).result()).status).toBe(
-        'completed'
-      );
-      expect(entered).toBe(2);
-      expect(overlapped).toBe(true);
+      const execution = session.run({ prompt: 'Run independent cells.' });
+      await expect.poll(() => entered, { timeout: 3000 }).toBe(2);
+      release.resolve();
+      expect((await execution.result()).status).toBe('completed');
     } finally {
-      clearTimeout(fallback);
       release.resolve();
       await agent.dispose();
     }
