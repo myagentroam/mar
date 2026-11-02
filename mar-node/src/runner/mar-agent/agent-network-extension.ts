@@ -44,7 +44,7 @@ const tools: readonly {
 }[] = [
   {
     action: 'start',
-    parallelSafety: 'serial',
+    parallelSafety: 'safe',
     description:
       'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
     properties: {
@@ -63,7 +63,7 @@ const tools: readonly {
   },
   {
     action: 'send',
-    parallelSafety: 'serial',
+    parallelSafety: 'safe',
     description: 'Send a message to an Agent, update its Goal, or decide an approval.',
     properties: {
       agentId: text,
@@ -98,7 +98,7 @@ const tools: readonly {
   },
   {
     action: 'stop',
-    parallelSafety: 'serial',
+    parallelSafety: 'safe',
     description: 'Stop the Agent’s current execution and clear its Goal.',
     properties: { agentId: text },
     required: ['agentId']

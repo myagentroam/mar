@@ -8,7 +8,7 @@ import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 export const todoWriteToolDefinition: ClientToolDefinition = {
   name: 'todo_write',
   allowedCallers: ['direct', 'programmatic'],
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   description:
     'Replace this session’s entire Todo list with the supplied items; no prior read is required. Preserve stable IDs and statuses only when extending the same objective. For a materially different objective, include only the new objective’s items. Do not retain completed items from an earlier objective; when all current items are completed, default a substantive new request to replacement unless the user explicitly asks to continue, extend, verify, or follow up. Use only after Todo has been chosen for coordination-heavy work; straightforward bounded work does not need it. Keep at most one in_progress item and update statuses after meaningful stage changes. When another substantive tool call is already ready and does not depend on the Todo result, include both in the same model response instead of spending a response only for Todo bookkeeping.',
   inputSchema: {

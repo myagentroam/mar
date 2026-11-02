@@ -138,7 +138,7 @@ export const computerUseToolDefinition = {
     required: ['taskId', 'status'],
     additionalProperties: false
   },
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   allowedCallers: ['direct'],
   agentScope: 'ROOT_ONLY'
 } satisfies ClientToolDefinition;
@@ -168,7 +168,7 @@ export const computerUseWaitToolDefinition: ClientToolDefinition = {
     additionalProperties: false
   },
   outputSchema: computerUseToolDefinition.outputSchema,
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   allowedCallers: ['direct'],
   agentScope: 'ROOT_ONLY'
 };

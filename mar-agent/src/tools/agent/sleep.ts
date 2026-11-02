@@ -11,7 +11,7 @@ export type { SleepResult } from '../contracts.js';
 export const sleepToolDefinition: ClientToolDefinition = {
   name: 'sleep',
   allowedCallers: ['direct'],
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   description:
     'Pause for up to durationMs milliseconds. Returns early when user input or a new public subagent message is available. Returns elapsed time and the wake reason.',
   inputSchema: {

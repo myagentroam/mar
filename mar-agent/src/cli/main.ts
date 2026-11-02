@@ -22,6 +22,7 @@ import {
 import type { AgentExtension } from '../extensions.js';
 import { CodexAuthFileCredentialProvider } from './codex-auth-file.js';
 import { generateSessionTitle } from '../shared/auto-title.js';
+import { TerminalInput, TerminalInputClosed } from './terminal-input.js';
 
 const HELP = `maragent - MAR coding agent
 
@@ -362,26 +363,27 @@ async function main() {
   // `run` does not need stdin until a question occurs. Create
   // readline lazily so a closed or pseudo-TTY stream in an external harness
   // cannot fail the execution before its first model request.
-  let terminal: ReturnType<typeof createInterface> | undefined;
-  const requireTerminal = () => (terminal ??= createInterface({ input: stdin, output: stdout }));
+  const terminal = new TerminalInput(() => createInterface({ input: stdin, output: stdout }));
   const host = new LocalAgentHost({
     homeDirectory: home,
     workspace,
-    question: async (request) => {
+    question: async (request, signal) => {
       if (!stdin.isTTY)
         throw new AgentError(
           'MAR_AGENT_USER_INPUT_UNAVAILABLE',
           'Interactive input is unavailable.'
         );
-      const answers: Record<string, unknown> = {};
-      for (const question of request.questions) {
-        const value = question as { id?: unknown; question?: unknown };
-        const id = typeof value.id === 'string' ? value.id : String(Object.keys(answers).length);
-        answers[id] = await requireTerminal().question(
-          `${typeof value.question === 'string' ? value.question : JSON.stringify(question)} `
-        );
-      }
-      return answers;
+      return terminal.run(signal, async (ask) => {
+        const answers: Record<string, unknown> = {};
+        for (const question of request.questions) {
+          const value = question as { id?: unknown; question?: unknown };
+          const id = typeof value.id === 'string' ? value.id : String(Object.keys(answers).length);
+          answers[id] = await ask(
+            `${typeof value.question === 'string' ? value.question : JSON.stringify(question)} `
+          );
+        }
+        return answers;
+      });
     }
   });
   const runtime = runtimeModels(catalog.models, codexAuthFile);
@@ -426,7 +428,7 @@ async function main() {
       };
       for (const item of listed.sessions ?? [])
         stdout.write(`${item.id}\t${item.title}\t${item.lastActivityAt}\n`);
-      resumeId = (await requireTerminal().question('Session ID: ')).trim();
+      resumeId = (await terminal.run(undefined, (ask) => ask('Session ID: '))).trim();
       if (!resumeId)
         throw new AgentError('MAR_AGENT_CLI_ARGUMENT_INVALID', 'Session id is required.');
     }
@@ -442,7 +444,7 @@ async function main() {
     const interrupt = () => {
       interrupts++;
       if (activeHandle) activeHandle.cancel();
-      else terminal?.close();
+      else terminal.close();
       titleController?.abort();
       process.exitCode = 130;
       if (interrupts > 1) activeHandle?.cancel();
@@ -450,7 +452,14 @@ async function main() {
     process.on('SIGINT', interrupt);
     try {
       do {
-        if (interactive) prompt = await requireTerminal().question('> ');
+        if (interactive) {
+          try {
+            prompt = await terminal.run(undefined, (ask) => ask('> '));
+          } catch (error) {
+            if (error instanceof TerminalInputClosed) break;
+            throw error;
+          }
+        }
         if (!prompt.trim()) break;
         const invocation = parseExecutionInvocation(prompt);
         const executionOptions = {
@@ -517,7 +526,7 @@ async function main() {
       process.off('SIGINT', interrupt);
     }
   } finally {
-    terminal?.close();
+    terminal.close();
     await agent.dispose();
   }
 }

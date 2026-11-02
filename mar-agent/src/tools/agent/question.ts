@@ -8,7 +8,7 @@ import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 export const questionToolDefinition: ClientToolDefinition = {
   name: 'question',
   allowedCallers: ['direct'],
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   description:
     'Pause for one to three tightly related user-owned decisions that materially change the result and cannot be inferred from the request, conversation, or relevant safe discovery. Prefer asking over guessing in Plan mode; do not avoid clarification by inventing configuration, branches, abstractions, or support for multiple outcomes. Provide 2-3 mutually exclusive options with consequences, put the recommended option first and identify it in its label or description, and use another question round if key ambiguity remains. This is not a permission/approval tool and should not interrupt routine in-scope work.',
   inputSchema: {

@@ -32,7 +32,7 @@ export const toolSearchToolDefinition: ClientToolDefinition = {
     additionalProperties: false
   },
   allowedCallers: ['direct'],
-  parallelSafety: 'serial',
+  parallelSafety: 'safe',
   nativeType: 'tool_search'
 };
 

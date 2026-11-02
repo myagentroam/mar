@@ -87,6 +87,59 @@ const answer = {
 };
 
 describe('Code Mode SDK and protocol integration', () => {
+  it('starts two independent outer code cells concurrently in one model batch', async () => {
+    const { home, workspace } = await fixture();
+    const host = new LocalAgentHost({ homeDirectory: home, workspace });
+    const original = host.executeTool.bind(host);
+    const release = Promise.withResolvers<void>();
+    let entered = 0;
+    let overlapped = false;
+    host.executeTool = async (call, context) => {
+      if (call.name === 'read') {
+        entered++;
+        if (entered === 2) {
+          overlapped = true;
+          release.resolve();
+        }
+        await release.promise;
+      }
+      return original(call, context);
+    };
+    let turn = 0;
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start() {
+        if (turn++ === 0) {
+          for (const id of ['one', 'two'])
+            yield {
+              type: 'client_tool.call',
+              name: 'code_exec',
+              callId: id,
+              arguments: 'observe.result(await tools.read({ reads: [{ path: "input.txt" }] }));'
+            };
+          yield { type: 'completed', reason: 'tool_use' };
+        } else {
+          yield { type: 'text.completed', itemId: 'answer', text: 'done' };
+          yield { type: 'completed', reason: 'completed' };
+        }
+      }
+    };
+    const agent = await createMarAgent({ mode: 'normal', host, models: [model] }, () => adapter);
+    const fallback = setTimeout(() => release.resolve(), 3000);
+    try {
+      const session = await agent.createSession({ workspace, title: 'Parallel cells' });
+      expect((await session.run({ prompt: 'Run independent cells.' }).result()).status).toBe(
+        'completed'
+      );
+      expect(entered).toBe(2);
+      expect(overlapped).toBe(true);
+    } finally {
+      clearTimeout(fallback);
+      release.resolve();
+      await agent.dispose();
+    }
+  }, 15000);
+
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     'keeps new code execution available after an expired cell wait under %s',
     async (protocol) => {

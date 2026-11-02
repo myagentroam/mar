@@ -75,7 +75,7 @@ export function registerStart(
     name: 'agent_start',
     description: 'Start a child Session and return its identity without waiting for completion.',
     allowedCallers: ['direct', 'programmatic'],
-    parallelSafety: 'serial',
+    parallelSafety: 'safe',
     inputSchema: {
       type: 'object',
       properties: {

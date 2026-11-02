@@ -44,7 +44,7 @@ export function createSessionToolScheduler() {
     const inherited = leases.getStore();
     const parent = inherited?.ingress === sessionToolIngress.getStore() ? inherited : undefined;
     const result = (parent?.active ? parent.schedule : root)({
-      name: definition?.parallelSafety === 'safe' ? 'safe' : 'serial',
+      name: definition?.parallelSafety === 'serial' ? 'serial' : 'safe',
       run
     }) as Promise<T>;
     if (parent?.active) {
@@ -70,7 +70,7 @@ export function createToolCallScheduler<TCall extends { readonly name: string },
   let barrier = Promise.resolve();
   const readers = new Set<Promise<void>>();
   return (call) => {
-    const safe = safety.get(call.name) === 'safe';
+    const safe = safety.get(call.name) !== 'serial';
     const gate = safe ? barrier : Promise.all([barrier, ...readers]).then(() => undefined);
     const result = gate.then(() => execute(call));
     const settled = result.then(
@@ -100,14 +100,14 @@ export async function scheduleToolCallBatch<TCall extends { readonly name: strin
   let index = 0;
 
   while (index < calls.length) {
-    if (safety.get(calls[index]!.name) !== 'safe') {
+    if (safety.get(calls[index]!.name) === 'serial') {
       results[index] = await execute(calls[index]!);
       index++;
       continue;
     }
 
     let end = index + 1;
-    while (end < calls.length && safety.get(calls[end]!.name) === 'safe') end++;
+    while (end < calls.length && safety.get(calls[end]!.name) !== 'serial') end++;
     const segment = await Promise.all(calls.slice(index, end).map((call) => execute(call)));
     for (let segmentIndex = 0; segmentIndex < segment.length; segmentIndex++)
       results[index + segmentIndex] = segment[segmentIndex]!;

@@ -34,6 +34,87 @@ async function flushPromises() {
 }
 
 describe('tool call scheduler', () => {
+  it('releases a serial Session barrier after cancellation', async () => {
+    const schedule = createSessionToolScheduler();
+    const controller = new AbortController();
+    const started = deferred<void>();
+    const events: string[] = [];
+    const cancelled = schedule(definition('serial', 'serial'), async () => {
+      events.push('serial');
+      started.resolve();
+      await new Promise<void>((_resolve, reject) => {
+        controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+          once: true
+        });
+      });
+    });
+    const after = schedule(definition('after', 'safe'), async () => {
+      events.push('after');
+    });
+    await started.promise;
+    expect(events).toEqual(['serial']);
+    controller.abort(new Error('cancelled'));
+    await expect(cancelled).rejects.toThrow('cancelled');
+    await after;
+    expect(events).toEqual(['serial', 'after']);
+  });
+
+  it('keeps a nested serial barrier within its safe parent domain', async () => {
+    const schedule = createSessionToolScheduler();
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    const events: string[] = [];
+    const sibling = schedule(definition('sibling', 'safe'), async () => {
+      events.push('sibling');
+      await gate.promise;
+      events.push('sibling-done');
+    });
+    const parent = schedule(definition('parent', 'safe'), async () => {
+      await schedule(definition('nested', 'serial'), async () => {
+        events.push('nested');
+        entered.resolve();
+      });
+    });
+    try {
+      await entered.promise;
+      expect(events).toEqual(['sibling', 'nested']);
+    } finally {
+      gate.resolve();
+      await Promise.all([parent, sibling]);
+    }
+    expect(events).toEqual(['sibling', 'nested', 'sibling-done']);
+  });
+
+  it('runs unmarked and unknown incremental and Session calls concurrently', async () => {
+    const gate = deferred<void>();
+    const started: string[] = [];
+    const host = definition('host');
+    const incremental = createToolCallScheduler([host], async (call: { name: string }) => {
+      started.push(call.name);
+      await gate.promise;
+    });
+    const session = createSessionToolScheduler();
+    const pending = [
+      incremental({ name: 'host' }),
+      incremental({ name: 'mcp__external__tool' }),
+      session(host, async () => {
+        started.push('session-host');
+        await gate.promise;
+      }),
+      session(undefined, async () => {
+        started.push('session-unknown');
+        await gate.promise;
+      })
+    ];
+    try {
+      await flushPromises();
+      expect(started).toEqual(['host', 'mcp__external__tool', 'session-host', 'session-unknown']);
+    } finally {
+      gate.resolve();
+      await Promise.all(pending);
+    }
+  });
+
   it('keeps independent callbacks behind the creator barrier and permits their own nested delegation', async () => {
     const schedule = createSessionToolScheduler();
     const serial = definition('serial', 'serial');
@@ -199,7 +280,7 @@ describe('tool call scheduler', () => {
     await expect(result).resolves.toEqual(['first', 'second']);
   });
 
-  it('treats serial and unknown tools as ordered barriers', async () => {
+  it('keeps serial barriers while unknown tools run concurrently', async () => {
     const safe = deferred<string>();
     const serial = deferred<string>();
     const unknown = deferred<string>();
@@ -229,7 +310,7 @@ describe('tool call scheduler', () => {
     expect(started).toEqual(['safe-1', 'serial']);
     serial.resolve('serial');
     await flushPromises();
-    expect(started).toEqual(['safe-1', 'serial', 'safe-2', 'unknown']);
+    expect(started).toEqual(['safe-1', 'serial', 'safe-2', 'unknown', 'safe-3']);
     unknown.resolve('unknown');
     await expect(result).resolves.toEqual(['safe-1', 'serial', 'safe-2', 'unknown', 'safe-3']);
     expect(started).toEqual(['safe-1', 'serial', 'safe-2', 'unknown', 'safe-3']);
@@ -247,10 +328,15 @@ describe('tool call scheduler', () => {
       'todo_read',
       'exec',
       'exec_wait',
-      'code_exec_wait'
+      'code_exec_wait',
+      'apply_patch',
+      'question',
+      'todo_write',
+      'sleep',
+      'tool_search',
+      'code_exec',
+      'smart_compact'
     ])
       expect(safety.get(name), name).toBe('safe');
-    for (const name of ['apply_patch', 'question', 'todo_write'])
-      expect(safety.get(name), name).toBe('serial');
   });
 });
