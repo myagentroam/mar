@@ -11,7 +11,7 @@ import { executableArgs, main, parseArgs, resolveNodeId } from '../../src/cli.mj
 const context = {
   MAR_CTL_CONTEXT_REQUIRED: '1',
   MAR_CTL_SERVER_URL: 'https://server.test',
-  MAR_CTL_USER_TOKEN: `marctl_user_${'x'.repeat(43)}`
+  MAR_CTL_USER_TOKEN: `marctl_user_e30.${'x'.repeat(43)}`
 };
 
 test('parses internal commands and rejects removed configuration options', () => {

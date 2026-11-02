@@ -24,7 +24,7 @@ export class MarctlExecutionCredentialControl {
   setFeatures(payload: unknown): void {
     const features = payload as
       { marctlExecutionCredential?: { apiVersion?: unknown } } | undefined;
-    this.available = features?.marctlExecutionCredential?.apiVersion === 1;
+    this.available = features?.marctlExecutionCredential?.apiVersion === 2;
   }
 
   connected(): void {

@@ -68,7 +68,9 @@ const service = createWorkbenchNotificationService(ref('fixture-user'), {
     if (path === '/api/notifications/read-all' && init?.method === 'POST') notificationsRead = true;
     return {
       notifications: Array.from(
-        { length: params.has('many-notifications') ? 120 : 30 },
+        {
+          length: params.has('many-notifications') ? 120 : params.has('one-notification') ? 1 : 30
+        },
         (_, index) => ({
           ...notification,
           id: `notification-${index}`,

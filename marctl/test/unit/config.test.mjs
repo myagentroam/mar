@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { loadConfig, validateServerUrl } from '../../src/config.mjs';
 
-const token = `marctl_user_${'x'.repeat(43)}`;
+const token = `marctl_user_e30.${'x'.repeat(43)}`;
 const context = {
   MAR_CTL_CONTEXT_REQUIRED: '1',
   MAR_CTL_SERVER_URL: 'https://server.test',
@@ -27,6 +27,9 @@ test('rejects missing context, incomplete credentials and deployment keys', asyn
     { ...context, MAR_CTL_CONTEXT_REQUIRED: '0' },
     { ...context, MAR_CTL_SERVER_URL: '' },
     { ...context, MAR_CTL_USER_TOKEN: '' },
+    { ...context, MAR_CTL_USER_TOKEN: `marctl_user_${'x'.repeat(43)}` },
+    { ...context, MAR_CTL_USER_TOKEN: `${token}.extra` },
+    { ...context, MAR_CTL_USER_TOKEN: `marctl_user_${'x'.repeat(16_384)}.${'x'.repeat(43)}` },
     { ...context, MAR_CTL_USER_TOKEN: `marctl_${'x'.repeat(43)}` },
     { ...context, MAR_CTL_USER_TOKEN: `marmgr_${'x'.repeat(43)}` }
   ]) {

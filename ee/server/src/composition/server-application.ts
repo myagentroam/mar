@@ -125,7 +125,11 @@ export async function composeServerApplication(
   // Issue HTTPS-only cookies by default; callers must explicitly pass false for local plaintext development.
   const secureCookies = options.secureCookies ?? true;
   const publicOrigin = options.publicOrigin ?? process.env['MAR_PUBLIC_ORIGIN'];
-  const userCredentials = new MarctlUserCredentials(mysqlPool, now);
+  const userCredentials = new MarctlUserCredentials(
+    mysqlPool,
+    loadOrCreateRuntimeCredentialHmacKey(dataDirectory),
+    now
+  );
   const loginRate = new Map<string, LoginRateRecord>();
   const { app: httpApp, traffic } = createServerHttp({
     dataDirectory,

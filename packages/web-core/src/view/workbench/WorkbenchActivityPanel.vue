@@ -105,7 +105,7 @@ function navigate(event: KeyboardEvent): void {
         }}
         <span
           v-if="tab === 'notifications' && service.unreadCount.value > 0"
-          class="activity-unread-count"
+          class="activity-unread-count mar-activity-count-badge"
           aria-hidden="true"
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
@@ -189,16 +189,6 @@ function navigate(event: KeyboardEvent): void {
 .activity-tabs button:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
-}
-.activity-unread-count {
-  min-width: 16px;
-  padding: 0 4px;
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
-  font-size: var(--mar-font-size-nano);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
 }
 .activity-recent-content {
   display: flex;

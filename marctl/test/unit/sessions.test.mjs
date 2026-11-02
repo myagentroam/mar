@@ -15,7 +15,7 @@ const watchEnvelope = (event) => JSON.stringify({ type: 'watch.event', event });
 const env = {
   MAR_CTL_CONTEXT_REQUIRED: '1',
   MAR_CTL_SERVER_URL: 'https://server.test',
-  MAR_CTL_USER_TOKEN: 'marctl_user_' + 'x'.repeat(43),
+  MAR_CTL_USER_TOKEN: `marctl_user_e30.${'x'.repeat(43)}`,
   MAR_CTL_SESSION_ID: 'source'
 };
 

@@ -110,7 +110,7 @@ export class NodeControl extends NodeIdentityControl {
   protected override connectionFeatures(): Record<string, unknown> {
     return {
       modelUsage: { apiVersion: 1 },
-      marctlExecutionCredential: { apiVersion: 1 },
+      marctlExecutionCredential: { apiVersion: 2 },
       ...(this.consumers.nodeUpgradeProgress === undefined
         ? {}
         : { nodeUpgradeProgress: { apiVersion: 1 } }),

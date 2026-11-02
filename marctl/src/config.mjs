@@ -9,7 +9,8 @@ export async function loadConfig({ env = process.env, translate = createTranslat
     env.MAR_CTL_CONTEXT_REQUIRED !== '1' ||
     serverUrl === undefined ||
     token === undefined ||
-    !/^marctl_user_[A-Za-z0-9_-]{43}$/u.test(token)
+    token.length > 16_384 ||
+    !/^marctl_user_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/u.test(token)
   )
     throw new MarctlError(translate('errors.userContextUnavailable'), {
       code: 'UNAUTHENTICATED',

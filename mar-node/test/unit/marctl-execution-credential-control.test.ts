@@ -2,8 +2,8 @@ import { createEnvelope, type NodeEnvelope } from '@myagentroam/protocol';
 import { expect, it, vi } from 'vitest';
 import { MarctlExecutionCredentialControl } from '../../src/service/marctl-execution-credential-control.js';
 
-const parentToken = `marctl_user_${'a'.repeat(43)}`;
-const token = `marctl_user_${'b'.repeat(43)}`;
+const parentToken = `marctl_user_e30.${'a'.repeat(43)}`;
+const token = `marctl_user_e30.${'b'.repeat(43)}`;
 const request = {
   parentToken,
   workspaceId: 'workspace',
@@ -20,6 +20,10 @@ it('accepts only the correlated credential response on the negotiated connection
     'MARCTL_EXECUTION_AUTHORIZATION_UNAVAILABLE'
   );
   control.setFeatures({ marctlExecutionCredential: { apiVersion: 1 } });
+  await expect(control.request(request)).rejects.toThrow(
+    'MARCTL_EXECUTION_AUTHORIZATION_UNAVAILABLE'
+  );
+  control.setFeatures({ marctlExecutionCredential: { apiVersion: 2 } });
   const result = control.request(request);
   const envelope = send.mock.calls[0]![0];
   expect(
@@ -44,7 +48,7 @@ it('rejects malformed replies and disconnects without exposing token values', as
     sent = envelope;
   });
   control.connected();
-  control.setFeatures({ marctlExecutionCredential: { apiVersion: 1 } });
+  control.setFeatures({ marctlExecutionCredential: { apiVersion: 2 } });
   const invalid = control.request(request);
   control.handle({
     ...createEnvelope('marctl.execution-credential.response', { token: 'invalid' }),

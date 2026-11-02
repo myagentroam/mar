@@ -183,6 +183,66 @@ test('Activity entry distinguishes all four states and caps unread counts', asyn
 
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Activity notification badges share dimensions at ${width}px ${theme}`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 850 });
+      for (const [query, count] of [
+        ['one-notification=1', '1'],
+        ['', '30'],
+        ['many-notifications=1', '99+']
+      ]) {
+        await page.goto(
+          `${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}&${query}`
+        );
+        const trigger = page.locator('.activity-center-trigger');
+        const entryBadge = trigger.locator('.activity-entry-count');
+        await expect(entryBadge).toHaveText(count);
+        await trigger.click();
+        const panel = page.locator('.workbench-activity-panel:visible');
+        const tabBadge = panel.locator('.activity-unread-count');
+        await expect(tabBadge).toHaveText(count);
+        const badgeStyles = (element: Element) => {
+          const style = getComputedStyle(element);
+          const box = element.getBoundingClientRect();
+          return {
+            width: box.width,
+            height: box.height,
+            padding: style.padding,
+            boxSizing: style.boxSizing,
+            borderRadius: style.borderRadius,
+            background: style.backgroundColor,
+            color: style.color,
+            fontFamily: style.fontFamily,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight
+          };
+        };
+        const {
+          width: tabWidth,
+          height: tabHeight,
+          ...tabStyles
+        } = await tabBadge.evaluate(badgeStyles);
+        const {
+          width: entryWidth,
+          height: entryHeight,
+          ...entryStyles
+        } = await entryBadge.evaluate(badgeStyles);
+        expect(tabStyles).toEqual(entryStyles);
+        expect(tabHeight).toBeCloseTo(16, 2);
+        expect(tabWidth).toBeGreaterThanOrEqual(16);
+        expect(tabWidth).toBeCloseTo(entryWidth, 2);
+        expect(tabHeight).toBeCloseTo(entryHeight, 2);
+        await expect(tabBadge).toBeInViewport({ ratio: 1 });
+        expect(
+          await panel.locator('.activity-tabs').evaluate((tabs) => tabs.scrollWidth)
+        ).toBeLessThanOrEqual(
+          await panel.locator('.activity-tabs').evaluate((tabs) => tabs.clientWidth)
+        );
+      }
+    });
+
     test(`Activity center combines lists without mixing state at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {
