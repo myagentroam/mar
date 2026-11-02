@@ -283,9 +283,14 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   for (let i = 0; i < 35; i++) await input.press('ArrowDown');
   await expect(dialog.locator('li[aria-selected="true"]')).toBeInViewport();
   await expect(input).toBeInViewport();
-  await notices.getByRole('button', { name: 'Retry', exact: true }).scrollIntoViewIfNeeded();
+  const retry = notices.getByRole('button', { name: 'Retry', exact: true });
+  await retry.scrollIntoViewIfNeeded();
+  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await retry.hover();
+  await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   fail = false;
-  await notices.getByRole('button', { name: 'Retry', exact: true }).click();
+  await retry.click();
   await expect(dialog.locator('details')).toHaveCount(0);
   await expectBounded(dialog);
   await expectSingleScrollRegion(dialog);

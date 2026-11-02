@@ -749,7 +749,9 @@ describe.each(['zh-CN', 'en-US'] as const)('shared Workspace Inspector (%s)', (l
     expect(loading).not.toContain(i18n.global.t('common.loadFailedRetry'));
     const failed = await render({ filesWatchStatus: 'failed' });
     expect(failed).toContain(i18n.global.t('common.loadFailedRetry'));
-    expect(failed).toMatch(/<button class="(?=[^"]*\bfailed\b)(?=[^"]*\bwatch-status\b)/u);
+    expect(failed).toMatch(
+      /<button\b[^>]*class="(?=[^"]*\bfailed\b)(?=[^"]*\bwatch-status\b)(?=[^"]*\bis-link\b)/u
+    );
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 });

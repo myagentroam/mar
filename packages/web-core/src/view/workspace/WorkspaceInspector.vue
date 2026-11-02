@@ -1969,7 +1969,7 @@ onBeforeUnmount(() => filePreviews.reset());
           {{ translate('generated.workspaceInspector.gitHistory') }}
         </el-button>
       </div>
-      <button
+      <el-button
         v-if="
           ((activeSection === 'files' &&
             (filesWatchStatus === 'loading' || filesWatchStatus === 'failed')) ||
@@ -1981,10 +1981,10 @@ onBeforeUnmount(() => filePreviews.reset());
           )
         "
         class="watch-status"
+        link
         :class="{
           failed: (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed'
         }"
-        type="button"
         :aria-disabled="
           (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'
         "
@@ -2003,7 +2003,7 @@ onBeforeUnmount(() => filePreviews.reset());
           {{ translate('generated.workspaceInspector.loading') }}</template
         >
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </button>
+      </el-button>
       <template v-if="activeSection === 'files'">
         <section class="file-explorer">
           <div class="explorer-toolbar">
@@ -2049,14 +2049,14 @@ onBeforeUnmount(() => filePreviews.reset());
               <MarIcon name="document-add" v-else />
             </button>
           </div>
-          <button
+          <el-button
             v-if="fileTree.refreshError.value"
             v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
             :aria-description="
               !filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined
             "
-            type="button"
             class="watch-status"
+            link
             :class="{ failed: !filesBusy }"
             :aria-disabled="filesBusy"
             :aria-busy="filesBusy || undefined"
@@ -2067,7 +2067,7 @@ onBeforeUnmount(() => filePreviews.reset());
               {{ translate('generated.workspaceInspector.loading') }}</template
             >
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-          </button>
+          </el-button>
           <p v-else-if="filesBusy" class="watch-status" role="status">
             <MarIcon name="loading-action" />
             {{ translate('generated.workspaceInspector.loading') }}
@@ -2126,12 +2126,12 @@ onBeforeUnmount(() => filePreviews.reset());
             <MarIcon name="search" />
           </button>
         </form>
-        <button
+        <el-button
           v-if="contentSearchError !== undefined"
           v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
           :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
-          type="button"
           class="watch-status"
+          link
           :class="{ failed: !contentSearchLoading }"
           :aria-disabled="contentSearchLoading"
           :aria-busy="contentSearchLoading || undefined"
@@ -2141,7 +2141,7 @@ onBeforeUnmount(() => filePreviews.reset());
             ><MarIcon name="loading-action" />
             {{ translate('generated.workspaceInspector.loading') }}</template
           ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
-        </button>
+        </el-button>
         <p v-else-if="contentSearchLoading" class="watch-status" role="status">
           <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
         </p>
@@ -2447,8 +2447,11 @@ onBeforeUnmount(() => filePreviews.reset());
 
 .watch-status {
   margin: 0.2rem 0.55rem;
-  color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
+}
+
+.watch-status:not(button) {
+  color: var(--mar-text-muted);
 }
 
 button.watch-status {
@@ -2462,11 +2465,8 @@ button.watch-status {
 }
 
 button.watch-status[aria-disabled='true'] {
+  color: var(--mar-text-muted);
   cursor: default;
-}
-
-.watch-status.failed {
-  color: var(--el-color-warning);
 }
 
 .inspector-tabs button {

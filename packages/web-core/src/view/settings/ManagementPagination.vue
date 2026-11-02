@@ -100,11 +100,11 @@ onUnmounted(() => observer?.disconnect());
     />
     <div v-else class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
-      <button
+      <el-button
         v-if="failed && incrementalFailed"
+        link
         v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
         :aria-description="!loading && error !== undefined ? errorMessage(error) : undefined"
-        type="button"
         :aria-label="loading ? translate('common.loading') : undefined"
         :aria-disabled="loading"
         :aria-busy="loading || undefined"
@@ -112,7 +112,7 @@ onUnmounted(() => observer?.disconnect());
       >
         <BusyIndicator v-if="loading" class="read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </button>
+      </el-button>
       <span
         v-else-if="loading && loadingMore"
         class="management-mobile-loading"

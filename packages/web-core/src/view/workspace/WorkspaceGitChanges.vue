@@ -412,12 +412,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       </template>
     </ul>
     <div v-if="service.changesError.value" class="change-append-state">
-      <button
+      <el-button
         v-tooltip="!changesRefreshing ? errorMessage(service.changesFailureCause.value) : ''"
+        link
         :aria-description="
           !changesRefreshing ? errorMessage(service.changesFailureCause.value) : undefined
         "
-        type="button"
         :aria-disabled="changesRefreshing"
         :aria-busy="changesRefreshing || undefined"
         @click="!changesRefreshing && service.retryChanges()"
@@ -427,7 +427,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
           {{ translate('generated.workspaceInspector.loading') }}</template
         >
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </button>
+      </el-button>
     </div>
     <div v-else-if="changesRefreshing" class="change-append-state" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}

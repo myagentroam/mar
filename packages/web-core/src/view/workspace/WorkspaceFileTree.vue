@@ -544,11 +544,11 @@ defineExpose({ reveal });
             class="file-tree-load-more utility-control"
             :style="{ '--tree-depth': row.depth }"
           >
-            <button
+            <el-button
               v-if="row.node.failedAppend !== undefined"
+              link
               v-tooltip="!row.node.loading ? errorMessage(row.node.failure) : ''"
               :aria-description="!row.node.loading ? errorMessage(row.node.failure) : undefined"
-              type="button"
               :aria-disabled="row.node.loading || disabled"
               :aria-busy="row.node.loading || undefined"
               @click="!row.node.loading && !disabled && emit('loadMore', row.node)"
@@ -558,7 +558,7 @@ defineExpose({ reveal });
                 {{ translate('generated.workspaceInspector.loading') }}</template
               >
               <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-            </button>
+            </el-button>
             <span v-else-if="row.node.loading" role="status"
               ><MarIcon name="loading-action" />
               {{ translate('generated.workspaceInspector.loading') }}</span
@@ -743,7 +743,6 @@ defineExpose({ reveal });
   box-sizing: border-box;
   border: 0;
   background: transparent;
-  color: inherit;
   font: inherit;
   margin: 0;
   padding: 0 6px 0 calc(34px + var(--tree-depth) * 8px);
