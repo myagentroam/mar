@@ -927,6 +927,7 @@ export function createSessionExecutionFactory(ports: {
             requests: compactRequests,
             signal: controller.signal,
             window: selectedModel.contextWindowTokens,
+            gcEnabled: selectedModel.gcEnabled ?? true,
             gc: contextGc,
             gcBase: {
               store,
@@ -1110,7 +1111,10 @@ export function createSessionExecutionFactory(ports: {
             },
             prepareResources: async ({ candidateRequest, request, toolScope }) => {
               resourceInput.observe(candidateRequest.messages);
-              const media = await resourceInput.gcCandidate(request, candidateRequest.images);
+              const media =
+                selectedModel.gcEnabled === false
+                  ? undefined
+                  : await resourceInput.gcCandidate(request, candidateRequest.images);
               if (media?.reason === 'HARD_LIMIT') {
                 const committed = await contextCoordinator.gc(
                   { request, toolScope },

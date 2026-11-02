@@ -478,6 +478,39 @@ describe('SDK inline media lifecycle', () => {
     ).toHaveLength(0);
   });
 
+  it('rejects media over the hard budget without GC when the model disables it', async () => {
+    const { home, create } = await fixture();
+    const first = await imagePng('disabled-first');
+    const second = await imagePng('disabled-second');
+    const fresh = await imagePng('disabled-fresh');
+    const adapter = new ScriptedAdapter({ ...modelBase, gcEnabled: false }, [
+      { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] }
+    ]);
+    const agent = await create(adapter);
+    const session = await agent.createSession({ workspace: home });
+    try {
+      expect(
+        await session
+          .run({
+            prompt: 'seed',
+            images: [imageInput('first.png', first), imageInput('second.png', second)]
+          })
+          .result()
+      ).toMatchObject({ status: 'completed' });
+      expect(
+        await session.run({ prompt: 'fresh', images: [imageInput('fresh.png', fresh)] }).result()
+      ).toMatchObject({ status: 'failed' });
+      expect(adapter.requests).toHaveLength(1);
+    } finally {
+      await agent.dispose();
+    }
+    expect(
+      (await readRecords(home, session.id)).filter(
+        (record) => record.type === 'context.gc.completed'
+      )
+    ).toHaveLength(0);
+  });
+
   it.each(['usage', 'no-usage', 'model-switch', 'reopen-no-usage'])(
     'hard-GCs history before dispatch while preserving fresh media (%s)',
     async (mode) => {

@@ -144,6 +144,45 @@ class ContextGcAdapter implements ModelAdapter {
 }
 
 describe('context GC runtime integration', () => {
+  it.each([undefined, true, false])(
+    'honors model GC setting %s in a real SDK run',
+    async (gcEnabled) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-model-setting-'));
+      homes.push(home);
+      await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+      const configured = { ...model, ...(gcEnabled === undefined ? {} : { gcEnabled }) };
+      const adapter = new ContextGcAdapter(configured);
+      const gc = vi.spyOn(ContextGcRuntime.prototype, 'run');
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [configured]
+        },
+        () => adapter
+      );
+      const session = await agent.createSession({ workspace: home });
+      try {
+        expect(await session.run({ prompt: 'Update the file.' }).result()).toMatchObject({
+          status: 'completed'
+        });
+      } finally {
+        await agent.dispose();
+      }
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const records = await store.read(session.id);
+        expect(records.some((record) => record.type === 'context.gc.completed')).toBe(
+          gcEnabled !== false
+        );
+        if (gcEnabled === false) expect(gc).not.toHaveBeenCalled();
+        else expect(gc).toHaveBeenCalled();
+      } finally {
+        await store.close();
+      }
+    }
+  );
+
   it.each(['included', 'late'] as const)(
     'adopts GC in the same live context and retains an %s immediate append exactly once',
     async (timing) => {
@@ -854,19 +893,19 @@ describe('context GC runtime integration', () => {
       };
       for (let index = 0; index < 5; index++)
         await expect(runtime.run(runtimeInput)).resolves.toBe(false);
-      // Learn the durable checkpoint once, then reject before history and resource I/O.
-      expect(readState).toHaveBeenCalledTimes(1);
-      expect(getActiveProcessIds).not.toHaveBeenCalled();
-      // Below the async Compact boundary the 2,000-token growth gate still applies.
+      // No candidates use bounded retry backoff, rather than a checkpoint growth gate.
+      expect(readState).toHaveBeenCalledTimes(2);
+      expect(getActiveProcessIds).toHaveBeenCalledTimes(2);
+      // Existing no-candidate backoff remains bounded even when usage increases.
       await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_400 } });
-      expect(readState).toHaveBeenCalledTimes(1);
-      // Rollouts still accumulate until the independent ten-rollout interval expires.
+      expect(readState).toHaveBeenCalledTimes(2);
       for (let i = 0; i < 5; i++)
         await runtime.run({ ...runtimeInput, usage: { contextInputTokens: 8_400 } });
-      expect(readState).toHaveBeenCalledTimes(2);
+      const beforeReset = readState.mock.calls.length;
+      expect(beforeReset).toBeGreaterThan(2);
       runtime.reset();
       await runtime.run(runtimeInput);
-      expect(readState).toHaveBeenCalledTimes(3);
+      expect(readState).toHaveBeenCalledTimes(beforeReset + 1);
       await store.close();
       const catalog = await openAgentSessionCatalog({ homeDirectory: home });
       const history = await catalog.history(session.id, { limit: 1_000 });
@@ -944,7 +983,8 @@ describe('context GC runtime integration', () => {
       expect(JSON.stringify(restoredMessages)).not.toContain('old context old context');
       expect(JSON.stringify(restoredMessages)).not.toContain('resumed-cell');
       expect(JSON.stringify(restoredMessages)).not.toContain('# Retained Session resources');
-      expect(resumedResources).not.toHaveBeenCalled();
+      // GC may inspect current resources again; recovery still uses the persisted projection.
+      expect(resumedResources).toHaveBeenCalledTimes(1);
       await reopened.dispose();
     }
   );

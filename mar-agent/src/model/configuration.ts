@@ -56,6 +56,7 @@ const modelFieldsSchema = z
     subagentModel: z.boolean().optional().default(false),
     titleGeneration: z.boolean().optional().default(false),
     codeMode: z.boolean().optional().default(false),
+    gcEnabled: z.boolean().optional(),
     useResourceUrl: z.boolean().optional().default(false),
     fastMode: z.boolean().optional(),
     serviceTier: z.enum(['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']).optional(),

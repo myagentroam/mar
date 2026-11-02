@@ -14,8 +14,10 @@ import {
   normalizeContextGcCodeModeInput
 } from '../../session/context-gc-replacements.js';
 
-import { CONTEXT_GC_POLICY } from './gc-economics.js';
-import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
+import {
+  CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
+  contextGcProtectionMature
+} from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -75,11 +77,11 @@ export function collectCodeModeCandidates(
       const reclaimedTokens = candidateSavings(candidate);
       if (reclaimedTokens <= 0) continue;
       if (contextGcProtectionMature(protection)) eligible.push(candidate);
-      else if (candidate.observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+      else if (candidate.observedRollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
         protectedTokens += reclaimedTokens;
         retryAfterRollouts = Math.min(
           retryAfterRollouts,
-          CONTEXT_GC_POLICY.largeExecProtectionRollouts - candidate.observedRollouts
+          CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - candidate.observedRollouts
         );
       }
     }
@@ -160,11 +162,11 @@ export function collectCodeModeCandidates(
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
     if (contextGcProtectionMature(protection)) eligible.push(candidate);
-    else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+    else if (observedRollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(
         retryAfterRollouts,
-        CONTEXT_GC_POLICY.largeExecProtectionRollouts - observedRollouts
+        CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - observedRollouts
       );
     }
   }

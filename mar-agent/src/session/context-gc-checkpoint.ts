@@ -96,28 +96,6 @@ export class ContextGcCheckpointCache {
   }
 }
 
-export function contextGcMinimumUsageGrowth(contextWindowTokens: number): number {
-  return Math.max(2_000, Math.floor(contextWindowTokens * 0.05));
-}
-
-/** Compare adjacent checkpoint triggers only within the same model/window scope. */
-export function contextGcCheckpointIntervalEligible(
-  trigger: ContextGcCheckpointDraft['trigger'],
-  previous?: ContextGcCheckpointDraft['trigger']
-): boolean {
-  if (
-    !previous ||
-    trigger.modelId !== previous.modelId ||
-    trigger.contextWindowTokens !== previous.contextWindowTokens
-  )
-    return true;
-  return (
-    trigger.normalRolloutOrdinal - previous.normalRolloutOrdinal >= 2 &&
-    trigger.contextInputTokens - previous.contextInputTokens >=
-      contextGcMinimumUsageGrowth(trigger.contextWindowTokens)
-  );
-}
-
 export function contextGcLogicalPathKey(
   path: string,
   workspace: string,
@@ -234,7 +212,7 @@ export function parseContextGcCheckpoint(
     !Array.isArray(payload.replacements) ||
     (payload.replacements.length === 0 && payload.inlineMedia === undefined) ||
     !isContextGcTrigger(payload.trigger) ||
-    !isContextGcEconomicsPolicy(payload.economics) ||
+    (payload.economics !== undefined && !isContextGcEconomicsPolicy(payload.economics)) ||
     !isContextGcMetrics(payload.metrics) ||
     (payload.inlineMedia !== undefined && !parseInlineMediaGc(payload.inlineMedia))
   )
@@ -251,7 +229,7 @@ export function parseContextGcCheckpoint(
     boundarySequence: payload.boundarySequence,
     replacements,
     trigger: structuredClone(payload.trigger),
-    economics: structuredClone(payload.economics),
+    ...(payload.economics === undefined ? {} : { economics: structuredClone(payload.economics) }),
     metrics: structuredClone(payload.metrics),
     ...(payload.inlineMedia === undefined
       ? {}
@@ -1697,7 +1675,7 @@ function isContextGcTrigger(value: unknown): boolean {
   );
 }
 
-function isContextGcEconomicsPolicy(value: unknown): boolean {
+function isContextGcEconomicsPolicy(value: unknown): value is ContextGcEconomicsPolicy {
   return (
     isRecord(value) &&
     value.version === 1 &&
@@ -1735,17 +1713,17 @@ function isContextGcMetrics(value: unknown): boolean {
     'beforeTokens',
     'afterTokens',
     'reclaimedTokens',
-    'grossReductionRate',
-    'cacheRebuildPenaltyCostUnits',
-    'projectedRolloutsUntilCompactAfterGc',
-    'contextGrowthSampleCount',
-    'contextGrowthP75Tokens',
     'minimumObservedRollouts',
     'protectedCandidateTokens',
     'eligibleCandidateCount',
     'eligibleTargetCount'
   ];
   const optionalNonnegative = [
+    'grossReductionRate',
+    'cacheRebuildPenaltyCostUnits',
+    'projectedRolloutsUntilCompactAfterGc',
+    'contextGrowthSampleCount',
+    'contextGrowthP75Tokens',
     'effectiveMinimumGrossReductionRate',
     'compactDeferralCreditCostUnits',
     'minimumRequiredReclaimedTokens',
@@ -1757,7 +1735,7 @@ function isContextGcMetrics(value: unknown): boolean {
   return (
     nonnegative.every((key) => isNonnegativeFinite(value[key])) &&
     [
-      'requiredPositiveNetRollouts',
+      ...(value.requiredPositiveNetRollouts === undefined ? [] : ['requiredPositiveNetRollouts']),
       ...(value.requiredTargetRoiRollouts === undefined ? [] : ['requiredTargetRoiRollouts'])
     ].every(
       (key) =>
@@ -1766,7 +1744,8 @@ function isContextGcMetrics(value: unknown): boolean {
     optionalNonnegative.every(
       (key) => value[key] === undefined || isNonnegativeFinite(value[key])
     ) &&
-    Number.isFinite(value.expectedNetSavedCostUnits) &&
+    (value.expectedNetSavedCostUnits === undefined ||
+      Number.isFinite(value.expectedNetSavedCostUnits)) &&
     (value.cacheInvestmentRoi === undefined || Number.isFinite(value.cacheInvestmentRoi)) &&
     (value.tokenEstimator === undefined || value.tokenEstimator === 'UTF8_BYTES_V1') &&
     (value.cachePenaltyKnown === undefined || typeof value.cachePenaltyKnown === 'boolean')

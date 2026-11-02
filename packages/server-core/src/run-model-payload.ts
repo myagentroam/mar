@@ -1,4 +1,19 @@
 import type { MarAgentModelService, MarAgentRuntimeModelService } from './session-run-contracts.js';
+
+/** The legacy path has no Node capability evidence and cannot safely relay disabled GC. */
+export function assertLegacyGcCompatible(models: readonly unknown[]): void {
+  if (
+    models.some(
+      (model) =>
+        model !== null &&
+        typeof model === 'object' &&
+        'gcEnabled' in model &&
+        model.gcEnabled === false
+    )
+  )
+    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
+}
+
 export async function runtimeModelPayload(input: {
   readonly userId: number;
   readonly nodeId: string;
@@ -24,8 +39,11 @@ export async function runtimeModelPayload(input: {
     };
   }
   if (input.marAgentModels === undefined) return {};
+  const model = await input.marAgentModels.runtimeForUser(input.userId, input.selectedModelId);
+  const models = await input.marAgentModels.runtimeConfigurationsForUser(input.userId);
+  assertLegacyGcCompatible([model, ...(Array.isArray(models) ? models : [])]);
   return {
-    marAgentModel: await input.marAgentModels.runtimeForUser(input.userId, input.selectedModelId),
-    marAgentModels: await input.marAgentModels.runtimeConfigurationsForUser(input.userId)
+    marAgentModel: model,
+    marAgentModels: models
   };
 }

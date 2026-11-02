@@ -876,6 +876,7 @@ interface ParsedModel {
   subagentModel: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
+  gcEnabled: boolean;
   serviceTier?: MarAgentModelSummary['serviceTier'];
   hostedWebSearch: boolean;
   responsesTransport?: MarAgentModelSummary['responsesTransport'];
@@ -912,6 +913,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     subagentModel: record.subagentModel ?? false,
     titleGeneration: record.titleGeneration ?? false,
     codeMode: record.codeMode ?? false,
+    gcEnabled: record.gcEnabled ?? true,
     metadata: record.metadata,
     serviceTier: record.serviceTier,
     hostedWebSearch: record.hostedWebSearch,
@@ -990,6 +992,7 @@ function runtimeConfiguration(
     subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
+    gcEnabled: value.gcEnabled ?? true,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
     hostedWebSearch: value.hostedWebSearch,
     useResourceUrl: resourceUrlsEnabled && value.metadata?.useResourceUrl === true,
@@ -1028,6 +1031,7 @@ function storedConfiguration(
     subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
+    gcEnabled: value.gcEnabled ?? true,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
     hostedWebSearch: value.hostedWebSearch,
     ...(value.responsesTransport === undefined
@@ -1142,6 +1146,7 @@ function summary(row: RowDataPacket, settings: ModelSettings): MarAgentModelSumm
     subagentModel: row.subagent_model === undefined ? false : Boolean(row.subagent_model),
     titleGeneration: Boolean(row.title_generation),
     codeMode: Boolean(row.code_mode),
+    gcEnabled: settings.gcEnabled ?? true,
     ...(serviceTier === undefined ? {} : { serviceTier }),
     hostedWebSearch: responses?.hostedWebSearch ?? false,
     ...(responsesTransport === undefined ? {} : { responsesTransport }),

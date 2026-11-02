@@ -9,6 +9,7 @@ import type { CurrentUserSession } from './session.js';
 import type { HostedNodeControl } from './hosted-contracts.js';
 import type { ConversationTemplateService } from './conversation-template-service.js';
 import type { MarAgentModelService } from './mar-agent-model-service.js';
+import { assertLegacyGcCompatible } from './run-model-payload.js';
 import type { MarAgentRuntimeModelService } from './mar-agent-runtime-model-service.js';
 import { requestHostedConversationNode } from './hosted-http-support.js';
 
@@ -175,12 +176,13 @@ export async function hostedRuntimeModels(input: {
     };
   }
   const modelCatalog = await input.models.runtimeConfigurationsForUser(input.userId);
+  const model =
+    input.selectedModelId === undefined
+      ? undefined
+      : await input.models.runtimeForUser(input.userId, input.selectedModelId);
+  assertLegacyGcCompatible([...modelCatalog, model]);
   return {
-    ...(input.selectedModelId === undefined
-      ? {}
-      : {
-          model: await input.models.runtimeForUser(input.userId, input.selectedModelId)
-        }),
+    ...(model === undefined ? {} : { model }),
     modelCatalog
   };
 }

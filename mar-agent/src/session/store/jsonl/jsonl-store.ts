@@ -27,7 +27,6 @@ import {
 } from '../../code-state.js';
 import {
   contextGcBaseFromRecords,
-  contextGcCheckpointIntervalEligible,
   latestValidContextGcCheckpoint,
   normalizeContextGcReplacements,
   sameContextGcBase,
@@ -1581,14 +1580,6 @@ export class JsonlSessionStore implements SessionStore {
             'Context GC planning boundary is invalid.'
           );
         const previous = latestValidContextGcCheckpoint(records, boundarySequence);
-        if (
-          (!draft.inlineMedia || draft.inlineMedia.reason === 'TEXT_GC') &&
-          !contextGcCheckpointIntervalEligible(draft.trigger, previous?.payload.trigger)
-        )
-          throw new AgentError(
-            'MAR_AGENT_SESSION_CORRUPT',
-            'Context GC checkpoint interval validation failed.'
-          );
         const plannedReplacements = normalizeContextGcReplacements(draft.replacements);
         if (!plannedReplacements || (plannedReplacements.length === 0 && !draft.inlineMedia))
           throw new AgentError(

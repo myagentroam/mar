@@ -452,10 +452,13 @@ describe.runIf(enabled)('Code Mode and Context GC real long-flow E2E', () => {
     expect(checkpoint!.trigger.contextInputTokens).toBeGreaterThanOrEqual(gcStartTokens);
     expect(checkpoint!.trigger.contextInputTokens).toBeLessThan(compactThresholdTokens);
     expect(checkpoint!.metrics.reclaimedTokens).toBeGreaterThan(4_096);
-    expect(checkpoint!.metrics.reclaimedTokens).toBeGreaterThanOrEqual(
-      Math.ceil(checkpoint!.trigger.contextWindowTokens / 20)
+    // Reclamation is a local protocol projection estimate, not provider-measured tokens.
+    expect(checkpoint!.metrics.reclaimedTokens).toBeGreaterThan(
+      checkpoint!.trigger.contextWindowTokens / 10
     );
-    expect(checkpoint!.metrics.grossReductionRate).toBeGreaterThan(0);
+    expect(checkpoint!.metrics.minimumRequiredReclaimedTokens).toBe(
+      Math.floor(checkpoint!.trigger.contextWindowTokens / 10) + 1
+    );
     expect(checkpoint!.replacements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'TOOL_CALL_INPUT', toolName: 'code_exec' }),
@@ -640,8 +643,8 @@ describe.runIf(enabled)('Code Mode and Context GC real long-flow E2E', () => {
             checkpointGeneration: checkpoint!.generation,
             triggerContextInputTokens: checkpoint!.trigger.contextInputTokens,
             reclaimedTokens: checkpoint!.metrics.reclaimedTokens,
-            grossReductionRate: checkpoint!.metrics.grossReductionRate,
-            requiredPositiveNetRollouts: checkpoint!.metrics.requiredPositiveNetRollouts,
+            reclaimedTokensSource: 'local-protocol-projection-estimate',
+            minimumRequiredReclaimedTokens: checkpoint!.metrics.minimumRequiredReclaimedTokens,
             providerContextInputTokens,
             interRequestContextInputDelta:
               checkpoint!.trigger.contextInputTokens - providerContextInputTokens!,

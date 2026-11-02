@@ -116,21 +116,21 @@ export interface ContextGcMetrics {
   readonly beforeTokens: number;
   readonly afterTokens: number;
   readonly reclaimedTokens: number;
-  readonly grossReductionRate: number;
+  readonly grossReductionRate?: number;
   readonly effectiveMinimumGrossReductionRate?: number;
   readonly minimumRequiredReclaimedTokens?: number;
-  readonly cacheRebuildPenaltyCostUnits: number;
+  readonly cacheRebuildPenaltyCostUnits?: number;
   readonly compactDeferralCreditCostUnits?: number;
   readonly imminentCompactAvoidanceCreditCostUnits?: number;
   readonly appliedCompactCreditCostUnits?: number;
-  readonly requiredPositiveNetRollouts: number | null;
+  readonly requiredPositiveNetRollouts?: number | null;
   readonly requiredTargetRoiRollouts?: number | null;
-  readonly projectedRolloutsUntilCompactAfterGc: number;
+  readonly projectedRolloutsUntilCompactAfterGc?: number;
   readonly projectedTokensBeforeGc?: number;
   readonly projectedTokensAfterGc?: number;
-  readonly contextGrowthSampleCount: number;
-  readonly contextGrowthP75Tokens: number;
-  readonly expectedNetSavedCostUnits: number;
+  readonly contextGrowthSampleCount?: number;
+  readonly contextGrowthP75Tokens?: number;
+  readonly expectedNetSavedCostUnits?: number;
   readonly cacheInvestmentRoi?: number;
   readonly minimumObservedRollouts: number;
   readonly protectedCandidateTokens: number;
@@ -153,7 +153,7 @@ export interface ContextGcCheckpointDraft {
     readonly modelId: string;
     readonly platform: ContextGcPlatform;
   };
-  readonly economics: ContextGcEconomicsPolicy;
+  readonly economics?: ContextGcEconomicsPolicy;
   readonly metrics: ContextGcMetrics;
 }
 

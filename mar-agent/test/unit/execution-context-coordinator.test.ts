@@ -56,6 +56,24 @@ it('does not adopt a GC candidate without a durable checkpoint', async () => {
   expect(adoptGcCheckpoint).not.toHaveBeenCalled();
 });
 
+it.each([
+  { gcEnabled: false, pending: false },
+  { gcEnabled: true, pending: true }
+])('does not run GC when disabled or Compact is pending: %j', async ({ gcEnabled, pending }) => {
+  const ports = basePorts();
+  const run = vi.fn(async () => false);
+  const coordinator = new ExecutionContextCoordinator({
+    ...ports,
+    gcEnabled,
+    compact: { ...ports.compact, pending },
+    gc: { run }
+  });
+  expect(
+    await coordinator.gc({ request: { system: 's' }, toolScope: { tools: [] } }, {}, undefined)
+  ).toBe(false);
+  expect(run).not.toHaveBeenCalled();
+});
+
 it('prepares input and compact safety points before recording the environment', async () => {
   const order: string[] = [];
   const ports = basePorts();
