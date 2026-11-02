@@ -1543,9 +1543,11 @@ describe('MAR Agent Node Runner', () => {
   it('returns unknown when the persisted session catalog cannot be opened', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-runner-invalid-home-'));
     const invalidHome = join(home, 'not-a-directory');
+    let runner: MarAgentRunner | undefined;
+    let restore = () => {};
     try {
       await writeFile(invalidHome, 'file');
-      const runner = new MarAgentRunner(invalidHome);
+      runner = new MarAgentRunner(invalidHome);
       runner.configureModels([
         {
           id: 'coding',
@@ -1564,8 +1566,10 @@ describe('MAR Agent Node Runner', () => {
         }
       ]);
 
-      await expect(
-        runner.readContextUsage({
+      const opens = vi.spyOn(RuntimeJsonlSessionStore, 'open');
+      restore = () => opens.mockRestore();
+      const read = () =>
+        runner!.readContextUsage({
           id: 'session',
           nodeId: 'node',
           workspaceId: 'workspace',
@@ -1583,15 +1587,21 @@ describe('MAR Agent Node Runner', () => {
           titleSource: 'RUNNER',
           lastActivityAt: 0,
           createdAt: 0
-        })
-      ).resolves.toBeUndefined();
+        });
+      await expect(read()).resolves.toBeUndefined();
+      await expect(read()).resolves.toBeUndefined();
+      expect(opens).toHaveBeenCalledTimes(2);
     } finally {
+      await runner?.stop();
+      restore();
       await rm(home, { recursive: true, force: true });
     }
   });
 
   it('excludes Compact usage and keeps context usage unknown when compaction retains a tail', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-runner-usage-home-'));
+    let runner: MarAgentRunner | undefined;
+    let restore = () => {};
     try {
       const store = await JsonlSessionStore.open(home);
       const native = await store.createSession({ workspace: '/workspace' });
@@ -1629,7 +1639,7 @@ describe('MAR Agent Node Runner', () => {
         turnId: 'turn'
       });
       await store.close();
-      const runner = new MarAgentRunner(home);
+      runner = new MarAgentRunner(home);
       runner.configureModels([
         {
           id: 'coding',
@@ -1667,6 +1677,12 @@ describe('MAR Agent Node Runner', () => {
         createdAt: 0
       } as const;
 
+      const opens = vi.spyOn(RuntimeJsonlSessionStore, 'open');
+      const closes = vi.spyOn(RuntimeJsonlSessionStore.prototype, 'close');
+      restore = () => {
+        opens.mockRestore();
+        closes.mockRestore();
+      };
       await expect(runner.readContextUsage(session)).resolves.toEqual({
         model: 'provider-coding',
         usedTokens: 12500,
@@ -1771,7 +1787,13 @@ describe('MAR Agent Node Runner', () => {
       });
       await retained.close();
       await expect(runner.readContextUsage(session)).resolves.toBeUndefined();
+      expect(opens).toHaveBeenCalledTimes(1);
+      expect(closes).not.toHaveBeenCalled();
+      await runner.stop();
+      expect(closes).toHaveBeenCalledTimes(1);
     } finally {
+      await runner?.stop();
+      restore();
       await rm(home, { recursive: true, force: true });
     }
   });
