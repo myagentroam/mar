@@ -401,7 +401,12 @@ describe('management page service lifecycle', () => {
     await service.loadMore();
 
     expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1]);
-    expect(service.failure.value).toEqual({ error: fallbackError, page: 1, append: false });
+    expect(service.failure.value).toEqual({
+      error: fallbackError,
+      page: 1,
+      append: false,
+      incremental: true
+    });
     expect(service.items.value).toBe(items);
     expect(service.result.value).toBe(metadata);
     expect(service.total.value).toBe(40);
@@ -409,7 +414,9 @@ describe('management page service lifecycle', () => {
     expect(service.loading.value).toBe(false);
     expect(service.loadingMore.value).toBe(false);
 
-    await service.retry();
+    const retry = service.retry();
+    expect(service.loadingMore.value).toBe(true);
+    await retry;
 
     expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1]);
     expect(service.items.value).toEqual([{ id: 'authoritative' }]);
@@ -442,7 +449,12 @@ describe('management page service lifecycle', () => {
     await service.retry();
 
     expect(read.mock.calls.map(([requestedPage]) => requestedPage)).toEqual([1, 2, 1, 1]);
-    expect(service.failure.value).toEqual({ error: retryError, page: 1, append: false });
+    expect(service.failure.value).toEqual({
+      error: retryError,
+      page: 1,
+      append: false,
+      incremental: true
+    });
     expect(service.items.value).toBe(items);
     expect(service.result.value).toBe(metadata);
     expect(service.loading.value).toBe(false);

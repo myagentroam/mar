@@ -7,6 +7,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
@@ -125,6 +126,7 @@ const pagination = createManagementPageService<Secret>({
       sortOrder.value
     ])
 });
+watchManagementPageFailure(pagination);
 const loading = computed(
   () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
 );
@@ -448,6 +450,7 @@ function message(error: unknown): string {
       :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
       :failed="pagination.failure.value !== undefined"
+      :incremental-failed="pagination.failure.value?.incremental === true"
       :error="pagination.failure.value?.error"
       :context-key="pagination.contextKey.value"
       @retry="pagination.retry"

@@ -1,6 +1,6 @@
-import { createSSRApp, defineComponent, h } from 'vue';
+import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElSelect, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   PersonalUsageOverview,
@@ -947,6 +947,7 @@ describe('usage statistics settings contract', () => {
       const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
       try {
         await flushComponent();
+        expect(view.findAll('ElSelect')[0]?.props['modelValue']).toBe('24h');
         const cards = view
           .findAll('section')
           .filter((node) => node.props['class'] === 'overview-cell');
@@ -1028,19 +1029,6 @@ describe('usage statistics settings contract', () => {
       const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
       app.directive('tooltip', {});
       app.use(i18n).use(ElementPlus);
-      let selectedRange: unknown;
-      app.component(
-        'el-select',
-        defineComponent({
-          props: ['modelValue', 'ariaLabel'],
-          setup(props, { attrs, slots }) {
-            if (props.ariaLabel === commonMessages[locale].usageStatistics.range) {
-              selectedRange = props.modelValue;
-            }
-            return () => h(ElSelect, { ...attrs, ...props }, slots);
-          }
-        })
-      );
       app.provide(ID_INJECTION_KEY, { prefix: 940, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
@@ -1052,7 +1040,6 @@ describe('usage statistics settings contract', () => {
       );
       expect(html).not.toContain(locale === 'en-US' ? 'About these statistics' : '统计说明');
       expect(html).toContain(commonMessages[locale].usageStatistics.range);
-      expect(selectedRange).toBe('24h');
       const refreshButton = html.match(/<button\b[\s\S]*?<\/button>/u)?.[0];
       expect(refreshButton).toContain('<svg');
       expect(refreshButton).toContain(commonMessages[locale].usageStatistics.refresh);

@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '@myagentroam/web-core/MobileDialogReturnService';
+import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
@@ -179,6 +180,7 @@ const pagination = createManagementPageService<AuditEvent>({
     );
   }
 });
+watchManagementPageFailure(pagination);
 const events = pagination.items;
 const loading = pagination.loading;
 const pageReady = computed(() => pagination.result.value !== undefined);
@@ -444,6 +446,7 @@ onBeforeUnmount(closeDetail);
       :loading="loading"
       :loading-more="pagination.loadingMore.value"
       :failed="pagination.failure.value !== undefined"
+      :incremental-failed="pagination.failure.value?.incremental === true"
       :error="pagination.failure.value?.error"
       :context-key="pagination.contextKey.value"
       @retry="pagination.retry"

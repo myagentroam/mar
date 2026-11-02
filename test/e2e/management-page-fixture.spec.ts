@@ -9,7 +9,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-test('Audit initial failure retries in place with one busy indicator and retained focus', async ({
+test('Audit initial failure reports an error and recovers through refresh on mobile', async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -17,16 +17,10 @@ test('Audit initial failure retries in place with one busy indicator and retaine
   const section = page.locator('.audit-management');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, false));
-  const retry = section.locator('.management-mobile-status button');
-  await expect(retry).toHaveText('Failed to load. Retry');
-  await retry.focus();
-  await retry.press('Enter');
+  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
+  await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
-  await expect(retry).toBeFocused();
-  await expect(retry).toHaveAttribute('aria-busy', 'true');
-  await expect(retry).toHaveAccessibleName('Loading');
-  await expect(section.locator('.busy-indicator')).toHaveCount(1);
-  await expect(section.locator('.el-loading-mask')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
 });
@@ -47,6 +41,16 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
   await expect(section.locator('.el-table .el-loading-mask')).toBeHidden();
   await expect(section.locator('.el-pager .is-active')).toHaveText('2');
+  await section.locator('.btn-prev').click();
+  await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
+  await page.evaluate(() => window.managementPageFixture.settle(2, false));
+  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(section.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
+  await expect(section.locator('.el-pager .is-active')).toHaveText('2');
+  await section.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(4);
+  await page.evaluate(() => window.managementPageFixture.settle(3, true));
+  await expect(section.locator('.el-pager .is-active')).toHaveText('1');
 });
 
 test('Usage details retain rows and retry a failed automatic page in place', async ({ page }) => {

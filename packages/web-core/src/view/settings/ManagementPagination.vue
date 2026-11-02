@@ -16,6 +16,7 @@ const props = withDefaults(
     readonly loading?: boolean;
     readonly loadingMore?: boolean;
     readonly failed?: boolean;
+    readonly incrementalFailed?: boolean;
     readonly contextKey?: string;
     readonly error?: unknown;
     readonly hasMore: boolean;
@@ -100,7 +101,7 @@ onUnmounted(() => observer?.disconnect());
     <div v-else class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
       <button
-        v-if="failed"
+        v-if="failed && incrementalFailed"
         v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
         :aria-description="!loading && error !== undefined ? errorMessage(error) : undefined"
         type="button"
@@ -121,19 +122,6 @@ onUnmounted(() => observer?.disconnect());
         <BusyIndicator class="read-loading-indicator" />
       </span>
     </div>
-    <button
-      v-if="!mobile && failed"
-      v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
-      :aria-description="!loading && error !== undefined ? errorMessage(error) : undefined"
-      type="button"
-      :aria-label="loading ? translate('common.loading') : undefined"
-      :aria-disabled="loading"
-      :aria-busy="loading || undefined"
-      @click="!loading && emit('retry')"
-    >
-      <BusyIndicator v-if="loading" class="read-loading-indicator" />
-      <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </button>
   </div>
 </template>
 
