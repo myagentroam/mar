@@ -1069,6 +1069,25 @@ pre {
   opacity: 0.55;
 }
 
+.mar-activity-count-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: var(--mar-radius-marker);
+  background: var(--mar-color-brand);
+  color: var(--mar-color-on-accent);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
 .mar-unread-label {
   display: inline-flex;
   flex: none;

@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
         <MarIcon name="recent-sessions" aria-hidden="true" />
         <span
           v-if="service.unreadCount.value > 0"
-          class="activity-entry-count"
+          class="activity-entry-count mar-activity-count-badge"
           aria-hidden="true"
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
@@ -298,21 +298,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: calc(50% - 18px);
   right: calc(50% - 18px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  box-sizing: border-box;
-  padding: 0 4px;
-  border-radius: var(--mar-radius-marker);
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
   box-shadow: 0 0 0 1.5px var(--activity-marker-surface);
-  font-size: var(--mar-font-size-nano);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
   pointer-events: none;
 }
 .activity-entry-running {
