@@ -28,6 +28,10 @@ const countKeys = [
 ] as const;
 const cacheKeys = ['cacheReadTokens', 'cacheWriteTokens'] as const;
 
+// The model-first index can regress broad histories without a model predicate.
+// Keep the optimizer free to choose the time index or a scan for those reads.
+const unfilteredTable = 'model_usage_records IGNORE INDEX (model_usage_user_model_time)';
+
 export class ModelUsageQueryError extends Error {
   constructor(readonly code: 'USAGE_QUERY_INVALID' | 'USAGE_CURSOR_INVALID') {
     super('The personal usage query is invalid.');
@@ -118,7 +122,7 @@ function filter(
   userId: number,
   query: PersonalUsageQuery,
   minimum: number
-): { sql: string; values: (string | number)[] } {
+): { table: string; sql: string; values: (string | number)[] } {
   const values: (string | number)[] = [userId, Math.max(query.from, minimum), query.to];
   const parts = ['user_id=?', 'ended_at>=?', 'ended_at<?'];
   for (const [field, value] of [
@@ -135,7 +139,11 @@ function filter(
     parts.push('model_key=?', 'BINARY model_key=BINARY ?');
     values.push(query.model, query.model);
   }
-  return { sql: parts.join(' AND '), values };
+  return {
+    table: query.model === undefined ? unfilteredTable : 'model_usage_records',
+    sql: parts.join(' AND '),
+    values
+  };
 }
 
 export class ModelUsageQueryService {
@@ -159,7 +167,7 @@ export class ModelUsageQueryService {
       await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
       await connection.beginTransaction();
       const [periods] = await connection.execute<RowDataPacket[]>(
-        `SELECT ended_at>=? AS recent,${totalSql} FROM model_usage_records
+        `SELECT ended_at>=? AS recent,${totalSql} FROM ${unfilteredTable}
         WHERE user_id=? AND purpose=? AND ended_at>=? AND ended_at<? GROUP BY recent`,
         [asOf - 86_400_000, userId, query.purpose ?? 'conversation', asOf - 7 * 86_400_000, asOf]
       );
@@ -172,7 +180,7 @@ export class ModelUsageQueryService {
       }
       const [metadata] = await connection.execute<RowDataPacket[]>(
         `SELECT MIN(started_at) AS firstRecordedAt,MAX(received_at) AS lastReceivedAt
-        FROM model_usage_records WHERE user_id=? AND purpose=? AND
+        FROM ${unfilteredTable} WHERE user_id=? AND purpose=? AND
         ((ended_at>=? AND ended_at<?) OR (ended_at IS NULL AND started_at>=? AND started_at<?))
         AND received_at<=?`,
         [userId, query.purpose ?? 'conversation', minimum, asOf, minimum, asOf, asOf]
@@ -185,7 +193,7 @@ export class ModelUsageQueryService {
         const bucketSql = `CASE ${ranges.map((_, i) => `WHEN ended_at<? THEN ${i}`).join(' ')} ELSE -1 END`;
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT ${bucketSql} AS bucket,runner,model_key,MAX(model_name) AS model_name,${totalSql}
-          FROM model_usage_records WHERE ${selected.sql} AND ended_at<? GROUP BY bucket,runner,BINARY model_key,model_key`,
+          FROM ${selected.table} WHERE ${selected.sql} AND ended_at<? GROUP BY bucket,runner,BINARY model_key,model_key`,
           [...ranges.map((range) => range.to), ...selected.values, asOf]
         );
         for (const row of rows) {
@@ -284,14 +292,14 @@ export class ModelUsageQueryService {
       await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
       await connection.beginTransaction();
       const [counts] = await connection.execute<RowDataPacket[]>(
-        `SELECT CAST(COUNT(*) AS CHAR) AS total FROM model_usage_records WHERE ${selected.sql}`,
+        `SELECT CAST(COUNT(*) AS CHAR) AS total FROM ${selected.table} WHERE ${selected.sql}`,
         countValues
       );
       const total = String(counts[0]?.total ?? '0');
       const pageNumber = Math.min(requestedPage ?? 1, Math.max(1, Math.ceil(Number(total) / 20)));
       const offset = requestedPage === undefined ? '' : ` OFFSET ${(pageNumber - 1) * 20}`;
       const [rows] = await connection.execute<RowDataPacket[]>(
-        `SELECT source_key,ended_at,mode,record FROM model_usage_records WHERE ${selected.sql}${after} ORDER BY ended_at DESC,source_key DESC LIMIT 21${offset}`,
+        `SELECT source_key,ended_at,mode,record FROM ${selected.table} WHERE ${selected.sql}${after} ORDER BY ended_at DESC,source_key DESC LIMIT 21${offset}`,
         selected.values
       );
       await connection.commit();
