@@ -378,7 +378,8 @@ onBeforeUnmount(() => {
               {{ translate('generated.workspaceInspector.loading') }}
             </li>
             <li v-if="historyFilesErrors.includes(commit.hash)" class="empty">
-              <button
+              <el-button
+                link
                 v-tooltip="
                   !historyFilesLoading.includes(commit.hash)
                     ? errorMessage(service.historyFilesFailureCauses.value[commit.hash])
@@ -389,7 +390,6 @@ onBeforeUnmount(() => {
                     ? errorMessage(service.historyFilesFailureCauses.value[commit.hash])
                     : undefined
                 "
-                type="button"
                 :aria-disabled="historyFilesLoading.includes(commit.hash)"
                 :aria-busy="historyFilesLoading.includes(commit.hash) || undefined"
                 @click="
@@ -401,7 +401,7 @@ onBeforeUnmount(() => {
                   {{ translate('generated.workspaceInspector.loading') }}</template
                 >
                 <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-              </button>
+              </el-button>
             </li>
             <li
               v-for="row in historyFileRows(
@@ -471,13 +471,13 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </Teleport>
-    <button
+    <el-button
       v-if="historyError"
+      link
       v-tooltip="!historyLoading ? errorMessage(service.historyFailureCause.value) : ''"
       :aria-description="
         !historyLoading ? errorMessage(service.historyFailureCause.value) : undefined
       "
-      type="button"
       class="history-load-more"
       :aria-disabled="historyLoading"
       :aria-busy="historyLoading || undefined"
@@ -488,7 +488,7 @@ onBeforeUnmount(() => {
         {{ translate('generated.workspaceInspector.loading') }}</template
       >
       <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </button>
+    </el-button>
     <div v-else-if="historyLoading" class="history-load-more" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
     </div>

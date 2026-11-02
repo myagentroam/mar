@@ -121,6 +121,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(tree).toHaveAttribute('data-request-count', '1');
       const retry = tree.locator('.file-tree-load-more button');
       await expect(retry).toBeVisible();
+      await expect(retry).toHaveClass(/is-link/);
+      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await retry.hover();
+      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const hoverColor = await retry.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--el-button-hover-link-text-color)';
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(retry).toHaveCSS('color', hoverColor);
       const retryHeight = (await retry.boundingBox())!.height;
       await expect(tree.getByText('first.ts')).toBeVisible();
       await retry.focus();

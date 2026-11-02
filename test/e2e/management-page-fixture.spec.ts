@@ -73,6 +73,10 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
   await page.evaluate(() => window.managementPageFixture.settle(2, false));
   const retry = boundary.locator('button');
   await expect(retry).toBeVisible();
+  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await retry.hover();
+  await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(retry).toHaveAccessibleName('Failed to load. Retry');
   await expect(rows).toHaveCount(20);
   await retry.focus();

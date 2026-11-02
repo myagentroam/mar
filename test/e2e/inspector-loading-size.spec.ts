@@ -106,6 +106,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       releaseChanges?.();
       const changesRetry = inspector.locator('.change-append-state button');
       await expect(changesRetry).toHaveText('Failed to load. Retry');
+      await expect(changesRetry).toHaveClass(/is-link/);
+      await expect(changesRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await changesRetry.hover();
+      await expect(changesRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect.soft(changesRetry).toHaveCSS('font-size', fontSize);
       failChanges = false;
       await changesRetry.click();
@@ -121,6 +125,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       releaseHistory?.();
       const historyRetry = inspector.locator('button.history-load-more');
       await expect(historyRetry).toHaveText('Failed to load. Retry');
+      await expect(historyRetry).toHaveClass(/is-link/);
+      await expect(historyRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await historyRetry.hover();
+      await expect(historyRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect.soft(historyRetry).toHaveCSS('font-size', fontSize);
       failHistory = false;
       await historyRetry.click();

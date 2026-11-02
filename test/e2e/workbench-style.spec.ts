@@ -1238,6 +1238,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await input.press('Enter');
     const retry = inspector.locator('button.watch-status');
     await expect(retry).toBeVisible();
+    await expect(retry).toHaveClass(/is-link/);
+    await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await retry.hover();
+    await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
     await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');

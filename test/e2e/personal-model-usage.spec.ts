@@ -491,11 +491,45 @@ test('Personal usage separates model configurations while preserving native Runn
     console.log(
       `Selective overview+page over 22514 rows, five samples (ms): ${durations.map((ms) => ms.toFixed(1)).join(', ')}`
     );
+
+    // Rolling totals and metadata stay unfiltered even when a model is selected.
+    const unfilteredReads = calls.filter(({ values }) => !values.includes(org.key));
+    calls.length = 0;
+    const defaultOverview = await service.overview(1, query);
+    const defaultPage = await service.records(1, query, undefined, 1);
+    expect(defaultOverview.selected.requests).toBe('22514');
+    expect(defaultPage.total).toBe('22514');
+    expect(defaultPage.records).toHaveLength(20);
+    expect(calls.length).toBeGreaterThan(0);
+    unfilteredReads.push(...calls);
+    for (const { sql, values } of unfilteredReads) {
+      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+        'EXPLAIN FORMAT=JSON ' + sql,
+        values
+      );
+      const tables = usagePlanTables(JSON.parse(String(rows[0]?.EXPLAIN)));
+      expect(tables.length).toBeGreaterThan(0);
+      for (const table of tables) {
+        // Exclude the model-first index from the candidate set, not just today's chosen plan.
+        expect(table.possible_keys ?? []).not.toContain('model_usage_user_model_time');
+        expect(table.key).not.toBe('model_usage_user_model_time');
+      }
+    }
   } finally {
     await pool.end();
     await dropPlaywrightTestDatabase(database);
   }
 });
+
+function usagePlanTables(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.flatMap(usagePlanTables);
+  if (value === null || typeof value !== 'object') return [];
+  const node = value as Record<string, unknown>;
+  return [
+    ...(node.table_name === 'model_usage_records' ? [node] : []),
+    ...Object.values(node).flatMap(usagePlanTables)
+  ];
+}
 
 function modelTotals({
   key: _key,
