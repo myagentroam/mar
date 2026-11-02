@@ -121,6 +121,7 @@ export const modelManagementZhCN = {
     subagentModel: '支持 Subagent',
     titleGeneration: '会话标题命名',
     codeMode: 'Code Mode',
+    gcEnabled: '上下文回收',
     serviceTier: '速度',
     serviceTierDefault: '默认',
     serviceTierFast: 'Fast',

@@ -11,8 +11,10 @@ import {
   type ContextGcExecResult
 } from '../../session/context-gc-replacements.js';
 
-import { CONTEXT_GC_POLICY } from './gc-economics.js';
-import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
+import {
+  CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
+  contextGcProtectionMature
+} from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -129,11 +131,11 @@ export function collectExecCandidates(
       if (contextGcProtectionMature(protection)) {
         mature.push(replacement);
         observedRollouts = Math.min(observedRollouts, protection.rollouts);
-      } else if (protection.rollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+      } else if (protection.rollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
         awaitingRollouts.push(replacement);
         retryAfterRollouts = Math.min(
           retryAfterRollouts,
-          CONTEXT_GC_POLICY.largeExecProtectionRollouts - protection.rollouts
+          CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - protection.rollouts
         );
       }
     }

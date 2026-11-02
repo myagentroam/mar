@@ -310,18 +310,15 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
         expect.objectContaining({ kind: 'TOOL_CALL_INPUT', toolName: 'apply_patch' })
       ])
     );
-    expect(checkpoint?.payload.metrics).toMatchObject({
-      grossReductionRate: expect.any(Number),
-      requiredPositiveNetRollouts: expect.any(Number)
-    });
-    expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThan(0);
     const usage = checkpoint!.payload.trigger.contextInputTokens;
     const window = checkpoint!.payload.trigger.contextWindowTokens;
-    expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThanOrEqual(
-      Math.ceil(window / 20)
+    // Reclamation is a local protocol projection estimate, not provider-measured tokens.
+    expect(checkpoint!.payload.metrics.reclaimedTokens).toBeGreaterThan(window / 10);
+    expect(checkpoint!.payload.metrics.minimumRequiredReclaimedTokens).toBe(
+      Math.floor(window / 10) + 1
     );
-    const payback = checkpoint!.payload.metrics.requiredPositiveNetRollouts!;
-    expect(payback).toBeLessThanOrEqual(30 + (30 * (usage / window - 0.5)) / 0.35);
+    expect(usage / window).toBeGreaterThanOrEqual(0.5);
+    expect(usage / window).toBeLessThan(0.85);
     expect(checkpoint!.payload.trigger.contextWindowTokens).toBe(contextWindowTokens);
     expect(checkpoint!.payload.trigger.contextInputTokens).toBeGreaterThanOrEqual(gcStartTokens);
     expect(checkpoint!.payload.trigger.contextInputTokens).toBeLessThan(compactThresholdTokens);
@@ -494,8 +491,9 @@ describe.runIf(enabled)('Context GC real long-task E2E', () => {
             compactThresholdTokens,
             triggerContextInputTokens: checkpoint!.payload.trigger.contextInputTokens,
             reclaimedTokens: checkpoint!.payload.metrics.reclaimedTokens,
-            grossReductionRate: checkpoint!.payload.metrics.grossReductionRate,
-            requiredPositiveNetRollouts: checkpoint!.payload.metrics.requiredPositiveNetRollouts,
+            reclaimedTokensSource: 'local-protocol-projection-estimate',
+            minimumRequiredReclaimedTokens:
+              checkpoint!.payload.metrics.minimumRequiredReclaimedTokens,
             projectedRequestTokens: firstGcRequest!.estimatedInputTokens,
             projectedCounterfactualTokens,
             providerContextInputTokens,

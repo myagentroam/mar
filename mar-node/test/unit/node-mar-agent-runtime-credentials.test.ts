@@ -33,6 +33,7 @@ describe('Node MAR Agent runtime credentials', () => {
         [
           {
             ...runtimeModel(ticket('options', 1_000)),
+            gcEnabled: false,
             responsesTransport: { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' },
             responsesOptionalParameters: {
               reasoningEffort: true,
@@ -71,6 +72,7 @@ describe('Node MAR Agent runtime credentials', () => {
           status: 'completed'
         });
         expect(received?.credentialProvider).toBe(provider);
+        expect(received?.gcEnabled).toBe(false);
         expect(received?.responsesTransport).toEqual({ transport: 'HTTP', httpVersion: '2' });
         expect(received?.responsesOptionalParameters).toEqual({
           reasoningEffort: true,

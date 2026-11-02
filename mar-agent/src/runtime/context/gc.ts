@@ -3,8 +3,6 @@ import type { SessionModelMessage as ModelMessage } from '../../session/model-re
 import {
   ContextGcCheckpointCache,
   contextGcBaseFromRecords,
-  contextGcCheckpointIntervalEligible,
-  contextGcMinimumUsageGrowth,
   contextGcTargetKey,
   normalizeContextGcReplacements,
   type ContextGcCheckpointDraft,
@@ -17,7 +15,6 @@ import { buildContextGcProtection } from '../../session/context-gc-protection.js
 
 import {
   CONTEXT_GC_TOKEN_ESTIMATOR,
-  contextGcCacheImpact,
   contextGcMessageTokens,
   contextGcPrefixTokens,
   contextGcReclaimedTokens
@@ -26,13 +23,10 @@ import {
 import { applyContextGcReplacementsToMessages, providerToolCallId } from './projection.js';
 
 import {
-  CONTEXT_GC_POLICY,
-  COMPACT_THRESHOLD_RATIO,
-  evaluateContextGcEconomics,
   contextGcMinimumReclaimedTokens,
   contextGcEligibleUsage,
   modelContextUsage
-} from './gc-economics.js';
+} from './gc-admission.js';
 
 import {
   type ContextGcPlan,
@@ -52,13 +46,7 @@ import { collectExecCandidates } from './gc-candidates-exec.js';
 
 import { collectToolOutputCandidates, collectWebCandidates } from './gc-candidates-web.js';
 
-export {
-  CONTEXT_GC_POLICY,
-  type ContextGcEconomicsResult,
-  evaluateContextGcEconomics,
-  contextGcMinimumReclaimedTokens,
-  contextGcEligibleUsage
-} from './gc-economics.js';
+export { contextGcMinimumReclaimedTokens, contextGcEligibleUsage } from './gc-admission.js';
 
 export {
   type ContextGcPlan,
@@ -97,24 +85,8 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     protectedCandidateTokens: text.plan?.metrics.protectedCandidateTokens ?? 0
   };
   if (text.plan) {
-    const combined = evaluateCandidateSet(
-      input,
-      [],
-      [
-        {
-          replacements: text.plan.draft.replacements,
-          observedRollouts: text.plan.metrics.minimumObservedRollouts,
-          evidenceSequence: text.plan.draft.boundarySequence
-        }
-      ],
-      state,
-      media.project
-    );
-    if (combined?.economics.passes) {
-      const plan = finalizePlan(input, combined, true);
-      if (plan) return { plan };
-    }
-    if (media.reason === 'TEXT_GC') return text;
+    const { project: _project, ...inlineMedia } = media;
+    return { ...text, plan: { ...text.plan, draft: { ...text.plan.draft, inlineMedia } } };
   }
   // Byte pressure has its own admission signal; it never relaxes text GC eligibility.
   const onlyMedia = evaluateCandidateSet(
@@ -131,7 +103,7 @@ export function inspectContextGc(input: ContextGcPlannerInput): ContextGcInspect
     media.project
   );
   const plan = onlyMedia && finalizePlan(input, onlyMedia, true);
-  return plan ? { plan } : text;
+  return plan ? { ...text, plan } : text;
 }
 
 function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
@@ -151,33 +123,6 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     input.contextWindowTokens
   );
   const previous = input.checkpointCache!.read(input.records);
-  const checkpointEligible = contextGcCheckpointIntervalEligible(
-    {
-      usageSequence: usageRecord.sequence,
-      contextInputTokens: contextUsageTokens,
-      contextWindowTokens: input.contextWindowTokens,
-      normalRolloutOrdinal,
-      modelId: input.modelId,
-      platform: input.platform
-    },
-    previous?.payload.trigger
-  );
-  // Discovery and economic evaluation have their own low-growth opportunities;
-  // neither a protected candidate nor periodic discovery makes a draft eligible.
-  if (
-    previous?.payload.trigger.modelId === input.modelId &&
-    previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
-  ) {
-    const rolloutGrowth = normalRolloutOrdinal - previous.payload.trigger.normalRolloutOrdinal;
-    if (
-      rolloutGrowth < 2 ||
-      (previous.payload.metrics.protectedCandidateTokens === 0 &&
-        rolloutGrowth < CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-        contextUsageTokens - previous.payload.trigger.contextInputTokens <
-          contextGcMinimumUsageGrowth(input.contextWindowTokens))
-    )
-      return {};
-  }
   if (input.messages.length !== input.messageSources.length) return {};
   const groups = buildToolGroups(input.records, input.messages, input.messageSources);
   const existing = previous?.payload.replacements ?? [];
@@ -207,24 +152,20 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     codeMode.protectedTokens +
     web.protectedTokens +
     tools.protectedTokens;
-  const combined = evaluateCandidateSet(
-    input,
-    existing,
-    [
-      ...deterministic.eligible,
-      ...exec.eligible,
-      ...codeMode.eligible,
-      ...web.eligible,
-      ...tools.eligible
-    ],
-    {
-      stage: 'UNIFIED',
-      contextUsageTokens,
-      usageRecord,
-      normalRolloutOrdinal,
-      protectedCandidateTokens
-    }
-  );
+  const eligible = [
+    ...deterministic.eligible,
+    ...exec.eligible,
+    ...codeMode.eligible,
+    ...web.eligible,
+    ...tools.eligible
+  ];
+  const combined = evaluateCandidateSet(input, existing, eligible, {
+    stage: 'UNIFIED',
+    contextUsageTokens,
+    usageRecord,
+    normalRolloutOrdinal,
+    protectedCandidateTokens
+  });
   const retryAfterRollouts = Math.min(
     deterministic.retryAfterRollouts,
     exec.retryAfterRollouts,
@@ -232,7 +173,7 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
     web.retryAfterRollouts,
     tools.retryAfterRollouts
   );
-  if (combined?.economics.passes && checkpointEligible) {
+  if (combined) {
     const plan = finalizePlan(input, combined);
     return plan
       ? {
@@ -243,10 +184,10 @@ function inspectTextGc(input: ContextGcPlannerInput): ContextGcInspection {
         }
       : {};
   }
-  return protectedCandidateTokens > 0 &&
-    (combined?.economics.passes ||
-      protectedCandidateTokens >= contextGcMinimumReclaimedTokens(input.contextWindowTokens)) &&
-    Number.isFinite(retryAfterRollouts)
+  // An already mature but sub-threshold batch can combine with newly mature
+  // candidates on the next rollout; no-candidate backoff must not delay it.
+  if (eligible.length > 0) return { retryAfterRollouts: 1 };
+  return protectedCandidateTokens > 0 && Number.isFinite(retryAfterRollouts)
     ? { retryAfterRollouts }
     : {};
 }
@@ -272,16 +213,9 @@ function finalizePlan(
     beforeTokens: evaluated.beforeTokens,
     afterTokens: evaluated.afterTokens,
     reclaimedTokens: evaluated.reclaimedTokens,
-    grossReductionRate: evaluated.economics.grossReductionRate,
-    minimumRequiredReclaimedTokens: evaluated.minimumReclaimedTokens,
-    cacheRebuildPenaltyCostUnits: evaluated.economics.cacheRebuildPenaltyCostUnits,
-    requiredPositiveNetRollouts: evaluated.economics.requiredPositiveNetRollouts,
-    projectedRolloutsUntilCompactAfterGc: evaluated.projectedRolloutsUntilCompactAfterGc,
-    projectedTokensBeforeGc: evaluated.projectedTokensBeforeGc,
-    projectedTokensAfterGc: evaluated.projectedTokensAfterGc,
-    contextGrowthSampleCount: evaluated.contextGrowthSamples.length,
-    contextGrowthP75Tokens: evaluated.contextGrowthP75Tokens,
-    expectedNetSavedCostUnits: evaluated.economics.expectedNetSavedCostUnits,
+    ...(evaluated.mediaOnly
+      ? {}
+      : { minimumRequiredReclaimedTokens: evaluated.minimumReclaimedTokens }),
     minimumObservedRollouts: evaluated.minimumObservedRollouts,
     protectedCandidateTokens: evaluated.protectedCandidateTokens,
     eligibleCandidateCount: evaluated.eligibleCandidateCount,
@@ -291,8 +225,7 @@ function finalizePlan(
         1 +
         (replacement.kind === 'TOOL_CALL_INPUT' ? replacement.providerAliasTargets.length : 0),
       0
-    ),
-    cachePenaltyKnown: input.usage.cacheReadTokens !== undefined
+    )
   };
   const draft: ContextGcCheckpointDraft = {
     ...(inlineMedia ? { inlineMedia } : {}),
@@ -313,7 +246,6 @@ function finalizePlan(
       modelId: input.modelId,
       platform: input.platform
     },
-    economics: CONTEXT_GC_POLICY,
     metrics
   };
   return { stage: evaluated.stage, draft, metrics };
@@ -345,67 +277,27 @@ function evaluateCandidateSet(
     replacements
   );
   const projectedMessages = mediaProjection?.(projected.messages) ?? projected.messages;
-  const reclaimedTokens = contextGcReclaimedTokens(input, input.messages, projectedMessages);
+  const baseline = applyContextGcReplacementsToMessages(
+    input.messages,
+    input.messageSources,
+    existing
+  );
+  const baselineMessages = mediaProjection?.(baseline.messages) ?? baseline.messages;
+  const reclaimedTokens = contextGcReclaimedTokens(input, baselineMessages, projectedMessages);
   const minimumReclaimedTokens = contextGcMinimumReclaimedTokens(input.contextWindowTokens);
   if (!state.mediaOnly && reclaimedTokens < minimumReclaimedTokens) return undefined;
-  const beforeTokens = contextGcPrefixTokens(input) + contextGcMessageTokens(input, input.messages);
+  const beforeTokens =
+    contextGcPrefixTokens(input) + contextGcMessageTokens(input, baselineMessages);
   const afterTokens =
     contextGcPrefixTokens(input) + contextGcMessageTokens(input, projectedMessages);
   if (!state.mediaOnly && reclaimedTokens === 0) return undefined;
-  const cache = contextGcCacheImpact(
-    input,
-    input.messages,
-    projectedMessages,
-    input.usage.cacheReadTokens ?? 0,
-    reclaimedTokens
-  );
-  const growthSamples = collectContextGrowthSamples(
-    input.records,
-    input.modelId,
-    input.contextWindowTokens,
-    input.checkpointCache!
-  );
-  const contextGrowthP75Tokens = percentile75(growthSamples);
-  const compactThresholdTokens = Math.floor(input.contextWindowTokens * COMPACT_THRESHOLD_RATIO);
-  // Usage describes the request before its generated output and tool results.
-  const pendingMessages = input.messages.filter(
-    (_message, index) => input.messageSources[index]!.sequence > state.usageRecord.sequence
-  );
-  const pendingTokens =
-    Math.max(0, input.usage.outputTokens ?? 0) + contextGcMessageTokens(input, pendingMessages);
-  const projectedTokensBeforeGc = state.contextUsageTokens + pendingTokens;
-  const projectedTokensAfterGc = Math.max(0, projectedTokensBeforeGc - reclaimedTokens);
-  const projectedRolloutsUntilCompactAfterGc =
-    contextGrowthP75Tokens <= 0
-      ? 0
-      : Math.max(
-          0,
-          Math.floor(
-            (compactThresholdTokens - projectedTokensAfterGc) / Math.max(1, contextGrowthP75Tokens)
-          )
-        );
-  const economics = evaluateContextGcEconomics({
-    contextUsageTokens: state.contextUsageTokens,
-    contextWindowTokens: input.contextWindowTokens,
-    reclaimedTokens,
-    reclaimedCachedTokens: cache.reclaimedCachedTokens,
-    cacheReadTokens: input.usage.cacheReadTokens ?? 0,
-    preservedCachedPrefixTokens: cache.preservedCachedPrefixTokens
-  });
   return {
     ...state,
-    economics,
-    reclaimedCachedTokens: cache.reclaimedCachedTokens,
     replacements,
     beforeTokens,
     afterTokens,
     reclaimedTokens,
-    contextGrowthSamples: growthSamples,
-    contextGrowthP75Tokens,
     minimumReclaimedTokens,
-    projectedRolloutsUntilCompactAfterGc,
-    projectedTokensBeforeGc,
-    projectedTokensAfterGc,
     boundarySequence: input.records.at(-1)?.sequence ?? state.usageRecord.sequence,
     minimumObservedRollouts: Math.min(...candidates.map((candidate) => candidate.observedRollouts)),
     eligibleCandidateCount: candidates.length
@@ -431,59 +323,6 @@ function latestUsageRecord(
       latest = record;
   }
   return latest;
-}
-
-function collectContextGrowthSamples(
-  records: readonly SessionRecord[],
-  modelId: string,
-  contextWindowTokens: number,
-  checkpointCache: ContextGcCheckpointCache
-): number[] {
-  const previous = checkpointCache.read(records);
-  const base = contextGcBaseFromRecords(records);
-  const startSequence =
-    previous?.record.sequence ?? (base?.type === 'COMPACT' ? base.sequence : base?.firstSequence);
-  let activeModelId = modelId;
-  let activeWindow = contextWindowTokens;
-  let previousUsage: number | undefined;
-  const samples: number[] = [];
-  for (const record of records) {
-    if (startSequence !== undefined && record.sequence <= startSequence) continue;
-    if (record.type === 'execution.header' && isRecord(record.payload)) {
-      const nextModel = modelIdFromRecord(record);
-      const nextWindow = record.payload.contextWindowTokens;
-      if (
-        nextModel !== modelId ||
-        (typeof nextWindow === 'number' && nextWindow !== contextWindowTokens)
-      ) {
-        activeModelId = nextModel ?? activeModelId;
-        activeWindow =
-          typeof nextWindow === 'number' && Number.isSafeInteger(nextWindow)
-            ? nextWindow
-            : activeWindow;
-        previousUsage = undefined;
-      } else {
-        activeModelId = modelId;
-        activeWindow = contextWindowTokens;
-      }
-      continue;
-    }
-    if (
-      activeModelId !== modelId ||
-      activeWindow !== contextWindowTokens ||
-      !isRecord(record.payload) ||
-      record.payload.type !== 'usage.updated'
-    )
-      continue;
-    const usage = modelContextUsage(record.payload);
-    if (usage === undefined) {
-      previousUsage = undefined;
-      continue;
-    }
-    if (previousUsage !== undefined && usage > previousUsage) samples.push(usage - previousUsage);
-    previousUsage = usage;
-  }
-  return samples.slice(-CONTEXT_GC_POLICY.contextGrowthSampleWindow);
 }
 
 /** Measure only affected call families, retaining native aliases for provider lowering. */
@@ -530,10 +369,4 @@ function createCandidateSavingsEstimator(
 function modelIdFromRecord(record: SessionRecord): string | undefined {
   if (!isRecord(record.payload)) return undefined;
   return typeof record.payload.modelId === 'string' ? record.payload.modelId : undefined;
-}
-
-function percentile75(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * 0.75) - 1)]!;
 }

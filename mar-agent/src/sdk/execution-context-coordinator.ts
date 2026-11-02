@@ -32,6 +32,7 @@ export class ExecutionContextCoordinator {
       readonly requests: Pick<CompactRequests, 'drain'>;
       readonly signal: AbortSignal;
       readonly window: number;
+      readonly gcEnabled?: boolean;
       readonly gc: Pick<ContextGcRuntime, 'run'>;
       readonly gcBase: Omit<
         ContextGcRuntimeInput,
@@ -127,7 +128,7 @@ export class ExecutionContextCoordinator {
         this.ports.signal.throwIfAborted();
         this.ports.execution.assertContextValid();
       });
-    if (!this.ports.compact.pending)
+    if (this.ports.gcEnabled !== false && !this.ports.compact.pending)
       await this.gc(round, usage, await this.ports.resources.gcCandidate(), true);
   }
   async gc(
@@ -139,6 +140,7 @@ export class ExecutionContextCoordinator {
     media: ContextGcRuntimeInput['inlineMedia'],
     includeProcesses = false
   ): Promise<boolean> {
+    if (this.ports.gcEnabled === false || this.ports.compact.pending) return false;
     const appendBoundary = this.ports.execution.appendBoundary;
     const committed = await this.ports.gc.run({
       ...this.ports.gcBase,

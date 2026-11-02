@@ -137,36 +137,6 @@ export function contextGcMessageTokens(
   return contextGcTokenEntries(input, messages).reduce((sum, entry) => sum + entry.tokens, 0);
 }
 
-export function contextGcCacheImpact(
-  input: TokenContext,
-  before: readonly ModelMessage[],
-  after: readonly ModelMessage[],
-  cacheRead: number,
-  reclaimedTokens: number
-): { preservedCachedPrefixTokens: number; reclaimedCachedTokens: number } {
-  const afterByKey = new Map(
-    contextGcTokenEntries(input, after).map((entry) => [entry.key, entry])
-  );
-  let offset = contextGcPrefixTokens(input);
-  let earliest = cacheRead;
-  let reclaimedCachedTokens = 0;
-  for (const entry of contextGcTokenEntries(input, before)) {
-    const replacement = afterByKey.get(entry.key);
-    if (entry.text !== replacement?.text) {
-      earliest = Math.min(earliest, offset);
-      reclaimedCachedTokens += Math.min(
-        Math.max(0, entry.tokens - (replacement?.tokens ?? 0)),
-        Math.max(0, cacheRead - offset)
-      );
-    }
-    offset += entry.tokens;
-  }
-  return {
-    preservedCachedPrefixTokens: Math.max(0, Math.min(cacheRead, earliest)),
-    reclaimedCachedTokens: Math.min(reclaimedTokens, reclaimedCachedTokens)
-  };
-}
-
 function tokensFor(input: TokenContext, text: string): number {
   const cached = input.tokenCache?.get(text);
   if (cached !== undefined) return cached;

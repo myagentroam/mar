@@ -5,43 +5,16 @@ import type {
 } from '../../src/session/context-gc-checkpoint.js';
 import { contextGcApplyPatchInputReplacement } from '../../src/session/context-gc-replacements.js';
 
-const economics = {
-  version: 1,
-  immediatePaybackRollouts: 3,
-  maximumPaybackRollouts: 20,
-  contextGrowthSampleWindow: 16,
-  minimumContextGrowthSamples: 6,
-  minimumObservationRollouts: 1,
-  stageAProtectionRollouts: 10,
-  largeExecProtectionRollouts: 10,
-  normalInputCostRate: 1,
-  cacheReadCostRate: 0.1,
-  cacheWriteCostRate: 1.25,
-  outputCostRate: 1,
-  minimumGrossReductionRate: 0.2,
-  minimumCacheInvestmentRoi: 0.1
-} as const;
-
 const metrics: ContextGcMetrics = {
   stage: 'UNIFIED',
-  beforeTokens: 10,
-  afterTokens: 8,
-  reclaimedTokens: 2,
-  grossReductionRate: 0.2,
-  cacheRebuildPenaltyCostUnits: 0,
-  compactDeferralCreditCostUnits: 0,
-  requiredPositiveNetRollouts: 1,
-  requiredTargetRoiRollouts: 1,
-  projectedRolloutsUntilCompactAfterGc: 10,
-  contextGrowthSampleCount: 0,
-  contextGrowthP75Tokens: 0,
-  expectedNetSavedCostUnits: 2,
-  cacheInvestmentRoi: 0,
+  beforeTokens: 2_000,
+  afterTokens: 500,
+  reclaimedTokens: 1_500,
+  minimumRequiredReclaimedTokens: 1_001,
   minimumObservedRollouts: 10,
   protectedCandidateTokens: 0,
   eligibleCandidateCount: 1,
-  eligibleTargetCount: 1,
-  cachePenaltyKnown: true
+  eligibleTargetCount: 1
 };
 
 async function appendSuccessfulRollout(
@@ -202,7 +175,6 @@ async function appendPatchDraft(
       modelId: 'coding',
       platform: 'linux'
     },
-    economics,
     metrics
   };
   return draft;

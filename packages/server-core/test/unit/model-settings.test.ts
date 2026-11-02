@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { XAI_SUBSCRIPTION_BASE_URL } from '@myagentroam/protocol';
 import {
   ModelSettingsStore,
+  modelSettingsFromInput,
   modelSettingsKey,
   parseModelSettings,
   parseStoredModelSettings,
@@ -9,6 +10,27 @@ import {
 } from '../../src/model-settings.js';
 
 describe('model settings documents', () => {
+  it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
+    'round-trips explicit GC control for %s and accepts legacy documents',
+    (protocol) => {
+      for (const gcEnabled of [true, false]) {
+        const settings = modelSettingsFromInput({ protocol, hostedWebSearch: false, gcEnabled });
+        expect(parseStoredModelSettings(protocol, JSON.stringify(settings)).gcEnabled).toBe(
+          gcEnabled
+        );
+      }
+      const legacy =
+        protocol === 'ANTHROPIC_MESSAGES'
+          ? { version: 1 }
+          : { version: 1, hostedWebSearch: false, responsesPreviousResponseId: false };
+      expect(parseStoredModelSettings(protocol, JSON.stringify(legacy)).gcEnabled ?? true).toBe(
+        true
+      );
+      expect(() => parseModelSettings(protocol, { ...legacy, gcEnabled: 'false' })).toThrow(
+        'MAR_AGENT_MODEL_CONFIG_INVALID'
+      );
+    }
+  );
   it('keeps the full model identifier in its unique setting key', () => {
     expect(modelSettingsKey('a'.repeat(128))).toBe(`mar_agent_model_config:${'a'.repeat(128)}`);
   });

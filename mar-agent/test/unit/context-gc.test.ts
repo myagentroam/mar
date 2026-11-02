@@ -1,19 +1,13 @@
 import { formatReadContextItem } from '../../src/prompts/read-context.js';
 import { describe, expect, it } from 'vitest';
 import { HISTORY_INPUT_LIMITS } from '../../src/session/history-input-limits.js';
-import { contextGcCacheImpact } from '../../src/runtime/context/gc-tokens.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
   renderObservations,
   type CodeObservation
 } from '../../src/session/code-observation-projection.js';
-import {
-  CONTEXT_GC_POLICY,
-  evaluateContextGcEconomics,
-  inspectContextGc,
-  planContextGc
-} from '../../src/runtime/context/gc.js';
+import { inspectContextGc, planContextGc } from '../../src/runtime/context/gc.js';
 import {
   applyContextGcReplacementsToMessages,
   buildContextProjection,
@@ -475,47 +469,6 @@ describe('context GC planner', () => {
     });
 
     expect(validateContextGcCheckpoint(fixture.values, checkpoint)).toBeDefined();
-  });
-
-  it('uses the cache rebuild delta and computes the first strictly positive payback', () => {
-    const result = evaluateContextGcEconomics({
-      contextUsageTokens: 150_000,
-      contextWindowTokens: 200_000,
-      reclaimedTokens: 30_000,
-      reclaimedCachedTokens: 30_000,
-      cacheReadTokens: 100_000,
-      preservedCachedPrefixTokens: 0
-    });
-    expect(result.cacheRebuildPenaltyCostUnits).toBe(66_500);
-    expect(result.requiredPositiveNetRollouts).toBe(45);
-    expect(result.passes).toBe(true);
-  });
-
-  it('keeps gross reduction and positive payback as separate gates when cache cost is zero', () => {
-    expect(
-      evaluateContextGcEconomics({
-        contextUsageTokens: 6_000,
-        contextWindowTokens: 10_000,
-        reclaimedTokens: 1_500,
-        reclaimedCachedTokens: 0,
-        cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0
-      })
-    ).toMatchObject({
-      cacheRebuildPenaltyCostUnits: 0,
-      requiredPositiveNetRollouts: 1,
-      passes: true
-    });
-    expect(
-      evaluateContextGcEconomics({
-        contextUsageTokens: 6_000,
-        contextWindowTokens: 10_000,
-        reclaimedTokens: 499,
-        reclaimedCachedTokens: 0,
-        cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0
-      }).passes
-    ).toBe(false);
   });
 
   it('evaluates from 50 percent and yields at the async Compact threshold', () => {
@@ -1242,24 +1195,7 @@ describe('context GC planner', () => {
     });
 
     expect(cached).toBeDefined();
-    const original = requestProjection(fixture.values);
-    const projected = applyContextGcReplacementsToMessages(
-      original.messages,
-      original.messageSources,
-      cached!.draft.replacements
-    );
-    const impact = contextGcCacheImpact(
-      { system: 'System.', tools: [], modelId: 'coding' },
-      original.messages,
-      projected.messages,
-      3000,
-      cached!.metrics.reclaimedTokens
-    );
-    expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeCloseTo(
-      (3000 - impact.preservedCachedPrefixTokens - impact.reclaimedCachedTokens) *
-        (CONTEXT_GC_POLICY.normalInputCostRate - CONTEXT_GC_POLICY.cacheReadCostRate)
-    );
-    expect(cached!.metrics.cacheRebuildPenaltyCostUnits).toBeGreaterThan(0);
+    expect(cached!.metrics.reclaimedTokens).toBe(selected!.metrics.reclaimedTokens);
     expect(cached!.draft.replacements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1278,21 +1214,7 @@ describe('context GC planner', () => {
     );
   });
 
-  it('accounts for the full combined cache invalidation, rather than a marginal gate', () => {
-    const base = {
-      contextUsageTokens: 150_000,
-      contextWindowTokens: 200_000,
-      reclaimedTokens: 30_000,
-      reclaimedCachedTokens: 30_000,
-      cacheReadTokens: 100_000
-    };
-    const late = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 60_000 });
-    const early = evaluateContextGcEconomics({ ...base, preservedCachedPrefixTokens: 0 });
-    expect(early.cacheRebuildPenaltyCostUnits).toBeGreaterThan(late.cacheRebuildPenaltyCostUnits);
-    expect(early.requiredPositiveNetRollouts).toBeGreaterThan(late.requiredPositiveNetRollouts);
-  });
-
-  it('does not fall back to deterministic-only when the full eligible set fails cache economics', () => {
+  it('combines all eligible candidates regardless of cached context', () => {
     const fixture = records();
     fixture.add('execution.header', { modelId: 'coding', contextWindowTokens: 10000, mode: 'run' });
     modelContext(fixture.add, {
@@ -1351,7 +1273,11 @@ describe('context GC planner', () => {
         : record
     );
     expect(plan(deterministicOnly, usage)).toBeDefined();
-    expect(plan(fixture.values, usage)).toBeUndefined();
+    const combined = plan(fixture.values, usage);
+    expect(combined).toBeDefined();
+    expect(combined?.draft.replacements.some((replacement) => replacement.callId === 'early')).toBe(
+      true
+    );
   });
 
   it('retains protected-candidate retry information alongside a unified plan', () => {
@@ -1842,10 +1768,8 @@ describe('context GC planner', () => {
       1_000
     );
     expect(noWrite).toBeDefined();
-    expect(withWrite?.metrics.compactDeferralCreditCostUnits).toBeUndefined();
-    expect(withWrite?.metrics.requiredPositiveNetRollouts).toBe(
-      noWrite?.metrics.requiredPositiveNetRollouts
-    );
+    expect(withWrite?.metrics.reclaimedTokens).toBe(noWrite?.metrics.reclaimedTokens);
+    expect(withWrite?.draft.replacements).toEqual(noWrite?.draft.replacements);
     expect(
       fixtureWithBaseline({ modelId: 'coding', contextWindowTokens: 10_000 }, 'missing')
     ).toBeDefined();
@@ -1914,7 +1838,7 @@ describe('context GC planner', () => {
     expect(reclaimed(true)).toBeGreaterThan(0);
   });
 
-  it('keeps the pending-result projection diagnostic rather than an economic veto', () => {
+  it('keeps unrelated pending output from vetoing capacity reclaim', () => {
     const fixture = records();
     fixture.add('execution.header', {
       modelId: 'coding',
@@ -1931,8 +1855,7 @@ describe('context GC planner', () => {
     });
     const selected = plan(fixture.values);
     expect(selected).toBeDefined();
-    expect(selected!.metrics.projectedTokensAfterGc).toBeGreaterThanOrEqual(8_500);
-    expect(selected!.metrics.projectedRolloutsUntilCompactAfterGc).toBe(0);
+    expect(selected!.metrics.reclaimedTokens).toBeGreaterThan(1_000);
   });
 
   it('applies a cumulative checkpoint without changing the raw records', () => {
@@ -1980,22 +1903,11 @@ describe('context GC planner', () => {
         modelId: 'coding',
         platform: 'linux'
       },
-      economics: CONTEXT_GC_POLICY,
       metrics: {
         stage: 'STAGE_A',
         beforeTokens: 1,
         afterTokens: 1,
         reclaimedTokens: 1,
-        grossReductionRate: 1,
-        cacheRebuildPenaltyCostUnits: 0,
-        compactDeferralCreditCostUnits: 0,
-        requiredPositiveNetRollouts: 1,
-        requiredTargetRoiRollouts: 1,
-        projectedRolloutsUntilCompactAfterGc: 1,
-        contextGrowthSampleCount: 0,
-        contextGrowthP75Tokens: 0,
-        expectedNetSavedCostUnits: 1,
-        cacheInvestmentRoi: 1,
         minimumObservedRollouts: 2,
         protectedCandidateTokens: 0,
         eligibleCandidateCount: 1,

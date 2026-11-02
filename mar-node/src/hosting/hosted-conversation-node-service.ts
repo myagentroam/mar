@@ -1351,6 +1351,7 @@ function modelSummary(
     ),
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
+    gcEnabled: model.gcEnabled ?? true,
     ...(model.serviceTier === undefined ? {} : { serviceTier: model.serviceTier }),
     hostedWebSearch: model.hostedWebSearch,
     ...(model.responsesTransport === undefined

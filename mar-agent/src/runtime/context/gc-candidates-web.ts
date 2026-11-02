@@ -15,8 +15,10 @@ import {
   type ContextGcWebToolName
 } from '../../session/context-gc-replacements.js';
 
-import { CONTEXT_GC_POLICY } from './gc-economics.js';
-import { contextGcProtectionMature } from '../../session/context-gc-protection.js';
+import {
+  CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS,
+  contextGcProtectionMature
+} from '../../session/context-gc-protection.js';
 
 import {
   type ContextGcPlannerInput,
@@ -83,18 +85,18 @@ export function collectWebCandidates(
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
     if (contextGcProtectionMature(protection)) eligible.push(candidate);
-    else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+    else if (observedRollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(
         retryAfterRollouts,
-        CONTEXT_GC_POLICY.largeExecProtectionRollouts - observedRollouts
+        CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - observedRollouts
       );
     }
   }
   return { eligible, protectedTokens, retryAfterRollouts };
 }
 
-/** Generic successful tool results share output economics, without inferring resource state. */
+/** Generic successful tool results share output retention rules, without inferring resource state. */
 export function collectToolOutputCandidates(
   input: ContextGcPlannerInput,
   groups: ReadonlyMap<string, ToolGroup>,
@@ -332,11 +334,11 @@ export function collectToolOutputCandidates(
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;
     if (contextGcProtectionMature(protection)) eligible.push(candidate);
-    else if (observedRollouts < CONTEXT_GC_POLICY.largeExecProtectionRollouts) {
+    else if (observedRollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
       protectedTokens += reclaimedTokens;
       retryAfterRollouts = Math.min(
         retryAfterRollouts,
-        CONTEXT_GC_POLICY.largeExecProtectionRollouts - observedRollouts
+        CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - observedRollouts
       );
     }
   }

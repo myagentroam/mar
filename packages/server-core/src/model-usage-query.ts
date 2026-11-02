@@ -123,7 +123,6 @@ function filter(
   const parts = ['user_id=?', 'ended_at>=?', 'ended_at<?'];
   for (const [field, value] of [
     ['runner', query.runner],
-    ['model_key', query.model],
     ['mode', query.mode],
     ['purpose', query.purpose ?? 'conversation']
   ] as const) {
@@ -131,6 +130,10 @@ function filter(
       parts.push(`${field}=?`);
       values.push(value);
     }
+  }
+  if (query.model !== undefined) {
+    parts.push('model_key=?', 'BINARY model_key=BINARY ?');
+    values.push(query.model, query.model);
   }
   return { sql: parts.join(' AND '), values };
 }
@@ -182,7 +185,7 @@ export class ModelUsageQueryService {
         const bucketSql = `CASE ${ranges.map((_, i) => `WHEN ended_at<? THEN ${i}`).join(' ')} ELSE -1 END`;
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT ${bucketSql} AS bucket,runner,model_key,MAX(model_name) AS model_name,${totalSql}
-          FROM model_usage_records WHERE ${selected.sql} AND ended_at<? GROUP BY bucket,runner,model_key`,
+          FROM model_usage_records WHERE ${selected.sql} AND ended_at<? GROUP BY bucket,runner,BINARY model_key,model_key`,
           [...ranges.map((range) => range.to), ...selected.values, asOf]
         );
         for (const row of rows) {

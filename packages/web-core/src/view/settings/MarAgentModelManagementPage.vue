@@ -79,6 +79,7 @@ interface ModelDraft {
   subagentModel: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
+  gcEnabled: boolean;
   serviceTier: NonNullable<MarAgentModelSummary['serviceTier']>;
   hostedWebSearch: boolean;
   useResourceUrl: boolean;
@@ -530,6 +531,7 @@ function emptyDraft(): ModelDraft {
     subagentModel: false,
     titleGeneration: false,
     codeMode: false,
+    gcEnabled: true,
     serviceTier: 'default',
     hostedWebSearch: false,
     useResourceUrl: false,
@@ -730,6 +732,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
+    gcEnabled: model.gcEnabled ?? true,
     serviceTier: model.serviceTier ?? 'default',
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: model.metadata?.useResourceUrl ?? false,
@@ -815,6 +818,7 @@ function modelSaveBody(): Record<string, unknown> {
     subagentModel: draft.subagentModel,
     titleGeneration: draft.titleGeneration,
     codeMode: draft.codeMode,
+    gcEnabled: draft.gcEnabled,
     ...(oauth && !grok ? { serviceTier: draft.serviceTier } : {}),
     hostedWebSearch: draft.hostedWebSearch,
     metadata: { useResourceUrl: draft.useResourceUrl },
@@ -1986,6 +1990,9 @@ onBeforeUnmount(() => {
           }}</el-checkbox>
           <el-checkbox v-model="draft.codeMode">{{
             translate('marAgentModels.codeMode')
+          }}</el-checkbox>
+          <el-checkbox v-model="draft.gcEnabled">{{
+            translate('marAgentModels.gcEnabled')
           }}</el-checkbox>
           <el-checkbox v-model="draft.useResourceUrl">{{
             translate('marAgentModels.useResourceUrl')

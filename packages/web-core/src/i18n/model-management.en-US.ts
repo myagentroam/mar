@@ -128,6 +128,7 @@ export const modelManagementEnUS = {
     subagentModel: 'Supports Subagent',
     titleGeneration: 'Session title generation',
     codeMode: 'Code Mode',
+    gcEnabled: 'Context GC',
     serviceTier: 'Speed',
     serviceTierDefault: 'Default',
     serviceTierFast: 'Fast',

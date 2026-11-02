@@ -3,14 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildContextProjection } from '../../src/runtime/context/projection.js';
-import { CONTEXT_GC_POLICY, planContextGc } from '../../src/runtime/context/gc.js';
+import { planContextGc } from '../../src/runtime/context/gc.js';
 import {
   renderObservations,
   type CodeObservation
 } from '../../src/session/code-observation-projection.js';
 import { formatExecResult, type ExecResult } from '../../src/tools/local/exec.js';
 import {
-  contextGcCheckpointIntervalEligible,
   normalizeContextGcReplacements,
   parseContextGcCheckpoint,
   type ContextGcCheckpointDraft,
@@ -46,25 +45,15 @@ const economics = {
 } as const;
 
 const metrics: ContextGcMetrics = {
-  stage: 'STAGE_A',
-  beforeTokens: 10,
-  afterTokens: 8,
-  reclaimedTokens: 2,
-  grossReductionRate: 0.2,
-  cacheRebuildPenaltyCostUnits: 0,
-  compactDeferralCreditCostUnits: 0,
-  requiredPositiveNetRollouts: 1,
-  requiredTargetRoiRollouts: 1,
-  projectedRolloutsUntilCompactAfterGc: 10,
-  contextGrowthSampleCount: 0,
-  contextGrowthP75Tokens: 0,
-  expectedNetSavedCostUnits: 2,
-  cacheInvestmentRoi: 0,
+  stage: 'UNIFIED',
+  beforeTokens: 2_000,
+  afterTokens: 500,
+  reclaimedTokens: 1_500,
+  minimumRequiredReclaimedTokens: 1_001,
   minimumObservedRollouts: 2,
   protectedCandidateTokens: 0,
   eligibleCandidateCount: 1,
-  eligibleTargetCount: 1,
-  cachePenaltyKnown: true
+  eligibleTargetCount: 1
 };
 
 afterEach(async () => {
@@ -235,7 +224,6 @@ async function appendPatchDraft(
       modelId: 'coding',
       platform: 'linux'
     },
-    economics: CONTEXT_GC_POLICY,
     metrics
   };
   return draft;
@@ -302,7 +290,7 @@ describe('context GC checkpoint store', () => {
         (await store.readExecutionState(fixture.session.id)).contextRecords
       );
       expect(restored.checkpoint?.checkpointId).toBe(payload.checkpointId);
-      expect(restored.checkpoint?.economics.largeExecProtectionRollouts).toBe(6);
+      expect(restored.checkpoint?.economics?.largeExecProtectionRollouts).toBe(6);
       expect(restored.checkpoint?.replacements).toEqual(payload.replacements);
       const replacement = payload.replacements[0] as Extract<
         ContextGcReplacement,
@@ -413,7 +401,10 @@ describe('context GC checkpoint store', () => {
         activeProcessIds: new Set()
       });
       expect(plan).toBeDefined();
-      await store.commitContextGc(session.id, plan!.draft);
+      expect(plan!.draft).not.toHaveProperty('economics');
+      const committed = await store.commitContextGc(session.id, plan!.draft);
+      expect(parseContextGcCheckpoint(committed)).toBeDefined();
+      expect(committed.payload).not.toHaveProperty('economics');
       const restored = buildContextProjection(
         (await store.readExecutionState(session.id)).contextRecords
       );
@@ -424,6 +415,19 @@ describe('context GC checkpoint store', () => {
       expect(JSON.stringify(call?.arguments).includes(command)).toBe(false);
     } finally {
       await store.close();
+    }
+    const reopened = await JsonlSessionStore.open(home);
+    try {
+      const records = (await reopened.readExecutionState(session.id)).contextRecords;
+      const restored = buildContextProjection(records);
+      expect(restored.checkpoint).toBeDefined();
+      expect(restored.checkpoint).not.toHaveProperty('economics');
+      const call = restored.entries.find(
+        (entry) => entry.message?.role === 'tool_call' && entry.message.callId === 'cell'
+      )?.message;
+      expect(JSON.stringify(call?.arguments)).toContain('terminal_exec_input');
+    } finally {
+      await reopened.close();
     }
   });
   it('persists partial tool-search deduplication across successive checkpoint generations', async () => {
@@ -1240,32 +1244,6 @@ describe('context GC checkpoint store', () => {
       await store.close();
     }
   });
-  it.each([
-    { window: 10_000, growth: 1_999, rollouts: 2, allowed: false },
-    { window: 10_000, growth: 2_000, rollouts: 2, allowed: true },
-    { window: 100_000, growth: 4_999, rollouts: 2, allowed: false },
-    { window: 100_000, growth: 5_000, rollouts: 2, allowed: true },
-    { window: 100_000, growth: 5_000, rollouts: 1, allowed: false }
-  ])(
-    'requires both trigger thresholds: $window/$growth/$rollouts',
-    ({ window, growth, rollouts, allowed }) => {
-      const previous: ContextGcCheckpointDraft['trigger'] = {
-        usageSequence: 100,
-        contextInputTokens: 60_000,
-        contextWindowTokens: window,
-        normalRolloutOrdinal: 10,
-        modelId: 'coding',
-        platform: 'linux'
-      };
-      const trigger = {
-        ...previous,
-        normalRolloutOrdinal: previous.normalRolloutOrdinal + rollouts,
-        contextInputTokens: previous.contextInputTokens + growth
-      };
-      expect(contextGcCheckpointIntervalEligible(trigger, previous)).toBe(allowed);
-    }
-  );
-
   it('rejects unknown replacement and target fields', async () => {
     const { store, draft } = await createFixture('Unknown checkpoint fields');
     try {

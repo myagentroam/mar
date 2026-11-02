@@ -78,6 +78,8 @@ export class MarAgentRuntimeModelService {
       throw new Error('MAR_AGENT_MODEL_DISABLED');
     const runtimeScopeId = this.#id();
     const capability = this.#capability(context.nodeId);
+    if (capability?.contextGcControl !== true && stored.some((model) => model.gcEnabled === false))
+      throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
     if (
       stored.some((model) => model.conversationModel === false) &&
       capability?.conversationModels !== true
@@ -288,6 +290,8 @@ function runtimeModel(
   capability: MarAgentRuntimeCredentialCapability | undefined,
   resourceUrlsEnabled: boolean = true
 ): MarAgentRuntimeModelConfiguration {
+  if (model.gcEnabled === false && capability?.contextGcControl !== true)
+    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
   if (model.inputCapabilities.includes('IMAGE') && capability?.resourceInput !== true)
     throw new Error('MAR_AGENT_MODEL_RESOURCE_INPUT_UNAVAILABLE');
   const responses = model.protocol === 'OPENAI_RESPONSES';
@@ -341,6 +345,7 @@ function runtimeModel(
     subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
+    gcEnabled: model.gcEnabled ?? true,
     ...(supportsTier ? { serviceTier } : {}),
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: resourceUrlsEnabled && model.metadata?.useResourceUrl === true,

@@ -6,7 +6,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ModelMessage, ModelUsage } from '../../src/model/contracts.js';
 import {
   contextGcMinimumReclaimedTokens,
-  evaluateContextGcEconomics,
   inspectContextGc,
   planContextGc,
   type ContextGcPlannerInput
@@ -20,12 +19,12 @@ import {
   applyContextGcReplacementsToMessages
 } from '../../src/runtime/context/projection.js';
 import { contextGcMessageTokens } from '../../src/runtime/context/gc-tokens.js';
-import * as gcTokens from '../../src/runtime/context/gc-tokens.js';
 import { validateContextGcCheckpoint } from '../../src/session/context-gc-checkpoint.js';
 import type { SessionRecord } from '../../src/session/store/index.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
 import { ResourceInputProjection } from '../../src/sdk/resource-input.js';
+import { buildContextGcProtection } from '../../src/session/context-gc-protection.js';
 
 function records() {
   let sequence = 0;
@@ -304,21 +303,86 @@ function addWebResult(fixture: ReturnType<typeof records>, id: string, content: 
 
 describe('context GC checkpoint eligibility across planner, runtime and store', () => {
   it.each([
-    { label: 'large protected output', output: 'pending '.repeat(1_600) },
-    { label: 'small positive protected output', output: 'pending '.repeat(400) }
-  ])('keeps mixed-candidate retry metadata at low growth: $label', async ({ output }) => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-gc-mixed-retry-'));
+    { modelId: 'other-model', contextWindowTokens: 10_000 },
+    { modelId: 'coding', contextWindowTokens: 20_000 }
+  ])(
+    'counts maturity only in the current model/window scope: $modelId/$contextWindowTokens',
+    (scope) => {
+      const fixture = records();
+      addPatchCandidate(fixture);
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+      expect(plan(fixture.values, { contextInputTokens: 6_000 })).toBeDefined();
+      fixture.add('execution.header', { ...scope, mode: 'run' });
+      const usage = Math.floor(scope.contextWindowTokens * 0.6);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, usage, 0, scope.modelId);
+      const anchor = fixture.values.find((record) => record.type === 'tool.completed')!.sequence;
+      expect(
+        buildContextGcProtection(fixture.values, scope.modelId, scope.contextWindowTokens).after(
+          anchor
+        ).rollouts
+      ).toBe(9);
+      successfulRollout(fixture.add, usage, 0, scope.modelId);
+      const protection = buildContextGcProtection(
+        fixture.values,
+        scope.modelId,
+        scope.contextWindowTokens
+      ).after(anchor);
+      expect(protection.rollouts).toBe(10);
+      expect(protection.thinking).toBeGreaterThanOrEqual(3);
+    }
+  );
+
+  it('does not apply no-candidate backoff to mature candidates below the batch threshold', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-small-mature-'));
     const store = await JsonlSessionStore.open(home);
-    const cacheEconomics = vi.spyOn(gcTokens, 'contextGcCacheImpact');
+    try {
+      const session = await store.createSession({ workspace: '/workspace' });
+      const fixture = records();
+      addTerminalExec(fixture, 'small-mature', 'line '.repeat(400));
+      for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+      for (const record of fixture.values.slice(1))
+        await store.append(session.id, {
+          type: record.type,
+          payload: record.payload,
+          executionId: record.executionId,
+          turnId: record.turnId
+        });
+      const reads = vi.spyOn(store, 'readExecutionState');
+      const runtime = new ContextGcRuntime();
+      const input = {
+        store,
+        sessionId: session.id,
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        modelProtocol: 'OPENAI_RESPONSES',
+        contextWindowTokens: 10_000,
+        usage: { contextInputTokens: 6_000 },
+        workspace: '/workspace',
+        platform: 'linux' as const,
+        activeProcessIds: new Set<string>()
+      };
+      expect(await runtime.run(input)).toBe(false);
+      expect(await runtime.run(input)).toBe(false);
+      expect(reads).toHaveBeenCalledTimes(2);
+    } finally {
+      await store.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('rechecks a protected candidate as it matures after a committed GC', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-protected-retry-'));
+    const store = await JsonlSessionStore.open(home);
     try {
       const session = await store.createSession({ workspace: '/workspace' });
       const fixture = records();
       addPatchCandidate(fixture);
-      for (let index = 0; index < 8; index++) successfulRollout(fixture.add, 6_000);
-      addTerminalExec(fixture, 'mature-output', 'verification '.repeat(1_000));
-      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+      for (let i = 0; i < 8; i++) successfulRollout(fixture.add, 6_000);
+      addTerminalExec(fixture, 'pending-output', 'pending '.repeat(1_600));
+      for (let i = 0; i < 2; i++) successfulRollout(fixture.add, 6_000);
       let copied = 1;
-      const appendNewRecords = async () => {
+      const append = async () => {
         for (const record of fixture.values.slice(copied))
           await store.append(session.id, {
             type: record.type,
@@ -329,49 +393,11 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         copied = fixture.values.length;
         return (await store.readExecutionState(session.id)).contextRecords;
       };
-      const initialRecords = await appendNewRecords();
-      const first = plan(initialRecords, { contextInputTokens: 6_000, cacheReadTokens: 0 });
-      expect(first!.metrics.protectedCandidateTokens).toBeGreaterThan(0);
-      await store.commitContextGc(session.id, first!.draft, initialRecords);
+      const initial = await append();
+      const first = plan(initial, { contextInputTokens: 6_000 });
+      expect(first?.metrics.protectedCandidateTokens).toBeGreaterThan(0);
+      await store.commitContextGc(session.id, first!.draft, initial);
       const commit = vi.spyOn(store, 'commitContextGc');
-      for (let index = 0; index < 6; index++) successfulRollout(fixture.add, 6_000);
-      addTerminalExec(fixture, 'pending-output', output);
-      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
-      const mixedRecords = await appendNewRecords();
-      const inspect = (values: readonly SessionRecord[]) => {
-        const projection = buildContextProjection(values);
-        return inspectContextGc({
-          records: values,
-          messages: projection.entries.map((entry) => entry.message),
-          messageSources: projection.entries.map((entry) => entry.record),
-          system: 'System.',
-          tools: [],
-          modelId: 'coding',
-          modelProtocol: 'OPENAI_RESPONSES',
-          contextWindowTokens: 10_000,
-          usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
-          workspace: '/workspace',
-          platform: 'linux',
-          activeProcessIds: new Set()
-        });
-      };
-      // One output is ten rollouts old and passes combined economics; the other
-      // is only two rollouts old. Draft admission must not erase its retry hint.
-      cacheEconomics.mockClear();
-      expect.soft(inspect(mixedRecords)).toEqual({ retryAfterRollouts: 8 });
-      expect(cacheEconomics).toHaveBeenCalled();
-      expect(
-        cacheEconomics.mock.calls.some(([, , after]) =>
-          after.some(
-            (message) =>
-              message.callId === 'mature-output' &&
-              message.role === 'tool' &&
-              JSON.parse(message.content).contextGcFormatVersion === 3
-          )
-        )
-      ).toBe(true);
-
-      const getActiveProcessIds = vi.fn(async () => new Set<string>());
       const runtime = new ContextGcRuntime();
       const input = {
         store,
@@ -381,85 +407,47 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
         modelId: 'coding',
         modelProtocol: 'OPENAI_RESPONSES',
         contextWindowTokens: 10_000,
-        usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
+        usage: { contextInputTokens: 6_000 },
         workspace: '/workspace',
         platform: 'linux' as const,
-        getActiveProcessIds
+        getActiveProcessIds: vi.fn(async () => new Set<string>())
       };
       expect(await runtime.run(input)).toBe(false);
-      expect(getActiveProcessIds).toHaveBeenCalledTimes(1);
-      expect(commit).not.toHaveBeenCalled();
-
-      // Keep the same warm Runtime: clearing pending state would incorrectly
-      // suppress these evaluations until its ordinary ten-rollout discovery.
-      for (const [iteration, remaining] of [6, 2, 0].entries()) {
-        cacheEconomics.mockClear();
-        for (let index = 0; index < (iteration === 1 ? 4 : 2); index++) {
-          successfulRollout(fixture.add, 6_000);
-          await appendNewRecords();
-          expect(await runtime.run(input)).toBe(false);
-        }
-        expect(getActiveProcessIds).toHaveBeenCalledTimes(iteration + 2);
-        expect(cacheEconomics).toHaveBeenCalled();
-        const current = (await store.readExecutionState(session.id)).contextRecords;
-        expect(inspect(current)).toEqual(remaining > 0 ? { retryAfterRollouts: remaining } : {});
+      for (let i = 0; i < 7; i++) {
+        successfulRollout(fixture.add, 6_000);
+        await append();
+        expect(await runtime.run(input)).toBe(false);
       }
-      expect(
-        cacheEconomics.mock.calls.some(([, , after]) =>
-          after.some(
-            (message) =>
-              message.callId === 'pending-output' &&
-              message.role === 'tool' &&
-              JSON.parse(message.content).contextGcFormatVersion === 3
-          )
-        )
-      ).toBe(true);
       expect(commit).not.toHaveBeenCalled();
-      expect(
-        (await store.read(session.id)).filter((record) => record.type === 'context.gc.completed')
-      ).toHaveLength(1);
-
-      for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 8_000);
-      await appendNewRecords();
-      runtime.reset();
-      const result = await runtime.run({
-        ...input,
-        usage: { contextInputTokens: 8_000, cacheReadTokens: 0 }
-      });
+      successfulRollout(fixture.add, 6_000);
+      await append();
+      const result = await runtime.run(input);
       expect(result && result.projection.checkpoint?.generation).toBe(2);
       expect(
-        result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
-      ).toBeGreaterThan(0);
-      for (const callId of ['mature-output', 'pending-output'])
-        expect(
-          result &&
-            result.projection.checkpoint!.replacements.some(
-              (replacement) => replacement.kind === 'EXEC_OUTPUT' && replacement.callId === callId
-            )
-        ).toBe(true);
+        result &&
+          result.projection.checkpoint?.replacements.some((r) => r.callId === 'pending-output')
+      ).toBe(true);
       expect(commit).toHaveBeenCalledTimes(1);
     } finally {
-      cacheEconomics.mockRestore();
       await store.close();
       await rm(home, { recursive: true, force: true });
     }
   });
 
-  it.each([true, false])(
-    'evaluates low-growth terminal candidates without committing: protected at checkpoint=%s',
-    async (pending) => {
-      const home = await mkdtemp(join(tmpdir(), 'mar-gc-low-growth-'));
+  it.each([6_000, 8_000])(
+    'commits a newly mature candidate after one rollout at usage %i without a growth gate',
+    async (usage) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-capacity-repeat-'));
       const store = await JsonlSessionStore.open(home);
-      const cacheEconomics = vi.spyOn(gcTokens, 'contextGcCacheImpact');
       try {
         const session = await store.createSession({ workspace: '/workspace' });
         const fixture = records();
         addPatchCandidate(fixture);
-        for (let index = 0; index < 8; index++) successfulRollout(fixture.add, 6_000);
-        if (pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
-        for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 6_000);
+        successfulRollout(fixture.add, 6_000);
+        addPatchCandidate(fixture, 'second');
+        for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
         let copied = 1;
-        const appendNewRecords = async () => {
+        const append = async () => {
           for (const record of fixture.values.slice(copied))
             await store.append(session.id, {
               type: record.type,
@@ -470,67 +458,25 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
           copied = fixture.values.length;
           return (await store.readExecutionState(session.id)).contextRecords;
         };
-        const initialRecords = await appendNewRecords();
-        const first = plan(initialRecords, { contextInputTokens: 6_000, cacheReadTokens: 0 });
+        const initial = await append();
+        const first = plan(initial, { contextInputTokens: 6_000 });
         expect(first).toBeDefined();
-        expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
-        expect(first!.draft.replacements.some((r) => r.callId === 'low-growth')).toBe(false);
-        await store.commitContextGc(session.id, first!.draft, initialRecords);
-        const commit = vi.spyOn(store, 'commitContextGc');
-        if (!pending) addTerminalExec(fixture, 'low-growth', 'verification '.repeat(1_000));
-        const inspect = (values: readonly SessionRecord[]) => {
-          const projection = buildContextProjection(values);
-          return inspectContextGc({
-            records: values,
-            messages: projection.entries.map((entry) => entry.message),
-            messageSources: projection.entries.map((entry) => entry.record),
-            system: 'System.',
-            tools: [],
-            modelId: 'coding',
-            modelProtocol: 'OPENAI_RESPONSES',
-            contextWindowTokens: 10_000,
-            usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
-            workspace: '/workspace',
-            platform: 'linux',
-            activeProcessIds: new Set()
-          });
-        };
-
-        // Protected output is revisited before maturity; late output is not scanned
-        // on every low-growth request before its ten-rollout discovery opportunity.
-        for (let index = 0; index < (pending ? 6 : 9); index++)
-          successfulRollout(fixture.add, 6_000);
-        const immature = await appendNewRecords();
-        cacheEconomics.mockClear();
-        expect(inspect(immature)).toEqual(pending ? { retryAfterRollouts: 2 } : {});
-        expect(cacheEconomics).not.toHaveBeenCalled();
-
-        for (let index = 0; index < (pending ? 2 : 1); index++)
-          successfulRollout(fixture.add, 6_000);
-        const mature = await appendNewRecords();
-        cacheEconomics.mockClear();
-        expect(inspect(mature).plan).toBeUndefined();
-        // Cache-impact calculation follows the aggregate gross-savings gate in
-        // evaluateCandidateSet. Observe its real inputs, without stubbing economics.
-        expect(cacheEconomics).toHaveBeenCalled();
-        expect(
-          cacheEconomics.mock.calls.some(
-            ([, before, after, cacheRead, reclaimed]) =>
-              cacheRead === 0 &&
-              reclaimed >= contextGcMinimumReclaimedTokens(10_000) &&
-              before.some((message) => message.callId === 'low-growth') &&
-              after.some(
-                (message) =>
-                  message.callId === 'low-growth' &&
-                  message.role === 'tool' &&
-                  JSON.parse(message.content).contextGcFormatVersion === 3
-              )
-          )
-        ).toBe(true);
-
-        const getActiveProcessIds = vi.fn(async () => new Set<string>());
+        expect(first!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(false);
+        await store.commitContextGc(session.id, first!.draft, initial);
+        const prior = await append();
+        expect(plan(prior, { contextInputTokens: 6_000 })).toBeUndefined();
+        successfulRollout(fixture.add, usage);
+        const current = await append();
+        const selected = plan(current, { contextInputTokens: usage });
+        expect(selected?.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(true);
+        const isolated = records();
+        addPatchCandidate(isolated, 'second');
+        for (let i = 0; i < 10; i++) successfulRollout(isolated.add, usage);
+        const isolatedPlan = plan(isolated.values, { contextInputTokens: usage });
+        expect(isolatedPlan).toBeDefined();
+        expect(selected?.metrics.reclaimedTokens).toBe(isolatedPlan?.metrics.reclaimedTokens);
         const runtime = new ContextGcRuntime();
-        const input = {
+        const result = await runtime.run({
           store,
           sessionId: session.id,
           system: 'System.',
@@ -538,206 +484,19 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
           modelId: 'coding',
           modelProtocol: 'OPENAI_RESPONSES',
           contextWindowTokens: 10_000,
-          usage: { contextInputTokens: 6_000, cacheReadTokens: 0 },
-          workspace: '/workspace',
-          platform: 'linux' as const,
-          getActiveProcessIds
-        };
-        cacheEconomics.mockClear();
-        expect(await runtime.run(input)).toBe(false);
-        expect(getActiveProcessIds).toHaveBeenCalledTimes(1);
-        expect(cacheEconomics).toHaveBeenCalled();
-        expect(commit).not.toHaveBeenCalled();
-        expect(
-          (await store.read(session.id)).filter((record) => record.type === 'context.gc.completed')
-        ).toHaveLength(1);
-
-        // Once both durable thresholds are met, the same mature output commits
-        // with positive economics rather than having been rejected as uneconomical.
-        for (let index = 0; index < 2; index++) successfulRollout(fixture.add, 8_000);
-        await appendNewRecords();
-        runtime.reset();
-        const result = await runtime.run({
-          ...input,
-          usage: { contextInputTokens: 8_000, cacheReadTokens: 0 }
-        });
-        expect(result && result.projection.checkpoint).toMatchObject({
-          generation: 2,
-          metrics: { stage: 'UNIFIED', minimumObservedRollouts: 12 }
-        });
-        expect(
-          result && result.projection.checkpoint!.metrics.expectedNetSavedCostUnits
-        ).toBeGreaterThan(0);
-        expect(commit).toHaveBeenCalledTimes(1);
-      } finally {
-        cacheEconomics.mockRestore();
-        await store.close();
-        await rm(home, { recursive: true, force: true });
-      }
-    }
-  );
-
-  it.each([
-    { label: 'both thresholds exactly met', rollouts: 2, usage: 8_000, allowed: true },
-    {
-      label: 'growth only with a just-matured candidate',
-      rollouts: 1,
-      usage: 8_000,
-      allowed: false
-    },
-    { label: 'interval only one token below growth', rollouts: 2, usage: 7_999, allowed: false },
-    { label: 'ten rollouts without growth', rollouts: 10, usage: 6_000, allowed: false },
-    {
-      label: 'ten rollouts without protected candidates or growth',
-      rollouts: 10,
-      usage: 6_000,
-      protected: false,
-      allowed: false
-    },
-    { label: 'candidate still protected', rollouts: 0, usage: 8_000, allowed: false },
-    { label: 'model scope changed', rollouts: 10, usage: 6_000, modelId: 'other', allowed: true },
-    { label: 'window scope changed', rollouts: 10, usage: 6_000, window: 12_000, allowed: true },
-    {
-      label: 'model scope changed without protected candidates',
-      rollouts: 10,
-      usage: 6_000,
-      modelId: 'other',
-      protected: false,
-      allowed: true
-    },
-    {
-      label: 'window scope changed without protected candidates',
-      rollouts: 10,
-      usage: 6_000,
-      window: 12_000,
-      protected: false,
-      allowed: true
-    }
-  ])(
-    '$label',
-    async ({
-      rollouts,
-      usage,
-      allowed,
-      modelId = 'coding',
-      window = 10_000,
-      protected: pending = true
-    }) => {
-      const home = await mkdtemp(join(tmpdir(), 'mar-gc-eligibility-'));
-      const store = await JsonlSessionStore.open(home);
-      try {
-        const session = await store.createSession({
-          workspace: '/workspace',
-          title: 'GC eligibility'
-        });
-        const fixture = records();
-        addPatchCandidate(fixture);
-        successfulRollout(fixture.add, 6_000);
-        if (pending) addPatchCandidate(fixture, 'second');
-        for (let index = 0; index < 9; index++) successfulRollout(fixture.add, 6_000);
-        let copied = 1;
-        const appendNewRecords = async () => {
-          for (const record of fixture.values.slice(copied))
-            await store.append(session.id, {
-              type: record.type,
-              payload: record.payload,
-              executionId: record.executionId,
-              turnId: record.turnId
-            });
-          copied = fixture.values.length;
-          return (await store.readExecutionState(session.id)).contextRecords;
-        };
-        const initialRecords = await appendNewRecords();
-        const first = plan(initialRecords, { contextInputTokens: 6_000 });
-        expect(first).toBeDefined();
-        expect(first!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
-        expect(first!.metrics.protectedCandidateTokens > 0).toBe(pending);
-        expect(first!.draft.trigger.normalRolloutOrdinal).toBe(10);
-        expect(first!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(false);
-        await store.commitContextGc(session.id, first!.draft, initialRecords);
-
-        if (!pending) addPatchCandidate(fixture, 'second');
-        if (modelId !== 'coding' || window !== 10_000)
-          fixture.add('execution.header', {
-            modelId,
-            contextWindowTokens: window,
-            mode: 'run'
-          });
-        for (let index = 0; index < rollouts; index++)
-          successfulRollout(fixture.add, usage, 0, modelId);
-        // A fresh usage alone cannot advance either the interval or candidate age.
-        if (rollouts === 0)
-          fixture.add('usage.updated', { type: 'usage.updated', contextInputTokens: usage });
-        const currentRecords = await appendNewRecords();
-        const overrides = { modelId, contextWindowTokens: window };
-        const selected = plan(currentRecords, { contextInputTokens: usage }, overrides);
-        expect(selected !== undefined).toBe(allowed);
-        if (allowed) {
-          expect(selected!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
-          expect(selected!.draft.replacements.some((r) => r.callId === 'patch-second')).toBe(true);
-        } else if (rollouts > 0) {
-          // Removing only the prior checkpoint proves economics and candidate maturity
-          // would pass. Store must still reject a direct attempt to bypass the planner.
-          const bypass = plan(
-            currentRecords.filter((record) => record.type !== 'context.gc.completed'),
-            { contextInputTokens: usage },
-            overrides
-          );
-          expect(bypass).toBeDefined();
-          expect(bypass!.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
-          const rejected = store.commitContextGc(session.id, bypass!.draft, currentRecords);
-          await expect(rejected).rejects.toMatchObject({ code: 'MAR_AGENT_SESSION_CORRUPT' });
-          await expect(rejected).rejects.toThrow(
-            'Context GC checkpoint interval validation failed.'
-          );
-        }
-
-        const commit = vi.spyOn(store, 'commitContextGc');
-        const runtime = new ContextGcRuntime();
-        const input = {
-          store,
-          sessionId: session.id,
-          system: 'System.',
-          tools: [],
-          modelId,
-          modelProtocol: 'OPENAI_RESPONSES',
-          contextWindowTokens: window,
           usage: { contextInputTokens: usage },
           workspace: '/workspace',
-          platform: 'linux' as const,
+          platform: 'linux',
           activeProcessIds: new Set<string>()
-        };
-        const result = await runtime.run(input);
-        expect(result !== false).toBe(allowed);
-        if (allowed) {
-          expect(result && result.projection.checkpoint?.generation).toBe(2);
-          expect(result && result.projection.checkpoint?.trigger).toEqual(selected!.draft.trigger);
-          expect(commit).toHaveBeenCalledTimes(1);
-
-          // The newly committed scope becomes the next interval/growth baseline.
-          addPatchCandidate(fixture, 'third');
-          for (let index = 0; index < 10; index++) successfulRollout(fixture.add, usage);
-          const nextRecords = await appendNewRecords();
-          expect(plan(nextRecords, { contextInputTokens: usage }, overrides)).toBeUndefined();
-          const bypass = plan(
-            nextRecords.filter((record) => record.type !== 'context.gc.completed'),
-            { contextInputTokens: usage },
-            overrides
-          );
-          expect(bypass).toBeDefined();
-          await expect(
-            store.commitContextGc(session.id, bypass!.draft, nextRecords)
-          ).rejects.toThrow('Context GC checkpoint interval validation failed.');
-          expect(await runtime.run(input)).toBe(false);
-        } else {
-          // Warm scheduling calls do not constitute durable normal rollouts.
-          for (let index = 0; index < 8; index++) expect(await runtime.run(input)).toBe(false);
-          expect(commit).not.toHaveBeenCalled();
-        }
-        const persisted = await store.read(session.id);
-        expect(persisted.filter((record) => record.type === 'context.gc.completed')).toHaveLength(
-          allowed ? 2 : 1
-        );
+        });
+        expect(result && result.projection.checkpoint?.generation).toBe(2);
+        expect(
+          result &&
+            result.projection.checkpoint?.replacements.some((r) => r.callId === 'patch-second')
+        ).toBe(true);
+        expect(
+          (await store.read(session.id)).filter((r) => r.type === 'context.gc.completed')
+        ).toHaveLength(2);
       } finally {
         await store.close();
         await rm(home, { recursive: true, force: true });
@@ -1008,12 +767,34 @@ describe('context GC high-water policy', () => {
   );
 
   it('uses the fixed window-relative threshold', () => {
-    expect(contextGcMinimumReclaimedTokens(10_000)).toBe(500);
-    expect(contextGcMinimumReclaimedTokens(100_003)).toBe(5_001);
+    expect(contextGcMinimumReclaimedTokens(10_000)).toBe(1_001);
+    expect(contextGcMinimumReclaimedTokens(100_003)).toBe(10_001);
+  });
+
+  it('rejects exactly ten percent but admits the same net reclaim just above ten percent', () => {
+    const fixture = records();
+    addPatchCandidate(fixture);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+    const baseline = plan(fixture.values, { contextInputTokens: 6_000 });
+    expect(baseline).toBeDefined();
+    const reclaimed = baseline!.metrics.reclaimedTokens;
+    const header = fixture.values.find((record) => record.type === 'execution.header')!;
+    const setWindow = (window: number) => {
+      (header.payload as { contextWindowTokens: number }).contextWindowTokens = window;
+      return plan(
+        fixture.values,
+        { contextInputTokens: Math.floor(window * 0.6) },
+        {
+          contextWindowTokens: window
+        }
+      );
+    };
+    expect(setWindow(reclaimed * 10)).toBeUndefined();
+    expect(setWindow(reclaimed * 10 - 1)?.metrics.reclaimedTokens).toBe(reclaimed);
   });
 
   it.each([
-    [600, undefined],
+    [600, 1],
     [700, 1]
   ])(
     'uses the fixed threshold for a protected candidate retry hint (%i lines)',
@@ -1159,10 +940,10 @@ describe('context GC high-water policy', () => {
 
   it('collects a single mature terminal output when it clears the window threshold', () => {
     const fixture = records();
-    addTerminalExec(fixture, 'only-medium', 'line '.repeat(700));
+    addTerminalExec(fixture, 'only-medium', 'line '.repeat(1_500));
     for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
     const selected = plan(fixture.values, { contextInputTokens: 6_000, cacheReadTokens: 0 });
-    expect(selected?.metrics.reclaimedTokens).toBeGreaterThanOrEqual(500);
+    expect(selected?.metrics.reclaimedTokens).toBeGreaterThan(1_000);
     expect(selected?.draft.replacements.some((item) => item.kind === 'EXEC_OUTPUT')).toBe(true);
   });
 
@@ -1308,47 +1089,23 @@ describe('context GC high-water policy', () => {
     );
   });
 
-  it('never accepts a zero-token reclaim', () => {
-    expect(
-      evaluateContextGcEconomics({
-        contextUsageTokens: 8_800,
-        contextWindowTokens: 10_000,
-        reclaimedTokens: 0,
-        reclaimedCachedTokens: 0,
-        cacheReadTokens: 0,
-        preservedCachedPrefixTokens: 0
-      }).passes
-    ).toBe(false);
+  it('does not collect a zero-reclaim candidate', () => {
+    const fixture = records();
+    addTerminalExec(fixture, 'empty', '');
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+    expect(plan(fixture.values, { contextInputTokens: 6_000 })).toBeUndefined();
   });
 
-  it('keeps projections diagnostic and rejects an uneconomic plan', () => {
+  it('makes the same combined capacity decision regardless of cache reads', () => {
     const fixture = records();
     addPatchCandidate(fixture);
-    for (let usage = 7_500; usage <= 8_400; usage += 100)
-      successfulRollout(fixture.add, usage, 8_000);
-    const usage: ModelUsage = {
-      contextInputTokens: 8_400,
-      cacheReadTokens: 8_000,
-      outputTokens: 10
-    };
-
-    const beforePending = plan(fixture.values, usage);
-    expect(beforePending?.metrics.appliedCompactCreditCostUnits).toBeUndefined();
-
-    modelContext(fixture.add, {
-      role: 'tool',
-      callId: 'pending-output',
-      content: 'pending '.repeat(500)
-    });
-    expect(plan(fixture.values, usage)).toBeUndefined();
-    const selected = plan(fixture.values, { ...usage, cacheReadTokens: 0 });
-
-    expect(selected?.metrics.grossReductionRate).toBeGreaterThan(0.1066666667);
-    expect(selected?.metrics.minimumRequiredReclaimedTokens).toBe(500);
-    expect(selected?.metrics.projectedTokensBeforeGc).toBeGreaterThanOrEqual(8_500);
-    expect(selected?.metrics.projectedTokensAfterGc).toBeLessThanOrEqual(8_000);
-    expect(selected?.metrics.appliedCompactCreditCostUnits).toBeUndefined();
-    expect(selected?.metrics.requiredPositiveNetRollouts).toBeGreaterThan(0);
+    for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 8_000);
+    const uncached = plan(fixture.values, { contextInputTokens: 8_000, cacheReadTokens: 0 });
+    const cached = plan(fixture.values, { contextInputTokens: 8_000, cacheReadTokens: 8_000 });
+    expect(uncached).toBeDefined();
+    expect(cached?.draft.replacements).toEqual(uncached?.draft.replacements);
+    expect(cached?.metrics.reclaimedTokens).toBe(uncached?.metrics.reclaimedTokens);
+    expect(cached?.draft).not.toHaveProperty('economics');
   });
 });
 
@@ -1387,6 +1144,38 @@ describe('unified inline media GC', () => {
     );
     return { fixture, candidate: await window.gcCandidate(), tokens };
   }
+
+  it.each([true, false])(
+    'preserves the text retry hint when adding media GC (text plan=%s)',
+    async (withText) => {
+      const { fixture, candidate } = await mediaFixture(3 * 1_048_576, withText);
+      expect(candidate?.reason).toBe('SOFT_LIMIT');
+      addTerminalExec(fixture, 'next-rollout', 'pending '.repeat(1_600));
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
+      const projection = buildContextProjection(fixture.values);
+      const input: ContextGcPlannerInput = {
+        records: fixture.values,
+        messages: projection.entries.map((entry) => entry.message),
+        messageSources: projection.entries.map((entry) => entry.record),
+        system: 'System.',
+        tools: [],
+        modelId: 'coding',
+        modelProtocol: 'OPENAI_RESPONSES',
+        contextWindowTokens: 10_000,
+        usage: { contextInputTokens: 6_000 },
+        workspace: '/workspace',
+        platform: 'linux',
+        activeProcessIds: new Set()
+      };
+      const text = inspectContextGc(input);
+      expect(Boolean(text.plan)).toBe(withText);
+      expect(text.retryAfterRollouts).toBe(1);
+
+      const combined = inspectContextGc({ ...input, inlineMedia: candidate! });
+      expect(combined.plan?.draft.inlineMedia?.reason).toBe('SOFT_LIMIT');
+      expect(combined.retryAfterRollouts).toBe(1);
+    }
+  );
 
   it('admits image pressure at low token usage without inventing text replacements', async () => {
     const { fixture, candidate, tokens } = await mediaFixture();
@@ -1438,10 +1227,11 @@ describe('unified inline media GC', () => {
         { inlineMedia: { ...candidate!, reason: 'HARD_LIMIT' } }
       );
       expect(selected).toMatchObject({ stage: 'INLINE_MEDIA', draft: { replacements: [] } });
+      expect(selected?.metrics.minimumRequiredReclaimedTokens).toBeUndefined();
     }
   });
 
-  it.each(['size', 'protection', 'payback'] as const)(
+  it.each(['size', 'protection'] as const)(
     'does not let image pressure relax the text %s gate',
     async (gate) => {
       const { fixture, candidate } = await mediaFixture();
@@ -1449,7 +1239,7 @@ describe('unified inline media GC', () => {
       else addPatchCandidate(fixture);
       for (let i = 0; i < (gate === 'protection' ? 9 : 10); i++)
         successfulRollout(fixture.add, 6_000);
-      const usage = { contextInputTokens: 6_000, cacheReadTokens: gate === 'payback' ? 6_000 : 0 };
+      const usage = { contextInputTokens: 6_000, cacheReadTokens: 6_000 };
       expect(plan(fixture.values, usage)).toBeUndefined();
       for (const reason of ['SOFT_LIMIT', 'HARD_LIMIT'] as const) {
         const selected = plan(fixture.values, usage, { inlineMedia: { ...candidate!, reason } });
@@ -1458,7 +1248,7 @@ describe('unified inline media GC', () => {
     }
   );
 
-  it('persists media pressure even when there is no finite text-cache payback', async () => {
+  it('persists media pressure with no text reclaim', async () => {
     const { fixture, candidate } = await mediaFixture(3 * 1_048_576);
     const selected = plan(
       fixture.values,
@@ -1467,10 +1257,8 @@ describe('unified inline media GC', () => {
         inlineMedia: { ...candidate!, project: (messages) => messages }
       }
     );
-    expect(selected?.draft.metrics).toMatchObject({
-      reclaimedTokens: 0,
-      requiredPositiveNetRollouts: null
-    });
+    expect(selected?.draft.metrics.reclaimedTokens).toBe(0);
+    expect(selected?.draft).not.toHaveProperty('economics');
     const record = {
       ...fixture.values.at(-1)!,
       sequence: fixture.values.at(-1)!.sequence + 1,
@@ -1492,7 +1280,7 @@ describe('unified inline media GC', () => {
     );
     expect(selected?.draft.replacements.length).toBeGreaterThan(0);
     expect(selected?.draft.inlineMedia?.state).toEqual(candidate!.state);
-    expect(selected?.metrics.expectedNetSavedCostUnits).toBeGreaterThan(0);
+    expect(selected?.metrics.reclaimedTokens).toBeGreaterThan(1_000);
     const record = fixture.add('context.gc.completed', {
       ...selected!.draft,
       checkpointId: 'combined',

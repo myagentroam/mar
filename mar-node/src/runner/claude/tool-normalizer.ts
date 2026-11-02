@@ -39,7 +39,9 @@ export class ClaudeUsageNormalizer {
       ...(previous?.id === id ? previous.values : {}),
       purpose: 'conversation',
       agentRole: parent ? 'subagent' : 'root',
-      ...(typeof message?.model === 'string' ? { actualModel: message.model } : {})
+      ...(typeof message?.model === 'string'
+        ? { actualModel: message.model, modelConfigurationId: message.model }
+        : {})
     };
     if (usage) {
       const input = usageToken(usage.input_tokens),

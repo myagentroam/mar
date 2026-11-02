@@ -65,6 +65,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     namespacedTools: z.boolean().optional(),
     responsesOptionalParameters: z.boolean().optional(),
     responsesHttpContinuation: z.boolean().optional(),
+    contextGcControl: z.boolean().optional(),
     conversationModels: z.boolean().optional(),
     resourceInput: z.boolean().optional(),
     httpVersions: z
@@ -891,6 +892,7 @@ const marAgentModelShape = {
   subagentModel: z.boolean().default(false),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
+  gcEnabled: z.boolean().default(true),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
   hostedWebSearch: z.boolean(),
   responsesTransport: marAgentResponsesTransportSchema.optional(),
@@ -978,6 +980,7 @@ export interface MarAgentModelSummary {
   subagentModel?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
+  gcEnabled?: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
   hostedWebSearch: boolean;
   responsesTransport?: MarAgentResponsesTransport;

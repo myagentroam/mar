@@ -2,6 +2,7 @@ import type { MysqlMigrationConnection } from './mysql-migration-contracts.js';
 import {
   MODEL_USAGE_MIGRATION,
   MODEL_USAGE_CURRENT_SQL,
+  MODEL_USAGE_CONFIGURATION_MIGRATION,
   MODEL_USAGE_QUERY_INDEX_MIGRATION
 } from './model-usage-schema.js';
 import schema from './mysql-core-schema-v1.json' with { type: 'json' };
@@ -654,5 +655,6 @@ export const CORE_MYSQL_MIGRATIONS = [
       )
         throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
     }
-  }
+  },
+  MODEL_USAGE_CONFIGURATION_MIGRATION
 ] as const;

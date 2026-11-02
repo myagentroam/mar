@@ -33,6 +33,38 @@ function model(
 }
 
 describe('Server MAR Agent runtime model service', () => {
+  it('requires explicit Node capability only when GC is disabled', async () => {
+    const configured = {
+      ...model('api', { type: 'INLINE_API_KEY', value: 'key' }),
+      responsesPreviousResponseId: false,
+      gcEnabled: false
+    };
+    let supported = false;
+    const service = new MarAgentRuntimeModelService({
+      models: {
+        storedConfigurationsForUser: vi.fn(async () => [configured]),
+        stored: vi.fn(async () => configured)
+      },
+      tickets: { issue: vi.fn() },
+      capability: () => ({
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        contextGcControl: supported
+      })
+    });
+    const context = { userId: 1, nodeId: 'node', workspaceId: 'workspace' };
+    await expect(service.prepare(context)).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+    supported = true;
+    await expect(service.prepare(context)).resolves.toMatchObject({
+      models: [{ gcEnabled: false }]
+    });
+    supported = false;
+    configured.gcEnabled = true;
+    await expect(service.prepare(context)).resolves.toMatchObject({
+      models: [{ gcEnabled: true }]
+    });
+  });
   it('keeps auxiliary models for generation while refusing them as conversation models', async () => {
     const conversation = model('conversation', { type: 'INLINE_API_KEY', value: 'key' });
     const auxiliary = {

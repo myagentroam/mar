@@ -164,10 +164,7 @@ export async function analyzeSessionDirectory(
         beforeTokens: numberValue(metrics.beforeTokens),
         afterTokens: numberValue(metrics.afterTokens),
         reclaimedTokens: numberValue(metrics.reclaimedTokens),
-        grossReductionRate: numberValue(metrics.grossReductionRate),
-        projectedRolloutsUntilCompactAfterGc: numberValue(
-          metrics.projectedRolloutsUntilCompactAfterGc
-        ),
+        minimumRequiredReclaimedTokens: numberValue(metrics.minimumRequiredReclaimedTokens),
         replacementCount: Array.isArray(payload.replacements) ? payload.replacements.length : 0,
         validation: checkpointValidator
           ? (await checkpointValidator(checkpointRecords, record))
@@ -314,7 +311,7 @@ export function formatSessionAnalysis(report, { lastExecutions = 10 } = {}) {
           `seq=${checkpoint.sequence}`,
           checkpoint.stage ?? 'stage=-',
           `reclaimed=${formatInteger(checkpoint.reclaimedTokens)}`,
-          `gross=${formatPercent(checkpoint.grossReductionRate)}`,
+          `minimumReclaimed=${formatInteger(checkpoint.minimumRequiredReclaimedTokens)}`,
           `following=${checkpoint.followingUsageCount}`,
           `first-cache=${formatPercent(checkpoint.firstFollowingUsage?.cacheHitRate)}`,
           `adjacent-input-drop=${formatPercent(checkpoint.adjacentInputReductionRate)}`,

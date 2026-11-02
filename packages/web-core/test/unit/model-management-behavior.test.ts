@@ -124,6 +124,36 @@ afterEach(() => {
 });
 
 describe('Model management component behavior', () => {
+  it.each([
+    { locale: 'zh-CN', initial: undefined, expected: true },
+    { locale: 'en-US', initial: false, expected: false }
+  ] as const)('edits the model GC setting in $locale', async ({ locale, initial, expected }) => {
+    i18n.global.locale.value = locale;
+    const labels = commonMessages[locale].marAgentModels;
+    const request = requestFixture([
+      initial === undefined ? model : { ...model, gcEnabled: initial }
+    ]);
+    const view = renderComponent(
+      Page,
+      { request, canManageModels: true, writable: true, nodes: [] },
+      {},
+      { validate: async () => true }
+    );
+    try {
+      await flushComponent();
+      await trigger(button(view, labels.edit), 'onClick');
+      const setting = view
+        .findAll('ElCheckbox')
+        .find((node) => textContent(node).trim() === labels.gcEnabled)!;
+      expect(setting.props['modelValue']).toBe(expected);
+      await trigger(setting, 'onUpdate:modelValue', !expected);
+      await trigger(button(view, labels.save), 'onClick');
+      const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');
+      expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ gcEnabled: !expected });
+    } finally {
+      view.unmount();
+    }
+  });
   it.each(['zh-CN', 'en-US'] as const)(
     'edits and saves the explicit subagent model purpose in %s',
     async (locale) => {
@@ -398,6 +428,7 @@ describe('Model management component behavior', () => {
         enabled: false,
         titleGeneration: true,
         codeMode: true,
+        gcEnabled: true,
         metadata: { useResourceUrl: false },
         defaultReasoningEffort: 'high',
         hostedWebSearch: false,

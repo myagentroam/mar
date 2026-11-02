@@ -4,15 +4,13 @@ import { isDeepStrictEqual } from 'node:util';
 import type { ModelUsage } from '../../model/contracts.js';
 import {
   ContextGcCheckpointCache,
-  contextGcMinimumUsageGrowth,
   contextGcReplacementKey,
   type ContextGcCheckpointDraft,
-  type ContextGcCheckpointPayload,
   type ContextGcPlatform
 } from '../../session/context-gc-checkpoint.js';
 import type { SessionStore } from '../../session/store/contracts.js';
 import type { SessionRecord } from '../../session/record-contract.js';
-import { CONTEXT_GC_POLICY, contextGcEligibleUsage, inspectContextGc } from './gc.js';
+import { contextGcEligibleUsage, inspectContextGc } from './gc.js';
 import { buildContextProjection, type ContextProjection } from './projection.js';
 
 type ContextGcStore = Pick<SessionStore, 'readExecutionState' | 'commitContextGc' | 'readPage'>;
@@ -43,8 +41,6 @@ export interface ContextGcCommitResult {
 
 interface ContextGcAttempt {
   readonly result: ContextGcCommitResult | false;
-  readonly checkpointTrigger?: ContextGcCheckpointPayload['trigger'];
-  readonly protectedCandidatesPending?: boolean;
   readonly retryAfterRollouts?: number;
 }
 
@@ -52,21 +48,12 @@ interface ContextGcAttempt {
 export class ContextGcRuntime {
   #scope = '';
   #lastUsage: number | undefined;
-  #checkpoint:
-    | {
-        readonly trigger: ContextGcCheckpointPayload['trigger'];
-        readonly protectedCandidatesPending: boolean;
-      }
-    | undefined;
-  #rolloutsSinceCheckpoint = 0;
   #failures = 0;
   #remaining = 0;
 
   reset(): void {
     this.#scope = '';
     this.#lastUsage = undefined;
-    this.#checkpoint = undefined;
-    this.#rolloutsSinceCheckpoint = 0;
     this.#failures = 0;
     this.#remaining = 0;
   }
@@ -97,40 +84,17 @@ export class ContextGcRuntime {
       this.#remaining = 0;
     }
     this.#lastUsage = usage;
-    if (this.#checkpoint) this.#rolloutsSinceCheckpoint++;
     const maximumInterval = usage / input.contextWindowTokens >= 0.8 ? 2 : 8;
     this.#remaining = Math.min(this.#remaining, maximumInterval - 1);
     if (this.#remaining > 0 && !mediaRequired) {
       this.#remaining--;
       return false;
     }
-    if (
-      !mediaRequired &&
-      this.#checkpoint?.trigger.modelId === input.modelId &&
-      this.#checkpoint.trigger.contextWindowTokens === input.contextWindowTokens &&
-      !this.#checkpoint.protectedCandidatesPending &&
-      this.#rolloutsSinceCheckpoint < CONTEXT_GC_POLICY.largeExecProtectionRollouts &&
-      usage - this.#checkpoint.trigger.contextInputTokens <
-        contextGcMinimumUsageGrowth(input.contextWindowTokens)
-    )
-      return false;
     const attempt = await attemptContextGc(input);
     if (attempt.result) {
-      this.#checkpoint = {
-        trigger: { ...attempt.result.projection.checkpoint!.trigger },
-        protectedCandidatesPending:
-          attempt.result.projection.checkpoint!.metrics.protectedCandidateTokens > 0
-      };
-      this.#rolloutsSinceCheckpoint = 0;
       this.#failures = 0;
-      this.#remaining = 1;
+      this.#remaining = 0;
     } else {
-      if (attempt.checkpointTrigger)
-        this.#checkpoint = {
-          trigger: { ...attempt.checkpointTrigger },
-          protectedCandidatesPending: attempt.protectedCandidatesPending === true
-        };
-      if (attempt.checkpointTrigger) this.#rolloutsSinceCheckpoint = 0;
       this.#failures = Math.min(3, this.#failures + 1);
       this.#remaining =
         Math.min(2 ** this.#failures, maximumInterval, attempt.retryAfterRollouts ?? Infinity) - 1;
@@ -163,38 +127,6 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     records =
       input.records ?? (await input.store.readExecutionState(input.sessionId)).contextRecords;
     const checkpointCache = new ContextGcCheckpointCache();
-    const previous = checkpointCache.read(records);
-    if (previous) {
-      deferred = {
-        ...deferred,
-        checkpointTrigger: previous.payload.trigger,
-        protectedCandidatesPending: previous.payload.metrics.protectedCandidateTokens > 0
-      };
-    }
-    if (
-      !mediaRequired &&
-      previous?.payload.trigger.modelId === input.modelId &&
-      previous.payload.trigger.contextWindowTokens === input.contextWindowTokens
-    ) {
-      const rolloutGrowth = records.filter(
-        (record) =>
-          record.sequence > previous.record.sequence &&
-          record.type === 'model.attempt' &&
-          isRecord(record.payload) &&
-          record.payload.purpose === 'EXECUTION' &&
-          record.payload.state === 'SUCCEEDED'
-      ).length;
-      const minimumRollouts =
-        previous.payload.metrics.protectedCandidateTokens > 0
-          ? 2
-          : CONTEXT_GC_POLICY.largeExecProtectionRollouts;
-      if (
-        rolloutGrowth < minimumRollouts &&
-        contextUsage - previous.payload.trigger.contextInputTokens <
-          contextGcMinimumUsageGrowth(input.contextWindowTokens)
-      )
-        return deferred;
-    }
     const projection = buildContextProjection(records, checkpointCache);
     const messages = projection.entries.map((entry) => entry.message);
     const inspection = inspectContextGc({
@@ -219,10 +151,8 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     if (inspection.retryAfterRollouts !== undefined)
       deferred = {
         ...deferred,
-        protectedCandidatesPending: true,
         retryAfterRollouts: inspection.retryAfterRollouts
       };
-    else if (!inspection.plan) deferred = { ...deferred, protectedCandidatesPending: false };
     const plan = inspection.plan;
     if (!plan) return deferred;
     draft = plan.draft;
@@ -281,7 +211,6 @@ async function matchingCheckpointWasPersisted(
     latest?.payload.boundarySequence !== draft.boundarySequence ||
     !isDeepStrictEqual(latest.payload.base, draft.base) ||
     !isDeepStrictEqual(latest.payload.trigger, draft.trigger) ||
-    !isDeepStrictEqual(latest.payload.economics, draft.economics) ||
     !isDeepStrictEqual(latest.payload.inlineMedia, draft.inlineMedia) ||
     !isDeepStrictEqual(latest.payload.metrics, draft.metrics)
   )

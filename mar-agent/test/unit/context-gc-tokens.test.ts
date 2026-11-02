@@ -3,7 +3,6 @@ import type { ModelMessage } from '../../src/model/contracts.js';
 import {
   contextGcMessageTokens,
   contextGcReclaimedTokens,
-  contextGcCacheImpact,
   contextGcPrefixTokens
 } from '../../src/runtime/context/gc-tokens.js';
 import * as tokenBudget from '../../src/runtime/token-budget.js';
@@ -77,7 +76,7 @@ describe('GC token estimates', () => {
   );
 
   it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
-    'uses resource identity, not media byte size, for %s framing and cache boundaries',
+    'uses resource identity, not media byte size, for %s framing',
     (modelProtocol) => {
       const context = { ...input, modelProtocol };
       const prefix: ModelMessage = { role: 'user', content: 'Stable prefix. '.repeat(100) };
@@ -102,16 +101,7 @@ describe('GC token estimates', () => {
       );
       const before = [prefix, image, { role: 'user' as const, content: 'Retain suffix.' }];
       const after = [prefix, { ...image, images: [] }, before[2]!];
-      const cached = contextGcPrefixTokens(context) + contextGcMessageTokens(context, before);
-      const impact = contextGcCacheImpact(
-        context,
-        before,
-        after,
-        cached,
-        contextGcReclaimedTokens(context, before, after)
-      );
-      expect(impact.preservedCachedPrefixTokens).toBeGreaterThan(0);
-      expect(impact.preservedCachedPrefixTokens).toBeLessThan(cached);
+      expect(contextGcReclaimedTokens(context, before, after)).toBeGreaterThan(0);
     }
   );
 
