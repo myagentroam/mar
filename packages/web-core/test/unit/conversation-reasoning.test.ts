@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeReasoningPreview,
+  reasoningPreview,
   selectReasoningPreview
 } from '../../src/util/conversation-reasoning.js';
 
@@ -25,6 +26,9 @@ describe('Reasoning preview normalization', () => {
     ['## **Inspect files**\nMore detail', 'Inspect files'],
     ['**Inspect files**\nMore detail', 'Inspect files'],
     ['**Inspect files**: then test', 'Inspect files'],
+    ['**检查实现**\n\n正在等待验证。上次重启后180秒内完成。', '检查实现'],
+    ['正在等待验证。上次重启后180秒内完成。', '正在等待验证'],
+    ['First line\n\n**Later heading**', 'First line'],
     ['**unfinished reasoning', '**unfinished reasoning'],
     ['Intro **emphasis** remains', 'Intro **emphasis** remains'],
     ['Inspect `SessionStore.read_state`: details', 'Inspect `SessionStore.read_state`'],
@@ -62,26 +66,15 @@ describe('Reasoning preview normalization', () => {
     [': leading punctuation\nNext line', ': leading punctuation'],
     ['思'.repeat(120), '思'.repeat(120)],
     ['🧠'.repeat(120), '🧠'.repeat(120)]
-  ])('uses the first non-empty thinking line and clause (%s)', (text, expected) => {
-    expect(normalizeReasoningPreview('thinking', text, 'visible_thinking')).toEqual({
-      id: 'thinking',
-      text: expected,
-      representation: 'visible_thinking'
-    });
-  });
-
-  it('preserves explicit summary extraction and does not clause-trim summaries', () => {
-    expect(
-      normalizeReasoningPreview(
-        'summary',
-        '**Earlier**\n\n**Latest: inspect files**\nDetails',
-        'summary'
-      )
-    ).toEqual({ id: 'summary', text: 'Latest: inspect files', representation: 'summary' });
-    expect(
-      normalizeReasoningPreview('summary', 'Earlier\n\nLatest, full summary\nDetails', 'summary')
-        ?.text
-    ).toBe('Latest, full summary');
+  ])('uses the first non-empty line and clause for every representation (%s)', (text, expected) => {
+    for (const representation of ['summary', 'visible_thinking', 'unspecified'] as const) {
+      expect(normalizeReasoningPreview('reasoning', text, representation)).toEqual({
+        id: 'reasoning',
+        text: expected,
+        representation
+      });
+      expect(reasoningPreview(text, representation)).toBe(expected);
+    }
   });
 
   it('leaves empty previews absent and unspecified thinking distinct from summaries', () => {
@@ -94,7 +87,7 @@ describe('Reasoning preview normalization', () => {
     });
   });
 
-  it('selects the latest valid summary before thinking without changing source representation', () => {
+  it('selects the latest valid record regardless of representation', () => {
     const earlier = normalizeReasoningPreview('earlier', 'Earlier: details', 'visible_thinking');
     const latest = normalizeReasoningPreview('latest', 'Latest: details', 'unspecified');
     const summary = normalizeReasoningPreview('summary', '**Public summary**', 'summary');
@@ -102,7 +95,7 @@ describe('Reasoning preview normalization', () => {
     expect(selectReasoningPreview(undefined, earlier)).toBe(earlier);
     expect(selectReasoningPreview(earlier, latest)).toBe(latest);
     expect(selectReasoningPreview(latest, summary)).toBe(summary);
-    expect(selectReasoningPreview(summary, latest)).toBe(summary);
+    expect(selectReasoningPreview(summary, latest)).toBe(latest);
     expect(selectReasoningPreview(summary, nextSummary)).toBe(nextSummary);
     expect(selectReasoningPreview(summary, undefined)).toBe(summary);
     expect(selectReasoningPreview(undefined, undefined)).toBeUndefined();

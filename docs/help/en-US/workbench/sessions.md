@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-02
 ---
 
 # Create and Manage Sessions
@@ -23,7 +23,7 @@ The session list initially loads up to 30 sessions. Scrolling near the bottom au
 
 A conversation turn can contain several collapsible **Work processes**. Public reasoning text, tool calls, and file operations appear in their actual order; Agent replies, approvals, and questions remain outside these groups. The active process opens by default and collapses when finished; your manual expansion or collapse takes precedence. Missing public reasoning does not create an empty card, and reasoning text is not an execution status. File details still open in the existing dialog.
 
-A reasoning preview appears above each process status row and in collapsed reasoning rows. Public summaries take priority; without one, the preview uses the first clause of the corresponding reasoning record’s first non-empty line. Long previews use a single-line ellipsis according to the available width. Expand reasoning to read the full original text; a preview does not indicate execution status.
+A reasoning preview appears above each process status row and in collapsed reasoning rows. It uses the latest valid public reasoning record within the corresponding scope, whether a summary or visible content, and extracts the first clause of its first non-empty line after removing leading heading or bold formatting. An older summary does not override later reasoning. Long previews use a single-line ellipsis according to the available width. Expand reasoning to read the full original text; a preview does not indicate execution status.
 
 Scroll upward to the top of the conversation to load earlier messages. Earlier content is inserted above the existing messages while preserving your current message and its position in the viewport, without jumping to the start of the new page. Continue scrolling upward to read the earlier messages. If the top history marker remains in the viewport after the initial load, one additional page loads automatically while preserving your reading position; this does not continue through the entire history. No load button appears while idle, and loading or retrying shows only a small ring. After a failure, select **Failed to load. Retry** without clearing the messages already loaded. Once all history is loaded, no loading control or beginning-of-conversation message appears. **Sending** means the message is being submitted, not that the Agent has started. Activity comes from Node; when no specific action is available, the display says **Running** without inventing a reasoning summary. Run duration uses its start and completion times, including waits and continuation within that Run. Missing reliable timestamps hide the duration; a new Run after a Node restart starts a new clock.
 

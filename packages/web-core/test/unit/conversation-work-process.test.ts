@@ -459,7 +459,7 @@ describe('Conversation work process blocks', () => {
     expect(sectionReads).toBe(2);
   });
 
-  it('prefers explicit summaries and falls back to thinking without changing representation', () => {
+  it('uses newer thinking instead of an older summary without changing representation', () => {
     const blocks = conversationWorkProcessBlocks(
       [
         turn([
@@ -474,7 +474,7 @@ describe('Conversation work process blocks', () => {
             processGroup: { id: 'p' },
             payload: {
               representation: 'visible_thinking',
-              sections: [{ text: 'Private-looking public thinking' }]
+              sections: [{ text: '正在等待验证。上次重启后180秒内完成。' }]
             }
           })
         ])
@@ -482,9 +482,9 @@ describe('Conversation work process blocks', () => {
       [{ id: runId, status: 'RUNNING' }]
     );
     expect(blocks[0]?.preview).toEqual({
-      id: 'summary',
-      text: 'Inspect files',
-      representation: 'summary'
+      id: 'thinking',
+      text: '正在等待验证',
+      representation: 'visible_thinking'
     });
     expect(blocks[0]?.status).toBe('running');
     expect(blocks[0]?.entries).toHaveLength(2);
