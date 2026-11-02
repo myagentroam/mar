@@ -204,6 +204,7 @@ export function registerWait(
     name: 'agent_wait',
     description: 'Wait for direct child completion or a message.',
     allowedCallers: ['direct', 'programmatic'],
+    parallelSafety: 'safe',
     inputSchema: {
       type: 'object',
       properties: {

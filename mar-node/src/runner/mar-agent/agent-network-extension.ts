@@ -37,12 +37,14 @@ const deliveryGuidance =
 
 const tools: readonly {
   action: AgentNetworkAction;
+  parallelSafety: 'safe' | 'serial';
   description: string;
   properties: Record<string, unknown>;
   required?: readonly string[];
 }[] = [
   {
     action: 'start',
+    parallelSafety: 'serial',
     description:
       'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
     properties: {
@@ -61,6 +63,7 @@ const tools: readonly {
   },
   {
     action: 'send',
+    parallelSafety: 'serial',
     description: 'Send a message to an Agent, update its Goal, or decide an approval.',
     properties: {
       agentId: text,
@@ -83,6 +86,7 @@ const tools: readonly {
   },
   {
     action: 'wait',
+    parallelSafety: 'safe',
     description: 'Wait for Agent messages or execution completion.',
     properties: {
       agentId: text,
@@ -94,12 +98,14 @@ const tools: readonly {
   },
   {
     action: 'stop',
+    parallelSafety: 'serial',
     description: 'Stop the Agent’s current execution and clear its Goal.',
     properties: { agentId: text },
     required: ['agentId']
   },
   {
     action: 'list',
+    parallelSafety: 'safe',
     description: 'List the current collaboration tree or active Agents in the Workspace.',
     properties: {
       scope: {
@@ -118,6 +124,7 @@ const tools: readonly {
   },
   {
     action: 'view',
+    parallelSafety: 'safe',
     description: "View an Agent's state, Goal and recent activity.",
     properties: {
       agentId: text
@@ -220,6 +227,7 @@ export function agentNetworkExtension(
           name: `agent_${tool.action}`,
           description: tool.description,
           allowedCallers: ['direct', 'programmatic'],
+          parallelSafety: tool.parallelSafety,
           eventInputFields: [
             'agentId',
             'agentIds',

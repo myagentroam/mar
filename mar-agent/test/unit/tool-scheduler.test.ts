@@ -240,7 +240,15 @@ describe('tool call scheduler', () => {
       BUILTIN_TOOL_DEFINITIONS.map((tool) => [tool.name, tool.parallelSafety])
     );
 
-    for (const name of ['skill', 'read', 'view_image', 'todo_read', 'exec'])
+    for (const name of [
+      'skill',
+      'read',
+      'view_image',
+      'todo_read',
+      'exec',
+      'exec_wait',
+      'code_exec_wait'
+    ])
       expect(safety.get(name), name).toBe('safe');
     for (const name of ['apply_patch', 'question', 'todo_write'])
       expect(safety.get(name), name).toBe('serial');

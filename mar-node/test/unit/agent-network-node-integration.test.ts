@@ -38,7 +38,7 @@ import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/con
 
 describe('Node Agent Network owner integration', () => {
   it.each([false, true])(
-    'publishes resolved wait titles before completion and replays history (nested=%s)',
+    'allows parallel reads while publishing resolved wait titles and replaying history (nested=%s)',
     async (nested) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-wait-titles-'));
       const network = new AgentNetworkObservations();
@@ -123,9 +123,18 @@ describe('Node Agent Network owner integration', () => {
                 callId: 'wait-call',
                 name: nested ? 'code_exec' : 'agent_wait',
                 arguments: nested
-                  ? { code: `await tools.agent_wait(${JSON.stringify(input)});` }
+                  ? {
+                      code: `await Promise.all([tools.agent_wait(${JSON.stringify(input)}), tools.todo_read({})]);`
+                    }
                   : input
               };
+              if (!nested)
+                yield {
+                  type: 'client_tool.call',
+                  callId: 'read-call',
+                  name: 'todo_read',
+                  arguments: {}
+                };
               yield { type: 'completed', reason: 'tool_use' };
             } else {
               yield { type: 'text.completed', itemId: 'answer', text: 'done' };
@@ -144,6 +153,7 @@ describe('Node Agent Network owner integration', () => {
         ];
         let running = false;
         let finished = false;
+        let readCompleted = false;
         for await (const event of run) {
           const items = normalizer.normalize(event);
           if (event.type === 'tool.updated' && event.toolName === 'agent_wait') {
@@ -171,6 +181,12 @@ describe('Node Agent Network owner integration', () => {
                 })
               })
             );
+          }
+          if (event.type === 'tool.completed' && event.toolName === 'todo_read') {
+            expect(completed).toBe(false);
+            readCompleted = true;
+          }
+          if (running && readCompleted && !completed) {
             completed = true;
             network.publishChild({
               parentId: 'parent',
@@ -189,7 +205,11 @@ describe('Node Agent Network owner integration', () => {
             });
           }
         }
-        expect({ running, finished }).toEqual({ running: true, finished: true });
+        expect({ running, finished, readCompleted }).toEqual({
+          running: true,
+          finished: true,
+          readCompleted: true
+        });
         expect(await run.result()).toMatchObject({ status: 'completed' });
         const history = await agent.sessionHistory(session.id);
         const projected = projectMarAgentHistory(

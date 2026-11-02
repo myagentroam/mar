@@ -71,6 +71,7 @@ export function registerControlTools(
     name: 'agent_send',
     description: 'Send a message to a direct child or report to the direct parent.',
     allowedCallers: ['direct', 'programmatic'],
+    parallelSafety: 'serial',
     inputSchema: {
       type: 'object',
       properties: {
@@ -100,6 +101,7 @@ export function registerControlTools(
     name: 'agent_stop',
     description: 'Stop a direct child execution and wait for its cleanup.',
     allowedCallers: ['direct', 'programmatic'],
+    parallelSafety: 'serial',
     inputSchema: {
       type: 'object',
       properties: {
