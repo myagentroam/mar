@@ -52,7 +52,7 @@ describe('Workspace local file manager', () => {
       expect(spawnProcess).toHaveBeenCalledExactlyOnceWith(
         'xdg-open',
         [join(root, 'folder with space')],
-        { detached: true, stdio: 'ignore', windowsHide: true }
+        { detached: true, stdio: 'ignore' }
       );
       expect(child.unref).toHaveBeenCalledOnce();
       await expect(
@@ -62,6 +62,37 @@ describe('Workspace local file manager', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each(['DIRECTORY', 'FILE'] as const)(
+    'launches Windows Explorer for a %s without requesting hidden windows',
+    async (kind) => {
+      const root = await mkdtemp(join(tmpdir(), 'mar-file-manager-'));
+      try {
+        const directory = 'folder with space 中文';
+        await mkdir(join(root, directory));
+        const path = kind === 'FILE' ? `${directory}/notes 中文.txt` : directory;
+        if (kind === 'FILE') await writeFile(join(root, path), 'notes');
+        const child = new EventEmitter() as ChildProcess;
+        child.unref = vi.fn();
+        const spawnProcess = vi.fn(() => {
+          queueMicrotask(() => child.emit('spawn'));
+          return child;
+        });
+
+        await expect(
+          revealWorkspaceFileInFileManager(root, path, { platform: 'win32', spawnProcess })
+        ).resolves.toEqual({ revealed: true });
+        expect(spawnProcess).toHaveBeenCalledExactlyOnceWith(
+          'explorer.exe',
+          kind === 'FILE' ? ['/select,', join(root, path)] : [join(root, path)],
+          { detached: true, stdio: 'ignore' }
+        );
+        expect(child.unref).toHaveBeenCalledOnce();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  );
 
   it('reports a desktop launcher that exits unsuccessfully', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-file-manager-'));
@@ -81,21 +112,24 @@ describe('Workspace local file manager', () => {
     }
   });
 
-  it('reports an unavailable desktop command without changing the path error contract', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'mar-file-manager-'));
-    try {
-      const child = new EventEmitter() as ChildProcess;
-      child.unref = vi.fn();
-      const spawnProcess = vi.fn(() => {
-        queueMicrotask(() => child.emit('error', new Error('ENOENT')));
-        return child;
-      });
-      await expect(
-        revealWorkspaceFileInFileManager(root, '.', { platform: 'linux', spawnProcess })
-      ).rejects.toThrow('FILE_MANAGER_UNAVAILABLE');
-      expect(child.unref).not.toHaveBeenCalled();
-    } finally {
-      await rm(root, { recursive: true, force: true });
+  it.each(['linux', 'win32'] as const)(
+    'reports an unavailable %s desktop command without changing the path error contract',
+    async (platform) => {
+      const root = await mkdtemp(join(tmpdir(), 'mar-file-manager-'));
+      try {
+        const child = new EventEmitter() as ChildProcess;
+        child.unref = vi.fn();
+        const spawnProcess = vi.fn(() => {
+          queueMicrotask(() => child.emit('error', new Error('ENOENT')));
+          return child;
+        });
+        await expect(
+          revealWorkspaceFileInFileManager(root, '.', { platform, spawnProcess })
+        ).rejects.toThrow('FILE_MANAGER_UNAVAILABLE');
+        expect(child.unref).not.toHaveBeenCalled();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     }
-  });
+  );
 });

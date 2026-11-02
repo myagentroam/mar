@@ -51,8 +51,7 @@ export async function revealWorkspaceFileInFileManager(
   try {
     child = spawnProcess(invocation.command, invocation.args, {
       detached: true,
-      stdio: 'ignore',
-      windowsHide: true
+      stdio: 'ignore'
     });
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject);
