@@ -74,6 +74,201 @@ async function gcUsage(store: JsonlSessionStore, id: string) {
 }
 
 describe('Session GC count', () => {
+  it('reuses settled GC totals across repeated reads and ordinary input updates', async () => {
+    const { store, id } = await fixture();
+    await recordGc(store, id, 1, 5000, 3800);
+    for (let i = 0; i < 24; i++)
+      await store.append(id, { type: 'tool.result', payload: { content: `output ${i}` } });
+    await recordUsage(store, id, 3000);
+    const read = store.readPage.bind(store);
+    const pages = vi
+      .spyOn(store, 'readPage')
+      .mockImplementation((sessionId, options) => read(sessionId, { ...options, limit: 2 }));
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    try {
+      const expected = { inputTokens: 3000, gcCount: 1, gcReclaimedTokens: 1200 };
+      expect(await catalog.contextUsage(id)).toEqual(expected);
+      expect(pages.mock.calls.length).toBeGreaterThan(10);
+      pages.mockClear();
+      expect(await catalog.contextUsage(id)).toEqual(expected);
+      expect(pages).toHaveBeenCalledTimes(1);
+      pages.mockClear();
+      for (const tokens of [2900, 2800, 2700, 2600, 2500]) await recordUsage(store, id, tokens);
+      expect(await catalog.contextUsage(id)).toEqual({ ...expected, inputTokens: 2500 });
+      expect(pages.mock.calls.length).toBeLessThanOrEqual(4);
+    } finally {
+      await catalog.close();
+      await store.close();
+    }
+  });
+
+  it('refreshes pending GC input updates without making unavailable totals a hot scan', async () => {
+    const { store, id } = await fixture();
+    await recordGc(store, id, 1, 5000);
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    try {
+      expect(await catalog.contextUsage(id)).toEqual({ inputTokens: 5000, gcCount: 1 });
+      await store.append(id, {
+        type: 'model.attempt',
+        payload: { purpose: 'EXECUTION', state: 'STARTED', requestId: 'post-gc' }
+      });
+      await recordUsage(store, id, 4000);
+      expect((await catalog.contextUsage(id))?.gcReclaimedTokens).toBe(1000);
+      await recordUsage(store, id, 3800);
+      expect((await catalog.contextUsage(id))?.gcReclaimedTokens).toBe(1200);
+      await store.append(id, {
+        type: 'model.attempt',
+        payload: { purpose: 'EXECUTION', state: 'SUCCEEDED', requestId: 'post-gc' }
+      });
+      expect((await catalog.contextUsage(id))?.gcReclaimedTokens).toBe(1200);
+      await store.append(id, {
+        type: 'model.attempt',
+        payload: { purpose: 'EXECUTION', state: 'STARTED', requestId: 'later' }
+      });
+      await recordUsage(store, id, 2000);
+      expect(await catalog.contextUsage(id)).toEqual({
+        inputTokens: 2000,
+        gcCount: 1,
+        gcReclaimedTokens: 1200
+      });
+      await store.append(id, { type: 'context.gc.completed', payload: { generation: 2 } });
+      expect((await catalog.contextUsage(id))?.gcReclaimedTokens).toBeUndefined();
+      const read = store.readPage.bind(store);
+      const pages = vi
+        .spyOn(store, 'readPage')
+        .mockImplementation((sessionId, options) => read(sessionId, { ...options, limit: 2 }));
+      await recordUsage(store, id, 1500);
+      expect(await catalog.contextUsage(id)).toEqual({ inputTokens: 1500, gcCount: 2 });
+      expect(pages).toHaveBeenCalledTimes(1);
+    } finally {
+      await catalog.close();
+      await store.close();
+    }
+  });
+
+  it('invalidates warm totals after rollback with reused sequences, Compact, clear and fork', async () => {
+    const { store, id } = await fixture();
+    await store.append(id, { type: 'turn.user', turnId: 'first', payload: { text: 'First.' } });
+    await recordGc(store, id, 1, 5000, 3800);
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    try {
+      expect((await catalog.contextUsage(id))?.gcCount).toBe(1);
+      await store.append(id, { type: 'turn.user', turnId: 'second', payload: { text: 'Second.' } });
+      await recordGc(store, id, 2, 3000, 2200);
+      expect((await catalog.contextUsage(id))?.gcCount).toBe(2);
+      const oldTail = (await store.read(id)).at(-1)!;
+      await store.rollbackSession(id, { boundaryTurnId: 'second' });
+      while ((await store.read(id)).at(-1)!.sequence < oldTail.sequence - 1)
+        await store.append(id, { type: 'tool.result', payload: {} });
+      const reused = await recordUsage(store, id, 3800);
+      expect(reused.sequence).toBe(oldTail.sequence);
+      expect(reused.recordId).not.toBe(oldTail.recordId);
+      expect(await catalog.contextUsage(id)).toEqual(await gcUsage(store, id));
+      expect((await catalog.contextUsage(id))?.gcCount).toBe(1);
+      const fork = await catalog.fork(id, { boundaryTurnId: 'first', title: 'Branch' });
+      await recordUsage(store, fork.id, 500);
+      expect((await catalog.contextUsage(fork.id))?.gcCount).toBe(0);
+      await store.compact(id, { summary: 'A new window.' });
+      await recordUsage(store, id, 500);
+      expect(await catalog.contextUsage(id)).toEqual({
+        inputTokens: 500,
+        gcCount: 0,
+        gcReclaimedTokens: 0
+      });
+      await recordGc(store, id, 1, 4000, 3000);
+      expect((await catalog.contextUsage(id))?.gcReclaimedTokens).toBe(1000);
+      await store.clearSession(id);
+      await recordUsage(store, id, 500);
+      expect(await catalog.contextUsage(id)).toEqual({
+        inputTokens: 500,
+        gcCount: 0,
+        gcReclaimedTokens: 0
+      });
+    } finally {
+      await catalog.close();
+      await store.close();
+    }
+  });
+
+  it('coalesces concurrent reads, recovers read failures, and drains reads before close', async () => {
+    const { store, id } = await fixture();
+    await recordGc(store, id, 1, 5000, 3800);
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    const read = store.readPage.bind(store);
+    const pages = vi.spyOn(store, 'readPage').mockRejectedValueOnce(new Error('Read failed.'));
+    await expect(catalog.contextUsage(id)).rejects.toThrow('Read failed.');
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    pages.mockClear();
+    pages.mockImplementationOnce(async (sessionId, options) => {
+      await gate;
+      return read(sessionId, options);
+    });
+    const first = catalog.contextUsage(id);
+    const second = catalog.contextUsage(id);
+    const closing = catalog.close();
+    try {
+      await expect(catalog.contextUsage(id)).rejects.toMatchObject({ code: 'MAR_AGENT_DISPOSED' });
+      release();
+      const [a, b] = await Promise.all([first, second]);
+      expect(a).toEqual({ inputTokens: 3800, gcCount: 1, gcReclaimedTokens: 1200 });
+      expect(b).toEqual(a);
+      expect(b).not.toBe(a);
+      expect(pages).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      await closing;
+      await store.close();
+    }
+  });
+
+  it('keeps warm results identical to cold projection through request retries and usage updates', async () => {
+    const { store, id } = await fixture();
+    const catalog = await openAgentSessionCatalog({ sessionStore: store });
+    const check = async () =>
+      expect(await catalog.contextUsage(id)).toEqual(await gcUsage(store, id));
+    const attempt = (state: string, requestId: string) =>
+      store.append(id, {
+        type: 'model.attempt',
+        payload: { purpose: 'EXECUTION', state, requestId }
+      });
+    try {
+      await check();
+      await recordGc(store, id, 1, 5000);
+      await check();
+      await attempt('STARTED', 'first');
+      await check();
+      await recordUsage(store, id, 4100);
+      await check();
+      await recordUsage(store, id, 3800);
+      await check();
+      await attempt('FAILED', 'first');
+      await check();
+      await attempt('STARTED', 'retry');
+      await check();
+      await recordUsage(store, id, 3500);
+      await check();
+      await attempt('SUCCEEDED', 'retry');
+      await check();
+      await recordGc(store, id, 2, 3500);
+      await check();
+      await attempt('STARTED', 'second');
+      await recordUsage(store, id, 2600);
+      await check();
+      await recordUsage(store, id, 2500, { purpose: 'compact' });
+      await check();
+      await recordUsage(store, id, 2400);
+      await check();
+      await attempt('SUCCEEDED', 'second');
+      await check();
+    } finally {
+      await catalog.close();
+      await store.close();
+    }
+  });
+
   it('sums measured input decreases using the first post-GC usage in the current Compact window', async () => {
     const { home, store, id } = await fixture();
     expect(await gcUsage(store, id)).toEqual({

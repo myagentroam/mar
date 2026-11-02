@@ -50,6 +50,7 @@ import {
 
 export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
   readonly name = 'mar-agent' as const;
+  #contextCatalog: Promise<AgentSessionCatalog> | undefined;
   override prepareMessageInput(input: string, collaborationMode: 'default' | 'plan'): string {
     const prepared = super.prepareMessageInput(input, collaborationMode);
     return parseComposerTags(prepared)
@@ -700,9 +701,12 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     if (session.externalSessionId === null || session.modelId === null) return undefined;
     const model = this.#models.find((candidate) => candidate.id === session.modelId);
     if (model === undefined) return undefined;
+    const pending = (this.#contextCatalog ??= openAgentSessionCatalog({
+      homeDirectory: this.homeDirectory
+    }));
     let catalog: AgentSessionCatalog | undefined;
     try {
-      catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
+      catalog = await pending;
       const usage = await catalog.contextUsage(session.externalSessionId);
       return usage === undefined
         ? undefined
@@ -716,12 +720,17 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
               : { gcReclaimedTokens: usage.gcReclaimedTokens })
           };
     } catch {
+      if (catalog === undefined && this.#contextCatalog === pending)
+        this.#contextCatalog = undefined;
       return undefined;
-    } finally {
-      await catalog?.close().catch(() => undefined);
     }
   }
-  stop(): void {}
+  async stop(): Promise<void> {
+    const pending = this.#contextCatalog;
+    this.#contextCatalog = undefined;
+    const catalog = await pending?.catch(() => undefined);
+    await catalog?.close();
+  }
 
   async #readInputImage(
     sessionId: string,

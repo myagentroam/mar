@@ -1,5 +1,20 @@
 import type { ModelInputMetadata } from '../model/contracts.js';
+import type { AgentEvent } from '../runtime/events.js';
 import type { CompactHistoryMessage, SessionRecord } from './record-contract.js';
+
+export function isAgentEvent(value: unknown): value is AgentEvent {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const event = value as Record<string, unknown>;
+  return (
+    typeof event.type === 'string' &&
+    event.type !== 'reasoning.summary' &&
+    typeof event.eventId === 'string' &&
+    typeof event.sequence === 'number' &&
+    typeof event.timestamp === 'string' &&
+    typeof event.sessionId === 'string' &&
+    typeof event.executionId === 'string'
+  );
+}
 
 export function compactSummaryFromCheckpoint(
   record: SessionRecord | undefined
