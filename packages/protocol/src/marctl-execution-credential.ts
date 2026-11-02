@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 const id = z.string().min(1).max(256);
-const token = z.string().regex(/^marctl_user_[A-Za-z0-9_-]{43}$/u);
+export const marctlUserTokenSchema = z
+  .string()
+  .max(16_384)
+  .regex(/^marctl_user_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/u);
+const token = marctlUserTokenSchema;
 
 /** Private authenticated Node control-channel exchange; never exposed as a public receipt. */
 export const marctlExecutionCredentialRequestSchema = z

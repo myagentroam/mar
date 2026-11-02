@@ -1,14 +1,64 @@
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
 import { MarctlUserCredentials } from '../../src/marctl-user-credentials.js';
 
 describe('user-scoped marctl authorization', () => {
+  it('keeps live credentials and delegation valid across a Server restart without renewing expiry', async () => {
+    let now = 1000;
+    let active = true;
+    const pool = {
+      execute: vi.fn(async () => [active ? [{ id: 7 }] : []])
+    } as unknown as Pool;
+    const scope = { nodeId: 'node-one', workspaceId: 'workspace-one' };
+    const first = new MarctlUserCredentials(pool, Buffer.alloc(32, 7), () => now);
+    const terminal = first.issue({ userId: 7, sessionHash: 'a'.repeat(43) }, scope);
+    const parentToken = first.issue({ userId: 7, sessionHash: 'a'.repeat(43) }, scope, {
+      type: 'delegation'
+    });
+    const input = {
+      parentToken,
+      ...scope,
+      userId: 7,
+      sessionId: 'child',
+      executionId: 'execution-one',
+      authorize: vi.fn(async () => true)
+    };
+    const execution = await first.deriveExecution(input);
+    const restarted = new MarctlUserCredentials(pool, Buffer.alloc(32, 7), () => now);
+    expect(await restarted.authenticateContext(`Bearer ${terminal}`)).toMatchObject({
+      user: { userId: 7 },
+      scope,
+      source: { type: 'terminal' }
+    });
+    expect(await restarted.authenticateContext(`Bearer ${execution}`)).toMatchObject({
+      source: { type: 'execution', executionId: 'execution-one' }
+    });
+    now += 60_000;
+    const next = await restarted.deriveExecution({ ...input, executionId: 'execution-two' });
+    expect(await restarted.authenticateContext(`Bearer ${next}`)).toMatchObject({
+      source: { type: 'execution', executionId: 'execution-two' },
+      expiresAt: 1000 + 24 * 60 * 60 * 1000
+    });
+    active = false;
+    expect(await restarted.authenticate(`Bearer ${next}`)).toBeUndefined();
+    active = true;
+    now = 1000 + 24 * 60 * 60 * 1000;
+    expect(await restarted.authenticate(`Bearer ${next}`)).toBeUndefined();
+    await expect(restarted.deriveExecution(input)).rejects.toThrow(
+      'MARCTL_EXECUTION_AUTHORIZATION_INVALID'
+    );
+  });
+
   it('derives execution-bound credentials only within the original live user scope', async () => {
     let now = 1000;
     let active = true;
     const execute = vi.fn(async () => [active ? [{ id: 7, username: 'owner' }] : []]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool, () => now);
+    const service = new MarctlUserCredentials(
+      { execute } as unknown as Pool,
+      Buffer.alloc(32, 7),
+      () => now
+    );
     const scope = { nodeId: 'node-one', workspaceId: 'workspace-one' };
     const authorization = await service.environment(
       { userId: 7, sessionHash: 'a'.repeat(43), username: 'owner' },
@@ -57,10 +107,47 @@ describe('user-scoped marctl authorization', () => {
     );
   });
 
+  it('rejects tampered, malformed and differently signed credentials before querying authorization', async () => {
+    const execute = vi.fn(async () => [[{ id: 7 }]]);
+    const pool = { execute } as unknown as Pool;
+    const service = new MarctlUserCredentials(pool, Buffer.alloc(32, 7));
+    const token = service.issue(
+      { userId: 7, sessionHash: 'a'.repeat(43) },
+      { nodeId: 'node', workspaceId: 'workspace' },
+      { type: 'delegation' }
+    );
+    const [body, signature] = token.slice('marctl_user_'.length).split('.');
+    const claims = JSON.parse(Buffer.from(body!, 'base64url').toString());
+    claims.scope.workspaceId = 'other-workspace';
+    const tampered = Buffer.from(JSON.stringify(claims)).toString('base64url');
+    const otherKey = new MarctlUserCredentials(pool, Buffer.alloc(32, 8));
+    expect(await otherKey.authenticate(`Bearer ${token}`)).toBeUndefined();
+    const otherPurpose = createHmac('sha256', Buffer.alloc(32, 7))
+      .update('mar:model-usage:v1\0')
+      .update(body!)
+      .digest('base64url');
+    for (const invalid of [
+      `marctl_user_${tampered}.${signature}`,
+      `marctl_user_${body}.${otherPurpose}`,
+      `${token.slice(0, -1)}!`,
+      `${token}.extra`,
+      `marctl_user_${'a'.repeat(43)}`,
+      `marctl_user_${'a'.repeat(16_384)}.${signature}`
+    ])
+      expect(await service.authenticate(`Bearer ${invalid}`)).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+    expect(await service.authenticate(`Bearer ${token}`)).toMatchObject({ userId: 7 });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it('distinguishes terminal credentials and rechecks authorization after an asynchronous decision', async () => {
     let now = 1000;
     const execute = vi.fn(async () => [[{ id: 7, username: 'owner' }]]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool, () => now);
+    const service = new MarctlUserCredentials(
+      { execute } as unknown as Pool,
+      Buffer.alloc(32, 7),
+      () => now
+    );
     const scope = { nodeId: 'node', workspaceId: 'workspace' };
     const terminal = await service.environment(
       { userId: 7, username: 'owner' },
@@ -103,7 +190,7 @@ describe('user-scoped marctl authorization', () => {
     const execute = vi.fn(async (_sql: string, _parameters: unknown[]) => [
       enabled ? [{ id: 7, username: 'owner' }] : []
     ]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, Buffer.alloc(32, 7));
     const scope = { nodeId: 'node-one', workspaceId: 'workspace-one' };
     const environment = await service.environment(
       { userId: 7, username: 'owner', sessionHash: 'c'.repeat(43), channel: true },
@@ -133,7 +220,11 @@ describe('user-scoped marctl authorization', () => {
     const execute = vi.fn(async (_sql: string, parameters: unknown[]) => [
       active && parameters[0] === 'a'.repeat(43) ? [{ id: 7 }] : []
     ]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool, () => now);
+    const service = new MarctlUserCredentials(
+      { execute } as unknown as Pool,
+      Buffer.alloc(32, 7),
+      () => now
+    );
     const environment = await service.environment(
       { userId: 7, sessionHash: 'a'.repeat(43), username: 'alice' },
       'https://server.test'
@@ -144,7 +235,7 @@ describe('user-scoped marctl authorization', () => {
       MAR_CTL_SERVER_URL: 'https://server.test'
     });
     const token = environment.MAR_CTL_USER_TOKEN!;
-    expect(token).toMatch(/^marctl_user_[A-Za-z0-9_-]{43}$/u);
+    expect(token).toMatch(/^marctl_user_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/u);
     expect(await service.authenticate(`Bearer ${token}`)).toEqual({
       userId: 7,
       sessionHash: 'a'.repeat(43)
@@ -166,7 +257,7 @@ describe('user-scoped marctl authorization', () => {
     const execute = vi.fn(async (_sql: string) => [
       enabled ? [{ id: 9, username: 'task-owner' }] : []
     ]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, Buffer.alloc(32, 7));
     expect(await service.environment({ userId: 9 }, undefined)).toEqual({
       MAR_CTL_CONTEXT_REQUIRED: '1',
       MAR_USERNAME: 'task-owner'
@@ -179,8 +270,8 @@ describe('user-scoped marctl authorization', () => {
     const authenticated = await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`);
     expect(authenticated?.userId).toBe(9);
     expect(authenticated?.sessionHash).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    expect(authenticated?.sessionHash).toBe(
-      createHash('sha256').update(environment.MAR_CTL_USER_TOKEN!).digest('base64url')
+    expect(await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`)).toEqual(
+      authenticated
     );
     enabled = false;
     expect(await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`)).toBeUndefined();
@@ -192,7 +283,7 @@ describe('user-scoped marctl authorization', () => {
 
   it('binds sessions to the source Workspace and preserves scheduled provenance across derived inputs', async () => {
     const execute = vi.fn(async (_sql: string) => [[{ id: 9, username: 'task-owner' }]]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, Buffer.alloc(32, 7));
     const scope = { nodeId: 'node-one', workspaceId: 'workspace-one' };
     const environment = await service.environment({ userId: 9 }, 'https://server.test', scope);
     const context = await service.authenticateContext(`Bearer ${environment.MAR_CTL_USER_TOKEN}`);
@@ -214,7 +305,7 @@ describe('user-scoped marctl authorization', () => {
 
   it('rejects invalid usernames and does not turn a username-only context into a credential', async () => {
     const execute = vi.fn(async () => [[{ username: 'bob' }]]);
-    const service = new MarctlUserCredentials({ execute } as unknown as Pool);
+    const service = new MarctlUserCredentials({ execute } as unknown as Pool, Buffer.alloc(32, 7));
     expect(await service.userEnvironment({ userId: 8 })).toEqual({ MAR_USERNAME: 'bob' });
     expect(await service.userEnvironment({ userId: 7, username: 'alice' })).toEqual({
       MAR_USERNAME: 'alice'

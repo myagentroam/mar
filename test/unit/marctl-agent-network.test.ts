@@ -96,10 +96,11 @@ async function fixture(title?: string) {
     parentSessionId: coordinator.id,
     cwd: directory
   });
-  const credentials = new MarctlUserCredentials({
+  const pool = {
     execute: async () => [[{ id: 7, username: 'owner' }]]
-  } as unknown as Pool);
-  const token = credentials.issue(
+  } as unknown as Pool;
+  const signingKey = Buffer.alloc(32, 7);
+  const token = new MarctlUserCredentials(pool, signingKey).issue(
     { userId: 7, sessionHash: 'a'.repeat(43) },
     { nodeId: 'node', workspaceId: workspace.id }
   );
@@ -119,7 +120,8 @@ async function fixture(title?: string) {
   });
   registerMarctlSessionRoutes({
     app,
-    credentials,
+    // A fresh validator must accept credentials issued before the Server restarted.
+    credentials: new MarctlUserCredentials(pool, signingKey),
     publicOrigin: undefined,
     authorizedNode: async () => true,
     ownsWorkbenchConnection: (_hash, connectionId) => connectionId === 'network-connection',
@@ -182,7 +184,7 @@ async function fixture(title?: string) {
 }
 
 describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
-  it('lists active Sessions from an authenticated terminal without inventing a source', async () => {
+  it('lists active Sessions with a pre-restart terminal credential without inventing a source', async () => {
     const h = await fixture('Ｎｅｔｗｏｒｋ Task');
     try {
       expect(await h.command('list')).toEqual({

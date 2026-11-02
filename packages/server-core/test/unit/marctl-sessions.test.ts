@@ -32,9 +32,10 @@ async function fixture(
     audits?: ConversationAuditObserver;
   } = {}
 ) {
-  const credentials = new MarctlUserCredentials({
-    execute: async () => [[{ id: 7, username: 'owner' }]]
-  } as unknown as Pool);
+  const credentials = new MarctlUserCredentials(
+    { execute: async () => [[{ id: 7, username: 'owner' }]] } as unknown as Pool,
+    Buffer.alloc(32, 7)
+  );
   const scope = { nodeId: 'node', workspaceId: 'workspace' };
   const token = credentials.issue(
     {

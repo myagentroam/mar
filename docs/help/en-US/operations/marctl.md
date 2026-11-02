@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-03
 ---
 
 # Manage Nodes with marctl
@@ -45,6 +45,8 @@ Each entrypoint also supports `-V` and writes one line, `marctl <version>`, to s
 The CLI is only for MAR-managed execution contexts. In a Workbench terminal or Workspace Agent Run started by a user on a Node, it automatically uses the current user's Node permissions; scheduled runs use the task owner. No key, environment file, or manually configured authorization variables are needed.
 
 The Server checks the user credential, account, login session (when applicable), and current permissions on every request. Credentials expire **24 hours after issue**, without sliding or automatic renewal. After expiry, open a new terminal or submit a new authorized input. Goal continuation and tool calls do not renew credentials. Ordinary OS terminals and other external scripts cannot access Nodes independently. Administrator keys, home-directory configuration files, and `--env-file` are not supported. Do not copy, persist, or share execution-context user credentials.
+
+Credentials are signed by the Server. An ordinary Server restart neither invalidates an otherwise valid credential nor extends its lifetime; current permissions are still checked after reconnection. Update the Server, Node, and bundled CLI together. Old in-memory credentials cannot be converted to signed credentials, so open a new terminal or submit a new authorized input when first switching formats.
 
 ## Coordinate Workspace Sessions
 

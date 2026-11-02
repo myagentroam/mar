@@ -10,7 +10,7 @@ function createUserContext() {
   const pool = {
     execute: async () => [[{ id: 1, username: 'admin' }]]
   } as unknown as Pool;
-  const credentials = new MarctlUserCredentials(pool);
+  const credentials = new MarctlUserCredentials(pool, Buffer.alloc(32, 7));
   const token = credentials.issue({ userId: 1, sessionHash: 'a'.repeat(43) });
   return { credentials, token };
 }
@@ -76,7 +76,7 @@ describe('marctl execution-context authorization', () => {
     const pool = {
       execute: async () => [enabled ? [{ id: 7, username: 'alice' }] : []]
     } as unknown as Pool;
-    const credentials = new MarctlUserCredentials(pool);
+    const credentials = new MarctlUserCredentials(pool, Buffer.alloc(32, 7));
     const token = credentials.issue({ userId: 7, sessionHash: 'a'.repeat(43) });
     const app = Fastify();
     const requestNode = vi.fn(async (..._args: unknown[]) => ({
