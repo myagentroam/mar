@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/web-core",
-  "version": "0.11.62",
+  "version": "0.11.63",
   "private": true,
   "type": "module",
   "files": [
