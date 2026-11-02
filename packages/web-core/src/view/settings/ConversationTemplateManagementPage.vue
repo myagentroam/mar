@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -66,6 +67,7 @@ const pagination = createManagementPageService<AdminConversationTemplateSummary>
   key: (template) => template.id,
   context: () => JSON.stringify([sortBy.value, sortOrder.value])
 });
+watchManagementPageFailure(pagination);
 const templates = pagination.items;
 const models = ref<readonly ConversationTemplateModelOption[]>([]);
 const workspaces = ref<readonly Workspace[]>([]);
@@ -858,6 +860,7 @@ onMounted(() => {
       :loading-more="pagination.loadingMore.value"
       @page="pagination.setPage"
       :failed="pagination.failure.value !== undefined"
+      :incremental-failed="pagination.failure.value?.incremental === true"
       :error="pagination.failure.value?.error"
       :context-key="pagination.contextKey.value"
       @retry="pagination.retry"

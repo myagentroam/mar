@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -34,6 +35,7 @@ const query = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const pagination = service.catalogPage;
+watchManagementPageFailure(pagination);
 const installingEntryId = ref('');
 const showInstallProgress = ref(false);
 const detailsOpen = ref(false);
@@ -550,6 +552,7 @@ function mcpErrorMessage(error: unknown): string {
         :loading-more="pagination.loadingMore.value"
         @page="pagination.setPage"
         :failed="pagination.failure.value !== undefined"
+        :incremental-failed="pagination.failure.value?.incremental === true"
         :error="pagination.failure.value?.error"
         :context-key="pagination.contextKey.value"
         @retry="pagination.retry"

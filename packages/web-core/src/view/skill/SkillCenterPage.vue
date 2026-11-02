@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -39,6 +40,7 @@ const skillQuery = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const availablePagination = service.catalogPage;
+watchManagementPageFailure(availablePagination);
 const catalogReady = ref(false);
 const detailsOpen = ref(false);
 const skillDetails = ref<SkillDetails>();
@@ -728,6 +730,7 @@ function scopeLabel(scope: string): string {
                 :loading-more="availablePagination.loadingMore.value"
                 @page="availablePagination.setPage"
                 :failed="availablePagination.failure.value !== undefined"
+                :incremental-failed="availablePagination.failure.value?.incremental === true"
                 :error="availablePagination.failure.value?.error"
                 :context-key="availablePagination.contextKey.value"
                 @retry="availablePagination.retry"

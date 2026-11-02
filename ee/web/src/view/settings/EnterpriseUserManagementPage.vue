@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '@myagentroam/web-core/MobileDialogReturnService';
+import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
@@ -125,6 +126,7 @@ const usersPage = createUserManagementService<EnterpriseUser>({
     sortOrder: sortOrder.value
   })
 });
+watchManagementPageFailure(usersPage);
 const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
 const organizationsReady = ref(false);
 const usersReady = ref(false);
@@ -588,6 +590,7 @@ onUnmounted(() => {
       :mobile-visible-count="usersPage.mobileVisibleCount.value"
       @page="usersPage.setPage"
       :failed="usersPage.failure.value !== undefined"
+      :incremental-failed="usersPage.failure.value?.incremental === true"
       :error="usersPage.failure.value?.error"
       :context-key="usersPage.contextKey.value"
       @retry="usersPage.retry"

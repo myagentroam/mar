@@ -7,6 +7,7 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
     name: 'agent_list',
     description: 'List direct child Sessions or eligible model configurations.',
     allowedCallers: ['direct', 'programmatic'],
+    parallelSafety: 'safe',
     inputSchema: {
       type: 'object',
       properties: {
@@ -55,6 +56,7 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
     name: 'agent_view',
     description: 'View a direct child or parent Session and its public history.',
     allowedCallers: ['direct', 'programmatic'],
+    parallelSafety: 'safe',
     inputSchema: {
       type: 'object',
       properties: {

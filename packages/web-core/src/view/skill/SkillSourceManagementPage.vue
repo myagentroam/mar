@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -42,6 +43,7 @@ const service = createSkillCenterService(props.request, {
 // Source definitions are a complete configuration snapshot, unlike directory entries.
 const displayedSources = service.sources;
 const pagination = service.catalogPage;
+watchManagementPageFailure(pagination);
 const sourceDialog = ref(false);
 const catalogDialog = ref(false);
 const editDialog = ref(false);
@@ -153,6 +155,7 @@ async function run(operation: () => Promise<void>, success?: string): Promise<vo
     await operation();
     if (success !== undefined) showMessage(success, 'success');
   } catch (error) {
+    if (error === pagination.error.value) return;
     showMessage(
       skillErrorMessage(
         error,
@@ -812,6 +815,7 @@ function scopeLabel(scope: string): string {
             :has-more="pagination.hasMore.value"
             @page="pagination.setPage"
             :failed="pagination.failure.value !== undefined"
+            :incremental-failed="pagination.failure.value?.incremental === true"
             :error="pagination.failure.value?.error"
             :context-key="pagination.contextKey.value"
             @retry="pagination.retry"

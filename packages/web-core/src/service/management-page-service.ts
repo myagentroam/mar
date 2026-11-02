@@ -3,6 +3,8 @@ import { managementPageMetadataSchema, type ManagementPage } from '@myagentroam/
 import { createManagementPaginationService } from './management-pagination-service.js';
 import { AuthenticationContextChangedError } from './workbench-http-service.js';
 
+export { watchManagementPageFailure } from './management-page-feedback.js';
+
 export function parseManagementPage<T>(
   raw: unknown,
   field: string,
@@ -51,6 +53,7 @@ export function createManagementPageService<T>(input: {
     readonly error: unknown;
     readonly page: number;
     readonly append: boolean;
+    readonly incremental: boolean;
   }>();
   const page = ref(1);
   let generation = 0;
@@ -89,7 +92,12 @@ export function createManagementPageService<T>(input: {
     page.value = response.page;
   }
 
-  async function request(nextPage: number, append: boolean, retrying = false): Promise<void> {
+  async function request(
+    nextPage: number,
+    append: boolean,
+    retrying = false,
+    incremental = append
+  ): Promise<void> {
     if (disposed) return;
     const key = input.context();
     if (context !== key) {
@@ -100,7 +108,7 @@ export function createManagementPageService<T>(input: {
     const current = ++generation;
     if (!retrying) failure.value = undefined;
     loading.value = true;
-    loadingMore.value = append;
+    loadingMore.value = incremental;
     let requestPage = nextPage;
     let requestAppend = append;
     try {
@@ -129,7 +137,7 @@ export function createManagementPageService<T>(input: {
         failure.value =
           error instanceof AuthenticationContextChangedError
             ? undefined
-            : { error, page: requestPage, append: requestAppend };
+            : { error, page: requestPage, append: requestAppend, incremental };
       }
     } finally {
       if (current === generation && key === input.context() && !disposed) {
@@ -154,7 +162,7 @@ export function createManagementPageService<T>(input: {
   }
   function retry(): Promise<void> {
     if (loading.value || failure.value === undefined) return Promise.resolve();
-    return request(failure.value.page, failure.value.append, true);
+    return request(failure.value.page, failure.value.append, true, failure.value.incremental);
   }
   const stop = watch(viewport.mobileViewport, () => {
     if (input.reloadOnViewportChange !== false) void load(true);

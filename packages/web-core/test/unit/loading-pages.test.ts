@@ -112,15 +112,16 @@ describe('shared loading presentation', () => {
     expect(html).not.toMatch(/\bis-loading\b/u);
   });
 
-  it.each([true, false])('keeps only the retry ring while busy on mobile=%s', async (mobile) => {
+  it('keeps only the retry ring while retrying a mobile append', async () => {
     i18n.global.locale.value = 'en-US';
     const props = {
       total: 60,
       page: 1,
-      mobile,
+      mobile: true,
       mobileVisibleCount: 20,
       hasMore: true,
       failed: true,
+      incrementalFailed: true,
       error: new Error('List request failed')
     };
     const failed = await render(ManagementPagination, props);
@@ -135,6 +136,34 @@ describe('shared loading presentation', () => {
     expect(retrying).toContain('aria-label="Loading"');
     expect(retrying).toContain('aria-busy="true"');
     expect(retrying).not.toContain('Failed to load. Retry');
+  });
+
+  it.each([true, false])(
+    'does not show append retry for a non-append failure on mobile=%s',
+    async (mobile) => {
+      i18n.global.locale.value = 'en-US';
+      const html = await render(ManagementPagination, {
+        page: 1,
+        mobile,
+        mobileVisibleCount: 0,
+        hasMore: false,
+        failed: true,
+        error: new Error('List request failed')
+      });
+      expect(html).not.toContain('Failed to load. Retry');
+    }
+  );
+
+  it('does not show append retry on desktop even if an append failure remains', async () => {
+    const html = await render(ManagementPagination, {
+      page: 1,
+      mobile: false,
+      mobileVisibleCount: 20,
+      hasMore: true,
+      failed: true,
+      incrementalFailed: true
+    });
+    expect(html).not.toContain('Failed to load. Retry');
   });
 
   it.each(['success', 'failure'] as const)(

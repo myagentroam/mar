@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -195,6 +196,7 @@ const pagination = createManagementPageService<Row>({
       sortOrder.value
     ])
 });
+watchManagementPageFailure(pagination);
 const resources = pagination.items;
 const loading = pagination.loading;
 const pageReady = ref(false);
@@ -963,6 +965,7 @@ onUnmounted(() => {
       :mobile-visible-count="pagination.mobileVisibleCount.value"
       @page="pagination.setPage"
       :failed="pagination.failure.value !== undefined"
+      :incremental-failed="pagination.failure.value?.incremental === true"
       :error="pagination.failure.value?.error"
       :context-key="pagination.contextKey.value"
       @retry="pagination.retry"

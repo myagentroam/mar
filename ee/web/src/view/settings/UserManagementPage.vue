@@ -3,6 +3,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '@myagentroam/web-core/MobileDialogReturnService';
+import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
@@ -41,6 +42,7 @@ const usersPage = createUserManagementService<ManagedUser>({
   endpoint: '/api/management/users',
   query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value })
 });
+watchManagementPageFailure(usersPage);
 const pageReady = ref(false);
 watch(usersPage.result, (result) => {
   if (result !== undefined) pageReady.value = true;
@@ -251,6 +253,7 @@ onUnmounted(() => usersPage.dispose());
       :mobile-visible-count="usersPage.mobileVisibleCount.value"
       @page="usersPage.setPage"
       :failed="usersPage.failure.value !== undefined"
+      :incremental-failed="usersPage.failure.value?.incremental === true"
       :error="usersPage.failure.value?.error"
       :context-key="usersPage.contextKey.value"
       @retry="usersPage.retry"

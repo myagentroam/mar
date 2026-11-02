@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -30,6 +31,7 @@ const service = new UsageStatisticsService(props.request, (error) =>
 const state = service.state;
 const pageLoading = computed(() => state.loading && !state.overview);
 const pagination = service.pagination;
+watchManagementPageFailure(pagination);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
 const draft = reactive({
@@ -778,6 +780,7 @@ onUnmounted(() => {
           :loading="state.loading || state.loadingPage"
           :loading-more="pagination.loadingMore.value"
           :failed="pagination.failure.value !== undefined"
+          :incremental-failed="pagination.failure.value?.incremental === true"
           :error="pagination.failure.value?.error"
           :context-key="pagination.contextKey.value"
           :aria-label="t('usageStatistics.pagination')"
