@@ -114,10 +114,33 @@ export function inlineMediaHistory(records: readonly SessionRecord[]): {
   state?: InlineMediaState;
 } {
   const cursors: (InlineMediaCursor & { rollout: number })[] = [];
+  const imageCounts = new Map<string, number>();
   let rollouts = 0;
   let state: InlineMediaState | undefined;
+  const present = (cursor: InlineMediaCursor | undefined) =>
+    !cursor || cursor.imageIndex < (imageCounts.get(cursor.sourceId) ?? 0);
+  const restoreState = (next: InlineMediaState | undefined) => {
+    if (!next || (present(next.consideredThrough) && present(next.evictedThrough))) {
+      state = next;
+      return;
+    }
+    // Reuse only a proven eviction; record order cannot prove an image was processed.
+    const evictedThrough = present(next.evictedThrough)
+      ? next.evictedThrough
+      : state?.evictedThrough;
+    const consideredThrough =
+      next.consideredThrough && present(next.consideredThrough)
+        ? next.consideredThrough
+        : evictedThrough;
+    state = {
+      version: 1,
+      ...(consideredThrough ? { consideredThrough } : {}),
+      ...(evictedThrough ? { evictedThrough } : {})
+    };
+  };
   const add = (sourceId: string | undefined, images: unknown) => {
     if (!sourceId || !Array.isArray(images)) return;
+    if (images.length > (imageCounts.get(sourceId) ?? 0)) imageCounts.set(sourceId, images.length);
     for (let imageIndex = 0; imageIndex < images.length; imageIndex++)
       cursors.push({ sourceId, imageIndex, rollout: rollouts });
   };
@@ -132,7 +155,8 @@ export function inlineMediaHistory(records: readonly SessionRecord[]): {
       rollouts++;
     if (record.type === 'compact.completed') {
       cursors.splice(0);
-      state = parseInlineMediaState(payload.inlineMediaState);
+      imageCounts.clear();
+      state = undefined;
       for (const item of (payload.retainedModelContext ?? []) as ModelMessage[]) {
         const applied = appliedInputRecord({ ...record, type: 'model.context', payload: item });
         if (applied) {
@@ -142,13 +166,14 @@ export function inlineMediaHistory(records: readonly SessionRecord[]): {
         const key = inlineMediaSource(item);
         add(typeof key === 'string' ? key : undefined, item.images);
       }
+      restoreState(parseInlineMediaState(payload.inlineMediaState));
     } else if (record.type === 'resource.window') {
-      state = parseInlineMediaState(payload);
+      restoreState(parseInlineMediaState(payload));
     } else if (record.type === 'context.gc.completed' && payload.inlineMedia !== undefined) {
       const media = parseInlineMediaGc(payload.inlineMedia);
       if (!media)
         throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Inline media GC state is invalid.');
-      state = media.state;
+      restoreState(media.state);
     } else if (
       (record.type === 'turn.user' || record.type === 'extension.input') &&
       payload.deferred !== true

@@ -51,6 +51,24 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
   }
 }));
 
+// Element Plus components are auto-imported directly, so global registration cannot replace them.
+vi.mock('element-plus/es', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('element-plus/es')>();
+  const { defineComponent, h } = await import('vue');
+  return {
+    ...actual,
+    ElDialog: defineComponent({
+      props: { modelValue: Boolean, title: String },
+      setup:
+        (props, { slots }) =>
+        () =>
+          props.modelValue
+            ? h('section', { 'data-dialog-title': props.title ?? '' }, slots.default?.())
+            : null
+    })
+  };
+});
+
 const originalLocale = localePreferenceService().locale.value;
 
 it.each(['HEAD', 'SOURCE'] as const)(
@@ -356,20 +374,6 @@ describe('Message image attachment cards', () => {
   });
 });
 
-const DialogStub = defineComponent({
-  name: 'ElDialog',
-  props: {
-    modelValue: Boolean,
-    title: String
-  },
-  setup(props, { slots }) {
-    return () =>
-      props.modelValue
-        ? h('section', { 'data-dialog-title': props.title ?? '' }, slots.default?.())
-        : null;
-  }
-});
-
 async function render(
   component: Component,
   props: Record<string, unknown>,
@@ -384,8 +388,7 @@ async function render(
       return {};
     }
   });
-  if (component === ImagePreviewDialogs) app.component('ElDialog', DialogStub);
-  else app.use(ElementPlus);
+  app.use(ElementPlus);
   app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
   app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
@@ -1403,6 +1406,44 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(await render(SessionPerformanceInfo, { performance: undefined })).not.toContain(
       'session-performance-info'
     );
+  });
+
+  it('shows live session metrics only on the matching active process', async () => {
+    const item = {
+      ...conversationItem('tool', 'tool_call', { toolName: 'Read' }, 'IN_PROGRESS'),
+      processGroup: { id: 'active-process', isStart: true as const }
+    };
+    const props = {
+      ...timelineProps,
+      synchronized: true,
+      runs: [{ id: 'run-1', status: 'RUNNING' }],
+      turns: [conversationTurn([item], { status: 'RUNNING' })]
+    };
+    const initial = await render(ConversationTimeline, {
+      ...props,
+      performance: { runId: 'run-1', latencyMs: 420 }
+    });
+    expect(initial).toContain('420 ms');
+    expect(initial).not.toContain('token/s');
+    const updated = await render(ConversationTimeline, {
+      ...props,
+      performance: { runId: 'run-1', latencyMs: 900, tokensPerSecond: 0 }
+    });
+    expect(updated).toContain('900 ms');
+    expect(updated).toContain('0.0 token/s');
+    expect(updated).not.toContain('420 ms');
+    for (const overrides of [
+      { performance: { runId: 'other', latencyMs: 420 } },
+      { performance: { runId: 'run-1', latencyMs: 420 }, synchronized: false },
+      {
+        performance: { runId: 'run-1', latencyMs: 420 },
+        runs: [{ id: 'run-1', status: 'SUCCEEDED' }],
+        turns: [conversationTurn([{ ...item, status: 'COMPLETED' }])]
+      }
+    ]) {
+      const html = await render(ConversationTimeline, { ...props, ...overrides });
+      expect(html).not.toContain('420 ms');
+    }
   });
 
   it('does not recompute hidden process metadata as cached history mounts in frames', async () => {

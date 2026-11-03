@@ -461,6 +461,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 <ConversationTimeline
                   :runs="page.conversationRuns"
                   :turns="page.displayedConversationTurns"
+                  :performance="page.sessionPerformance"
                   :initializing="page.loadingInitialConversation"
                   :initial-render-version="page.conversationInitialRenderVersion"
                   :capture-render-anchor="page.captureConversationRenderAnchor"

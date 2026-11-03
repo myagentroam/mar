@@ -3,31 +3,10 @@ import { computed } from 'vue';
 import type { RunPerformance } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
+import { sessionPerformanceDetails } from '../../util/session-performance-presentation.js';
 
 const props = defineProps<{ readonly performance: RunPerformance | undefined }>();
-const details = computed(() => {
-  const value = props.performance;
-  if (value === undefined) return '';
-  return [
-    ...(value.latencyMs === undefined
-      ? []
-      : [
-          translate('generated.conversationTimeline.modelResponseLatency', {
-            value:
-              value.latencyMs < 1_000
-                ? `${value.latencyMs} ms`
-                : `${(value.latencyMs / 1_000).toFixed(value.latencyMs < 10_000 ? 2 : 1)} s`
-          })
-        ]),
-    ...(value.tokensPerSecond === undefined
-      ? []
-      : [
-          translate('generated.conversationTimeline.providerOutputTps', {
-            value: value.tokensPerSecond.toFixed(1)
-          })
-        ])
-  ].join(' · ');
-});
+const details = computed(() => sessionPerformanceDetails(props.performance));
 </script>
 
 <template>

@@ -302,6 +302,152 @@ describe('inline media window', () => {
     expect((await reopened.prepare(request([b]))).messages[0]?.images).toHaveLength(1);
   });
 
+  it('keeps a known eviction cursor when active image references have been released', async () => {
+    const { projection } = fixture();
+    const a = imageMessage('a');
+    await projection.complete(await projection.prepare(request([a])));
+    projection.adoptGc({ version: 1, evictedThrough: { sourceId: 'tool:a', imageIndex: 0 } });
+    const retained = projection.historyView([a]);
+    projection.replace(retained);
+    expect(projection.checkpoint(retained)).toEqual({
+      version: 1,
+      consideredThrough: { sourceId: 'tool:a', imageIndex: 0 },
+      evictedThrough: { sourceId: 'tool:a', imageIndex: 0 }
+    });
+  });
+
+  it('does not treat a later steer before a stale window record as evicted or processed', async () => {
+    const { store } = fixture();
+    const a = imageMessage('a');
+    const b = imageMessage('b');
+    const consideredThrough = { sourceId: 'tool:a', imageIndex: 0 };
+    const records = [
+      record('model.context', a, 1),
+      record('resource.window', { version: 1, consideredThrough }, 2),
+      record('model.context', b, 3),
+      record(
+        'resource.window',
+        {
+          version: 1,
+          consideredThrough,
+          evictedThrough: { sourceId: 'tool:missing', imageIndex: 0 }
+        },
+        4
+      )
+    ];
+    const projection = new ResourceInputProjection(false, store, 'session', [a, b], { records });
+    expect(projection.hasPendingImages([a])).toBe(false);
+    expect(projection.hasPendingImages([b])).toBe(true);
+    expect(
+      (await projection.prepare(request([a, b]))).messages.map((m) => m.images?.length)
+    ).toEqual([1, 1]);
+  });
+
+  it('retains the last proven eviction when later visual boundaries are missing', async () => {
+    const { store } = fixture();
+    const a = imageMessage('a');
+    const b = imageMessage('b');
+    const missing = { sourceId: 'tool:missing', imageIndex: 0 };
+    const records = [
+      record('model.context', a, 1),
+      record(
+        'resource.window',
+        {
+          version: 1,
+          consideredThrough: { sourceId: 'tool:a', imageIndex: 0 },
+          evictedThrough: { sourceId: 'tool:a', imageIndex: 0 }
+        },
+        2
+      ),
+      record('model.context', b, 3),
+      record(
+        'resource.window',
+        { version: 1, consideredThrough: missing, evictedThrough: missing },
+        4
+      )
+    ];
+    const projection = new ResourceInputProjection(false, store, 'session', [a, b], { records });
+    const prepared = await projection.prepare(request([a, b]));
+    expect(prepared.messages.map((message) => message.images?.length)).toEqual([0, 1]);
+    expect(projection.hasPendingImages([b])).toBe(true);
+    await projection.complete(prepared);
+    expect(projection.checkpoint()).toEqual({
+      version: 1,
+      consideredThrough: { sourceId: 'tool:b', imageIndex: 0 },
+      evictedThrough: { sourceId: 'tool:a', imageIndex: 0 }
+    });
+  });
+
+  it.each([
+    { sourceId: 'tool:missing', imageIndex: 0 },
+    { sourceId: 'tool:a', imageIndex: 5 }
+  ])(
+    'treats an unmatched considered boundary %j as fresh without resurrecting a known eviction',
+    async (consideredThrough) => {
+      const { store } = fixture();
+      const a = imageMessage('a');
+      const b = imageMessage('b');
+      const records = [
+        record('model.context', a, 1),
+        record('model.context', b, 2),
+        record(
+          'resource.window',
+          {
+            version: 1,
+            consideredThrough,
+            evictedThrough: { sourceId: 'tool:a', imageIndex: 0 }
+          },
+          3
+        )
+      ];
+      const projection = new ResourceInputProjection(false, store, 'session', [a, b], { records });
+      expect(
+        (await projection.prepare(request([a, b]))).messages.map((m) => m.images?.length)
+      ).toEqual([0, 1]);
+      expect(projection.hasPendingImages([b])).toBe(true);
+    }
+  );
+
+  it('clears stale Compact boundaries when no preceding images remain', async () => {
+    const { store } = fixture();
+    const a = imageMessage('a');
+    const b = imageMessage('b');
+    const missing = { sourceId: 'tool:removed', imageIndex: 2 };
+    const records = [
+      record('model.context', a, 1),
+      record(
+        'resource.window',
+        {
+          version: 1,
+          consideredThrough: { sourceId: 'tool:a', imageIndex: 0 },
+          evictedThrough: { sourceId: 'tool:a', imageIndex: 0 }
+        },
+        2
+      ),
+      record(
+        'compact.completed',
+        {
+          inlineMediaState: { version: 1, consideredThrough: missing, evictedThrough: missing },
+          retainedModelContext: []
+        },
+        3
+      ),
+      record('model.context', b, 4)
+    ];
+    const projection = new ResourceInputProjection(false, store, 'session', [b], { records });
+    expect(projection.checkpoint()).toEqual({ version: 1 });
+    expect(projection.hasPendingImages([b])).toBe(true);
+    expect((await projection.prepare(request([b]))).messages[0]?.images).toHaveLength(1);
+  });
+
+  it('still rejects malformed authoritative inline GC checkpoints', () => {
+    expect(() =>
+      inlineMediaHistory([
+        record('context.gc.completed', { inlineMedia: { state: { version: 9 } } }, 1)
+      ])
+    ).toThrow(expect.objectContaining({ code: 'MAR_AGENT_SESSION_CORRUPT' }));
+  });
+
   it('keeps Hook omission request-local and protects replacement images as fresh', async () => {
     const { projection, states } = fixture();
     const a = imageMessage('a'),

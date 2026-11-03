@@ -241,6 +241,7 @@ export const conversationUiZhCN = {
       modelPerformanceDetails: '查看当前会话模型性能',
       modelResponseLatency: 'Latency：{value}',
       providerOutputTps: '平均输出 TPS：{value} token/s',
+      compactOutputTps: 'TPS：{value} token/s',
       outputTokens: '输出 Token：{value}',
       copyCode: '复制代码',
       copiedMessage: '消息已复制',

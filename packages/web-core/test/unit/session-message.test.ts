@@ -19,6 +19,7 @@ import { createRunnerInteractionService } from '../../src/service/runner-interac
 import { createWorkspaceSessionService } from '../../src/service/workspace-session-service.js';
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
+import { temporarySessionTitle } from '../../src/util/session-presentation.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 
@@ -407,7 +408,8 @@ function pendingRequestHarness(
     notice,
     request,
     stageDraftCommand,
-    createDraftSession: async () => {
+    createDraftSession: async (title: string) => {
+      draftSession.runnerTitle = title;
       draftOpen.value = false;
       selectedSessionId.value = draftSession.id;
       sessions.value = [draftSession];
@@ -416,7 +418,7 @@ function pendingRequestHarness(
     executeCommand,
     replaceSession,
     sessionPathId: (value: string) => value,
-    temporaryTitle: () => 'Temporary session',
+    temporaryTitle: temporarySessionTitle,
     sessionTitle: () => 'Session',
     appendUserMessage,
     removeUserMessage,
@@ -948,6 +950,45 @@ describe('Workbench Message Submission Status', () => {
     harness.resolveRequest(acceptedResult);
     await sending;
   });
+
+  it.each([
+    { prompt: '', name: 'notes.pdf', title: undefined },
+    { prompt: '  \n  ', name: 'pasted-text.txt', title: undefined },
+    { prompt: '  Explain\nthis attachment  ', name: 'notes.txt', title: 'Explain this attachment' }
+  ])(
+    'starts a new session with $name and prompt "$prompt" without an empty title',
+    async (input) => {
+      const harness = pendingRequestHarness({ draft: true });
+      harness.inputValue.value = input.prompt;
+      harness.attachments.value = [
+        {
+          id: '00000000-0000-4000-8000-000000000001',
+          file: { name: input.name, type: 'text/plain', size: 3 } as File,
+          previewUrl: null,
+          nodeId: 'node-1',
+          workspaceId: workspace.id,
+          receivedBytes: 3,
+          status: 'COMPLETED'
+        }
+      ];
+      const sending = harness.service.send();
+      try {
+        await vi.waitFor(() => expect(harness.request).toHaveBeenCalledTimes(1));
+        const [url, init] = harness.request.mock.calls[0]!;
+        const body = JSON.parse(String(init?.body));
+        expect(url).toBe('/api/agent-sessions/start');
+        expect(body.content).toBe(input.prompt.trim());
+        expect(body.attachmentIds).toEqual(['00000000-0000-4000-8000-000000000001']);
+        if (input.title === undefined) expect(body).not.toHaveProperty('title');
+        else expect(body.title).toBe(input.title);
+      } finally {
+        harness.resolveRequest(acceptedResult);
+        await sending;
+      }
+      expect(harness.attachments.value).toEqual([]);
+      expect(harness.notice).not.toHaveBeenCalled();
+    }
+  );
 
   it('blocks sending while an attachment is still uploading with a warning', async () => {
     const harness = pendingRequestHarness({ attachmentsPending: true });

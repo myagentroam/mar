@@ -234,6 +234,84 @@ function expectSingleInlineGcCheckpoint(
 }
 
 describe('SDK inline media lifecycle', () => {
+  it('continues a reopened Session with missing visual boundaries and persists repaired cursors', async () => {
+    const { home, create } = await fixture();
+    const oldImage = await imagePng('missing-boundary-old');
+    const freshImage = await imagePng('missing-boundary-fresh');
+    const reply: ScriptedReply = {
+      events: [{ type: 'text.completed', itemId: 'answer', text: 'done' }]
+    };
+    let adapter = new ScriptedAdapter(modelBase, [reply]);
+    let agent = await create(adapter);
+    try {
+      const session = await agent.createSession({
+        workspace: home,
+        title: 'Missing media boundary'
+      });
+      expect(
+        await session
+          .run({ prompt: 'keep this text', images: [imageInput('old.png', oldImage)] })
+          .result()
+      ).toMatchObject({ status: 'completed' });
+      await agent.dispose();
+
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const missing = { sourceId: 'input:missing-input', imageIndex: 0 };
+        await store.append(session.id, {
+          type: 'resource.window',
+          payload: { version: 1, consideredThrough: missing, evictedThrough: missing }
+        });
+      } finally {
+        await store.close();
+      }
+
+      adapter = new ScriptedAdapter(modelBase, [reply]);
+      agent = await create(adapter);
+      const reopened = await agent.openSession(session.id);
+      expect(
+        await reopened
+          .run({ prompt: 'continue', images: [imageInput('fresh.png', freshImage)] })
+          .result()
+      ).toMatchObject({ status: 'completed' });
+      expect(adapter.requests[0]!.imageHashes).toEqual([
+        imageHash(oldImage),
+        imageHash(freshImage)
+      ]);
+      expect(adapter.requests[0]!.messages).toContainEqual(
+        expect.objectContaining({ content: expect.stringContaining('keep this text') })
+      );
+      await agent.dispose();
+
+      const records = await readRecords(home, session.id);
+      const oldInput = records.find((record) => record.type === 'turn.user')!;
+      const freshInput = records.findLast((record) => record.type === 'turn.user')!;
+      expect(records.findLast((record) => record.type === 'resource.window')?.payload).toEqual({
+        version: 1,
+        consideredThrough: { sourceId: `input:${freshInput.recordId}`, imageIndex: 0 }
+      });
+      adapter = new ScriptedAdapter(modelBase, [reply]);
+      agent = await create(adapter);
+      expect(
+        await (await agent.openSession(session.id)).run({ prompt: 'continue again' }).result()
+      ).toMatchObject({ status: 'completed' });
+      expect(adapter.requests[0]!.imageHashes).toEqual([imageHash(freshImage)]);
+      expect(
+        (await readRecords(home, session.id)).findLast(
+          (record) => record.type === 'context.gc.completed'
+        )?.payload
+      ).toMatchObject({
+        inlineMedia: {
+          state: {
+            evictedThrough: { sourceId: `input:${oldInput.recordId}`, imageIndex: 0 }
+          }
+        }
+      });
+    } finally {
+      await agent.dispose();
+    }
+  });
+
   it.each([false, true])(
     'views Session resource IDs through the SDK dispatcher (Code Mode=%s)',
     async (codeMode) => {

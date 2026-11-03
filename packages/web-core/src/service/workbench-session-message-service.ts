@@ -351,7 +351,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
                   modelId: session.modelId,
                   effort: session.effort,
                   access: session.access,
-                  title: session.runnerTitle,
+                  ...(session.runnerTitle ? { title: session.runnerTitle } : {}),
                   deferredCommands: options.deferredCommands.value.map((deferred) => ({
                     commandId: deferred.command.id,
                     input: deferred.input

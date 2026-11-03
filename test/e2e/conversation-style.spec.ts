@@ -9,6 +9,34 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [width, columnWidth] of [
+  [390, undefined],
+  [1280, undefined],
+  [1280, 300]
+] as const)
+  test(`Live metrics update the active process heading at ${width}px, column ${columnWidth ?? 'auto'}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1&live-performance=1`);
+    const heading = page.locator('[data-process-id="preview-process"] .process-heading');
+    if (columnWidth !== undefined)
+      await page.locator('.conversation-timeline').evaluate((element, size) => {
+        (element as HTMLElement).style.width = `${size}px`;
+      }, columnWidth);
+    await expect(heading).not.toContainText('420 ms');
+    await page.getByTestId('update-performance').click();
+    await expect(heading).toContainText('420 ms');
+    await expect(heading).toContainText('42.0 token/s');
+    const metrics = heading.locator('.process-performance');
+    expect(await metrics.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true
+    );
+    const box = (await metrics.boundingBox())!;
+    const container = (await page.locator('.conversation-timeline').boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(container.x + container.width);
+  });
+
 for (const locale of ['en-US', 'zh-CN']) {
   for (const width of [1280, 390]) {
     test(`Session branch actions distinguish Rewind from Rollback in ${locale} at ${width}px`, async ({

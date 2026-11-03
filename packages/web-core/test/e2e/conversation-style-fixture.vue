@@ -33,6 +33,8 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const performanceFixture = new URL(location.href).searchParams.has('live-performance');
+const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?: number }>();
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
@@ -128,6 +130,7 @@ const turns = ref<ConversationTurn[]>([
             id: 'thinking',
             kind: 'reasoning',
             status: 'COMPLETED',
+            ...(performanceFixture ? { startedAt: Date.now() - 258_000 } : {}),
             processGroup: { id: 'preview-process', isStart: true },
             payload: {
               representation: 'visible_thinking',
@@ -398,6 +401,13 @@ function finishPreview() {
 
 <template>
   <main class="conversation-style-fixture">
+    <button
+      v-if="performanceFixture"
+      data-testid="update-performance"
+      @click="livePerformance = { runId: 'run', latencyMs: 420, tokensPerSecond: 42 }"
+    >
+      Update performance
+    </button>
     <section v-if="!historyActionsFixture" aria-label="Notifications fixture">
       <WorkbenchActivityCenter :service="notifications" :uploads="[]" :status-label="String" />
       <ThemePreview name="Fixture preview" :colors="previewColors" />
@@ -463,6 +473,7 @@ function finishPreview() {
     <ConversationTimeline
       v-if="timelineVisible"
       :turns="turns"
+      :performance="livePerformance"
       :runs="previewFixture || loadingFixture ? [{ id: 'run', status: previewRunStatus }] : []"
       :synchronized="synchronized"
       :loading="false"

@@ -9,11 +9,14 @@ import {
   type ConversationProcessBlock
 } from '../../util/conversation-work-process.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
+import type { RunPerformance } from '@myagentroam/protocol';
+import { sessionPerformanceDetails } from '../../util/session-performance-presentation.js';
 
 const props = defineProps<{
   block: ConversationProcessBlock;
   synchronized: boolean;
   now: number | undefined;
+  performance?: RunPerformance | undefined;
 }>();
 const root = ref<HTMLElement>();
 const manualOpen = ref<boolean>();
@@ -24,6 +27,11 @@ defineExpose({ isOpen: () => open.value });
 const statusLabel = computed(() => conversationProcessLabel(props.block, props.synchronized));
 const durationMs = computed(() =>
   conversationProcessDuration(props.block, props.now, props.synchronized)
+);
+const performanceDetails = computed(() =>
+  props.block.active && props.synchronized && props.block.runId === props.performance?.runId
+    ? sessionPerformanceDetails(props.performance, true)
+    : ''
 );
 function updateDefault() {
   if (
@@ -68,6 +76,7 @@ watch(open, async () => {
       v-if="block.groupId"
       type="button"
       class="process-heading"
+      :class="{ 'has-performance': performanceDetails }"
       :aria-expanded="open"
       @click="manualOpen = !open"
     >
@@ -87,6 +96,7 @@ watch(open, async () => {
           })
         }}</span
       >
+      <span v-if="performanceDetails" class="process-performance">· {{ performanceDetails }}</span>
       <span v-if="block.partial" class="process-meta">{{
         translate('conversationProcess.partial')
       }}</span>
@@ -115,6 +125,7 @@ watch(open, async () => {
   flex-wrap: nowrap;
   gap: var(--conversation-record-gap, 8px);
   width: 100%;
+  min-width: 0;
   padding: 4px var(--conversation-item-inset, 12px);
   border: 0;
   background: transparent;
@@ -156,6 +167,16 @@ watch(open, async () => {
   color: var(--mar-conversation-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.process-performance {
+  flex: 0 0 auto;
+  max-width: 100%;
+  color: var(--mar-conversation-muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.process-heading.has-performance {
+  flex-wrap: wrap;
 }
 .process-summary {
   margin: 0;
