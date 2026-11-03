@@ -324,7 +324,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             page.workspaceTarget !== undefined &&
             page.selectedWorkspace === undefined
           "
-          class="welcome-panel compact-welcome workspace-selection-panel"
+          class="welcome-panel compact-welcome workspace-selection-panel workspace-recovery-panel"
         >
           <div
             v-if="page.workspaceSelectionLoading"
@@ -334,14 +334,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           >
             <BusyIndicator />
           </div>
-          <el-empty
-            v-else
-            :description="translate('generated.workbenchSurface.workspaceMetadataUnavailable')"
-          >
-            <el-button @click="page.retryWorkspaceSelection">{{
-              translate('generated.workbenchSurface.retryWorkspace')
-            }}</el-button>
-          </el-empty>
+          <div v-else class="workspace-recovery-state">
+            <p role="status">
+              {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
+            </p>
+            <el-button link size="small" @click="page.retryWorkspaceSelection">
+              {{ translate('common.loadFailedRetry') }}
+            </el-button>
+          </div>
         </section>
         <div
           v-else-if="page.selectedWorkspace !== undefined"
@@ -920,6 +920,22 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 .workspace-selection-panel > p {
   max-width: 720px;
   margin-bottom: 0.25rem;
+}
+
+.workspace-recovery-panel {
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.workspace-recovery-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+}
+
+.workspace-recovery-state > p {
+  margin: 0;
 }
 
 .workspace-selection-hint {

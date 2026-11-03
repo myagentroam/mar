@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { shallowReactive, ref } from 'vue';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
-import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
+import {
+  flushComponent,
+  renderComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 
 vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
@@ -155,6 +160,50 @@ function pageFixture() {
 }
 
 describe('Workbench surface composition behavior', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'renders Workspace recovery without an empty illustration and retries in %s',
+    async (locale) => {
+      const preference = localePreferenceService();
+      const previousLocale = preference.locale.value;
+      preference.setLocale(locale);
+      const retry = vi.fn(() => {
+        page.workspaceSelectionLoading = true;
+      });
+      const page = shallowReactive({
+        ...pageFixture(),
+        workspaceHost: { connected: true },
+        workspaceSelectionLoading: false,
+        retryWorkspaceSelection: retry
+      });
+      const view = renderComponent(Surface, { page });
+      try {
+        expect(view.findAll('ElEmpty')).toHaveLength(0);
+        expect(textContent(view.root)).toContain(
+          translate('generated.workbenchSurface.workspaceMetadataUnavailable')
+        );
+        const button = view
+          .findAll('ElButton')
+          .find((node) => textContent(node).includes(translate('common.loadFailedRetry')))!;
+        await trigger(button, 'onClick');
+        expect(retry).toHaveBeenCalledTimes(1);
+        expect(view.findAll('ElButton')).toHaveLength(0);
+        expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(true);
+        expect(textContent(view.root)).not.toContain(
+          translate('generated.workbenchSurface.workspaceMetadataUnavailable')
+        );
+        page.workspaceSelectionLoading = false;
+        await flushComponent();
+        expect(textContent(view.root)).toContain(translate('common.loadFailedRetry'));
+        page.workspaceHost = { connected: false };
+        await flushComponent();
+        expect(textContent(view.root)).not.toContain(translate('common.loadFailedRetry'));
+      } finally {
+        view.unmount();
+        preference.setLocale(previousLocale);
+      }
+    }
+  );
+
   it.each(['zh-CN', 'en-US'] as const)(
     'never labels a temporarily disabled Codex Composer as read-only in %s',
     async (locale) => {

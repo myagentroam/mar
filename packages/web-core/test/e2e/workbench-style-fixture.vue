@@ -15,6 +15,7 @@ const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
 const hostedGestureFixture = new URL(location.href).searchParams.has('hosted-gesture');
 const submittedIntents = ref<string[]>([]);
 const offlineFixture = new URL(location.href).searchParams.has('offline');
+const workspaceRecoveryFixture = new URL(location.href).searchParams.has('workspace-recovery');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const managedSessionOnly = new URL(location.href).searchParams.has('managed-session-only');
 const mobile = window.matchMedia('(max-width: 767px)').matches;
@@ -152,6 +153,10 @@ const surfacePage = shallowReactive({
   workspaceTarget: { nodeId: 'node', workspaceId: 'offline' },
   workspaceHost: { connected: false },
   selectedWorkspace: undefined,
+  workspaceSelectionLoading: false,
+  retryWorkspaceSelection() {
+    surfacePage.workspaceSelectionLoading = true;
+  },
   workspaceTabs: [],
   nodes: [],
   workspaceTabNodeLabel: () => 'Node',
@@ -165,6 +170,7 @@ const surfacePage = shallowReactive({
   },
   mobileWorkspaceSurface: 'conversation'
 });
+if (workspaceRecoveryFixture) surfacePage.workspaceHost = { connected: true };
 if (composerFixture) {
   Object.assign(surfacePage, {
     workspaceHost: { connected: true },
@@ -231,7 +237,10 @@ if (composerFixture) {
 
 <template>
   <HostedComposerGestureFixture v-if="hostedGestureFixture" />
-  <Surface v-else-if="composerFixture || offlineFixture" :page="surfacePage as never" />
+  <Surface
+    v-else-if="composerFixture || offlineFixture || workspaceRecoveryFixture"
+    :page="surfacePage as never"
+  />
   <main v-else>
     <section aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
