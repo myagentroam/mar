@@ -502,7 +502,17 @@ describe('Node Agent Network owner integration', () => {
       operation: 'START',
       input: {
         title: 'Text task',
-        content: 'secret-task'
+        content: 'Review the task details',
+        goal: { objective: 'Finish the task' }
+      }
+    },
+    {
+      action: 'start' as const,
+      nested: true,
+      input: {
+        title: 'Nested text task',
+        content: 'Review the nested task details',
+        goal: { objective: 'Finish the nested task' }
       }
     },
     {
@@ -523,7 +533,7 @@ describe('Node Agent Network owner integration', () => {
       input: { agentId: 'child', delivery: 'STEER', content: 'Review now' }
     }
   ])(
-    'projects real SDK $action events (nested=$nested) without leaking private input or results',
+    'preserves SDK $action input (nested=$nested) while keeping private results out of public history',
     async ({ action, input, nested }) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-public-event-'));
       const configuration: AgentModelConfiguration = {
@@ -597,6 +607,13 @@ describe('Node Agent Network owner integration', () => {
         );
         expect(events).toContainEqual(
           expect.objectContaining({
+            type: 'tool.started',
+            toolName: `agent_${action}`,
+            input
+          })
+        );
+        expect(events).toContainEqual(
+          expect.objectContaining({
             type: 'tool.completed',
             toolName: `agent_${action}`,
             data: {
@@ -618,6 +635,7 @@ describe('Node Agent Network owner integration', () => {
           expect.objectContaining({
             status: 'COMPLETED',
             payload: expect.objectContaining({
+              inputSummary: JSON.stringify(input),
               agentOperation: expect.objectContaining({
                 action: action.toUpperCase(),
                 targets: [expect.objectContaining({ agentId: 'child', sessionId: 'child' })]
@@ -655,7 +673,28 @@ describe('Node Agent Network owner integration', () => {
         expect(parent.capture(session.id)?.result).toMatchObject({ summary: 'done' });
         parent.close();
         const history = await agent.sessionHistory(session.id);
-        expect(JSON.stringify({ events, items, history })).not.toMatch(/secret-task|secret-result/);
+        const projected = projectMarAgentHistory(
+          {
+            id: session.id,
+            modelId: null,
+            effort: null,
+            access: null
+          } as unknown as NodeAgentSession,
+          history.entries
+        );
+        expect(projected.flatMap((turn) => turn.items)).toContainEqual(
+          expect.objectContaining({
+            kind: 'tool_call',
+            status: 'COMPLETED',
+            payload: expect.objectContaining({
+              toolName: `agent_${action}`,
+              inputSummary: JSON.stringify(input)
+            })
+          })
+        );
+        expect(JSON.stringify({ events, items, history, projected })).not.toMatch(
+          /secret-result|fixture-secret/
+        );
       } finally {
         await agent.dispose();
         await rm(directory, { recursive: true, force: true });
@@ -663,7 +702,7 @@ describe('Node Agent Network owner integration', () => {
     }
   );
 
-  it('keeps invalid image input and unknown fields out of failed events and public history', async () => {
+  it('retains rejected tool input without invoking Node or exposing private configuration', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-invalid-event-'));
     const configuration: AgentModelConfiguration = {
       id: 'fixture',
@@ -683,6 +722,10 @@ describe('Node Agent Network owner integration', () => {
       responsesPreviousResponseId: false,
       enabled: true
     };
+    const input = {
+      attachments: [{ name: 42, mime: 'image/png', dataBase64: 'invalid-image-data' }],
+      extra: 'unknown-input-field'
+    };
     let requests = 0;
     const invoke = vi.fn();
     const agent = await createAgentWithAdapter(
@@ -700,10 +743,7 @@ describe('Node Agent Network owner integration', () => {
               type: 'client_tool.call',
               callId: 'call',
               name: 'agent_start',
-              arguments: {
-                attachments: [{ name: 42, mime: 'image/png', dataBase64: 'secret-image' }],
-                secret: 'secret-extra'
-              }
+              arguments: input
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else {
@@ -726,11 +766,25 @@ describe('Node Agent Network owner integration', () => {
       expect(await run.result()).toMatchObject({ status: 'completed' });
       expect(invoke).not.toHaveBeenCalled();
       expect(events).toContainEqual(
-        expect.objectContaining({ type: 'tool.failed', toolName: 'agent_start' })
+        expect.objectContaining({
+          type: 'tool.failed',
+          toolName: 'agent_start',
+          code: 'MAR_AGENT_TOOL_INPUT_INVALID'
+        })
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'tool.started', toolName: 'agent_start', input })
+      );
+      expect(items).toContainEqual(
+        expect.objectContaining({
+          kind: 'tool_call',
+          status: 'FAILED',
+          payload: expect.objectContaining({ inputSummary: JSON.stringify(input) })
+        })
       );
       expect(
         JSON.stringify({ events, items, history: await agent.sessionHistory(session.id) })
-      ).not.toMatch(/secret-image|secret-extra/);
+      ).not.toContain('fixture-secret');
     } finally {
       await agent.dispose();
       await rm(directory, { recursive: true, force: true });
