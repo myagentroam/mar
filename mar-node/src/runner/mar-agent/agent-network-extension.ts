@@ -228,21 +228,6 @@ export function agentNetworkExtension(
           description: tool.description,
           allowedCallers: ['direct', 'programmatic'],
           parallelSafety: tool.parallelSafety,
-          eventInputFields: [
-            'agentId',
-            'agentIds',
-            'title',
-            'executionId',
-            'runner',
-            'modelId',
-            'effort',
-            'waitFor',
-            'waitMs',
-            'scope',
-            'query',
-            'limit',
-            'cursor'
-          ],
           inputSchema: {
             type: 'object',
             properties: tool.properties,

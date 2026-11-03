@@ -310,6 +310,17 @@ it.each([false, true])('defaults native messages to steer with Code Mode %s', as
     );
     expect(input).not.toHaveProperty('deliveryIntent');
     expect(test.failures).toEqual([]);
+    const normalizer = new MarAgentConversationNormalizer();
+    expect(test.publicEvents.flatMap((event) => normalizer.normalize(event))).toContainEqual(
+      expect.objectContaining({
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        payload: expect.objectContaining({
+          toolName: 'agent_send',
+          inputSummary: JSON.stringify(input)
+        })
+      })
+    );
   }
 });
 
@@ -428,6 +439,9 @@ it.each([false, true])(
         expect.any(Function)
       );
       expect(test.failures).toEqual([]);
+      expect(test.publicEvents).toContainEqual(
+        expect.objectContaining({ type: 'tool.started', toolName: 'agent_send', input })
+      );
     }
   }
 );

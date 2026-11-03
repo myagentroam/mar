@@ -1012,6 +1012,9 @@ describe('Shared session selection', () => {
     expect(openRun).toHaveBeenCalledWith('run-stale');
     expect(sessions.value[0]?.activity).toBe('MANAGED_ACTIVE');
     expect(backfill).not.toHaveBeenCalled();
+    expect(requests).toContain(
+      '/api/agent-sessions/session-1/turns?nodeId=node-1&limit=6&unit=SEGMENT'
+    );
     expect(requests).not.toContain('/api/agent-sessions/session-1/runs?nodeId=node-1');
     expect(requests).not.toContain('/api/agent-sessions/session-1/context?nodeId=node-1');
     expect(order).toEqual(['merge', 'render', 'scroll']);

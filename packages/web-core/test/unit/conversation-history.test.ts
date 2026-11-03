@@ -278,8 +278,8 @@ describe('Conversation History Window and Render State', () => {
     expect(latestConversationItems(turns as never, initialCount)[0]?.items[0]?.id).toBe('latest');
   });
 
-  it('uses three Segments per initial screen and history page without changing retention', () => {
-    expect(CONVERSATION_INITIAL_SEGMENT_LIMIT).toBe(3);
+  it('uses six initial Segments and three per history page without changing retention', () => {
+    expect(CONVERSATION_INITIAL_SEGMENT_LIMIT).toBe(6);
     expect(CONVERSATION_SEGMENT_PAGE_SIZE).toBe(3);
     expect(CONVERSATION_RECENT_SEGMENT_LIMIT).toBe(15);
     expect(CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT).toBe(30);

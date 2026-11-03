@@ -56,11 +56,11 @@ function turn(id: string, kinds: readonly string[]) {
 
 describe('Node Conversation Segment', () => {
   it.each([false, true])(
-    'sends three complete Segments on initial Watch and revisit, with three more per cursor: running=%s',
+    'sends six complete Segments on initial Watch and revisit, with three more per cursor: running=%s',
     async (running) => {
       const session = { id: 'session-1', workspaceId: 'workspace-1' } as never;
       const page = {
-        turns: Array.from({ length: 7 }, (_, index) =>
+        turns: Array.from({ length: 10 }, (_, index) =>
           turn(`turn-${index}`, ['user_message', 'assistant_message'])
         ),
         nextCursor: null,
@@ -106,11 +106,14 @@ describe('Node Conversation Segment', () => {
           expect(snapshots[index]?.segments.map((entry) => entry.turnId)).toEqual([
             'turn-4',
             'turn-5',
-            'turn-6'
+            'turn-6',
+            'turn-7',
+            'turn-8',
+            'turn-9'
           ]);
           expect(snapshots[index]?.segments.every((entry) => entry.items.length === 2)).toBe(true);
         }
-        expect(readPage.mock.calls.map((call) => call[1])).toEqual(running ? [30, 30] : [3, 3]);
+        expect(readPage.mock.calls.map((call) => call[1])).toEqual(running ? [30, 30] : [6, 6]);
         const older = await segments.read(session, { cursor: snapshots[0]!.nextCursor!, limit: 3 });
         expect(older.segments.map((entry) => entry.turnId)).toEqual(['turn-1', 'turn-2', 'turn-3']);
         const oldest = await segments.read(session, { cursor: older.nextCursor!, limit: 3 });
