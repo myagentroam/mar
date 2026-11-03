@@ -263,7 +263,7 @@ export function agentNetworkExtension(
                         ? { session: rows[0] }
                         : (rows[0] ?? {});
                   await call.publishEventData!(
-                    agentOperationEvent(tool.action, {}, result).eventData
+                    agentOperationEvent(tool.action, operationInput, result).eventData
                   );
                 }
               : undefined;

@@ -2178,6 +2178,11 @@ const reasoningItemSchema = conversationItemBaseSchema.extend({
 });
 export const subagentOperationSchema = z.enum(['START', 'STATUS', 'CANCEL', 'MESSAGE', 'RESUME']);
 export type SubagentOperation = z.infer<typeof subagentOperationSchema>;
+/** Public message supplied to this call, not a message from the target agent. */
+export const subagentCallDetailSchema = z.object({
+  message: z.string().min(1).max(2000),
+  messageTruncated: z.literal(true).optional()
+});
 /** Agent operations describe calls, not the lifecycle of their target Sessions. */
 export const agentOperationPresentationSchema = z.object({
   action: z.enum(['START', 'SEND', 'WAIT', 'STOP', 'LIST', 'VIEW']),
@@ -2186,12 +2191,25 @@ export const agentOperationPresentationSchema = z.object({
       z.object({
         agentId: z.string().min(1).max(128),
         sessionId: z.string().min(1).max(128).optional(),
-        title: z.string().min(1).max(500).optional()
+        title: z.string().min(1).max(500).optional(),
+        status: z.string().min(1).max(128).optional(),
+        message: z.string().min(1).max(800).optional(),
+        messageTruncated: z.literal(true).optional()
       })
     )
     .max(100),
   targetsTruncated: z.literal(true).optional(),
-  scope: z.string().min(1).max(32).optional()
+  scope: z.string().min(1).max(32).optional(),
+  detail: z
+    .object({
+      title: z.string().min(1).max(500).optional(),
+      message: z.string().min(1).max(2000).optional(),
+      messageTruncated: z.literal(true).optional(),
+      delivery: z.enum(['QUEUE', 'STEER']).optional(),
+      failed: z.literal(true).optional(),
+      error: z.string().max(500).optional()
+    })
+    .optional()
 });
 export type AgentOperationPresentation = z.infer<typeof agentOperationPresentationSchema>;
 export const subagentLatestMessageSchema = z.object({
@@ -2477,6 +2495,7 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
     toolPresentation: toolCallPresentationSchema.optional(),
     agentOperation: agentOperationPresentationSchema.optional(),
     subagentOperation: subagentOperationSchema.optional(),
+    subagentCallDetail: subagentCallDetailSchema.optional(),
     subagentWait: z.boolean().optional(),
     subagentId: z.string().min(1).max(128).nullable().optional(),
     subagentSessionId: z.string().min(1).max(128).optional(),

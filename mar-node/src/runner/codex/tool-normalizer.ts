@@ -1,4 +1,4 @@
-import { compactRunnerText, publicToolOutput } from '../normalization.js';
+import { compactRunnerText, publicToolOutput, subagentCallDetail } from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeCodexApproval(method: string) {
@@ -150,6 +150,9 @@ function codexSubagentProjection(
       : '';
   return {
     subagentOperation: operation,
+    ...(operation === 'START' || operation === 'MESSAGE'
+      ? subagentCallDetail(record(input)?.message)
+      : {}),
     ...(toolName === 'wait_agent' ? { subagentWait: true } : {}),
     subagentId:
       Array.isArray(inputData?.targets) && inputData.targets.length > 1

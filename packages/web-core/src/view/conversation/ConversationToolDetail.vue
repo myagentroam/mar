@@ -6,6 +6,8 @@ import { translate } from '../../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
+import { agentOperationDetail } from '../../util/agent-operation-presentation.js';
+import { runStatusLabel } from '../../util/session-presentation.js';
 import {
   detailOnlyToolText,
   readFileDetail,
@@ -17,6 +19,8 @@ const props = defineProps<{
   copyOnly?: boolean;
   readPath?: string | undefined;
 }>();
+const agentTargetStatus = (status: string) =>
+  status === 'IDLE' ? translate('generated.sessionPresentation.ready') : runStatusLabel(status);
 const emit = defineEmits<{ copy: [text: string, onSuccess: () => void] }>();
 const copyState = ref(false);
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -31,6 +35,9 @@ const execution = computed(() => {
 });
 const genericOutput = computed(() => readToolOutput(payload.value));
 const detailOnlyText = computed(() => detailOnlyToolText(payload.value));
+const agentDetail = computed(() =>
+  props.item.permissionStop ? undefined : agentOperationDetail(payload.value, props.item.status)
+);
 const outputs = computed(() => {
   const value = execution.value;
   if (!value) return undefined;
@@ -139,7 +146,8 @@ onBeforeUnmount(() => {
     class="tool-detail"
     :class="{
       'conversation-detail-body':
-        !copyOnly && (detailOnlyText !== undefined || detailText || $slots.default)
+        !copyOnly &&
+        (agentDetail !== undefined || detailOnlyText !== undefined || detailText || $slots.default)
     }"
     :aria-label="translate('toolPresentation.detail.output')"
   >
@@ -152,7 +160,58 @@ onBeforeUnmount(() => {
     >
       <MarIcon :name="copyState ? 'check' : 'copy'" />
     </button>
-    <pre v-if="!copyOnly && detailOnlyText !== undefined" class="conversation-detail-text">{{
+    <div v-if="!copyOnly && agentDetail" class="agent-detail">
+      <template v-if="agentDetail.action === 'LIST'">
+        <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-row">
+          <span>{{ target.title }}</span
+          ><span v-if="target.status" class="agent-detail-meta">{{
+            agentTargetStatus(target.status)
+          }}</span>
+        </div>
+        <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
+          {{ translate('presentation.noAgentSessions') }}
+        </p>
+      </template>
+      <template v-else-if="agentDetail.action === 'WAIT' || agentDetail.action === 'VIEW'">
+        <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-entry">
+          <div class="agent-detail-row agent-detail-meta">
+            <span>{{ target.title }}</span
+            ><span v-if="target.status">{{ agentTargetStatus(target.status) }}</span>
+          </div>
+          <p v-if="target.message" class="agent-detail-text">{{ target.message }}</p>
+          <p v-if="target.messageTruncated" class="agent-detail-meta">
+            {{ translate('toolPresentation.detail.truncated') }}
+          </p>
+        </div>
+      </template>
+      <template v-else>
+        <div class="agent-detail-row agent-detail-meta">
+          <span>{{ agentDetail.targets[0]?.title ?? agentDetail.title }}</span
+          ><span v-if="agentDetail.delivery">{{ agentDetail.delivery.toLowerCase() }}</span>
+        </div>
+        <p v-if="agentDetail.outputTruncation === 'HEAD'" class="agent-detail-meta">
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+        <p
+          v-if="agentDetail.action === 'STOP' && agentDetail.output !== undefined"
+          class="agent-detail-text"
+        >
+          {{ agentDetail.output }}
+        </p>
+        <p v-else-if="agentDetail.message" class="agent-detail-text">{{ agentDetail.message }}</p>
+        <p v-if="agentDetail.error" class="agent-detail-text">{{ agentDetail.error }}</p>
+        <p
+          v-if="agentDetail.messageTruncated || agentDetail.outputTruncation === 'SOURCE'"
+          class="agent-detail-meta"
+        >
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+      </template>
+      <p v-if="agentDetail.targetsTruncated" class="agent-detail-meta">
+        {{ translate('toolPresentation.detail.truncated') }}
+      </p>
+    </div>
+    <pre v-else-if="!copyOnly && detailOnlyText !== undefined" class="conversation-detail-text">{{
       detailOnlyText
     }}</pre>
     <slot v-else-if="!copyOnly">
@@ -187,5 +246,35 @@ onBeforeUnmount(() => {
   justify-content: center;
   border-radius: 4px;
   padding: 0;
+}
+.agent-detail,
+.agent-detail p {
+  margin: 0;
+  font-weight: 400;
+}
+.agent-detail-entry + .agent-detail-entry {
+  margin-top: 0.5rem;
+}
+.agent-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.agent-detail-row > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agent-detail-row > :nth-child(2) {
+  flex-shrink: 0;
+}
+.agent-detail-meta {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
+}
+.agent-detail-text {
+  color: var(--mar-conversation-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>

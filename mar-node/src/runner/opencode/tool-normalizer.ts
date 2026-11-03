@@ -1,4 +1,9 @@
-import { compactRunnerText, compactRunnerValue, publicToolOutput } from '../normalization.js';
+import {
+  compactRunnerText,
+  compactRunnerValue,
+  publicToolOutput,
+  subagentCallDetail
+} from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 
 export function normalizeOpenCodeTool(
@@ -107,6 +112,7 @@ function openCodeSubagentProjection(
     typeof inputData?.description === 'string' ? compactRunnerText(inputData.description, 500) : '';
   return {
     subagentOperation: taskId === undefined ? 'START' : 'RESUME',
+    ...(taskId === undefined ? subagentCallDetail(inputData?.prompt) : {}),
     subagentId: taskId ?? nativeResult?.taskId ?? null,
     ...(title.length === 0 ? {} : { title }),
     ...(nativeResult === undefined

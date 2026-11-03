@@ -3,7 +3,8 @@ import {
   compactRunnerText,
   compactRunnerValue,
   publicOutputSnapshot,
-  publicToolOutput
+  publicToolOutput,
+  subagentCallDetail
 } from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 import type {
@@ -333,6 +334,11 @@ function claudeSubagentProjection(
   if (subagentId !== undefined && normalizedName === 'agent') knownSubagents.set(subagentId, title);
   return {
     subagentOperation: operation,
+    ...(operation === 'START'
+      ? subagentCallDetail(record(input)?.prompt)
+      : operation === 'MESSAGE'
+        ? subagentCallDetail(record(input)?.message)
+        : {}),
     subagentId: subagentId === '*' ? null : (subagentId ?? null),
     ...(operation === 'STATUS' ? { subagentWait: inputData?.block === true } : {}),
     ...(title.length === 0 ? {} : { title })

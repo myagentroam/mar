@@ -207,6 +207,81 @@ if (new URL(location.href).searchParams.has('specialized')) {
     }
   );
 }
+if (new URL(location.href).searchParams.has('agent-cards')) {
+  detailSamples.push({
+    id: 'native-agent-card',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      namespace: 'codex',
+      toolName: 'spawn_agent',
+      title: 'Native review',
+      subagentOperation: 'START',
+      subagentCallDetail: { message: 'Inspect the native change.' },
+      inputSummary: '{"message":"Inspect the native change."}'
+    }
+  });
+  const stopTruncation = new URL(location.href).searchParams.get('stop-truncation');
+  const task = {
+    agentId: 'peer',
+    sessionId: 'peer',
+    title: new URL(location.href).searchParams.has('long-title')
+      ? 'UnbrokenTitle'.repeat(35)
+      : 'Review the boundary'
+  };
+  for (const [action, detail, targets, output] of [
+    [
+      'START',
+      { title: task.title, message: 'Initial task\nwith a second line.' },
+      [task],
+      'start receipt'
+    ],
+    ['SEND', { message: 'Please check the patch.', delivery: 'QUEUE' }, [task], 'send receipt'],
+    [
+      'WAIT',
+      {},
+      [
+        { ...task, status: 'SUCCEEDED', message: 'Finished review.' },
+        { agentId: 'other', title: 'Other task', status: 'RUNNING', message: 'Still working.' }
+      ],
+      'wait receipt'
+    ],
+    [
+      'LIST',
+      {},
+      [
+        { ...task, status: 'SUCCEEDED' },
+        { agentId: 'other', title: 'Other task', status: 'IDLE' }
+      ],
+      'list receipt'
+    ],
+    [
+      'VIEW',
+      {},
+      [{ ...task, status: 'SUCCEEDED', message: 'Public view result.' }],
+      'view receipt'
+    ],
+    ['STOP', {}, [task], '{"status":"accepted"}\n']
+  ] as const) {
+    detailSamples.push({
+      id: `card-${action}`,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: `agent_${action.toLowerCase()}`,
+        inputSummary: 'Hidden public input',
+        inputTruncated: true,
+        agentOperation: { action, targets, detail },
+        output: {
+          blocks: [{ channel: 'TEXT', text: output }],
+          ...(action === 'STOP' && (stopTruncation === 'HEAD' || stopTruncation === 'SOURCE')
+            ? { truncation: stopTruncation }
+            : {})
+        }
+      }
+    });
+  }
+}
 const turns = computed<ConversationTurn[]>(() => [
   {
     id: 'turn',

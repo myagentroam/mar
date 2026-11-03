@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-03
+lastUpdated: 2026-11-04
 ---
 
 # Conversations, Tools, and Notifications
@@ -19,7 +19,9 @@ Within the same conversation segment and aggregation phase, reasoning, ordinary 
 
 Context compaction appears separately and marks a work-process boundary, including background compaction. Subsequent reasoning and tools start a new process instead of merging with earlier records. Compaction status updates do not repeatedly split the process or mean that the current task has ended.
 
-All four Runners use **Agent operations** groups, not limited to parent-child sessions. MAR Agent supports start, send, wait, stop, list, and view; other Runners show their native operations. Agent operations within the same work process and aggregation interval share one group positioned at the last call, regardless of target, operation, or target count. The group header shows the call count. Expand it to see each call's original tool name, available task names, and own status in the original order; details retain actual targets, input, result, and errors. A returned call does not mean the target task has finished, and a wait timeout does not mean it failed. Model metadata and public messages appear only when supplied by the Runner; the target session's internal execution stream is not embedded. Cards do not provide session shortcuts; use the session list or session tree to open a target session.
+All four Runners use **Agent operations** groups, not limited to parent-child sessions. MAR Agent supports start, send, wait, stop, list, and view; other Runners show their native operations. Agent operations within the same work process and aggregation interval share one group positioned at the last call, regardless of target, operation, or target count. The group header shows the call count. Expand it to see each call's original tool name, available task names, and own status in the original order.
+
+Details present facts supplied by the source: start and send focus on the task name and current message. Queue/steer describes the sending mode, not confirmed delivery or processing. Wait and view show the status, message, or result returned by that call; list shows session names and statuses; stop displays the public result as-is. Use the copy button at the top right for the original input, result, and other available public fields. The record is bounded and does not fetch additional target-session data. Older records without structured facts retain generic details, where model metadata appears only when supplied by the source. A returned call does not mean the target task has finished, and a wait timeout does not mean it failed; error information is retained. The target session's internal execution stream is not embedded, and cards do not provide session shortcuts. Use the session list or session tree to open a target session.
 
 When an Agent request or model call finally fails, the error card shows the HTTP status when available and the returned error message. In an ordinary session, a terminal failure returns the session to Idle and pauses any remaining queued messages until you resume the queue or send a new ordinary message after reviewing the error. MAR Agent may retry eligible transient model failures before its first semantic output; an active Goal may also retry failed executions through bounded automatic continuation before blocking.
 

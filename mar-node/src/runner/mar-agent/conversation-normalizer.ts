@@ -1465,11 +1465,32 @@ function mergeAgentOperationData(toolName: string, previous: unknown, current: u
     ...record(current),
     agentOperation: {
       ...after.data,
-      targets: before.data.targets.map((target) => ({
-        ...after.data.targets.find((candidate) => candidate.agentId === target.agentId),
-        ...target
-      })),
-      ...(before.data.targetsTruncated ? { targetsTruncated: true } : {})
+      ...(after.data.detail === undefined && before.data.detail !== undefined
+        ? { detail: before.data.detail }
+        : {}),
+      targets: (after.data.action === 'WAIT'
+        ? [
+            ...after.data.targets,
+            ...before.data.targets.filter(
+              (target) =>
+                !after.data.targets.some((candidate) => candidate.agentId === target.agentId)
+            )
+          ]
+        : after.data.targets
+      ).map((target) => {
+        const resolved = before.data.targets.find(
+          (candidate) => candidate.agentId === target.agentId
+        );
+        const current = after.data.targets.find(
+          (candidate) => candidate.agentId === target.agentId
+        );
+        return {
+          agentId: target.agentId,
+          ...(resolved?.sessionId ? { sessionId: resolved.sessionId } : {}),
+          ...(resolved?.title ? { title: resolved.title } : {}),
+          ...current
+        };
+      })
     }
   };
 }
