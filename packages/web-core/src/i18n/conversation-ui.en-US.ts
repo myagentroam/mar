@@ -253,6 +253,7 @@ export const conversationUiEnUS = {
       modelPerformanceDetails: 'View session model performance',
       modelResponseLatency: 'Latency: {value}',
       providerOutputTps: 'Average output TPS: {value} token/s',
+      compactOutputTps: 'TPS: {value} token/s',
       outputTokens: 'Output tokens: {value}',
       copyCode: 'Copy code',
       copiedMessage: 'Message copied',

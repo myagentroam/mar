@@ -37,7 +37,7 @@ import {
   nextConversationRenderItemCount
 } from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
-import type { ComposerAttachmentFile } from '@myagentroam/protocol';
+import type { ComposerAttachmentFile, RunPerformance } from '@myagentroam/protocol';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
 import { composerMessagePresentation } from '../../util/composer-message.js';
 import {
@@ -110,6 +110,7 @@ function messageHeading(payload: unknown) {
 
 const props = defineProps<{
   readonly turns: readonly ConversationTurn[];
+  readonly performance?: RunPerformance | undefined;
   readonly runs?: readonly Pick<AgentRun, 'id' | 'status' | 'startedAt' | 'completedAt'>[];
   readonly sharerName?: string;
   readonly workspaceRoot: string | undefined;
@@ -589,6 +590,7 @@ function stepDuration(item: ConversationItem): string | undefined {
       :block="block"
       :synchronized="synchronized"
       :now="block.active ? processNow : undefined"
+      :performance="performance"
       class="conversation-turn"
     >
       <article

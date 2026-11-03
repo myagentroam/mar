@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-10-31
+lastUpdated: 2026-11-03
 ---
 
 # Conversations, Tools, and Notifications
@@ -43,7 +43,7 @@ Rolling back a steer message added during a MAR Agent run preserves ordinary mes
 
 When the Agent provides valid timing metrics, a small Info icon appears at the bottom right of the Workspace conversation. Hover, focus, or tap it on a touchscreen to see the latest Latency (from the current input to its first text, reasoning, tool call, or other valid model response) and available average output TPS (tokens per second). Each value describes its latest available observation, not an individual message or the whole tool chain. Tool execution time is excluded from Latency, and missing metrics are not estimated. MAR Agent shows average output TPS only after the request ends, the provider reports authoritative output tokens, and a reliable streaming generation window is observed. It is the client-observed average from the first actual generation delta to completion; completed-only, single-delta, or instantaneous batched output does not produce a new TPS value. Available TPS may include reasoning, tool-call, network, or Hosted Tool time, so it is not pure server-side inference speed. For Claude Code, Codex, and OpenCode, Node observes Latency from live events: submitting user input to the first valid Agent response, then the last observed parallel tool result to the next valid response. This includes Runner, IPC, and network overhead, not pure model-server response time. These three Runners currently do not provide output TPS.
 
-Performance is pushed live and is not stored in session history. Within the same Run, Latency and output TPS update independently: new Latency keeps the most recent available TPS until new TPS arrives. The two values may describe different model requests. A new Run does not inherit the previous Run’s metrics. Node keeps only the latest metrics in memory while the Run remains active. Returning to a running session or refreshing the page restores them automatically; a Node restart loses them. Node clears the metrics when the Run ends. The current page may keep the final values, but returning after completion does not restore them. Switching sessions, Workspaces, Nodes, or modes first clears the previous metrics from the page. Message cards do not show performance Info.
+Performance is pushed live and is not stored in session history. The active process heading also shows available metrics for the same Run after its duration; the Info icon remains available. Within the same Run, Latency and output TPS update independently: new Latency keeps the most recent available TPS until new TPS arrives. The two values may describe different model requests. A new Run does not inherit the previous Run’s metrics. Node keeps only the latest metrics in memory while the Run remains active. Returning to a running session or refreshing the page restores them automatically; a Node restart loses them. Node clears the metrics when the Run ends. The current page may keep the final values, but returning after completion does not restore them. Switching sessions, Workspaces, Nodes, or modes first clears the previous metrics from the page. Message cards do not show performance Info.
 
 ## Clear a MAR Agent session history
 
