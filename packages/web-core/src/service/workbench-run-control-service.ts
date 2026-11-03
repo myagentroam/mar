@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { ComputedRef, Ref } from 'vue';
+import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import type { AgentRun, GoalExitSummary } from '../model/workbench.js';
 import type { createRunService } from './run-service.js';
 import { translate } from './locale-preference-service.js';
@@ -8,7 +8,7 @@ import { errorCode } from '../util/api-error.js';
 
 interface WorkbenchRunControlServiceOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedRunId: Ref<string | undefined>;
   readonly activeRun: ComputedRef<AgentRun | undefined>;
   readonly notice: MessageFeedback;
@@ -17,10 +17,12 @@ interface WorkbenchRunControlServiceOptions {
   readonly sessionPathId: (sessionId: string) => string;
   readonly errorMessage: (error: unknown) => string;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
+  readonly currentRevision: () => number;
 }
 
 /** Owns immediate interrupt settlement, rollback and missing-Run reconciliation. */
 export function createWorkbenchRunControlService(options: WorkbenchRunControlServiceOptions) {
+  const scope = getCurrentScope();
   const missingRunError = (error: unknown) => errorCode(error) === 'RUN_NOT_FOUND';
 
   async function stopActiveRun(): Promise<void> {
@@ -28,6 +30,13 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const sessionId = options.selectedSessionId.value;
     if (nodeId === undefined || workspaceId === undefined || sessionId === undefined) return;
+    const revision = options.currentRevision();
+    const current = () =>
+      scope?.active !== false &&
+      options.workspaceTarget.value?.nodeId === nodeId &&
+      options.workspaceTarget.value.workspaceId === workspaceId &&
+      options.selectedSessionId.value === sessionId &&
+      options.currentRevision() === revision;
     const run = options.activeRun.value;
     const finishSubmission = options.beginSubmission(`session:${sessionId}`);
     if (finishSubmission === undefined) return;
@@ -37,11 +46,13 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
           `/api/agent-sessions/${options.sessionPathId(sessionId)}/interrupt`,
           { method: 'POST', body: JSON.stringify({ nodeId }) }
         );
-        options.runService.mergeSnapshots([result.run]);
-        options.selectedRunId.value = result.run.id;
+        if (current()) {
+          options.runService.mergeSnapshots([result.run]);
+          options.selectedRunId.value = result.run.id;
+        }
       } catch (error) {
         const completedInSubmissionWindow = finishSubmission();
-        if (!missingRunError(error) && completedInSubmissionWindow) {
+        if (current() && !missingRunError(error) && completedInSubmissionWindow) {
           options.notice(
             translate('generated.workbenchRunControlService.runOperationDenied', {
               value0: options.errorMessage(error)
@@ -60,10 +71,10 @@ export function createWorkbenchRunControlService(options: WorkbenchRunControlSer
         `/api/agent-runs/${encodeURIComponent(run.id)}/interrupt`,
         { method: 'POST', body: JSON.stringify({ nodeId }) }
       );
-      if (result.run !== undefined) options.runService.replaceExistingRun(result.run);
+      if (current() && result.run !== undefined) options.runService.replaceExistingRun(result.run);
     } catch (error) {
       const completedInSubmissionWindow = finishSubmission();
-      if (!missingRunError(error) && completedInSubmissionWindow) {
+      if (current() && !missingRunError(error) && completedInSubmissionWindow) {
         options.notice(
           translate('generated.workbenchRunControlService.runOperationDenied2', {
             value0: options.errorMessage(error)

@@ -3,7 +3,7 @@ import { createComposerAttachmentService } from '../../src/service/composer-atta
 
 const output = document.querySelector<HTMLOutputElement>('#result')!;
 const service = createComposerAttachmentService({
-  context: () => ({ nodeId: 'fixture', workspaceId: 'fixture' }),
+  context: () => ({ kind: 'workspace', nodeId: 'fixture', workspaceId: 'fixture' }),
   notice: () => {},
   request: async () => {
     throw new Error('Unexpected server fallback');

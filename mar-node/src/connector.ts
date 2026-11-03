@@ -1700,6 +1700,8 @@ export class NodeConnector {
           limit: 30,
           ...(sessionGroup === undefined ? {} : { sessionGroup })
         }),
+      sessionNavigation: async (workspaceId, query) =>
+        this.sessionCatalogService.navigation({ workspaceId, ...query }),
       invalidatePrompt: (id) => this.promptCompletion?.invalidateWorkspace(id),
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,

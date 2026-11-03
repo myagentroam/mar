@@ -91,7 +91,6 @@ describe('Session Watch projection composition', () => {
     const watch = createWorkbenchSessionWatchController({
       workspaceTarget,
       selectedSessionId,
-      sessions,
       followConversation: ref(false),
       heartbeatMs: 60_000,
       requestTimeoutMs: 10_000,
@@ -106,7 +105,6 @@ describe('Session Watch projection composition', () => {
         return { nodeGeneration: 'generation-1' } as T;
       },
       sessionPathId: (id) => id,
-      mergeSessions: effects.mergeSessions,
       applyEvent: projection.apply,
       applySnapshot: effects.applyConversationSnapshot,
       scrollAfterLayout: async () => undefined,
@@ -251,7 +249,8 @@ describe('Session Watch projection composition', () => {
       const second = { ...requested };
       expect(second.watchId).not.toBe(first.watchId);
       effects.mergeSessions.mockClear();
-      directed(first, 'Legal in-flight event');
+      directed(first, 'Stale in-flight event');
+      directed(second, 'Legal in-flight event');
       initial(first, 'Stale initial');
       expect(effects.mergeSessions).not.toHaveBeenCalled();
       initial(second, 'Replacement initial');
@@ -259,7 +258,11 @@ describe('Session Watch projection composition', () => {
       expect(effects.mergeSessions.mock.calls.at(-1)?.[0][0]).toMatchObject({
         runnerTitle: 'Legal in-flight event'
       });
-      directed(first, 'Legal after replacement');
+      directed(first, 'Stale after replacement');
+      expect(effects.mergeSessions.mock.calls.at(-1)?.[0][0]).toMatchObject({
+        runnerTitle: 'Legal in-flight event'
+      });
+      directed(second, 'Legal after replacement');
       expect(effects.mergeSessions.mock.calls.at(-1)?.[0][0]).toMatchObject({
         runnerTitle: 'Legal after replacement'
       });

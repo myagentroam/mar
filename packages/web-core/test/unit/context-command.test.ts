@@ -30,6 +30,7 @@ function fixture() {
     request: vi.fn(),
     execute,
     errorMessage: () => 'denied',
+    currentRevision: () => 0,
     beginSubmission
   });
   return { service, execute, finish, beginSubmission, canCompact, selectedSession, notice, nodeId };
@@ -79,6 +80,26 @@ describe('shared context command', () => {
     f.beginSubmission.mockReturnValue(undefined);
     await f.service.compactCurrentContext();
     expect(f.execute).not.toHaveBeenCalled();
+  });
+
+  it('settles an already submitted command after its scope is disposed without reporting into the old view', async () => {
+    const { effectScope } = await import('vue');
+    const scope = effectScope();
+    const f = scope.run(() => fixture())!;
+    let reject!: (error: Error) => void;
+    f.execute.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        })
+    );
+    const pending = f.service.compactCurrentContext();
+    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledOnce());
+    scope.stop();
+    reject(new Error('failed'));
+    await pending;
+    expect(f.finish).toHaveBeenCalled();
+    expect(f.notice).not.toHaveBeenCalled();
   });
 
   it.each(['working', 'selection', 'node'] as const)(

@@ -1,4 +1,4 @@
-import type { SessionGroup } from '@myagentroam/protocol';
+import type { SessionGroup, WorkspaceSessionNavigationQuery } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
@@ -19,6 +19,10 @@ export function composeWorkspaceApplication(input: {
   readonly resources: ReturnType<typeof composeWorkspaceResources>;
   readonly changes: WorkspaceChangeService;
   readonly listSessions: (workspaceId: string, group?: SessionGroup) => Promise<unknown>;
+  readonly sessionNavigation?: (
+    workspaceId: string,
+    query: WorkspaceSessionNavigationQuery
+  ) => Promise<unknown>;
   readonly invalidatePrompt: (workspaceId: string) => void;
   readonly nodeId: () => string;
   readonly nodeGeneration: () => string;
@@ -45,6 +49,9 @@ export function composeWorkspaceApplication(input: {
     uploads: resources.uploads,
     changes: input.changes,
     listSessions: input.listSessions,
+    ...(input.sessionNavigation === undefined
+      ? {}
+      : { sessionNavigation: input.sessionNavigation }),
     invalidate: resources.invalidateFiles,
     nodeId: input.nodeId,
     nodeGeneration: input.nodeGeneration,

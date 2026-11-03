@@ -1,10 +1,7 @@
-import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, type Ref } from 'vue';
 import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
 import type { SessionContextUsage } from '../service/conversation-state-service.js';
-import { createComposerAttachmentInputService } from '../service/composer-attachment-input-service.js';
-import { translate } from '../service/locale-preference-service.js';
 
 interface WorkbenchNewSessionControllerOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
@@ -24,33 +21,17 @@ interface WorkbenchNewSessionControllerOptions {
   readonly newSessionEffort: Readonly<Ref<string | undefined>>;
   readonly newSessionAccess: Readonly<Ref<string | undefined>>;
   readonly runnerProfiles: Ref<readonly RunnerProfile[]>;
-  readonly draggingComposerAttachments: Ref<boolean>;
   readonly canUseComposer: Readonly<Ref<boolean>>;
-  readonly notice: MessageFeedback;
   readonly closeMobileWorkspaceSurface: () => void;
+  readonly saveCurrent: () => void;
   readonly stopSelectedSessionWatch: () => void;
   readonly nextDetailRequest: () => void;
   readonly applyRunnerDefaults: (runner: Session['runner']) => void;
   readonly resetRunnerInteraction: () => void;
-  readonly addNewSessionFiles: (files: Iterable<File>) => void;
   readonly focusInputAt: (cursor: number) => void;
 }
 
 export function createWorkbenchNewSessionController(options: WorkbenchNewSessionControllerOptions) {
-  const attachmentInput = createComposerAttachmentInputService({
-    canAcceptFiles: () => true,
-    addFiles: options.addNewSessionFiles,
-    rejectDirectory: () => {
-      options.notice(
-        translate(
-          'generated.workbenchNewSessionController.foldersCannotBeAttachedCompressTheFolder'
-        ),
-        'warning'
-      );
-    },
-    setDragging: (dragging) => (options.draggingComposerAttachments.value = dragging)
-  });
-
   function ensureDraftRunnerSupported(profiles = options.runnerProfiles.value): void {
     const supportedRunner = profiles.find((profile) => profile.capabilities.includes('turn.start'));
     if (
@@ -90,6 +71,7 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
   function openNewSessionComposer(): void {
     options.closeMobileWorkspaceSurface();
     if (!options.draftSessionOpen.value) {
+      options.saveCurrent();
       options.stopSelectedSessionWatch();
       options.nextDetailRequest();
       ensureDraftRunnerSupported();
@@ -110,10 +92,6 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
   return {
     createDraftSession,
     ensureDraftRunnerSupported,
-    onComposerAttachmentDragEnter: attachmentInput.onDragEnter,
-    onComposerAttachmentDragLeave: attachmentInput.onDragLeave,
-    onComposerAttachmentDrop: attachmentInput.onDrop,
-    onNewSessionPaste: attachmentInput.onPaste,
     openNewSessionComposer
   };
 }

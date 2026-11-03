@@ -31,9 +31,11 @@ const WIDTHS_STORAGE_KEY = 'mar.workbench.panel-widths.v1';
 
 export const WORKBENCH_PANEL_LIMITS = {
   sidebar: { min: 220, max: 420 },
-  inspector: { min: 275, max: 600 }
+  compact: { min: 275, max: 600, defaultWidth: 320 },
+  content: { min: 480, max: 960, defaultWidth: 640 }
 } as const;
 export type WorkbenchPanel = keyof typeof WORKBENCH_PANEL_LIMITS;
+export type AsideViewMode = 'compact' | 'content';
 type PanelWidths = Partial<Record<WorkbenchPanel, number>>;
 
 function panelWidth(panel: WorkbenchPanel, value: unknown): number | undefined {
@@ -54,6 +56,17 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
     } catch {
       // Resizing remains usable when browser persistence is unavailable.
     }
+  }
+
+  function asideWidth(
+    mode: AsideViewMode,
+    availableWidth: number,
+    mainMinWidth: number
+  ): number | undefined {
+    const config = WORKBENCH_PANEL_LIMITS[mode];
+    const available = availableWidth - mainMinWidth;
+    if (!Number.isFinite(available) || available < config.min) return undefined;
+    return Math.min(panelWidths.value[mode] ?? config.defaultWidth, config.max, available);
   }
 
   function persist(): void {
@@ -82,9 +95,16 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
     try {
       const widths: unknown = JSON.parse(localStorage.getItem(WIDTHS_STORAGE_KEY) ?? '{}');
       if (typeof widths === 'object' && widths !== null && !Array.isArray(widths)) {
-        for (const panel of ['sidebar', 'inspector'] as const) {
-          const width = panelWidth(panel, (widths as Record<string, unknown>)[panel]);
+        const stored = widths as Record<string, unknown>;
+        for (const panel of ['sidebar', 'compact', 'content'] as const) {
+          const width = panelWidth(panel, stored[panel]);
           if (width !== undefined) panelWidths.value[panel] = width;
+        }
+        if (Object.prototype.hasOwnProperty.call(stored, 'inspector')) {
+          const legacy = panelWidth('compact', stored['inspector']);
+          if (panelWidths.value.compact === undefined && legacy !== undefined)
+            panelWidths.value.compact = legacy;
+          localStorage.setItem(WIDTHS_STORAGE_KEY, JSON.stringify(panelWidths.value));
         }
       }
     } catch {
@@ -121,7 +141,7 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
     }
   }
 
-  return { persist, restore, panelWidths, setPanelWidth };
+  return { persist, restore, panelWidths, setPanelWidth, asideWidth };
 }
 
 function isWorkspaceTab(value: unknown): value is WorkspaceTab {

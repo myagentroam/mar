@@ -39,10 +39,22 @@ export class WorkspaceWatchController {
       existing.topics.changes === topics.changes &&
       JSON.stringify(existing.topics.files) === JSON.stringify(topics.files) &&
       (existing.prepareFiles === true) === (input.prepareFiles === true);
+    const navigationOnly =
+      existing !== undefined &&
+      existing.topics.sessions === topics.sessions &&
+      existing.topics.sessionGroup === topics.sessionGroup &&
+      existing.topics.changes === topics.changes &&
+      JSON.stringify(existing.topics.files) === JSON.stringify(topics.files) &&
+      !sameNavigation(existing.topics.sessionNavigation, topics.sessionNavigation) &&
+      (existing.prepareFiles === true) === (input.prepareFiles === true);
     if (
       existing !== undefined &&
       existing.watchId === input.watchId &&
-      JSON.stringify(existing.topics) === JSON.stringify(topics) &&
+      existing.topics.sessions === topics.sessions &&
+      existing.topics.sessionGroup === topics.sessionGroup &&
+      existing.topics.changes === topics.changes &&
+      JSON.stringify(existing.topics.files) === JSON.stringify(topics.files) &&
+      sameNavigation(existing.topics.sessionNavigation, topics.sessionNavigation) &&
       (existing.prepareFiles === true) === (input.prepareFiles === true)
     ) {
       this.options.watch.renew(workspace.id, key, input.watchId as string);
@@ -57,8 +69,13 @@ export class WorkspaceWatchController {
       topics,
       input.prepareFiles === true
     );
-    void this.options.snapshots.initial(workspace, watch, groupOnly ? existing : undefined);
-    if (watch.prepareFiles) this.options.snapshots.prewarmFiles(workspace, watch);
+    void this.options.snapshots.initial(
+      workspace,
+      watch,
+      groupOnly || navigationOnly ? existing : undefined
+    );
+    if (watch.prepareFiles && !navigationOnly)
+      this.options.snapshots.prewarmFiles(workspace, watch);
     return this.accepted(watch);
   }
 
@@ -101,6 +118,21 @@ export class WorkspaceWatchController {
       expiresAt: watch.expiresAt
     };
   }
+}
+
+function sameNavigation(
+  left: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery | undefined,
+  right: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery | undefined
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return (
+    left.limit === right.limit &&
+    left.treeAnchor === right.treeAnchor &&
+    left.sessionIds.length === right.sessionIds.length &&
+    left.sessionIds.every((id, index) => id === right.sessionIds[index]) &&
+    left.summaryAnchors.length === right.summaryAnchors.length &&
+    left.summaryAnchors.every((id, index) => id === right.summaryAnchors[index])
+  );
 }
 
 function record(value: unknown): Record<string, unknown> {

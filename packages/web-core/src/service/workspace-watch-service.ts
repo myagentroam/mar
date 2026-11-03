@@ -2,17 +2,19 @@ import { reactive, readonly } from 'vue';
 import type { Ref } from 'vue';
 import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
 
-export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes';
+export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes' | 'sessionNavigation';
 export type WorkspaceWatchTopicStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
 interface WorkspaceWatchSnapshot {
   readonly sessions?: unknown;
   readonly files?: unknown;
   readonly changes?: unknown;
+  readonly sessionNavigation?: unknown;
 }
 
 interface WatchContext {
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
+  readonly sessionNavigation?: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery;
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly directory: string;
@@ -32,6 +34,8 @@ export function createWorkspaceWatchService(options: {
   readonly confirmationTimeoutMs?: number;
   readonly enabled?: () => boolean;
   readonly sessionGroup?: () => import('@myagentroam/protocol').SessionGroup | undefined;
+  readonly sessionNavigation?: () =>
+    import('@myagentroam/protocol').WorkspaceSessionNavigationQuery | undefined;
   readonly prepareFiles?: () => boolean;
   readonly workbenchConnectionId?: () => string | undefined;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -40,25 +44,29 @@ export function createWorkspaceWatchService(options: {
     workspaceId: string,
     snapshot: WorkspaceWatchSnapshot,
     topic: WorkspaceWatchTopic,
-    revision: number
+    revision: number,
+    navigationQuery?: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery
   ) => void;
 }) {
   const topicStatus = reactive<Record<WorkspaceWatchTopic, WorkspaceWatchTopicStatus>>({
     sessions: 'idle',
     files: 'idle',
-    changes: 'idle'
+    changes: 'idle',
+    sessionNavigation: 'idle'
   });
   const revisions: Record<WorkspaceWatchTopic, number> = {
     sessions: -1,
     files: -1,
-    changes: -1
+    changes: -1,
+    sessionNavigation: -1
   };
   let context: WatchContext | undefined;
   let topicRetryTimer: ReturnType<typeof setTimeout> | undefined;
   const topicFailures: Record<WorkspaceWatchTopic, number> = {
     sessions: 0,
     files: 0,
-    changes: 0
+    changes: 0,
+    sessionNavigation: 0
   };
   let leaseFailures = 0;
   let paused = false;
@@ -81,6 +89,7 @@ export function createWorkspaceWatchService(options: {
       options.workspaceTarget.value?.nodeId === current.nodeId &&
       options.workspaceTarget.value?.workspaceId === current.workspaceId &&
       options.sessionGroup?.() === current.sessionGroup &&
+      sameNavigation(options.sessionNavigation?.(), current.sessionNavigation) &&
       connectionId() === current.connectionId
     );
   }
@@ -88,9 +97,11 @@ export function createWorkspaceWatchService(options: {
   function resetTopicState(
     current: WatchContext,
     preserveReady: boolean,
-    preserveResources = false
+    preserveResources = false,
+    preserveSessions = false
   ): void {
-    topicStatus.sessions = preserveReady && topicStatus.sessions === 'ready' ? 'ready' : 'loading';
+    topicStatus.sessions =
+      (preserveReady || preserveSessions) && topicStatus.sessions === 'ready' ? 'ready' : 'loading';
     const keepResources = preserveReady || preserveResources;
     topicStatus.files = keepResources && topicStatus.files === 'ready' ? 'ready' : 'loading';
     topicStatus.changes = current.git
@@ -101,6 +112,8 @@ export function createWorkspaceWatchService(options: {
     revisions.sessions = -1;
     revisions.files = -1;
     revisions.changes = -1;
+    revisions.sessionNavigation = -1;
+    topicStatus.sessionNavigation = current.sessionNavigation === undefined ? 'idle' : 'loading';
   }
 
   async function requestWatch(
@@ -130,6 +143,9 @@ export function createWorkspaceWatchService(options: {
                     ? {}
                     : { sessionGroup: current.sessionGroup }),
                   files: { path: current.directory, limit: 200 },
+                  ...(current.sessionNavigation === undefined
+                    ? {}
+                    : { sessionNavigation: current.sessionNavigation }),
                   ...(current.git ? { changes: true } : {})
                 }
               })
@@ -173,8 +189,24 @@ export function createWorkspaceWatchService(options: {
     if (nodeId === undefined || workspace === undefined || currentConnectionId === undefined)
       return;
     const sessionGroup = options.sessionGroup?.();
+    const query = options.sessionNavigation?.();
+    const sessionNavigation =
+      query === undefined
+        ? undefined
+        : {
+            ...query,
+            sessionIds: [...query.sessionIds],
+            summaryAnchors: [...query.summaryAnchors]
+          };
     const nextKey = `${currentConnectionId}:${nodeId}:${workspaceId}:${directory}:${workspace.kind === 'GIT_WORKSPACE' ? 'git' : 'directory'}:${sessionGroup ?? 'ALL'}`;
-    if (resetFailures && !paused && context !== undefined && targetKey(context) === nextKey) return;
+    if (
+      resetFailures &&
+      !paused &&
+      context !== undefined &&
+      targetKey(context) === nextKey &&
+      sameNavigation(context.sessionNavigation, sessionNavigation)
+    )
+      return;
     const groupOnly =
       !paused &&
       context !== undefined &&
@@ -184,12 +216,18 @@ export function createWorkspaceWatchService(options: {
       context.directory === directory &&
       context.git === (workspace.kind === 'GIT_WORKSPACE') &&
       context.sessionGroup !== sessionGroup;
+    const navigationOnly =
+      !paused &&
+      context !== undefined &&
+      targetKey(context) === nextKey &&
+      !sameNavigation(context.sessionNavigation, sessionNavigation);
     replaceLocally();
     if (resetFailures) {
       leaseFailures = 0;
       topicFailures.sessions = 0;
       topicFailures.files = 0;
       topicFailures.changes = 0;
+      topicFailures.sessionNavigation = 0;
     }
     const next: WatchContext = {
       nodeId,
@@ -198,11 +236,12 @@ export function createWorkspaceWatchService(options: {
       watchId: crypto.randomUUID().replace(/-/g, ''),
       connectionId: currentConnectionId,
       git: workspace.kind === 'GIT_WORKSPACE',
-      ...(sessionGroup === undefined ? {} : { sessionGroup })
+      ...(sessionGroup === undefined ? {} : { sessionGroup }),
+      ...(sessionNavigation === undefined ? {} : { sessionNavigation })
     };
     context = next;
     paused = false;
-    resetTopicState(next, !resetFailures, groupOnly);
+    resetTopicState(next, !resetFailures, groupOnly || navigationOnly, navigationOnly);
     try {
       await lifecycle.start(targetKey(next));
     } catch {
@@ -210,6 +249,8 @@ export function createWorkspaceWatchService(options: {
       if (topicStatus.sessions !== 'ready') topicStatus.sessions = 'failed';
       if (topicStatus.files !== 'ready') topicStatus.files = 'failed';
       if (next.git && topicStatus.changes !== 'ready') topicStatus.changes = 'failed';
+      if (next.sessionNavigation !== undefined && topicStatus.sessionNavigation !== 'ready')
+        topicStatus.sessionNavigation = 'failed';
       leaseFailures += 1;
       if (leaseFailures <= 3) {
         topicRetryTimer = setTimeout(
@@ -245,6 +286,7 @@ export function createWorkspaceWatchService(options: {
     topicFailures.sessions = 0;
     topicFailures.files = 0;
     topicFailures.changes = 0;
+    topicFailures.sessionNavigation = 0;
     leaseFailures = 0;
     return establish(current.workspaceId, current.directory, false);
   }
@@ -270,6 +312,7 @@ export function createWorkspaceWatchService(options: {
     topicStatus.sessions = 'idle';
     topicStatus.files = 'idle';
     topicStatus.changes = 'idle';
+    topicStatus.sessionNavigation = 'idle';
     if (previous === undefined) return;
     void options
       .request(`/api/workspaces/${encodeURIComponent(previous.workspaceId)}/watch`, {
@@ -292,6 +335,7 @@ export function createWorkspaceWatchService(options: {
       event.nodeId !== current.nodeId ||
       event.workspaceId !== current.workspaceId ||
       options.sessionGroup?.() !== current.sessionGroup ||
+      !sameNavigation(options.sessionNavigation?.(), current.sessionNavigation) ||
       typeof event.nodeGeneration !== 'string' ||
       (current.nodeGeneration !== undefined && event.nodeGeneration !== current.nodeGeneration)
     )
@@ -332,13 +376,22 @@ export function createWorkspaceWatchService(options: {
         event.topic,
         revision
       );
-    else
+    else if (event.topic === 'changes')
       options.onSnapshot(
         current.nodeId,
         current.workspaceId,
         { changes: event.payload },
         event.topic,
         revision
+      );
+    else
+      options.onSnapshot(
+        current.nodeId,
+        current.workspaceId,
+        { sessionNavigation: event.payload },
+        event.topic,
+        revision,
+        current.sessionNavigation
       );
     return true;
   }
@@ -379,5 +432,27 @@ export function createWorkspaceWatchService(options: {
 }
 
 function isTopic(value: unknown): value is WorkspaceWatchTopic {
-  return value === 'sessions' || value === 'files' || value === 'changes';
+  return (
+    value === 'sessions' ||
+    value === 'files' ||
+    value === 'changes' ||
+    value === 'sessionNavigation'
+  );
+}
+
+export function sameNavigation(
+  left: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery | undefined,
+  right: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery | undefined
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.limit === right.limit &&
+      left.treeAnchor === right.treeAnchor &&
+      left.sessionIds.length === right.sessionIds.length &&
+      left.sessionIds.every((id, i) => id === right.sessionIds[i]) &&
+      left.summaryAnchors.length === right.summaryAnchors.length &&
+      left.summaryAnchors.every((id, i) => id === right.summaryAnchors[i]))
+  );
 }

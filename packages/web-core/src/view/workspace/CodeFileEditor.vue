@@ -7,7 +7,7 @@ import {
 } from '@codemirror/autocomplete';
 import { EditorState, Compartment, type Extension } from '@codemirror/state';
 import { keymap, Decoration, EditorView } from '@codemirror/view';
-import { openSearchPanel } from '@codemirror/search';
+import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -483,6 +483,10 @@ defineExpose({
   selectedText,
   insertText,
   openFind,
+  isFindOpen: () => view !== undefined && searchPanelOpen(view.state),
+  closeFind: () => {
+    if (view !== undefined) closeSearchPanel(view);
+  },
   selectAll,
   isFocused,
   focus: () => view?.focus()

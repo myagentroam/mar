@@ -10,6 +10,7 @@ import '@xterm/xterm/css/xterm.css';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import { createTerminalService } from '../../service/terminal-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 
 const props = defineProps<{
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 const host = ref<HTMLElement>();
 const reconnectStatus = ref<string>();
 const contextMenu = ref<{ x: number; y: number; selection: string }>();
+let unregisterContextMenuShortcut: (() => void) | undefined;
 let xterm: Terminal | undefined;
 let fitAddon: FitAddon | undefined;
 let resizeObserver: ResizeObserver | undefined;
@@ -93,18 +95,12 @@ function focus(): void {
 function closeContextMenu(): void {
   contextMenu.value = undefined;
   window.removeEventListener('pointerdown', closeContextMenuOnPointerDown);
-  window.removeEventListener('keydown', closeContextMenuOnEscape, true);
+  unregisterContextMenuShortcut?.();
+  unregisterContextMenuShortcut = undefined;
 }
 function closeContextMenuOnPointerDown(event: PointerEvent): void {
   if (event.target instanceof Element && event.target.closest('.terminal-context-menu')) return;
   closeContextMenu();
-}
-function closeContextMenuOnEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return;
-  event.preventDefault();
-  event.stopPropagation();
-  closeContextMenu();
-  xterm?.focus();
 }
 function preventTerminalRightMouseDown(event: MouseEvent): void {
   if (event.button === 2) event.stopPropagation();
@@ -122,7 +118,18 @@ function openContextMenu(event: MouseEvent): void {
     selection: xterm.getSelection()
   };
   window.addEventListener('pointerdown', closeContextMenuOnPointerDown);
-  window.addEventListener('keydown', closeContextMenuOnEscape, true);
+  unregisterContextMenuShortcut = consoleKeyboardShortcutService.register({
+    command: 'terminal.dismissMenu',
+    priority: 150,
+    scope: 'terminal',
+    keys: [{ key: 'Escape' }],
+    when: () => contextMenu.value !== undefined,
+    execute: () => {
+      closeContextMenu();
+      xterm?.focus();
+      return 'HANDLED';
+    }
+  });
 }
 async function copySelection(): Promise<void> {
   const selection = contextMenu.value?.selection;

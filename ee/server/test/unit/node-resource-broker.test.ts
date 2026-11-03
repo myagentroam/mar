@@ -263,6 +263,42 @@ describe('Node broker resource scope lifecycle', () => {
     expect(activeObservations(f.broker)).toBe(0);
   });
 
+  it.each([
+    {
+      operation: 'session.unwatch',
+      data: {
+        sessionId: 's',
+        workspaceId: 'w',
+        workbenchConnectionId: 'page',
+        watchId: 'watch-123',
+        position: 'secondary'
+      }
+    },
+    {
+      operation: 'workspace.unwatch',
+      data: {
+        workspaceId: 'w',
+        workbenchConnectionId: 'page',
+        watchId: 'watch-123'
+      }
+    }
+  ])(
+    'permits only identity-bound $operation after access is revoked',
+    async ({ operation, data }) => {
+      const f = fixture();
+      f.authorize.mockResolvedValue(false);
+      await expect(
+        f.broker.request('n', 'session.watch', { sessionId: 's', workspaceId: 'w' }, f.user)
+      ).rejects.toThrow('NODE_ACCESS_DENIED');
+      await expect(
+        f.broker.request('n', 'workspace.watch', { workspaceId: 'w' }, f.user)
+      ).rejects.toThrow('NODE_ACCESS_DENIED');
+      expect(f.sent).toHaveLength(0);
+      await f.call(operation, data, { stopped: true });
+      expect(f.sent[0]?.payload.operation).toBe(operation);
+    }
+  );
+
   it('audits conflicting scope denials without forwarding or consulting broader permissions', async () => {
     const f = fixture();
     await f.call(

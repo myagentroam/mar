@@ -46,6 +46,10 @@ export interface WorkspaceWorkbenchServiceOptions {
     workspaceId: string,
     sessionGroup?: import('@myagentroam/protocol').SessionGroup
   ) => Promise<unknown>;
+  readonly sessionNavigation?: (
+    workspaceId: string,
+    query: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery
+  ) => Promise<unknown>;
   readonly invalidate: (workspaceId: string) => void;
   readonly nodeId: () => string;
   readonly nodeGeneration: () => string;

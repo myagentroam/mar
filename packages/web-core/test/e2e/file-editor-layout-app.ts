@@ -10,6 +10,7 @@ import WorkspaceFormatFilePage from '../../src/view/workspace/WorkspaceFormatFil
 import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type {
   WorkspaceNavigationNotice,
   WorkspaceNavigationTarget
@@ -17,6 +18,11 @@ import type {
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(location.search);
+if (query.has('shortcuts')) {
+  window.addEventListener('keydown', (event) => {
+    consoleKeyboardShortcutService.handle(event);
+  });
+}
 const navigationNotice = ref<WorkspaceNavigationNotice | undefined>(
   query.get('navigationNotice') === 'LIMITED'
     ? 'LIMITED'

@@ -3,6 +3,9 @@ import { ref, shallowReactive } from 'vue';
 import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
 import type { NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
+import { registerWorkspacePaneShortcuts } from '../../src/service/workspace-session-pane-state.js';
+import { createConversationStateService } from '../../src/service/conversation-state-service.js';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
@@ -14,6 +17,7 @@ const composerFixture = new URL(location.href).searchParams.has('composer');
 const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
 const hostedGestureFixture = new URL(location.href).searchParams.has('hosted-gesture');
 const submittedIntents = ref<string[]>([]);
+const fixtureInput = ref(gestureFixture ? 'Follow up on mobile layout.' : '');
 const offlineFixture = new URL(location.href).searchParams.has('offline');
 const workspaceRecoveryFixture = new URL(location.href).searchParams.has('workspace-recovery');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
@@ -136,6 +140,9 @@ const sessionProps = {
 };
 const surfacePage = shallowReactive({
   view: 'nodes',
+  setAsideSurfaceVisible() {},
+  asideViewMode: () => 'compact' as const,
+  asideWidth: () => undefined,
   mobileViewport: mobile,
   sidebarCollapsed: false,
   settingsSection: 'account',
@@ -148,8 +155,27 @@ const surfacePage = shallowReactive({
     selectedNodeId: ref(undefined),
     selectedConversationId: ref(undefined)
   },
-  setComposerInputFocus() {},
-  setComposerRangeEditor() {},
+  mainPane: {
+    registerShortcuts: registerWorkspacePaneShortcuts,
+    conversation: createConversationStateService(() => undefined),
+    scroll: createConversationScrollService(),
+    draft: {
+      input: fixtureInput,
+      skillTokens: ref([]),
+      references: ref([])
+    },
+    attachments: { attachments: ref([]) },
+    draggingAttachments: ref(false),
+    queue: {
+      startEditing() {},
+      finishEditing() {},
+      editingQueueItemId: ref(),
+      editingContent: ref(''),
+      draggingQueueItemId: ref()
+    },
+    setInputFocus() {},
+    setRangeEditor() {}
+  },
   workspaceTarget: { nodeId: 'node', workspaceId: 'offline' },
   workspaceHost: { connected: false },
   selectedWorkspace: undefined,
@@ -196,15 +222,15 @@ if (composerFixture) {
     followConversation: true,
     liveConnected: true,
     selectedSessionId: idleComposer ? undefined : 'active',
-    sessionInput: gestureFixture ? 'Follow up on mobile layout.' : '',
     activeComposerRun:
       gestureFixture && !idleComposer && !managedSessionOnly
         ? { id: 'run-a', sessionId: 'active', status: 'RUNNING', startedAt: Date.now() }
         : undefined,
     onComposerInput: () => undefined,
+    referenceSessionAvailable: () => false,
     sendSessionMessage: (intent?: string) => {
       submittedIntents.value.push(intent ?? 'SEND');
-      Object.assign(surfacePage, { sessionInput: '' });
+      fixtureInput.value = '';
     },
     stopActiveRun: () => submittedIntents.value.push('STOP'),
     workPromptCompletion: { enabled: false },
@@ -400,9 +426,7 @@ if (composerFixture) {
     >
       Change run
     </button>
-    <button type="button" @click="Object.assign(surfacePage, { sessionInput: '' })">
-      Clear draft
-    </button>
+    <button type="button" @click="fixtureInput = ''">Clear draft</button>
     <button type="button" @click="Object.assign(surfacePage, { selectedSessionId: 'other' })">
       Change session
     </button>

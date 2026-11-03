@@ -13,7 +13,10 @@ import type {
   WorkspaceQueue
 } from '../model/workbench.js';
 import { sessionActivity, sessionHasNativeIdentity } from '../util/session-presentation.js';
-import { createWorkbenchClockService } from './workbench-clock-service.js';
+import {
+  createSessionActivityClock,
+  createWorkbenchClockService
+} from './workbench-clock-service.js';
 import {
   conversationActivityLabel,
   conversationActivityBusy,
@@ -47,13 +50,13 @@ export function sessionHasActiveGoal(
 
 interface WorkbenchPresentationStateOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedRunId: Ref<string | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly sessions: Ref<Session[]>;
   readonly runs: Readonly<Ref<readonly AgentRun[]>>;
   readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
-  readonly attachments: Ref<ComposerAttachment[]>;
+  readonly attachments: Readonly<Ref<readonly ComposerAttachment[]>>;
   readonly draftOpen: Ref<boolean>;
   readonly runnerProfilesLoading: Ref<boolean>;
   readonly runnerProfilesFailed: Ref<boolean>;
@@ -62,7 +65,7 @@ interface WorkbenchPresentationStateOptions {
   readonly composerAccessOptions: ReturnType<
     typeof createComposerConfigurationService
   >['accessOptions'];
-  readonly workspaceQueue: Ref<WorkspaceQueue>;
+  readonly currentSessionQueue: Readonly<Ref<WorkspaceQueue>>;
   readonly sessionContextUsage: Ref<SessionContextUsage | null | undefined>;
   readonly channelToken: Ref<string | undefined>;
   readonly loading: Ref<boolean>;
@@ -84,9 +87,14 @@ interface WorkbenchPresentationStateOptions {
   readonly formatPercentage: (value: number) => string;
 }
 
-/** Centralizes capability-derived and time-derived Workbench presentation state. */
-export function createWorkbenchPresentationStateService(
-  options: WorkbenchPresentationStateOptions
+type SessionPresentationOptions = Omit<
+  WorkbenchPresentationStateOptions,
+  'workspaces' | 'visibleLimits' | 'nextCursors' | 'pageSize' | 'tabId' | 'workspaceLabel'
+>;
+
+/** Presentation belonging to one target-bound session surface. */
+export function createWorkspaceSessionPresentationStateService(
+  options: SessionPresentationOptions
 ) {
   const activeComposerRun = computed(() => {
     const runId = options.selectedRunId.value;
@@ -163,15 +171,7 @@ export function createWorkbenchPresentationStateService(
       }))
       .filter((turn) => turn.items.length > 0)
   );
-  const currentSessionQueue = computed<WorkspaceQueue>(() => ({
-    ...options.workspaceQueue.value,
-    items:
-      options.selectedSessionId.value === undefined
-        ? []
-        : options.workspaceQueue.value.items.filter(
-            (item) => item.sessionId === options.selectedSessionId.value
-          )
-  }));
+  const currentSessionQueue = options.currentSessionQueue;
   const composerSessionBusy = computed(
     () =>
       activeComposerRun.value !== undefined ||
@@ -267,8 +267,7 @@ export function createWorkbenchPresentationStateService(
   const {
     working: composerWorking,
     workingNow,
-    workingStartedAt,
-    sessionActivityNow: sessionActivityClockNow
+    workingStartedAt
   } = createWorkbenchClockService(
     options.selectedSessionId,
     composerSessionBusy,
@@ -309,6 +308,64 @@ export function createWorkbenchPresentationStateService(
       options.selectedSession.value?.runner === 'claude-code' &&
       options.channelToken.value !== undefined
   );
+  return {
+    activeComposerRun,
+    workspaceHost,
+    nodeReady,
+    selectedSessionActivity,
+    selectedCapabilities,
+    selectedRuntimeCapabilities,
+    canStartTurn,
+    mustSteerCurrentTurn,
+    draftRunnerProfileSupportsTurns,
+    composerDraftOpen,
+    canUseComposer,
+    composerSessionOpen,
+    composerConfigurationDisabled,
+    composerAccessDisabled,
+    composerInputDisabled,
+    composerAttachmentsPending,
+    displayedConversationTurns,
+    currentSessionQueue,
+    composerSessionBusy,
+    sessionControlsBusy,
+    rewindConversationEnabled,
+    rollbackConversationEnabled,
+    canExecuteRunnerCommand,
+    canDeleteSession,
+    compactCommand,
+    canCompactContext,
+    contextUsageLabel,
+    composerWorking,
+    workingElapsedLabel,
+    composerWorkingLabel,
+    composerWorkingBusy,
+    interruptVisible,
+    canInterruptTurn,
+    canSendClaudeChannel
+  };
+}
+
+/** Workspace-wide presentation composes the selected Pane without owning it. */
+export function createWorkbenchPresentationStateService(
+  options: Pick<
+    WorkbenchPresentationStateOptions,
+    | 'workspaceTarget'
+    | 'sessions'
+    | 'nodes'
+    | 'nodeManifest'
+    | 'workspaces'
+    | 'visibleLimits'
+    | 'nextCursors'
+    | 'pageSize'
+    | 'tabId'
+    | 'workspaceLabel'
+  > & {
+    readonly pane: ReturnType<typeof createWorkspaceSessionPresentationStateService>;
+  }
+) {
+  const { nodeReady } = options.pane;
+  const sessionActivityClockNow = createSessionActivityClock();
   const selectedWorkspace = computed(() =>
     options.workspaces.value.find(
       (workspace) => workspace.id === options.workspaceTarget.value?.workspaceId
@@ -354,41 +411,8 @@ export function createWorkbenchPresentationStateService(
   );
 
   return {
-    activeComposerRun,
-    workspaceHost,
-    nodeReady,
-    selectedSessionActivity,
-    selectedCapabilities,
-    selectedRuntimeCapabilities,
-    canStartTurn,
-    mustSteerCurrentTurn,
-    draftRunnerProfileSupportsTurns,
-    composerDraftOpen,
-    canUseComposer,
-    composerSessionOpen,
-    composerConfigurationDisabled,
-    composerAccessDisabled,
-    composerInputDisabled,
-    composerAttachmentsPending,
-    displayedConversationTurns,
-    currentSessionQueue,
-    composerSessionBusy,
-    sessionControlsBusy,
-    rewindConversationEnabled,
-    rollbackConversationEnabled,
-    canExecuteRunnerCommand,
-    canDeleteSession,
-    compactCommand,
-    canCompactContext,
-    contextUsageLabel,
-    composerWorking,
+    ...options.pane,
     sessionActivityClockNow,
-    workingElapsedLabel,
-    composerWorkingLabel,
-    composerWorkingBusy,
-    interruptVisible,
-    canInterruptTurn,
-    canSendClaudeChannel,
     selectedWorkspace,
     documentTitle,
     workspaceSessions,

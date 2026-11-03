@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -7,6 +7,99 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+test('Composer keyboard hint follows each container without hiding sending or controls', async ({
+  page,
+  browser
+}) => {
+  for (const locale of ['en-US', 'zh-CN']) {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?composer-widths&select-states&model-options&interrupt&locale=${locale}`
+    );
+    const wide = page.getByTestId('width-composer-0');
+    const narrow = page.getByTestId('width-composer-1');
+    await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
+    await expect(wide.locator('.composer-keyboard-hint')).toContainText(
+      locale === 'en-US' ? 'Enter to queue' : 'Enter 排队'
+    );
+    await expect(narrow.locator('.composer-keyboard-hint')).toBeHidden();
+    await wide.evaluate((el) => {
+      (el as HTMLElement).style.width = '420px';
+    });
+    await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+    await wide.evaluate((el) => {
+      (el as HTMLElement).style.width = '900px';
+    });
+    await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
+    await wide.evaluate((el) => {
+      (el as HTMLElement).style.width = '740px';
+    });
+    await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
+    expect(
+      await wide.locator('.composer-toolbar').evaluate((el) => {
+        const hint = el.querySelector('.composer-keyboard-hint')!.getBoundingClientRect();
+        return [
+          ...el.querySelectorAll(
+            '.composer-configuration, .composer-send-button, .composer-stop-button'
+          )
+        ].every((item) => {
+          const rect = item.getBoundingClientRect();
+          return (
+            hint.right <= rect.left ||
+            rect.right <= hint.left ||
+            hint.bottom <= rect.top ||
+            rect.bottom <= hint.top
+          );
+        });
+      })
+    ).toBe(true);
+    await page.locator('#toggle-submitting').click();
+    for (const composer of [wide, narrow]) {
+      await expect(composer.getByRole('status')).toBeVisible();
+      await expect(composer.locator('.composer-send-button')).toBeVisible();
+      await expect(composer.locator('.composer-stop-button')).toBeVisible();
+      expect(
+        await composer.locator('.composer-toolbar').evaluate((el) => {
+          const bounds = el.getBoundingClientRect();
+          return [...el.querySelectorAll('.composer-send-button, .composer-stop-button')].every(
+            (button) => {
+              const rect = button.getBoundingClientRect();
+              return rect.left >= bounds.left && rect.right <= bounds.right;
+            }
+          );
+        })
+      ).toBe(true);
+    }
+    const context = await browser.newContext({ ...devices['iPhone 13'] });
+    try {
+      const mobilePage = await context.newPage();
+      await mobilePage.goto(
+        `${fixture.url}visual-alignment.html?composer-widths&select-states&model-options&interrupt&mobile=1&locale=${locale}`
+      );
+      const mobile = mobilePage.getByTestId('width-composer-0');
+      await expect(mobile.locator('.composer-keyboard-hint')).toHaveCount(0);
+      await mobilePage.locator('#toggle-submitting').click();
+      await expect(mobile.getByRole('status')).not.toBeEmpty();
+      await expect(mobile.locator('.composer-send-button')).toBeVisible();
+      await expect(mobile.locator('.composer-send-button')).toHaveAttribute('aria-busy', 'true');
+      await expect(mobile.locator('.composer-stop-button')).toBeVisible();
+      expect(
+        await mobile.locator('.composer-toolbar').evaluate((el) => {
+          const bounds = el.getBoundingClientRect();
+          return [...el.querySelectorAll('.composer-send-button, .composer-stop-button')].every(
+            (button) => {
+              const rect = button.getBoundingClientRect();
+              return rect.left >= bounds.left && rect.right <= bounds.right;
+            }
+          );
+        })
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  }
 });
 
 test('Element Plus tags do not zoom during entry or exit', async ({ page }) => {

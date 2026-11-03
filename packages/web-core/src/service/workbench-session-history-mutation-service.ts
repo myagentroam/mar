@@ -16,6 +16,7 @@ export type SessionHistoryMutationResult =
 
 export function createWorkbenchSessionHistoryMutationService(options: {
   readonly current: () => { readonly nodeId: string; readonly session: Session } | undefined;
+  readonly currentRevision: () => number;
   readonly canRewind: () => boolean;
   readonly canRollback: () => boolean;
   readonly confirmRewind: (before: boolean) => Promise<boolean>;
@@ -35,9 +36,14 @@ export function createWorkbenchSessionHistoryMutationService(options: {
 }) {
   const pending = ref(false);
 
-  function isCurrent(nodeId: string, sessionId: string): boolean {
+  function isCurrent(nodeId: string, session: Session, revision: number): boolean {
     const selected = options.current();
-    return selected?.nodeId === nodeId && selected.session.id === sessionId;
+    return (
+      options.currentRevision() === revision &&
+      selected?.nodeId === nodeId &&
+      selected.session.id === session.id &&
+      selected.session.workspaceId === session.workspaceId
+    );
   }
 
   async function rewind(
@@ -47,6 +53,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
     const source = options.current();
     if (source === undefined || pending.value || !options.canRewind() || turn.rewind === undefined)
       return { status: 'SKIPPED' };
+    let revision = options.currentRevision();
     const before = item.kind === 'user_message';
     const body = {
       nodeId: source.nodeId,
@@ -57,7 +64,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
     if (
       !(await options.confirmRewind(before)) ||
       !options.canRewind() ||
-      !isCurrent(source.nodeId, source.session.id)
+      !isCurrent(source.nodeId, source.session, revision)
     )
       return { status: 'SKIPPED' };
     const release = options.beginSubmission('session:' + source.session.id);
@@ -72,20 +79,25 @@ export function createWorkbenchSessionHistoryMutationService(options: {
         { method: 'POST', body: JSON.stringify(body) }
       );
       session = response.session;
-      if (!isCurrent(source.nodeId, source.session.id)) return { status: 'STALE', session };
+      if (!isCurrent(source.nodeId, source.session, revision)) return { status: 'STALE', session };
       options.replaceSession(session.id, session);
-      await options.openSession(session.id);
-      if (!isCurrent(source.nodeId, session.id)) return { status: 'STALE', session };
+      const opening = options.openSession(session.id);
+      revision = options.currentRevision();
+      await opening;
+      if (!isCurrent(source.nodeId, session, revision)) return { status: 'STALE', session };
       options.draft.fill(restoredText, 'rewind');
       return { status: 'APPLIED', session };
     } catch (error) {
-      if (session !== undefined && isCurrent(source.nodeId, session.id)) {
+      if (session !== undefined && isCurrent(source.nodeId, session, revision)) {
         try {
-          await options.openSession(source.session.id, { skipSaveCurrent: true });
+          const opening = options.openSession(source.session.id, { skipSaveCurrent: true });
+          revision = options.currentRevision();
+          await opening;
         } catch {
           // The branch remains committed; recovery must never repeat the POST.
         }
-        if (isCurrent(source.nodeId, source.session.id)) options.draft.restore(previousDraft);
+        if (isCurrent(source.nodeId, source.session, revision))
+          options.draft.restore(previousDraft);
       }
       return {
         status: 'FAILED',
@@ -114,6 +126,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
       !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST'].includes(turn.status)
     )
       return { status: 'SKIPPED' };
+    let revision = options.currentRevision();
     const body = {
       nodeId: source.nodeId,
       turnId: turn.turnId ?? turn.id,
@@ -123,7 +136,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
     if (
       !(await options.confirmRollback()) ||
       !options.canRollback() ||
-      !isCurrent(source.nodeId, source.session.id)
+      !isCurrent(source.nodeId, source.session, revision)
     )
       return { status: 'SKIPPED' };
     const release = options.beginSubmission('session:' + source.session.id);
@@ -139,15 +152,17 @@ export function createWorkbenchSessionHistoryMutationService(options: {
       session = response.session;
       // A committed rollback invalidates its source even when selection moved during the POST.
       options.invalidateDetail(source.nodeId, source.session);
-      if (!isCurrent(source.nodeId, source.session.id)) return { status: 'STALE', session };
+      if (!isCurrent(source.nodeId, source.session, revision)) return { status: 'STALE', session };
       options.replaceSession(source.session.id, session);
       options.clearHistory(source.session.id);
-      await options.openSession(source.session.id, {
+      const opening = options.openSession(source.session.id, {
         preserveMobileWorkspaceSurface: true,
         deferInitialScroll: true,
         skipSaveCurrent: true
       });
-      if (!isCurrent(source.nodeId, source.session.id)) return { status: 'STALE', session };
+      revision = options.currentRevision();
+      await opening;
+      if (!isCurrent(source.nodeId, source.session, revision)) return { status: 'STALE', session };
       options.draft.fill(restoredText, 'rollback');
       return { status: 'APPLIED', session };
     } catch (error) {

@@ -6,6 +6,7 @@ import {
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
+import { fileKeys, workspaceKeys } from '../../service/console-shortcut-keys.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -24,6 +25,10 @@ import {
 } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
+import {
+  consoleKeyboardShortcutService,
+  type ConsoleShortcutBinding
+} from '../../service/console-keyboard-shortcut-service.js';
 import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
 import { fileEditorPreferenceService } from '../../service/file-editor-preference-service.js';
 import { createMobilePreviewPinchZoom } from '../../util/mobile-preview-pinch-zoom.js';
@@ -125,6 +130,8 @@ const codeEditor = ref<{
   selectedText(): string;
   insertText(text: string): void;
   openFind(): void;
+  isFindOpen(): boolean;
+  closeFind(): void;
   focus(): void;
   selectAll(): boolean;
   isFocused(): boolean;
@@ -358,47 +365,97 @@ function toggleEdit(): 'CHANGED' | 'UNAVAILABLE' {
   return 'CHANGED';
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (props.active === false) return;
-  if (event.key === 'Escape') {
-    if (windowInteraction.isEscapeBlocked(event)) return;
-    if (fallbackFindOpen.value) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeFallbackFind();
-      return;
+const shortcutOwner = () => previewRoot.value?.root;
+const fileActive = (): boolean => props.active !== false;
+const editableFileActive = (): boolean =>
+  fileActive() && props.kind === 'text' && !settingsOpen.value;
+const fileShortcuts: readonly ConsoleShortcutBinding[] = [
+  {
+    command: 'filePreview.dismissPanel',
+    priority: 120,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.dismiss,
+    when: (event) =>
+      fileActive() &&
+      !windowInteraction.isEscapeBlocked(event) &&
+      (fallbackFindOpen.value ||
+        codeEditor.value?.isFindOpen() === true ||
+        (props.kind === 'text' && symbolsOpen.value)),
+    execute: () => {
+      if (fallbackFindOpen.value) closeFallbackFind();
+      else if (codeEditor.value?.isFindOpen()) codeEditor.value.closeFind();
+      else closeSymbols();
+      return 'HANDLED';
     }
-    if (props.kind === 'text' && symbolsOpen.value) {
-      event.preventDefault();
-      event.stopPropagation();
-      symbolsOpen.value = false;
-      return;
+  },
+  {
+    command: 'filePreview.openFormat',
+    priority: 120,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: workspaceKeys.preview,
+    when: () => editableFileActive() && (props.markdown === true || props.html === true),
+    execute: () => {
+      if (props.html) emit('open-html-preview');
+      else emit('open-markdown-preview');
+      return 'HANDLED';
     }
-    return;
+  },
+  {
+    command: 'filePreview.replace',
+    priority: 120,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.replace,
+    when: () => editableFileActive() && editing.value,
+    execute: () => {
+      codeEditor.value?.openFind();
+      return 'HANDLED';
+    }
+  },
+  {
+    command: 'filePreview.save',
+    priority: 120,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.save,
+    when: () => editableFileActive() && editing.value && canWrite.value,
+    execute: () => {
+      void save();
+      return 'HANDLED';
+    }
+  },
+  {
+    command: 'filePreview.symbols',
+    priority: 120,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.symbols,
+    when: editableFileActive,
+    execute: () => {
+      if (symbolsOpen.value) closeSymbols();
+      else void openSymbols();
+      return 'HANDLED';
+    }
+  },
+  {
+    command: 'filePreview.selectSymbol',
+    priority: 130,
+    scope: 'file-preview',
+    owner: () => symbolDropdown.value?.querySelector('input') ?? undefined,
+    keys: fileKeys.choose,
+    when: () =>
+      editableFileActive() &&
+      symbolsOpen.value &&
+      visibleSymbols.value[selectedSymbolIndex.value] !== undefined,
+    execute: () => {
+      selectSymbol(visibleSymbols.value[selectedSymbolIndex.value]!);
+      return 'HANDLED';
+    }
   }
-  if (props.kind !== 'text') return;
-  if (settingsOpen.value) return;
-  const commandKey = event.ctrlKey || event.metaKey;
-  const key = event.key.toLowerCase();
-  if (commandKey && event.shiftKey && key === 'v' && (props.markdown || props.html)) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (props.html) emit('open-html-preview');
-    else emit('open-markdown-preview');
-  } else if (commandKey && key === 'h' && editing.value) {
-    event.preventDefault();
-    event.stopPropagation();
-    codeEditor.value?.openFind();
-  } else if (commandKey && key === 's' && editing.value && canWrite.value) {
-    event.preventDefault();
-    event.stopPropagation();
-    void save();
-  } else if (event.altKey && key === 'm') {
-    event.preventDefault();
-    if (symbolsOpen.value) closeSymbols();
-    else void openSymbols();
-  }
-}
+];
+let unregisterFileShortcuts: (() => void) | undefined;
 
 watch(fallbackFindQuery, () => {
   fallbackFindIndex.value = 0;
@@ -440,19 +497,6 @@ function onSymbolKeydown(event: KeyboardEvent): void {
     event.stopPropagation();
     moveSymbolSelection(event.key === 'ArrowDown' ? 1 : -1);
     return;
-  }
-  if (event.key === 'Enter') {
-    const symbol = visibleSymbols.value[selectedSymbolIndex.value];
-    if (symbol === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectSymbol(symbol);
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    closeSymbols();
   }
 }
 
@@ -638,14 +682,17 @@ function beforeUnload(event: BeforeUnloadEvent): void {
   event.returnValue = '';
 }
 onMounted(() => {
-  document.addEventListener('keydown', onKeydown, { capture: true });
+  const unregister = fileShortcuts.map((binding) =>
+    consoleKeyboardShortcutService.register(binding)
+  );
+  unregisterFileShortcuts = () => unregister.forEach((release) => release());
   if (props.fullscreen) windowInteraction.mount();
 });
 onMounted(() => document.addEventListener('pointerdown', dismissFloatingPanels));
 onMounted(() => window.addEventListener('beforeunload', beforeUnload));
 onBeforeUnmount(() => {
   windowInteraction.dispose();
-  document.removeEventListener('keydown', onKeydown, { capture: true });
+  unregisterFileShortcuts?.();
   document.removeEventListener('pointerdown', dismissFloatingPanels);
   window.removeEventListener('beforeunload', beforeUnload);
 });

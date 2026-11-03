@@ -5,7 +5,9 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { queueKeys } from '../../service/console-shortcut-keys.js';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerCommandState, WorkspaceQueueItem } from '../../model/workbench.js';
 import { composerMessagePresentation } from '../../util/composer-message.js';
@@ -43,6 +45,20 @@ const emit = defineEmits<{
 const goalEditing = ref(false);
 const goalObjective = ref('');
 const goalDetailsOpen = ref(false);
+const goalEditor = ref<HTMLElement>();
+let queueEditor: HTMLElement | undefined;
+let editingQueueItem: HTMLElement | undefined;
+let unregisterShortcuts: (() => void)[] = [];
+function componentRoot(value: unknown): HTMLElement | undefined {
+  const root = (value as { $el?: unknown } | null)?.$el;
+  return root instanceof HTMLElement ? root : undefined;
+}
+function setQueueEditor(value: unknown): void {
+  queueEditor = componentRoot(value);
+}
+function setEditingQueueItem(value: unknown): void {
+  editingQueueItem = value instanceof HTMLElement ? value : undefined;
+}
 const contextMenu = ref<{ queueItemId: string; x: number; y: number }>();
 const contextMenuTrigger = ref<HTMLButtonElement>();
 const contextMenuIndex = computed(() =>
@@ -205,6 +221,7 @@ watch(
   }
 );
 onBeforeUnmount(() => {
+  for (const unregister of unregisterShortcuts) unregister();
   clearPress();
   closeContextMenu();
   releaseClickGuard();
@@ -232,15 +249,6 @@ function cancelGoalEdit(): void {
   goalEditing.value = false;
 }
 
-function onEditEscape(event: KeyboardEvent, editor: 'queue' | 'goal'): void {
-  if (event.isComposing || event.key !== 'Escape') return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (props.loading) return;
-  if (editor === 'goal') cancelGoalEdit();
-  else emit('cancelEdit');
-}
-
 function updateGoal(): void {
   const objective = goalObjective.value.trim();
   if (objective.length === 0) return;
@@ -256,12 +264,67 @@ function executeQueueItem(item: WorkspaceQueueItem): void {
   );
 }
 
-function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): void {
-  if (event.isComposing || event.key !== 'Enter' || event.shiftKey || event.altKey) return;
-  event.preventDefault();
-  if (event.ctrlKey) executeQueueItem(item);
-  else emit('save', item.queueItemId);
-}
+onMounted(() => {
+  unregisterShortcuts = [
+    consoleKeyboardShortcutService.registerRegion({
+      scope: 'pane',
+      root: () => editingQueueItem,
+      blocksOtherScopes: false
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'queueCancelEdit',
+      priority: 110,
+      scope: 'pane',
+      owner: () => editingQueueItem,
+      keys: [{ key: 'Escape' }],
+      when: () => props.editingQueueItemId !== undefined,
+      execute: () => {
+        if (!props.loading) emit('cancelEdit');
+        return 'HANDLED';
+      }
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'goalCancelEdit',
+      priority: 110,
+      scope: 'pane',
+      owner: () => goalEditor.value,
+      keys: [{ key: 'Escape' }],
+      when: () => goalEditing.value,
+      execute: () => {
+        if (!props.loading) cancelGoalEdit();
+        return 'HANDLED';
+      }
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'queueSaveEdit',
+      priority: 110,
+      scope: 'pane',
+      owner: () => queueEditor,
+      keys: queueKeys.save,
+      when: () => props.editingQueueItemId !== undefined,
+      execute: () => {
+        if (props.editingQueueItemId !== undefined) emit('save', props.editingQueueItemId);
+        return 'HANDLED';
+      }
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'queueExecuteEdit',
+      priority: 110,
+      scope: 'pane',
+      owner: () => queueEditor,
+      keys: queueKeys.execute,
+      when: () => props.items.some((item) => item.queueItemId === props.editingQueueItemId),
+      execute: () => {
+        const item = props.items.find(
+          (candidate) => candidate.queueItemId === props.editingQueueItemId
+        );
+        if (item === undefined) return 'IGNORED';
+        executeQueueItem(item);
+        return 'HANDLED';
+      }
+    })
+  ];
+});
 </script>
 
 <template>
@@ -310,7 +373,7 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             </button>
           </div>
         </div>
-        <div v-if="goalEditing" class="goal-editor" @keydown="onEditEscape($event, 'goal')">
+        <div v-if="goalEditing" ref="goalEditor" class="goal-editor">
           <el-input
             v-model="goalObjective"
             class="goal-objective-input"
@@ -371,10 +434,10 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
           v-for="(item, index) in items"
           :key="item.queueItemId"
           class="work-item queue-item"
+          :ref="editingQueueItemId === item.queueItemId ? setEditingQueueItem : undefined"
           :class="{ editing: editingQueueItemId === item.queueItemId }"
           :data-queue-item-id="item.queueItemId"
           draggable="true"
-          @keydown="editingQueueItemId === item.queueItemId && onEditEscape($event, 'queue')"
           @pointerdown="onItemPointerDown($event, item)"
           @pointermove="onItemPointerMove"
           @pointerup="onItemPointerUp"
@@ -401,12 +464,12 @@ function onQueueEditorKeydown(event: KeyboardEvent, item: WorkspaceQueueItem): v
             >
             <el-input
               v-if="editingQueueItemId === item.queueItemId"
+              :ref="setQueueEditor"
               :model-value="editingContent"
               type="textarea"
               :autosize="{ minRows: 1, maxRows: 4 }"
               class="composer-queue-input"
               @update:model-value="emit('updateContent', $event)"
-              @keydown="onQueueEditorKeydown($event, item)"
             />
             <template v-else>
               <p

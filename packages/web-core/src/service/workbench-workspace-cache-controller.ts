@@ -4,7 +4,6 @@ import type {
   AgentRun,
   CachedSessionDetail,
   ConversationTurn,
-  ComposerSkillToken,
   RunnerDefaultConfiguration,
   Session,
   WorkspaceQueue
@@ -27,10 +26,6 @@ interface WorkbenchWorkspaceCacheControllerOptions {
   readonly nextCursor: Readonly<Ref<string | null>>;
   readonly contextUsage: Readonly<Ref<SessionContextUsage | null | undefined>>;
   readonly queue: Ref<WorkspaceQueue>;
-  readonly draftOpen: Ref<boolean>;
-  readonly input: Ref<string>;
-  readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
-  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
   readonly runner: Readonly<Ref<Session['runner']>>;
   readonly modelId: Readonly<Ref<string>>;
   readonly effort: Readonly<Ref<RunnerDefaultConfiguration['effort']>>;
@@ -43,6 +38,7 @@ interface WorkbenchWorkspaceCacheControllerOptions {
   readonly flushConversation: () => void;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly maximumDetails: number;
+  readonly otherVisibleSessionId?: () => string | undefined;
 }
 
 /** Owns capture and restoration of the Node + Workspace scoped view cache. */
@@ -73,9 +69,6 @@ export function createWorkbenchWorkspaceCacheController(
           ? {}
           : { inspector: options.inspector.value.snapshot() }),
         draft: {
-          input: options.input.value,
-          skillTokens: options.skillTokens.value,
-          references: options.references?.value ?? [],
           runner: options.runner.value,
           modelId: options.modelId.value,
           effort: options.effort.value,
@@ -99,7 +92,8 @@ export function createWorkbenchWorkspaceCacheController(
               detailHistoryAlreadyBounded: true
             })
       },
-      options.maximumDetails
+      options.maximumDetails,
+      options.otherVisibleSessionId?.()
     );
   }
 
@@ -122,16 +116,7 @@ export function createWorkbenchWorkspaceCacheController(
 
   function restoreWorkspaceDraft(cache: WorkspaceCacheView | undefined): void {
     const draft = cache?.draft;
-    if (draft === undefined) {
-      options.input.value = '';
-      options.skillTokens.value = [];
-      if (options.references !== undefined) options.references.value = [];
-      return;
-    }
-    options.restoreDraftConfiguration(draft);
-    options.input.value = draft.input;
-    options.skillTokens.value = draft.skillTokens;
-    if (options.references !== undefined) options.references.value = draft.references ?? [];
+    if (draft !== undefined) options.restoreDraftConfiguration(draft);
   }
 
   function restoreCachedSessionDetail(

@@ -35,7 +35,7 @@ const emit = defineEmits<{ openWorkspaceDetails: [nodeId: string, workspace: Wor
 const { t } = useI18n();
 const panelStyle = computed(() => {
   const sidebar = props.page.panelWidths.sidebar;
-  const inspector = props.page.panelWidths.inspector;
+  const inspector = props.page.panelWidths.compact;
   return {
     ...(sidebar === undefined
       ? {}

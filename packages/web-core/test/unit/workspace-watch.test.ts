@@ -1,6 +1,8 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
 import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
+import { createSessionNavigationProjection } from '../../src/service/session-navigation-projection.js';
 
 describe('Shared Workspace Watch', () => {
   it('retries failed topics through the same lease and accepts only the new watch snapshot', async () => {
@@ -198,6 +200,127 @@ describe('Shared Workspace Watch', () => {
     service.stop();
   });
 
+  it('replaces the navigation query without losing a lower-revision initial snapshot', async () => {
+    let navigation:
+      | { sessionIds: string[]; summaryAnchors: string[]; treeAnchor?: string; limit: number }
+      | undefined;
+    const requests: RequestInit[] = [];
+    const snapshots: unknown[] = [];
+    const service = createWorkspaceWatchService({
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
+      workspaces: { value: [{ id: 'workspace-1', path: '/project', kind: 'DIRECTORY' }] } as never,
+      heartbeatMs: 15_000,
+      sessionNavigation: () => navigation,
+      request: (_path, init) => {
+        if (init) requests.push(init);
+        return Promise.resolve({ accepted: true }) as never;
+      },
+      onSnapshot: (_node, _workspace, snapshot) => snapshots.push(snapshot)
+    });
+    await service.start('workspace-1');
+    const first = JSON.parse(String(requests[0]?.body));
+    expect(first.topics.sessionNavigation).toBeUndefined();
+    navigation = { sessionIds: ['one'], summaryAnchors: ['one'], limit: 100 };
+    await service.start('workspace-1');
+    const second = JSON.parse(String(requests[1]?.body));
+    expect(second.topics.sessionNavigation).toEqual(navigation);
+    const event = {
+      type: 'watch.workspace.snapshot',
+      workbenchConnectionId: second.workbenchConnectionId,
+      nodeGeneration: 'generation',
+      watchId: second.watchId,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      topic: 'sessionNavigation',
+      revision: 7,
+      payload: { tree: null }
+    };
+    expect(service.handleEvent(event)).toBe(true);
+    navigation = { ...navigation, treeAnchor: 'one' };
+    await service.start('workspace-1');
+    const third = JSON.parse(String(requests[2]?.body));
+    expect(service.handleEvent(event)).toBe(false);
+    expect(
+      service.handleEvent({
+        ...event,
+        watchId: third.watchId,
+        revision: 1,
+        payload: { tree: { anchor: 'one' } }
+      })
+    ).toBe(true);
+    expect(snapshots).toEqual([
+      { sessionNavigation: { tree: null } },
+      { sessionNavigation: { tree: { anchor: 'one' } } }
+    ]);
+    service.stop();
+  });
+
+  it('hides the old tree while a new captured query waits and rejects a late old frame', async () => {
+    const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
+    let query = { sessionIds: ['tab-a'], summaryAnchors: ['a'], treeAnchor: 'a', limit: 100 };
+    const missing = vi.fn();
+    const projection = createSessionNavigationProjection(missing);
+    const requests: RequestInit[] = [];
+    let resolveSecond!: (value: unknown) => void;
+    const secondRequest = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    const service = createWorkspaceWatchService({
+      workspaceTarget: ref(workspace),
+      workspaces: ref([{ id: 'workspace-1', kind: 'DIRECTORY' as const }]),
+      heartbeatMs: 60_000,
+      sessionNavigation: () => query,
+      request: (_path, init) => {
+        requests.push(init ?? {});
+        return (
+          requests.length === 1 ? Promise.resolve({ accepted: true }) : secondRequest
+        ) as never;
+      },
+      onSnapshot: (nodeId, workspaceId, snapshot, topic, _revision, captured) => {
+        if (topic === 'sessionNavigation' && captured !== undefined)
+          projection.accept({ nodeId, workspaceId }, captured, snapshot.sessionNavigation);
+      }
+    });
+    await service.start(workspace.workspaceId);
+    const first = JSON.parse(String(requests[0]!.body));
+    const frame = (
+      watchId: string,
+      anchor: string,
+      revision: number,
+      missingSessionIds: string[] = []
+    ) => ({
+      type: 'watch.workspace.snapshot',
+      workbenchConnectionId: first.workbenchConnectionId,
+      nodeGeneration: 'generation',
+      watchId,
+      ...workspace,
+      topic: 'sessionNavigation',
+      revision,
+      payload: {
+        sessions: [],
+        summaries: [],
+        tree: { anchorSessionId: anchor, parent: null, nodes: [], truncated: false },
+        missingSessionIds
+      }
+    });
+    expect(service.handleEvent(frame(first.watchId, 'a', 7))).toBe(true);
+    expect(projection.current(workspace, query)?.tree?.anchorSessionId).toBe('a');
+    query = { sessionIds: ['tab-b'], summaryAnchors: ['b'], treeAnchor: 'b', limit: 100 };
+    expect(projection.current(workspace, query)).toBeUndefined();
+    expect(service.handleEvent(frame(first.watchId, 'a', 8, ['tab-b']))).toBe(false);
+    const starting = service.start(workspace.workspaceId);
+    const second = JSON.parse(String(requests[1]!.body));
+    expect(projection.current(workspace, query)).toBeUndefined();
+    expect(service.handleEvent(frame(first.watchId, 'a', 9, ['tab-b']))).toBe(false);
+    expect(missing).toHaveBeenCalledTimes(1);
+    resolveSecond({ accepted: true });
+    await starting;
+    expect(projection.current(workspace, query)).toBeUndefined();
+    expect(service.handleEvent(frame(second.watchId, 'b', 1))).toBe(true);
+    expect(projection.current(workspace, query)?.tree?.anchorSessionId).toBe('b');
+    service.stop();
+  });
+
   it('keeps grouped sessions on the shared Workspace Watch and rejects a late previous-group snapshot', async () => {
     let sessionGroup: 'MAIN' | 'CHILD' = 'MAIN';
     const requests: { path: string; init?: RequestInit }[] = [];
@@ -260,7 +383,12 @@ describe('Shared Workspace Watch', () => {
     expect(snapshots).toEqual([]);
 
     await service.start('workspace-1');
-    expect(service.topicStatus).toEqual({ sessions: 'loading', files: 'ready', changes: 'ready' });
+    expect(service.topicStatus).toEqual({
+      sessions: 'loading',
+      files: 'ready',
+      changes: 'ready',
+      sessionNavigation: 'idle'
+    });
     const posts = requests.filter(({ init }) => init?.method === 'POST');
     expect(posts).toHaveLength(2);
     const childWatch = JSON.parse(String(posts[1]?.init?.body)) as {

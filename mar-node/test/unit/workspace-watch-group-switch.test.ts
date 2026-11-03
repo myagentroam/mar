@@ -17,6 +17,9 @@ function fixture() {
   const sessions = vi.fn(async (_id: string, group?: 'MAIN' | 'CHILD') => ({
     sessions: [{ id: group ?? 'ALL' }]
   }));
+  const navigation = vi.fn(async (_id: string, query: { treeAnchor?: string | undefined }) => ({
+    anchor: query.treeAnchor
+  }));
   const requireWorkspace = (id: unknown) =>
     id === workspace.id ? workspace : { ...workspace, id: String(id), path: '/other' };
   const unused = vi.fn(() => snapshots.clear(workspace.id));
@@ -28,6 +31,7 @@ function fixture() {
     files: { list: files } as never,
     changes: { current: changes, revision: () => changesRevision } as never,
     listSessions: sessions,
+    sessionNavigation: navigation,
     nodeId: () => 'node-1',
     emitWatchEvent: (event) => events.push(event as (typeof events)[number])
   });
@@ -70,6 +74,7 @@ function fixture() {
     files,
     changes,
     sessions,
+    navigation,
     unused,
     snapshots,
     select,
@@ -85,6 +90,71 @@ function fixture() {
 }
 
 describe('Workspace Watch session group switching', () => {
+  it('rejects invalid navigation query shapes with the existing watch error code', async () => {
+    const f = fixture();
+    try {
+      for (const sessionNavigation of [
+        { sessionIds: [''], summaryAnchors: [], limit: 10 },
+        { sessionIds: [], summaryAnchors: [], limit: 101 },
+        { sessionIds: [], summaryAnchors: [], limit: 10, unexpected: true }
+      ]) {
+        await expect(f.select('MAIN', {}, { sessionNavigation })).rejects.toThrow(
+          'WORKSPACE_WATCH_INVALID'
+        );
+      }
+    } finally {
+      f.close();
+    }
+  });
+
+  it('hands off unchanged topics while initializing each new navigation query', async () => {
+    const f = fixture();
+    try {
+      const first = await f.select(
+        'MAIN',
+        {},
+        {
+          sessionNavigation: {
+            sessionIds: ['one'],
+            summaryAnchors: ['one'],
+            treeAnchor: 'one',
+            limit: 20
+          }
+        }
+      );
+      await vi.waitFor(() =>
+        expect(f.events.filter((event) => event.watchId === first)).toHaveLength(4)
+      );
+      const second = await f.select(
+        'MAIN',
+        {},
+        {
+          sessionNavigation: {
+            sessionIds: ['one'],
+            summaryAnchors: ['one'],
+            treeAnchor: 'two',
+            limit: 20
+          }
+        }
+      );
+      await vi.waitFor(() =>
+        expect(f.events.filter((event) => event.watchId === second)).toHaveLength(4)
+      );
+      expect(f.sessions).toHaveBeenCalledTimes(1);
+      expect(f.files).toHaveBeenCalledTimes(1);
+      expect(f.changes).toHaveBeenCalledTimes(1);
+      expect(f.navigation).toHaveBeenCalledTimes(2);
+      expect(f.events).toContainEqual(
+        expect.objectContaining({
+          watchId: second,
+          topic: 'sessionNavigation',
+          payload: { anchor: 'two' }
+        })
+      );
+    } finally {
+      f.close();
+    }
+  });
   it('reads only sessions and hands off the last resource snapshots to the new watch', async () => {
     const f = fixture();
     try {

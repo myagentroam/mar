@@ -23,7 +23,8 @@ export function createWorkbenchEventProjectionService(options: {
   readonly nodes: Ref<NodeSummary[]>;
   readonly sessions: Ref<Session[]>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly selectedSession?: Readonly<Ref<Session | undefined>>;
   readonly conversationNextCursor: Readonly<Ref<string | null>>;
   readonly cacheQueue: (
     nodeId: string,
@@ -92,7 +93,16 @@ export function createWorkbenchEventProjectionService(options: {
         typeof queue === 'object' &&
         queue !== null
       ) {
-        const session = options.sessions.value.find((candidate) => candidate.id === sessionId);
+        const selected = options.selectedSession?.value;
+        const session =
+          selected?.id === sessionId &&
+          selected.workspaceId === options.workspaceTarget.value?.workspaceId
+            ? selected
+            : options.sessions.value.find(
+                (candidate) =>
+                  candidate.id === sessionId &&
+                  candidate.workspaceId === options.workspaceTarget.value?.workspaceId
+              );
         if (session !== undefined) {
           if (sessionHasNativeIdentity(session))
             options.cacheQueue(

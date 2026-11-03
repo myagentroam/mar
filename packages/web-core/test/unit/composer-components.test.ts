@@ -696,7 +696,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
           ? 'Enter 排队 · Ctrl + Enter 插入消息'
           : 'Enter to queue · Ctrl + Enter to steer'
       );
-      expect(i18n.global.t('generated.composerToolbar.enterToSendShiftAltEnterFor')).toBe(
+      expect(
+        i18n.global.t('generated.composerToolbar.enterToSendShiftAltEnterFor', { send: 'Enter' })
+      ).toBe(
         locale === 'zh-CN'
           ? 'Enter 发送 · Shift/Alt + Enter 换行'
           : 'Enter to send · Shift/Alt + Enter for a new line'

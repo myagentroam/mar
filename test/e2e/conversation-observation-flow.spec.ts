@@ -16,7 +16,10 @@ test('Conversation observation preserves streaming text through real Node relay 
   page,
   baseURL
 }) => {
+  test.setTimeout(90_000);
   const root = await mkdtemp(join(tmpdir(), 'mar-conversation-observation-'));
+  const previousHome = process.env.HOME;
+  process.env.HOME = root;
   const workspacePath = join(root, 'project');
   await mkdir(workspacePath);
   let releaseHistory!: () => void;
@@ -30,8 +33,33 @@ test('Conversation observation preserves streaming text through real Node relay 
   let csrfToken: string | undefined;
   let passwordChanged = false;
   const snapshots: Array<{ segments: Array<{ id: string; turnId: string }> }> = [];
+  let liveConnections = 0;
+  const requests: Array<{ sessionId: string; method: string; position: string | undefined }> = [];
+  await page.addInitScript(() => {
+    const OriginalWebSocket = window.WebSocket;
+    window.WebSocket = class extends OriginalWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        if (String(url).includes('/api/workbench/live')) {
+          (window as unknown as { closeTestLiveSocket: () => void }).closeTestLiveSocket = () =>
+            this.close();
+        }
+      }
+    };
+  });
+  page.on('request', (request) => {
+    const match = /\/api\/agent-sessions\/([^/]+)\/watch(?:\?.*)?$/.exec(request.url());
+    if (!match) return;
+    const body = request.postDataJSON() as { position?: string; mode?: string } | null;
+    requests.push({
+      sessionId: decodeURIComponent(match[1]!),
+      method: request.method(),
+      position: body?.position
+    });
+  });
   page.on('websocket', (socket) => {
     if (!socket.url().includes('/api/workbench/live')) return;
+    liveConnections += 1;
     socket.on('framereceived', ({ payload }) => {
       const frame = JSON.parse(payload.toString()) as {
         type?: string;
@@ -77,6 +105,7 @@ test('Conversation observation preserves streaming text through real Node relay 
     expect(registration.status()).toBe(200);
     const serverURL = new URL(baseURL!);
     serverURL.port = process.env['MAR_E2E_SERVER_PORT'] ?? String(Number(serverURL.port) + 1);
+    const database = new NodeDatabase(':memory:', 'conversation-observation-fixture');
     connector = new NodeConnector({
       configPath: join(root, 'node.json'),
       config: {
@@ -87,7 +116,7 @@ test('Conversation observation preserves streaming text through real Node relay 
       },
       capabilities: { ...unavailableCapabilities(), codex: { available: true } },
       reconnect: false,
-      database: new NodeDatabase(':memory:', 'conversation-observation-fixture')
+      database
     });
     const internals = connector as unknown as {
       runtime: NodeRuntimeState;
@@ -98,6 +127,7 @@ test('Conversation observation preserves streaming text through real Node relay 
     for (const runner of internals.runners.advertised()) {
       runner.refreshProfile = async () => undefined;
       runner.discoverSessions = async () => [];
+      runner.removeNative = async () => true;
     }
     internals.conversationHistoryService.readNative = async () => undefined;
     internals.conversationHistoryService.readOfficial = async () => {
@@ -132,6 +162,12 @@ test('Conversation observation preserves streaming text through real Node relay 
       nativeControl: 'MAR_MANAGED',
       customTitle: 'Observation handoff'
     });
+    database.saveNativeSessionMetadata({
+      runner: 'codex',
+      externalSessionId: session.id,
+      workspaceId,
+      customTitle: 'Observation handoff'
+    });
     const run = internals.runtime.createMessageRun({
       sessionId: session.id,
       clientMessageId: 'observation-submission',
@@ -153,7 +189,10 @@ test('Conversation observation preserves streaming text through real Node relay 
       .locator('.session-list .session-link')
       .filter({ hasText: 'Observation handoff' })
       .click();
-    const reply = page.locator('.conversation-item.assistant_message .agent-markdown');
+    const reply = page
+      .locator('.conversation-panel')
+      .filter({ hasText: 'Observation handoff' })
+      .locator('.conversation-item.assistant_message .agent-markdown');
     await expect(reply).toHaveText('Streaming prefix');
     await expect.poll(() => snapshots.length).toBe(1);
     const segmentId = snapshots[0]!.segments[0]!.id;
@@ -174,12 +213,181 @@ test('Conversation observation preserves streaming text through real Node relay 
     await expect.poll(() => historyReads).toBeGreaterThan(1);
     await expect(reply).toHaveText('Streaming prefix and tail');
     await expect(reply).toHaveCount(1);
+    const asideSession = internals.runtime.createAgentSession({
+      workspaceId,
+      runner: 'codex',
+      cwd: workspacePath,
+      externalSessionId: 'observation-aside',
+      nativeControl: 'MAR_MANAGED',
+      customTitle: 'Observation aside'
+    });
+    database.saveNativeSessionMetadata({
+      runner: 'codex',
+      externalSessionId: asideSession.id,
+      workspaceId,
+      customTitle: 'Observation aside'
+    });
+    const asideRun = internals.runtime.createMessageRun({
+      sessionId: asideSession.id,
+      clientMessageId: 'aside-observation-submission',
+      content: 'Observe the aside'
+    }).run;
+    const asideExecution = internals.runtime.createExecution(asideRun.id);
+    internals.runEventService.emit(asideExecution.id, 'run.running', {}, 'RUNNING');
+    internals.runEventService.emit(asideExecution.id, 'text.delta', {
+      itemId: 'aside-reply',
+      text: 'Aside prefix'
+    });
     await page.reload();
     await expect(reply).toHaveText('Streaming prefix and tail');
     await expect(reply).toHaveCount(1);
     await expect(page.locator('.conversation-item.user_message')).toHaveCount(1);
     expect(snapshots.at(-1)?.segments[0]?.id).toBe(segmentId);
     expect(snapshots.at(-1)?.segments[0]?.turnId).toBe('native-observation-turn');
+
+    internals.conversationHistoryService.readOfficial = async (target) => ({
+      turns: target.id === session.id ? history : [],
+      nextCursor: null
+    });
+    const connectionsBeforeAside = liveConnections;
+    const asideRow = page.locator('.session-row').filter({ hasText: 'Observation aside' });
+    await asideRow.hover();
+    await asideRow.locator('.session-more-button').click();
+    const openAside = page.getByText('在侧栏打开', { exact: true });
+    await expect(openAside).toBeEnabled();
+    await openAside.click();
+    const aside = page.locator('.workspace-aside');
+    await expect(aside.getByText('Aside prefix', { exact: true })).toBeVisible();
+    expect(liveConnections).toBe(connectionsBeforeAside);
+    await expect
+      .poll(() =>
+        requests.some(
+          (item) =>
+            item.sessionId === asideSession.id &&
+            item.method === 'POST' &&
+            item.position === 'secondary'
+        )
+      )
+      .toBe(true);
+    const mainLiveRun = internals.runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'main-live-observation-submission',
+      content: 'Observe the main pane'
+    }).run;
+    const mainLiveExecution = internals.runtime.createExecution(mainLiveRun.id);
+    internals.runEventService.emit(mainLiveExecution.id, 'run.running', {}, 'RUNNING');
+    internals.runEventService.emit(mainLiveExecution.id, 'text.delta', {
+      itemId: 'main-live-reply',
+      text: 'Main live reply'
+    });
+    internals.runEventService.emit(asideExecution.id, 'text.delta', {
+      itemId: 'aside-reply',
+      text: ' and live tail'
+    });
+    await expect(aside.getByText('Aside prefix and live tail', { exact: true })).toBeVisible();
+    await expect(
+      page
+        .locator('.conversation-panel')
+        .filter({ hasText: 'Observation handoff' })
+        .getByText('Main live reply', { exact: true })
+    ).toBeVisible();
+    const beforeReconnect = requests.length;
+    await page.evaluate(() =>
+      (window as unknown as { closeTestLiveSocket: () => void }).closeTestLiveSocket()
+    );
+    await expect.poll(() => liveConnections).toBeGreaterThan(1);
+    await expect
+      .poll(() =>
+        requests
+          .slice(beforeReconnect)
+          .some(
+            (item) =>
+              item.sessionId === session.id && item.method === 'POST' && item.position === undefined
+          )
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        requests
+          .slice(beforeReconnect)
+          .some(
+            (item) =>
+              item.sessionId === asideSession.id &&
+              item.method === 'POST' &&
+              item.position === 'secondary'
+          )
+      )
+      .toBe(true);
+    internals.runEventService.emit(mainLiveExecution.id, 'text.delta', {
+      itemId: 'main-live-reply',
+      text: ' after reconnect'
+    });
+    internals.runEventService.emit(asideExecution.id, 'text.delta', {
+      itemId: 'aside-reply',
+      text: ' after reconnect'
+    });
+    await expect(
+      page
+        .locator('.conversation-panel')
+        .filter({ hasText: 'Observation handoff' })
+        .getByText('Main live reply after reconnect', { exact: true })
+    ).toBeVisible();
+    await expect(
+      aside.getByText('Aside prefix and live tail after reconnect', { exact: true })
+    ).toBeVisible();
+    await aside.getByRole('tab', { name: '文件', exact: true }).click();
+    await expect
+      .poll(() =>
+        requests.some(
+          (item) =>
+            item.sessionId === asideSession.id &&
+            item.method === 'DELETE' &&
+            item.position === 'secondary'
+        )
+      )
+      .toBe(true);
+    await expect(
+      page
+        .locator('.conversation-panel')
+        .filter({ hasText: 'Observation handoff' })
+        .getByText('Main live reply after reconnect', { exact: true })
+    ).toBeVisible();
+    await aside.getByRole('tab', { name: 'Observation aside', exact: true }).click();
+    await expect(
+      aside.getByText('Aside prefix and live tail after reconnect', { exact: true })
+    ).toBeVisible();
+    internals.runEventService.emit(mainLiveExecution.id, 'run.succeeded', {}, 'SUCCEEDED');
+    internals.runEventService.emit(asideExecution.id, 'run.succeeded', {}, 'SUCCEEDED');
+    const beforeDeletion = requests.length;
+    const currentCsrf = await page.request.post('/api/auth/csrf', {
+      headers: { origin: baseURL! }
+    });
+    expect(currentCsrf.status()).toBe(200);
+    csrfToken = ((await currentCsrf.json()) as { csrfToken: string }).csrfToken;
+    const deleted = await page.request.delete(
+      `/api/agent-sessions/${encodeURIComponent(asideSession.id)}?nodeId=${encodeURIComponent(nodeId!)}`,
+      { headers: { origin: baseURL!, 'x-csrf-token': csrfToken } }
+    );
+    expect(deleted.status(), await deleted.text()).toBe(200);
+    await expect(aside.getByRole('tab', { name: 'Observation aside', exact: true })).toHaveCount(0);
+    await expect
+      .poll(() =>
+        requests
+          .slice(beforeDeletion)
+          .some(
+            (item) =>
+              item.sessionId === asideSession.id &&
+              item.method === 'DELETE' &&
+              item.position === 'secondary'
+          )
+      )
+      .toBe(true);
+    await expect(
+      page
+        .locator('.conversation-panel')
+        .filter({ hasText: 'Observation handoff' })
+        .getByText('Main live reply after reconnect', { exact: true })
+    ).toBeVisible();
   } finally {
     releaseHistory();
     await page.goto('about:blank');
@@ -201,5 +409,7 @@ test('Conversation observation preserves streaming text through real Node relay 
       expect(restored.status()).toBe(200);
     }
     await rm(root, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
   }
 });

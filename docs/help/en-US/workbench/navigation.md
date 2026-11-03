@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-02
+lastUpdated: 2026-11-04
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -17,7 +17,7 @@ Workspace registration uses an explicit host target in a dialog; closing it leav
 
 Clicking a Workspace tab expands only its Node and group in the resource tree, collapses other Nodes and groups, and scrolls the selected Workspace into view without moving keyboard focus. Selecting an ungrouped Workspace collapses all groups. A closed sidebar or mobile drawer stays closed; the target is located when it next opens. Existing filters remain in place and continue to show matching branches. You can still expand or collapse branches manually; clicking a tab again restores only its target branch. This does not trigger additional session, file, or Git refreshes.
 
-On desktop, drag the divider at the right edge of the Workspace tree or the left edge of the files panel to resize it within its minimum, maximum, and available space. Widths are saved in the current browser's localStorage and restored after a refresh. First-time use or invalid saved values use the default widths. Horizontal resizing is unavailable when the files panel stacks below the conversation on a narrow screen or panels use mobile drawers; these layouts do not overwrite your desktop preferences.
+On desktop, drag the divider at the right edge of the Workspace tree or the left edge of Aside to resize it within its minimum, maximum, and available space. Aside keeps a compact width for tools such as Files and a separate content width for sessions and Terminal. Each preference is saved in the current browser and restored after a refresh; first use or invalid values use the corresponding default. When desktop space is insufficient, the work areas stack vertically; mobile uses drawers. These layouts do not offer horizontal resizing or overwrite your desktop preferences.
 
 Right-click a Workspace tab and choose **Pin** to move it to the end of the pinned section. Pinned tabs replace the close button with an always-visible pin icon; click it or choose **Unpin** to return the tab to the start of the normal section. Pinned tabs can be reordered among themselves. Dragging a pinned tab after a normal tab automatically unpins it; dragging a normal tab into the pinned section pins it automatically, while dropping it at the section boundary keeps it normal. Pin state and order survive a refresh. When desktop space permits, pinned tabs stay visible while normal tabs scroll. If too many pins leave insufficient space for a normal tab, or on mobile, the full strip scrolls; use the all-open-Workspaces menu on desktop or swipe horizontally on mobile to reach overflow tabs.
 

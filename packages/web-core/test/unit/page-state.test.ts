@@ -3,16 +3,16 @@ import { ref } from 'vue';
 import { createWorkbenchPageStateService } from '../../src/service/workbench-base-state-service.js';
 
 const captured = vi.hoisted(() => ({
-  activeTarget: undefined as (() => unknown) | undefined
+  activeTargets: undefined as (() => unknown) | undefined
 }));
 vi.mock('../../src/service/workbench-notification-service.js', () => ({
   createWorkbenchNotificationService: (
     _username: unknown,
     options: {
-      activeTarget: () => unknown;
+      activeTargets: () => unknown;
     }
   ) => {
-    captured.activeTarget = options.activeTarget;
+    captured.activeTargets = options.activeTargets;
     return { dispose: vi.fn() };
   }
 }));
@@ -22,32 +22,47 @@ describe('public page state composition', () => {
   it('shares the provided navigation and selects only the foreground notification target', () => {
     vi.stubGlobal('sessionStorage', { getItem: () => null });
     const navigation = { view: ref('nodes'), managementSection: ref('custom-page') };
+    const visible = ref<{ nodeId: string; workspaceId: string; sessionId: string }[]>([]);
     const state = createWorkbenchPageStateService({
       sessionPageSize: 30,
       onUnauthenticated: vi.fn(),
-      onConversationOverflow: vi.fn(),
-      navigation
+      navigation,
+      visibleWorkspaceTargets: () => visible.value
     });
     expect(state.navigation).toBe(navigation);
-    expect(captured.activeTarget?.()).toBeUndefined();
+    expect(captured.activeTargets?.()).toEqual([]);
     state.selection.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
     state.selection.selectedSessionId.value = 'session-a';
+    visible.value = [
+      { nodeId: 'node-a', workspaceId: 'workspace-a', sessionId: 'session-a' },
+      { nodeId: 'node-a', workspaceId: 'workspace-a', sessionId: 'session-b' }
+    ];
     state.hostedSelection.selectedNodeId.value = 'hosted-node';
     state.hostedSelection.selectedConversationId.value = 'conversation-a';
-    expect(captured.activeTarget?.()).toEqual({
-      targetType: 'WORKSPACE_SESSION',
-      nodeId: 'node-a',
-      workspaceId: 'workspace-a',
-      sessionId: 'session-a'
-    });
+    expect(captured.activeTargets?.()).toEqual([
+      {
+        targetType: 'WORKSPACE_SESSION',
+        nodeId: 'node-a',
+        workspaceId: 'workspace-a',
+        sessionId: 'session-a'
+      },
+      {
+        targetType: 'WORKSPACE_SESSION',
+        nodeId: 'node-a',
+        workspaceId: 'workspace-a',
+        sessionId: 'session-b'
+      }
+    ]);
     navigation.view.value = 'conversations';
-    expect(captured.activeTarget?.()).toEqual({
-      targetType: 'HOSTED_CONVERSATION',
-      nodeId: 'hosted-node',
-      conversationId: 'conversation-a'
-    });
+    expect(captured.activeTargets?.()).toEqual([
+      {
+        targetType: 'HOSTED_CONVERSATION',
+        nodeId: 'hosted-node',
+        conversationId: 'conversation-a'
+      }
+    ]);
     navigation.view.value = 'management';
-    expect(captured.activeTarget?.()).toBeUndefined();
+    expect(captured.activeTargets?.()).toEqual([]);
     expect(state.selection.workspaceTarget.value?.workspaceId).toBe('workspace-a');
     expect(state.navigation.managementSection.value).toBe('custom-page');
   });

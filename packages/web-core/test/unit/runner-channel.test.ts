@@ -23,7 +23,8 @@ function fixture(runner: Session['runner'] = 'claude-code') {
     notice,
     request: request as never,
     sessionPathId: encodeURIComponent,
-    errorMessage: () => 'denied'
+    errorMessage: () => 'denied',
+    currentRevision: () => 0
   });
   return { service, request, token, input, loading, notice };
 }

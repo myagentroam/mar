@@ -279,6 +279,7 @@ export interface UserSessionSummary {
   readonly current: boolean;
 }
 export interface NodeWorkbenchManifest {
+  readonly sessionAside?: { readonly apiVersion: 1 };
   readonly sessionGroups?: { readonly apiVersion: 1 };
   readonly manifestVersion: number;
   readonly observedAt: number;

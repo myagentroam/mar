@@ -26,14 +26,6 @@ describe('Selected Workspace session performance', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(f.nodeId, f.workspaceId),
       selectedSessionId: f.sessionId,
-      sessions: ref<Session[]>([
-        {
-          id: 'session',
-          workspaceId: 'workspace',
-          runner: 'codex',
-          activity: 'MANAGED_ACTIVE'
-        } as Session
-      ]),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -44,7 +36,6 @@ describe('Selected Workspace session performance', () => {
         return { nodeGeneration: 'generation' } as never;
       },
       sessionPathId: (id) => id,
-      mergeSessions: vi.fn(),
       applySnapshot: () => true,
       applyEvent: (event) => {
         const payload = event.payload as { sessionId?: string; performance?: unknown };

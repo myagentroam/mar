@@ -3,10 +3,10 @@ import { runPerformanceSchema, type RunPerformance } from '@myagentroam/protocol
 
 /** Performance survives only while the same Workspace session stays selected. */
 export function createWorkbenchPerformanceService(options: {
-  readonly view: Ref<string>;
-  readonly nodeId: Ref<string | undefined>;
-  readonly workspaceId: Ref<string | undefined>;
-  readonly sessionId: Ref<string | undefined>;
+  readonly view: Readonly<Ref<string>>;
+  readonly nodeId: Readonly<Ref<string | undefined>>;
+  readonly workspaceId: Readonly<Ref<string | undefined>>;
+  readonly sessionId: Readonly<Ref<string | undefined>>;
 }) {
   const current = ref<RunPerformance>();
   const stop = watch(

@@ -1,13 +1,15 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-02
+lastUpdated: 2026-11-04
 ---
 
 # Create and Manage Sessions
 
 On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates the session list and defaults to Main Sessions. Sessions with a parent relationship appear under Child Sessions; sessions without one appear under Main Sessions. Search and pagination stay within the selected group. Switching groups does not close the conversation or interrupt work. Each Workspace remembers its group for the current page only; reloading defaults to Main Sessions. A Node without grouping capability retains the mixed list.
 
-Group tabs show only their names and selected state, without running counts or unread badges. Clicking a tab only switches the list; it does not open a session. Individual session rows retain their running and unread indicators. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session. Choose **View session tree** from a session's more menu to see its relationships and open a session from the tree. Main and child sessions also have a shortcut beside the title: click it, or tap it on a touchscreen, to open the standard session-tree dialog. Hover does not open it. Close it with the close button, backdrop, Esc, or mobile Back. The tree shows a snapshot of running, sleeping, and idle states, with active branches first; reopen it to read a new snapshot. It indicates when the tree is limited to 100 sessions.
+Group tabs show only their names and selected state, without running counts or unread badges. Clicking a tab only switches the list; it does not open a session. Individual session rows retain their running and unread indicators. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session. Open the session tree from a session's More menu or title shortcut by clicking or tapping; hover does not open it. The tree shows the direct parent and recursive descendants, updates running, sleeping, and idle states from the Workspace while open, and puts active branches first. It indicates when results are limited to 100 sessions. Selecting a node opens it in Aside by default; its menu can open it in the main work area instead. Use the close button, an outside click, Esc, or mobile Back to close the tree.
+
+A session cannot occupy both the main work area and Aside at once. **Open in Aside** focuses the main work area if that session is already there. **Open in Main** moves a session from Aside to the main work area and removes its Aside tab. The handoff preserves its draft and reading context. Closing an Aside session tab stops displaying its conversation there; it does not end the Agent's task or delete the session.
 
 Agent operations follow the [conversation work-process grouping rules](conversation.md), without splitting by target, operation, or target count. Records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 

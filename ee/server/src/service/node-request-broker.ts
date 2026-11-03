@@ -172,9 +172,13 @@ export class NodeRequestBroker {
     if (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
       return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
     const connection = this.socketFor(nodeId);
-    // Cancellation can only address the authenticated caller's page intent on the Node.
-    // It reads no resource and must remain possible after Workspace access is revoked.
-    if (operation === 'prompt-completion.cancel')
+    // Cancellation and unwatch only address the authenticated caller's page intent
+    // on the Node. They read no resource and must remain possible after revocation.
+    if (
+      operation === 'prompt-completion.cancel' ||
+      operation === 'session.unwatch' ||
+      operation === 'workspace.unwatch'
+    )
       return this.dispatch(nodeId, operation, data, user, undefined, timeoutMs, connection, signal);
     const { workspaceId, conflict } = this.scopes.resolve(
       nodeId,

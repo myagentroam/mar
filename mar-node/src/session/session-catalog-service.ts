@@ -1,6 +1,9 @@
 import { resolveSessionRollbackTarget } from '../service/session-rollback-target.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
-import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
+import type {
+  WorkspaceSessionCleanupResult,
+  WorkspaceSessionNavigationQuery
+} from '@myagentroam/protocol';
 import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentSession } from './contracts.js';
 import type { NodeDatabase } from '../database.js';
@@ -60,6 +63,8 @@ interface SessionTreeCleanup {
   readonly budget: WorkspaceSessionCleanupBudget;
   readonly settled: (session: NodeAgentSession, deleted: boolean) => void;
 }
+
+type SessionNavigationQuery = WorkspaceSessionNavigationQuery & { readonly workspaceId: string };
 
 export class SessionCatalogService {
   private rewindQueue: Promise<void> = Promise.resolve();
@@ -142,9 +147,95 @@ export class SessionCatalogService {
       ancestors.add(parent.id);
       root = parent;
     }
+    const project = this.navigationProjector(input.workspaceId);
+    const queue = [root];
+    const visited = new Set([root.id]);
+    const nodes = [];
+    for (let index = 0; index < queue.length && index < limit; index += 1) {
+      const session = queue[index]!;
+      nodes.push(project(session));
+      const children = [...database.listChildSessionRecords(input.workspaceId, session.id)];
+      if (input.includeAncestors === true)
+        children.sort(
+          (left, right) => Number(ancestors.has(right.id)) - Number(ancestors.has(left.id))
+        );
+      for (const child of children) {
+        if (visited.has(child.id)) continue;
+        visited.add(child.id);
+        queue.push(child);
+      }
+    }
+    return { rootSessionId: root.id, nodes, truncated: queue.length > nodes.length };
+  }
+
+  navigation(query: SessionNavigationQuery) {
+    const database = this.options.database();
+    const project = this.navigationProjector(query.workspaceId);
+    const get = (id: string) => {
+      const record = database.getSessionRecord(id);
+      return record?.workspaceId === query.workspaceId ? record : undefined;
+    };
+    const requestedIds = new Set([
+      ...query.sessionIds,
+      ...query.summaryAnchors,
+      ...(query.treeAnchor === undefined ? [] : [query.treeAnchor])
+    ]);
+    const missingSessionIds = [...requestedIds].filter((id) => get(id) === undefined);
+    const sessions = query.sessionIds.flatMap((id) => {
+      const record = get(id);
+      return record === undefined ? [] : [project(record)];
+    });
+    const descendantsByAnchor = new Map<string, ReturnType<typeof database.sessionTreeRecords>>();
+    const descendants = (anchor: string) => {
+      let records = descendantsByAnchor.get(anchor);
+      if (records === undefined) {
+        records = database.sessionTreeRecords(query.workspaceId, anchor).slice(1);
+        descendantsByAnchor.set(anchor, records);
+      }
+      return records;
+    };
+    const summaries = query.summaryAnchors.flatMap((anchorSessionId) => {
+      if (get(anchorSessionId) === undefined) return [];
+      let runningCount = 0;
+      let sleepingCount = 0;
+      const records = descendants(anchorSessionId);
+      for (const record of records) {
+        const status = sessionActivityStatus(this.options.runtime, record.id);
+        if (status === 'RUNNING') runningCount++;
+        else if (status === 'SLEEPING') sleepingCount++;
+      }
+      return [
+        {
+          anchorSessionId,
+          descendantCount: records.length,
+          activeCount: runningCount + sleepingCount,
+          runningCount,
+          sleepingCount,
+          hasActiveDescendants: runningCount + sleepingCount > 0
+        }
+      ];
+    });
+    const anchor = query.treeAnchor === undefined ? undefined : get(query.treeAnchor);
+    const records = anchor === undefined ? [] : descendants(anchor.id);
+    const parent = anchor?.metadata.parentSessionId
+      ? get(anchor.metadata.parentSessionId)
+      : undefined;
+    const tree =
+      anchor === undefined
+        ? null
+        : {
+            anchorSessionId: anchor.id,
+            parent: parent === undefined ? null : project(parent),
+            nodes: records.slice(0, query.limit).map(project),
+            truncated: records.length > query.limit
+          };
+    return { sessions, summaries, tree, missingSessionIds };
+  }
+
+  private navigationProjector(workspaceId: string) {
     const native = this.options
       .cachedNative()
-      .filter((session) => session.workspaceId === input.workspaceId);
+      .filter((session) => session.workspaceId === workspaceId);
     const projections = this.options.projection.projectionsForNative(native);
     const activityById = new Map<string, number>();
     for (const source of native) {
@@ -154,14 +245,10 @@ export class SessionCatalogService {
         latestSessionActivityAt(activityById.get(id) ?? 0, source.lastActivityAt)
       );
     }
-    const queue = [root];
-    const visited = new Set([root.id]);
-    const nodes = [];
-    for (let index = 0; index < queue.length && index < limit; index += 1) {
-      const session = queue[index]!;
+    return (session: ReturnType<NodeDatabase['listSessionRecords']>[number]) => {
       const active = this.options.runtime.getAgentSession(session.id);
       const live = active === undefined ? undefined : this.options.present(active);
-      nodes.push({
+      return {
         id: session.id,
         parentSessionId: session.metadata.parentSessionId ?? null,
         title:
@@ -177,19 +264,8 @@ export class SessionCatalogService {
           live?.lastActivityAt ?? 0,
           activityById.get(session.id) ?? 0
         )
-      });
-      const children = [...database.listChildSessionRecords(input.workspaceId, session.id)];
-      if (input.includeAncestors === true)
-        children.sort(
-          (left, right) => Number(ancestors.has(right.id)) - Number(ancestors.has(left.id))
-        );
-      for (const child of children) {
-        if (visited.has(child.id)) continue;
-        visited.add(child.id);
-        queue.push(child);
-      }
-    }
-    return { rootSessionId: root.id, nodes, truncated: queue.length > nodes.length };
+      };
+    };
   }
 
   private async collect(input: Record<string, unknown>): Promise<NodeAgentSession[]> {

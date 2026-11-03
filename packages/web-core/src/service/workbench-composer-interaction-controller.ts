@@ -7,6 +7,9 @@ import type {
 import type { createComposerReferenceService } from './composer-reference-service.js';
 import type { createRunnerInteractionService } from './runner-interaction-service.js';
 import { quickPromptAtCursor, slashCommandAtCursor } from './runner-interaction-service.js';
+import { registerComposerShortcuts } from './composer-shortcut-service.js';
+import { consoleKeyboardShortcutService } from './console-keyboard-shortcut-service.js';
+import { composerSendKeys, composerStopKeys } from './console-shortcut-keys.js';
 
 interface WorkbenchComposerInteractionOptions {
   readonly input: Ref<string>;
@@ -43,6 +46,64 @@ interface WorkbenchComposerInteractionOptions {
 export function createWorkbenchComposerInteractionController(
   options: WorkbenchComposerInteractionOptions
 ) {
+  function registerShortcuts(owner: () => Element | undefined): () => void {
+    const releases = [
+      registerComposerShortcuts({
+        owner,
+        canSend: () =>
+          !options.mobileViewport.value &&
+          !options.fileReferences.open.value &&
+          (!options.runnerInteractions.commandPickerOpen.value ||
+            options.runnerInteractions.visibleEntryCount.value === 0),
+        canReplace: () => true,
+        canStop: () =>
+          options.canInterruptTurn.value &&
+          !options.fileReferences.open.value &&
+          !options.runnerInteractions.commandPickerOpen.value,
+        send: (replace) => options.sendMessage(replace),
+        stop: () => {
+          void options.stopActiveRun();
+        }
+      }),
+      consoleKeyboardShortcutService.register({
+        command: 'composer.acceptPicker',
+        scope: 'pane',
+        priority: 110,
+        owner,
+        keys: composerSendKeys,
+        when: () =>
+          !options.mobileViewport.value &&
+          (options.fileReferences.open.value ||
+            (options.runnerInteractions.commandPickerOpen.value &&
+              options.runnerInteractions.visibleEntryCount.value > 0)),
+        execute: () => {
+          if (options.fileReferences.open.value) {
+            const entry =
+              options.fileReferences.candidates.value[options.fileReferences.activeIndex.value];
+            if (entry !== undefined) selectReference(entry);
+          } else options.runnerInteractions.acceptPicker(pickerCallbacks());
+          return 'HANDLED';
+        }
+      }),
+      consoleKeyboardShortcutService.register({
+        command: 'composer.dismissPicker',
+        scope: 'pane',
+        priority: 110,
+        owner,
+        keys: composerStopKeys,
+        when: () =>
+          options.fileReferences.open.value || options.runnerInteractions.commandPickerOpen.value,
+        execute: () => {
+          if (options.fileReferences.open.value) {
+            options.fileReferences.cancelSearch();
+            options.fileReferences.close();
+          } else options.runnerInteractions.dismissPicker();
+          return 'HANDLED';
+        }
+      })
+    ];
+    return () => releases.forEach((release) => release());
+  }
   function updatePickers(cursor = options.input.value.length): void {
     options.runnerInteractions.onInput(cursor);
     options.fileReferences.update(cursor);
@@ -101,33 +162,16 @@ export function createWorkbenchComposerInteractionController(
           options.fileReferences.candidates.value.length;
         return;
       }
-      if (
-        event.key === 'Enter' &&
-        !options.mobileViewport.value &&
-        !event.shiftKey &&
-        !event.altKey
-      ) {
-        event.preventDefault();
-        const entry =
-          options.fileReferences.candidates.value[options.fileReferences.activeIndex.value];
-        if (entry !== undefined) selectReference(entry);
-        return;
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        options.fileReferences.cancelSearch();
-        options.fileReferences.close();
-        return;
-      }
     }
-    options.runnerInteractions.onKeydown(event, {
-      mobile: options.mobileViewport.value,
-      canInterrupt: options.canInterruptTurn.value,
-      stop: () => void options.stopActiveRun(),
+    options.runnerInteractions.onKeydown(event);
+  }
+
+  function pickerCallbacks() {
+    return {
       send: options.sendMessage,
       selectQuickPrompt: selectQuickPrompt,
       selectSkill: options.selectSkill
-    });
+    };
   }
 
   function selectReference(entry: ComposerReferenceCandidate): void {
@@ -145,6 +189,7 @@ export function createWorkbenchComposerInteractionController(
   }
 
   return {
+    registerShortcuts,
     onComposerCursor,
     onComposerInput,
     onComposerKeydown,

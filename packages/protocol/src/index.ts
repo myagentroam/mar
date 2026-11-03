@@ -347,6 +347,7 @@ export const nodeUpgradeStatusSchema = z.object({
   updatedAt: z.number().int().nonnegative()
 });
 export type NodeUpgradeStatus = z.infer<typeof nodeUpgradeStatusSchema>;
+export const sessionAsideCapabilitySchema = z.object({ apiVersion: z.literal(1) }).strict();
 export const promptCompletionCapabilitySchema = z
   .object({
     apiVersion: z.literal(1),
@@ -396,6 +397,7 @@ export const nodeCapabilitiesSchema = z
     chatgptLogin: chatgptLoginCapabilitySchema.optional(),
     workspaceDirectTransfer: workspaceDirectTransferCapabilitySchema.optional(),
     terminalDirect: terminalDirectCapabilitySchema.optional(),
+    sessionAside: sessionAsideCapabilitySchema.optional(),
     sessionGroups: z
       .object({ apiVersion: z.literal(1) })
       .strict()
@@ -1600,6 +1602,16 @@ export const agentRunStatusSchema = z.enum([
 ]);
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 
+export const workspaceSessionNavigationQuerySchema = z
+  .object({
+    sessionIds: z.array(z.string().min(1).max(512)),
+    summaryAnchors: z.array(z.string().min(1).max(512)),
+    treeAnchor: z.string().min(1).max(512).optional(),
+    limit: z.number().int().min(1).max(100)
+  })
+  .strict();
+export type WorkspaceSessionNavigationQuery = z.infer<typeof workspaceSessionNavigationQuerySchema>;
+
 export const recentRunSchema = z.object({
   runId: z.string().min(1).max(128),
   nodeId: z.string().min(1).max(128),
@@ -1724,7 +1736,7 @@ const watchFailedEventSchema = watchEventIdentitySchema
     sessionId: z.string().min(1).max(512).optional(),
     conversationId: z.string().min(1).max(160).optional(),
     templateId: z.string().min(1).max(160).optional(),
-    topic: z.enum(['sessions', 'files', 'changes']).optional(),
+    topic: z.enum(['sessions', 'files', 'changes', 'sessionNavigation']).optional(),
     code: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/),
     message: z.string().min(1).max(1000)
   })
@@ -1758,7 +1770,7 @@ export const watchEventSchema = z.union([
   watchEventIdentitySchema.extend({
     type: z.literal('watch.workspace.snapshot'),
     workspaceId: z.string().min(1).max(160),
-    topic: z.enum(['sessions', 'files', 'changes']),
+    topic: z.enum(['sessions', 'files', 'changes', 'sessionNavigation']),
     revision: z.number().int().nonnegative(),
     snapshotSequence: z.number().int().positive(),
     expiresAt: z.number().int().positive(),
@@ -1960,6 +1972,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   }),
   directTransfer: workspaceDirectTransferCapabilitySchema.optional(),
   terminalDirect: terminalDirectCapabilitySchema.optional(),
+  sessionAside: sessionAsideCapabilitySchema.optional(),
   sessionGroups: z
     .object({ apiVersion: z.literal(1) })
     .strict()

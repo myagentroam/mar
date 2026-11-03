@@ -1,6 +1,7 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
+import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
 import type { Session } from '../../src/model/workbench.js';
 import { ref } from 'vue';
 
@@ -17,6 +18,213 @@ function segment(id: string, index = 0) {
 }
 
 describe('Web Session Watch Lifecycle', () => {
+  it('routes an event to the matching Watch during a same-session pane handoff', async () => {
+    const target = workspaceTargetRef(ref('node-1'), ref('workspace-1'));
+    const requests: Array<{ position?: string; watchId: string }> = [];
+    const primaryEvents = vi.fn();
+    const secondaryEvents = vi.fn();
+    const create = (position: 'secondary' | undefined, applyEvent: typeof primaryEvents) =>
+      createWorkbenchSessionWatchController({
+        workspaceTarget: target,
+        selectedSessionId: ref('session-1'),
+        followConversation: ref(false),
+        heartbeatMs: 15_000,
+        requestTimeoutMs: 10_000,
+        confirmationTimeoutMs: 45_000,
+        ...(position === undefined ? {} : { position }),
+        enabled: () => true,
+        request: async (_path, init) => {
+          if (init?.method === 'POST') requests.push(JSON.parse(String(init.body)));
+          return { nodeGeneration: 'generation' } as never;
+        },
+        sessionPathId: (value) => value,
+        applySnapshot: vi.fn(() => true),
+        applyEvent,
+        scrollAfterLayout: vi.fn(async () => undefined),
+        refreshSnapshot: vi.fn(),
+        openSession: vi.fn(async () => undefined)
+      });
+    const primary = create(undefined, primaryEvents);
+    const secondary = create('secondary', secondaryEvents);
+    const coordinator = createWorkbenchWatchCoordinator({
+      workspace: {
+        start: vi.fn(),
+        restart: vi.fn(),
+        pause: vi.fn(),
+        stop: vi.fn(),
+        handleEvent: () => false
+      },
+      session: primary,
+      secondary
+    });
+    const first = coordinator.restartSession('session-1');
+    const second = coordinator.restartSecondarySession('session-1');
+    try {
+      await vi.waitFor(() => expect(requests).toHaveLength(2));
+      const primaryId = requests.find((request) => request.position === undefined)!.watchId;
+      const secondaryId = requests.find((request) => request.position === 'secondary')!.watchId;
+      const base = {
+        workbenchConnectionId: 'local-test-connection',
+        nodeGeneration: 'generation',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1'
+      };
+      const update = {
+        sequence: 2,
+        category: 'queue',
+        payload: { sessionId: 'session-1', queue: { version: 2 } }
+      };
+      expect(
+        coordinator.handleEvent({
+          ...base,
+          type: 'watch.session.event',
+          watchId: 'stale',
+          event: update
+        })
+      ).toBe(false);
+      expect(
+        coordinator.handleEvent({
+          ...base,
+          type: 'watch.session.event',
+          watchId: secondaryId,
+          event: update
+        })
+      ).toBe(true);
+      for (const watchId of [primaryId, secondaryId])
+        coordinator.handleEvent({
+          ...base,
+          type: 'watch.session.snapshot',
+          watchId,
+          payload: {
+            kind: 'session-watch-snapshot',
+            sequence: 1,
+            session: { id: 'session-1', workspaceId: 'workspace-1' },
+            runs: [],
+            conversation: {
+              unit: 'SEGMENT',
+              segments: [],
+              nextCursor: null,
+              source: 'runtime',
+              snapshotSequence: 1
+            }
+          }
+        });
+      await Promise.all([first, second]);
+      const projected = { nodeId: 'node-1', ...update };
+      expect(primaryEvents).not.toHaveBeenCalledWith(projected);
+      expect(secondaryEvents).toHaveBeenCalledWith(projected);
+    } finally {
+      coordinator.dispose();
+    }
+  });
+  it('releases the captured secondary lease after its Workspace and connection change', async () => {
+    const node = ref('node-1');
+    const workspace = ref('workspace-1');
+    const connection = ref('connection-1');
+    const requests: RequestInit[] = [];
+    const controller = createWorkbenchSessionWatchController({
+      workspaceTarget: workspaceTargetRef(node, workspace),
+      selectedSessionId: ref('session-1'),
+      followConversation: ref(false),
+      heartbeatMs: 15_000,
+      requestTimeoutMs: 10_000,
+      confirmationTimeoutMs: 45_000,
+      position: 'secondary',
+      enabled: () => true,
+      workbenchConnectionId: () => connection.value,
+      request: async (_path, init) => {
+        requests.push(init ?? {});
+        return { nodeGeneration: 'generation' } as never;
+      },
+      sessionPathId: (value) => value,
+      applySnapshot: vi.fn(() => true),
+      scrollAfterLayout: vi.fn(async () => undefined),
+      refreshSnapshot: vi.fn(),
+      openSession: vi.fn(async () => undefined)
+    });
+    const pending = controller.beginSelectedSessionWatch('session-1');
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const watchId = JSON.parse(String(requests[0]?.body)).watchId;
+    node.value = 'node-2';
+    workspace.value = 'workspace-2';
+    connection.value = 'connection-2';
+    controller.stopSelectedSessionWatch();
+    expect(JSON.parse(String(requests.at(-1)?.body))).toMatchObject({
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      workbenchConnectionId: 'connection-1',
+      watchId,
+      position: 'secondary'
+    });
+    await expect(pending).rejects.toMatchObject({ code: 'WATCH_CANCELLED' });
+  });
+  it('gates a secondary lease and includes its position on initial, renewal and release', async () => {
+    vi.useFakeTimers();
+    const enabled = ref(false);
+    const requests: RequestInit[] = [];
+    const controller = createWorkbenchSessionWatchController({
+      workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
+      selectedSessionId: ref('session-1'),
+      followConversation: ref(false),
+      heartbeatMs: 15_000,
+      requestTimeoutMs: 10_000,
+      confirmationTimeoutMs: 45_000,
+      position: 'secondary',
+      enabled: () => enabled.value,
+      request: async (_path, init) => {
+        requests.push(init ?? {});
+        return { nodeGeneration: 'generation' } as never;
+      },
+      sessionPathId: (value) => value,
+      applySnapshot: vi.fn(() => true),
+      scrollAfterLayout: vi.fn(async () => undefined),
+      refreshSnapshot: vi.fn(),
+      openSession: vi.fn(async () => undefined)
+    });
+    try {
+      await controller.beginSelectedSessionWatch('session-1');
+      controller.stopSelectedSessionWatch();
+      expect(requests).toHaveLength(0);
+      enabled.value = true;
+      const pending = controller.beginSelectedSessionWatch('session-1');
+      await vi.waitFor(() => expect(requests).toHaveLength(1));
+      const initial = JSON.parse(String(requests[0]?.body));
+      expect(initial).toMatchObject({ mode: 'initial', position: 'secondary' });
+      controller.handleEvent({
+        type: 'watch.session.snapshot',
+        workbenchConnectionId: 'local-test-connection',
+        nodeGeneration: 'generation',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1',
+        watchId: initial.watchId,
+        payload: {
+          kind: 'session-watch-snapshot',
+          sequence: 1,
+          session: { id: 'session-1', workspaceId: 'workspace-1' },
+          runs: [],
+          conversation: { unit: 'SEGMENT', segments: [], nextCursor: null, source: 'runtime' }
+        }
+      });
+      await pending;
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(JSON.parse(String(requests[1]?.body))).toMatchObject({
+        mode: 'renew',
+        position: 'secondary'
+      });
+      enabled.value = false;
+      controller.stopSelectedSessionWatch();
+      expect(requests.at(-1)?.method).toBe('DELETE');
+      expect(JSON.parse(String(requests.at(-1)?.body))).toMatchObject({
+        position: 'secondary',
+        watchId: initial.watchId
+      });
+    } finally {
+      controller.stopSelectedSessionWatch();
+      vi.useRealTimers();
+    }
+  });
   it('Does not create a Session initial watch when the connection is unavailable, the feature is disabled, the session is a draft, or the page is hidden', async () => {
     for (const scenario of [
       { connectionId: undefined, enabled: true, id: 'session-1', visibility: 'visible' },
@@ -30,14 +238,6 @@ describe('Web Session Watch Lifecycle', () => {
       const controller = createWorkbenchSessionWatchController({
         workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
         selectedSessionId: ref(scenario.id),
-        sessions: ref([
-          {
-            id: scenario.id,
-            workspaceId: 'workspace-1',
-            runner: 'codex',
-            activity: 'IDLE'
-          }
-        ]),
         followConversation: ref(false),
         heartbeatMs: 15_000,
         requestTimeoutMs: 10_000,
@@ -46,7 +246,6 @@ describe('Web Session Watch Lifecycle', () => {
         workbenchConnectionId: () => scenario.connectionId,
         request,
         sessionPathId: (value) => value,
-        mergeSessions: vi.fn(),
         applySnapshot: vi.fn(() => true),
         scrollAfterLayout: vi.fn(async () => undefined),
         refreshSnapshot: vi.fn(),
@@ -75,7 +274,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -86,7 +284,6 @@ describe('Web Session Watch Lifecycle', () => {
         return (mode === 'initial' ? { nodeGeneration: 'test-generation' } : undefined) as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applyRunsSnapshot,
       applySnapshot,
       applyEvent,
@@ -189,8 +386,8 @@ describe('Web Session Watch Lifecycle', () => {
         sessionId: 'session-1',
         event: { sequence: 4, category: 'queue', payload: { queue: { version: 4 } } }
       })
-    ).toBe(true);
-    expect(applyEvent).toHaveBeenCalledWith({
+    ).toBe(false);
+    expect(applyEvent).not.toHaveBeenCalledWith({
       nodeId: 'node-1',
       sequence: 4,
       category: 'queue',
@@ -247,7 +444,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions,
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -257,7 +453,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { accepted: true } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot: vi.fn(),
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -288,7 +483,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(true),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -298,7 +492,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { accepted: true } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot,
       scrollAfterLayout,
       refreshSnapshot: vi.fn(),
@@ -386,7 +579,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -396,7 +588,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { accepted: true } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot,
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -459,7 +650,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -469,7 +659,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { accepted: true } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot: vi.fn(),
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -548,7 +737,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -558,7 +746,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { nodeGeneration: 'test-generation' } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot,
       applyEvent,
       scrollAfterLayout: vi.fn(),
@@ -615,7 +802,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -625,7 +811,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { nodeGeneration: 'test-generation' } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot: vi.fn(() => true),
       applyEvent,
       scrollAfterLayout: vi.fn(),
@@ -695,7 +880,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -705,7 +889,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { accepted: true } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot: vi.fn(),
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -741,7 +924,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(selectedNodeId, ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       heartbeatMs: 15_000,
       requestTimeoutMs: 10_000,
@@ -751,7 +933,6 @@ describe('Web Session Watch Lifecycle', () => {
           resolveRequest = (value) => resolve(value as T);
         }),
       sessionPathId: (value) => value,
-      mergeSessions,
       applySnapshot: vi.fn(),
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -777,7 +958,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       workbenchConnectionId: () => workbenchConnectionId.value,
       heartbeatMs: 15_000,
@@ -788,7 +968,6 @@ describe('Web Session Watch Lifecycle', () => {
         return { nodeGeneration: 'test-generation' } as never;
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot: vi.fn(),
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -831,7 +1010,6 @@ describe('Web Session Watch Lifecycle', () => {
     const controller = createWorkbenchSessionWatchController({
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
       selectedSessionId: ref('session-1'),
-      sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
       followConversation: ref(false),
       workbenchConnectionId: () => workbenchConnectionId.value,
       heartbeatMs: 15_000,
@@ -842,7 +1020,6 @@ describe('Web Session Watch Lifecycle', () => {
         return new Promise<T>((resolve) => resolveRequests.push((value) => resolve(value as T)));
       },
       sessionPathId: (value) => value,
-      mergeSessions: vi.fn(),
       applySnapshot,
       scrollAfterLayout: vi.fn(),
       refreshSnapshot: vi.fn(),
@@ -918,14 +1095,12 @@ describe('Session Watch failure phases', () => {
       const controller = createWorkbenchSessionWatchController({
         workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
         selectedSessionId: ref('session-1'),
-        sessions: ref([{ id: 'session-1', workspaceId: 'workspace-1', activity: 'IDLE' }] as never),
         followConversation: ref(false),
         heartbeatMs: 15_000,
         requestTimeoutMs: 10_000,
         confirmationTimeoutMs: 45_000,
         request,
         sessionPathId: (value) => value,
-        mergeSessions: vi.fn(),
         applySnapshot: vi.fn(),
         scrollAfterLayout: vi.fn(),
         refreshSnapshot,

@@ -1,6 +1,18 @@
 export const workspaceZhCN = {
   sessionGroups: {
     tree: '查看会话树',
+    treeUnavailable: '会话树同步不可用。',
+    retry: '重试',
+    parent: '上级会话',
+    noDescendants: '暂无下级会话',
+    actions: '会话操作',
+    openAside: '在侧栏打开',
+    openMain: '在主工作面打开',
+    inMain: '主工作面',
+    inActiveAside: '当前侧栏',
+    inAside: '已在侧栏打开',
+    activeDescendants: '{count} 个活跃下级会话',
+    treeSyncUnavailable: '下级会话活动状态不可用',
     statusRUNNING: '运行中',
     statusSLEEPING: '休眠中',
     statusIDLE: '空闲',

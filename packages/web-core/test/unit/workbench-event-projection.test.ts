@@ -40,6 +40,31 @@ function segmentPage(turns: ReturnType<typeof turn>[], nextCursor: string | null
 }
 
 describe('Workbench Event Projection', () => {
+  it('caches a selected native child queue without requiring that child in the Workspace list', () => {
+    const cacheQueue = vi.fn();
+    const mergeQueue = vi.fn();
+    const service = createWorkbenchEventProjectionService({
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
+      selectedSessionId: ref('child'),
+      selectedSession: ref({
+        id: 'child',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        externalSessionId: 'native-child'
+      }),
+      sessions: ref([]),
+      cacheQueue,
+      mergeQueue
+    } as never);
+    const queue = { version: 1, paused: false, items: [] };
+    service.apply(
+      { nodeId: 'node-1', sequence: 1, category: 'queue', payload: { sessionId: 'child', queue } },
+      'initial'
+    );
+    expect(cacheQueue).toHaveBeenCalledWith('node-1', 'workspace-1', 'child', queue, 'initial');
+    expect(mergeQueue).toHaveBeenCalledWith(queue, 'initial');
+  });
+
   it('accepts only the selected Node Run through its owner and does not reopen a stale active update', () => {
     const selectedSessionId = ref<string | undefined>('session-1');
     const owner = createRunService(selectedSessionId);
@@ -246,7 +271,7 @@ describe('Workbench Event Projection', () => {
       nodes: { value: [] },
       sessions,
       runs: { value: [] },
-      workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
+      workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' },
       conversationNextCursor: { value: null },
       cacheQueue: cacheService.cacheQueue,

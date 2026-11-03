@@ -1,6 +1,6 @@
 ---
 title: Continue on Mobile
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-04
 ---
 
 # Continue on Mobile
@@ -13,7 +13,7 @@ Browser Back also dismisses the current session, file or terminal tool layer, or
 
 The Composer stays above the on-screen keyboard. Enter inserts a newline; use the send button to submit. Agent and model controls remain compact, while file previews and diffs use the full viewport.
 
-Select **Open terminal** in the conversation title bar. Terminal slides up from the bottom as a full-width, half-screen sheet. Select the scrim above it to hide the sheet without ending the terminal; reopening preserves its tabs. Explicitly close a terminal tab to stop it. All desktop authorization and Workspace boundaries still apply.
+Select **Open terminal** in the conversation title bar or choose the Terminal tab in the auxiliary work surface. The surface covers the area below the top bar; its back button or browser Back returns to the conversation without ending the terminal. Reopening preserves its terminal tabs. Explicitly close a terminal tab to stop it. All desktop authorization and Workspace boundaries still apply.
 
 After returning from the background or a network change, reopen the session and check its actual state; closing the page or backgrounding it does not automatically stop a run on Node. Confirm the target Node and Workspace before acting, and check the session's final status after opening a notification. Prefer desktop for destructive file operations and complex Diff review.
 

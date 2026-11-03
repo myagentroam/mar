@@ -30,6 +30,7 @@ function fixture() {
     execute,
     send,
     errorMessage: () => 'denied',
+    currentRevision: () => 0,
     beginSubmission
   });
   const item = {} as ConversationTurn['items'][number];

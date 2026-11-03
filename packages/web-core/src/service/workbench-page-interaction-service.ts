@@ -1,22 +1,20 @@
+import { createWorkbenchPageShortcuts } from './workbench-page-shortcuts.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import { nextTick, type Ref } from 'vue';
-import claudeRunnerIcon from '../assets/runner-claude-code.png';
-import codexRunnerIcon from '../assets/runner-codex.png';
-import marAgentRunnerIcon from '../assets/logo-icon.png';
-import openCodeRunnerIcon from '../assets/runner-opencode.svg';
+import { runnerBrandIcon } from '../util/runner-brand-icon.js';
 import type { NodeSummary, Session, Workspace, WorkspaceTab } from '../model/workbench.js';
 import type { WorkspaceInspectorHandle } from '../service/workbench-workspace-cache-controller.js';
 import type { WorkbenchView } from '../util/workbench-route.js';
 import { nodePresentation, sessionActivityTitle } from '../util/workbench-presentation.js';
 import { formatRelativeSessionActivity } from '../util/session-list.js';
 import { translate } from '../service/locale-preference-service.js';
-import type { ConsoleShortcutResult } from './console-keyboard-shortcut-service.js';
 import { toolChangeOpenIntent } from './tool-change-review-service.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
+import { copyConversationMessage as copyMessage } from './workbench-conversation-copy-service.js';
 
-interface WorkbenchPageInteractionOptions {
+export interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
   readonly nodes: Ref<NodeSummary[]>;
   readonly workspaceTabs: Readonly<Ref<readonly WorkspaceTab[]>>;
@@ -34,17 +32,12 @@ interface WorkbenchPageInteractionOptions {
   readonly terminalReady: Readonly<Ref<boolean>>;
   readonly quickOpenFileVisible: Ref<boolean>;
   readonly workspaceInspector: Ref<WorkspaceInspectorHandle | null | undefined>;
+  readonly showInspectorTool: (tool: 'search' | 'changes') => void;
   readonly openAttachmentImage?: (attachment: ComposerAttachmentFile) => Promise<void>;
   readonly toggleTerminal: () => void;
   readonly sessionActivityClockNow: Readonly<Ref<number>>;
   readonly notice: MessageFeedback;
   readonly formatSessionTime: (value: number) => string;
-}
-
-export function runnerBrandIcon(value: Session['runner']): string {
-  if (value === 'mar-agent') return marAgentRunnerIcon;
-  if (value === 'codex') return codexRunnerIcon;
-  return value === 'claude-code' ? claudeRunnerIcon : openCodeRunnerIcon;
 }
 
 export function createWorkbenchPageInteractionService(options: WorkbenchPageInteractionOptions) {
@@ -153,163 +146,15 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     if (!selected) void nextTick(() => quickOpenOrigin?.focus());
   }
 
-  function onGlobalKeydown(event: KeyboardEvent): ConsoleShortcutResult {
-    const target = event.target;
-    const blocked =
-      target instanceof Element &&
-      (target.closest('.terminal-dock, .el-overlay, .el-popper, .el-select, [role="dialog"]') !==
-        null ||
-        (target.closest('.composer-host') === null &&
-          target.closest(
-            'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
-          ) !== null));
-    if (
-      (event.altKey || event.ctrlKey) &&
-      (event.code === 'KeyW' || event.key.toLowerCase() === 'w')
-    ) {
-      if (
-        (event.ctrlKey && event.altKey) ||
-        event.metaKey ||
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.keyCode === 229 ||
-        options.view.value !== 'nodes' ||
-        options.quickOpenFileVisible.value ||
-        blocked
-      ) {
-        return 'IGNORED';
-      }
-      const activeTab = options.workspaceTabs.value.find(
-        (tab) => tab.id === options.activeWorkspaceTabId.value
-      );
-      if (options.workspaceTabs.value.length === 0) return 'IGNORED';
-      if (event.repeat) return 'HANDLED';
-      if (event.shiftKey) options.closeUnpinnedWorkspaceTabs();
-      else if (activeTab !== undefined && activeTab.pinned !== true)
-        options.closeWorkspaceTab(activeTab);
-      return 'HANDLED';
-    }
-    const ctrlTab = event.ctrlKey && !event.altKey && event.key === 'Tab';
-    const newSessionKey = event.code === 'KeyN' || event.key.toLowerCase() === 'n';
-    const ctrlNewSession = event.ctrlKey && !event.altKey && !event.shiftKey && newSessionKey;
-    const digit =
-      /^Digit([0-9])$/.exec(event.code)?.[1] ?? (/^[0-9]$/.test(event.key) ? event.key : undefined);
-    const ctrlNumberedTab =
-      event.ctrlKey && !event.altKey && !event.shiftKey && digit !== undefined;
-    if (
-      ((event.altKey && !event.ctrlKey && !event.shiftKey) ||
-        ctrlTab ||
-        ctrlNewSession ||
-        ctrlNumberedTab) &&
-      !event.metaKey &&
-      !event.defaultPrevented &&
-      !event.isComposing &&
-      event.keyCode !== 229 &&
-      options.view.value === 'nodes' &&
-      !options.quickOpenFileVisible.value &&
-      !blocked
-    ) {
-      const cycleShortcut = ctrlTab || event.key === 'ArrowLeft' || event.key === 'ArrowRight';
-      if (event.repeat && !cycleShortcut && !ctrlNumberedTab) return 'IGNORED';
-      if (
-        newSessionKey &&
-        options.nodeReady.value &&
-        options.workspaceTarget.value?.workspaceId !== undefined
-      ) {
-        options.openNewSessionComposer();
-        return 'HANDLED';
-      }
-      const numberedTabIndex = ctrlNumberedTab
-        ? digit === '0'
-          ? 9
-          : Number(digit) - 1
-        : undefined;
-      if (numberedTabIndex !== undefined) {
-        const numberedTab = options.workspaceTabs.value[numberedTabIndex];
-        if (numberedTab === undefined) return 'IGNORED';
-        if (event.repeat) return 'HANDLED';
-        void options.activateWorkspaceTab(numberedTab);
-        return 'HANDLED';
-      }
-      if (!cycleShortcut || options.workspaceTabs.value.length === 0) return 'IGNORED';
-      const index = options.workspaceTabs.value.findIndex(
-        (tab) => tab.id === options.activeWorkspaceTabId.value
-      );
-      if (index < 0) return 'IGNORED';
-      if (event.repeat || options.workspaceTabs.value.length === 1) return 'HANDLED';
-      const offset = event.key === 'ArrowLeft' || (ctrlTab && event.shiftKey) ? -1 : 1;
-      const adjacent =
-        options.workspaceTabs.value[
-          (index + offset + options.workspaceTabs.value.length) % options.workspaceTabs.value.length
-        ];
-      if (adjacent === undefined) return 'IGNORED';
-      void options.activateWorkspaceTab(adjacent);
-      return 'HANDLED';
-    }
-    const terminalFocused = target instanceof Element && target.closest('.terminal-dock') !== null;
-    if (
-      terminalFocused &&
-      !(event.shiftKey && event.code === 'Backquote' && (event.ctrlKey || event.metaKey))
-    )
-      return 'IGNORED';
-    if (!event.ctrlKey && !event.metaKey) return 'IGNORED';
-    const key = event.key.toLowerCase();
-    const editableTarget =
-      target instanceof HTMLElement &&
-      (target.isContentEditable || target.matches('input, textarea, select'));
-    if (event.shiftKey && key === 'v') {
-      if (editableTarget || event.isComposing) return 'IGNORED';
-      return options.workspaceInspector.value?.openCurrentRenderedPreview() === true
-        ? 'HANDLED'
-        : 'IGNORED';
-    }
-    if (event.shiftKey && key === 'o') {
-      if (
-        options.view.value !== 'nodes' ||
-        !options.nodes.value.some((node) => node.connected && !node.disabled)
-      )
-        return 'IGNORED';
-      openQuickOpenFile();
-      return 'HANDLED';
-    }
-    if (event.shiftKey && key === 'f') {
-      if (!options.contentSearchReady.value || event.isComposing) return 'IGNORED';
-      options.workspaceInspector.value?.openSearch();
-      return 'HANDLED';
-    }
-    if (event.shiftKey && key === 'k') {
-      if (options.selectedWorkspace.value?.kind !== 'GIT_WORKSPACE' || !options.filesReady.value)
-        return 'IGNORED';
-      options.workspaceInspector.value?.openChanges();
-      return 'HANDLED';
-    }
-    if (event.shiftKey && event.code === 'Backquote') {
-      if (!options.terminalReady.value || event.isComposing) return 'IGNORED';
-      options.toggleTerminal();
-      return 'HANDLED';
-    }
-    return 'IGNORED';
-  }
-
-  async function copyConversationMessage(text: string, onSuccess: () => void): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      onSuccess();
-    } catch {
-      options.notice(
-        translate(
-          'generated.workbenchPageInteractionService.copyFailedCheckTheBrowserClipboardPermission'
-        ),
-        'error'
-      );
-    }
-  }
+  const workspaceShortcuts = createWorkbenchPageShortcuts(options, openQuickOpenFile);
+  const copyConversationMessage = (text: string, onSuccess: () => void): Promise<void> =>
+    copyMessage(text, onSuccess, options.notice);
 
   return {
     openAgentFileChange,
     closeQuickOpenFile,
     copyConversationMessage,
-    onGlobalKeydown,
+    workspaceShortcuts,
     openAgentWorkspaceFile,
     openQuickWorkspaceFile,
     openQuickOpenFile,

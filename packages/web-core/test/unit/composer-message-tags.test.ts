@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSSRApp, h, ref } from 'vue';
+import { computed, createSSRApp, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import {
   serializeComposerTag,
@@ -375,7 +375,7 @@ describe('Composer product tag presentation', () => {
     const values = new Map<string, string>();
     const target = ref({ nodeId: 'node', workspaceId: 'workspace' });
     const draft = createSessionDraftService({
-      workspaceTarget: target as never,
+      target: computed(() => ({ kind: 'workspace' as const, ...target.value })),
       storage: {
         getItem: (key) => values.get(key) ?? null,
         setItem: (key, value) => void values.set(key, value),

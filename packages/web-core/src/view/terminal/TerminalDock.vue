@@ -2,7 +2,16 @@
 import type { MessageType } from '../../model/message-feedback.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch
+} from 'vue';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -40,6 +49,7 @@ const props = defineProps<{
   readonly capability: TerminalCapability | undefined;
   readonly nodeOsRelease: string | undefined;
   readonly visible: boolean;
+  readonly embedded?: boolean;
   readonly mobileMode: boolean;
   /** Inactive tabs keep their mounted relay without reading or clearing Workspace state. */
   readonly active: boolean;
@@ -50,6 +60,8 @@ const emit = defineEmits<{
 }>();
 
 const selectedProfileId = ref<string>();
+const terminalRoot = ref<HTMLElement>();
+let unregisterShortcutRegion: (() => void) | undefined;
 const creating = ref(false);
 const closingId = ref<string>();
 const expanded = ref(false);
@@ -312,17 +324,19 @@ watch(
       props.workspaceId,
       props.enabled,
       props.capability?.available,
-      props.active
+      props.active,
+      props.embedded ? props.visible : true
     ] as const,
   () => {
+    if (props.embedded && !props.visible) return;
     void refreshContext();
   },
   { immediate: true }
 );
 watch(
-  () => [props.mobileMode, props.visible] as const,
-  ([mobileMode, visible]) => {
-    if (mobileMode && visible) setExpanded(true);
+  () => [props.mobileMode, props.embedded, props.visible] as const,
+  ([mobileMode, embedded, visible]) => {
+    if ((mobileMode || embedded) && visible) setExpanded(true);
   },
   { immediate: true }
 );
@@ -383,13 +397,27 @@ async function release(): Promise<void> {
   }
 }
 
-onBeforeUnmount(() => void release());
+onMounted(() => {
+  unregisterShortcutRegion = consoleKeyboardShortcutService.registerRegion({
+    scope: 'terminal',
+    root: () => terminalRoot.value,
+    blocksOtherScopes: true
+  });
+});
+onBeforeUnmount(() => {
+  unregisterShortcutRegion?.();
+  void release();
+});
 
 defineExpose({ release, toggle: toggleTerminal });
 </script>
 
 <template>
-  <section class="admin-terminal" :aria-label="translate('common.adminTerminal')">
+  <section
+    ref="terminalRoot"
+    class="admin-terminal"
+    :aria-label="translate('common.adminTerminal')"
+  >
     <header class="admin-terminal-header">
       <h2>{{ contextLabel }}</h2>
       <div
@@ -460,7 +488,7 @@ defineExpose({ release, toggle: toggleTerminal });
               ? translate('generated.terminalDock.collapseTerminal2')
               : translate('generated.terminalDock.expandTerminal2')
           "
-          v-if="!mobileMode"
+          v-if="!mobileMode && !embedded"
           size="small"
           :aria-label="
             expanded

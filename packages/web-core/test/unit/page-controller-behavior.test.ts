@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { createWorkbenchPageController } from '../../src/service/workbench-page-controller.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
+import type { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 import type { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
 import type { createAdminAuthService } from '../../src/service/admin-auth-service.js';
+import type { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import type {
   PwaApplicationService,
   PwaApplicationState
@@ -20,13 +22,40 @@ import { renderComponent, flushComponent } from './support/component-renderer.js
 
 const captured = vi.hoisted(() => ({
   live: undefined as Parameters<typeof createWorkbenchLiveService>[0] | undefined,
+  workspaceWatch: undefined as Parameters<typeof createWorkspaceWatchService>[0] | undefined,
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
   authenticated: undefined as
     Parameters<typeof createAdminAuthService>[0]['onAuthenticated'] | undefined,
+  notificationOptions: undefined as Parameters<typeof createWorkbenchNotificationService>[1],
   waitForReady: vi.fn(async () => true),
   startWorkspace: vi.fn(async () => undefined),
   restartWorkspace: vi.fn(async () => undefined)
 }));
+vi.mock('../../src/service/workbench-notification-service.js', async (original) => {
+  const actual =
+    await original<typeof import('../../src/service/workbench-notification-service.js')>();
+  return {
+    ...actual,
+    createWorkbenchNotificationService: (
+      ...args: Parameters<typeof actual.createWorkbenchNotificationService>
+    ) => {
+      captured.notificationOptions = args[1];
+      return actual.createWorkbenchNotificationService(...args);
+    }
+  };
+});
+vi.mock('../../src/service/workspace-watch-service.js', async (original) => {
+  const actual = await original<typeof import('../../src/service/workspace-watch-service.js')>();
+  return {
+    ...actual,
+    createWorkspaceWatchService: (
+      options: Parameters<typeof actual.createWorkspaceWatchService>[0]
+    ) => {
+      captured.workspaceWatch = options;
+      return actual.createWorkspaceWatchService(options);
+    }
+  };
+});
 // The controller owns callback wiring; transport and watch execution have their own suites.
 vi.mock('../../src/service/workbench-live-service.js', () => ({
   createWorkbenchLiveService: (options: Parameters<typeof createWorkbenchLiveService>[0]) => {
@@ -156,6 +185,256 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('projects only actually visible Main and Aside sessions to the notification owner', async () => {
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.69' }];
+    page.workspaceTarget.value = workspace;
+    page.workspaces.value = [{ id: workspace.workspaceId, path: '/project', kind: 'DIRECTORY' }];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    };
+    await nextTick();
+    page.draftSessionOpen.value = false;
+    page.selectedSessionId.value = 'main';
+    page.setAsideSurfaceVisible(true);
+    expect(page.openAsideSession({ ...workspace, sessionId: 'background' })).toBe(true);
+    expect(page.openAsideSession({ ...workspace, sessionId: 'aside' })).toBe(true);
+    page.mainPaneController.state.conversation.loadingInitial.value = false;
+    page.asidePaneController.state.conversation.loadingInitial.value = false;
+    const visible = () => captured.notificationOptions?.activeTargets?.();
+    expect(visible()).toEqual([
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'main' },
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'aside' }
+    ]);
+    page.nodes.value = [{ ...page.nodes.value[0]!, connected: false }];
+    expect(visible()).toEqual([]);
+    page.nodes.value = [{ ...page.nodes.value[0]!, connected: true }];
+    expect(visible()).toEqual([
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'main' },
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'aside' }
+    ]);
+    page.mobileViewport.value = true;
+    page.mobileWorkspaceSurface.value = 'inspector';
+    expect(visible()).toEqual([]);
+    page.asidePaneController.state.conversation.loadingInitial.value = false;
+    expect(visible()).toEqual([
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'aside' }
+    ]);
+    page.selectAsideTool({ ...workspace, id: 'files' });
+    expect(visible()).toEqual([]);
+    page.mobileWorkspaceSurface.value = 'conversation';
+    expect(visible()).toEqual([
+      { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: 'main' }
+    ]);
+    page.draftSessionOpen.value = true;
+    expect(visible()).toEqual([]);
+  });
+
+  it('marks the newly loaded recent session read only after it becomes visible', async () => {
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    const session: Session = {
+      id: 'recent-session',
+      workspaceId: workspace.workspaceId,
+      runner: 'codex',
+      externalSessionId: 'native-recent',
+      activity: 'IDLE'
+    };
+    page.nodes.value = [node];
+    page.workspaces.value = [{ id: workspace.workspaceId, path: '/project', kind: 'DIRECTORY' }];
+    page.workspaceTarget.value = workspace;
+    page.draftSessionOpen.value = false;
+    page.sessions.value = [session];
+    const marked = vi.spyOn(page.workbenchNotificationService, 'markSessionRead');
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/watch') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        queueMicrotask(() =>
+          captured.live!.onWatchEvent?.({
+            type: 'watch.session.snapshot',
+            watchType: 'session',
+            ...workspace,
+            sessionId: session.id,
+            workbenchConnectionId: 'connection-a',
+            watchId: body.watchId,
+            nodeGeneration: 'generation-a',
+            payload: { unit: 'SEGMENT', segments: [], nextCursor: null }
+          })
+        );
+        return new Response(
+          JSON.stringify({ watchId: body.watchId, nodeGeneration: 'generation-a' })
+        );
+      }
+      return new Response(
+        JSON.stringify({ session, sessions: [session], notifications: [], recentRuns: [] })
+      );
+    });
+    captured.live!.onReady?.('connection-a', true);
+    await flushComponent();
+    page.workbenchNotificationService.notifications.value = [
+      {
+        id: 'unread-recent',
+        source: 'server',
+        kind: 'run',
+        title: 'Completed',
+        message: '',
+        target: { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId: session.id },
+        read: false,
+        createdAt: 1,
+        updatedAt: 1,
+        expiresAt: Date.now() + 60_000
+      }
+    ];
+    page.selectedSessionId.value = 'previous-session';
+    const opening = page.openRecentRun({
+      ...workspace,
+      runId: 'recent-run',
+      sessionId: session.id,
+      sessionTitle: 'Recent',
+      runner: 'codex',
+      status: 'SUCCEEDED',
+      createdAt: 1,
+      startedAt: 1,
+      completedAt: 2,
+      sortAt: 2,
+      updatedAt: 2,
+      version: 1
+    });
+    await flushComponent();
+    expect(marked).not.toHaveBeenCalled();
+    await flushComponent();
+    page.confirmConversationInitialRender(page.conversationInitialRenderVersion.value);
+    await opening;
+    expect(page.initialConversationLoadFailed.value).toBe(false);
+    expect(marked).toHaveBeenCalledWith(workspace.nodeId, workspace.workspaceId, session.id);
+    await vi.waitFor(() =>
+      expect(page.workbenchNotificationService.notifications.value[0]?.read).toBe(true)
+    );
+  });
+
+  it('opens a tool change with the pane’s full workspace and session identity', () => {
+    const { page } = controller();
+    const openWorkspaceFileTab = vi.fn();
+    page.workspaceInspector.value = { openWorkspaceFileTab } as unknown as NonNullable<
+      typeof page.workspaceInspector.value
+    >;
+    page.nodes.value = [node];
+    page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null }
+    };
+    page.draftSessionOpen.value = false;
+    page.selectedSessionId.value = 'session-a';
+    const entry = {
+      path: 'src/file.ts',
+      change: 'MODIFIED',
+      status: 'Modified',
+      changeId: 'change-a',
+      diff: {
+        status: 'available' as const,
+        source: 'TOOL_CHANGE' as const,
+        format: 'unified-diff' as const,
+        resourceRef: 'resource-a',
+        byteSize: 1,
+        sha256: 'a'.repeat(64)
+      }
+    };
+    page.mainPaneController.openFileChange(entry);
+    expect(openWorkspaceFileTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: 'node-a',
+        workspaceId: 'workspace-a',
+        path: 'src/file.ts',
+        toolChange: expect.objectContaining({ scope: 'SESSION', sessionId: 'session-a' })
+      })
+    );
+    page.selectedSessionId.value = undefined;
+    page.mainPaneController.openFileChange(entry);
+    expect(openWorkspaceFileTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('gates navigation and removes only missing Aside targets from the active workspace', () => {
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.10.1' }];
+    page.workspaceTarget.value = workspace;
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionAside: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    expect(captured.workspaceWatch?.sessionNavigation?.()).toBeUndefined();
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.69' }];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null }
+    };
+    expect(captured.workspaceWatch?.sessionNavigation?.()).toBeUndefined();
+    page.nodeManifest.value = { ...page.nodeManifest.value, sessionAside: { apiVersion: 1 } };
+    page.draftSessionOpen.value = false;
+    page.selectedSessionId.value = 'main';
+    expect(page.openAsideSession({ ...workspace, sessionId: 'gone' })).toBe(true);
+    expect(page.openAsideSession({ ...workspace, sessionId: 'live' })).toBe(true);
+    expect(captured.workspaceWatch?.sessionNavigation?.()).toEqual({
+      sessionIds: ['gone', 'live'],
+      summaryAnchors: ['main', 'live'],
+      limit: 100
+    });
+
+    const payload = { sessions: [], summaries: [], tree: null, missingSessionIds: ['gone'] };
+    const query = captured.workspaceWatch!.sessionNavigation!()!;
+    captured.workspaceWatch?.onSnapshot(
+      'node-b',
+      'workspace-a',
+      { sessionNavigation: payload },
+      'sessionNavigation',
+      1,
+      query
+    );
+    expect(page.asideState.value?.sessions).toEqual(['gone', 'live']);
+    captured.workspaceWatch?.onSnapshot(
+      'node-a',
+      'workspace-a',
+      { sessionNavigation: payload },
+      'sessionNavigation',
+      1,
+      query
+    );
+    expect(page.asideState.value?.sessions).toEqual(['live']);
+    expect(page.sessionNavigationSnapshot.value).toBeUndefined();
+    const updatedQuery = captured.workspaceWatch!.sessionNavigation!()!;
+    captured.workspaceWatch?.onSnapshot(
+      'node-a',
+      'workspace-a',
+      { sessionNavigation: payload },
+      'sessionNavigation',
+      2,
+      query
+    );
+    expect(page.sessionNavigationSnapshot.value).toBeUndefined();
+    const updatedPayload = { ...payload, missingSessionIds: [] };
+    captured.workspaceWatch?.onSnapshot(
+      'node-a',
+      'workspace-a',
+      { sessionNavigation: updatedPayload },
+      'sessionNavigation',
+      1,
+      updatedQuery
+    );
+    expect(page.sessionNavigationSnapshot.value).toMatchObject({ ...workspace, ...updatedPayload });
+    page.workspaceTarget.value = { nodeId: 'node-b', workspaceId: 'workspace-a' };
+    expect(page.sessionNavigationSnapshot.value).toBeUndefined();
+  });
+
   it.each(['ready', 'changed-target', 'hidden', 'closed'] as const)(
     'waits for the live connection before opening session history (%s)',
     async (outcome) => {
@@ -294,6 +573,7 @@ describe('Workbench controller composition behavior', () => {
         initialGroup === undefined ? undefined : 'MAIN'
       );
       expect(page.selectedSession.value?.id).toBe(main.id);
+      expect(page.mainPane.run.runs.value.some((run) => run.id === 'created-run')).toBe(true);
       expect(page.visibleWorkspaceSessions.value.map((session) => session.id)).toContain(main.id);
       expect(page.sessions.value.some((session) => session.id.startsWith('draft:'))).toBe(false);
       expect(starts).toHaveLength(1);

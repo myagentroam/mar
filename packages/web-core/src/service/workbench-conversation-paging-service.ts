@@ -9,7 +9,7 @@ import { errorCode } from '../util/api-error.js';
 /** Owns older-turn pagination and scroll-position preservation. */
 export function createWorkbenchConversationPagingService(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly nextCursor: Readonly<Ref<string | null>>;
   readonly loadingOlder: Ref<boolean>;
   readonly capturePrependAnchor: () => () => void;

@@ -16,41 +16,30 @@ import {
   computed,
   defineAsyncComponent,
   h,
+  nextTick,
   onBeforeUnmount,
   ref,
   watch,
   type ShallowUnwrapRef
 } from 'vue';
-import type { Workspace, WorkspaceQueueItem } from '../../model/workbench.js';
+import type { Workspace } from '../../model/workbench.js';
 import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
-import {
-  errorMessage,
-  hostedConversationTitle,
-  runnerLabel
-} from '../../util/workbench-presentation.js';
+import { errorMessage, hostedConversationTitle } from '../../util/workbench-presentation.js';
 import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
-import WorkspaceSessionTreeButton from '../../view/workspace/WorkspaceSessionTreeButton.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
-import ConversationHeader from '../../view/conversation/ConversationHeader.vue';
-import ConversationScroll from '../../view/conversation/ConversationScroll.vue';
-import ConversationTimeline from '../../view/conversation/ConversationTimeline.vue';
-import SessionPerformanceInfo from '../../view/conversation/SessionPerformanceInfo.vue';
-import ComposerQueue from '../../view/composer/ComposerQueue.vue';
-import ComposerToolbar from '../../view/composer/ComposerToolbar.vue';
-import ComposerAttachments from '../../view/composer/ComposerAttachments.vue';
-import ComposerCommandPicker from '../../view/composer/ComposerCommandPicker.vue';
-import ComposerReferencePicker from '../../view/composer/ComposerReferencePicker.vue';
 import WorkbenchHeader from '../../view/workbench/WorkbenchHeader.vue';
-import ConversationComposer from '../../view/composer/ConversationComposer.vue';
 import TerminalDock from '../../view/terminal/TerminalDock.vue';
 import HostedConversationWorkspacePage from '../../view/conversation/HostedConversationWorkspacePage.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { useManagementComposition } from '../../service/management-composition.js';
-import PanelResizeHandle from './PanelResizeHandle.vue';
+import WorkspaceSessionPane from './WorkspaceSessionPane.vue';
+import WorkbenchAside from './WorkbenchAside.vue';
+import WorkspaceSessionTreePopover from '../workspace/WorkspaceSessionTreePopover.vue';
+import type { AsideTool } from '../../service/workbench-aside-service.js';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 
 const loadingComponent = {
@@ -79,19 +68,170 @@ const managementComposition = useManagementComposition<ManagementSection>();
 const managementPage = computed(() =>
   managementComposition.resolve(props.page.managementSection, props.page.admin)
 );
-const composer = ref<{
-  focusAt(cursor: number): void;
-  focus(): void;
-  replaceRange(start: number, end: number, text: string): boolean;
-}>();
-const composerToolbar = ref<{ openModelMenu(): boolean }>();
 const cleanupDialogOpen = ref(false);
-const inspectorElement = ref<HTMLElement>();
-const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
-function openSessionFromTree(sessionId: string): void {
-  const target = props.page.workspaceTarget;
-  if (target) void props.page.openSessionGroupTarget({ ...target, sessionId });
+const workspaceGrid = ref<HTMLElement>();
+const terminalMount = ref<HTMLElement>();
+const asideAvailableWidth = ref(0);
+watch(
+  workspaceGrid,
+  (element, _previous, onCleanup) => {
+    if (element == null) return;
+    const measure = () => {
+      const sidebar =
+        element.querySelector<HTMLElement>('.conversation-sidebar')?.getBoundingClientRect()
+          .width ?? 0;
+      asideAvailableWidth.value = Math.max(
+        0,
+        element.clientWidth - (props.page.mobileViewport ? 0 : sidebar)
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    const sidebar = element.querySelector<HTMLElement>('.conversation-sidebar');
+    if (sidebar) observer.observe(sidebar);
+    measure();
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: 'post' }
+);
+const asideMode = computed(() => props.page.asideViewMode(props.page.asideState?.active));
+const asideWidth = computed(() =>
+  props.page.mobileViewport
+    ? asideAvailableWidth.value
+    : props.page.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
+);
+const asideStacked = computed(
+  () =>
+    !props.page.mobileViewport && asideAvailableWidth.value > 0 && asideWidth.value === undefined
+);
+const treeStatus = computed(() =>
+  props.page.workspaceHost?.connected === false
+    ? 'failed'
+    : props.page.workspaceWatchTopicStatus.sessionNavigation
+);
+const asideVisible = computed(
+  () =>
+    props.page.view === 'nodes' &&
+    props.page.workspaceTarget !== undefined &&
+    props.page.asideState !== undefined &&
+    (asideStacked.value || (asideWidth.value !== undefined && asideWidth.value > 0)) &&
+    (!props.page.mobileViewport ||
+      props.page.mobileWorkspaceSurface === 'inspector' ||
+      props.page.mobileWorkspaceSurface === 'terminal')
+);
+watch(asideVisible, (visible) => props.page.setAsideSurfaceVisible(visible), { immediate: true });
+onBeforeUnmount(() => props.page.setAsideSurfaceVisible(false));
+const terminalVisible = computed(
+  () =>
+    asideVisible.value &&
+    props.page.asideState?.active?.kind === 'tool' &&
+    props.page.asideState.active.id === 'terminal'
+);
+function openPaneSurface(surface: 'sessions' | 'inspector' | 'terminal'): void {
+  if (surface === 'terminal') props.page.toggleAsideTerminal();
+  else props.page.openMobileWorkspaceSurface(surface);
 }
+const asideTools = computed(() => [
+  { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
+  { id: 'search' as const, label: translate('generated.workspaceInspector.search') },
+  { id: 'changes' as const, label: translate('generated.workspaceInspector.gitChanges') },
+  { id: 'history' as const, label: translate('generated.workspaceInspector.gitHistory') },
+  { id: 'terminal' as const, label: translate('generated.terminalDock.workspaceTerminal') }
+]);
+const asideSessions = computed(() =>
+  (props.page.asideState?.sessions ?? []).map((sessionId) => {
+    const session = props.page.sessionNavigationSnapshot?.sessions.find(
+      (item) => item.id === sessionId
+    );
+    return {
+      sessionId,
+      title: session?.title ?? sessionId,
+      active: session?.activity === 'MANAGED_ACTIVE'
+    };
+  })
+);
+function inspectorTool(tool: AsideTool | undefined): Exclude<AsideTool, 'terminal'> | null {
+  const active = props.page.asideState?.active;
+  return !asideVisible.value || active?.kind !== 'tool' || active.id !== tool || tool === 'terminal'
+    ? null
+    : tool;
+}
+const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
+const treePopup = ref<{
+  nodeId: string;
+  workspaceId: string;
+  sessionId: string;
+  anchor: HTMLElement;
+  title: string;
+}>();
+function closeSessionTree(restoreFocus = false): void {
+  const previous = treePopup.value;
+  treePopup.value = undefined;
+  props.page.setSessionTreeAnchor(undefined);
+  if (restoreFocus && previous)
+    void nextTick(() => {
+      if (previous.anchor.isConnected) previous.anchor.focus();
+    });
+}
+function showSessionTree(sessionId: string, anchor: HTMLElement, title: string): void {
+  const target = props.page.workspaceTarget;
+  if (!target || !props.page.asideSupported) return;
+  if (treePopup.value?.anchor === anchor) {
+    closeSessionTree(true);
+    return;
+  }
+  treePopup.value = { ...target, sessionId, anchor, title };
+  props.page.setSessionTreeAnchor(sessionId);
+}
+function openAsideTarget(target: {
+  nodeId: string;
+  workspaceId: string;
+  sessionId: string;
+}): boolean {
+  const accepted = props.page.openAsideSession(target);
+  if (accepted && props.page.mobileViewport) props.page.openMobileWorkspaceSurface('inspector');
+  return accepted;
+}
+function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): void {
+  const popup = treePopup.value;
+  const current = props.page.workspaceTarget;
+  if (
+    !popup ||
+    !current ||
+    popup.nodeId !== current.nodeId ||
+    popup.workspaceId !== current.workspaceId
+  )
+    return;
+  const target = { nodeId: popup.nodeId, workspaceId: popup.workspaceId, sessionId };
+  if (destination === 'aside') {
+    if (openAsideTarget(target)) closeSessionTree(false);
+  } else {
+    void props.page.openSessionGroupTarget(target);
+    closeSessionTree(false);
+  }
+}
+watch(
+  () => [
+    props.page.workspaceTarget?.nodeId,
+    props.page.workspaceTarget?.workspaceId,
+    props.page.view,
+    props.page.asideSupported
+  ],
+  () => {
+    const popup = treePopup.value;
+    if (
+      popup &&
+      (props.page.view !== 'nodes' ||
+        !props.page.asideSupported ||
+        props.page.workspaceTarget?.nodeId !== popup.nodeId ||
+        props.page.workspaceTarget.workspaceId !== popup.workspaceId)
+    )
+      closeSessionTree();
+  }
+);
+onBeforeUnmount(() => {
+  if (treePopup.value) closeSessionTree();
+});
 const hostedConversationHeader = computed(() => {
   const workspace = props.page.hostedConversationWorkspace;
   return (
@@ -123,56 +263,18 @@ function updateCleanupDialogOpen(value: boolean): void {
   if (!value) cleanupTarget.value = undefined;
 }
 
-function onComposerKeydown(event: KeyboardEvent): void {
-  if (
-    event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey &&
-    event.key.toLowerCase() === 'm' &&
-    composerToolbar.value?.openModelMenu()
-  ) {
-    event.preventDefault();
-    return;
-  }
-  props.page.onComposerKeydown(event);
-}
-
-function selectComposerModelEffort(value: string): void {
-  props.page.selectComposerModelEffort(value);
-  composer.value?.focus();
-}
-
-const workspaceImageResourceUrl = computed(() => {
-  const nodeId = props.page.workspaceTarget?.nodeId;
-  const workspaceId = props.page.workspaceTarget?.workspaceId;
-  if (nodeId === undefined || workspaceId === undefined) return undefined;
-  return (path: string) =>
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/files/content?${new URLSearchParams({ nodeId, path })}`;
-});
-
-props.page.setComposerInputFocus((cursor) => composer.value?.focusAt(cursor));
-props.page.setComposerRangeEditor(
-  (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
-);
-onBeforeUnmount(() => {
-  props.page.setComposerInputFocus(() => undefined);
-  props.page.setComposerRangeEditor(() => false);
-});
 const mobileToolsFocus = createMobileSurfaceFocusService({
   isOpen: () => props.page.mobileViewport && props.page.mobileWorkspaceSurface !== 'conversation',
   regions: () => [
     document.querySelector<HTMLElement>(
       props.page.mobileWorkspaceSurface === 'sessions'
         ? '.workspace-grid.mobile-surface-sessions .conversation-sidebar'
-        : props.page.mobileWorkspaceSurface === 'terminal'
-          ? '.terminal-dock.mobile-active'
-          : '.workspace-grid.mobile-surface-inspector .inspector-column'
+        : '.workspace-grid .workspace-aside'
     ),
     document.querySelector<HTMLElement>('.activity-rail')
   ],
   close: () => props.page.closeMobileWorkspaceSurface(),
-  terminal: () => props.page.mobileWorkspaceSurface === 'terminal'
+  terminal: () => terminalVisible.value
 });
 onBeforeUnmount(mobileToolsFocus.dispose);
 </script>
@@ -344,14 +446,22 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           </div>
         </section>
         <div
+          ref="workspaceGrid"
           v-else-if="page.selectedWorkspace !== undefined"
           v-show="page.workspaceHost?.connected !== false"
-          :class="['workspace-grid', `mobile-surface-${page.mobileWorkspaceSurface}`]"
+          :class="[
+            'workspace-grid',
+            `mobile-surface-${page.mobileWorkspaceSurface}`,
+            { stacked: asideStacked }
+          ]"
+          :style="{ '--aside-width': `${asideWidth ?? 0}px` }"
         >
           <WorkspaceSessionList
+            :aside-supported="page.asideSupported"
+            @open-aside="openAsideTarget"
             :session-group="page.workspaceSessionGroup"
             @select-group="page.selectWorkspaceSessionGroup"
-            @open-tree="openSessionFromTree"
+            @open-tree="showSessionTree"
             :sessions="page.visibleWorkspaceSessions"
             :selected-session-id="page.selectedSessionId"
             :mobile-viewport="page.mobileViewport"
@@ -413,394 +523,175 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :cleanup="cleanupWorkspaceSessions"
             @update:model-value="updateCleanupDialogOpen"
           />
-          <section
-            class="conversation-panel"
-            :aria-label="translate('generated.workbenchSurface.agentConversation')"
+          <WorkspaceSessionPane
+            :controller="page.mainPaneController"
+            :tree-supported="page.asideSupported"
+            :tree-open-session-id="treePopup?.sessionId"
+            :tree-summaries="page.sessionNavigationSnapshot?.summaries"
+            :tree-status="treeStatus"
+            @open-tree="showSessionTree"
+            @open-surface="openPaneSurface"
+            @preview-attachment="page.openAttachmentPreview"
+            @reload="page.reloadSelectedSession"
+          />
+          <WorkbenchAside
+            v-if="page.asideState"
+            v-show="asideVisible"
+            class="workspace-aside"
+            :workspace="page.workspaceTarget!"
+            :state="page.asideState"
+            :tools="asideTools"
+            :sessions="asideSessions"
+            :tab-label="translate('generated.workbenchAside.tabs')"
+            :close-label="(title) => translate('generated.workbenchAside.close', { value0: title })"
+            :resize-label="translate('generated.workbenchAside.resize')"
+            :width="
+              asideStacked
+                ? asideAvailableWidth
+                : (asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min)
+            "
+            :mobile="page.mobileViewport"
+            :close-surface-label="translate('workbench.closeWorkspaceTools')"
+            :min-width="WORKBENCH_PANEL_LIMITS[asideMode].min"
+            :max-width="
+              Math.max(
+                WORKBENCH_PANEL_LIMITS[asideMode].min,
+                Math.min(WORKBENCH_PANEL_LIMITS[asideMode].max, asideAvailableWidth - 360)
+              )
+            "
+            :mode="asideMode"
+            @select-tool="page.selectAsideTool"
+            @select-session="page.openAsideSession"
+            @close-session="page.closeAsideSession"
+            @resize="page.setPanelWidth(asideMode, $event)"
+            @close-surface="page.closeMobileWorkspaceSurface"
           >
-            <template v-if="page.composerSessionOpen">
-              <ConversationHeader
-                :session="page.selectedSession"
-                :runner="page.composerRunner"
-                :files-ready="page.filesReady"
-                :terminal-ready="page.terminalReady"
-                :runner-icon="page.runnerBrandIcon"
-                :session-title="page.sessionTitle"
-                :content-search-ready="page.contentSearchReady"
-                @open-surface="page.openMobileWorkspaceSurface"
-              >
-                <template #tree="{ sessionId }">
-                  <WorkspaceSessionTreeButton
-                    v-if="page.workspaceTarget"
-                    :key="sessionId"
-                    :node-id="page.workspaceTarget.nodeId"
-                    :workspace-id="page.workspaceTarget.workspaceId"
-                    :session-id="sessionId"
-                    :request="page.request"
-                    @open="openSessionFromTree"
-                  />
-                </template>
-              </ConversationHeader>
-              <ConversationScroll
-                :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
-                :has-older="page.conversationNextCursor !== null"
-                :loading-initial="page.loadingInitialConversation"
-                :initial-sync-pending="page.synchronizingInitialConversation"
-                :initial-load-failed="page.initialConversationLoadFailed"
-                :loading-older="page.loadingOlderConversation"
-                :older-error="page.olderHistoryError"
-                :has-turns="page.conversationTurns.length > 0"
-                :following="page.followConversation"
-                :empty-prompt="page.draftSessionOpen ? 'workspace' : undefined"
-                @scroll-element="page.conversationScroll = $event"
-                @scroll="page.onComposerScroll"
-                @scroll-intent="page.stopFollowingConversation"
-                @load-older="page.loadOlderConversationTurns"
-                @latest="page.scrollConversationToLatest"
-                @reload="page.reloadSelectedSession"
-              >
-                <ConversationTimeline
-                  :runs="page.conversationRuns"
-                  :turns="page.displayedConversationTurns"
-                  :performance="page.sessionPerformance"
-                  :initializing="page.loadingInitialConversation"
-                  :initial-render-version="page.conversationInitialRenderVersion"
-                  :capture-render-anchor="page.captureConversationRenderAnchor"
-                  :workspace-root="page.selectedWorkspace?.path"
-                  :image-resource-url="workspaceImageResourceUrl"
-                  :loading="page.loading || page.composerSubmitting"
-                  :image-attachments="page.userMessageImageAttachments"
-                  :user-input-questions="page.userInputQuestions"
-                  :user-input-answer="page.userInputAnswer"
-                  :user-input-submitted="page.userInputSubmitted"
-                  :plan-continuation="page.activePlanContinuation"
-                  :node-ready="page.nodeReady"
-                  :synchronized="page.liveConnected && !page.conversationSyncPending"
-                  :tool-change-enabled="page.nodeReady"
-                  :rewind-enabled="page.rewindConversationEnabled"
-                  :rollback-enabled="page.rollbackConversationEnabled"
-                  @initial-rendered="page.confirmConversationInitialRender"
-                  @open-image="page.openConversationImagePreview"
-                  @image-unavailable="page.markRunImageUnavailable"
-                  @open-file="page.openAgentWorkspaceFile"
-                  @open-file-change="page.openAgentFileChange"
-                  @set-answer="page.setUserInputAnswer"
-                  @submit-input="page.submitUserInput"
-                  @implement-plan="page.implementPlan"
-                  @copy="page.copyConversationMessage"
-                  @rewind="page.rewindConversation"
-                  @rollback="page.rollbackConversation"
-                  @decide-approval="page.decideApproval"
-                />
-                <template #status>
-                  <SessionPerformanceInfo :performance="page.sessionPerformance" />
-                </template>
-              </ConversationScroll>
-              <ConversationComposer
-                ref="composer"
-                v-model:input="page.sessionInput"
-                :placeholder="
-                  page.selectedRunnerCommand
-                    ? translate('generated.workbenchSurface.run', {
-                        value0: page.selectedRunnerCommand.id
-                      })
-                    : page.nodeManifest === undefined &&
-                        page.workspaceHost?.connected === true &&
-                        page.workspaceHost.disabled !== true
-                      ? page.nodeManifestLoading
-                        ? translate('generated.workspaceInspector.loading')
-                        : translate(
-                            'generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable'
-                          )
-                      : translate(
-                          'generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles',
-                          {
-                            value0: runnerLabel(page.composerRunner)
-                          }
-                        )
+            <template #tool="{ tool }">
+              <WorkspaceInspector
+                :aside-tool="inspectorTool(tool)"
+                :ref="(instance) => (page.workspaceInspector = instance as never)"
+                :node-id="page.workspaceTarget?.nodeId"
+                :workspace-id="page.workspaceTarget?.workspaceId"
+                :workspace-name="
+                  page.selectedWorkspace === undefined
+                    ? translate('generated.workbenchSurface.workspace')
+                    : page.workspaceTabLabel(page.selectedWorkspace)
                 "
-                :working="page.composerWorking"
-                :working-label="page.composerWorkingLabel"
-                :working-busy="page.composerWorkingBusy"
-                :elapsed-label="page.composerElapsedLabel"
-                :connection-busy="!page.liveConnected || page.conversationSyncPending"
-                :connection-label="
-                  !page.liveConnected
-                    ? translate('conversationActivity.reconnecting')
-                    : page.conversationSyncPending
-                      ? translate('conversationActivity.syncing')
-                      : ''
+                :workspace-kind="page.selectedWorkspace?.kind"
+                :workspace-path="page.selectedWorkspace?.path"
+                :history-capability="page.nodeManifest?.git?.supportsHistory"
+                :csrf-token="page.csrfToken"
+                :renew-csrf-token="page.renewCsrfToken"
+                :enabled="page.filesReady"
+                :prediction-enabled="page.workPromptCompletion.enabled"
+                :capability-loading="page.nodeManifestLoading && page.nodeManifest === undefined"
+                :node-online="
+                  page.workspaceHost?.connected === true && page.workspaceHost.disabled !== true
                 "
-                :readonly="page.composerInputDisabled"
-                :drop-target="page.draggingComposerAttachments"
                 :mobile-viewport="page.mobileViewport"
-                :command-states="page.activeCommandStates"
-                :loading="page.loading || page.composerSubmitting"
-                :skill-tokens="page.composerSkillTokens"
-                :file-references="page.composerFileReferences"
-                :completion="page.workPromptCompletion"
-                :completion-blocked="
-                  page.commandPickerOpen ||
-                  page.referencePickerOpen ||
-                  page.selectedRunnerCommand !== undefined ||
-                  page.composerAttachmentsPending
+                :content-search-enabled="page.contentSearchReady"
+                :code-navigation-enabled="page.codeNavigationReady"
+                :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
+                :file-write-enabled="page.fileWriteReady"
+                :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
+                :files-revision="page.workspaceFilesRevision"
+                :changes-revision="page.workspaceChangesRevision"
+                :subscription-snapshot="page.workspaceWatchSnapshot"
+                :files-watch-status="page.workspaceWatchTopicStatus.files"
+                :changes-watch-status="page.workspaceWatchTopicStatus.changes"
+                :direct-file-download="page.directWorkspaceFileDownload"
+                :direct-file-object-url="page.directWorkspaceFileObjectUrl"
+                :direct-file-read-range="page.directWorkspaceFileReadRange"
+                :direct-git-file-download="page.directGitFileDownload"
+                :direct-git-file-object-url="page.directGitFileObjectUrl"
+                :direct-git-file-read-range="page.directGitFileReadRange"
+                :standalone-file-mode="page.standaloneFileMode"
+                @directory="page.changeWorkspaceWatchDirectory"
+                @retry-watch="page.retryWorkspaceWatch"
+                @branch="
+                  (workspaceId, branch) =>
+                    page.updateWorkspaceBranch(
+                      page.workspaceTarget?.nodeId ?? '',
+                      workspaceId,
+                      branch
+                    )
                 "
-                @submit="page.sendSessionMessage"
-                @input="page.onComposerInput"
-                @keydown="onComposerKeydown"
-                @cursor="page.onComposerCursor"
-                @paste="page.onNewSessionPaste"
-                @dragenter="page.onComposerAttachmentDragEnter"
-                @dragleave="page.onComposerAttachmentDragLeave"
-                @drop="page.onComposerAttachmentDrop"
-                @close-command="page.closeCommandState"
-                @remove-skill="page.removeComposerSkillToken"
-                @remove-reference="page.removeComposerFileReference"
-              >
-                <template #queue>
-                  <ComposerQueue
-                    :items="page.currentSessionQueue.items"
-                    :paused="page.currentSessionQueue.paused"
-                    :loading="page.loading || page.composerSubmitting"
-                    :editing-queue-item-id="page.editingQueueItemId"
-                    :editing-content="page.editingQueueContent"
-                    :goal="page.activeGoal"
-                    @drag-start="page.draggingQueueItemId = $event"
-                    @reorder="page.reorderWorkspaceQueue"
-                    @edit="page.composerQueueService.startEditing($event)"
-                    @cancel-edit="page.composerQueueService.finishEditing()"
-                    @update-content="page.editingQueueContent = $event"
-                    @save="page.saveQueuedMessage"
-                    @execute="
-                      (item, editedContent) =>
-                        page.executeQueuedMessage(item as WorkspaceQueueItem, editedContent)
-                    "
-                    @delete-item="page.deleteQueuedMessage"
-                    @save-goal="page.editGoal"
-                    @clear-goal="page.clearGoal"
-                  />
-                </template>
-                <template #toolbar>
-                  <ComposerToolbar
-                    :submitting="page.composerSubmitting"
-                    v-if="page.canUseComposer"
-                    ref="composerToolbar"
-                    :draft-session-open="page.composerDraftOpen"
-                    :runner="page.newSessionRunner"
-                    :runner-options="page.composerRunnerOptions"
-                    :runner-loading="page.runnerProfilesLoading"
-                    :runner-disabled="
-                      !page.draftSessionOpen || page.loading || page.composerSubmitting
-                    "
-                    :runner-label="page.composerRunnerLabel"
-                    :model-effort-selection="page.composerModelEffortSelection"
-                    :model-effort-label="page.composerModelEffortLabel"
-                    :selected-model="page.newSessionModel"
-                    :selected-effort="page.newSessionEffort"
-                    :models="page.composerModels"
-                    :efforts="page.composerEfforts"
-                    :access="page.newSessionAccess"
-                    :access-label="page.composerAccessLabel"
-                    :access-options="page.composerAccessOptions"
-                    :configuration-disabled="page.composerConfigurationDisabled"
-                    :access-disabled="page.composerAccessDisabled"
-                    :fast-enabled="page.codexFastEnabled"
-                    :context-usage="page.sessionContextUsage"
-                    :context-usage-label="page.contextUsageLabel"
-                    :can-compact-context="page.canCompactContext"
-                    :mobile-viewport="page.mobileViewport"
-                    :active-run="page.activeComposerRun"
-                    :context-key="`${page.activeWorkspaceTabId}:${page.selectedSessionId ?? ''}`"
-                    :interrupt-visible="page.interruptVisible"
-                    :can-interrupt="page.canInterruptTurn"
-                    :input-has-content="
-                      page.sessionInput.trim().length > 0 ||
-                      page.composerSkillTokens.length > 0 ||
-                      page.composerFileReferences.length > 0 ||
-                      page.newSessionAttachments.length > 0
-                    "
-                    :has-selected-command="page.composerCommandReady"
-                    :loading="page.loading || page.composerSubmitting"
-                    :attachments-pending="page.composerAttachmentsPending"
-                    :effort-label="page.effortLabel"
-                    @files="page.addNewSessionFiles"
-                    @update-runner="page.selectComposerRunner"
-                    @update-model-effort="selectComposerModelEffort"
-                    @update-access="page.selectComposerAccess"
-                    @compact="page.compactCurrentContext"
-                    @stop="page.stopActiveRun"
-                    @send="page.sendSessionMessage()"
-                    @steer="page.sendSessionMessage('REPLACE_CURRENT')"
-                  />
-                </template>
-                <template #attachments>
-                  <ComposerAttachments
-                    :attachments="page.newSessionAttachments"
-                    @preview="page.openAttachmentPreview"
-                    @remove-attachment="page.removeNewSessionAttachment"
-                  />
-                </template>
-                <template #picker>
-                  <ComposerCommandPicker
-                    :open="page.commandPickerOpen"
-                    :commands="
-                      page.composerPickerKind === 'runner' ? page.visibleRunnerCommands : []
-                    "
-                    :skills="page.composerPickerKind === 'runner' ? page.visibleComposerSkills : []"
-                    :quick-prompts="
-                      page.composerPickerKind === 'quick-prompt' ? page.visibleQuickPrompts : []
-                    "
-                    :quick-prompts-loading="page.quickPromptsLoading"
-                    :quick-prompts-failed="page.quickPromptsFailed"
-                    :picker-kind="page.composerPickerKind"
-                    :skills-enabled="page.composerSkillsSupported"
-                    :skills-loading="page.composerSkillsLoading"
-                    :skills-failed="page.composerSkillsFailed"
-                    :active-index="page.activeRunnerCommandIndex"
-                    :loading="page.runnerProfilesLoading"
-                    :failed="page.runnerProfilesFailed"
-                    @activate="page.activeRunnerCommandIndex = $event"
-                    @select="page.selectRunnerCommand"
-                    @select-skill="page.selectComposerSkill"
-                    @select-quick-prompt="page.selectComposerQuickPrompt"
-                  />
-                  <ComposerReferencePicker
-                    :open="page.referencePickerOpen"
-                    :candidates="page.referenceCandidates"
-                    :active-index="page.activeFileReferenceIndex"
-                    :loading="page.fileReferenceLoading"
-                    :query="page.activeReferenceMatch?.query ?? ''"
-                    :session-enabled="true"
-                    :session-ready="page.referenceSessionAvailable()"
-                    :file-ready="page.filesReady"
-                    :session-only="page.activeReferenceMatch?.sessionOnly ?? false"
-                    :session-loading="page.referenceSessionLoading"
-                    :file-error="page.referenceFileError"
-                    :session-error="page.referenceSessionError"
-                    :file-more="page.referenceFileMore"
-                    :session-more="page.referenceSessionMore"
-                    @activate="page.activeFileReferenceIndex = $event"
-                    @select="page.selectReference"
-                  />
-                </template>
-              </ConversationComposer>
+                @workspace="
+                  page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)
+                "
+                @notice="page.notice"
+                @uploads="page.queueWorkspaceUploads"
+              />
             </template>
-          </section>
-          <aside
-            ref="inspectorElement"
-            class="inspector-column"
-            tabindex="-1"
-            :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'inspector'"
-            :aria-label="translate('generated.workbenchSurface.readOnlyInspector')"
-          >
-            <PanelResizeHandle
-              class="inspector-resize"
-              :target="inspectorElement"
-              :label="translate('generated.panelResize.files')"
-              :min="WORKBENCH_PANEL_LIMITS.inspector.min"
-              :max="WORKBENCH_PANEL_LIMITS.inspector.max"
-              :direction="-1"
-              @resize="page.setPanelWidth('inspector', $event)"
-            />
-            <WorkspaceInspector
-              :ref="(instance) => (page.workspaceInspector = instance as never)"
-              :node-id="page.workspaceTarget?.nodeId"
-              :workspace-id="page.workspaceTarget?.workspaceId"
-              :workspace-name="
-                page.selectedWorkspace === undefined
-                  ? translate('generated.workbenchSurface.workspace')
-                  : page.workspaceTabLabel(page.selectedWorkspace)
-              "
-              :workspace-kind="page.selectedWorkspace?.kind"
-              :workspace-path="page.selectedWorkspace?.path"
-              :history-capability="page.nodeManifest?.git?.supportsHistory"
-              :csrf-token="page.csrfToken"
-              :renew-csrf-token="page.renewCsrfToken"
-              :enabled="page.filesReady"
-              :prediction-enabled="page.workPromptCompletion.enabled"
-              :capability-loading="page.nodeManifestLoading && page.nodeManifest === undefined"
-              :node-online="
-                page.workspaceHost?.connected === true && page.workspaceHost.disabled !== true
-              "
-              :mobile-viewport="page.mobileViewport"
-              :content-search-enabled="page.contentSearchReady"
-              :code-navigation-enabled="page.codeNavigationReady"
-              :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
-              :file-write-enabled="page.fileWriteReady"
-              :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
-              :files-revision="page.workspaceFilesRevision"
-              :changes-revision="page.workspaceChangesRevision"
-              :subscription-snapshot="page.workspaceWatchSnapshot"
-              :files-watch-status="page.workspaceWatchTopicStatus.files"
-              :changes-watch-status="page.workspaceWatchTopicStatus.changes"
-              :direct-file-download="page.directWorkspaceFileDownload"
-              :direct-file-object-url="page.directWorkspaceFileObjectUrl"
-              :direct-file-read-range="page.directWorkspaceFileReadRange"
-              :direct-git-file-download="page.directGitFileDownload"
-              :direct-git-file-object-url="page.directGitFileObjectUrl"
-              :direct-git-file-read-range="page.directGitFileReadRange"
-              :standalone-file-mode="page.standaloneFileMode"
-              @directory="page.changeWorkspaceWatchDirectory"
-              @retry-watch="page.retryWorkspaceWatch"
-              @branch="
-                (workspaceId, branch) =>
-                  page.updateWorkspaceBranch(
-                    page.workspaceTarget?.nodeId ?? '',
-                    workspaceId,
-                    branch
-                  )
-              "
-              @workspace="page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)"
-              @notice="page.notice"
-              @uploads="page.queueWorkspaceUploads"
-            />
-          </aside>
+            <template #session>
+              <WorkspaceSessionPane
+                :controller="page.asidePaneController"
+                :tree-supported="page.asideSupported"
+                :tree-open-session-id="treePopup?.sessionId"
+                :tree-summaries="page.sessionNavigationSnapshot?.summaries"
+                :tree-status="treeStatus"
+                @open-tree="showSessionTree"
+                @open-surface="openPaneSurface"
+                @preview-attachment="page.openAttachmentPreview"
+                @reload="page.reloadAsideSession"
+              />
+            </template>
+            <template #terminal>
+              <div ref="terminalMount" class="aside-terminal-mount" />
+            </template>
+          </WorkbenchAside>
         </div>
       </template>
-      <div
-        v-for="tab in page.workspaceTabs"
-        :key="tab.id"
-        v-show="tab.id === page.activeWorkspaceTabId && page.terminalReady"
-        tabindex="-1"
-        :inert="page.mobileViewport && page.mobileWorkspaceSurface !== 'terminal'"
-        :class="['terminal-dock', { 'mobile-active': page.mobileWorkspaceSurface === 'terminal' }]"
-      >
-        <TerminalDock
-          :error-message="errorMessage"
-          :ref="
-            (instance) => {
-              if (instance === null) page.terminalDocks.delete(tab.id);
-              else
-                page.terminalDocks.set(
-                  tab.id,
-                  instance as unknown as {
-                    release(): Promise<void>;
-                    toggle(): Promise<void>;
-                  }
-                );
-            }
-          "
-          :node-id="tab.nodeId"
-          :direct="page.terminalDirectClient"
-          :workspace-id="tab.workspaceId"
-          :csrf-token="page.csrfToken"
-          :renew-csrf-token="page.renewCsrfToken"
-          :enabled="
-            page.view === 'nodes' && tab.id === page.activeWorkspaceTabId && page.terminalReady
-          "
-          :capability="page.nodeManifest?.terminal"
-          :node-os-release="page.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease"
-          :visible="
-            page.view === 'nodes' &&
-            tab.id === page.activeWorkspaceTabId &&
-            page.terminalReady &&
-            (!page.mobileViewport || page.mobileWorkspaceSurface === 'terminal')
-          "
-          :mobile-mode="page.mobileViewport"
-          :active="page.view === 'nodes' && tab.id === page.activeWorkspaceTabId"
-          @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
-          @notice="page.notice"
-        />
-      </div>
+      <Teleport :to="terminalMount ?? 'body'" :disabled="terminalMount === undefined">
+        <div
+          v-for="tab in page.workspaceTabs"
+          :key="tab.id"
+          v-show="terminalVisible && tab.id === page.activeWorkspaceTabId && page.terminalReady"
+          tabindex="-1"
+          :inert="!terminalVisible"
+          class="terminal-dock"
+        >
+          <TerminalDock
+            :error-message="errorMessage"
+            embedded
+            :ref="
+              (instance) => {
+                if (instance === null) page.terminalDocks.delete(tab.id);
+                else
+                  page.terminalDocks.set(
+                    tab.id,
+                    instance as unknown as {
+                      release(): Promise<void>;
+                      toggle(): Promise<void>;
+                    }
+                  );
+              }
+            "
+            :node-id="tab.nodeId"
+            :direct="page.terminalDirectClient"
+            :workspace-id="tab.workspaceId"
+            :csrf-token="page.csrfToken"
+            :renew-csrf-token="page.renewCsrfToken"
+            :enabled="
+              page.view === 'nodes' && tab.id === page.activeWorkspaceTabId && page.terminalReady
+            "
+            :capability="page.nodeManifest?.terminal"
+            :node-os-release="
+              page.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease
+            "
+            :visible="
+              page.view === 'nodes' &&
+              tab.id === page.activeWorkspaceTabId &&
+              page.terminalReady &&
+              terminalVisible
+            "
+            :mobile-mode="page.mobileViewport"
+            :active="page.view === 'nodes' && tab.id === page.activeWorkspaceTabId"
+            @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
+            @notice="page.notice"
+          />
+        </div>
+      </Teleport>
     </section>
     <HostedConversationWorkspacePage
       v-if="page.view === 'conversations'"
@@ -858,6 +749,23 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         @extension-changed="page.refreshAdmin"
       />
     </template>
+    <WorkspaceSessionTreePopover
+      v-if="treePopup"
+      :key="treePopup.sessionId"
+      :anchor="treePopup.anchor"
+      :session-id="treePopup.sessionId"
+      :title="treePopup.title"
+      :tree="page.sessionNavigationSnapshot?.tree"
+      :status="treeStatus"
+      :main-session-id="page.draftSessionOpen ? undefined : page.selectedSessionId"
+      :aside-session-ids="page.asideState?.sessions ?? []"
+      :active-aside-id="
+        page.asideState?.active?.kind === 'session' ? page.asideState.active.sessionId : undefined
+      "
+      @close="closeSessionTree"
+      @open="openSessionFromTree"
+      @retry="page.retryWorkspaceWatch"
+    />
   </section>
 </template>
 
@@ -992,12 +900,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 .workspace-grid {
   display: grid;
   height: 0;
-  grid-template-columns:
-    var(--mar-session-sidebar-width) minmax(360px, 1fr)
-    min(
-      var(--mar-inspector-width, var(--mar-inspector-max-width)),
-      max(var(--mar-inspector-min-width), calc(100% - var(--mar-session-sidebar-width) - 360px))
-    );
+  grid-template-columns: var(--mar-session-sidebar-width) minmax(0, 1fr) var(--aside-width, 0px);
   width: 100%;
   max-width: 100%;
   min-height: 0;
@@ -1047,13 +950,41 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   overflow: hidden;
 }
 
+@media (min-width: 768px) {
+  .workspace-grid.stacked {
+    grid-template-columns: var(--mar-session-sidebar-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .workspace-grid.stacked > :deep(.conversation-sidebar) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+  .workspace-grid.stacked > :deep(.conversation-panel) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .workspace-grid.stacked > .workspace-aside {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .workspace-grid.stacked :deep(.workbench-aside-resize) {
+    display: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .inspector-resize {
     display: none;
   }
 
   .workspace-grid {
-    grid-template-columns: min(242px, var(--mar-session-sidebar-width)) minmax(340px, 1fr);
+    grid-template-columns: min(242px, var(--mar-session-sidebar-width)) minmax(0, 1fr) var(
+        --aside-width,
+        0px
+      );
+  }
+  .workspace-grid.stacked {
+    grid-template-columns: min(242px, var(--mar-session-sidebar-width)) minmax(0, 1fr);
   }
 }
 
@@ -1119,17 +1050,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     min-height: 0;
     flex-direction: column;
     background: var(--mar-bg-chrome);
-  }
-}
-
-@media (max-width: 767px) {
-  .terminal-dock.mobile-active {
-    transform: translateY(0);
-    visibility: visible;
-    pointer-events: auto;
-    transition:
-      transform 0.16s ease,
-      visibility 0s;
   }
 }
 </style>
@@ -1238,24 +1158,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       visibility 0s;
   }
 
-  .terminal-dock {
-    position: fixed;
-    z-index: 12;
-    inset: auto 0 0;
-    width: 100%;
-    height: 50dvh;
-    box-sizing: border-box;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    border-top: 1px solid var(--mar-border-strong);
-    box-shadow: 0 -10px 24px var(--mar-shadow-medium);
-    transform: translateY(104%);
-    visibility: hidden;
-    pointer-events: none;
-    transition:
-      transform 0.16s ease,
-      visibility 0.16s step-end;
-  }
-
   .terminal-dock :deep(.admin-terminal) {
     display: flex;
     min-height: 0;
@@ -1286,14 +1188,52 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 
 @media (prefers-reduced-motion: reduce) {
   .workbench,
-  .terminal-dock,
-  .terminal-dock.mobile-active {
+  .terminal-dock {
     transition: none;
   }
 }
 </style>
 
 <style scoped>
+:deep(.aside-terminal-mount),
+.terminal-dock {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+.terminal-dock :deep(.admin-terminal) {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+@media (max-width: 767px) {
+  .workspace-aside {
+    position: fixed;
+    z-index: 12;
+    inset: var(--sidebar-header-height) 0 0;
+    width: 100% !important;
+    min-width: 0;
+  }
+  .workspace-aside :deep(.workbench-aside-resize) {
+    display: none;
+  }
+  .terminal-dock {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+  }
+}
 :global(.workspace-selection-hint .el-button) {
   vertical-align: baseline;
 }
@@ -1305,8 +1245,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   .workspace-grid.mobile-surface-sessions .conversation-sidebar,
   .workspace-grid .inspector-column,
   .workspace-grid.mobile-surface-inspector .inspector-column,
-  .terminal-dock,
-  .terminal-dock.mobile-active {
+  .terminal-dock {
     transition: none;
   }
 }

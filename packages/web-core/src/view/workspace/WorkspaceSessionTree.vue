@@ -1,51 +1,49 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import { showMessage } from '../../service/message-feedback-service.js';
-import { errorMessage } from '../../util/error-presentation.js';
+import type {
+  NavigationSession,
+  NavigationSnapshot
+} from '../../service/session-navigation-projection.js';
+import MarIcon from '../common/MarIcon.vue';
 import {
   formatRelativeSessionActivity,
   isKnownSessionActivityAt
 } from '../../util/session-list.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
 
-interface TreeNode {
-  readonly id: string;
-  readonly parentSessionId: string | null;
-  readonly title: string;
-  readonly runner: string;
-  readonly status: 'RUNNING' | 'SLEEPING' | 'IDLE';
-  readonly lastActivityAt?: number;
-}
-interface TreeResult {
-  readonly rootSessionId: string;
-  readonly nodes: readonly TreeNode[];
-  readonly truncated: boolean;
-}
+type TreeNode = NavigationSession;
 
 const props = defineProps<{
-  readonly active: boolean;
-  readonly nodeId: string;
-  readonly workspaceId: string;
   readonly sessionId: string;
-  readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
+  readonly tree: NavigationSnapshot['tree'] | undefined;
+  readonly status: 'idle' | 'loading' | 'ready' | 'failed';
+  readonly mainSessionId?: string | undefined;
+  readonly asideSessionIds: readonly string[];
+  readonly activeAsideId?: string | undefined;
 }>();
-const emit = defineEmits<{ close: []; open: [sessionId: string] }>();
-const controller = new AbortController();
-watch(
-  () => props.active,
-  (active) => {
-    if (!active) controller.abort();
-  }
-);
-const loading = ref(true);
-const result = ref<TreeResult>();
+const emit = defineEmits<{
+  open: [sessionId: string, target: 'aside' | 'main'];
+  retry: [];
+  menu: [open: boolean];
+}>();
+const parentMenu = ref<{ handleClose: () => void }>();
+const nodeMenus = ref<Array<{ handleClose: () => void }>>([]);
+function closeMenu(): void {
+  parentMenu.value?.handleClose();
+  for (const menu of nodeMenus.value) menu.handleClose();
+}
+defineExpose({ closeMenu });
 const rows = computed(() => {
-  const tree = result.value;
+  const tree = props.tree;
   if (!tree) return [];
+  const ids = new Set(tree.nodes.map((node) => node.id));
   const children = new Map<string | null, TreeNode[]>();
   for (const node of tree.nodes) {
-    const parent = node.id === tree.rootSessionId ? null : node.parentSessionId;
+    const parent =
+      node.parentSessionId === tree.anchorSessionId || !ids.has(node.parentSessionId ?? '')
+        ? null
+        : node.parentSessionId;
     const siblings = children.get(parent) ?? [];
     siblings.push(node);
     children.set(parent, siblings);
@@ -55,13 +53,13 @@ const rows = computed(() => {
       (child) => child.status !== 'IDLE' || hasActiveDescendant(child)
     );
   }
-  const priority = { RUNNING: 0, SLEEPING: 1, IDLE: 2 };
+  const priority: Record<string, number> = { RUNNING: 0, SLEEPING: 1, IDLE: 2 };
   for (const siblings of children.values()) {
     siblings.sort(
       (a, b) =>
         Number(b.status !== 'IDLE' || hasActiveDescendant(b)) -
           Number(a.status !== 'IDLE' || hasActiveDescendant(a)) ||
-        priority[a.status] - priority[b.status]
+        (priority[a.status] ?? 2) - (priority[b.status] ?? 2)
     );
   }
   const flattened: Array<{ node: TreeNode; branches: boolean[]; hasChildren: boolean }> = [];
@@ -86,31 +84,86 @@ function activityTitle(node: TreeNode): string | undefined {
     ? translate('presentation.lastActivity', { value: absoluteSessionTime(node.lastActivityAt) })
     : undefined;
 }
-onMounted(async () => {
-  try {
-    const query = new URLSearchParams({ nodeId: props.nodeId, workspaceId: props.workspaceId });
-    const snapshot = await props.request<TreeResult>(
-      `/api/agent-sessions/${encodeURIComponent(props.sessionId)}/tree?${query}`,
-      { signal: controller.signal }
-    );
-    if (!controller.signal.aborted) {
-      result.value = snapshot;
-      loading.value = false;
-    }
-  } catch (error) {
-    if (!controller.signal.aborted) {
-      showMessage(errorMessage(error), 'error', error);
-      emit('close');
-    }
-  }
-});
-onBeforeUnmount(() => controller.abort());
+function openContext(event: MouseEvent): void {
+  event.preventDefault();
+  (event.currentTarget as HTMLElement)
+    .querySelector<HTMLButtonElement>('.session-tree-actions')
+    ?.click();
+}
 </script>
 
 <template>
-  <div v-loading="loading" class="session-tree" :aria-busy="loading">
-    <ul v-if="result" class="session-tree-list">
-      <li v-for="row in rows" :key="row.node.id" class="session-tree-row">
+  <div
+    v-loading="tree === undefined && status !== 'failed'"
+    class="session-tree"
+    :aria-busy="tree === undefined && status !== 'failed'"
+  >
+    <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
+      {{ translate('sessionGroups.treeUnavailable') }}
+      <button type="button" @click="emit('retry')">{{ translate('sessionGroups.retry') }}</button>
+    </p>
+    <div v-if="tree?.parent" class="session-tree-parent" @contextmenu="openContext">
+      <span>{{ translate('sessionGroups.parent') }}</span>
+      <button
+        type="button"
+        :aria-label="`${tree.parent.title}, ${translate(`sessionGroups.status${tree.parent.status}`)}`"
+        @click="emit('open', tree.parent.id, 'aside')"
+      >
+        {{ tree.parent.title }}
+        <span
+          v-if="tree.parent.status !== 'IDLE'"
+          class="session-activity"
+          :class="tree.parent.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
+          aria-hidden="true"
+          ><i
+        /></span>
+        <time v-tooltip="activityTitle(tree.parent)" :datetime="activityDateTime(tree.parent)">{{
+          formatRelativeSessionActivity(tree.parent.lastActivityAt)
+        }}</time>
+      </button>
+      <span v-if="tree.parent.id === mainSessionId" class="session-tree-location">{{
+        translate('sessionGroups.inMain')
+      }}</span>
+      <span v-else-if="tree.parent.id === activeAsideId" class="session-tree-location">{{
+        translate('sessionGroups.inActiveAside')
+      }}</span>
+      <span v-else-if="asideSessionIds.includes(tree.parent.id)" class="session-tree-location">{{
+        translate('sessionGroups.inAside')
+      }}</span>
+      <el-dropdown
+        ref="parentMenu"
+        trigger="click"
+        popper-class="session-tree-menu"
+        @visible-change="emit('menu', $event)"
+        @command="emit('open', tree!.parent!.id, $event)"
+      >
+        <button
+          type="button"
+          class="session-tree-actions"
+          :aria-label="translate('sessionGroups.actions')"
+        >
+          <MarIcon name="more" />
+        </button>
+        <template #dropdown
+          ><el-dropdown-menu>
+            <el-dropdown-item command="aside">{{
+              translate('sessionGroups.openAside')
+            }}</el-dropdown-item>
+            <el-dropdown-item command="main">{{
+              translate('sessionGroups.openMain')
+            }}</el-dropdown-item>
+          </el-dropdown-menu></template
+        >
+      </el-dropdown>
+    </div>
+    <p v-if="tree && rows.length === 0">{{ translate('sessionGroups.noDescendants') }}</p>
+    <ul v-if="tree && rows.length > 0" class="session-tree-list">
+      <li
+        v-for="row in rows"
+        :key="row.node.id"
+        class="session-tree-row"
+        @contextmenu="openContext"
+      >
         <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
           <span v-if="rows.length > 1" class="session-tree-origin-stem" />
         </span>
@@ -137,14 +190,24 @@ onBeforeUnmount(() => controller.abort());
           type="button"
           class="session-tree-node"
           :style="{ marginInlineStart: `${(row.branches.length + 1) * 1.25}rem` }"
-          :aria-current="row.node.id === sessionId ? 'true' : undefined"
+          :aria-current="row.node.id === mainSessionId ? 'true' : undefined"
           :aria-label="`${row.node.title}, ${translate(`sessionGroups.status${row.node.status}`)}`"
-          @click="emit('open', row.node.id)"
+          @click="emit('open', row.node.id, 'aside')"
         >
           <span v-tooltip="row.node.title" class="session-tree-title">{{ row.node.title }}</span>
+          <span v-if="row.node.id === mainSessionId" class="session-tree-location">{{
+            translate('sessionGroups.inMain')
+          }}</span>
+          <span v-else-if="row.node.id === activeAsideId" class="session-tree-location">{{
+            translate('sessionGroups.inActiveAside')
+          }}</span>
+          <span v-else-if="asideSessionIds.includes(row.node.id)" class="session-tree-location">{{
+            translate('sessionGroups.inAside')
+          }}</span>
           <span
             v-if="row.node.status !== 'IDLE'"
-            class="session-activity managed_active"
+            class="session-activity"
+            :class="row.node.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
             aria-hidden="true"
             ><i />
           </span>
@@ -155,15 +218,63 @@ onBeforeUnmount(() => controller.abort());
             >{{ formatRelativeSessionActivity(row.node.lastActivityAt) }}</time
           >
         </button>
+        <el-dropdown
+          ref="nodeMenus"
+          trigger="click"
+          popper-class="session-tree-menu"
+          @visible-change="emit('menu', $event)"
+          @command="emit('open', row.node.id, $event)"
+        >
+          <button
+            type="button"
+            class="session-tree-actions"
+            :aria-label="translate('sessionGroups.actions')"
+            @click.stop
+          >
+            <MarIcon name="more" />
+          </button>
+          <template #dropdown
+            ><el-dropdown-menu>
+              <el-dropdown-item command="aside">{{
+                translate('sessionGroups.openAside')
+              }}</el-dropdown-item>
+              <el-dropdown-item command="main">{{
+                translate('sessionGroups.openMain')
+              }}</el-dropdown-item>
+            </el-dropdown-menu></template
+          >
+        </el-dropdown>
       </li>
     </ul>
-    <p v-if="result?.truncated" class="session-tree-truncated">
+    <p v-if="tree?.truncated" class="session-tree-truncated">
       {{ translate('sessionGroups.treeTruncated') }}
     </p>
   </div>
 </template>
 
 <style scoped>
+.session-tree-parent {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+}
+.session-tree-parent > button {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+}
+.session-tree-location {
+  flex: none;
+  color: var(--el-text-color-secondary);
+  font-size: 0.75rem;
+}
+.session-tree-actions {
+  flex: none;
+}
+.tree-sleeping i {
+  background: var(--el-color-warning);
+}
 .session-tree[aria-busy='true'] {
   min-height: 4rem;
 }

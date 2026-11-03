@@ -1,7 +1,7 @@
 import type { Ref } from 'vue';
 import type { AgentRun, GoalExitSummary, Session, WorkspaceTarget } from '../model/workbench.js';
 
-interface RunnerCommandResult {
+export interface RunnerCommandResult {
   readonly session?: Session;
   readonly run?: AgentRun;
   readonly goalAccessChanged?: boolean;

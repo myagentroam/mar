@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 import {
   fulfillMockSessionWatch,
@@ -60,6 +60,667 @@ function sessionWatchSnapshot(
 }
 
 // Workspace tabs, cache, LRU, and read-only fallback
+
+test('modal blocks the activity shortcut without stealing focus and restores it after close', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    [],
+    'DIRECTORY',
+    true,
+    'IDLE',
+    undefined,
+    '0.11.69'
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  const activity = page.locator('.activity-center-trigger').first();
+  await expect(activity).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Control+Shift+O');
+  const input = page.locator('.quick-open-input');
+  await expect(input).toBeVisible();
+  await input.focus();
+  await page.keyboard.press('Control+Shift+E');
+  await expect(activity).toHaveAttribute('aria-expanded', 'false');
+  await expect(input).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(input).not.toBeVisible();
+  await page.keyboard.press('Control+Shift+E');
+  await expect(activity).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('Quick Open keyboard selection navigates to a session through the shared shortcut dispatcher', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    [],
+    'DIRECTORY',
+    true,
+    'IDLE',
+    undefined,
+    '0.11.69'
+  );
+  await mockEmptyWorkspaceFiles(page, ['workspace-1']);
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
+  await expect(page.locator('.session-row').first()).toBeVisible();
+  await page.keyboard.press('Control+Shift+O');
+  const input = page.locator('.quick-open-input');
+  await expect(input).toBeFocused();
+  await page.getByRole('tab', { name: '会话', exact: true }).click();
+  await expect(page.locator('.quick-open-results [role="option"]').first()).toBeVisible();
+  await input.focus();
+  await page.keyboard.press('Enter');
+  await expect(input).not.toBeVisible();
+  await expect(page.locator('.session-row.selected')).toBeVisible();
+});
+
+async function prepareDescendantTree(page: Page) {
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    [],
+    'DIRECTORY',
+    true,
+    'IDLE',
+    undefined,
+    '0.11.69'
+  );
+  const sessions = [1, 2, 3].map((index) => ({
+    id: `tree-${index}`,
+    workspaceId: 'workspace-1',
+    runner: 'codex',
+    externalSessionId: `native-tree-${index}`,
+    customTitle: `树会话 ${index}`,
+    sessionGroup: index === 1 ? 'MAIN' : 'CHILD',
+    activity: 'IDLE',
+    control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+  }));
+  const node = (index: number) => ({
+    id: `tree-${index}`,
+    parentSessionId: index === 1 ? null : `tree-${index - 1}`,
+    title: `树会话 ${index}`,
+    runner: 'codex',
+    activity: index === 3 ? 'MANAGED_ACTIVE' : 'IDLE',
+    status: index === 3 ? 'RUNNING' : 'IDLE',
+    lastActivityAt: 0
+  });
+  const queries: Array<{ treeAnchor?: string }> = [];
+  let legacyTreeReads = 0;
+  await page.route('**/api/nodes/node-1/workbench-capabilities', (route) =>
+    json(route, {
+      manifest: {
+        manifestVersion: 1,
+        observedAt: 1_900_000_000_000,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null },
+        git: { available: false, reasonCode: null },
+        terminal: { available: false, reasonCode: null },
+        sessionAside: { apiVersion: 1 }
+      }
+    })
+  );
+  await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+    json(route, { sessions, nextCursor: null })
+  );
+  await page.route(/\/api\/agent-sessions\/tree-[123]\?nodeId=node-1$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    return json(route, { session: sessions.find((item) => item.id === id) });
+  });
+  await page.route(/\/api\/agent-sessions\/tree-[123]\/tree(?:\?.*)?$/, (route) => {
+    legacyTreeReads++;
+    return json(route, {}, 500);
+  });
+  await page.route(/\/api\/agent-sessions\/tree-[123]\/watch(?:\?.*)?$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const session = sessions.find((item) => item.id === id)!;
+    if (route.request().method() === 'DELETE') return json(route, { released: true });
+    return fulfillMockSessionWatch(
+      page,
+      route,
+      session,
+      sessionWatchSnapshot(session, `正文 ${id}`)
+    );
+  });
+  await page.route(/\/api\/agent-sessions\/tree-[123]\/(context|runs)\?nodeId=node-1$/, (route) =>
+    json(
+      route,
+      new URL(route.request().url()).pathname.endsWith('/context')
+        ? { context: null }
+        : { runs: [] }
+    )
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
+    fulfillMockWorkspaceWatch(
+      page,
+      route,
+      undefined,
+      'DIRECTORY',
+      undefined,
+      undefined,
+      (query) => {
+        queries.push(query);
+        const index = Number(query.treeAnchor?.split('-').at(-1));
+        return {
+          sessions: query.sessionIds.map((id) => node(Number(id.split('-').at(-1)))),
+          summaries: query.summaryAnchors.map((id) => ({
+            anchorSessionId: id,
+            descendantCount: 1,
+            activeCount: 1,
+            runningCount: 1,
+            sleepingCount: 0,
+            hasActiveDescendants: true
+          })),
+          tree: query.treeAnchor
+            ? {
+                anchorSessionId: query.treeAnchor,
+                parent: index > 1 ? node(index - 1) : null,
+                nodes: [2, 3].filter((item) => item > index).map(node),
+                truncated: false
+              }
+            : null,
+          missingSessionIds: []
+        };
+      }
+    )
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
+  await page.locator('.session-link').filter({ hasText: '树会话 1' }).click();
+  await expect(page.getByText('正文 tree-1', { exact: true })).toBeVisible();
+  return { queries, legacyTreeReads: () => legacyTreeReads };
+}
+
+test('live descendant tree uses Workspace Watch and routes nodes to Aside or Main', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { queries, legacyTreeReads } = await prepareDescendantTree(page);
+  const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  const treeButton = main.getByRole('button', { name: '查看会话树' });
+  await expect(treeButton.locator('.tree-active-indicator')).toBeVisible();
+  await treeButton.click();
+  const tree = page.locator('.session-tree-popup');
+  await expect(tree).toBeVisible();
+  await expect(tree.locator('.session-tree-title')).toHaveText(['树会话 2', '树会话 3']);
+  await expect.poll(() => queries.some((query) => query.treeAnchor === 'tree-1')).toBe(true);
+  await tree.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+  await expect(
+    page.locator('.workspace-aside').getByText('正文 tree-2', { exact: true })
+  ).toBeVisible();
+  await expect(tree).toHaveCount(0);
+  await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
+  await page.locator('.workspace-aside').getByRole('button', { name: '查看会话树' }).click();
+  await expect(tree.locator('.session-tree-parent')).toContainText('树会话 1');
+  await expect(tree.locator('.session-tree-title')).toHaveText(['树会话 3']);
+  await tree.locator('.session-tree-row').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '在主工作面打开' }).click();
+  await expect(page.getByText('正文 tree-3', { exact: true })).toBeVisible();
+  await expect(tree).toHaveCount(0);
+  expect(legacyTreeReads()).toBe(0);
+});
+
+test('mobile descendant tree fits the viewport and Back closes only the tree', async ({
+  browser
+}) => {
+  test.setTimeout(90_000);
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    const { queries } = await prepareDescendantTree(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+    const button = main.getByRole('button', { name: '查看会话树' });
+    await button.tap();
+    const tree = page.locator('.session-tree-popup');
+    await expect(tree.locator('.session-tree-title')).toHaveText(['树会话 2', '树会话 3']);
+    const box = await page.locator('.session-tree-popover:visible').boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    await tree.locator('.session-tree-row').first().getByRole('button', { name: '会话操作' }).tap();
+    await expect(page.getByRole('menuitem', { name: '在主工作面打开' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menuitem', { name: '在主工作面打开' })).toBeHidden();
+    await expect(tree).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(tree).toHaveCount(0);
+    await button.tap();
+    await expect(tree).toBeVisible();
+    await expect.poll(() => queries.at(-1)?.treeAnchor).toBe('tree-1');
+    await page.goBack();
+    await expect(tree).toHaveCount(0);
+    await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
+    await expect.poll(() => queries.at(-1)?.treeAnchor).toBeUndefined();
+  } finally {
+    await context.close();
+  }
+});
+
+test('mobile Aside preserves reading position after Back and repositions a remounted session', async ({
+  browser
+}) => {
+  test.setTimeout(90_000);
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    await prepareDescendantTree(page);
+    await page.route(/\/api\/agent-sessions\/tree-2\/watch(?:\?.*)?$/, (route) => {
+      if (route.request().method() === 'DELETE') return json(route, { released: true });
+      const session = {
+        id: 'tree-2',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        externalSessionId: 'native-tree-2',
+        customTitle: '树会话 2',
+        sessionGroup: 'CHILD',
+        activity: 'IDLE',
+        control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+      };
+      const text = Array.from(
+        { length: 80 },
+        (_, index) =>
+          `Reading paragraph ${String(index).padStart(2, '0')} with enough text to occupy a line.`
+      ).join('\n\n');
+      return fulfillMockSessionWatch(page, route, session, sessionWatchSnapshot(session, text));
+    });
+    await page
+      .locator('.conversation-panel')
+      .filter({ hasText: '正文 tree-1' })
+      .getByRole('button', { name: '查看会话树' })
+      .click();
+    await page
+      .locator('.session-tree-popup')
+      .getByRole('button', { name: '树会话 2, 空闲', exact: true })
+      .click();
+    const aside = page.locator('.workspace-aside');
+    await expect(aside.getByText(/Reading paragraph 79/)).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: '打开文件', exact: true }).tap();
+    await expect(aside.getByText(/Reading paragraph 79/)).toBeVisible();
+    const scroll = aside.locator('.conversation-scroll');
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollHeight - element.clientHeight))
+      .toBeGreaterThan(1000);
+    await scroll.evaluate((element) => {
+      element.scrollTop = Math.round(element.scrollHeight / 2);
+    });
+    await expect(aside.locator('.conversation-latest')).toBeVisible();
+    const before = await scroll.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const atCenter = element.ownerDocument.elementFromPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2
+      );
+      return { top: element.scrollTop, text: atCenter?.textContent };
+    });
+    expect(before.text).toContain('Reading paragraph');
+    await page.goBack();
+    await expect(aside).toBeHidden();
+    await page.getByRole('button', { name: '打开文件', exact: true }).tap();
+    await expect(aside.getByText(/Reading paragraph 79/)).toBeVisible();
+    await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(before.top);
+    await expect(aside.locator('.conversation-latest')).toBeVisible();
+    const afterText = await scroll.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return element.ownerDocument.elementFromPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2
+      )?.textContent;
+    });
+    expect(afterText).toBe(before.text);
+    await aside.getByRole('tab', { name: '文件', exact: true }).tap();
+    await aside.getByRole('tab', { name: 'tree-2', exact: true }).tap();
+    await expect
+      .poll(() =>
+        scroll.evaluate(
+          (element) => element.scrollHeight - element.clientHeight - element.scrollTop
+        )
+      )
+      .toBeLessThanOrEqual(2);
+  } finally {
+    await context.close();
+  }
+});
+
+test('Main and Aside keep independent visible session watches through stacked layout and tab hiding', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    [],
+    'DIRECTORY',
+    true,
+    'IDLE',
+    undefined,
+    '0.11.69'
+  );
+  const sessions = [1, 2].map((index) => ({
+    id: `session-${index}`,
+    workspaceId: 'workspace-1',
+    runner: 'codex',
+    externalSessionId: `native-${index}`,
+    customTitle: `双工作面会话 ${index}`,
+    activity: 'IDLE',
+    control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+  }));
+  const watches: { sessionId: string; method: string; mode?: string; position?: string }[] = [];
+  const messages: { sessionId: string; content: string }[] = [];
+  const approvals: { runId: string; approvalId: string; decision: string }[] = [];
+  let releaseApprovals!: () => void;
+  const pendingApprovals = new Promise<void>((resolve) => {
+    releaseApprovals = resolve;
+  });
+  await page.route('**/api/nodes/node-1/workbench-capabilities', (route) =>
+    json(route, {
+      manifest: {
+        manifestVersion: 1,
+        observedAt: 1_900_000_000_000,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null },
+        git: { available: false, reasonCode: null },
+        terminal: {
+          available: true,
+          reasonCode: null,
+          supportsReplay: true,
+          supportsTakeover: true,
+          profiles: []
+        },
+        sessionAside: { apiVersion: 1 }
+      }
+    })
+  );
+  await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, (route) =>
+    json(route, { sessions, nextCursor: null })
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
+    fulfillMockWorkspaceWatch(page, route, undefined, 'DIRECTORY')
+  );
+  await page.route(/\/api\/agent-sessions\/session-[12]\?nodeId=node-1$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    return json(route, { session: sessions.find((item) => item.id === id) });
+  });
+  await page.route(/\/api\/agent-sessions\/session-[12]\/watch(?:\?.*)?$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const session = sessions.find((item) => item.id === id)!;
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      mode?: string;
+      position?: string;
+    };
+    watches.push({ sessionId: id, method: route.request().method(), ...body });
+    if (route.request().method() === 'DELETE') return json(route, { released: true });
+    const snapshot = sessionWatchSnapshot(session, `正文 ${id}`);
+    return fulfillMockSessionWatch(page, route, session, {
+      ...snapshot,
+      conversation: {
+        ...snapshot.conversation,
+        segments: snapshot.conversation.segments.map((segment) => ({
+          ...segment,
+          status: 'RUNNING',
+          runId: `approval-run-${id}`,
+          items: [
+            ...segment.items,
+            {
+              id: `approval-${id}`,
+              kind: 'approval_request',
+              status: 'PENDING',
+              payload: {
+                approvalId: `approval-${id}`,
+                approvalStatus: 'PENDING',
+                approval: { toolName: 'Bash', reason: `Approve ${id}`, input: { command: 'pwd' } },
+                expiresAt: 0
+              }
+            }
+          ]
+        }))
+      }
+    });
+  });
+  await page.route(
+    /\/api\/agent-runs\/approval-run-session-[12]\/approvals\/approval-session-[12]\/decision$/,
+    async (route) => {
+      const parts = new URL(route.request().url()).pathname.split('/');
+      approvals.push({
+        runId: parts.at(-4)!,
+        approvalId: parts.at(-2)!,
+        decision: (route.request().postDataJSON() as { decision: string }).decision
+      });
+      await pendingApprovals;
+      await json(route, {});
+    }
+  );
+  await page.route(/\/api\/agent-sessions\/session-[12]\/context\?nodeId=node-1$/, (route) =>
+    json(route, { context: null })
+  );
+  await page.route(/\/api\/agent-sessions\/session-[12]\/runs\?nodeId=node-1$/, (route) =>
+    json(route, { runs: [] })
+  );
+  await page.route(/\/api\/agent-sessions\/session-[12]\/messages$/, (route) => {
+    const sessionId = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      content: string;
+      clientMessageId: string;
+    };
+    messages.push({ sessionId, content: body.content });
+    return json(route, {
+      session: sessions.find((item) => item.id === sessionId),
+      run: {
+        id: `run-${sessionId}`,
+        sessionId,
+        workspaceId: 'workspace-1',
+        status: 'RUNNING',
+        recoveryState: 'ACTIVE',
+        clientMessageId: body.clientMessageId
+      }
+    });
+  });
+  await page.route('**/api/workspaces/workspace-1/queue?nodeId=node-1&sessionId=*', (route) =>
+    json(route, { queue: { version: 0, paused: false, items: [] } })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
+  await page.locator('.session-link').filter({ hasText: '双工作面会话 1' }).click();
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+  const secondRow = page.locator('.session-row').filter({ hasText: '双工作面会话 2' });
+  await secondRow.hover();
+  await secondRow.locator('.session-more-button').click();
+  await page.getByText('在侧栏打开', { exact: true }).click();
+  const aside = page.locator('.workspace-aside');
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      watches.some(
+        (item) =>
+          item.sessionId === 'session-1' && item.mode === 'initial' && item.position === undefined
+      )
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      watches.some(
+        (item) =>
+          item.sessionId === 'session-2' && item.mode === 'initial' && item.position === 'secondary'
+      )
+    )
+    .toBe(true);
+  const mainApproval = page
+    .locator('.conversation-panel')
+    .filter({ hasText: '正文 session-1' })
+    .locator('.approval_request');
+  const asideApproval = aside.locator('.approval_request');
+  await mainApproval.getByRole('button', { name: '允许', exact: true }).click();
+  await asideApproval.getByRole('button', { name: '拒绝', exact: true }).click();
+  await expect.poll(() => approvals.length).toBe(2);
+  expect(approvals).toEqual(
+    expect.arrayContaining([
+      { runId: 'approval-run-session-1', approvalId: 'approval-session-1', decision: 'APPROVED' },
+      { runId: 'approval-run-session-2', approvalId: 'approval-session-2', decision: 'REJECTED' }
+    ])
+  );
+  const approvalResponses = Promise.all(
+    [1, 2].map((index) =>
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/approvals/approval-session-${index}/decision`) &&
+          response.status() === 200
+      )
+    )
+  );
+  releaseApprovals();
+  await approvalResponses;
+  const mainComposer = page
+    .locator('.conversation-panel')
+    .filter({ hasText: '正文 session-1' })
+    .locator('textarea');
+  const asideComposer = aside.locator('.conversation-panel textarea');
+  await asideComposer.fill('aside keyboard message');
+  await asideComposer.press('Enter');
+  await expect
+    .poll(() => messages)
+    .toContainEqual({ sessionId: 'session-2', content: 'aside keyboard message' });
+  await mainComposer.fill('main keyboard message');
+  await mainComposer.press('Enter');
+  await expect
+    .poll(() => messages)
+    .toContainEqual({ sessionId: 'session-1', content: 'main keyboard message' });
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(page.locator('.workspace-grid')).toHaveClass(/stacked/);
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  await aside.getByRole('tab', { name: '文件', exact: true }).click();
+  await expect
+    .poll(() => watches.some((item) => item.sessionId === 'session-2' && item.method === 'DELETE'))
+    .toBe(true);
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileStart = watches.length;
+  await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await expect
+    .poll(() =>
+      watches
+        .slice(mobileStart)
+        .some(
+          (item) =>
+            item.sessionId === 'session-1' &&
+            item.method === 'DELETE' &&
+            item.position === undefined
+        )
+    )
+    .toBe(true);
+  const afterPrimaryStop = watches.length;
+  await aside.getByRole('tab', { name: 'session-2', exact: true }).click();
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      watches
+        .slice(afterPrimaryStop)
+        .some(
+          (item) =>
+            item.sessionId === 'session-2' &&
+            item.mode === 'initial' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  expect(
+    watches
+      .slice(afterPrimaryStop)
+      .some((item) => item.sessionId === 'session-1' && item.mode === 'initial')
+  ).toBe(false);
+  await aside.getByRole('tab', { name: '文件', exact: true }).click();
+  await expect
+    .poll(() =>
+      watches
+        .slice(afterPrimaryStop)
+        .some(
+          (item) =>
+            item.sessionId === 'session-2' &&
+            item.method === 'DELETE' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  const beforeBack = watches.length;
+  await page.goBack();
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeBack)
+        .some(
+          (item) =>
+            item.sessionId === 'session-1' && item.mode === 'initial' && item.position === undefined
+        )
+    )
+    .toBe(true);
+
+  await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await aside.getByRole('tab', { name: 'session-2', exact: true }).click();
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  const beforeDesktop = watches.length;
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeDesktop)
+        .some(
+          (item) =>
+            item.sessionId === 'session-1' && item.mode === 'initial' && item.position === undefined
+        )
+    )
+    .toBe(true);
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+});
 
 test('Workspace tab direct Link icon preserves hover and compact status layout', async ({
   page
@@ -1533,6 +2194,7 @@ test('Node reconnection and page realtime recovery resynchronize Node facts and 
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
   const terminalDock = page.locator('.terminal-dock');
   await expect(terminalDock).toHaveCount(1);
+  await page.locator('.workspace-aside').getByRole('tab', { name: '终端', exact: true }).click();
   await expect(terminalDock).toBeVisible();
 
   await page.evaluate(() => {
@@ -1595,7 +2257,7 @@ test('Node reconnection and page realtime recovery resynchronize Node facts and 
     nodeConnected ? route.fallback() : json(route, { workspaces: [] })
   );
   await page.reload();
-  await page.getByRole('tab', { name: /project node-1/ }).click();
+  await page.getByRole('tab', { name: 'project', exact: true }).click();
   await expect(placeholder).toBeVisible();
   await expect(placeholder).toHaveText('节点离线，等待重新连接。');
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
@@ -1604,7 +2266,7 @@ test('Node reconnection and page realtime recovery resynchronize Node facts and 
 
   await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
-  await page.getByRole('tab', { name: /project node-1/ }).click();
+  await page.getByRole('tab', { name: 'project', exact: true }).click();
   await expect(placeholder).toHaveText('Node offline. Waiting for reconnection.');
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
   await page.screenshot({

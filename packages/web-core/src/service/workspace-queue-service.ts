@@ -9,13 +9,14 @@ export function createWorkspaceQueueService(options: {
   readonly queue: Ref<WorkspaceQueue>;
   readonly currentSessionQueue: ComputedRef<WorkspaceQueue>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly currentSelectionRevision: () => number;
   readonly draggingQueueItemId: Ref<string | undefined>;
   readonly editingContent: Ref<string>;
   readonly serializeEditedContent?: (content: string) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly finishEditing: () => void;
+  readonly captureEditing?: (queueItemId: string) => () => void;
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly missingQueueItemError: (error: unknown) => boolean;
@@ -102,16 +103,19 @@ export function createWorkspaceQueueService(options: {
       content.length === 0
     )
       return false;
+    const finishCaptured = options.captureEditing?.(queueItemId);
     try {
       await options.request(`/api/queue-items/${encodeURIComponent(queueItemId)}`, {
         method: 'PATCH',
         body: JSON.stringify({ nodeId, workspaceId, sessionId, content })
       });
-      if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
+      if (finishCaptured !== undefined) finishCaptured();
+      else if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
       return true;
     } catch (error) {
       if (options.missingQueueItemError(error)) {
-        if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
+        if (finishCaptured !== undefined) finishCaptured();
+        else if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
         return false;
       }
       if (current(nodeId, workspaceId, sessionId, revision))

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { shallowReactive, ref } from 'vue';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { computed, shallowReactive, ref } from 'vue';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
+import SessionPane from '../../src/view/workbench/WorkspaceSessionPane.vue?unit-render';
 import {
   flushComponent,
   renderComponent,
@@ -8,6 +9,19 @@ import {
   trigger
 } from './support/component-renderer.js';
 import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
+import { createConversationStateService } from '../../src/service/conversation-state-service.js';
+import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
+
+beforeAll(() =>
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  )
+);
+afterAll(() => vi.unstubAllGlobals());
 
 vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
   createMobileSurfaceFocusService: () => ({ dispose: vi.fn() })
@@ -119,6 +133,10 @@ function pageFixture() {
   // Preserve nested service refs: the production controller unwraps only its outer state.
   return shallowReactive({
     view: 'nodes',
+    setAsideSurfaceVisible: vi.fn(),
+    asideViewMode: () => 'compact' as const,
+    asideWidth: () => 320,
+    asideState: { tools: ['terminal'], sessions: [], active: { kind: 'tool', id: 'terminal' } },
     mobileViewport: false,
     sidebarCollapsed: false,
     settingsSection: 'account',
@@ -132,8 +150,23 @@ function pageFixture() {
       selectedNodeId: ref(undefined),
       selectedConversationId: ref(undefined)
     },
-    setComposerInputFocus: vi.fn(),
-    setComposerRangeEditor: vi.fn(),
+    mainPane: {
+      registerShortcuts: () => () => undefined,
+      conversation: createConversationStateService(vi.fn()),
+      scroll: createConversationScrollService(),
+      draft: { input: ref(''), skillTokens: ref([]), references: ref([]) },
+      attachments: { attachments: ref([]) },
+      draggingAttachments: ref(false),
+      queue: {
+        startEditing: vi.fn(),
+        finishEditing: vi.fn(),
+        editingQueueItemId: ref(),
+        editingContent: ref(''),
+        draggingQueueItemId: ref()
+      },
+      setInputFocus: vi.fn(),
+      setRangeEditor: vi.fn()
+    },
     refreshAdmin: vi.fn(),
     workspaceHost: { connected: false },
     workspaceTarget: { nodeId: 'node', workspaceId: 'one' },
@@ -227,9 +260,48 @@ describe('Workbench surface composition behavior', () => {
         conversationTurns: [],
         workPromptCompletion: { enabled: false }
       });
-      const view = renderComponent(Surface, { page });
+      const paneController = {
+        state: {
+          ...page.mainPane,
+          workspaceTarget: ref(page.workspaceTarget),
+          skillTokens: { remove: vi.fn() }
+        },
+        presentation: {
+          composerSessionOpen: computed(() => page.composerSessionOpen),
+          workspaceHost: computed(() => page.workspaceHost),
+          composerWorking: computed(() => page.composerWorking),
+          composerInputDisabled: computed(() => page.composerInputDisabled)
+        },
+        configuration: { activeRunner: computed(() => page.composerRunner) },
+        runner: {},
+        references: {},
+        interactions: { registerShortcuts: () => () => undefined },
+        currentSessionQueue: { items: [], paused: false },
+        submitting: ref(false),
+        canInterrupt: ref(false),
+        performance: { current: ref(undefined) },
+        filesReady: ref(false),
+        terminalReady: ref(false),
+        conversationWindow: { paging: { olderHistoryError: ref(undefined) } },
+        selectedSessionId: ref(undefined),
+        draftOpen: ref(false),
+        nodeManifest: computed(() => page.nodeManifest),
+        status: {
+          manifestLoading: computed(() => page.nodeManifestLoading),
+          connected: () => true,
+          initialContentLoading: () => false
+        },
+        conversationSyncPending: ref(false),
+        loading: ref(false),
+        mobileViewport: ref(false),
+        completion: ref(undefined),
+        attachmentInput: {}
+      };
+      const view = renderComponent(SessionPane, { controller: paneController });
       try {
         const composer = () => view.findAll('composer-fixture')[0]!.props;
+        expect(page.mainPane.setInputFocus).toHaveBeenCalledOnce();
+        expect(page.mainPane.setRangeEditor).toHaveBeenCalledOnce();
         const guidance = translate(
           'generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles',
           { value0: 'Codex' }
@@ -259,6 +331,8 @@ describe('Workbench surface composition behavior', () => {
         });
       } finally {
         view.unmount();
+        expect(page.mainPane.setInputFocus).toHaveBeenCalledTimes(2);
+        expect(page.mainPane.setRangeEditor).toHaveBeenCalledTimes(2);
         preference.setLocale(previousLocale);
       }
     }

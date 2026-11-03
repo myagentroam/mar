@@ -8,6 +8,16 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Pane model shortcut uses the focused Composer and preserves the draft', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}workbench-style.html?composer=1`);
+  const composer = page.locator('.composer textarea');
+  await composer.fill('kept draft');
+  await composer.press('Alt+m');
+  await expect(page.locator('.composer-model-effort-select [role=combobox]')).toBeFocused();
+  await expect(composer).toHaveValue('kept draft');
+});
+
 test('Manual session dragging immediately takes over activity reorder motion', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });

@@ -3,6 +3,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
 const props = defineProps<{
   readonly placement: 'header' | 'body';
@@ -180,12 +181,7 @@ function contextCommand(command: 'previous' | 'next' | 'close' | 'pin'): void {
   }
 }
 
-function closeContextMenuOnEscape(event: KeyboardEvent): void {
-  if (contextMenu.value === undefined || event.key !== 'Escape') return;
-  event.preventDefault();
-  event.stopPropagation();
-  contextMenu.value = undefined;
-}
+let unregisterContextMenuShortcut: (() => void) | undefined;
 
 function syncTabList(scrollActive = false): void {
   void nextTick(() => {
@@ -210,10 +206,23 @@ watch(
   { flush: 'post' }
 );
 
-onMounted(() => window.addEventListener('keydown', closeContextMenuOnEscape, { capture: true }));
+onMounted(() => {
+  unregisterContextMenuShortcut = consoleKeyboardShortcutService.register({
+    command: 'workspaceTabs.dismissMenu',
+    priority: 150,
+    scope: 'overlay',
+    allowedInBlockedScopes: ['file-preview', 'terminal'],
+    keys: [{ key: 'Escape' }],
+    when: () => contextMenu.value !== undefined,
+    execute: () => {
+      contextMenu.value = undefined;
+      return 'HANDLED';
+    }
+  });
+});
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
-  window.removeEventListener('keydown', closeContextMenuOnEscape, { capture: true });
+  unregisterContextMenuShortcut?.();
 });
 
 function resetPointerInteraction(): void {

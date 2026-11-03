@@ -7,7 +7,8 @@ import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { registerComposerShortcuts } from '../../service/composer-shortcut-service.js';
 import { createComposerAttachmentInputService } from '../../service/composer-attachment-input-service.js';
 import { createWorkbenchClockService } from '../../service/workbench-clock-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -49,7 +50,7 @@ const emit = defineEmits<{
 }>();
 
 const input = props.draft && props.entry ? props.entry.prompt : ref('');
-const composer = ref<{ focusAt(cursor: number): void }>();
+const composer = ref<{ readonly $el: HTMLElement; focusAt(cursor: number): void }>();
 const attachments =
   props.draft && props.entry ? props.entry.attachments : ref<HostedAttachment[]>([]);
 const draggingAttachments = ref(false);
@@ -531,30 +532,21 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   }
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.isComposing) return;
-  if (event.key === 'Escape' && canStopCurrent.value) {
-    event.preventDefault();
-    void stop();
-    return;
-  }
-  if (props.mobileViewport) return;
-  if (
-    event.key === 'Enter' &&
-    event.ctrlKey &&
-    !event.shiftKey &&
-    !event.altKey &&
-    !composerReadonly.value
-  ) {
-    event.preventDefault();
-    void send('REPLACE_CURRENT');
-    return;
-  }
-  if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
-    event.preventDefault();
-    void send();
-  }
-}
+let unregisterComposerActions: (() => void) | undefined;
+onMounted(() => {
+  unregisterComposerActions = registerComposerShortcuts({
+    owner: () => composer.value?.$el.querySelector('textarea') ?? undefined,
+    canSend: () => !props.mobileViewport,
+    canReplace: () => !composerReadonly.value,
+    canStop: () => canStopCurrent.value,
+    send: (replace) => {
+      void send(replace ? 'REPLACE_CURRENT' : undefined);
+    },
+    stop: () => {
+      void stop();
+    }
+  });
+});
 
 async function updateModel(modelId: string): Promise<void> {
   if (modelSelectionDisabled.value || modelId === selectedModelId.value) return;
@@ -632,6 +624,7 @@ function hostedErrorMessage(error: unknown): string {
 }
 
 onBeforeUnmount(() => {
+  unregisterComposerActions?.();
   disposed = true;
   if (props.draft && props.entry) return;
   for (const attachment of attachments.value) {
@@ -668,7 +661,6 @@ onBeforeUnmount(() => {
     :command-states="[]"
     :loading="submitting || configurationUpdating || workspace.templateChanging.value"
     :skill-tokens="[]"
-    @keydown="onKeydown"
     @submit="send"
     @paste="attachmentInput.onPaste"
     @dragenter="attachmentInput.onDragEnter"

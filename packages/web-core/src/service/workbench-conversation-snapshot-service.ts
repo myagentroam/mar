@@ -7,7 +7,7 @@ interface ConversationWindow {
 }
 
 export function createWorkbenchConversationSnapshotService(options: {
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly replaceCurrent: (page: ConversationTurnPage) => boolean;
   readonly mergeCurrent: (page: ConversationTurnPage) => boolean;
   readonly currentWindow: () => ConversationWindow;

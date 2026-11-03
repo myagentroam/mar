@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, watch, type Ref, type WatchSource } from 'v
 
 import {
   consoleKeyboardShortcutService,
-  type ConsoleShortcutResult
+  type ConsoleShortcutBinding
 } from './console-keyboard-shortcut-service.js';
 
 interface WorkbenchPageLifecycleOptions {
@@ -34,7 +34,7 @@ interface WorkbenchPageLifecycleOptions {
   readonly restoreWorkspaceUploads: () => void;
   readonly startNavigation: () => void;
   readonly handleSessionWatchVisibility: () => void;
-  readonly onGlobalKeydown: (event: KeyboardEvent) => ConsoleShortcutResult;
+  readonly workspaceShortcuts: readonly ConsoleShortcutBinding[];
   readonly refreshAdmin: () => Promise<unknown>;
   readonly recoverAuthentication: () => void;
   readonly cancelFileReferenceSearch: () => void;
@@ -52,7 +52,7 @@ interface WorkbenchPageLifecycleOptions {
 export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOptions): void {
   let conversationResizeObserver: ResizeObserver | undefined;
   let cacheSaveTimer: ReturnType<typeof setTimeout> | undefined;
-  let unregisterShortcut: (() => void) | undefined;
+  let unregisterShortcuts: (() => void)[] = [];
 
   function scheduleWorkspaceViewSave(): void {
     if (cacheSaveTimer !== undefined) return;
@@ -105,10 +105,9 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
     options.startNavigation();
     document.addEventListener('visibilitychange', options.handleSessionWatchVisibility);
     window.addEventListener('online', options.recoverAuthentication);
-    unregisterShortcut = consoleKeyboardShortcutService.register({
-      priority: 10,
-      handle: options.onGlobalKeydown
-    });
+    unregisterShortcuts = options.workspaceShortcuts.map((binding) =>
+      consoleKeyboardShortcutService.register(binding)
+    );
     void options.refreshAdmin();
   });
 
@@ -118,7 +117,7 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
     options.disposeNavigation();
     document.removeEventListener('visibilitychange', options.handleSessionWatchVisibility);
     window.removeEventListener('online', options.recoverAuthentication);
-    unregisterShortcut?.();
+    for (const unregister of unregisterShortcuts) unregister();
     options.disposeWorkspaceUploads();
     options.disposeWorkbenchNotifications();
     options.disposeWebVersionUpdateCheck();

@@ -29,8 +29,31 @@
         setup() {
           const panel = ref();
           const width = ref(100);
+          const mode = ref('compact');
           return () => [
             h('button', { onClick: () => (width.value = 300) }, 'Expand'),
+            h('button', { onClick: () => (mode.value = 'content') }, 'Switch mode'),
+            h(
+              'button',
+              {
+                onClick: () => {
+                  mode.value = 'content';
+                  width.value = 400;
+                }
+              },
+              'Content width'
+            ),
+            h(
+              'button',
+              {
+                onClick: () => {
+                  mode.value = 'compact';
+                  width.value = 240;
+                }
+              },
+              'Compact width'
+            ),
+            h('button', { onClick: () => (width.value = 190) }, 'Constrain width'),
             h('div', {
               id: 'panel',
               ref: panel,
@@ -44,6 +67,8 @@
               min: 180,
               max: 420,
               direction: 1,
+              width: width.value,
+              gestureKey: mode.value,
               onResize: (value) => (width.value = value)
             })
           ];

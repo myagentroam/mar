@@ -169,12 +169,14 @@ async function fixture(
   });
   const state = createWorkbenchNotificationService(account, {
     request: request as never,
-    activeTarget: () => ({
-      targetType: 'WORKSPACE_SESSION',
-      nodeId: 'node-1',
-      workspaceId: 'workspace-1',
-      sessionId: 'session-1'
-    }),
+    activeTargets: () => [
+      {
+        targetType: 'WORKSPACE_SESSION',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1'
+      }
+    ],
     onNotificationClick: openNotification
   });
   disposers.push(state.dispose);

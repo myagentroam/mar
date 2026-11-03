@@ -19,7 +19,7 @@ function fixture() {
   const draft: Session = { id: 'draft:one', workspaceId: workspace.id, runner: 'codex' };
   const created: Session = { ...draft, id: 'native-created', externalSessionId: 'native-created' };
   const workspaceTarget = ref<WorkspaceTarget>({ nodeId: 'node-1', workspaceId: workspace.id });
-  const selectedSessionId = ref<string>(draft.id);
+  const selectedSessionId = ref<string | undefined>(draft.id);
   const sessions = ref<Session[]>([draft]);
   const draftOpen = ref(true);
   const notice = vi.fn();
@@ -117,13 +117,11 @@ function fixture() {
   const sessionWatch = createWorkbenchSessionWatchController({
     workspaceTarget,
     selectedSessionId,
-    sessions,
     followConversation: ref(false),
     ...timing,
     workbenchConnectionId: () => connectionId.value,
     request,
     sessionPathId: (id) => id,
-    mergeSessions: vi.fn(),
     applySnapshot: () => true,
     scrollAfterLayout: async () => {},
     refreshSnapshot: vi.fn(),
@@ -161,13 +159,16 @@ function fixture() {
       selectedWorkspace: computed(() => workspace),
       selectedSession: computed(() => sessions.value.find((s) => s.id === selectedSessionId.value)),
       sessions,
-      input,
-      skillTokens: ref([]),
+      captureDraft: () => ({ input, skillTokens: ref([]), persist: () => {} }),
       attachments: ref([]),
       attachmentsPending: computed(() => false),
       composerOpen: computed(() => true),
       composerBusy: computed(() => false),
       draftOpen,
+      restoreDraft: () => {
+        draftOpen.value = true;
+        selectedSessionId.value = undefined;
+      },
       selectedCommand: ref(),
       commandPickerOpen: ref(false),
       deferredCommands: ref([]),
@@ -188,7 +189,6 @@ function fixture() {
       temporaryTitle: (text) => text,
       consumeAttachments: vi.fn(),
       retainAttachments: () => () => undefined,
-      clearSkillTokens: vi.fn(),
       acceptRun: createRunService(ref<string | undefined>(draft.id)).acceptRun,
       migrateSessionCache,
       openRun: vi.fn(),

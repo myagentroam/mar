@@ -11,6 +11,31 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: resolve(directory, name), fullPage: true, animations: 'disabled' });
 }
 
+test('Text file commands follow the focused preview and ignore composition', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  try {
+    await page.goto(`${fixture.url}file-tabs.html?text-shortcuts`);
+    const frame = page.locator('.workspace-file-page-frame');
+    const count = page.locator('#format-opens');
+    await page.locator('#outside-text-preview').focus();
+    await page.keyboard.press('Control+Shift+v');
+    await expect(count).toHaveText('0');
+    await frame.focus();
+    await frame.dispatchEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      shiftKey: true,
+      isComposing: true
+    });
+    await expect(count).toHaveText('0');
+    await page.keyboard.press('Control+Shift+v');
+    await expect(count).toHaveText('1');
+  } finally {
+    await fixture.close();
+  }
+});
+
 for (const width of [1280, 390]) {
   test(`File tabs preserve keyboard navigation and bounded loading at ${width}px`, async ({
     page
@@ -21,6 +46,18 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}file-tabs.html`);
       const tabs = page.getByRole('tab');
       await expect(tabs).toHaveCount(12);
+      for (const tab of await tabs.all()) {
+        expect(
+          await tab.evaluate((el) => {
+            const panel = document.getElementById(el.getAttribute('aria-controls') ?? '');
+            return Boolean(
+              el.id &&
+              panel?.getAttribute('role') === 'tabpanel' &&
+              panel.getAttribute('aria-labelledby') === el.id
+            );
+          })
+        ).toBe(true);
+      }
       await page.locator('html').evaluate((element) => {
         element.style.setProperty('--mar-text-primary', '#d6dfc9');
         element.style.setProperty('--mar-color-brand-text', '#af79d0');
@@ -41,6 +78,9 @@ for (const width of [1280, 390]) {
       await tabs.nth(0).focus();
       await page.keyboard.press('ArrowLeft');
       await expect(tabs.nth(11)).toBeFocused();
+      await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+      await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'false');
+      await page.keyboard.press('Enter');
       await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'true');
       await page.keyboard.press('Home');
       await expect(tabs.nth(0)).toBeFocused();
@@ -48,6 +88,11 @@ for (const width of [1280, 390]) {
       await expect(tabs.nth(1)).toBeFocused();
       await page.keyboard.press('End');
       await expect(tabs.nth(11)).toBeFocused();
+      await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Home');
+      await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Space');
+      await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
       const list = page.getByRole('tablist');
       expect(await list.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
       expect((await tabs.nth(11).boundingBox())!.width).toBeGreaterThan(60);
@@ -170,6 +215,10 @@ for (const width of [1280, 390]) {
       await page.keyboard.press('Control+f');
       const findInput = frame.locator('.inline-find-bar input');
       await findInput.fill('before');
+      await expect(frame.locator('.inline-find-count')).toContainText('1 / 1');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Shift+Enter');
+      await expect(frame.locator('.inline-find-count')).toContainText('1 / 1');
       await page.keyboard.press('ArrowLeft');
       await page.keyboard.press('ArrowRight');
       await expect(findInput).toBeFocused();
@@ -183,6 +232,8 @@ for (const width of [1280, 390]) {
       await expect(tabs.first()).toBeFocused();
       await page.keyboard.press('ArrowRight');
       await expect(tabs.nth(1)).toBeFocused();
+      await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Enter');
       await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
     } finally {
       await fixture.close();

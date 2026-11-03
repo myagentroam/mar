@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import {
+  createSessionActivityClock,
+  createWorkbenchClockService,
   createWorkbenchSecondClock,
   resolveWorkingStartedAt
 } from '../../src/service/workbench-clock-service';
@@ -35,6 +37,28 @@ describe('Run wall-clock origin', () => {
     expect(resolveWorkingStartedAt(undefined, true, run)).toBeUndefined();
     expect(resolveWorkingStartedAt('session', true, { ...run, startedAt: NaN })).toBeUndefined();
   });
+});
+
+it('keeps the workspace activity clock independent from Pane working clocks', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(10_000);
+  const scope = effectScope();
+  try {
+    const clock = scope.run(() => {
+      createWorkbenchClockService(ref('main'), ref(false), ref(undefined));
+      createWorkbenchClockService(ref('child'), ref(false), ref(undefined));
+      expect(vi.getTimerCount()).toBe(0);
+      return createSessionActivityClock();
+    })!;
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(30_000);
+    expect(clock.value).toBe(40_000);
+    scope.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    scope.stop();
+    vi.useRealTimers();
+  }
 });
 
 it('shares one second timer, pauses inactive consumers and cleans up the last subscriber', async () => {

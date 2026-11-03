@@ -1,5 +1,11 @@
 export const workbenchShellEnUS = {
   generated: {
+    workbenchAside: {
+      tabs: 'Workspace tools and sessions',
+      close: 'Close {value0}',
+      resize: 'Resize workspace aside',
+      openSession: 'Open in aside'
+    },
     panelResize: {
       workspaceTree: 'Resize workspace tree',
       files: 'Resize files panel'

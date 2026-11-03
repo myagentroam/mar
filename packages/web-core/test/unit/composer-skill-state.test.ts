@@ -214,24 +214,15 @@ describe('Web Composer Skill Selection and Sending', () => {
     state.updatePicker(input.value.length);
     const selected: EffectiveWorkspaceSkill[] = [];
     const sends: Array<readonly [boolean, boolean | undefined, string | undefined]> = [];
-    const keydown = (key: string) =>
-      state.onKeydown(
-        {
-          key,
-          ctrlKey: false,
-          shiftKey: false,
-          altKey: false,
-          preventDefault() {}
-        } as KeyboardEvent,
-        {
-          mobile: false,
-          canInterrupt: false,
-          stop: () => undefined,
+    const keydown = (key: string) => {
+      if (key === 'Enter') {
+        state.acceptPicker({
           send: (replaceCurrent, preserveDraft, contentOverride) =>
             sends.push([replaceCurrent, preserveDraft, contentOverride]),
           selectSkill: (skill) => selected.push(skill)
-        }
-      );
+        });
+      } else state.onKeydown({ key, preventDefault() {} } as KeyboardEvent);
+    };
 
     keydown('ArrowDown');
     keydown('ArrowDown');

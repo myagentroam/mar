@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   FEATURE_DEMO,
+  SESSION_ASIDE,
   NODE_FEATURES,
   isNodeVersionInFeatureRange,
+  supportsSessionAside,
   supportsNodeFeature
 } from '../../src/util/node-features.js';
 
@@ -21,13 +23,22 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe('Public Node Feature Gating', () => {
-  it('keeps only the reserved example after the baseline', () => {
-    expect(NODE_FEATURES).toEqual({ [FEATURE_DEMO]: { introducedIn: '0.9.119' } });
+  it('keeps the reserved example separate from real features', () => {
+    expect(NODE_FEATURES[FEATURE_DEMO]).toEqual({ introducedIn: '0.9.119' });
     expect(supportsNodeFeature('0.9.118', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.119', FEATURE_DEMO)).toBe(true);
     expect(supportsNodeFeature('unknown', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.120-beta.1', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.119', 'unknown-feature')).toBe(false);
+  });
+
+  it('requires both a supported version and the complete session Aside capability', () => {
+    expect(NODE_FEATURES[SESSION_ASIDE]).toEqual({ introducedIn: '0.11.69' });
+    expect(supportsSessionAside('0.11.69', { apiVersion: 1 })).toBe(true);
+    expect(supportsSessionAside('0.11.68', { apiVersion: 1 })).toBe(false);
+    expect(supportsSessionAside('unknown', { apiVersion: 1 })).toBe(false);
+    expect(supportsSessionAside('0.11.69-beta', { apiVersion: 1 })).toBe(false);
+    expect(supportsSessionAside('0.11.69', undefined)).toBe(false);
   });
 
   it('Rejects unknown, invalid, prerelease, and out-of-range versions conservatively', () => {
@@ -56,7 +67,6 @@ describe('Public Node Feature Gating', () => {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toContain('FEATURE_DEMO');
       expect(source, path).not.toContain('__feature-demo__');
-      expect(source, path).not.toContain('supportsNodeFeature');
     }
   });
 });

@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { ComputedRef, Ref } from 'vue';
+import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import type {
   AgentRun,
   ConversationTurn,
@@ -29,21 +29,31 @@ interface WorkbenchPlanServiceOptions {
   readonly send: () => Promise<void>;
   readonly errorMessage: (error: unknown) => string;
   readonly beginSubmission: (context?: string) => (() => boolean) | undefined;
+  readonly currentRevision: () => number;
 }
 
 /** Owns the close-Plan then submit-implementation transaction. */
 export function createWorkbenchPlanService(options: WorkbenchPlanServiceOptions) {
+  const scope = getCurrentScope();
   async function implement(item: ConversationTurn['items'][number]): Promise<void> {
     const state = options.continuationFor(item);
     const session = options.selectedSession.value;
+    const workspace = options.workspaceTarget.value;
     if (
       state?.continuation === null ||
       state?.continuation === undefined ||
       session === undefined ||
-      options.workspaceTarget.value?.nodeId === undefined
+      workspace === undefined
     )
       return;
 
+    const revision = options.currentRevision();
+    const current = (sessionId: string) =>
+      scope?.active !== false &&
+      options.currentRevision() === revision &&
+      options.workspaceTarget.value?.nodeId === workspace.nodeId &&
+      options.workspaceTarget.value?.workspaceId === workspace.workspaceId &&
+      options.selectedSessionId.value === sessionId;
     let completedInSubmissionWindow = true;
     try {
       let target = session;
@@ -59,14 +69,14 @@ export function createWorkbenchPlanService(options: WorkbenchPlanServiceOptions)
         if (!completedInSubmissionWindow) return;
         target = result.session ?? session;
       }
-      if (options.selectedSessionId.value === target.id) {
+      if (current(target.id)) {
         options.selectedCommand.value = undefined;
         options.commandPickerOpen.value = false;
         options.input.value = state.continuation.prompt;
         await options.send();
       }
     } catch (error) {
-      if (completedInSubmissionWindow)
+      if (completedInSubmissionWindow && current(session.id))
         options.notice(
           translate('generated.workbenchPlanService.unableToImplementThePlan', {
             value0: options.errorMessage(error)

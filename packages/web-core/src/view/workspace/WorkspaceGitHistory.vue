@@ -4,6 +4,7 @@ import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -209,17 +210,25 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
   };
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === 'Escape') closeHistoryContextMenu();
-}
+let unregisterMenuShortcut: (() => void) | undefined;
 onMounted(() => {
-  window.addEventListener('keydown', closeOnEscape);
+  unregisterMenuShortcut = consoleKeyboardShortcutService.register({
+    command: 'gitHistory.dismissMenu',
+    scope: 'overlay',
+    priority: 150,
+    keys: [{ key: 'Escape' }],
+    when: () => historyContextMenu.value !== undefined,
+    execute: () => {
+      closeHistoryContextMenu();
+      return 'HANDLED';
+    }
+  });
   window.addEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
   window.addEventListener('resize', closeHistoryContextMenu);
   window.addEventListener('scroll', closeHistoryContextMenu, true);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', closeOnEscape);
+  unregisterMenuShortcut?.();
   window.removeEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
   window.removeEventListener('resize', closeHistoryContextMenu);
   window.removeEventListener('scroll', closeHistoryContextMenu, true);

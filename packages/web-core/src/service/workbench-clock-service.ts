@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, readonly, ref, watch, type Ref } from 'vue';
+import { computed, onScopeDispose, readonly, ref, watch, type Ref } from 'vue';
 import type { AgentRun } from '../model/workbench.js';
 
 const secondClockNow = ref(Date.now());
@@ -52,12 +52,15 @@ export function createWorkbenchClockService(
   const workingNow = createWorkbenchSecondClock(
     computed(() => working.value && workingStartedAt.value !== undefined)
   );
-  const sessionActivityNow = ref(Date.now());
-  const sessionActivityTimer = setInterval(() => {
-    sessionActivityNow.value = Date.now();
+  return { working, workingNow, workingStartedAt };
+}
+
+/** Workspace lists use one activity clock regardless of how many Panes are visible. */
+export function createSessionActivityClock() {
+  const now = ref(Date.now());
+  const timer = setInterval(() => {
+    now.value = Date.now();
   }, 30_000);
-  onBeforeUnmount(() => {
-    clearInterval(sessionActivityTimer);
-  });
-  return { working, workingNow, workingStartedAt, sessionActivityNow };
+  onScopeDispose(() => clearInterval(timer));
+  return readonly(now);
 }

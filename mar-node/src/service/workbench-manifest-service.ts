@@ -57,6 +57,7 @@ export class WorkbenchManifestService {
       },
       directTransfer: capabilities.workspaceDirectTransfer,
       terminalDirect: capabilities.terminalDirect,
+      sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {
         available: true,

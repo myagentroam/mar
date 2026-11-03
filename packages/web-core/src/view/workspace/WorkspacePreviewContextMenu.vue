@@ -2,6 +2,7 @@
 import MarIcon from '../common/MarIcon.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
 const props = defineProps<{ readonly pasteEnabled: boolean }>();
 const emit = defineEmits<{ copy: []; paste: []; reload: [] }>();
@@ -29,15 +30,23 @@ function command(value: 'copy' | 'paste' | 'reload'): void {
   visible.value = false;
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (!visible.value || event.key !== 'Escape') return;
-  event.preventDefault();
-  event.stopPropagation();
-  visible.value = false;
-}
-
-onMounted(() => window.addEventListener('keydown', closeOnEscape, { capture: true }));
-onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape, { capture: true }));
+let unregisterEscape: (() => void) | undefined;
+onMounted(() => {
+  unregisterEscape = consoleKeyboardShortcutService.register({
+    command: 'filePreview.dismissMenu',
+    priority: 150,
+    scope: 'overlay',
+    modalOwner: () => trigger.value,
+    allowedInBlockedScopes: ['file-preview'],
+    keys: [{ key: 'Escape' }],
+    when: () => visible.value,
+    execute: () => {
+      visible.value = false;
+      return 'HANDLED';
+    }
+  });
+});
+onBeforeUnmount(() => unregisterEscape?.());
 defineExpose({ open, close: () => (visible.value = false) });
 </script>
 
