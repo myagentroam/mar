@@ -371,7 +371,7 @@ describe('Node Workbench external session observation', () => {
       await vi.waitFor(() =>
         expect(emitted.some((event) => event.watchId === 'watch-two')).toBe(true)
       );
-      expect(readPage.mock.calls.map((call) => call[1])).toEqual([3, 10, 10]);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([6, 10, 10]);
       expect(
         emitted
           .find((event) => event.watchId === 'watch-two')
@@ -1191,7 +1191,7 @@ describe('Node Workbench external session observation', () => {
       });
       await service.refresh(session.id);
 
-      expect(readPage.mock.calls.map((call) => call[1])).toEqual([3, 10, 10]);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([6, 10, 10]);
       expect(emitWatchEvent).toHaveBeenLastCalledWith(
         expect.objectContaining({
           type: 'watch.session.snapshot',

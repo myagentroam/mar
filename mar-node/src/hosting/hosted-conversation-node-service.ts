@@ -567,7 +567,7 @@ export class HostedConversationNodeService {
         sessionId: conversation.sessionId,
         homeDirectory: paths.homeDirectory,
         modelId: conversation.modelId,
-        limit: 10
+        limit: 6
       }));
     const current = this.options.store.requireConversation(userId, conversationId);
     if (current.templateId !== templateId || current.activeVersionId !== activeVersionId)

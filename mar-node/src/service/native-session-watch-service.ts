@@ -17,7 +17,7 @@ import {
 const INTERVAL_MS = 2_000;
 const TTL_MS = 45_000;
 const MAX_FAILURES = 3;
-const INITIAL_SEGMENT_LIMIT = 3;
+const INITIAL_SEGMENT_LIMIT = 6;
 
 interface NativeSessionWatch {
   readonly observation: ConversationObservation;

@@ -44,6 +44,9 @@ describe('Node hosted conversation watch', () => {
         __marAgentModels: [model]
       });
       await vi.waitFor(() => expect(f.frames).toHaveLength(1));
+      expect(f.runtime.history).toHaveBeenLastCalledWith(
+        expect.objectContaining({ conversationId, limit: 6 })
+      );
       const sequence = f.workbench.snapshotSequence();
       f.workbench.dispatch('session', { sessionId: 'ordinary-session' });
       expect(f.ordinaryDelivery).toHaveBeenCalledExactlyOnceWith('ordinary-session', {
