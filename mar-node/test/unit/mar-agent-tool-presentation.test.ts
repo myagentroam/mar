@@ -1,11 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { countModelTokens } from '@myagentroam/agent';
 import type { AgentEvent } from '@myagentroam/agent';
 import { conversationItemSchema, toolPresentationSchema } from '@myagentroam/protocol';
+import type { NodeConfig } from '../../src/config.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
+import { WebToolService } from '../../src/service/web-tool-service.js';
+import { TodoStore } from '../../../mar-agent/src/tools/agent/todo.js';
+import type { ClientToolDefinition } from '../../../mar-agent/src/tools/contracts.js';
+import { executeRoundTools, type RoundToolScope } from '../../../mar-agent/src/tools/execution.js';
 import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
+import type { EventPayload } from '../../../mar-agent/src/runtime/events.js';
+import { createSessionToolScheduler } from '../../../mar-agent/src/tools/scheduler.js';
 import { structuredToolEventData } from '../../../mar-agent/src/tools/output-projection.js';
+import type { ToolRuntimeContext } from '../../../mar-agent/src/tools/runtime-context.js';
+import type { ClientToolCall } from '../../../mar-agent/src/runtime/tool-round-contract.js';
 import { mergeConversationPayload } from '../../../packages/web-core/src/util/conversation-history.js';
-import { readFileDetail } from '../../../packages/web-core/src/util/tool-presentation.js';
+import { conversationItemDetail } from '../../../packages/web-core/src/util/conversation-presentation.js';
+import {
+  readFileDetail,
+  toolPresentationSources
+} from '../../../packages/web-core/src/util/tool-presentation.js';
 
 function event(payload: Record<string, unknown>): AgentEvent {
   return {
@@ -113,6 +127,140 @@ describe('MAR tool presentation projection', () => {
       sourcesOnly: true,
       sources: [{ title: 'One' }]
     });
+  });
+  it('shows truncated Search output and keeps source links through live and history projection', async () => {
+    const url = 'https://example.test/original-source';
+    const source = {
+      title: 'Original title',
+      url,
+      snippet: 'Search summary '.repeat(1000)
+    };
+    const request = vi.fn(
+      async () => new Response(JSON.stringify({ query: 'fixture', results: [source] }))
+    );
+    const service = new WebToolService(
+      () =>
+        ({ serverUrl: 'https://server.test', nodeId: 'n', credential: 'fixture' }) as NodeConfig,
+      request
+    );
+
+    try {
+      const publicEvents: EventPayload[] = [];
+      const controller = new AbortController();
+      let result: Awaited<ReturnType<WebToolService['webSearch']>> | undefined;
+      const context: ToolRuntimeContext = {
+        host: {} as ToolRuntimeContext['host'],
+        todo: new TodoStore(),
+        mode: 'run',
+        sessionId: 'session',
+        executionId: 'execution',
+        signal: controller.signal,
+        skills: new Map(),
+        emit: async () => {},
+        invokeTool: async ({ arguments: input }) => {
+          result = await service.webSearch(
+            input as { query: string; maxResults: number; maxTokens?: number },
+            controller.signal
+          );
+          return result;
+        }
+      };
+      const tool = {
+        name: 'web_search',
+        description: 'Web Search',
+        inputSchema: { type: 'object' }
+      } as ClientToolDefinition;
+      const scope: RoundToolScope = {
+        context,
+        tools: [tool],
+        expectations: new Map(),
+        extensionToolNames: new Set(['web_search']),
+        schedule: createSessionToolScheduler(),
+        assertLive: () => {},
+        assertExecutionLive: () => {},
+        emit: async (publicEvent) => {
+          publicEvents.push(publicEvent);
+        },
+        searchMcpTools: async () => ({ summary: 'No tools.', content: 'No tools.' }),
+        recentImages: async () => [],
+        captureCodeContext: () => context,
+        codeModeContext: async () => ({ tools: [], state: [], supportsImages: false })
+      };
+      const call: ClientToolCall = {
+        type: 'client_tool.call',
+        callId: 'search',
+        name: 'web_search',
+        arguments: { query: 'fixture', maxResults: 1, maxTokens: 512 }
+      };
+      await executeRoundTools([call], scope);
+      if (result === undefined) throw new Error('WebToolService was not called.');
+      expect(countModelTokens(result.content)).toBeLessThanOrEqual(512);
+      expect(result.truncated).toBe(true);
+      expect(result.content).toContain('Search results (truncated):');
+      expect((result.data as { results: (typeof source)[] }).results[0]!.url).toBe(url);
+
+      const startedPayload = publicEvents.find((entry) => entry.type === 'tool.started');
+      const completedPayload = publicEvents.find((entry) => entry.type === 'tool.completed');
+      if (startedPayload?.type !== 'tool.started' || completedPayload?.type !== 'tool.completed')
+        throw new Error('SDK did not emit the public Search call lifecycle.');
+      expect(completedPayload.truncated).toBe(true);
+      const startedEvent = event({
+        ...(startedPayload as unknown as Record<string, unknown>),
+        eventId: 'search-started',
+        sequence: 1
+      });
+      const completed = event({
+        ...(completedPayload as unknown as Record<string, unknown>),
+        eventId: 'search-completed',
+        sequence: 2
+      });
+
+      const render = (item: { itemId: string; kind: string; payload: unknown }) => {
+        const publicItem = conversationItemSchema.parse({
+          id: item.itemId,
+          kind: item.kind,
+          payload: item.payload,
+          sessionId: 'session',
+          turnId: 'turn',
+          runId: 'run',
+          parentItemId: null,
+          sourceSequence: 1,
+          revision: 1,
+          status: 'COMPLETED',
+          startedAt: null,
+          completedAt: null
+        });
+        const detail = conversationItemDetail('tool_call', publicItem.payload);
+        expect(toolPresentationSources(publicItem.payload)).toMatchObject([
+          { url, href: url, title: source.title }
+        ]);
+        return detail;
+      };
+
+      const liveNormalizer = new MarAgentConversationNormalizer();
+      const [started] = liveNormalizer.normalize(startedEvent);
+      const [live] = liveNormalizer.normalize(completed);
+      const livePayload = mergeConversationPayload(started!.payload, live!.payload, undefined);
+      const liveDetail = render({ ...live!, payload: livePayload });
+
+      const historyNormalizer = new MarAgentConversationNormalizer();
+      historyNormalizer.normalize(startedEvent);
+      const [history] = historyNormalizer.normalize(completed);
+      const historyDetail = render(history!);
+      for (const detail of [liveDetail, historyDetail]) {
+        expect(detail).toContain('Search results (truncated):');
+        expect(detail).toContain('URL: https://example.test/original-source');
+        expect(detail).toContain('Search snippet:');
+      }
+      expect(completedPayload.data).not.toHaveProperty('sourcesOnly');
+      expect(completedPayload.data).toMatchObject({
+        sources: [{ url }],
+        sourceCount: 1
+      });
+      expect(historyDetail).toBe(liveDetail);
+    } finally {
+      await service.close();
+    }
   });
   it.each([
     [

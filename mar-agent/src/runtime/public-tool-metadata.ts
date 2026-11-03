@@ -54,6 +54,7 @@ export function publicToolMetadata(
       sources !== undefined &&
       entries.length <= 20 &&
       entries.length === sources.length &&
+      value.truncated !== true &&
       value.sourcesTruncated !== true &&
       entries.every((entry: unknown, index: number) => {
         const source = entry as Record<string, unknown>;

@@ -103,6 +103,26 @@ describe('public tool metadata', () => {
       })
     ).not.toHaveProperty('sourcesOnly');
   });
+  it('does not mark truncated search metadata as sources-only', () => {
+    const source = {
+      url: 'https://example.test/original',
+      title: 'Original title',
+      snippet: 'Bounded search excerpt'
+    };
+    const data = structuredToolEventData('web_search', {
+      query: 'fixture',
+      results: [source],
+      sourcesOnly: true,
+      truncated: true
+    });
+
+    expect(data).not.toHaveProperty('sourcesOnly');
+    expect(data).toMatchObject({
+      query: 'fixture',
+      sources: [source],
+      sourceCount: 1
+    });
+  });
   it.each(['code_exec', 'code_exec_wait'])('keeps bounded %s failure facts public', (toolName) => {
     const result = structuredToolEventData(toolName, {
       cellId: 'cell',

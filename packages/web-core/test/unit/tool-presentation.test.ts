@@ -172,6 +172,31 @@ describe('independent tool presentation', () => {
       })
     ).toContain('Example https://example.com');
   });
+  it('shows truncated search output while retaining structured source links', () => {
+    localePreferenceService().setLocale('en-US');
+    const url = 'https://example.com/search';
+    const value = {
+      ...payload({
+        kind: 'WEB_SEARCH',
+        query: 'example',
+        sources: [{ url, title: 'Example' }]
+      }),
+      output: {
+        blocks: [
+          {
+            channel: 'TEXT',
+            text: `Search results (truncated):\n1. Example\nURL: ${url}\nSearch snippet: Partial`
+          }
+        ],
+        truncation: 'SOURCE'
+      }
+    };
+
+    const detail = conversationItemDetail('tool_call', value);
+    expect(detail).toContain('Search results (truncated):');
+    expect(detail).toContain('...Truncated');
+    expect(toolPresentationSources(value)).toMatchObject([{ url, href: url, title: 'Example' }]);
+  });
   it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
     'uses authoritative output across snapshots and terminal replacement for %s',
     (kind) => {
