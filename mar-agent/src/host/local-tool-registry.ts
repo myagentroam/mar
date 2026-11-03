@@ -25,7 +25,12 @@ import {
   formatExecResult
 } from '../tools/local/exec.js';
 import { ExecTool } from './local-exec-tool.js';
-import { ReadTool, formatBatchReadOutput, readToolDefinition } from '../tools/local/read.js';
+import {
+  ReadTool,
+  formatBatchReadOutput,
+  formatReadEventOutput,
+  readToolDefinition
+} from '../tools/local/read.js';
 import { WorkspacePathResolver, type WorkspacePathMount } from '../tools/shared/path-resolver.js';
 import { ViewImageTool, viewImageToolDefinition } from '../tools/local/view-image.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
@@ -120,9 +125,15 @@ export class LocalToolRegistry {
             context.signal
           );
           const formatted = formatBatchReadOutput(result.results);
+          const publicResult = formatReadEventOutput(result.results);
           return {
             content: formatted.content,
             data: result,
+            eventSummary: publicResult.source,
+            eventData: {
+              ...publicResult.data,
+              truncated: result.truncated || publicResult.truncated
+            },
             truncated: result.truncated || formatted.truncated
           };
         }

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent } from '@myagentroam/agent';
-import { toolPresentationSchema } from '@myagentroam/protocol';
+import { conversationItemSchema, toolPresentationSchema } from '@myagentroam/protocol';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
+import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
+import { structuredToolEventData } from '../../../mar-agent/src/tools/output-projection.js';
+import { mergeConversationPayload } from '../../../packages/web-core/src/util/conversation-history.js';
+import { readFileDetail } from '../../../packages/web-core/src/util/tool-presentation.js';
 
 function event(payload: Record<string, unknown>): AgentEvent {
   return {
@@ -16,6 +20,188 @@ function event(payload: Record<string, unknown>): AgentEvent {
 }
 
 describe('MAR tool presentation projection', () => {
+  it('carries SDK source intervals through the public schema and snapshot reducer to file detail', () => {
+    const contents = '  first 😀\r\n  second\r\n';
+    const sdk = formatReadEventOutput([
+      {
+        path: 'src/a.ts',
+        text: contents,
+        content: 'numbered model output',
+        encoding: 'utf-8',
+        newline: 'crlf',
+        startLine: 5,
+        endLine: 6,
+        eof: true,
+        truncated: false
+      }
+    ]);
+    const normalizer = new MarAgentConversationNormalizer();
+    const [start] = normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'read-chain',
+        toolName: 'read',
+        input: { reads: [{ path: 'src/a.ts' }] }
+      })
+    );
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'read-chain',
+        toolName: 'read',
+        summary: sdk.summary,
+        data: structuredToolEventData('read', { ...sdk.data })
+      })
+    );
+    const publicItem = conversationItemSchema.parse({
+      id: done!.itemId,
+      kind: done!.kind,
+      payload: done!.payload,
+      sessionId: 'session',
+      turnId: 'turn',
+      runId: 'run',
+      parentItemId: null,
+      sourceSequence: 1,
+      revision: 1,
+      status: 'COMPLETED',
+      startedAt: null,
+      completedAt: null
+    });
+    const merged = mergeConversationPayload(
+      start!.payload,
+      publicItem.payload,
+      undefined
+    ) as Record<string, unknown>;
+    expect(readFileDetail(merged, 'src/a.ts')).toContain(contents);
+    expect(readFileDetail(merged, 'src/a.ts')).not.toContain('numbered model output');
+    const replacement = mergeConversationPayload(
+      merged,
+      {
+        output: { blocks: [{ channel: 'TEXT', text: 'replacement' }] },
+        toolPresentation: { kind: 'READ', paths: ['src/a.ts'] }
+      },
+      undefined
+    ) as Record<string, unknown>;
+    expect(readFileDetail(replacement, 'src/a.ts')).toBeUndefined();
+    expect(replacement.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'replacement' }] });
+  });
+  it('preserves a source-owned sources-only search fact', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'search-only',
+        toolName: 'web_search',
+        input: { query: 'fixture' }
+      })
+    );
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'search-only',
+        toolName: 'web_search',
+        summary: 'Search results',
+        data: {
+          query: 'fixture',
+          sourcesOnly: true,
+          sources: [{ title: 'One', url: 'https://example.test/' }]
+        }
+      })
+    );
+    expect(done?.payload.toolPresentation).toMatchObject({
+      kind: 'WEB_SEARCH',
+      sourcesOnly: true,
+      sources: [{ title: 'One' }]
+    });
+  });
+  it.each([
+    [
+      'view_image',
+      { path: 'a.png', resize: { maxWidth: 400 } },
+      { path: 'a.png', mimeType: 'image/png', width: 300, height: 200, sha256: 'private-hash' },
+      {
+        kind: 'IMAGE_VIEW',
+        path: 'a.png',
+        mimeType: 'image/png',
+        width: 300,
+        height: 200,
+        resize: { maxWidth: 400 }
+      }
+    ],
+    [
+      'tool_search',
+      { query: 'files' },
+      { tools: ['mcp__files'], schemas: [{ private: true }] },
+      { kind: 'TOOL_SEARCH', query: 'files', tools: ['mcp__files'] }
+    ],
+    ['smart_compact', {}, { status: 'accepted' }, { kind: 'COMPACT_REQUEST', accepted: true }]
+  ])('projects only public %s detail facts', (name, input, data, expected) => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(event({ type: 'tool.started', callId: name, toolName: name, input }));
+    const [item] = normalizer.normalize(
+      event({ type: 'tool.completed', callId: name, toolName: name, summary: 'done', data })
+    );
+    expect(item?.payload.toolPresentation).toEqual(expected);
+    expect(item?.payload.toolCategory).not.toBe('IMAGE_GENERATION');
+  });
+  it('atomically projects read snapshots and adjusts associations to the bounded output', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'r',
+        toolName: 'read',
+        input: { reads: [{ path: 'a' }, { path: 'b' }] }
+      })
+    );
+    const summary = `${'x'.repeat(10_002)}😀keep`;
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'r',
+        toolName: 'read',
+        summary,
+        data: {
+          mode: 'batch',
+          truncated: false,
+          results: [
+            { path: 'a', startLine: 1, endLine: 1, contentRange: { start: 0, end: 10_002 } },
+            {
+              path: 'b',
+              startLine: 2,
+              endLine: 2,
+              contentRange: { start: 10_002, end: summary.length }
+            }
+          ]
+        }
+      })
+    );
+    const output = done!.payload.output as { blocks: Array<{ text: string }>; truncation?: string };
+    const presentation = done!.payload.toolPresentation as {
+      results: Array<{ contentRange?: { start: number; end: number } }>;
+    };
+    const range = presentation.results[1]!.contentRange!;
+    expect(output.blocks[0]!.text.slice(range.start, range.end)).toBe('😀keep');
+    expect(output.truncation).toBe('HEAD');
+    const [next] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'r',
+        toolName: 'read',
+        summary: 'new',
+        data: { mode: 'batch', results: [{ path: 'a' }] }
+      })
+    );
+    expect(next!.payload.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'new' }] });
+    expect(next!.payload.toolPresentation).toMatchObject({
+      kind: 'READ',
+      results: [{ path: 'a' }]
+    });
+    expect(
+      (next!.payload.toolPresentation as { results: Array<{ contentRange?: unknown }> }).results[0]!
+        .contentRange
+    ).toBeUndefined();
+  });
   it.each([undefined, 'cell'])(
     'retains Read paths, status and details on direct/nested replay (%s)',
     (parentCallId) => {

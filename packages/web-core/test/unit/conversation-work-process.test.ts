@@ -246,6 +246,30 @@ describe('Latest work process labels', () => {
     expect(conversationProcessLabel(withoutWork, true)).toBe('Processing');
     localePreferenceService().setLocale('zh-CN');
   });
+
+  it.each([
+    { kind: 'IMAGE_VIEW' },
+    { kind: 'TOOL_SEARCH' },
+    { kind: 'COMPACT_REQUEST' },
+    { kind: 'WEB_FETCH', detailOnly: true },
+    { kind: 'WEB_SEARCH', detailOnly: true }
+  ])('keeps the ordinary activity label for $kind details', (presentation) => {
+    const makeBlock = (toolPresentation?: unknown) =>
+      conversationWorkProcessBlocks(
+        [
+          turn([
+            item('tool', 'tool_call', {
+              processGroup: { id: 'named', isStart: true },
+              payload: { toolName: 'native', ...(toolPresentation ? { toolPresentation } : {}) }
+            })
+          ])
+        ],
+        [{ id: runId, status: 'RUNNING' }]
+      )[0]!;
+    expect(conversationProcessLabel(makeBlock(presentation), true)).toBe(
+      conversationProcessLabel(makeBlock(), true)
+    );
+  });
 });
 
 function item(

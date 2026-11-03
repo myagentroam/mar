@@ -256,6 +256,23 @@ export function normalizeClaudeTool(
             }
           }
         : {}),
+      ...(toolName === 'WebFetch' && typeof values?.url === 'string'
+        ? {
+            toolPresentation: {
+              kind: 'WEB_FETCH',
+              detailOnly: true,
+              requestUrl: compactRunnerText(values.url, 8192)
+            }
+          }
+        : toolName === 'WebSearch' && typeof values?.query === 'string'
+          ? {
+              toolPresentation: {
+                kind: 'WEB_SEARCH',
+                detailOnly: true,
+                query: compactRunnerText(values.query, 500)
+              }
+            }
+          : {}),
       ...subagent
     }
   };

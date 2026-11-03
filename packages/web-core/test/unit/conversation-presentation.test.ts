@@ -92,6 +92,38 @@ describe('Runner approval details', () => {
 });
 
 describe('Conversation Show Aggregation', () => {
+  it.each([
+    { kind: 'IMAGE_VIEW' },
+    { kind: 'TOOL_SEARCH' },
+    { kind: 'COMPACT_REQUEST' },
+    { kind: 'WEB_FETCH', detailOnly: true },
+    { kind: 'WEB_SEARCH', detailOnly: true }
+  ])('keeps ordinary grouping for $kind detail metadata', (presentation) => {
+    const plain = [
+      item('a', 'tool_call', { toolName: 'first' }),
+      item('b', 'tool_call', { toolName: 'second' }),
+      item('thought', 'reasoning', { sections: [{ text: 'Separating' }] }),
+      item('c', 'tool_call', { toolName: 'third' })
+    ];
+    const withDetail = plain.map((entry) =>
+      entry.kind === 'tool_call'
+        ? {
+            ...entry,
+            payload: {
+              ...(entry.payload as Record<string, unknown>),
+              toolPresentation: presentation
+            }
+          }
+        : entry
+    );
+    const project = (items: ConversationItem[]) =>
+      conversationDisplayItems(items).map((entry) => ({
+        type: entry.type,
+        id: entry.id,
+        members: 'items' in entry ? entry.items.map((member) => member.id) : [entry.item.id]
+      }));
+    expect(project(withDetail)).toEqual(project(plain));
+  });
   it('never hides permission stops inside tool, command, subagent, or image groups', () => {
     for (const kind of ['tool_call', 'command_execution', 'subagent', 'image_generation']) {
       const blocked = {

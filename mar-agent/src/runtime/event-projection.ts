@@ -5,12 +5,16 @@ import { AGENT_EXECUTION_POLICY } from './execution-policy.js';
 import { publicToolMetadata } from './public-tool-metadata.js';
 
 /** Mark display-only clipping without changing tool output or model context. */
-export function toolEventSummary(text: string): { summary: string; truncated: boolean } {
+export function toolEventSummary(text: string): {
+  summary: string;
+  truncated: boolean;
+  retainedLength: number;
+} {
   const limit = AGENT_EXECUTION_POLICY.toolEventSummaryCharacters;
-  if (text.length <= limit) return { summary: text, truncated: false };
+  if (text.length <= limit) return { summary: text, truncated: false, retainedLength: text.length };
   const marker = '... [tool event summary truncated]';
   const prefix = text.slice(0, limit - marker.length).replace(/[\uD800-\uDBFF]$/u, '');
-  return { summary: prefix + marker, truncated: true };
+  return { summary: prefix + marker, truncated: true, retainedLength: prefix.length };
 }
 
 /** Keep streaming deltas live-only; exec output has one durable copy in model context records. */

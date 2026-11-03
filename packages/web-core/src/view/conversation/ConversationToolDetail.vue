@@ -6,9 +6,17 @@ import { translate } from '../../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
-import { readToolOutput } from '../../util/tool-presentation.js';
+import {
+  detailOnlyToolText,
+  readFileDetail,
+  readToolOutput
+} from '../../util/tool-presentation.js';
 
-const props = defineProps<{ item: ConversationItem; copyOnly?: boolean }>();
+const props = defineProps<{
+  item: ConversationItem;
+  copyOnly?: boolean;
+  readPath?: string | undefined;
+}>();
 const emit = defineEmits<{ copy: [text: string, onSuccess: () => void] }>();
 const copyState = ref(false);
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -22,6 +30,7 @@ const execution = computed(() => {
   return parsed.success ? parsed.data.execution : undefined;
 });
 const genericOutput = computed(() => readToolOutput(payload.value));
+const detailOnlyText = computed(() => detailOnlyToolText(payload.value));
 const outputs = computed(() => {
   const value = execution.value;
   if (!value) return undefined;
@@ -44,6 +53,10 @@ const copyLabel = computed(() =>
   translate(copyState.value ? 'toolPresentation.detail.copied' : 'toolPresentation.detail.copy')
 );
 const detailText = computed(() => {
+  if (props.readPath !== undefined) {
+    const detail = readFileDetail(payload.value, props.readPath);
+    if (detail !== undefined) return detail;
+  }
   const value = execution.value;
   if (!value) {
     if (props.item.kind === 'tool_call')
@@ -124,7 +137,10 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="tool-detail"
-    :class="{ 'conversation-detail-body': !copyOnly && (detailText || $slots.default) }"
+    :class="{
+      'conversation-detail-body':
+        !copyOnly && (detailOnlyText !== undefined || detailText || $slots.default)
+    }"
     :aria-label="translate('toolPresentation.detail.output')"
   >
     <button
@@ -136,7 +152,10 @@ onBeforeUnmount(() => {
     >
       <MarIcon :name="copyState ? 'check' : 'copy'" />
     </button>
-    <slot v-if="!copyOnly">
+    <pre v-if="!copyOnly && detailOnlyText !== undefined" class="conversation-detail-text">{{
+      detailOnlyText
+    }}</pre>
+    <slot v-else-if="!copyOnly">
       <pre v-if="detailText" class="conversation-detail-text">{{ detailText }}</pre>
     </slot>
   </section>

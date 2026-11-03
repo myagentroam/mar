@@ -1,6 +1,7 @@
 export type PublicToolMetadata = (
   | {
       query?: string;
+      sourcesOnly?: true;
       sources?: { url: string; title?: string; snippet?: string }[];
       sourceCount?: number;
     }
@@ -12,6 +13,8 @@ export type PublicToolMetadata = (
       contentType?: string;
     }
   | { name: string; description?: string; source?: string }
+  | { tools: string[] }
+  | { status: 'accepted' }
 ) & { hostedToolKind?: 'WEB_SEARCH' | 'WEB_FETCH' };
 
 /** Public metadata only; page bodies and skill instructions stay in the bounded output. */
@@ -21,6 +24,13 @@ export function publicToolMetadata(
 ): PublicToolMetadata | undefined {
   const text = (key: string, limit: number): string | undefined =>
     typeof value[key] === 'string' ? value[key].slice(0, limit) : undefined;
+  if (
+    toolName === 'tool_search' &&
+    Array.isArray(value.tools) &&
+    value.tools.every((name) => typeof name === 'string')
+  )
+    return { tools: value.tools.slice(0, 20).map((name: string) => name.slice(0, 512)) };
+  if (toolName === 'smart_compact' && value.status === 'accepted') return { status: 'accepted' };
   if (toolName === 'web_search') {
     const entries = Array.isArray(value.results)
       ? value.results
@@ -39,7 +49,23 @@ export function publicToolMetadata(
         }
       ];
     });
+    const sourcesComplete =
+      entries !== undefined &&
+      sources !== undefined &&
+      entries.length <= 20 &&
+      entries.length === sources.length &&
+      value.sourcesTruncated !== true &&
+      entries.every((entry: unknown, index: number) => {
+        const source = entry as Record<string, unknown>;
+        const projected = sources[index]!;
+        return (
+          source.url === projected.url &&
+          source.title === projected.title &&
+          source.snippet === projected.snippet
+        );
+      });
     return {
+      ...(value.sourcesOnly === true && sourcesComplete ? { sourcesOnly: true as const } : {}),
       ...(text('query', 500) === undefined ? {} : { query: text('query', 500)! }),
       ...(sources === undefined
         ? {}

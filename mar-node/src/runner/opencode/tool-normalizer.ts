@@ -65,6 +65,23 @@ export function normalizeOpenCodeTool(
             }
           }
         : {}),
+      ...(normalizedName === 'webfetch' && typeof input?.url === 'string'
+        ? {
+            toolPresentation: {
+              kind: 'WEB_FETCH',
+              detailOnly: true,
+              requestUrl: compactRunnerText(input.url, 8192)
+            }
+          }
+        : normalizedName === 'websearch' && typeof input?.query === 'string'
+          ? {
+              toolPresentation: {
+                kind: 'WEB_SEARCH',
+                detailOnly: true,
+                query: compactRunnerText(input.query, 500)
+              }
+            }
+          : {}),
       ...(typeof state?.output === 'string' ? { output: publicToolOutput(state.output) } : {}),
       ...subagent
     }

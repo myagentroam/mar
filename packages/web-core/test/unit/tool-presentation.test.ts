@@ -10,6 +10,8 @@ import {
 } from '../../src/util/conversation-presentation.js';
 import {
   toolPresentationDetails,
+  readFileDetail,
+  detailOnlyToolText,
   toolPresentationSources,
   toolPresentationStatus
 } from '../../src/util/tool-presentation.js';
@@ -27,6 +29,149 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it.each([
+    { kind: 'WEB_SEARCH', query: 'documentation' },
+    { kind: 'WEB_FETCH', requestUrl: 'https://example.test' },
+    { kind: 'SKILL', name: 'review' },
+    { kind: 'SLEEP', durationMs: 1000 },
+    { kind: 'WEB_SEARCH', detailOnly: true, query: 'documentation' },
+    { kind: 'WEB_FETCH', detailOnly: true, requestUrl: 'https://example.test' },
+    { kind: 'IMAGE_VIEW', path: 'photo.png' },
+    { kind: 'TOOL_SEARCH', query: 'files', tools: ['mcp__files'] },
+    { kind: 'COMPACT_REQUEST', accepted: true }
+  ])('retains the public input and its clipping notice for $kind details', (facts) => {
+    localePreferenceService().setLocale('en-US');
+    const value = {
+      ...payload(facts),
+      inputSummary: '{"query":"documentation","maxTokens":512,"limit":3}',
+      inputTruncated: true
+    };
+    const detail = detailOnlyToolText(value) ?? toolPresentationDetails(value);
+    expect(detail).toContain(`Input: ${value.inputSummary}\n...Truncated`);
+  });
+  it.each(['HEAD', 'SOURCE'] as const)(
+    'keeps the %s notice on the correct side of associated READ content',
+    (truncation) => {
+      localePreferenceService().setLocale('en-US');
+      const value = {
+        output: { blocks: [{ channel: 'TEXT', text: 'retained content' }], truncation },
+        toolPresentation: {
+          kind: 'READ',
+          paths: ['file.ts'],
+          results: [{ path: 'file.ts', contentRange: { channel: 'TEXT', start: 0, end: 16 } }]
+        }
+      };
+      expect(readFileDetail(value, 'file.ts')).toBe(
+        truncation === 'HEAD'
+          ? '...Truncated\n\nfile.ts\nretained content'
+          : 'file.ts\nretained content\n\n...Truncated'
+      );
+    }
+  );
+  it.each(['HEAD', 'SOURCE'] as const)(
+    'shows only one %s notice when selected READ content was clipped away',
+    (truncation) => {
+      localePreferenceService().setLocale('en-US');
+      const detail = readFileDetail(
+        {
+          output: { blocks: [{ channel: 'TEXT', text: 'another file' }], truncation },
+          toolPresentation: {
+            kind: 'READ',
+            paths: ['clipped.ts'],
+            results: [{ path: 'clipped.ts' }]
+          }
+        },
+        'clipped.ts'
+      );
+      expect(detail?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
+      expect(detail).toContain('clipped.ts');
+      expect(detail).not.toContain('No output');
+      expect(detail).not.toContain('another file');
+    }
+  );
+  it('keeps repeated READ ranges, empty files, errors and truncated-away text distinct', () => {
+    localePreferenceService().setLocale('en-US');
+    const value = {
+      output: { blocks: [{ channel: 'TEXT', text: 'first😀second' }], truncation: 'HEAD' },
+      toolPresentation: {
+        kind: 'READ',
+        paths: ['a', 'b', 'c'],
+        results: [
+          {
+            path: 'a',
+            startLine: 1,
+            endLine: 1,
+            contentRange: { channel: 'TEXT', start: 0, end: 5 }
+          },
+          {
+            path: 'a',
+            startLine: 3,
+            endLine: 3,
+            contentRange: { channel: 'TEXT', start: 7, end: 13 }
+          },
+          { path: 'b', contentRange: { channel: 'TEXT', start: 7, end: 7 } },
+          { path: 'c' },
+          { path: 'd', error: { code: 'ENOENT', message: 'not found' } },
+          { path: 'empty-cut', empty: true }
+        ]
+      }
+    };
+    expect(readFileDetail(value, 'a')).toContain('first');
+    expect(readFileDetail(value, 'a')).toContain('second');
+    expect(readFileDetail(value, 'a')).not.toContain('😀');
+    expect(readFileDetail(value, 'b')).toContain('No output');
+    expect(readFileDetail(value, 'c')).not.toContain('No output');
+    expect(readFileDetail(value, 'd')).toContain('ENOENT: not found');
+    expect(readFileDetail(value, 'empty-cut')).toContain('No output');
+    expect(
+      readFileDetail({ toolPresentation: { kind: 'READ', paths: ['old'] } }, 'old')
+    ).toBeUndefined();
+  });
+  it('renders structured detail-only facts without changing outer presentation', () => {
+    localePreferenceService().setLocale('en-US');
+    expect(
+      detailOnlyToolText(payload({ kind: 'TOOL_SEARCH', query: 'files', tools: ['mcp__files'] }))
+    ).toContain('mcp__files');
+    expect(
+      detailOnlyToolText(payload({ kind: 'TOOL_SEARCH', query: 'none', tools: [] }))
+    ).toContain('No results');
+    expect(detailOnlyToolText(payload({ kind: 'COMPACT_REQUEST', accepted: true }))).toContain(
+      'accepted'
+    );
+    expect(
+      detailOnlyToolText(
+        payload({
+          kind: 'IMAGE_VIEW',
+          path: 'photo.png',
+          width: 300,
+          height: 200,
+          mimeType: 'image/png'
+        })
+      )
+    ).toContain('300 × 200');
+  });
+  it('does not repeat structured web search sources as raw output', () => {
+    const value = {
+      ...payload({
+        kind: 'WEB_SEARCH',
+        query: 'example',
+        sourcesOnly: true,
+        sources: [{ url: 'https://example.com', title: 'Example' }]
+      }),
+      outputSummary: 'Example https://example.com'
+    };
+    expect(toolPresentationDetails(value)).not.toContain('Example https://example.com');
+    expect(
+      toolPresentationDetails({
+        ...value,
+        toolPresentation: {
+          kind: 'WEB_SEARCH',
+          query: 'example',
+          sources: [{ url: 'https://example.com', title: 'Example' }]
+        }
+      })
+    ).toContain('Example https://example.com');
+  });
   it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
     'uses authoritative output across snapshots and terminal replacement for %s',
     (kind) => {

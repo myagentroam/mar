@@ -1659,7 +1659,18 @@ function genericToolItem(
     ];
   }
   const toolCategory = isImageGenerationTool(toolName) ? 'IMAGE_GENERATION' : undefined;
-  const presentation = projectToolPresentation(toolName, input, output, sleepStartedAt);
+  const readOutput =
+    toolName === 'read' && status === 'COMPLETED' && outputSummary !== null
+      ? publicToolOutput(outputSummary, summaryTruncated ? 'SOURCE' : outputTruncation)
+      : undefined;
+  const presentation = projectToolPresentation(
+    toolName,
+    input,
+    output,
+    sleepStartedAt,
+    outputSummary,
+    readOutput
+  );
   const inputSummary = compactRunnerValue(input, 10_000);
   return {
     itemId: id,
@@ -1670,8 +1681,13 @@ function genericToolItem(
       toolName: compactRunnerText(toolName, 128) || 'unknown',
       title: compactRunnerText(toolName, 500) || 'unknown',
       inputSummary: inputSummary.text || null,
-      outputSummary: typeof output === 'string' || errorCode !== null ? null : outputSummary,
-      ...(typeof output === 'string' ? { output: publicToolOutput(output, outputTruncation) } : {}),
+      outputSummary:
+        typeof output === 'string' || errorCode !== null || readOutput ? null : outputSummary,
+      ...(readOutput
+        ? { output: readOutput }
+        : typeof output === 'string'
+          ? { output: publicToolOutput(output, outputTruncation) }
+          : {}),
       ...(typeof output !== 'string' && outputSummary !== null && summaryTruncated
         ? { outputSummaryTruncated: true }
         : {}),
@@ -1694,7 +1710,9 @@ function projectToolPresentation(
   toolName: string,
   input: unknown,
   output: unknown,
-  startedAt?: string
+  startedAt?: string,
+  readSummary?: string | null,
+  readOutput?: ReturnType<typeof publicToolOutput>
 ): ToolPresentation | undefined {
   if (toolName === 'read') {
     const reads = record(input)?.reads;
@@ -1704,8 +1722,93 @@ function projectToolPresentation(
         return typeof path === 'string' && path.length > 0 ? [compactRunnerText(path, 4096)] : [];
       })
       .slice(0, 16);
-    return { kind: 'READ', paths };
+    const data = record(output);
+    if (
+      data?.mode !== 'batch' ||
+      !Array.isArray(data.results) ||
+      readSummary == null ||
+      !readOutput
+    )
+      return { kind: 'READ', paths };
+    const text = readOutput.blocks.find((block) => block.channel === 'TEXT')?.text ?? '';
+    const removed = readSummary.length - text.length;
+    const results = data.results.slice(0, 16).flatMap((value) => {
+      const item = record(value);
+      if (typeof item?.path !== 'string' || !item.path) return [];
+      const range = record(item.contentRange);
+      const start = range?.start;
+      const end = range?.end;
+      const validRange =
+        typeof start === 'number' &&
+        Number.isSafeInteger(start) &&
+        start >= 0 &&
+        typeof end === 'number' &&
+        Number.isSafeInteger(end) &&
+        start <= end &&
+        end <= readSummary.length &&
+        (end > removed || (start === end && start >= removed));
+      const error = record(item.error);
+      return [
+        {
+          path: compactRunnerText(item.path, 4096),
+          ...(item.startLine === undefined ? {} : { startLine: item.startLine }),
+          ...(item.endLine === undefined ? {} : { endLine: item.endLine }),
+          ...(item.empty === true ? { empty: true as const } : {}),
+          ...(typeof error?.code === 'string' && typeof error.message === 'string'
+            ? {
+                error: {
+                  code: compactRunnerText(error.code, 80),
+                  message: compactRunnerText(error.message, 1000)
+                }
+              }
+            : {}),
+          ...(validRange
+            ? {
+                contentRange: {
+                  channel: 'TEXT',
+                  start: Math.max(start, removed) - removed,
+                  end: end - removed
+                }
+              }
+            : {})
+        }
+      ];
+    });
+    const parsed = toolPresentationSchema.safeParse({ kind: 'READ', paths, results });
+    return parsed.success ? parsed.data : { kind: 'READ', paths };
   }
+  const args = record(input) ?? {};
+  const data = record(output) ?? {};
+  if (toolName === 'view_image') {
+    const parsed = toolPresentationSchema.safeParse({
+      kind: 'IMAGE_VIEW',
+      path: typeof args.path === 'string' ? compactRunnerText(args.path, 4096) : undefined,
+      resourceId:
+        typeof args.resourceId === 'string' ? compactRunnerText(args.resourceId, 512) : undefined,
+      resize: args.resize,
+      mimeType: data.mimeType,
+      width: data.width,
+      height: data.height,
+      sourceWidth: data.sourceWidth,
+      sourceHeight: data.sourceHeight,
+      region: data.region
+    });
+    return parsed.success
+      ? (Object.fromEntries(
+          Object.entries(parsed.data).filter(([, value]) => value !== undefined)
+        ) as ToolPresentation)
+      : { kind: 'IMAGE_VIEW' };
+  }
+  if (toolName === 'tool_search') {
+    const parsed = toolPresentationSchema.safeParse({
+      kind: 'TOOL_SEARCH',
+      ...(typeof args.query === 'string' ? { query: compactRunnerText(args.query, 500) } : {}),
+      ...(data.tools === undefined ? {} : { tools: data.tools })
+    });
+    return parsed.success ? parsed.data : { kind: 'TOOL_SEARCH' };
+  }
+  if (toolName === 'smart_compact')
+    return { kind: 'COMPACT_REQUEST', ...(data.status === 'accepted' ? { accepted: true } : {}) };
   const category =
     toolName === 'web_search'
       ? 'WEB_SEARCH'
@@ -1717,8 +1820,6 @@ function projectToolPresentation(
             ? 'SLEEP'
             : undefined;
   if (category === undefined) return undefined;
-  const args = record(input) ?? {};
-  const data = record(output) ?? {};
   // A provider-hosted search tool can report a page-read action under its native name.
   const kind =
     category === 'WEB_SEARCH' && data.hostedToolKind === 'WEB_FETCH' ? 'WEB_FETCH' : category;

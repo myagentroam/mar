@@ -2268,10 +2268,32 @@ export type ExecutionPresentation = z.infer<typeof executionPresentationSchema>;
 const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('READ'),
-    paths: z.array(z.string().min(1).max(4096)).max(16).optional()
+    paths: z.array(z.string().min(1).max(4096)).max(16).optional(),
+    results: z
+      .array(
+        z.object({
+          path: z.string().min(1).max(4096),
+          startLine: z.number().int().positive().optional(),
+          endLine: z.number().int().positive().optional(),
+          empty: z.literal(true).optional(),
+          error: z.object({ code: z.string().max(80), message: z.string().max(1000) }).optional(),
+          contentRange: z
+            .object({
+              channel: z.enum(['TEXT', 'STDOUT', 'STDERR', 'COMBINED']),
+              start: z.number().int().min(0).max(10_000),
+              end: z.number().int().min(0).max(10_000)
+            })
+            .refine((range) => range.start <= range.end)
+            .optional()
+        })
+      )
+      .max(16)
+      .optional()
   }),
   z.object({
     kind: z.literal('WEB_SEARCH'),
+    detailOnly: z.literal(true).optional(),
+    sourcesOnly: z.literal(true).optional(),
     query: z.string().max(500).optional(),
     sourceCount: z.number().int().nonnegative().optional(),
     sources: z
@@ -2287,6 +2309,7 @@ const toolCallPresentationSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('WEB_FETCH'),
+    detailOnly: z.literal(true).optional(),
     requestUrl: z.string().max(8192).optional(),
     url: z.string().max(8192).optional(),
     title: z.string().max(1000).optional(),
@@ -2300,6 +2323,36 @@ const toolCallPresentationSchema = z.discriminatedUnion('kind', [
     description: z.string().max(2000).optional(),
     source: z.string().max(4096).optional()
   }),
+  z.object({
+    kind: z.literal('IMAGE_VIEW'),
+    path: z.string().max(4096).optional(),
+    resourceId: z.string().max(512).optional(),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    sourceWidth: z.number().int().positive().optional(),
+    sourceHeight: z.number().int().positive().optional(),
+    region: z
+      .object({
+        x: z.number().int().nonnegative(),
+        y: z.number().int().nonnegative(),
+        width: z.number().int().positive(),
+        height: z.number().int().positive()
+      })
+      .optional(),
+    resize: z
+      .object({
+        maxWidth: z.number().int().positive().optional(),
+        maxHeight: z.number().int().positive().optional()
+      })
+      .optional()
+  }),
+  z.object({
+    kind: z.literal('TOOL_SEARCH'),
+    query: z.string().max(500).optional(),
+    tools: z.array(z.string().max(512)).max(20).optional()
+  }),
+  z.object({ kind: z.literal('COMPACT_REQUEST'), accepted: z.literal(true).optional() }),
   z.object({
     kind: z.literal('SLEEP'),
     durationMs: z.number().int().min(1).max(1800000).optional(),

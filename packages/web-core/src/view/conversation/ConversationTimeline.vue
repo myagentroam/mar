@@ -403,6 +403,7 @@ watch(
       turn.items.flatMap((item) => [
         item.id,
         `group:${item.id}`,
+        `tool:${item.id}`,
         ...(item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ'
           ? conversationToolEntries([item]).map(({ id }) => id)
           : [])
@@ -828,12 +829,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               <template v-if="groupedItemDisclosure[entry.id]">
                 <ConversationToolDetail
                   :item="entry.item"
+                  :read-path="entry.path"
                   @copy="(text, done) => emit('copy', text, done)"
-                >
-                  <pre class="conversation-detail-text">{{
-                    conversationItemDetail(entry.item.kind, entry.item.payload)
-                  }}</pre>
-                </ConversationToolDetail>
+                />
               </template>
             </details>
           </details>
@@ -1437,6 +1435,9 @@ function stepDuration(item: ConversationItem): string | undefined {
           <details
             class="conversation-tool-presentation"
             :data-tool-presentation="toolPresentation(displayItem.item.payload)?.kind"
+            :open="groupedItemDisclosure[`tool:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`tool:${displayItem.id}`, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[`tool:${displayItem.id}`]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -1459,6 +1460,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               }}</span>
             </summary>
             <ConversationToolDetail
+              v-if="groupedItemDisclosure[`tool:${displayItem.id}`]"
               :item="displayItem.item"
               @copy="(text, done) => emit('copy', text, done)"
             >
@@ -1481,8 +1483,8 @@ function stepDuration(item: ConversationItem): string | undefined {
                     >{{ source.title || source.url }}</a
                   >
                   <span v-else>{{ source.title || source.url }}</span>
-                  <span v-if="source.host" class="conversation-tool-source-host">{{
-                    source.host
+                  <span v-if="source.title && source.url" class="conversation-tool-source-host">{{
+                    source.url
                   }}</span>
                   <p v-if="source.snippet">{{ source.snippet }}</p>
                 </li>

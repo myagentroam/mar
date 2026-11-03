@@ -9,11 +9,50 @@ import {
   markupAttributes,
   parseMarkupAttributes
 } from '../../src/prompts/markup.js';
-import { formatBatchReadOutput } from '../../src/tools/local/read.js';
+import { formatBatchReadOutput, formatReadEventOutput } from '../../src/tools/local/read.js';
 import { AGENT_EXECUTION_POLICY } from '../../src/runtime/execution-policy.js';
 import { modelTokenBudgetBytes } from '../../src/runtime/token-budget.js';
 
 describe('read markup', () => {
+  it('associates each public read body with the bounded event summary without copying it', () => {
+    const file = (path: string, content: string) => ({
+      path,
+      content,
+      text: content,
+      encoding: 'utf-8' as const,
+      newline: 'lf' as const,
+      startLine: 1,
+      endLine: 1,
+      eof: true,
+      truncated: false
+    });
+    const event = formatReadEventOutput([
+      file('first', '😀 first'),
+      file('empty', ''),
+      file('long', 'x'.repeat(4000)),
+      file('removed', 'not visible'),
+      file('removed-empty', ''),
+      { path: 'missing', error: { code: 'ENOENT', message: 'not found' } }
+    ]);
+    const first = event.data.results[0]!;
+    const empty = event.data.results[1]!;
+    const long = event.data.results[2]!;
+    const removed = event.data.results[3]!;
+    expect(event.summary.slice(first.contentRange!.start, first.contentRange!.end)).toBe(
+      '😀 first'
+    );
+    expect(empty.contentRange).toEqual({
+      start: empty.contentRange!.start,
+      end: empty.contentRange!.start
+    });
+    expect(event.summary.slice(long.contentRange!.start, long.contentRange!.end)).toMatch(/^x+$/);
+    expect(removed.contentRange).toBeUndefined();
+    expect(event.data.results[4]).toMatchObject({ empty: true });
+    expect(event.data.results[4]!.contentRange).toBeUndefined();
+    expect(event.data.results[5]).toMatchObject({ error: { code: 'ENOENT' } });
+    expect(JSON.stringify(event.data)).not.toContain('😀 first');
+    expect(event.truncated).toBe(true);
+  });
   it('budgets serialized entity expansion without changing structured source data', () => {
     const text = ('<&>'.repeat(1000) + '\n').repeat(30);
     const result = {

@@ -51,6 +51,7 @@ describe('Node web tool relay', () => {
       );
       expect(countModelTokens(result.content)).toBeLessThanOrEqual(512);
       expect(result.truncated).toBe(true);
+      expect(result.eventData).toMatchObject({ sourcesOnly: true, results: expect.any(Array) });
       const data = result.data as { results: typeof results };
       expect(data.results).toHaveLength(8);
       for (let index = 0; index < results.length; index++) {
