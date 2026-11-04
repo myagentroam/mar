@@ -114,19 +114,31 @@ export function toolPresentationText(payload: unknown, status: string): string {
     : '';
 }
 
+export function toolPresentationLink(value: string) {
+  let href: string | undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') href = url.href;
+  } catch {
+    /* Keep unsupported URLs as plain text. */
+  }
+  return { url: value, href, host: host(value) };
+}
+
+/** Detail-only facts do not opt a tool into independent timeline rows. */
+export function webToolPresentation(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as { toolPresentation?: ToolPresentation }).toolPresentation;
+  return value?.kind === 'WEB_SEARCH' || value?.kind === 'WEB_FETCH' ? value : undefined;
+}
+
 export function toolPresentationSources(payload: unknown) {
-  const value = toolPresentation(payload);
+  const value = webToolPresentation(payload);
   if (value?.kind !== 'WEB_SEARCH') return [];
-  return (value.sources ?? []).map((source) => {
-    let href: string | undefined;
-    try {
-      const url = new URL(source.url);
-      if (url.protocol === 'http:' || url.protocol === 'https:') href = url.href;
-    } catch {
-      /* Keep unsupported URLs as plain text. */
-    }
-    return { ...source, href, host: host(source.url) };
-  });
+  return (value.sources ?? []).map((source) => ({
+    ...source,
+    ...toolPresentationLink(source.url)
+  }));
 }
 
 export function readToolOutput(payload: Record<string, unknown>) {

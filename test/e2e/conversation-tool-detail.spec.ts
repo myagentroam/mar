@@ -175,11 +175,15 @@ test('mounts independent details only while open and releases them with the proc
   expect(await search.locator('.conversation-tool-sources').innerHTML()).toContain(
     '&lt;plain summary&gt;'
   );
-  await expect(search.locator('.conversation-detail-text')).toContainText('Input: documentation');
-  await expect(fetch.locator('.conversation-detail-text')).toContainText(
-    'Input: https://example.com/docs'
+  await expect(search.locator('.web-query')).toHaveText('documentation');
+  await expect(search.locator('.tool-detail')).not.toContainText('Input:');
+  await expect(search.locator('.web-output')).toContainText('Relevant documentation found.');
+  await expect(fetch.locator('.web-page-url a')).toHaveAttribute(
+    'href',
+    'https://example.com/docs'
   );
-  await expect(fetch.locator('.conversation-detail-text')).toHaveCount(1);
+  await expect(fetch.locator('.web-output')).toContainText('The requested page content.');
+  await expect(fetch.locator('.tool-detail')).not.toContainText('Input:');
   await search.locator('> summary').click();
   await expect(search.locator('.tool-detail, .conversation-tool-sources a')).toHaveCount(0);
   await process.click();
@@ -419,6 +423,118 @@ test('READ replaces body and association together, then falls back when a snapsh
   await expect(detail).not.toContainText('authoritative tail');
 });
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`web details keep source hierarchy, safe links and shared preview at ${width}px in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 1100 },
+      reducedMotion: 'reduce',
+      permissions: ['clipboard-read', 'clipboard-write']
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}conversation-tool-detail.html?timeline&unified&web-layout&theme=${theme}`
+      );
+      const process = page.locator('.process-heading').first();
+      if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+      const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
+      const fetch = page.locator('[data-tool-presentation="WEB_FETCH"]');
+      await search.locator('> summary').click();
+      await fetch.locator('> summary').click();
+      await expect(search.locator('.web-query')).toHaveText('Documentation and release notes');
+      await expect(search.locator('.web-output')).toHaveCount(0);
+      await expect(search.locator('.tool-detail')).not.toContainText('copy-only input');
+      await expect(search.locator('.detail-preview-toggle')).toBeVisible();
+      await expect(search.locator('.detail-preview-toggle')).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+      await expect(fetch.locator('.web-page-origin')).toContainText(
+        'From: https://example.com/old'
+      );
+      await expect(fetch.locator('.web-page-url a')).toHaveAttribute(
+        'href',
+        'https://example.com/docs'
+      );
+      await expect(fetch.locator('.web-output')).toContainText('Returned page paragraph 1.');
+      await page.screenshot({
+        path: testInfo.outputPath(`web-details-${width}-${theme}.png`),
+        fullPage: true
+      });
+      await search.locator('.detail-preview-toggle').click();
+      await expect(search.locator('.conversation-tool-sources li')).toHaveCount(8);
+      await expect(search.locator('a[href^="javascript:"]')).toHaveCount(0);
+      await expect(search.locator('.conversation-tool-sources script')).toHaveCount(0);
+      await expect(search.locator('.conversation-tool-sources')).toContainText('<unsafe title>');
+      await expect(search.locator('.conversation-tool-sources')).toContainText(
+        '<script>plain text only</script>'
+      );
+      await expect(search.locator('.conversation-tool-sources a').first()).toHaveAttribute(
+        'rel',
+        'noopener noreferrer'
+      );
+      await expect(search.locator('.conversation-tool-source-host').first()).toHaveCSS(
+        'font-size',
+        '12px'
+      );
+      await expect(search.locator('.web-detail')).toHaveCSS('font-weight', '400');
+      await fetch.locator('.detail-preview-toggle').click();
+      await expect(fetch.locator('.web-output')).toContainText('Returned page paragraph 30.');
+      await expect(fetch.locator('.web-detail')).toContainText('[Truncated]');
+      await search.locator('.tool-detail-copy').click();
+      await expect(page.getByTestId('copied')).toContainText('copy-only input');
+      const copied = JSON.parse((await page.getByTestId('copied').textContent())!);
+      expect(copied.payload.inputSummary).toContain('copy-only input');
+      expect(copied.payload.outputSummary).toContain('Redundant source output');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      );
+      await search.locator('> summary').click();
+      await expect(search.locator('.web-detail')).toHaveCount(0);
+      await search.locator('> summary').click();
+      await expect(search.locator('.detail-preview-toggle')).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`detail-only native web tools keep their ordinary group at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&unified&external-web`);
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const groups = page.locator('details.conversation-record-group:not([data-tool-presentation])');
+    for (const group of await groups.all()) await group.locator('> summary').click();
+    for (const [name, text] of [
+      ['WebSearch', 'Native documentation query'],
+      ['WebFetch', 'https://example.com/native-page']
+    ] as const) {
+      const row = groups.locator('details.conversation-tool-detail').filter({ hasText: name });
+      await expect(row).toHaveCount(1);
+      await expect(row.locator('.web-detail')).toHaveCount(0);
+      await row.locator('> summary').click();
+      await expect(row.locator('.web-detail')).toContainText(text);
+      await expect(row.locator('.web-detail')).toContainText('Native public output');
+      await expect(row.locator('.web-detail')).not.toContainText('copy-only native input');
+      await expect(row.locator('.conversation-tool-sources')).toHaveCount(0);
+      await row.locator('> summary').click();
+      await expect(row.locator('.web-detail')).toHaveCount(0);
+    }
+    await expect(page.locator('[data-tool-presentation="WEB_SEARCH"]')).toHaveCount(1);
+    await expect(page.locator('[data-tool-presentation="WEB_FETCH"]')).toHaveCount(1);
+  });
+}
+
 test('renders image, search and compact details within the ordinary tool group', async ({
   page
 }) => {
@@ -500,16 +616,23 @@ test('specialized tool details replace live output with the authoritative result
   await child.locator('.conversation-tool-detail > summary').click();
   const bodies = [
     read.locator('.conversation-detail-text'),
-    page.locator('[data-tool-presentation="WEB_SEARCH"] .conversation-detail-text'),
-    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text'),
     child.locator('.conversation-detail-text')
   ];
+  const webRegions = ['WEB_SEARCH', 'WEB_FETCH'].map((kind) =>
+    page.locator(`[data-tool-presentation="${kind}"] .web-detail`)
+  );
   await page.getByTestId('stream-details').click();
   for (const [index, body] of bodies.entries()) {
     await expect
       .poll(() => body.textContent(), { message: `live detail ${index}` })
       .toContain(':\n  live output\n\n  next line\n');
     await expect(body).not.toContainText('Truncated');
+  }
+  for (const region of webRegions) {
+    await expect
+      .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+      .toBe('  live output\n\n  next line\n');
+    await expect(region).not.toContainText('[Truncated]');
   }
   await page.getByTestId('finish-details').click();
   for (const body of bodies) {
@@ -518,6 +641,16 @@ test('specialized tool details replace live output with the authoritative result
     await expect(body).not.toContainText('export const result');
     await expect(body).not.toContainText('The requested page content.');
     await expect(body).not.toContainText('Message delivered.');
+  }
+  for (const region of webRegions) {
+    await expect
+      .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+      .toBe('  authoritative tail\n');
+    const text = await region.textContent();
+    expect(text!.indexOf('[Truncated]')).toBeGreaterThan(text!.indexOf('authoritative tail'));
+    await expect(region).not.toContainText('live output');
+    await expect(region).not.toContainText('Relevant documentation found.');
+    await expect(region).not.toContainText('The requested page content.');
   }
   await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(
     'href',
@@ -706,10 +839,9 @@ for (const width of [1280, 390]) {
         await read.locator('.conversation-tool-detail > summary').click();
         for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
           await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
-        await expect(page.locator('.conversation-tool-sources p')).toHaveCSS(
-          'font-size',
-          thinkingStyle.fontSize
-        );
+        await expect(
+          page.locator('.conversation-tool-sources .conversation-detail-text')
+        ).toHaveCSS('font-size', thinkingStyle.fontSize);
         await expect(page.locator('.conversation-tool-sources a')).toHaveCSS(
           'font-size',
           thinkingStyle.fontSize

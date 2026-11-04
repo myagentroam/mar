@@ -2,11 +2,7 @@
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
-import {
-  toolPresentation,
-  toolPresentationSources,
-  toolPresentationStatus
-} from '../../util/tool-presentation.js';
+import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { createWorkbenchSecondClock } from '../../service/workbench-clock-service.js';
 import {
@@ -1475,28 +1471,6 @@ function stepDuration(item: ConversationItem): string | undefined {
               <p class="conversation-detail-text">
                 {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
               </p>
-              <ul
-                v-if="toolPresentationSources(displayItem.item.payload).length"
-                class="conversation-tool-sources"
-              >
-                <li
-                  v-for="(source, index) in toolPresentationSources(displayItem.item.payload)"
-                  :key="index"
-                >
-                  <a
-                    v-if="source.href"
-                    :href="source.href"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >{{ source.title || source.url }}</a
-                  >
-                  <span v-else>{{ source.title || source.url }}</span>
-                  <span v-if="source.title && source.url" class="conversation-tool-source-host">{{
-                    source.url
-                  }}</span>
-                  <p v-if="source.snippet">{{ source.snippet }}</p>
-                </li>
-              </ul>
             </ConversationToolDetail>
           </details>
         </template>
@@ -1577,21 +1551,6 @@ function stepDuration(item: ConversationItem): string | undefined {
 <style scoped>
 .conversation-run-duration,
 .conversation-step-duration {
-  color: var(--mar-conversation-muted);
-  font-size: var(--mar-font-size-meta);
-}
-
-.conversation-tool-sources {
-  padding-left: 1.25rem;
-  overflow-wrap: anywhere;
-}
-
-.conversation-tool-sources > li + li {
-  margin-top: 0.5rem;
-}
-
-.conversation-tool-source-host {
-  margin-left: 0.5rem;
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
 }
@@ -2036,26 +1995,6 @@ details.conversation-record-group[open] > details:last-child {
   background: var(--mar-conversation-code);
   border-radius: var(--mar-radius-control);
   font-family: var(--mar-font-mono);
-}
-
-.conversation-tool-sources {
-  margin: 0.5rem 0 0;
-  padding-inline-start: 1rem;
-}
-
-.conversation-tool-sources > li + li {
-  margin-top: 0.75rem;
-}
-
-.conversation-item .conversation-tool-sources p {
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.conversation-tool-source-host {
-  margin-inline-start: 0.5rem;
-  color: var(--mar-conversation-muted);
-  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-file-change-list {

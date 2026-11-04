@@ -12,6 +12,7 @@ const performanceProbe = new URL(location.href).searchParams.has('performance');
 const previewProbe = new URL(location.href).searchParams.has('preview-probe');
 const probeText = ref('wrapped content '.repeat(50));
 const sessionVersion = ref(0);
+const webLayout = new URL(location.href).searchParams.has('web-layout');
 const readAssociation = new URL(location.href).searchParams.has('read-association');
 const readPath = new URL(location.href).searchParams.get('read-path') ?? '/fixture/example.ts';
 const readTruncation = new URL(location.href).searchParams.get('read-truncation');
@@ -218,6 +219,64 @@ if (new URL(location.href).searchParams.has('detail-layout')) {
     }
   );
 }
+if (webLayout) {
+  const search = detailSamples.find((item) => item.id === 'search')!;
+  search.payload = {
+    toolName: 'web_search',
+    inputSummary: '{"query":"documentation","options":"copy-only input"}',
+    outputSummary: 'Redundant source output is preserved in the copied public record.',
+    toolPresentation: {
+      kind: 'WEB_SEARCH',
+      query: 'Documentation and release notes',
+      sourcesOnly: true,
+      sources: [
+        {
+          title: 'Example documentation',
+          url: 'https://example.com/docs',
+          snippet: 'A plain-text search summary. <plain summary>'
+        },
+        { url: 'https://example.com/' + 'long-path-segment/'.repeat(12) },
+        ...Array.from({ length: 5 }, (_, index) => ({
+          title: `Release notes ${index + 1}`,
+          url: `https://example.com/releases/${index + 1}`,
+          snippet: 'Returned search excerpt. '.repeat(8)
+        })),
+        {
+          title: '<unsafe title>',
+          url: 'javascript:alert(1)',
+          snippet: '<script>plain text only<\/script>'
+        }
+      ]
+    }
+  };
+  const fetch = detailSamples.find((item) => item.id === 'fetch')!;
+  fetch.payload = {
+    toolName: 'web_search',
+    inputSummary: '{"type":"open_page","url":"https://example.com/old"}',
+    output: {
+      blocks: [
+        {
+          channel: 'TEXT',
+          text: Array.from(
+            { length: 30 },
+            (_, index) => `Returned page paragraph ${index + 1}.`
+          ).join('\n\n')
+        }
+      ],
+      truncation: 'SOURCE'
+    },
+    toolPresentation: {
+      kind: 'WEB_FETCH',
+      title: 'Example documentation',
+      requestUrl: 'https://example.com/old',
+      url: 'https://example.com/docs',
+      status: 200,
+      mode: 'browser',
+      contentType: 'text/plain'
+    }
+  };
+}
+
 if (new URL(location.href).searchParams.has('specialized')) {
   detailSamples.push(
     {
@@ -326,6 +385,24 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
             ? { truncation: stopTruncation }
             : {})
         }
+      }
+    });
+  }
+}
+if (new URL(location.href).searchParams.has('external-web')) {
+  for (const [toolName, presentation] of [
+    ['WebSearch', { kind: 'WEB_SEARCH', query: 'Native documentation query' }],
+    ['WebFetch', { kind: 'WEB_FETCH', requestUrl: 'https://example.com/native-page' }]
+  ] as const) {
+    detailSamples.push({
+      id: `external-${toolName}`,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName,
+        inputSummary: '{"original":"copy-only native input"}',
+        outputSummary: 'Native public output',
+        toolPresentation: { ...presentation, detailOnly: true }
       }
     });
   }
@@ -544,6 +621,7 @@ function finish() {
         Finish output
       </button>
     </template>
+    <output data-testid="copied">{{ copied }}</output>
     <ConversationTimeline
       v-if="integrated"
       :turns="turns"
@@ -566,7 +644,6 @@ function finish() {
       <button data-testid="finish" @click="finish">Finish</button>
       <button data-testid="fail-copy" @click="failed = true">Fail copy</button>
       <output data-testid="copy-error">{{ copyError }}</output>
-      <output data-testid="copied">{{ copied }}</output>
       <details data-testid="exec">
         <summary>Execution</summary>
         <ConversationToolDetail :item="command" @copy="copy" />
