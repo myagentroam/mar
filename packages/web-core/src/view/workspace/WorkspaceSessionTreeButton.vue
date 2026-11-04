@@ -16,12 +16,12 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   <button
     type="button"
     class="icon-button utility-control conversation-tree-button"
-    v-tooltip="
+    :aria-description="
       status === 'failed'
         ? translate('sessionGroups.treeSyncUnavailable')
         : summary?.hasActiveDescendants
           ? translate('sessionGroups.activeDescendants', { count: summary.activeCount })
-          : translate('sessionGroups.tree')
+          : undefined
     "
     :aria-label="translate('sessionGroups.tree')"
     :aria-expanded="open"

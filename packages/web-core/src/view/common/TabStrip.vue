@@ -34,6 +34,10 @@ const rovingId = computed(() => {
 });
 let pendingClose: { id: string | number; index: number } | undefined;
 
+function revealTab(tab: HTMLElement | undefined): void {
+  tab?.parentElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function onKeydown(event: KeyboardEvent): void {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
   if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab') return;
@@ -55,6 +59,7 @@ function onKeydown(event: KeyboardEvent): void {
   event.preventDefault();
   focusedId.value = props.items[target]!.id;
   tabs[target]?.focus();
+  revealTab(tabs[target]);
 }
 
 watch(
@@ -65,7 +70,7 @@ watch(
     void nextTick(() => {
       if (typeof HTMLElement === 'undefined' || !(root.value instanceof HTMLElement)) return;
       const selected = root.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-      selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      revealTab(selected ?? undefined);
     });
   },
   { flush: 'post', immediate: true }
@@ -94,7 +99,9 @@ watch(
       if (document.activeElement !== document.body && !root.value?.contains(document.activeElement))
         return;
       const index = props.items.findIndex((item) => item.id === next.id);
-      root.value?.querySelectorAll<HTMLElement>('[role="tab"]').item(index)?.focus();
+      const tab = root.value?.querySelectorAll<HTMLElement>('[role="tab"]').item(index);
+      tab?.focus();
+      revealTab(tab ?? undefined);
     });
   },
   { flush: 'post' }
@@ -167,6 +174,8 @@ watch(
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
+  max-width: min(15rem, 100%);
+  box-sizing: border-box;
   align-items: center;
   border: 1px solid var(--mar-border-strong);
   border-bottom: 0;
@@ -184,12 +193,16 @@ watch(
 }
 .tab-strip-tab {
   display: inline-flex;
+  flex: 1 1 auto;
   min-width: 0;
   height: 100%;
   align-items: center;
   border: 0;
   background: transparent;
   color: inherit;
+  font: inherit;
+  font-size: var(--mar-font-size-navigation);
+  overflow: hidden;
   cursor: pointer;
   padding: 0 0.5rem;
 }
@@ -213,6 +226,7 @@ watch(
 .tab-strip-close {
   --mar-action-icon-size: 14px;
   display: grid;
+  flex: none;
   width: 24px;
   min-width: 24px;
   height: 24px;

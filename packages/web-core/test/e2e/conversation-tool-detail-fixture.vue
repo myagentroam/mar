@@ -135,7 +135,7 @@ const detailSamples: ConversationItem[] = [
           {
             title: 'Example documentation',
             url: 'https://example.com/docs',
-            snippet: 'A plain-text search summary.'
+            snippet: 'A plain-text search summary. <plain summary>'
           }
         ]
       }

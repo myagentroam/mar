@@ -12,7 +12,7 @@ async function openInspector(page: Page, mobile: boolean): Promise<void> {
     .click();
   if (mobile) await work.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  if (mobile) await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  if (mobile) await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
   await expect(page.locator('.workspace-inspector')).toBeVisible();
 }
 

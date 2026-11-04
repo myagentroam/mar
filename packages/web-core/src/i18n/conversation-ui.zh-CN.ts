@@ -213,6 +213,8 @@ export const conversationUiZhCN = {
       workspaceTools: '工作区工具',
       openSessionList: '打开会话列表',
       sessions: '会话',
+      openAside: '打开辅助工作面',
+      more: '更多',
       openFiles: '打开文件',
       files: '文件',
       openTerminal: '打开终端',

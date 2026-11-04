@@ -454,17 +454,25 @@ export function createWorkspaceSessionPaneState(options: {
       configuration: Omit<
         Parameters<typeof createComposerConfigurationService>[0],
         'selectedSession'
-      > & { readonly sessions: Readonly<Ref<readonly Session[]>> }
+      > & {
+        readonly sessions: Readonly<Ref<readonly Session[]>>;
+        readonly provisionalSessionId?: Readonly<Ref<string | undefined>>;
+      }
     ) => {
-      const selectedSession = computed(
-        () =>
-          configuration.sessions.value.find(
+      const { sessions, provisionalSessionId, ...shared } = configuration;
+      const selectedSession = computed(() => {
+        const id =
+          sessionId.value ??
+          (options.draftTarget.value?.kind === 'workspace'
+            ? provisionalSessionId?.value
+            : undefined);
+        return (
+          sessions.value.find(
             (candidate) =>
-              candidate.id === sessionId.value &&
-              candidate.workspaceId === workspaceTarget.value?.workspaceId
+              candidate.id === id && candidate.workspaceId === workspaceTarget.value?.workspaceId
           ) ?? resolvedSession.value
-      );
-      const { sessions: _sessions, ...shared } = configuration;
+        );
+      });
       return {
         selectedSession,
         ...createComposerConfigurationService({ ...shared, selectedSession })

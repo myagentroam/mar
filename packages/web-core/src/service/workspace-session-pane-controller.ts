@@ -143,7 +143,7 @@ export function createWorkspaceSessionPaneController(options: {
       turn: import('../model/workbench.js').ConversationTurn
     ) => void;
   };
-  readonly configuration: Omit<ConfigurationOptions, 'sessions'> & {
+  readonly configuration: Omit<ConfigurationOptions, 'sessions' | 'provisionalSessionId'> & {
     readonly sessions: Ref<Session[]>;
   };
   readonly profileService: Parameters<
@@ -185,7 +185,10 @@ export function createWorkspaceSessionPaneController(options: {
   >;
 }) {
   const { state } = options;
-  const configuration = state.createConfiguration(options.configuration);
+  const configuration = state.createConfiguration({
+    ...options.configuration,
+    provisionalSessionId: options.presentation.provisionalSessionId
+  });
   const runner = state.createRunnerInteraction({
     ...options.runner,
     selectedSession: configuration.selectedSession,

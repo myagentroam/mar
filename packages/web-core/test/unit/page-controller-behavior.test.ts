@@ -524,10 +524,13 @@ describe('Workbench controller composition behavior', () => {
       };
       const child: Session = { ...main, id: 'child', sessionGroup: 'CHILD' };
       const starts: Record<string, unknown>[] = [];
+      let finishStart!: () => void;
+      const pendingStart = new Promise<void>((resolve) => (finishStart = resolve));
       vi.mocked(fetch).mockImplementation(async (input, init) => {
         const url = new URL(String(input), location.href);
         if (url.pathname === '/api/agent-sessions/start') {
           starts.push(JSON.parse(String(init?.body)));
+          await pendingStart;
           created = true;
           return new Response(
             JSON.stringify({
@@ -566,6 +569,18 @@ describe('Workbench controller composition behavior', () => {
       await flushComponent();
       page.sessionInput.value = 'Start a main session';
       page.sendSessionMessage();
+      try {
+        await vi.waitFor(() => expect(starts).toHaveLength(1));
+        await flushComponent();
+        expect(page.draftSessionOpen.value).toBe(false);
+        expect(page.selectedSessionId.value).toMatch(/^draft:/);
+        expect(page.mainPaneController.configuration.selectedSession.value?.id).toBe(
+          page.selectedSessionId.value
+        );
+        expect(page.mainPaneController.presentation.composerSessionOpen.value).toBe(true);
+      } finally {
+        finishStart();
+      }
       await vi.waitFor(() => expect(page.selectedSessionId.value).toBe(main.id));
       // The Node's next authoritative directory page makes the created identity reachable.
       await page.refreshWorkspaceSessions();

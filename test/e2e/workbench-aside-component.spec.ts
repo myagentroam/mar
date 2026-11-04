@@ -1,6 +1,57 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+for (const [language, theme] of [
+  ['en', 'light'],
+  ['en', 'dark'],
+  ['zh', 'light'],
+  ['zh', 'dark']
+]) {
+  test(`Aside tabs keep compact type and bound long titles (${language}, ${theme})`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+    try {
+      await page.goto(
+        `${fixture.url}workbench-aside.html?active-child&long-title=${language}&theme=${theme}`
+      );
+      const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+      const session = tabs.getByRole('tab', {
+        name: language === 'zh' ? /需要保持可读/ : /A long readable/
+      });
+      await expect(session).toHaveCSS('font-size', '13px');
+      await expect(session).toHaveCSS('font-weight', '500');
+      const geometry = await session.evaluate((element) => {
+        const item = element.closest('.tab-strip-item')!;
+        const label = element.querySelector('.workbench-aside-label')!;
+        const close = item.querySelector('.tab-strip-close')!;
+        const strip = item.closest('[role="tablist"]')!;
+        return {
+          width: item.getBoundingClientRect().width,
+          limit: Math.min(
+            15 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+            strip.clientWidth
+          ),
+          truncated: label.scrollWidth > label.clientWidth,
+          closeFits: close.getBoundingClientRect().right <= strip.getBoundingClientRect().right + 1
+        };
+      });
+      expect(geometry.width).toBeLessThanOrEqual(geometry.limit);
+      expect(geometry.truncated).toBe(true);
+      expect(geometry.closeFits).toBe(true);
+      await session.hover();
+      await expect(page.locator('.mar-tooltip:visible')).toContainText(await session.innerText());
+      await page
+        .locator('.workbench-aside')
+        .screenshot({ path: test.info().outputPath(`aside-tabs-${language}-${theme}.png`) });
+      await tabs.getByRole('button', { name: /^Close / }).click();
+      await expect(session).toHaveCount(0);
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Aside uses shared tabs for tool, session and stable Terminal surfaces', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
   try {

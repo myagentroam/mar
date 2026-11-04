@@ -134,7 +134,7 @@ function close(id: string | number): void {
             class="workbench-aside-activity"
             aria-hidden="true"
           />
-          <span>{{ item.label }}</span>
+          <span class="workbench-aside-label">{{ item.label }}</span>
         </template>
       </TabStrip>
     </header>
@@ -213,6 +213,7 @@ function close(id: string | number): void {
   display: flex;
   flex: 0 0 36px;
   min-width: 0;
+  font-weight: 500;
   border-bottom: 1px solid var(--mar-border-strong);
   background: var(--mar-bg-subtle);
 }
@@ -251,5 +252,11 @@ function close(id: string | number): void {
   margin-inline-end: 5px;
   border-radius: 50%;
   background: var(--mar-color-success-text);
+}
+.workbench-aside-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

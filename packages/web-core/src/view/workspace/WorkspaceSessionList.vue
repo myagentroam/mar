@@ -609,6 +609,7 @@ function submitSessionSearch(): void {
                   :disabled="loading || !nodeReady"
                   @click="asideActionTarget && emit('openAside', asideActionTarget)"
                 >
+                  <MarIcon name="split" />
                   {{ translate('generated.workbenchAside.openSession') }}
                 </el-dropdown-item>
                 <el-dropdown-item v-if="!pinned(session)" @click="emit('pin', session, true)"

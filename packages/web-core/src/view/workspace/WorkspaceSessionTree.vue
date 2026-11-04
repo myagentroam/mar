@@ -62,13 +62,27 @@ const rows = computed(() => {
         (priority[a.status] ?? 2) - (priority[b.status] ?? 2)
     );
   }
-  const flattened: Array<{ node: TreeNode; branches: boolean[]; hasChildren: boolean }> = [];
-  function visit(parent: string | null, branches: boolean[]): void {
+  const flattened: Array<{
+    node: TreeNode;
+    branches: boolean[];
+    hasChildren: boolean;
+    hasPreviousSibling: boolean;
+    hasNextSibling: boolean;
+  }> = [];
+  function visit(parent: string | null, branches: boolean[], rootContinues = false): void {
     const siblings = children.get(parent) ?? [];
     for (const [index, node] of siblings.entries()) {
-      const path = parent === null ? [] : [...branches, index < siblings.length - 1];
-      flattened.push({ node, branches: path, hasChildren: children.has(node.id) });
-      visit(node.id, path);
+      const hasNextSibling = index < siblings.length - 1;
+      const path = parent === null ? [] : [...branches, hasNextSibling];
+      if (rootContinues && path.length > 0) path[0] = true;
+      flattened.push({
+        node,
+        branches: path,
+        hasChildren: children.has(node.id),
+        hasPreviousSibling: index > 0,
+        hasNextSibling
+      });
+      visit(node.id, path, parent === null ? hasNextSibling : rootContinues);
     }
   }
   visit(null, []);
@@ -100,16 +114,19 @@ function openContext(event: MouseEvent): void {
   >
     <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
       {{ translate('sessionGroups.treeUnavailable') }}
-      <button type="button" @click="emit('retry')">{{ translate('sessionGroups.retry') }}</button>
+      <el-button link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</el-button>
     </p>
     <div v-if="tree?.parent" class="session-tree-parent" @contextmenu="openContext">
       <span>{{ translate('sessionGroups.parent') }}</span>
       <button
         type="button"
+        class="session-tree-node"
         :aria-label="`${tree.parent.title}, ${translate(`sessionGroups.status${tree.parent.status}`)}`"
         @click="emit('open', tree.parent.id, 'aside')"
       >
-        {{ tree.parent.title }}
+        <span v-tooltip="tree.parent.title" class="session-tree-title">{{
+          tree.parent.title
+        }}</span>
         <span
           v-if="tree.parent.status !== 'IDLE'"
           class="session-activity"
@@ -117,9 +134,12 @@ function openContext(event: MouseEvent): void {
           aria-hidden="true"
           ><i
         /></span>
-        <time v-tooltip="activityTitle(tree.parent)" :datetime="activityDateTime(tree.parent)">{{
-          formatRelativeSessionActivity(tree.parent.lastActivityAt)
-        }}</time>
+        <time
+          class="session-tree-time"
+          v-tooltip="activityTitle(tree.parent)"
+          :datetime="activityDateTime(tree.parent)"
+          >{{ formatRelativeSessionActivity(tree.parent.lastActivityAt) }}</time
+        >
       </button>
       <span v-if="tree.parent.id === mainSessionId" class="session-tree-location">{{
         translate('sessionGroups.inMain')
@@ -139,19 +159,22 @@ function openContext(event: MouseEvent): void {
       >
         <button
           type="button"
-          class="session-tree-actions"
+          class="icon-button utility-control session-tree-actions"
+          v-tooltip="translate('sessionGroups.actions')"
           :aria-label="translate('sessionGroups.actions')"
         >
           <MarIcon name="more" />
         </button>
         <template #dropdown
           ><el-dropdown-menu>
-            <el-dropdown-item command="aside">{{
-              translate('sessionGroups.openAside')
-            }}</el-dropdown-item>
-            <el-dropdown-item command="main">{{
-              translate('sessionGroups.openMain')
-            }}</el-dropdown-item>
+            <el-dropdown-item command="aside"
+              ><MarIcon name="split" />{{ translate('sessionGroups.openAside') }}</el-dropdown-item
+            >
+            <el-dropdown-item command="main"
+              ><MarIcon name="conversation" />{{
+                translate('sessionGroups.openMain')
+              }}</el-dropdown-item
+            >
           </el-dropdown-menu></template
         >
       </el-dropdown>
@@ -165,7 +188,8 @@ function openContext(event: MouseEvent): void {
         @contextmenu="openContext"
       >
         <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
-          <span v-if="rows.length > 1" class="session-tree-origin-stem" />
+          <span v-if="row.hasPreviousSibling" class="session-tree-origin-stem is-incoming" />
+          <span v-if="row.hasNextSibling || row.hasChildren" class="session-tree-origin-stem" />
         </span>
         <span
           v-for="(continues, level) in row.branches"
@@ -227,7 +251,8 @@ function openContext(event: MouseEvent): void {
         >
           <button
             type="button"
-            class="session-tree-actions"
+            class="icon-button utility-control session-tree-actions"
+            v-tooltip="translate('sessionGroups.actions')"
             :aria-label="translate('sessionGroups.actions')"
             @click.stop
           >
@@ -235,12 +260,16 @@ function openContext(event: MouseEvent): void {
           </button>
           <template #dropdown
             ><el-dropdown-menu>
-              <el-dropdown-item command="aside">{{
-                translate('sessionGroups.openAside')
-              }}</el-dropdown-item>
-              <el-dropdown-item command="main">{{
-                translate('sessionGroups.openMain')
-              }}</el-dropdown-item>
+              <el-dropdown-item command="aside"
+                ><MarIcon name="split" />{{
+                  translate('sessionGroups.openAside')
+                }}</el-dropdown-item
+              >
+              <el-dropdown-item command="main"
+                ><MarIcon name="conversation" />{{
+                  translate('sessionGroups.openMain')
+                }}</el-dropdown-item
+              >
             </el-dropdown-menu></template
           >
         </el-dropdown>
@@ -267,10 +296,17 @@ function openContext(event: MouseEvent): void {
 .session-tree-location {
   flex: none;
   color: var(--el-text-color-secondary);
-  font-size: 0.75rem;
+  font-size: var(--mar-font-size-meta);
 }
 .session-tree-actions {
+  display: inline-grid;
   flex: none;
+  width: var(--mar-utility-control-size);
+  height: var(--mar-utility-control-size);
+  align-self: center;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--mar-radius-control);
 }
 .tree-sleeping i {
   background: var(--el-color-warning);
@@ -286,7 +322,7 @@ function openContext(event: MouseEvent): void {
 .session-tree-node {
   display: flex;
   flex: 1;
-  min-width: 10rem;
+  min-width: 0;
   min-height: var(--mar-session-row-min-height);
   align-items: center;
   gap: 0.5rem;
@@ -361,6 +397,10 @@ function openContext(event: MouseEvent): void {
   bottom: 0;
   width: 1.25rem;
   pointer-events: none;
+}
+.session-tree-origin-stem.is-incoming {
+  top: 0;
+  bottom: 50%;
 }
 .session-tree-branch.is-continuing {
   border-inline-start: 1px solid var(--mar-border-medium);

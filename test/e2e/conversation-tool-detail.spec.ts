@@ -24,11 +24,24 @@ test('mounts independent details only while open and releases them with the proc
   await search.locator('> summary').click();
   await fetch.locator('> summary').click();
   await expect(search.locator('.conversation-tool-sources a')).toHaveCount(1);
+  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'href',
+    'https://example.com/docs'
+  );
+  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'rel',
+    'noopener noreferrer'
+  );
   await expect(search.locator('.conversation-tool-source-host')).toHaveText(
     'https://example.com/docs'
   );
   await expect(search.locator('.conversation-tool-sources')).toContainText(
     'A plain-text search summary.'
+  );
+  await expect(search.locator('.conversation-tool-sources')).toContainText('<plain summary>');
+  await expect(search.locator('.conversation-tool-sources plain')).toHaveCount(0);
+  expect(await search.locator('.conversation-tool-sources').innerHTML()).toContain(
+    '&lt;plain summary&gt;'
   );
   await expect(search.locator('.conversation-detail-text')).toContainText('Input: documentation');
   await expect(fetch.locator('.conversation-detail-text')).toContainText(

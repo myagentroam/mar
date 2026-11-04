@@ -3,7 +3,6 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { NavigationSnapshot } from '../../service/session-navigation-projection.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createMobileLayerHistoryService } from '../../service/mobile-layer-history-service.js';
-import { translate } from '../../service/locale-preference-service.js';
 import WorkspaceSessionTree from './WorkspaceSessionTree.vue';
 
 const props = defineProps<{
@@ -68,16 +67,12 @@ onBeforeUnmount(() => {
     :virtual-ref="anchor"
     virtual-triggering
     placement="bottom-start"
+    :show-arrow="false"
     popper-class="session-tree-popover"
     width="min(480px, calc(100vw - 24px))"
   >
     <section ref="root" class="session-tree-popup" role="dialog" :aria-label="title">
-      <header class="session-tree-header">
-        <strong>{{ title }}</strong>
-        <button type="button" :aria-label="translate('common.close')" @click="emit('close', true)">
-          ×
-        </button>
-      </header>
+      <header class="session-tree-header">{{ title }}</header>
       <div class="session-tree-scroll">
         <WorkspaceSessionTree
           ref="treeComponent"
@@ -102,12 +97,12 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 .session-tree-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.session-tree-header strong {
+  min-width: 0;
+  margin-block-end: 0.5rem;
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-body);
+  font-weight: 500;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

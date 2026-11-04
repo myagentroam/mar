@@ -525,6 +525,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           />
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
+            :aside-ready="page.asideState?.active !== undefined"
             :tree-supported="page.asideSupported"
             :tree-open-session-id="treePopup?.sessionId"
             :tree-summaries="page.sessionNavigationSnapshot?.summaries"
@@ -534,112 +535,132 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             @preview-attachment="page.openAttachmentPreview"
             @reload="page.reloadSelectedSession"
           />
-          <WorkbenchAside
-            v-if="page.asideState"
-            v-show="asideVisible"
-            class="workspace-aside"
-            :workspace="page.workspaceTarget!"
-            :state="page.asideState"
-            :tools="asideTools"
-            :sessions="asideSessions"
-            :tab-label="translate('generated.workbenchAside.tabs')"
-            :close-label="(title) => translate('generated.workbenchAside.close', { value0: title })"
-            :resize-label="translate('generated.workbenchAside.resize')"
-            :width="
-              asideStacked
-                ? asideAvailableWidth
-                : (asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min)
+          <Transition
+            name="workspace-aside"
+            :css="
+              page.mobileViewport &&
+              page.workspaceTarget !== undefined &&
+              page.workspaceHost?.connected !== false
             "
-            :mobile="page.mobileViewport"
-            :close-surface-label="translate('workbench.closeWorkspaceTools')"
-            :min-width="WORKBENCH_PANEL_LIMITS[asideMode].min"
-            :max-width="
-              Math.max(
-                WORKBENCH_PANEL_LIMITS[asideMode].min,
-                Math.min(WORKBENCH_PANEL_LIMITS[asideMode].max, asideAvailableWidth - 360)
-              )
-            "
-            :mode="asideMode"
-            @select-tool="page.selectAsideTool"
-            @select-session="page.openAsideSession"
-            @close-session="page.closeAsideSession"
-            @resize="page.setPanelWidth(asideMode, $event)"
-            @close-surface="page.closeMobileWorkspaceSurface"
           >
-            <template #tool="{ tool }">
-              <WorkspaceInspector
-                :aside-tool="inspectorTool(tool)"
-                :ref="(instance) => (page.workspaceInspector = instance as never)"
-                :node-id="page.workspaceTarget?.nodeId"
-                :workspace-id="page.workspaceTarget?.workspaceId"
-                :workspace-name="
-                  page.selectedWorkspace === undefined
-                    ? translate('generated.workbenchSurface.workspace')
-                    : page.workspaceTabLabel(page.selectedWorkspace)
+            <div
+              v-if="page.asideState"
+              v-show="asideVisible"
+              class="workspace-aside"
+              tabindex="-1"
+              :aria-hidden="!asideVisible"
+            >
+              <WorkbenchAside
+                :inert="!asideVisible"
+                :workspace="page.workspaceTarget!"
+                :state="page.asideState"
+                :tools="asideTools"
+                :sessions="asideSessions"
+                :tab-label="translate('generated.workbenchAside.tabs')"
+                :close-label="
+                  (title) => translate('generated.workbenchAside.close', { value0: title })
                 "
-                :workspace-kind="page.selectedWorkspace?.kind"
-                :workspace-path="page.selectedWorkspace?.path"
-                :history-capability="page.nodeManifest?.git?.supportsHistory"
-                :csrf-token="page.csrfToken"
-                :renew-csrf-token="page.renewCsrfToken"
-                :enabled="page.filesReady"
-                :prediction-enabled="page.workPromptCompletion.enabled"
-                :capability-loading="page.nodeManifestLoading && page.nodeManifest === undefined"
-                :node-online="
-                  page.workspaceHost?.connected === true && page.workspaceHost.disabled !== true
+                :resize-label="translate('generated.workbenchAside.resize')"
+                :width="
+                  asideStacked
+                    ? asideAvailableWidth
+                    : (asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min)
                 "
-                :mobile-viewport="page.mobileViewport"
-                :content-search-enabled="page.contentSearchReady"
-                :code-navigation-enabled="page.codeNavigationReady"
-                :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
-                :file-write-enabled="page.fileWriteReady"
-                :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
-                :files-revision="page.workspaceFilesRevision"
-                :changes-revision="page.workspaceChangesRevision"
-                :subscription-snapshot="page.workspaceWatchSnapshot"
-                :files-watch-status="page.workspaceWatchTopicStatus.files"
-                :changes-watch-status="page.workspaceWatchTopicStatus.changes"
-                :direct-file-download="page.directWorkspaceFileDownload"
-                :direct-file-object-url="page.directWorkspaceFileObjectUrl"
-                :direct-file-read-range="page.directWorkspaceFileReadRange"
-                :direct-git-file-download="page.directGitFileDownload"
-                :direct-git-file-object-url="page.directGitFileObjectUrl"
-                :direct-git-file-read-range="page.directGitFileReadRange"
-                :standalone-file-mode="page.standaloneFileMode"
-                @directory="page.changeWorkspaceWatchDirectory"
-                @retry-watch="page.retryWorkspaceWatch"
-                @branch="
-                  (workspaceId, branch) =>
-                    page.updateWorkspaceBranch(
-                      page.workspaceTarget?.nodeId ?? '',
-                      workspaceId,
-                      branch
-                    )
+                :mobile="page.mobileViewport"
+                :close-surface-label="translate('workbench.closeWorkspaceTools')"
+                :min-width="WORKBENCH_PANEL_LIMITS[asideMode].min"
+                :max-width="
+                  Math.max(
+                    WORKBENCH_PANEL_LIMITS[asideMode].min,
+                    Math.min(WORKBENCH_PANEL_LIMITS[asideMode].max, asideAvailableWidth - 360)
+                  )
                 "
-                @workspace="
-                  page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)
-                "
-                @notice="page.notice"
-                @uploads="page.queueWorkspaceUploads"
-              />
-            </template>
-            <template #session>
-              <WorkspaceSessionPane
-                :controller="page.asidePaneController"
-                :tree-supported="page.asideSupported"
-                :tree-open-session-id="treePopup?.sessionId"
-                :tree-summaries="page.sessionNavigationSnapshot?.summaries"
-                :tree-status="treeStatus"
-                @open-tree="showSessionTree"
-                @open-surface="openPaneSurface"
-                @preview-attachment="page.openAttachmentPreview"
-                @reload="page.reloadAsideSession"
-              />
-            </template>
-            <template #terminal>
-              <div ref="terminalMount" class="aside-terminal-mount" />
-            </template>
-          </WorkbenchAside>
+                :mode="asideMode"
+                @select-tool="page.selectAsideTool"
+                @select-session="page.openAsideSession"
+                @close-session="page.closeAsideSession"
+                @resize="page.setPanelWidth(asideMode, $event)"
+                @close-surface="page.closeMobileWorkspaceSurface"
+              >
+                <template #tool="{ tool }">
+                  <WorkspaceInspector
+                    :aside-tool="inspectorTool(tool)"
+                    :ref="(instance) => (page.workspaceInspector = instance as never)"
+                    :node-id="page.workspaceTarget?.nodeId"
+                    :workspace-id="page.workspaceTarget?.workspaceId"
+                    :workspace-name="
+                      page.selectedWorkspace === undefined
+                        ? translate('generated.workbenchSurface.workspace')
+                        : page.workspaceTabLabel(page.selectedWorkspace)
+                    "
+                    :workspace-kind="page.selectedWorkspace?.kind"
+                    :workspace-path="page.selectedWorkspace?.path"
+                    :history-capability="page.nodeManifest?.git?.supportsHistory"
+                    :csrf-token="page.csrfToken"
+                    :renew-csrf-token="page.renewCsrfToken"
+                    :enabled="page.filesReady"
+                    :prediction-enabled="page.workPromptCompletion.enabled"
+                    :capability-loading="
+                      page.nodeManifestLoading && page.nodeManifest === undefined
+                    "
+                    :node-online="
+                      page.workspaceHost?.connected === true && page.workspaceHost.disabled !== true
+                    "
+                    :mobile-viewport="page.mobileViewport"
+                    :content-search-enabled="page.contentSearchReady"
+                    :code-navigation-enabled="page.codeNavigationReady"
+                    :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
+                    :file-write-enabled="page.fileWriteReady"
+                    :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
+                    :files-revision="page.workspaceFilesRevision"
+                    :changes-revision="page.workspaceChangesRevision"
+                    :subscription-snapshot="page.workspaceWatchSnapshot"
+                    :files-watch-status="page.workspaceWatchTopicStatus.files"
+                    :changes-watch-status="page.workspaceWatchTopicStatus.changes"
+                    :direct-file-download="page.directWorkspaceFileDownload"
+                    :direct-file-object-url="page.directWorkspaceFileObjectUrl"
+                    :direct-file-read-range="page.directWorkspaceFileReadRange"
+                    :direct-git-file-download="page.directGitFileDownload"
+                    :direct-git-file-object-url="page.directGitFileObjectUrl"
+                    :direct-git-file-read-range="page.directGitFileReadRange"
+                    :standalone-file-mode="page.standaloneFileMode"
+                    @directory="page.changeWorkspaceWatchDirectory"
+                    @retry-watch="page.retryWorkspaceWatch"
+                    @branch="
+                      (workspaceId, branch) =>
+                        page.updateWorkspaceBranch(
+                          page.workspaceTarget?.nodeId ?? '',
+                          workspaceId,
+                          branch
+                        )
+                    "
+                    @workspace="
+                      page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)
+                    "
+                    @notice="page.notice"
+                    @uploads="page.queueWorkspaceUploads"
+                  />
+                </template>
+                <template #session>
+                  <WorkspaceSessionPane
+                    :controller="page.asidePaneController"
+                    :aside-ready="page.asideState?.active !== undefined"
+                    :tree-supported="page.asideSupported"
+                    :tree-open-session-id="treePopup?.sessionId"
+                    :tree-summaries="page.sessionNavigationSnapshot?.summaries"
+                    :tree-status="treeStatus"
+                    @open-tree="showSessionTree"
+                    @open-surface="openPaneSurface"
+                    @preview-attachment="page.openAttachmentPreview"
+                    @reload="page.reloadAsideSession"
+                  />
+                </template>
+                <template #terminal>
+                  <div ref="terminalMount" class="aside-terminal-mount" />
+                </template>
+              </WorkbenchAside>
+            </div>
+          </Transition>
         </div>
       </template>
       <Teleport :to="terminalMount ?? 'body'" :disabled="terminalMount === undefined">
@@ -913,6 +934,16 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   overflow: hidden;
 }
 
+.workspace-aside {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.workspace-aside > :deep(.workbench-aside) {
+  flex: 1;
+  width: 100% !important;
+}
+
 .conversation-panel {
   position: relative;
   display: flex;
@@ -1070,6 +1101,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 @media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .workspace-grid {
+    transition: grid-template-columns var(--mar-motion-duration-collapse)
+      var(--mar-motion-easing-collapse);
+  }
+  .workspace-grid:has(.panel-resize-handle:active),
+  .workspace-grid:has(.panel-resize-handle.dragging) {
+    transition: none;
+  }
   .workbench {
     transition: margin-left var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
   }
@@ -1232,6 +1271,19 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     transform: none;
     visibility: visible;
     pointer-events: auto;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: no-preference) {
+  .workspace-aside-enter-active,
+  .workspace-aside-leave-active {
+    transition:
+      transform var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
+      opacity var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
+  }
+  .workspace-aside-enter-from,
+  .workspace-aside-leave-to {
+    transform: translateX(0.75rem);
+    opacity: 0;
   }
 }
 :global(.workspace-selection-hint .el-button) {

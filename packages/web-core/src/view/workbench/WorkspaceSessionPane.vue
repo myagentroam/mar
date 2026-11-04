@@ -23,6 +23,7 @@ import ConversationComposer from '../composer/ConversationComposer.vue';
 const props = defineProps<{
   controller: ReturnType<typeof createWorkspaceSessionPaneController>;
   treeSupported?: boolean;
+  asideReady?: boolean;
   treeOpenSessionId?: string | undefined;
   treeSummaries?: readonly NavigationSummary[] | undefined;
   treeStatus?: 'idle' | 'loading' | 'ready' | 'failed';
@@ -106,6 +107,7 @@ onBeforeUnmount(() => {
         :runner="configuration.activeRunner"
         :files-ready="controller.filesReady.value"
         :terminal-ready="controller.terminalReady.value"
+        :aside-ready="asideReady"
         :runner-icon="runnerBrandIcon"
         :session-title="sessionTitle"
         :content-search-ready="controller.filesReady.value"

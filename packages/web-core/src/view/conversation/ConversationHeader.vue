@@ -10,6 +10,7 @@ defineProps<{
   readonly runner: RunnerId;
   readonly filesReady: boolean;
   readonly terminalReady: boolean;
+  readonly asideReady?: boolean;
   readonly contentSearchReady: boolean;
   readonly runnerIcon: (runner: RunnerId) => string;
   readonly sessionTitle: (session: Session) => string;
@@ -88,21 +89,12 @@ async function copySessionId(sessionId: string): Promise<void> {
       </button>
       <button
         class="utility-control"
-        v-if="filesReady"
+        v-if="asideReady || filesReady || terminalReady"
         type="button"
-        :aria-label="translate('generated.conversationHeader.openFiles')"
+        :aria-label="translate('generated.conversationHeader.openAside')"
         @click="emit('openSurface', 'inspector')"
       >
-        {{ translate('generated.conversationHeader.files') }}
-      </button>
-      <button
-        class="utility-control"
-        v-if="terminalReady"
-        type="button"
-        :aria-label="translate('generated.conversationHeader.openTerminal')"
-        @click="emit('openSurface', 'terminal')"
-      >
-        {{ translate('generated.conversationHeader.terminal') }}
+        {{ translate('generated.conversationHeader.more') }}
       </button>
     </div>
   </header>

@@ -72,7 +72,7 @@ test.describe('Aside terminal touch interaction', () => {
       .getByRole('button', { name: /node-1/ })
       .tap();
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).tap();
-    await page.getByRole('button', { name: '打开文件' }).tap();
+    await page.getByRole('button', { name: '打开辅助工作面' }).tap();
     const aside = page.locator('.workbench-aside');
     await aside.getByRole('tab', { name: '终端', exact: true }).tap();
     const dock = page.locator('.terminal-dock');
@@ -87,7 +87,7 @@ test.describe('Aside terminal touch interaction', () => {
     await expect(dock).not.toBeVisible();
     await aside.getByRole('button', { name: '关闭工作区工具' }).tap();
     await expect(page.getByRole('textbox', { name: '输入消息' })).toBeVisible();
-    await page.getByRole('button', { name: '打开文件' }).tap();
+    await page.getByRole('button', { name: '打开辅助工作面' }).tap();
     await aside.getByRole('tab', { name: '终端', exact: true }).tap();
     await expect(dock).toBeVisible();
     expect(creations).toBe(1);
@@ -342,7 +342,7 @@ test('Mobile file upload confirmation remains fully visible with accessible acti
     .click();
   await nodesButton.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('button', { name: '打开文件' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(page.locator('.workspace-inspector')).toBeVisible();
   await page.locator('.explorer-toolbar .workspace-upload-input').setInputFiles({
     name: 'mobile-upload-confirmation.json',
@@ -752,8 +752,12 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .click();
   await expect(page.getByRole('button', { name: '工作', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: '打开会话列表' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开文件' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开终端' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '打开辅助工作面' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '打开文件', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开终端', exact: true })).toHaveCount(0);
+  await page
+    .locator('.conversation-header')
+    .screenshot({ path: test.info().outputPath('mobile-more-entry.png'), animations: 'disabled' });
   await expect(page.locator('.workbench-header')).toHaveCount(0);
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
   await expect(page.locator('.workspace-aside')).not.toBeVisible();
@@ -832,7 +836,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
   await expect(page.locator('.conversation-header h2')).toHaveText('新建会话');
 
-  await page.getByRole('button', { name: '打开文件' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(page.locator('.workspace-aside')).toBeVisible();
   await expect(page.getByRole('tab', { name: '文件', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -985,9 +989,11 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await closeMobileWorkspaceSurface();
   await expect(page.locator('.workspace-aside')).not.toBeVisible();
 
-  await page.getByRole('button', { name: '打开终端' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
+  await page.locator('.workspace-aside').getByRole('tab', { name: '终端', exact: true }).click();
   await expect(page.locator('.terminal-dock')).toBeVisible();
   const terminalDock = page.locator('.terminal-dock');
+  const asidePanel = page.locator('.workspace-aside > .workbench-aside');
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 320, height: 568 },
@@ -995,15 +1001,20 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   ]) {
     await page.setViewportSize(viewport);
     await expect(terminalDock).toBeVisible();
+    await expect
+      .poll(() =>
+        page.locator('.workspace-aside').evaluate((element) => element.getAnimations().length)
+      )
+      .toBe(0);
     const [dockBounds, asideBounds] = await Promise.all([
       terminalDock.boundingBox(),
-      page.locator('.workspace-aside').boundingBox()
+      asidePanel.boundingBox()
     ]);
     expect(dockBounds).not.toBeNull();
     expect(asideBounds).not.toBeNull();
-    const borderLeft = await page
-      .locator('.workspace-aside')
-      .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderLeftWidth));
+    const borderLeft = await asidePanel.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).borderLeftWidth)
+    );
     expect(dockBounds!.x).toBeCloseTo(asideBounds!.x + borderLeft, 0);
     expect(dockBounds!.width).toBeCloseTo(asideBounds!.width - borderLeft, 0);
     expect(dockBounds!.y).toBeGreaterThanOrEqual(asideBounds!.y);
@@ -1049,7 +1060,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await closeMobileWorkspaceSurface();
   await expect(terminalDock).not.toBeVisible();
   expect(mobileTerminalCreated).toBe(true);
-  await page.getByRole('button', { name: '打开终端' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(terminalDock).toBeVisible();
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   expect(terminalLifecycleRequests).toEqual(['create']);
