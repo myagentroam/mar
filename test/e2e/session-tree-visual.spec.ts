@@ -9,6 +9,22 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('session tree active indicator stays static with normal motion preferences', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&activity=1`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  const indicator = trigger.locator('.tree-active-indicator');
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveCSS('animation-name', 'none');
+  expect(await indicator.evaluate((element) => element.getAnimations().length)).toBe(0);
+
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  await expect(trigger).toBeVisible();
+  await expect(indicator).toHaveCount(0);
+});
+
 test('tree dialog keeps one snapshot, orders active branches and closes by keyboard and backdrop', async ({
   page
 }) => {
