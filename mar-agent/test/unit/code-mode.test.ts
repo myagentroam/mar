@@ -630,12 +630,13 @@ describe('QuickJS Code Mode', () => {
     ).toEqual(['direct', 'programmatic']);
     expect(names).toContain('default_direct');
     expect(names).not.toContain('programmatic_only');
-    expect(names).not.toContain('exec');
+    expect(names).toContain('exec');
     expect(names).not.toContain('read');
     expect(names).toContain('apply_patch');
     expect(names).toEqual([
       'skill',
       'tool_search',
+      'exec',
       'exec_wait',
       'code_exec',
       'code_exec_wait',

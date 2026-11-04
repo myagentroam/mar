@@ -248,6 +248,43 @@ describe('Terminal Dock creation ownership', () => {
     }
   });
 
+  it('does not automatically retry a failed manual creation after closing the last terminal', async () => {
+    const f = fixture();
+    try {
+      await f.expand();
+      f.opening.resolve(response({ terminal }));
+      await flushComponent();
+      await trigger(
+        f.view
+          .findAll('button')
+          .find((button) => button.props['aria-label'] === 'Close terminal 1')!,
+        'onClick'
+      );
+      expect(f.view.findAll('terminal-view')).toHaveLength(0);
+      f.fetch.mockImplementation(async (_path, init) =>
+        init?.method === 'POST'
+          ? response(
+              { error: { code: 'TERMINAL_LIMIT_REACHED', message: 'Fixture capacity reached' } },
+              409
+            )
+          : response({ terminals: [] })
+      );
+      for (const attempt of [2, 3]) {
+        await trigger(
+          f.view
+            .findAll('button')
+            .find((button) => button.props['class'] === 'terminal-tab terminal-tab-add')!,
+          'onClick'
+        );
+        await flushComponent();
+        expect(f.requests('POST')).toHaveLength(attempt);
+        expect(f.notice).toHaveBeenCalledTimes(attempt - 1);
+      }
+    } finally {
+      f.view.unmount();
+    }
+  });
+
   it('does not recreate terminals after a released pending request fails', async () => {
     const f = fixture();
     try {

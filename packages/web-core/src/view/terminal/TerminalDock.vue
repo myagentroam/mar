@@ -207,6 +207,7 @@ async function openTerminal(): Promise<void> {
     creating.value
   )
     return;
+  setExpanded(true);
   autoCreateAttempted.value = true;
   const nodeId = props.nodeId;
   const workspaceId = props.workspaceId;
@@ -423,7 +424,7 @@ defineExpose({ release, toggle: toggleTerminal });
       <h2>{{ contextLabel }}</h2>
       <div
         v-if="hasOpened"
-        v-show="expanded"
+        v-show="expanded || terminals.length === 0"
         class="terminal-tabs"
         role="tablist"
         :aria-label="translate('generated.terminalDock.list', { value0: contextLabel })"

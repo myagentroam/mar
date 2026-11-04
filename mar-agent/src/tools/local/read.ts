@@ -7,7 +7,6 @@ import { createReadStream } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { AgentError } from '../../error.js';
-import { toolEventSummary } from '../../runtime/event-projection.js';
 import type { ReadEventData } from '../contracts.js';
 
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
@@ -131,44 +130,63 @@ export function formatReadEventOutput(results: BatchReadResult['results']): {
   data: ReadEventData;
 } {
   let source = '';
-  const projected: ReadEventData['results'] = [];
-  for (const item of results.slice(0, TOOL_EXECUTION_LIMITS.readMaxBatchItems)) {
-    const path = item.path.slice(0, 4096).replace(/[\uD800-\uDBFF]$/u, '');
-    source += `${source ? '\n\n' : ''}${path}\n`;
-    if ('error' in item) {
-      const error = {
-        code: item.error.code.slice(0, 80),
-        message: item.error.message.slice(0, 1000)
+  const items = results
+    .slice(0, TOOL_EXECUTION_LIMITS.readMaxBatchItems)
+    .map((item): { body: string; result: ReadEventData['results'][number] } => {
+      const path = item.path.slice(0, 4096).replace(/[\uD800-\uDBFF]$/u, '');
+      if ('error' in item) {
+        const error = {
+          code: item.error.code.slice(0, 80),
+          message: item.error.message.slice(0, 1000)
+        };
+        return { body: `${error.code}: ${error.message}`, result: { path, error } };
+      }
+      return {
+        body: item.text,
+        result: {
+          path,
+          startLine: item.startLine,
+          ...(item.endLine === undefined ? {} : { endLine: item.endLine }),
+          ...(item.text.length === 0 ? { empty: true as const } : {})
+        }
       };
-      source += `${error.code}: ${error.message}`;
-      projected.push({ path, error });
-    } else {
-      const start = source.length;
-      source += item.text;
-      projected.push({
-        path,
-        startLine: item.startLine,
-        ...(item.endLine === undefined ? {} : { endLine: item.endLine }),
-        ...(item.text.length === 0 ? { empty: true as const } : {}),
-        contentRange: { start, end: source.length }
-      });
-    }
-  }
-  const preview = toolEventSummary(source);
-  const retained = preview.retainedLength;
-  for (const item of projected) {
-    const range = item.contentRange;
-    if (!range) continue;
-    if (range.start > retained || (range.start === retained && range.end > range.start)) {
-      delete item.contentRange;
-    } else {
-      range.end = Math.min(range.end, retained);
-    }
+    });
+  const maximum = AGENT_EXECUTION_POLICY.toolEventSummaryCharacters;
+  const completeLength = items.reduce(
+    (length, { body, result }) => length + result.path.length + 1 + body.length,
+    Math.max(0, items.length - 1) * 2
+  );
+  let truncated = items.length < results.length;
+  const projected: ReadEventData['results'] = [];
+  for (const [index, { body, result }] of items.entries()) {
+    const path = result.path;
+    const separator = index === 0 ? '' : '\n\n';
+    const remaining = items.length - index;
+    const budget =
+      completeLength <= maximum
+        ? maximum - source.length - separator.length
+        : Math.floor(
+            (maximum - source.length - separator.length - 2 * (remaining - 1)) / remaining
+          );
+    // Keep full paths in metadata; long display labels must leave room for each body.
+    const pathBudget = Math.max(Math.floor(budget / 2), budget - body.length - 1);
+    const label =
+      path.length <= pathBudget
+        ? path
+        : `${path.slice(0, pathBudget - 3).replace(/[\uD800-\uDBFF]$/u, '')}...`;
+    const preview = body.slice(0, budget - label.length - 1).replace(/[\uD800-\uDBFF]$/u, '');
+    truncated ||= label.length < path.length || preview.length < body.length;
+    source += `${separator}${label}\n`;
+    const start = source.length;
+    source += preview;
+    if (!result.error) result.contentRange = { start, end: source.length };
+    projected.push(result);
   }
   return {
     source,
-    ...preview,
-    data: { mode: 'batch', results: projected, truncated: preview.truncated }
+    summary: source,
+    truncated,
+    data: { mode: 'batch', results: projected, truncated }
   };
 }
 

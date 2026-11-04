@@ -121,6 +121,7 @@ function close(id: string | number): void {
         <MarIcon name="chevron-left" />
       </button>
       <TabStrip
+        class="workbench-aside-tabs"
         :items="entries"
         :id-prefix="tabPrefix"
         :active-id="activeId"
@@ -130,12 +131,12 @@ function close(id: string | number): void {
         @close="close"
       >
         <template #label="{ item }">
+          <span class="workbench-aside-label">{{ item.label }}</span>
           <span
             v-if="entries.find((entry) => entry.id === item.id)?.active"
             class="workbench-aside-activity"
             aria-hidden="true"
           />
-          <span class="workbench-aside-label">{{ item.label }}</span>
         </template>
       </TabStrip>
     </header>
@@ -211,8 +212,12 @@ function close(id: string | number): void {
   background: var(--mar-bg-page);
 }
 .workbench-aside-header {
+  --mar-tab-strip-active-bg: var(--mar-fill-selection);
+  --mar-tab-strip-item-height: 28px;
+  --mar-tab-strip-close-size: 24px;
   display: flex;
-  flex: 0 0 36px;
+  flex: none;
+  min-height: 32px;
   min-width: 0;
   font-weight: 500;
   border-bottom: 1px solid var(--mar-border-strong);
@@ -228,7 +233,13 @@ function close(id: string | number): void {
   color: var(--mar-text-primary);
   cursor: pointer;
 }
+.workbench-aside-tabs {
+  height: auto;
+  padding-block: 3px 0;
+}
 .workbench-aside-header :deep(.workbench-aside-tab) {
+  gap: 0.35rem;
+  justify-content: center;
   font-size: var(--mar-font-size-meta);
 }
 .workbench-aside-content {
@@ -253,14 +264,16 @@ function close(id: string | number): void {
   width: 6px;
   height: 6px;
   flex: 0 0 6px;
-  margin-inline-end: 5px;
+  align-self: center;
   border-radius: 50%;
   background: var(--mar-color-success-text);
 }
 .workbench-aside-label {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 </style>

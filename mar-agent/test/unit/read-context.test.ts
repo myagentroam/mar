@@ -30,14 +30,14 @@ describe('read markup', () => {
       file('first', '😀 first'),
       file('empty', ''),
       file('long', 'x'.repeat(4000)),
-      file('removed', 'not visible'),
-      file('removed-empty', ''),
+      file('later', 'still visible'),
+      file('later-empty', ''),
       { path: 'missing', error: { code: 'ENOENT', message: 'not found' } }
     ]);
     const first = event.data.results[0]!;
     const empty = event.data.results[1]!;
     const long = event.data.results[2]!;
-    const removed = event.data.results[3]!;
+    const later = event.data.results[3]!;
     expect(event.summary.slice(first.contentRange!.start, first.contentRange!.end)).toBe(
       '😀 first'
     );
@@ -46,13 +46,106 @@ describe('read markup', () => {
       end: empty.contentRange!.start
     });
     expect(event.summary.slice(long.contentRange!.start, long.contentRange!.end)).toMatch(/^x+$/);
-    expect(removed.contentRange).toBeUndefined();
+    expect(event.summary.slice(later.contentRange!.start, later.contentRange!.end)).toBe(
+      'still visible'
+    );
     expect(event.data.results[4]).toMatchObject({ empty: true });
-    expect(event.data.results[4]!.contentRange).toBeUndefined();
+    expect(event.data.results[4]!.contentRange).toEqual({
+      start: event.data.results[4]!.contentRange!.start,
+      end: event.data.results[4]!.contentRange!.start
+    });
     expect(event.data.results[5]).toMatchObject({ error: { code: 'ENOENT' } });
     expect(JSON.stringify(event.data)).not.toContain('😀 first');
     expect(event.truncated).toBe(true);
+    expect(event.source).toBe(event.summary);
+    expect(event.summary.length).toBeLessThanOrEqual(
+      AGENT_EXECUTION_POLICY.toolEventSummaryCharacters
+    );
   });
+  it('reserves text for every read despite long paths, repeated paths and Unicode boundaries', () => {
+    const results = Array.from({ length: 16 }, (_, index) => ({
+      path: `${'目录😀/'.repeat(400)}file-${index % 2}.txt`,
+      content: 'model-only text',
+      text: `file-${index}😀\r\n${'😀'.repeat(2000)}`,
+      encoding: 'utf-8' as const,
+      newline: 'crlf' as const,
+      startLine: index + 1,
+      endLine: index + 2,
+      eof: true,
+      truncated: false
+    }));
+    const original = structuredClone(results);
+    const event = formatReadEventOutput(results);
+    expect(event.source).toBe(event.summary);
+    expect(event.source.isWellFormed()).toBe(true);
+    expect(event.source.length).toBeLessThanOrEqual(
+      AGENT_EXECUTION_POLICY.toolEventSummaryCharacters
+    );
+    expect(event.truncated).toBe(true);
+    expect(event.data.results).toHaveLength(16);
+    for (const [index, result] of event.data.results.entries()) {
+      const range = result.contentRange!;
+      expect(result).toMatchObject({ path: results[index]!.path, startLine: index + 1 });
+      const text = event.summary.slice(range.start, range.end);
+      expect(text.length).toBeGreaterThan(0);
+      expect(text.isWellFormed()).toBe(true);
+      expect(results[index]!.text.startsWith(text)).toBe(true);
+      expect(range.end).toBeLessThanOrEqual(event.summary.length);
+    }
+    expect(results).toEqual(original);
+  });
+  it('does not shorten a long path when its complete body fits the public budget', () => {
+    const path = 'p'.repeat(1500);
+    const event = formatReadEventOutput([
+      {
+        path,
+        text: 'short',
+        content: 'short',
+        encoding: 'utf-8',
+        newline: 'lf',
+        startLine: 1,
+        endLine: 1,
+        eof: true,
+        truncated: false
+      }
+    ]);
+    expect(event.source).toBe(`${path}\nshort`);
+    expect(event.truncated).toBe(false);
+  });
+  it.each([1999, 2000, 2001])(
+    'only clips an uneven batch when its %i characters exceed the public budget',
+    (length) => {
+      const file = (path: string, text: string) => ({
+        path,
+        text,
+        content: text,
+        encoding: 'utf-8' as const,
+        newline: 'lf' as const,
+        startLine: 1,
+        endLine: 1,
+        eof: true,
+        truncated: false
+      });
+      const first = file('first', 'x'.repeat(1500));
+      const last = file('last', 'y'.repeat(length - 1513));
+      const complete = `${first.path}\n${first.text}\n\n${last.path}\n${last.text}`;
+      expect(complete.length).toBe(length);
+      const event = formatReadEventOutput([first, last]);
+      const clipped = length > AGENT_EXECUTION_POLICY.toolEventSummaryCharacters;
+      expect(event.truncated).toBe(clipped);
+      expect(event.data.truncated).toBe(clipped);
+      if (!clipped) expect(event.source).toBe(complete);
+      expect(event.source.length).toBeLessThanOrEqual(
+        AGENT_EXECUTION_POLICY.toolEventSummaryCharacters
+      );
+      for (const [index, original] of [first, last].entries()) {
+        const range = event.data.results[index]!.contentRange!;
+        const preview = event.source.slice(range.start, range.end);
+        expect(preview.length).toBeGreaterThan(0);
+        expect(original.text.startsWith(preview)).toBe(true);
+      }
+    }
+  );
   it('budgets serialized entity expansion without changing structured source data', () => {
     const text = ('<&>'.repeat(1000) + '\n').repeat(30);
     const result = {

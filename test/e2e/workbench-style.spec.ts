@@ -8,6 +8,52 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const width of [1280, 390]) {
+  test(`Closing the last embedded terminal preserves the new-terminal action at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    let opens = 0;
+    const closes: string[] = [];
+    await page.route('**/api/terminals**', (route) => {
+      if (route.request().method() === 'DELETE') {
+        closes.push(new URL(route.request().url()).pathname);
+        return route.fulfill({ json: {} });
+      }
+      if (route.request().method() === 'POST')
+        return route.fulfill({
+          json: {
+            terminal: {
+              id: `terminal-${++opens}`,
+              workspaceId: 'workspace',
+              profileId: 'bash',
+              state: 'RUNNING',
+              latestSequence: 0
+            }
+          }
+        });
+      return route.fulfill({ json: { terminals: [] } });
+    });
+    await page.goto(`${fixture.url}workbench-style.html?embedded-terminal`);
+    const terminal = page.getByRole('region', { name: 'Terminal fixture' });
+    const add = terminal.getByRole('button', { name: 'New terminal', exact: true });
+    await expect(terminal.getByRole('tab', { name: 'Terminal 1', exact: true })).toBeVisible();
+    for (const count of [1, 2]) {
+      await terminal.getByRole('button', { name: 'Close terminal 1', exact: true }).click();
+      await expect(terminal.getByRole('tab')).toHaveCount(0);
+      await expect(add).toBeVisible();
+      await expect(add).toBeEnabled();
+      expect(opens).toBe(count);
+      expect(closes).toHaveLength(count);
+      await terminal.screenshot({ path: test.info().outputPath(`terminal-empty-${width}.png`) });
+      await add.click();
+      await expect(terminal.getByRole('tab', { name: 'Terminal 1', exact: true })).toBeVisible();
+      expect(opens).toBe(count + 1);
+    }
+    await expect(terminal.locator('.admin-terminal-content')).toBeVisible();
+  });
+}
+
 test('Pane model shortcut uses the focused Composer and preserves the draft', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${fixture.url}workbench-style.html?composer=1`);

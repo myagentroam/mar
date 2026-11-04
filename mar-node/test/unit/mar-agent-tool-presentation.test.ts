@@ -12,7 +12,10 @@ import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conve
 import { createWebToolsExtensions } from '../../src/runner/mar-agent/web-tools-extensions.js';
 import { WebToolService } from '../../src/service/web-tool-service.js';
 import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
-import { structuredToolEventData } from '../../../mar-agent/src/tools/output-projection.js';
+import {
+  publicOutputTruncation,
+  structuredToolEventData
+} from '../../../mar-agent/src/tools/output-projection.js';
 import { mergeConversationPayload } from '@myagentroam/web-core/conversation-history';
 import { conversationItemDetail } from '@myagentroam/web-core/conversation-presentation';
 import { readFileDetail } from '../../../packages/web-core/src/util/tool-presentation.js';
@@ -94,6 +97,59 @@ describe('MAR tool presentation projection', () => {
     ) as Record<string, unknown>;
     expect(readFileDetail(replacement, 'src/a.ts')).toBeUndefined();
     expect(replacement.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'replacement' }] });
+  });
+  it('keeps every file preview in a clipped SDK batch, including later repeated paths', () => {
+    const files = [
+      { path: 'code.ts', prefix: 'code-first', startLine: 136 },
+      { path: 'PROJECT_DESIGN.md', prefix: 'project-first', startLine: 80 },
+      { path: 'PROJECT_DESIGN.md', prefix: 'project-second', startLine: 131 },
+      { path: 'TESTING.md', prefix: 'testing-last', startLine: 105 }
+    ];
+    const sdk = formatReadEventOutput(
+      files.map((file) => ({
+        path: file.path,
+        text: `${file.prefix} 😀\r\n${'x'.repeat(4000)}`,
+        content: 'model-only text',
+        encoding: 'utf-8' as const,
+        newline: 'crlf' as const,
+        startLine: file.startLine,
+        endLine: file.startLine + 9,
+        eof: true,
+        truncated: false
+      }))
+    );
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'read-batch',
+        toolName: 'read',
+        input: { reads: files.map(({ path }) => ({ path })) }
+      })
+    );
+    const data = structuredToolEventData('read', sdk.data);
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'read-batch',
+        toolName: 'read',
+        summary: sdk.summary,
+        data,
+        outputTruncation: publicOutputTruncation('read', data)
+      })
+    );
+    const payload = done!.payload as Record<string, unknown>;
+    const presentation = toolPresentationSchema.parse(payload.toolPresentation);
+    expect(presentation.kind).toBe('READ');
+    if (presentation.kind !== 'READ') throw new Error('Expected read presentation');
+    expect(presentation.results).toHaveLength(4);
+    expect(presentation.results?.every((result) => result.contentRange !== undefined)).toBe(true);
+    expect(payload.output).toMatchObject({ truncation: 'SOURCE' });
+    for (const file of files) {
+      const detail = readFileDetail(payload, file.path);
+      expect(detail).toContain(`${file.prefix} 😀\r\n`);
+      expect(detail).not.toContain('model-only text');
+    }
   });
   it('preserves a source-owned sources-only search fact', () => {
     const normalizer = new MarAgentConversationNormalizer();
