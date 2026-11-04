@@ -259,13 +259,15 @@ export class SessionCatalogService {
     const fill = (candidates: readonly RegisteredSession[]) => {
       for (const record of candidates) {
         if (selected.size >= query.limit) break;
+        const remaining = query.limit - selected.size;
         const path: RegisteredSession[] = [];
         let current: RegisteredSession | undefined = record;
         while (current !== undefined && !selected.has(current.id)) {
           path.push(current);
+          if (path.length > remaining) break;
           current = byId.get(current.metadata.parentSessionId ?? '');
         }
-        if (path.length > query.limit - selected.size) continue;
+        if (path.length > remaining) continue;
         for (const ancestor of path.reverse()) selected.set(ancestor.id, ancestor);
       }
     };
