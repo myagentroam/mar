@@ -155,6 +155,19 @@ export function readToolOutput(payload: Record<string, unknown>) {
   return undefined;
 }
 
+export function toolPresentationReadRange(payload: unknown, path: string): string {
+  const value = toolPresentation(payload);
+  if (value?.kind !== 'READ') return '';
+  return (value.results ?? [])
+    .filter((item) => item.path === path && item.startLine !== undefined)
+    .map((item) =>
+      item.endLine === undefined || item.endLine === item.startLine
+        ? String(item.startLine)
+        : `${item.startLine}–${item.endLine}`
+    )
+    .join(', ');
+}
+
 /** Read only the public output intervals owned by the selected file. */
 export function readFileDetail(payload: Record<string, unknown>, path: string): string | undefined {
   const presentation = toolPresentation(payload);
@@ -167,24 +180,17 @@ export function readFileDetail(payload: Record<string, unknown>, path: string): 
     !output?.truncation
   )
     return undefined;
-  const sections = results.map((item) => {
-    const range =
-      item.startLine === undefined
-        ? ''
-        : item.endLine === undefined || item.endLine === item.startLine
-          ? String(item.startLine)
-          : `${item.startLine}–${item.endLine}`;
-    const header = [item.path, range].filter(Boolean).join(' · ');
-    if (item.error) return `${header}\n${item.error.code}: ${item.error.message}`;
-    if (item.empty) return `${header}\n${translate('toolPresentation.detail.empty')}`;
-    const block = output?.blocks.find((entry) => entry.channel === item.contentRange?.channel);
-    if (!item.contentRange || !block)
-      return output?.truncation
-        ? header
-        : `${header}\n${translate('toolPresentation.detail.truncated')}`;
-    const content = block.text.slice(item.contentRange.start, item.contentRange.end);
-    return `${header}\n${content || translate('toolPresentation.detail.empty')}`;
-  });
+  const sections = results
+    .map((item) => {
+      if (item.error) return `${item.error.code}: ${item.error.message}`;
+      if (item.empty) return translate('toolPresentation.detail.empty');
+      const block = output?.blocks.find((entry) => entry.channel === item.contentRange?.channel);
+      if (!item.contentRange || !block)
+        return output?.truncation ? '' : translate('toolPresentation.detail.truncated');
+      const content = block.text.slice(item.contentRange.start, item.contentRange.end);
+      return content || translate('toolPresentation.detail.empty');
+    })
+    .filter((section) => section.length > 0);
   if (output?.truncation === 'HEAD')
     sections.unshift(translate('toolPresentation.detail.truncated'));
   else if (output?.truncation === 'SOURCE')

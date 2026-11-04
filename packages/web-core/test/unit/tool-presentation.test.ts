@@ -11,6 +11,7 @@ import {
 import {
   toolPresentationDetails,
   readFileDetail,
+  toolPresentationReadRange,
   detailOnlyToolText,
   toolPresentationSources,
   toolPresentationStatus
@@ -29,6 +30,40 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it('keeps actual Read ranges in the file heading and only raw content in the detail', () => {
+    const value = {
+      output: { blocks: [{ channel: 'TEXT', text: '  first\r\nsecond\r\n' }] },
+      toolPresentation: {
+        kind: 'READ',
+        paths: ['file.ts'],
+        results: [
+          {
+            path: 'file.ts',
+            startLine: 3,
+            endLine: 4,
+            contentRange: { channel: 'TEXT', start: 0, end: 9 }
+          },
+          { path: 'other.ts', startLine: 10, endLine: 20 },
+          {
+            path: 'file.ts',
+            startLine: 8,
+            endLine: 8,
+            contentRange: { channel: 'TEXT', start: 9, end: 17 }
+          }
+        ]
+      }
+    };
+    const original = structuredClone(value);
+    expect(toolPresentationReadRange(value, 'file.ts')).toBe('3–4, 8');
+    expect(readFileDetail(value, 'file.ts')).toBe('  first\r\n\n\nsecond\r\n');
+    expect(
+      toolPresentationReadRange({ toolPresentation: { kind: 'READ', paths: ['old.ts'] } }, 'old.ts')
+    ).toBe('');
+    expect(
+      toolPresentationReadRange({ inputSummary: '{"path":"file.ts","offset":3}' }, 'file.ts')
+    ).toBe('');
+    expect(value).toEqual(original);
+  });
   it.each([
     { kind: 'WEB_SEARCH', query: 'documentation' },
     { kind: 'WEB_FETCH', requestUrl: 'https://example.test' },
@@ -63,8 +98,8 @@ describe('independent tool presentation', () => {
       };
       expect(readFileDetail(value, 'file.ts')).toBe(
         truncation === 'HEAD'
-          ? '...Truncated\n\nfile.ts\nretained content'
-          : 'file.ts\nretained content\n\n...Truncated'
+          ? '...Truncated\n\nretained content'
+          : 'retained content\n\n...Truncated'
       );
     }
   );
@@ -84,7 +119,7 @@ describe('independent tool presentation', () => {
         'clipped.ts'
       );
       expect(detail?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
-      expect(detail).toContain('clipped.ts');
+      expect(detail).not.toContain('clipped.ts');
       expect(detail).not.toContain('No output');
       expect(detail).not.toContain('another file');
     }

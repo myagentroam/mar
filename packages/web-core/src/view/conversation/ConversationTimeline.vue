@@ -817,11 +817,16 @@ function stepDuration(item: ConversationItem): string | undefined {
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
-                <span class="conversation-tool-preview">{{
-                  entry.path ||
-                  conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
-                  conversationItemLabel(entry.item.kind, entry.item.payload)
-                }}</span>
+                <span class="conversation-tool-preview">
+                  {{
+                    entry.path ||
+                    conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
+                    conversationItemLabel(entry.item.kind, entry.item.payload)
+                  }}
+                  <span v-if="entry.range" class="conversation-read-range">
+                    · {{ entry.range }}</span
+                  >
+                </span>
                 <span class="conversation-record-meta">{{
                   toolPresentationStatus(entry.item.status)
                 }}</span>
@@ -1997,6 +2002,12 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
+.conversation-read-range {
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 .conversation-item .conversation-command-output,
 .conversation-item .conversation-record-detail {
   margin: 0.5rem 0 0 0.5rem;
@@ -2018,6 +2029,11 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-tool-sources > li + li {
   margin-top: 0.75rem;
+}
+
+.conversation-item .conversation-tool-sources p {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .conversation-tool-source-host {

@@ -59,8 +59,10 @@ test('read file details show only the associated raw file text and real range', 
   await read.locator('> summary').click();
   await read.locator('.conversation-tool-detail > summary').click();
   const detail = read.locator('.conversation-detail-text');
-  await expect(detail).toContainText('3–4');
-  await expect(detail).toContainText('first file');
+  await expect(read.locator('.conversation-tool-detail > summary')).toContainText('3–4');
+  await expect(detail).toHaveText('  first file\r\nsecond line\r\n', { useInnerText: false });
+  await expect(detail).not.toContainText('3–4');
+  await expect(detail).not.toContainText('/fixture/example.ts');
   await expect(detail).not.toContainText('1: export const result');
 });
 
@@ -77,7 +79,7 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     const text = await read.locator('.conversation-detail-text').textContent();
     expect(text?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
     if (truncation === 'HEAD') expect(text).toMatch(/^\.\.\.Truncated[\s\S]+second line\s*$/u);
-    else expect(text).toMatch(/^\/fixture\/example\.ts[\s\S]+\.\.\.Truncated$/u);
+    else expect(text).toMatch(/^  first file[\s\S]+\.\.\.Truncated$/u);
   });
 }
 
@@ -384,12 +386,21 @@ for (const width of [1280, 390]) {
           expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
           background: getComputedStyle(element.parentElement!).backgroundColor
         }));
+        expect(thinkingStyle.fontSize).toBe('12px');
         expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
         const read = page.locator('[data-tool-presentation="READ"]');
         await read.locator(':scope > summary').click();
         await read.locator('.conversation-tool-detail > summary').click();
         for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
           await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
+        await expect(page.locator('.conversation-tool-sources p')).toHaveCSS(
+          'font-size',
+          thinkingStyle.fontSize
+        );
+        await expect(page.locator('.conversation-tool-sources a')).toHaveCSS(
+          'font-size',
+          thinkingStyle.fontSize
+        );
         const subagent = page.locator('.subagent-group');
         await subagent.locator('.conversation-record-group > summary').click();
         await subagent.locator('.conversation-tool-detail > summary').click();

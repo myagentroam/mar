@@ -71,7 +71,8 @@ for (const [width, theme] of [
     expect(styles.titleWeight).toBe('400');
     expect(styles.bodyWeight).toBe('400');
     expect(styles.titleColor).not.toBe(styles.bodyColor);
-    expect(styles.titleSize).toBeLessThan(styles.bodySize);
+    expect(styles.titleSize).toBeLessThanOrEqual(styles.bodySize);
+    expect(styles.bodySize).toBe(12);
     await start.locator('.tool-detail-copy').click();
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
