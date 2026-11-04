@@ -10,6 +10,7 @@ import {
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { errorMessage } from '../../util/error-presentation.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
 const props = defineProps<{
   readonly root: WorkspaceFileTreeNode;
@@ -170,13 +171,44 @@ function updateViewport(): void {
 }
 
 let resizeObserver: ResizeObserver | undefined;
+let unregisterMenuShortcut: (() => void) | undefined;
 onMounted(() => {
   updateViewport();
   resizeObserver = new ResizeObserver(updateViewport);
   if (container.value !== undefined) resizeObserver.observe(container.value);
+  unregisterMenuShortcut = consoleKeyboardShortcutService.register({
+    command: 'workspaceFileTree.dismissMenu',
+    scope: 'overlay',
+    priority: 100,
+    modalOwner: () => container.value,
+    keys: [{ key: 'Escape' }],
+    when: (event) => {
+      const trigger = container.value?.querySelector<HTMLButtonElement>(
+        '.file-tree-more[aria-expanded="true"]'
+      );
+      if (!actionMenuVisible.value || !trigger || !(event.target instanceof Node)) return false;
+      const menu = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+      return (
+        trigger.contains(event.target) ||
+        menu?.contains(event.target) === true ||
+        (event.target instanceof Element &&
+          event.target.closest('.file-tree-row-shell')?.contains(trigger) === true)
+      );
+    },
+    execute: () => {
+      const trigger = container.value?.querySelector<HTMLButtonElement>(
+        '.file-tree-more[aria-expanded="true"]'
+      );
+      if (!trigger) return 'IGNORED';
+      trigger.click();
+      trigger.focus({ preventScroll: true });
+      return 'HANDLED';
+    }
+  });
 });
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
+  unregisterMenuShortcut?.();
   cancelDirectoryHoverExpansion();
 });
 watch(
@@ -451,6 +483,7 @@ defineExpose({ reveal });
               v-if="nodeActionsVisible(row.node.path)"
               trigger="click"
               placement="bottom-start"
+              :persistent="false"
               :popper-options="nodeActionPopperOptions"
               @command="action($event, row.node)"
               @visible-change="setActionMenuVisible($event, row.node.path)"

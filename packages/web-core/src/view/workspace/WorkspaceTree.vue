@@ -489,6 +489,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                 <span
                   :class="[
                     'state-dot',
+                    'mar-icon-status-badge',
                     result.node.connected && !result.node.disabled ? 'ready' : 'offline'
                   ]"
                 />
@@ -1117,12 +1118,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .state-dot {
-  position: absolute;
   right: -2px;
   bottom: -1px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
   background: var(--mar-text-faint);
 }
 
@@ -1238,6 +1235,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-row {
+  --mar-icon-status-surface: var(--mar-bg-panel);
   display: grid;
   min-width: 0;
   grid-template-columns: var(--workspace-tree-control) minmax(0, 1fr);
@@ -1264,6 +1262,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .tree-node-row.drop-target,
 .tree-node-row.drop-target:hover,
 .tree-node-row.drop-target:focus-within {
+  --mar-icon-status-surface: var(--mar-color-brand-selected);
   background: var(--mar-color-brand-selected);
 }
 
@@ -1279,6 +1278,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-row:hover,
 .tree-node-row:focus-within {
+  --mar-icon-status-surface: var(--mar-fill-row-hover);
   background: var(--mar-fill-row-hover);
 }
 
@@ -1316,6 +1316,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-row.selected {
+  --mar-icon-status-surface: var(--mar-fill-selection);
   background: var(--mar-fill-selection);
 }
 

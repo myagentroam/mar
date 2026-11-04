@@ -64,7 +64,6 @@ function tabSessionFixture(sessionTabLimit = 1) {
     aside,
     canOpenAside: () => true,
     saveAside: vi.fn(),
-    focusMain: vi.fn(),
     workspaceTarget: target,
     selectedSessionId,
     selectedRunId: ref(),
@@ -195,18 +194,20 @@ describe('Synchronous Session handoff', () => {
     expect(fixture.options.request).toHaveBeenCalledTimes(1);
     expect(vi.mocked(fixture.options.request).mock.calls[0]![0]).toContain('/session-next?');
   });
-  it('deduplicates Main and Aside and promotes Aside through the common Main selection path', async () => {
+  it('opens the same session independently in Main and Aside', async () => {
     const f = tabSessionFixture(3);
     f.options.selectedSessionId.value = 'main';
     expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
-    expect(f.options.focusMain).toHaveBeenCalledOnce();
-    expect(f.aside.current(f.target.value).sessions).toEqual([]);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main']);
     expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'other' })).toBe(true);
     expect(f.service.openAsideSession({ ...f.target.value, sessionId: f.session.id })).toBe(true);
-    expect(f.aside.current(f.target.value).sessions).toEqual(['other', f.session.id]);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main', 'other', f.session.id]);
     const opening = f.service.selectSession(f.session.id);
-    expect(f.aside.current(f.target.value).sessions).toEqual(['other']);
-    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main', 'other', f.session.id]);
+    expect(f.aside.current(f.target.value).active).toEqual({
+      kind: 'session',
+      sessionId: f.session.id
+    });
     await opening;
     expect(f.options.selectedSessionId.value).toBe(f.session.id);
   });
@@ -223,9 +224,9 @@ describe('Synchronous Session handoff', () => {
     expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
     expect(f.options.selectedSessionId.value).toBe('main');
     expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
-    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main']);
     f.service.removeMissingAside(f.target.value, ['a']);
-    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main']);
   });
   it('does not mutate Aside when capability is absent, and does not reload the active target', () => {
     const f = tabSessionFixture();
@@ -238,7 +239,7 @@ describe('Synchronous Session handoff', () => {
     expect(f.options.saveAside).toHaveBeenCalledOnce();
     expect(f.options.request).not.toHaveBeenCalled();
   });
-  it('rebinds an Aside identity only in its captured Workspace and deduplicates Main', () => {
+  it('rebinds an Aside identity only in its captured Workspace, including the Main target', () => {
     const f = tabSessionFixture();
     f.options.selectedSessionId.value = 'main';
     const old = { ...f.target.value, sessionId: 'child' };
@@ -252,8 +253,7 @@ describe('Synchronous Session handoff', () => {
     expect(f.service.replaceAsideSession(old, 'stale')).toBe(false);
     const next = { ...f.target.value, sessionId: 'child-new' };
     expect(f.service.replaceAsideSession(next, 'main')).toBe(true);
-    expect(f.aside.current(f.target.value).sessions).toEqual([]);
-    expect(f.options.focusMain).toHaveBeenCalled();
+    expect(f.aside.current(f.target.value).sessions).toEqual(['main']);
   });
   it.each(['workspace', 'node'] as const)(
     'ignores stale Aside intents after switching %s even when session ids match',
@@ -1094,7 +1094,6 @@ describe('Shared session selection', () => {
       aside: createWorkbenchAsideService(),
       canOpenAside: () => true,
       saveAside: vi.fn(),
-      focusMain: vi.fn(),
       workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
       selectedSessionId: ref(),
       selectedRunId: ref(),
@@ -1204,7 +1203,6 @@ describe('Shared session selection', () => {
       aside: createWorkbenchAsideService(),
       canOpenAside: () => true,
       saveAside: vi.fn(),
-      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' },
       selectedRunId: { value: undefined },
@@ -1315,7 +1313,6 @@ describe('Shared session selection', () => {
       aside: createWorkbenchAsideService(),
       canOpenAside: () => true,
       saveAside: vi.fn(),
-      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },
@@ -1398,7 +1395,6 @@ describe('Shared session selection', () => {
       aside: createWorkbenchAsideService(),
       canOpenAside: () => true,
       saveAside: vi.fn(),
-      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },
@@ -1454,7 +1450,6 @@ describe('Shared session selection', () => {
       aside: createWorkbenchAsideService(),
       canOpenAside: () => true,
       saveAside: vi.fn(),
-      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   fulfillMockSessionWatch,
   fulfillMockWorkspaceWatch,
+  emitMockSessionEvent,
   mockConsoleApi,
   mockEmptyWorkspaceFiles,
   json
@@ -136,7 +137,8 @@ test('Quick Open keyboard selection navigates to a session through the shared sh
 async function prepareDescendantTree(
   page: Page,
   parentIndexes?: readonly number[],
-  filesAvailable = true
+  filesAvailable = true,
+  beforeNavigation?: () => Promise<void>
 ) {
   await mockConsoleApi(
     page,
@@ -213,8 +215,9 @@ async function prepareDescendantTree(
         : { runs: [] }
     )
   );
-  await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
-    fulfillMockWorkspaceWatch(
+  await page.route(/\/api\/workspaces\/workspace-1\/watch$/, async (route) => {
+    await beforeNavigation?.();
+    return fulfillMockWorkspaceWatch(
       page,
       route,
       undefined,
@@ -253,8 +256,8 @@ async function prepareDescendantTree(
           missingSessionIds: []
         };
       }
-    )
-  );
+    );
+  });
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '工作', exact: true }).click();
@@ -272,6 +275,122 @@ async function prepareDescendantTree(
   await expect(page.getByText('正文 tree-1', { exact: true })).toBeVisible();
   return { queries, legacyTreeReads: () => legacyTreeReads };
 }
+
+test('tree and node icon badges retain surface isolation on desktop and mobile', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await prepareDescendantTree(page);
+  const treeButton = page.getByRole('button', { name: '查看会话树' }).first();
+  const treeDot = treeButton.locator('.tree-active-indicator');
+  const nodeButton = page.locator('.workspace-tree').getByRole('button', { name: /node-1/ });
+  const nodeDot = nodeButton.locator('.state-dot');
+  await expect(treeDot).toBeVisible();
+  await expect(nodeDot).toHaveClass(/ready/);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 768) await expect(page.locator('.workspace-aside')).toBeHidden();
+    for (const theme of ['daylight', 'vscode-dark-2026']) {
+      await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
+      await page.mouse.move(width - 10, 850);
+      for (const [button, dot] of [
+        [treeButton, treeDot],
+        [nodeButton, nodeDot]
+      ] as const) {
+        if (width < 768 && button === nodeButton)
+          await page.getByRole('button', { name: '工作', exact: true }).click();
+        const geometry = await button.evaluate(
+          (element, dotSelector) => {
+            const icon = element.querySelector('svg')!.getBoundingClientRect();
+            const dot = element.querySelector(dotSelector)!;
+            const bounds = dot.getBoundingClientRect();
+            return {
+              icon: { x: icon.x, y: icon.y, width: icon.width, height: icon.height },
+              dot: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+              shadow: getComputedStyle(dot).boxShadow,
+              animation: getComputedStyle(dot).animationName,
+              hitElement: document
+                .elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+                ?.outerHTML.slice(0, 300),
+              hit: element.contains(
+                document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+              )
+            };
+          },
+          button === treeButton ? '.tree-active-indicator' : '.state-dot'
+        );
+        expect(geometry.dot.width).toBe(6);
+        expect(geometry.dot.height).toBe(6);
+        expect(geometry.dot.x + 3).toBeGreaterThan(geometry.icon.x + geometry.icon.width / 2);
+        expect(geometry.dot.y + 3).toBeGreaterThan(geometry.icon.y + geometry.icon.height / 2);
+        expect(geometry.shadow).toContain('0px 0px 0px 1.5px');
+        if (button === treeButton)
+          expect(geometry.hit, `${width}/${theme}: ${geometry.hitElement}`).toBe(true);
+        if (button === nodeButton) expect(geometry.animation).toBe('none');
+      }
+      if (width >= 768) {
+        await treeButton.hover();
+        const treeHover = await treeDot.evaluate((element) => ({
+          shadow: getComputedStyle(element).boxShadow,
+          buttonBackground: getComputedStyle(element.parentElement!).backgroundColor,
+          surface: getComputedStyle(element.closest('.conversation-panel')!).backgroundColor
+        }));
+        expect(treeHover.buttonBackground).toBe('rgba(0, 0, 0, 0)');
+        expect(treeHover.shadow).toContain(treeHover.surface);
+      }
+      await nodeButton.hover();
+      const row = nodeButton.locator('..');
+      const hover = await nodeDot.evaluate((element) => ({
+        shadow: getComputedStyle(element).boxShadow,
+        background: getComputedStyle(element.closest('.tree-node-row')!).backgroundColor
+      }));
+      expect(hover.shadow).toContain(hover.background);
+      await row.evaluate((element) => element.classList.add('selected'));
+      const selected = await nodeDot.evaluate((element) => ({
+        shadow: getComputedStyle(element).boxShadow,
+        background: getComputedStyle(element.closest('.tree-node-row')!).backgroundColor
+      }));
+      expect(selected.shadow).toContain(selected.background);
+      await row.evaluate((element) => element.classList.remove('selected'));
+      const spacing = await nodeButton.evaluate((element) => {
+        const badge = element.querySelector('.state-dot')!.getBoundingClientRect();
+        const label = element
+          .querySelector('.tree-node-content > span:last-child')!
+          .getBoundingClientRect();
+        return label.left - badge.right;
+      });
+      expect(spacing).toBeGreaterThanOrEqual(1.5);
+      await nodeButton.screenshot({
+        path: test.info().outputPath(`node-badge-${width}-${theme}.png`)
+      });
+      if (width < 768) {
+        await page.getByRole('button', { name: '工作', exact: true }).click();
+        await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
+        await expect(page.locator('.workspace-aside')).toBeHidden();
+      }
+      await treeButton.screenshot({
+        path: test.info().outputPath(`tree-badge-${width}-${theme}.png`)
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const expandSidebar = page.getByRole('button', { name: '展开侧栏' });
+  if (await expandSidebar.isVisible()) await expandSidebar.click();
+  await page.evaluate(() => {
+    (
+      window as unknown as {
+        __consoleMockWorkbenchWebSocket: {
+          emitNodeConnection(id: string, connected: boolean): void;
+        };
+      }
+    ).__consoleMockWorkbenchWebSocket.emitNodeConnection('node-1', false);
+  });
+  if (!(await nodeButton.isVisible())) await expandSidebar.click();
+  await expect(nodeDot).toHaveClass(/offline/);
+  await expect(nodeDot).toHaveCSS('animation-name', 'none');
+  await expect(nodeButton).toHaveAttribute('aria-label', /node-1/);
+});
 
 test('live descendant tree uses Workspace Watch and routes nodes to Aside or Main', async ({
   page
@@ -321,6 +440,181 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await expect(page.getByText('正文 tree-3', { exact: true })).toBeVisible();
   await expect(tree).toHaveCount(0);
   expect(legacyTreeReads()).toBe(0);
+});
+
+test('same session stays independent in Main and Aside without a title flash during tree navigation', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release: (() => void) | undefined;
+  let entered: (() => void) | undefined;
+  let pending: Promise<void> | undefined;
+  await prepareDescendantTree(page, undefined, true, async () => {
+    const gate = pending;
+    if (gate !== undefined) {
+      pending = undefined;
+      entered?.();
+      await gate;
+    }
+  });
+  const watches: Array<{ method: string; sessionId: string; position?: string; mode?: string }> =
+    [];
+  await page.route(/\/api\/agent-sessions\/tree-[123]\/watch(?:\?.*)?$/, (route) => {
+    const body = route.request().postDataJSON() as { position?: string; mode?: string };
+    watches.push({
+      method: route.request().method(),
+      sessionId: new URL(route.request().url()).pathname.split('/').at(-2)!,
+      ...body
+    });
+    return route.fallback();
+  });
+  const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  await main.getByRole('button', { name: '查看会话树' }).click();
+  const tree = page.locator('.session-tree-popup');
+  await tree.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+  const aside = page.locator('.workspace-aside');
+  await expect(aside.getByText('正文 tree-2', { exact: true })).toBeVisible();
+  const tab = aside.getByRole('tab', { name: '树会话 2', exact: true });
+  await expect(tab).toBeVisible();
+  await page.evaluate(() => {
+    const labels: string[] = [];
+    (window as unknown as { __asideTitleChanges: string[] }).__asideTitleChanges = labels;
+    new MutationObserver(() => {
+      const label = document.querySelector('.workspace-aside .workbench-aside-label');
+      if (label?.textContent) labels.push(label.textContent);
+    }).observe(document.querySelector('.workspace-aside')!, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  });
+  const requested = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await main.getByRole('button', { name: '查看会话树' }).click();
+  await requested;
+  await expect(tab).toBeVisible();
+  release!();
+  await expect(tree.getByRole('button', { name: '树会话 2, 空闲', exact: true })).toBeVisible();
+  await tree.getByRole('button', { name: '会话操作' }).first().click();
+  await page.getByRole('menuitem', { name: '在主工作面打开' }).click();
+  await expect(page.locator('.conversation-panel').filter({ hasText: '正文 tree-2' })).toHaveCount(
+    2
+  );
+  await expect
+    .poll(() =>
+      watches
+        .filter(
+          (watch) =>
+            watch.method === 'POST' && watch.sessionId === 'tree-2' && watch.mode === 'initial'
+        )
+        .map((watch) => watch.position ?? 'primary')
+        .sort()
+    )
+    .toEqual(['primary', 'secondary']);
+  await expect(tab).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __asideTitleChanges: string[] }).__asideTitleChanges
+    )
+  ).not.toContain('tree-2');
+  const mainSame = page.locator('.conversation-panel').filter({ hasText: '正文 tree-2' }).first();
+  const draft = mainSame.getByRole('textbox', { name: '输入消息' });
+  await draft.fill('shared pane draft');
+  await expect(aside.getByRole('textbox', { name: '输入消息' })).toHaveValue('shared pane draft');
+  await aside.getByRole('button', { name: /关闭.*树会话 2/ }).click();
+  await expect
+    .poll(() =>
+      watches.some(
+        (watch) =>
+          watch.method === 'DELETE' &&
+          watch.sessionId === 'tree-2' &&
+          watch.position === 'secondary'
+      )
+    )
+    .toBe(true);
+  await expect(aside.getByText('正文 tree-2', { exact: true })).toHaveCount(0);
+  await expect(
+    page.locator('.conversation-panel').getByText('正文 tree-2', { exact: true })
+  ).toBeVisible();
+  await expect(draft).toHaveValue('shared pane draft');
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'tree-2',
+    runId: 'run-1',
+    item: {
+      itemId: 'post-close-message',
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      segmentId: 'turn-tree-2:segment:0',
+      segmentIndex: 0,
+      payload: { text: 'Main remains live', format: 'markdown', model: null }
+    }
+  });
+  await expect(mainSame.getByText('Main remains live', { exact: true })).toBeVisible();
+});
+
+test('samples mobile Aside open and close with a long mounted conversation', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 844 });
+  await prepareDescendantTree(page);
+  const session = { id: 'tree-2', workspaceId: 'workspace-1' };
+  const text = Array.from(
+    { length: 120 },
+    (_, index) => `Long conversation paragraph ${index}: ${'content '.repeat(30)}`
+  ).join('\n\n');
+  await page.route(/\/api\/agent-sessions\/tree-2\/watch(?:\?.*)?$/, (route) =>
+    route.request().method() === 'DELETE'
+      ? json(route, { released: true })
+      : fulfillMockSessionWatch(page, route, session, sessionWatchSnapshot(session, text))
+  );
+  await page.getByRole('button', { name: '查看会话树' }).click();
+  await page
+    .locator('.session-tree-popup')
+    .getByRole('button', { name: '树会话 2, 空闲', exact: true })
+    .click();
+  await expect(
+    page.locator('.workspace-aside').getByText(/Long conversation paragraph 119/)
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  const aside = page.locator('.workspace-aside');
+  await expect(aside).toBeHidden();
+  await main.getByRole('button', { name: '打开辅助工作面' }).click();
+  await expect(aside).toBeVisible();
+  await page.evaluate(() => {
+    const state = { frames: [] as number[], longTasks: [] as number[], last: 0 };
+    (window as unknown as { __asidePerformance: typeof state }).__asidePerformance = state;
+    new PerformanceObserver((list) =>
+      state.longTasks.push(...list.getEntries().map((entry) => entry.duration))
+    ).observe({ type: 'longtask' });
+    const frame = (time: number) => {
+      if (state.last) state.frames.push(time - state.last);
+      state.last = time;
+      if (state.frames.length < 120) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  for (let index = 0; index < 3; index++) {
+    await aside.getByRole('button', { name: '关闭工作区工具' }).click();
+    await expect(aside).toBeHidden();
+    await main.getByRole('button', { name: '打开辅助工作面' }).click();
+    await expect(aside.getByText(/Long conversation paragraph 119/)).toBeVisible();
+  }
+  await page.waitForTimeout(250);
+  const samples = await page.evaluate(
+    () =>
+      (window as unknown as { __asidePerformance: { frames: number[]; longTasks: number[] } })
+        .__asidePerformance
+  );
+  expect(samples.frames.length).toBeGreaterThan(5);
+  await test.info().attach('aside-mobile-frame-sample.json', {
+    body: JSON.stringify(samples),
+    contentType: 'application/json'
+  });
 });
 
 for (const width of [390, 1280]) {

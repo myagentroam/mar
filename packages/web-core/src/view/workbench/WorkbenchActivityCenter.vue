@@ -189,7 +189,11 @@ onBeforeUnmount(() => {
           aria-hidden="true"
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
-        <span v-if="runningCount > 0" class="activity-entry-running" aria-hidden="true" />
+        <span
+          v-if="runningCount > 0"
+          class="activity-entry-running mar-icon-status-badge"
+          aria-hidden="true"
+        />
       </button>
     </span>
     <ElPopover
@@ -309,15 +313,9 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .activity-entry-running {
-  position: absolute;
+  --mar-icon-status-surface: var(--activity-marker-surface);
   bottom: calc(50% - 13px);
   right: calc(50% - 13px);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--el-color-success);
-  box-shadow: 0 0 0 1.5px var(--activity-marker-surface);
-  pointer-events: none;
 }
 .workbench-activity-center.mobile-mode {
   width: 36px;

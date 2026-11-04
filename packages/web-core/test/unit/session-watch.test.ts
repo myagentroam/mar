@@ -114,6 +114,29 @@ describe('Web Session Watch Lifecycle', () => {
       const projected = { nodeId: 'node-1', ...update };
       expect(primaryEvents).not.toHaveBeenCalledWith(projected);
       expect(secondaryEvents).toHaveBeenCalledWith(projected);
+      coordinator.stopSecondarySession();
+      const next = {
+        ...update,
+        sequence: 3,
+        payload: { sessionId: 'session-1', queue: { version: 3 } }
+      };
+      expect(
+        coordinator.handleEvent({
+          ...base,
+          type: 'watch.session.event',
+          watchId: primaryId,
+          event: next
+        })
+      ).toBe(true);
+      expect(primaryEvents).toHaveBeenCalledWith({ nodeId: 'node-1', ...next });
+      expect(
+        coordinator.handleEvent({
+          ...base,
+          type: 'watch.session.event',
+          watchId: secondaryId,
+          event: next
+        })
+      ).toBe(false);
     } finally {
       coordinator.dispose();
     }

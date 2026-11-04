@@ -132,5 +132,28 @@ export function createSessionNavigationProjection(
       : undefined;
   }
 
-  return { snapshot, accept, current };
+  function knownSessions(workspace: WorkspaceTarget | undefined, sessionIds: readonly string[]) {
+    const value = snapshot.value;
+    if (
+      workspace === undefined ||
+      value === undefined ||
+      workspace.nodeId !== value.nodeId ||
+      workspace.workspaceId !== value.workspaceId
+    )
+      return [];
+    const candidates = [
+      ...value.sessions,
+      ...(value.tree?.parent === null || value.tree?.parent === undefined
+        ? []
+        : [value.tree.parent]),
+      ...(value.tree?.nodes ?? [])
+    ];
+    return sessionIds.flatMap((id) => {
+      if (value.missingSessionIds.includes(id)) return [];
+      const found = candidates.find((item) => item.id === id);
+      return found === undefined ? [] : [found];
+    });
+  }
+
+  return { snapshot, accept, current, knownSessions };
 }

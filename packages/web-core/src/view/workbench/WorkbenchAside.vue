@@ -134,9 +134,10 @@ function close(id: string | number): void {
           <span class="workbench-aside-label">{{ item.label }}</span>
           <span
             v-if="entries.find((entry) => entry.id === item.id)?.active"
-            class="workbench-aside-activity"
+            class="workbench-aside-activity session-activity managed_active"
             aria-hidden="true"
-          />
+            ><i />
+          </span>
         </template>
       </TabStrip>
     </header>
@@ -225,8 +226,8 @@ function close(id: string | number): void {
 }
 .workbench-aside-back {
   display: grid;
-  width: 40px;
-  flex: 0 0 40px;
+  width: 30px;
+  flex: 0 0 30px;
   place-items: center;
   border: 0;
   background: transparent;
@@ -259,14 +260,6 @@ function close(id: string | number): void {
 }
 .workbench-aside-resize {
   inset-inline-start: -4px;
-}
-.workbench-aside-activity {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  align-self: center;
-  border-radius: 50%;
-  background: var(--mar-color-success-text);
 }
 .workbench-aside-label {
   flex: 1;
