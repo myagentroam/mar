@@ -49,32 +49,49 @@ describe('independent tool presentation', () => {
     expect(detail).toBe(`${text}\n\n[Truncated]`);
   });
 
-  it('keeps actual Read ranges in the file heading and only raw content in the detail', () => {
+  it('associates every Read range with its original content, empty result, or error', () => {
+    localePreferenceService().setLocale('en-US');
+    const first = '  first\r\n\r\nsecond\r\n';
+    const other = 'other path output';
     const value = {
-      output: { blocks: [{ channel: 'TEXT', text: '  first\r\nsecond\r\n' }] },
+      output: { blocks: [{ channel: 'TEXT', text: `${first}${other}` }] },
       toolPresentation: {
         kind: 'READ',
-        paths: ['file.ts'],
+        paths: ['file.ts', 'other.ts'],
         results: [
           {
             path: 'file.ts',
             startLine: 3,
-            endLine: 4,
-            contentRange: { channel: 'TEXT', start: 0, end: 9 }
+            endLine: 5,
+            contentRange: { channel: 'TEXT', start: 0, end: first.length }
           },
-          { path: 'other.ts', startLine: 10, endLine: 20 },
+          {
+            path: 'other.ts',
+            startLine: 10,
+            endLine: 20,
+            contentRange: { channel: 'TEXT', start: first.length, end: first.length + other.length }
+          },
           {
             path: 'file.ts',
             startLine: 8,
             endLine: 8,
-            contentRange: { channel: 'TEXT', start: 9, end: 17 }
+            empty: true
+          },
+          {
+            path: 'file.ts',
+            startLine: 12,
+            endLine: 14,
+            error: { code: 'ENOENT', message: 'not found' }
           }
         ]
       }
     };
     const original = structuredClone(value);
-    expect(toolPresentationReadRange(value, 'file.ts')).toBe('3–4, 8');
-    expect(readFileDetail(value, 'file.ts')).toBe('  first\r\n\n\nsecond\r\n');
+    expect(toolPresentationReadRange(value, 'file.ts')).toBe('3–5, 8, 12–14');
+    expect(readFileDetail(value, 'file.ts')).toBe(
+      `Line range: 3–5\n${first}\n\nLine range: 8\nNo output\n\nLine range: 12–14\nENOENT: not found`
+    );
+    expect(readFileDetail(value, 'file.ts')).not.toContain(other);
     expect(
       toolPresentationReadRange({ toolPresentation: { kind: 'READ', paths: ['old.ts'] } }, 'old.ts')
     ).toBe('');
@@ -82,6 +99,27 @@ describe('independent tool presentation', () => {
       toolPresentationReadRange({ inputSummary: '{"path":"file.ts","offset":3}' }, 'file.ts')
     ).toBe('');
     expect(value).toEqual(original);
+  });
+  it('falls back to public output when multiple Read ranges lack structured line metadata', () => {
+    const text = 'firstsecond';
+    const value = {
+      output: { blocks: [{ channel: 'TEXT', text }] },
+      toolPresentation: {
+        kind: 'READ',
+        paths: ['file.ts'],
+        results: [
+          {
+            path: 'file.ts',
+            startLine: 3,
+            endLine: 3,
+            contentRange: { channel: 'TEXT', start: 0, end: 5 }
+          },
+          { path: 'file.ts', contentRange: { channel: 'TEXT', start: 5, end: text.length } }
+        ]
+      }
+    };
+    expect(toolPresentationReadRange(value, 'file.ts')).toBe('');
+    expect(readFileDetail(value, 'file.ts')).toBeUndefined();
   });
   it.each([
     { kind: 'WEB_SEARCH', query: 'documentation' },
@@ -108,18 +146,33 @@ describe('independent tool presentation', () => {
     (truncation) => {
       localePreferenceService().setLocale('en-US');
       const value = {
-        output: { blocks: [{ channel: 'TEXT', text: 'retained content' }], truncation },
+        output: { blocks: [{ channel: 'TEXT', text: 'firstsecond' }], truncation },
         toolPresentation: {
           kind: 'READ',
           paths: ['file.ts'],
-          results: [{ path: 'file.ts', contentRange: { channel: 'TEXT', start: 0, end: 16 } }]
+          results: [
+            {
+              path: 'file.ts',
+              startLine: 3,
+              endLine: 3,
+              contentRange: { channel: 'TEXT', start: 0, end: 5 }
+            },
+            {
+              path: 'file.ts',
+              startLine: 8,
+              endLine: 8,
+              contentRange: { channel: 'TEXT', start: 5, end: 11 }
+            }
+          ]
         }
       };
-      expect(readFileDetail(value, 'file.ts')).toBe(
+      const detail = readFileDetail(value, 'file.ts');
+      expect(detail).toBe(
         truncation === 'HEAD'
-          ? '[Truncated]\n\nretained content'
-          : 'retained content\n\n[Truncated]'
+          ? '[Truncated]\n\nLine range: 3\nfirst\n\nLine range: 8\nsecond'
+          : 'Line range: 3\nfirst\n\nLine range: 8\nsecond\n\n[Truncated]'
       );
+      expect(detail?.match(/\[Truncated\]/gu)).toHaveLength(1);
     }
   );
   it.each(['HEAD', 'SOURCE'] as const)(

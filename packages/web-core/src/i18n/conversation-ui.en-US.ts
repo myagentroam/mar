@@ -93,6 +93,7 @@ export const conversationUiEnUS = {
       waiting: 'Waiting for output',
       unavailable: 'Output not provided',
       empty: 'No output',
+      lineRange: 'Line range: {range}',
       imageUnavailable: 'Image preview unavailable',
       compactAccepted: 'Compaction request accepted',
       truncated: '[Truncated]',
