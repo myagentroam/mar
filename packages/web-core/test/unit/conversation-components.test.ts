@@ -146,15 +146,24 @@ it.each(['en-US', 'zh-CN'] as const)(
                 start: first.length + other.length,
                 end: output.length
               }
+            },
+            { path: 'src/fixture.ts', startLine: 12, endLine: 12, empty: true },
+            {
+              path: 'src/fixture.ts',
+              startLine: 15,
+              endLine: 16,
+              error: { code: 'ENOENT', message: 'not found' }
             }
           ]
         }
       });
       const html = await render(ConversationToolDetail, { item, readPath: 'src/fixture.ts' });
-      const firstLabel = locale === 'en-US' ? 'Line range: 3–5' : '行范围：3–5';
-      const lastLabel = locale === 'en-US' ? 'Line range: 9' : '行范围：9';
-      expect(html).toContain('src/fixture.ts · 3–5, 9');
-      expect(html).toContain(`${firstLabel}\n${first}\n\n${lastLabel}\n${last}`);
+      const emptyStatus = locale === 'en-US' ? 'No output' : '无输出';
+      expect(html).toContain('src/fixture.ts · 3–5, 9, 12, 15–16');
+      expect(html).toContain(
+        `Line range: 3–5\n${first}\n\nLine range: 9\n${last}\n\nLine range: 12\n${emptyStatus}\n\nLine range: 15–16\nENOENT: not found`
+      );
+      expect(html).not.toContain('行范围：');
       expect(html).not.toContain(other);
     } finally {
       localePreferenceService().setLocale(originalLocale);
