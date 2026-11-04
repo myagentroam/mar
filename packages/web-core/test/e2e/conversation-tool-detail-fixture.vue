@@ -2,19 +2,32 @@
 import { computed, ref } from 'vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
+import ConversationDetailPreview from '../../src/view/conversation/ConversationDetailPreview.vue';
 
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
 const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
+const previewProbe = new URL(location.href).searchParams.has('preview-probe');
+const probeText = ref('wrapped content '.repeat(50));
 const sessionVersion = ref(0);
 const readAssociation = new URL(location.href).searchParams.has('read-association');
 const readPath = new URL(location.href).searchParams.get('read-path') ?? '/fixture/example.ts';
 const readTruncation = new URL(location.href).searchParams.get('read-truncation');
+const longPreview = new URL(location.href).searchParams.has('preview');
 const dropReadAssociation = ref(false);
 const readText = '  first file\r\nsecond line\r\n';
 const detailOutput = ref<{ blocks: { channel: 'TEXT'; text: string }[]; truncation?: 'SOURCE' }>();
+if (longPreview)
+  detailOutput.value = {
+    blocks: [
+      {
+        channel: 'TEXT',
+        text: Array.from({ length: 40 }, (_, index) => `Returned line ${index + 1}`).join('\n')
+      }
+    ]
+  };
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
@@ -317,7 +330,7 @@ const turns = computed<ConversationTurn[]>(() => [
                                     {
                                       path: readPath,
                                       startLine: 3,
-                                      endLine: 4,
+                                      endLine: longPreview ? 42 : 4,
                                       contentRange: {
                                         channel: 'TEXT',
                                         start: 0,
@@ -419,6 +432,15 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <section v-if="previewProbe" data-testid="preview-probe" class="conversation-detail-body">
+      <button data-testid="stretch-preview" @click="probeText = 'wrapped content '.repeat(800)">
+        Stretch preview
+      </button>
+      <ConversationDetailPreview>
+        <pre class="conversation-detail-text">{{ probeText }}</pre>
+        <a href="#fixture-source" data-testid="preview-link">Open fixture source</a>
+      </ConversationDetailPreview>
+    </section>
     <button v-if="performanceProbe" data-testid="switch-session" @click="sessionVersion++">
       Switch fixture session
     </button>

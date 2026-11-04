@@ -30,6 +30,25 @@ const payload = (toolPresentation: unknown) => ({
 });
 
 describe('independent tool presentation', () => {
+  it.each(['zh-CN', 'en-US'] as const)('keeps literal source markers unchanged in %s', (locale) => {
+    localePreferenceService().setLocale(locale);
+    const text = 'source ...Truncated\nsource [Truncated]';
+    const detail = readFileDetail(
+      {
+        output: { blocks: [{ channel: 'TEXT', text }], truncation: 'SOURCE' },
+        toolPresentation: {
+          kind: 'READ',
+          paths: ['file.ts'],
+          results: [
+            { path: 'file.ts', contentRange: { channel: 'TEXT', start: 0, end: text.length } }
+          ]
+        }
+      },
+      'file.ts'
+    );
+    expect(detail).toBe(`${text}\n\n[Truncated]`);
+  });
+
   it('keeps actual Read ranges in the file heading and only raw content in the detail', () => {
     const value = {
       output: { blocks: [{ channel: 'TEXT', text: '  first\r\nsecond\r\n' }] },
@@ -82,7 +101,7 @@ describe('independent tool presentation', () => {
       inputTruncated: true
     };
     const detail = detailOnlyToolText(value) ?? toolPresentationDetails(value);
-    expect(detail).toContain(`Input: ${value.inputSummary}\n...Truncated`);
+    expect(detail).toContain(`Input: ${value.inputSummary}\n[Truncated]`);
   });
   it.each(['HEAD', 'SOURCE'] as const)(
     'keeps the %s notice on the correct side of associated READ content',
@@ -98,8 +117,8 @@ describe('independent tool presentation', () => {
       };
       expect(readFileDetail(value, 'file.ts')).toBe(
         truncation === 'HEAD'
-          ? '...Truncated\n\nretained content'
-          : 'retained content\n\n...Truncated'
+          ? '[Truncated]\n\nretained content'
+          : 'retained content\n\n[Truncated]'
       );
     }
   );
@@ -118,7 +137,7 @@ describe('independent tool presentation', () => {
         },
         'clipped.ts'
       );
-      expect(detail?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
+      expect(detail?.match(/\[Truncated\]/gu)).toHaveLength(1);
       expect(detail).not.toContain('clipped.ts');
       expect(detail).not.toContain('No output');
       expect(detail).not.toContain('another file');
@@ -229,7 +248,7 @@ describe('independent tool presentation', () => {
 
     const detail = conversationItemDetail('tool_call', value);
     expect(detail).toContain('Search results (truncated):');
-    expect(detail).toContain('...Truncated');
+    expect(detail).toContain('[Truncated]');
     expect(toolPresentationSources(value)).toMatchObject([{ url, href: url, title: 'Example' }]);
   });
   it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
@@ -264,7 +283,7 @@ describe('independent tool presentation', () => {
         undefined
       );
       const terminal = conversationItemDetail('tool_call', current);
-      expect(terminal).toContain(`${label}:\n  final tail\n\n...Truncated`);
+      expect(terminal).toContain(`${label}:\n  final tail\n\n[Truncated]`);
       expect(terminal).not.toContain('live');
       expect(terminal).not.toContain('Original output');
       const empty = detail({ text: '', truncated: false });

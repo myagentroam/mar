@@ -117,8 +117,8 @@ it('marks a truncated wait source independently from a head-truncated output tai
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain('Command: partial command\n...Truncated');
-    expect(html).toContain('Output:\n...Truncated\noutput tail');
+    expect(html).toContain('Command: partial command\n[Truncated]');
+    expect(html).toContain('Output:\n[Truncated]\noutput tail');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
@@ -157,8 +157,8 @@ it.each(['en-US', 'zh-CN'] as const)(
     localePreferenceService().setLocale(locale);
     try {
       for (const [truncation, expected] of [
-        [{ output: 'HEAD' }, 'Output:\n...Truncated\nretained output'],
-        [{ output: 'SOURCE' }, 'Output:\nretained output\n...Truncated']
+        [{ output: 'HEAD' }, 'Output:\n[Truncated]\nretained output'],
+        [{ output: 'SOURCE' }, 'Output:\nretained output\n[Truncated]']
       ] as const) {
         const item = conversationItem('output', 'command_execution', {
           command: 'run',
@@ -204,9 +204,9 @@ it.each([
     });
     const html = await render(ConversationToolDetail, { item });
     expect(html).toContain(
-      `Code: original input\n...Truncated\nOutput:\n${headOutput ? '...Truncated\n' : ''}latest tail`
+      `Code: original input\n[Truncated]\nOutput:\n${headOutput ? '[Truncated]\n' : ''}latest tail`
     );
-    expect(html).not.toContain('latest tail\n...Truncated');
+    expect(html).not.toContain('latest tail\n[Truncated]');
   }
 );
 

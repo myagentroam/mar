@@ -11,6 +11,117 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const variant of [
+  { width: 1280, theme: 'daylight', locale: 'en-US', more: 'Show more', less: 'Show less' },
+  { width: 390, theme: 'dark', locale: 'zh-CN', more: '展开更多', less: '收起' }
+]) {
+  test(`previews the complete detail area by height at ${variant.width}px`, async ({
+    page
+  }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: variant.width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1&read-association=1&preview=1&theme=${variant.theme}&locale=${variant.locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    const file = read.locator('.conversation-tool-detail');
+    await file.locator('> summary').click();
+    const preview = file.locator('.detail-preview-window');
+    const more = file.getByRole('button', { name: variant.more, exact: true });
+    await expect(more).toBeVisible();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(file.locator('pre')).toContainText('Returned line 40');
+    await expect(file.locator('pre')).not.toContainText('[Truncated]');
+    const heights = await preview.evaluate((element) => ({
+      visible: element.getBoundingClientRect().height,
+      full: element.firstElementChild!.getBoundingClientRect().height,
+      limit: parseFloat(getComputedStyle(element).lineHeight) * 12
+    }));
+    expect(heights.visible).toBeLessThanOrEqual(heights.limit + 1);
+    expect(heights.full).toBeGreaterThan(heights.visible);
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`detail-preview-${variant.width}.png`),
+      fullPage: true
+    });
+    await file.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+    const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(copied.payload.output.blocks[0].text).toContain('Returned line 40');
+    await more.focus();
+    await page.keyboard.press('Enter');
+    const less = file.getByRole('button', { name: variant.less, exact: true });
+    await expect(less).toHaveAttribute('aria-expanded', 'true');
+    await expect(preview).toHaveCSS('max-height', 'none');
+    await less.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    await file.locator('> summary').click();
+    await expect(file.locator('.detail-preview')).toHaveCount(0);
+    await file.locator('> summary').click();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('stream-details').click();
+    await expect(file.locator('pre')).toContainText('live output');
+    await expect(more).toHaveCount(0);
+    await page.getByTestId('finish-details').click();
+    await expect(file.locator('pre')).toContainText('[Truncated]');
+    await expect(more).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+test('uses area height for wrapped single-line execution output and keeps copy outside', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${fixture.url}conversation-tool-detail.html`);
+  const exec = page.getByTestId('exec');
+  await exec.locator('summary').click();
+  await expect(exec.getByRole('button', { name: 'Show more', exact: true })).toHaveCount(0);
+  await page.getByTestId('finish').click();
+  const more = exec.getByRole('button', { name: 'Show more', exact: true });
+  await expect(more).toBeVisible();
+  await expect(exec.getByRole('button', { name: 'Copy public record' })).toBeVisible();
+  expect(
+    await exec
+      .locator('.detail-preview-window')
+      .evaluate((element) => element.scrollHeight > element.clientHeight)
+  ).toBe(true);
+  await more.click();
+  await expect(exec.locator('.detail-preview-window')).toHaveCSS('max-height', 'none');
+  await expect(exec.locator('pre')).toContainText('TAIL\n[Truncated]\nExit code: 0');
+  await expect(exec.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
+});
+
+test('remeasures on resize and reveals a keyboard-focused link below the preview', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}conversation-tool-detail.html?preview-probe=1`);
+  const probe = page.getByTestId('preview-probe');
+  const more = probe.getByRole('button', { name: 'Show more', exact: true });
+  const less = probe.getByRole('button', { name: 'Show less', exact: true });
+  await expect(more).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(more).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(more).toHaveCount(0);
+  await page.getByTestId('stretch-preview').click();
+  await expect(more).toBeVisible();
+  const link = page.getByTestId('preview-link');
+  await link.focus();
+  await expect(less).toHaveAttribute('aria-expanded', 'true');
+  await expect(link).toBeFocused();
+  await expect(link).toBeInViewport();
+});
+
 test('mounts independent details only while open and releases them with the process', async ({
   page
 }) => {
@@ -128,9 +239,9 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     await read.locator('> summary').click();
     await read.locator('.conversation-tool-detail > summary').click();
     const text = await read.locator('.conversation-detail-text').textContent();
-    expect(text?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
-    if (truncation === 'HEAD') expect(text).toMatch(/^\.\.\.Truncated[\s\S]+second line\s*$/u);
-    else expect(text).toMatch(/^  first file[\s\S]+\.\.\.Truncated$/u);
+    expect(text?.match(/\[Truncated\]/gu)).toHaveLength(1);
+    if (truncation === 'HEAD') expect(text).toMatch(/^\[Truncated\][\s\S]+second line\s*$/u);
+    else expect(text).toMatch(/^  first file[\s\S]+\[Truncated\]$/u);
   });
 }
 
@@ -252,9 +363,7 @@ test('specialized tool details replace live output with the authoritative result
   }
   await page.getByTestId('finish-details').click();
   for (const body of bodies) {
-    await expect
-      .poll(() => body.textContent())
-      .toContain(':\n  authoritative tail\n\n...Truncated');
+    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\n[Truncated]');
     await expect(body).not.toContainText('live output');
     await expect(body).not.toContainText('export const result');
     await expect(body).not.toContainText('The requested page content.');
@@ -274,8 +383,8 @@ test('places the HEAD marker before authoritative output without repeating it at
   await exec.locator('summary').click();
   await page.getByTestId('finish').click();
   const pre = exec.locator('pre');
-  await expect(pre).toHaveText(/Output:\n\.\.\.Truncated\nx+TAIL\nExit code: 0$/);
-  await expect(pre).not.toContainText('TAIL\n...Truncated');
+  await expect(pre).toHaveText(/Output:\n\[Truncated\]\nx+TAIL\nExit code: 0$/);
+  await expect(pre).not.toContainText('TAIL\n[Truncated]');
   await expect(pre).not.toContainText('visible stdout');
 });
 
@@ -323,7 +432,7 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
       await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
@@ -337,8 +446,8 @@ for (const width of [1280, 390]) {
       );
       await page.getByTestId('finish').click();
       await expect(exec).toContainText('TAIL');
-      await expect(exec).toContainText('...Truncated');
-      await expect(exec.locator('pre')).toHaveText(/\.\.\.Truncated\nExit code: 0$/);
+      await expect(exec).toContainText('[Truncated]');
+      await expect(exec.locator('pre')).toHaveText(/\[Truncated\]\nExit code: 0$/);
       await expect(exec).not.toContainText('visible stdout');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
@@ -435,7 +544,8 @@ for (const width of [1280, 390]) {
           lineHeight: getComputedStyle(element).lineHeight,
           color: getComputedStyle(element).color,
           expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
-          background: getComputedStyle(element.parentElement!).backgroundColor
+          background: getComputedStyle(element.closest('.conversation-detail-body')!)
+            .backgroundColor
         }));
         expect(thinkingStyle.fontSize).toBe('12px');
         expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
@@ -459,13 +569,13 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
           const spacing = await surface.evaluate((element) => {
-            const text = element.querySelector(':scope > .conversation-detail-text')!;
+            const text = element.querySelector('.conversation-detail-text')!;
             const heading = element.parentElement!.querySelector(':scope > summary')!;
             const title = heading.querySelector(
               ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
@@ -483,11 +593,11 @@ for (const width of [1280, 390]) {
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
           );
           await expect(surface).toHaveCSS('border-radius', radius);
-          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
+          await expect(surface.locator('.conversation-detail-text')).toHaveCSS(
             'font-size',
             thinkingStyle.fontSize
           );
-          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
+          await expect(surface.locator('.conversation-detail-text')).toHaveCSS(
             'line-height',
             thinkingStyle.lineHeight
           );

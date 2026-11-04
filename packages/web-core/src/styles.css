@@ -1409,7 +1409,7 @@ pre {
   overflow-wrap: anywhere;
 }
 
-.conversation-detail-body > .conversation-detail-text {
+.conversation-detail-body .conversation-detail-text {
   margin: 0;
   padding: 0;
   border: 0;

@@ -5,6 +5,7 @@ import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
+import ConversationDetailPreview from './ConversationDetailPreview.vue';
 import { conversationItemDetail } from '../../util/conversation-presentation.js';
 import { agentOperationDetail } from '../../util/agent-operation-presentation.js';
 import { runStatusLabel } from '../../util/session-presentation.js';
@@ -160,63 +161,69 @@ onBeforeUnmount(() => {
     >
       <MarIcon :name="copyState ? 'check' : 'copy'" />
     </button>
-    <div v-if="!copyOnly && agentDetail" class="agent-detail">
-      <template v-if="agentDetail.action === 'LIST'">
-        <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-row">
-          <span>{{ target.title }}</span
-          ><span v-if="target.status" class="agent-detail-meta">{{
-            agentTargetStatus(target.status)
-          }}</span>
-        </div>
-        <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
-          {{ translate('presentation.noAgentSessions') }}
-        </p>
-      </template>
-      <template v-else-if="agentDetail.action === 'WAIT' || agentDetail.action === 'VIEW'">
-        <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-entry">
-          <div class="agent-detail-row agent-detail-meta">
+    <ConversationDetailPreview v-if="!copyOnly">
+      <div v-if="agentDetail" class="agent-detail">
+        <template v-if="agentDetail.action === 'LIST'">
+          <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-row">
             <span>{{ target.title }}</span
-            ><span v-if="target.status">{{ agentTargetStatus(target.status) }}</span>
+            ><span v-if="target.status" class="agent-detail-meta">{{
+              agentTargetStatus(target.status)
+            }}</span>
           </div>
-          <p v-if="target.message" class="agent-detail-text">{{ target.message }}</p>
-          <p v-if="target.messageTruncated" class="agent-detail-meta">
+          <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
+            {{ translate('presentation.noAgentSessions') }}
+          </p>
+        </template>
+        <template v-else-if="agentDetail.action === 'WAIT' || agentDetail.action === 'VIEW'">
+          <div
+            v-for="(target, index) in agentDetail.targets"
+            :key="index"
+            class="agent-detail-entry"
+          >
+            <div class="agent-detail-row agent-detail-meta">
+              <span>{{ target.title }}</span
+              ><span v-if="target.status">{{ agentTargetStatus(target.status) }}</span>
+            </div>
+            <p v-if="target.message" class="agent-detail-text">{{ target.message }}</p>
+            <p v-if="target.messageTruncated" class="agent-detail-meta">
+              {{ translate('toolPresentation.detail.truncated') }}
+            </p>
+          </div>
+        </template>
+        <template v-else>
+          <div class="agent-detail-row agent-detail-meta">
+            <span>{{ agentDetail.targets[0]?.title ?? agentDetail.title }}</span
+            ><span v-if="agentDetail.delivery">{{ agentDetail.delivery.toLowerCase() }}</span>
+          </div>
+          <p v-if="agentDetail.outputTruncation === 'HEAD'" class="agent-detail-meta">
             {{ translate('toolPresentation.detail.truncated') }}
           </p>
-        </div>
-      </template>
-      <template v-else>
-        <div class="agent-detail-row agent-detail-meta">
-          <span>{{ agentDetail.targets[0]?.title ?? agentDetail.title }}</span
-          ><span v-if="agentDetail.delivery">{{ agentDetail.delivery.toLowerCase() }}</span>
-        </div>
-        <p v-if="agentDetail.outputTruncation === 'HEAD'" class="agent-detail-meta">
+          <p
+            v-if="agentDetail.action === 'STOP' && agentDetail.output !== undefined"
+            class="agent-detail-text"
+          >
+            {{ agentDetail.output }}
+          </p>
+          <p v-else-if="agentDetail.message" class="agent-detail-text">{{ agentDetail.message }}</p>
+          <p v-if="agentDetail.error" class="agent-detail-text">{{ agentDetail.error }}</p>
+          <p
+            v-if="agentDetail.messageTruncated || agentDetail.outputTruncation === 'SOURCE'"
+            class="agent-detail-meta"
+          >
+            {{ translate('toolPresentation.detail.truncated') }}
+          </p>
+        </template>
+        <p v-if="agentDetail.targetsTruncated" class="agent-detail-meta">
           {{ translate('toolPresentation.detail.truncated') }}
         </p>
-        <p
-          v-if="agentDetail.action === 'STOP' && agentDetail.output !== undefined"
-          class="agent-detail-text"
-        >
-          {{ agentDetail.output }}
-        </p>
-        <p v-else-if="agentDetail.message" class="agent-detail-text">{{ agentDetail.message }}</p>
-        <p v-if="agentDetail.error" class="agent-detail-text">{{ agentDetail.error }}</p>
-        <p
-          v-if="agentDetail.messageTruncated || agentDetail.outputTruncation === 'SOURCE'"
-          class="agent-detail-meta"
-        >
-          {{ translate('toolPresentation.detail.truncated') }}
-        </p>
-      </template>
-      <p v-if="agentDetail.targetsTruncated" class="agent-detail-meta">
-        {{ translate('toolPresentation.detail.truncated') }}
-      </p>
-    </div>
-    <pre v-else-if="!copyOnly && detailOnlyText !== undefined" class="conversation-detail-text">{{
-      detailOnlyText
-    }}</pre>
-    <slot v-else-if="!copyOnly">
-      <pre v-if="detailText" class="conversation-detail-text">{{ detailText }}</pre>
-    </slot>
+      </div>
+      <pre v-else-if="detailOnlyText !== undefined" class="conversation-detail-text">{{
+        detailOnlyText
+      }}</pre>
+      <slot v-else>
+        <pre v-if="detailText" class="conversation-detail-text">{{ detailText }}</pre>
+      </slot>
+    </ConversationDetailPreview>
   </section>
 </template>
 
