@@ -114,6 +114,7 @@ export const conversationUiZhCN = {
     status: { running: '执行中', completed: '已完成', failed: '失败', cancelled: '已取消' },
     sources: '{count} 个来源',
     noResults: '未找到结果',
+    executionWait: 'wait {target}',
     waiting: '{duration}',
     waitingUntil: '{duration} · 预计至 {time}',
     waited: '已等待 {elapsed}',

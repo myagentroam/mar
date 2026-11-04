@@ -191,6 +191,50 @@ test('read file details show only the associated raw file text and real range', 
 });
 
 for (const width of [1280, 390]) {
+  test(`wait rows use explicit commands or resource IDs at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&wait-titles&locale=${width === 390 ? 'zh-CN' : 'en-US'}&theme=${width === 390 ? 'dark' : 'daylight'}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    await page.locator('.command-group > details > summary').click();
+    const source = `pnpm test --filter fixture ${'long-argument-'.repeat(24)}`;
+    for (const [targetId, toolName, title] of [
+      ['p_known', 'exec_wait', `wait ${source}`],
+      ['c_known', 'code_exec_wait', `wait ${source}`],
+      ['p_unknown', 'exec_wait', 'wait p_unknown'],
+      ['c_unknown', 'code_exec_wait', 'wait c_unknown']
+    ] as const) {
+      const row = page.locator('.conversation-command-detail').filter({
+        has: page.locator('.conversation-command-preview', { hasText: title })
+      });
+      const matchingRow =
+        title === `wait ${source}` ? row.nth(targetId === 'p_known' ? 0 : 1) : row;
+      const preview = matchingRow.locator('.conversation-command-preview');
+      await expect(preview).toHaveText(title);
+      if (targetId === 'p_known' || targetId === 'c_known') {
+        expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          true
+        );
+      }
+      await expect(matchingRow.locator('.tool-detail')).toHaveCount(0);
+      await matchingRow.locator('> summary').click();
+      await expect(matchingRow.locator('pre')).toContainText(`Tool: ${toolName}`);
+      await expect(matchingRow.locator('pre')).toContainText(`Target: ${targetId}`);
+      await matchingRow.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+      await expect(matchingRow.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
+      const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+      expect(copied.payload.toolPresentation.execution.toolName).toBe(toolName);
+      expect(copied.payload.toolPresentation.execution.targetId).toBe(targetId);
+      await matchingRow.locator('> summary').click();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+  });
+
   test(`Read keeps the range visible beside a long path at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const path = `/fixture/${'long-directory/'.repeat(24)}README.md`;

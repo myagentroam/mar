@@ -296,6 +296,42 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     });
   }
 }
+if (new URL(location.href).searchParams.has('wait-titles')) {
+  const source = {
+    kind: 'SHELL' as const,
+    text: `pnpm test --filter fixture ${'long-argument-'.repeat(24)}`,
+    truncated: false
+  };
+  for (const [toolName, targetId, executionSource] of [
+    ['exec_wait', 'p_known', source],
+    ['code_exec_wait', 'c_known', source],
+    ['exec_wait', 'p_unknown', undefined],
+    [
+      'code_exec_wait',
+      'c_unknown',
+      { kind: 'CODE', text: 'await tools.exec({ command: "not inferred" });', truncated: false }
+    ]
+  ] as const) {
+    detailSamples.push({
+      id: `wait-title-${targetId}`,
+      kind: 'command_execution',
+      status: 'COMPLETED',
+      payload: {
+        command: '',
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: {
+            kind: 'CONTROL',
+            toolName,
+            action: 'poll',
+            targetId,
+            ...(executionSource === undefined ? {} : { source: executionSource })
+          }
+        }
+      }
+    });
+  }
+}
 const turns = computed<ConversationTurn[]>(() => [
   {
     id: 'turn',

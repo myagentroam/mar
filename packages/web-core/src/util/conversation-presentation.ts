@@ -525,7 +525,15 @@ export function conversationItemText(
     const presentation = conversationPayload(value.toolPresentation);
     const execution =
       presentation?.kind === 'EXECUTION' ? conversationPayload(presentation.execution) : undefined;
-    if (execution?.kind === 'CONTROL') return stringField(execution, 'toolName');
+    if (execution?.kind === 'CONTROL') {
+      if (execution.action === 'poll') {
+        const source = conversationPayload(execution.source);
+        const command = source?.kind === 'SHELL' ? rawTextField(source, 'text').trim() : '';
+        const target = command || rawTextField(execution, 'targetId').trim();
+        return translate('toolPresentation.executionWait', { target }).trimEnd();
+      }
+      return stringField(execution, 'toolName');
+    }
     const command = stringField(value, 'command');
     if (command.length > 0) return command;
     return (readToolOutput(value)?.blocks.some((block) => block.text.length > 0) ?? false) ||

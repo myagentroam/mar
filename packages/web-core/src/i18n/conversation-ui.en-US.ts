@@ -119,6 +119,7 @@ export const conversationUiEnUS = {
     },
     sources: '{count} sources',
     noResults: 'No results found',
+    executionWait: 'wait {target}',
     waiting: '{duration}',
     waitingUntil: '{duration} · until about {time}',
     waited: 'Waited {elapsed}',
