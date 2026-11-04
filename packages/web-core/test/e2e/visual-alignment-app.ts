@@ -340,12 +340,15 @@ const app = createApp({
                 [
                   h(ComposerToolbar, {
                     ...toolbar,
-                    activeRun: {
-                      id: 'run',
-                      status: 'RUNNING',
-                      recoveryState: 'NONE',
-                      clientMessageId: 'message'
-                    },
+                    modelEffortLabel: 'GPT-6.1-Sol High',
+                    activeRun: toolbar.interruptVisible
+                      ? {
+                          id: 'run',
+                          status: 'RUNNING',
+                          recoveryState: 'NONE',
+                          clientMessageId: 'message'
+                        }
+                      : undefined,
                     canCompactContext: true,
                     inputHasContent: widthFixtureHasInput.value,
                     submitting: widthFixtureSubmitting.value

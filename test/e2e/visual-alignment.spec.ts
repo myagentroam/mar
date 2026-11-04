@@ -29,11 +29,12 @@ test('Composer keyboard hint follows each container without hiding sending or co
       (el as HTMLElement).style.width = '420px';
     });
     await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
-    for (const width of [740, 780, 900, 960]) {
+    for (const width of [740, 780, 840, 860, 900]) {
       await wide.evaluate((el, width) => {
         (el as HTMLElement).style.width = `${width}px`;
       }, width);
-      await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+      if (width <= 840) await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+      else await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
       const controls = await wide.locator('.composer-toolbar').evaluate((el) => {
         const bounds = el.getBoundingClientRect();
         const stop = el.querySelector('.composer-stop-button')!.getBoundingClientRect();
@@ -126,6 +127,66 @@ test('Composer keyboard hint follows each container without hiding sending or co
     } finally {
       await context.close();
     }
+  }
+});
+
+test('Composer idle keyboard hint fits below the former width threshold', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  for (const locale of ['en-US', 'zh-CN']) {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?composer-widths&select-states&model-options&locale=${locale}`
+    );
+    const composer = page.getByTestId('width-composer-0');
+    const hint = composer.locator('.composer-keyboard-hint');
+    await expect(hint).toContainText(locale === 'en-US' ? 'Enter to send' : 'Enter 发送');
+    await expect(composer.locator('.composer-stop-button')).toHaveCount(0);
+    for (const width of [860, 900]) {
+      await composer.evaluate((el, width) => {
+        (el as HTMLElement).style.width = `${width}px`;
+      }, width);
+      await expect(hint).toBeVisible();
+      expect(
+        await composer.locator('.composer-toolbar').evaluate((el) => {
+          const hint = el.querySelector('.composer-keyboard-hint')!.getBoundingClientRect();
+          const configuration = el.querySelector('.composer-configuration')!;
+          const send = el.querySelector('.composer-send-button')!.getBoundingClientRect();
+          return (
+            [configuration, ...configuration.children].every((control) => {
+              const rect = control.getBoundingClientRect();
+              return (
+                rect.right <= hint.left &&
+                Math.abs(rect.top + rect.height / 2 - send.top - send.height / 2) < 1
+              );
+            }) &&
+            hint.right <= send.left &&
+            send.right <= el.getBoundingClientRect().right
+          );
+        })
+      ).toBe(true);
+    }
+    await composer.screenshot({ path: test.info().outputPath(`composer-idle-${locale}.png`) });
+    const toolbar = composer.locator('.composer-toolbar');
+    for (const width of [840, 841]) {
+      await toolbar.evaluate((el, width) => {
+        const style = (el as HTMLElement).style;
+        style.boxSizing = 'content-box';
+        style.width = `${width}px`;
+      }, width);
+      if (width === 840) await expect(hint).toBeHidden();
+      else await expect(hint).toBeVisible();
+    }
+    await toolbar.evaluate((el) => {
+      const style = (el as HTMLElement).style;
+      style.removeProperty('width');
+      style.removeProperty('box-sizing');
+    });
+    await page.locator('#toggle-input-content').click();
+    await expect(composer.locator('.composer-send-button')).toBeDisabled();
+    await expect(hint).toBeVisible();
+    await composer.evaluate((el) => {
+      (el as HTMLElement).style.width = '840px';
+    });
+    await expect(hint).toBeHidden();
   }
 });
 
