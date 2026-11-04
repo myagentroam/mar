@@ -2,9 +2,21 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref, type Ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkbenchPageInteractionService } from '../../src/service/workbench-page-interaction-service.js';
-import { createConsoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
+import {
+  consoleKeyboardShortcutService,
+  createConsoleKeyboardShortcutService
+} from '../../src/service/console-keyboard-shortcut-service.js';
 import type { WorkspaceInspectorHandle } from '../../src/service/workbench-surface-state-service.js';
 import type { NodeSummary, WorkspaceTab } from '../../src/model/workbench.js';
+
+function dispatch(
+  service: ReturnType<typeof createWorkbenchPageInteractionService>,
+  event: KeyboardEvent
+) {
+  for (const binding of service.workspaceShortcuts)
+    if (consoleKeyboardShortcutService.invoke(binding, event) === 'HANDLED') return 'HANDLED';
+  return 'IGNORED';
+}
 
 function fixture() {
   const view = ref<'nodes' | 'settings'>('nodes');
@@ -82,6 +94,10 @@ function fixture() {
     terminalReady: ref(true),
     quickOpenFileVisible,
     workspaceInspector,
+    showInspectorTool: (tool) => {
+      if (tool === 'search') workspaceInspector.value?.openSearch();
+      else workspaceInspector.value?.openChanges();
+    },
     openAttachmentImage,
     toggleTerminal: vi.fn(),
     sessionActivityClockNow: ref(0),
@@ -136,10 +152,15 @@ describe('Workbench page file interaction', () => {
     vi.stubGlobal('HTMLElement', class {});
     vi.stubGlobal('document', { activeElement: null });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  const releaseRegions: (() => void)[] = [];
+  afterEach(() => {
+    for (const release of releaseRegions.splice(0)) release();
+    vi.unstubAllGlobals();
+  });
 
   function focusedTarget(...selectors: string[]) {
     class Target {
+      readonly nodeType = 1;
       closest(pattern: string) {
         return pattern.split(',').some((selector) => selectors.includes(selector.trim()))
           ? this
@@ -147,22 +168,121 @@ describe('Workbench page file interaction', () => {
       }
     }
     vi.stubGlobal('Element', Target);
-    return new Target();
+    const target = new Target();
+    const scopes = [
+      ...(selectors.includes('.composer-host') ? ['pane' as const] : []),
+      ...(selectors.includes('.terminal-dock') ? ['terminal' as const] : []),
+      ...(selectors.some((value) => ['.el-overlay', '.el-popper', '.el-select'].includes(value))
+        ? ['overlay' as const]
+        : [])
+    ];
+    for (const scope of scopes)
+      releaseRegions.push(
+        consoleKeyboardShortcutService.registerRegion({
+          scope,
+          blocksOtherScopes: scope !== 'pane',
+          root: () =>
+            ({ contains: (node: Node) => node === (target as unknown as Node) }) as Element
+        })
+      );
+    return target;
   }
 
   it.each([false, true])('cycles visible tabs with Ctrl+Tab (reverse: %s)', (shiftKey) => {
     const f = fixture();
-    expect(
-      f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true, shiftKey } as KeyboardEvent)
-    ).toBe('HANDLED');
+    expect(dispatch(f.service, { key: 'Tab', ctrlKey: true, shiftKey } as KeyboardEvent)).toBe(
+      'HANDLED'
+    );
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(
       f.workspaceTabs.value[shiftKey ? 2 : 1]
     );
     f.activeWorkspaceTabId.value = 'node-2:workspace-3';
     expect(
-      f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true, shiftKey: false } as KeyboardEvent)
+      dispatch(f.service, { key: 'Tab', ctrlKey: true, shiftKey: false } as KeyboardEvent)
     ).toBe('HANDLED');
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[0]);
+  });
+
+  it('blocks background workspace shortcuts only while a modal is visible', () => {
+    const f = fixture();
+    let visible = true;
+    vi.stubGlobal('document', {
+      activeElement: null,
+      querySelectorAll: () => [{ getClientRects: () => (visible ? [{}] : []) }]
+    });
+    const shortcuts = createConsoleKeyboardShortcutService();
+    for (const binding of f.service.workspaceShortcuts) shortcuts.register(binding);
+    const event = {
+      key: 'n',
+      ctrlKey: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    } as unknown as KeyboardEvent;
+    shortcuts.handle(event);
+    expect(f.openNewSessionComposer).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    visible = false;
+    shortcuts.handle(event);
+    expect(f.openNewSessionComposer).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('blocks global and background overlay commands while allowing the top modal owner', () => {
+    const modalOwner = { nodeType: 1, contains: () => true } as unknown as Element;
+    let visible = true;
+    vi.stubGlobal('document', {
+      activeElement: null,
+      querySelectorAll: () => [
+        {
+          getClientRects: () => (visible ? [{}] : []),
+          contains: (element: Element) => element === modalOwner
+        }
+      ]
+    });
+    const shortcuts = createConsoleKeyboardShortcutService();
+    const background = vi.fn(() => 'HANDLED' as const);
+    const local = vi.fn(() => 'HANDLED' as const);
+    shortcuts.register({
+      command: 'activity',
+      scope: 'global',
+      priority: 10,
+      keys: [{ key: 'e', ctrl: true, shift: true }],
+      when: () => true,
+      execute: background
+    });
+    shortcuts.register({
+      command: 'popover',
+      scope: 'overlay',
+      priority: 10,
+      keys: [{ key: 'Escape' }],
+      when: () => true,
+      execute: background
+    });
+    shortcuts.register({
+      command: 'modal',
+      scope: 'pane',
+      priority: 20,
+      owner: () => modalOwner,
+      keys: [{ key: 'Enter' }],
+      when: () => true,
+      execute: local
+    });
+    const event = (key: string, extra = {}) =>
+      ({
+        key,
+        ...extra,
+        target: modalOwner,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      }) as unknown as KeyboardEvent;
+    shortcuts.handle(event('e', { ctrlKey: true, shiftKey: true }));
+    shortcuts.handle(event('Escape'));
+    shortcuts.handle(event('Enter'));
+    expect(background).not.toHaveBeenCalled();
+    expect(local).toHaveBeenCalledOnce();
+    visible = false;
+    shortcuts.handle(event('e', { ctrlKey: true, shiftKey: true }));
+    expect(background).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -181,7 +301,7 @@ describe('Workbench page file interaction', () => {
     const f = fixture();
     const target = focusedTarget('textarea', '.composer-host');
     const shortcuts = createConsoleKeyboardShortcutService();
-    shortcuts.register({ priority: 0, handle: f.service.onGlobalKeydown });
+    for (const binding of f.service.workspaceShortcuts) shortcuts.register(binding);
     const preventDefault = vi.fn();
     const stopPropagation = vi.fn();
     shortcuts.handle({
@@ -207,7 +327,7 @@ describe('Workbench page file interaction', () => {
     for (const modifier of [{ ctrlKey: true }, { altKey: true }]) {
       for (const repeat of [false, true]) {
         expect(
-          f.service.onGlobalKeydown({
+          dispatch(f.service, {
             key: 'w',
             ...modifier,
             shiftKey,
@@ -230,7 +350,7 @@ describe('Workbench page file interaction', () => {
         f.workspaceTabs.value = tabs;
         for (const shiftKey of [false, true]) {
           const shortcuts = createConsoleKeyboardShortcutService();
-          shortcuts.register({ priority: 0, handle: f.service.onGlobalKeydown });
+          for (const binding of f.service.workspaceShortcuts) shortcuts.register(binding);
           const preventDefault = vi.fn();
           shortcuts.handle({
             key: 'Tab',
@@ -261,7 +381,7 @@ describe('Workbench page file interaction', () => {
         { key: 'n', altKey: true },
         { key: 'n', ctrlKey: true }
       ]) {
-        expect(f.service.onGlobalKeydown({ ...shortcut, target } as unknown as KeyboardEvent)).toBe(
+        expect(dispatch(f.service, { ...shortcut, target } as unknown as KeyboardEvent)).toBe(
           'IGNORED'
         );
       }
@@ -282,7 +402,7 @@ describe('Workbench page file interaction', () => {
       { defaultPrevented: true }
     ]) {
       expect(
-        f.service.onGlobalKeydown({
+        dispatch(f.service, {
           key: 'Tab',
           ctrlKey: true,
           ...extra
@@ -290,23 +410,15 @@ describe('Workbench page file interaction', () => {
       ).toBe('IGNORED');
     }
     f.quickOpenFileVisible.value = true;
-    expect(f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe(
-      'IGNORED'
-    );
+    expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.quickOpenFileVisible.value = false;
     f.activeWorkspaceTabId.value = undefined;
-    expect(f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe(
-      'IGNORED'
-    );
+    expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.activeWorkspaceTabId.value = 'node-1:workspace-1';
     f.workspaceTabs.value = [];
-    expect(f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe(
-      'IGNORED'
-    );
+    expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.view.value = 'settings';
-    expect(f.service.onGlobalKeydown({ key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe(
-      'IGNORED'
-    );
+    expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
 
@@ -321,12 +433,10 @@ describe('Workbench page file interaction', () => {
       isComposing: false,
       keyCode: 37
     } as KeyboardEvent;
-    expect(f.service.onGlobalKeydown(event)).toBe('HANDLED');
+    expect(dispatch(f.service, event)).toBe('HANDLED');
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[2]);
     f.activeWorkspaceTabId.value = 'node-2:workspace-3';
-    expect(f.service.onGlobalKeydown({ ...event, key: 'ArrowRight' } as KeyboardEvent)).toBe(
-      'HANDLED'
-    );
+    expect(dispatch(f.service, { ...event, key: 'ArrowRight' } as KeyboardEvent)).toBe('HANDLED');
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[0]);
   });
 
@@ -339,7 +449,7 @@ describe('Workbench page file interaction', () => {
     const f = fixture();
     f.workspaceTabs.value = [{ ...f.workspaceTabs.value[0]!, pinned }];
     const shortcuts = createConsoleKeyboardShortcutService();
-    shortcuts.register({ priority: 0, handle: f.service.onGlobalKeydown });
+    for (const binding of f.service.workspaceShortcuts) shortcuts.register(binding);
     for (const repeat of [false, true]) {
       const preventDefault = vi.fn();
       const stopPropagation = vi.fn();
@@ -358,7 +468,7 @@ describe('Workbench page file interaction', () => {
 
   it.each(['ArrowLeft', 'ArrowRight'])('consumes repeated %s without cycling tabs again', (key) => {
     const f = fixture();
-    expect(f.service.onGlobalKeydown({ key, altKey: true, repeat: true } as KeyboardEvent)).toBe(
+    expect(dispatch(f.service, { key, altKey: true, repeat: true } as KeyboardEvent)).toBe(
       'HANDLED'
     );
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
@@ -369,9 +479,9 @@ describe('Workbench page file interaction', () => {
     ['1', 'Digit1']
   ])('keeps repeated Alt+%s outside the arrow shortcut handling', (key, code) => {
     const f = fixture();
-    expect(
-      f.service.onGlobalKeydown({ key, code, altKey: true, repeat: true } as KeyboardEvent)
-    ).toBe('IGNORED');
+    expect(dispatch(f.service, { key, code, altKey: true, repeat: true } as KeyboardEvent)).toBe(
+      'IGNORED'
+    );
     expect(f.openNewSessionComposer).not.toHaveBeenCalled();
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
@@ -386,20 +496,20 @@ describe('Workbench page file interaction', () => {
       isComposing: false
     };
 
-    expect(f.service.onGlobalKeydown({ ...event, key: '2' } as KeyboardEvent)).toBe('HANDLED');
+    expect(dispatch(f.service, { ...event, key: '2' } as KeyboardEvent)).toBe('HANDLED');
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[1]);
-    expect(f.service.onGlobalKeydown({ ...event, code: 'Digit1', key: '¡' } as KeyboardEvent)).toBe(
+    expect(dispatch(f.service, { ...event, code: 'Digit1', key: '¡' } as KeyboardEvent)).toBe(
       'HANDLED'
     );
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[0]);
-    expect(f.service.onGlobalKeydown({ ...event, key: '4' } as KeyboardEvent)).toBe('IGNORED');
-    expect(f.service.onGlobalKeydown({ ...event, key: '0' } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { ...event, key: '4' } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { ...event, key: '0' } as KeyboardEvent)).toBe('IGNORED');
     f.workspaceTabs.value = Array.from({ length: 10 }, (_, index) => ({
       ...f.workspaceTabs.value[0]!,
       id: `node-1:workspace-${index + 1}`,
       workspaceId: `workspace-${index + 1}`
     }));
-    expect(f.service.onGlobalKeydown({ ...event, code: 'Digit0', key: '0' } as KeyboardEvent)).toBe(
+    expect(dispatch(f.service, { ...event, code: 'Digit0', key: '0' } as KeyboardEvent)).toBe(
       'HANDLED'
     );
     expect(f.activateWorkspaceTab).toHaveBeenLastCalledWith(f.workspaceTabs.value[9]);
@@ -415,20 +525,20 @@ describe('Workbench page file interaction', () => {
   ])('does not select a numbered tab for an excluded Ctrl+number event: %j', (extra) => {
     const f = fixture();
     expect(
-      f.service.onGlobalKeydown({ key: '2', ctrlKey: true, ...extra } as unknown as KeyboardEvent)
+      dispatch(f.service, { key: '2', ctrlKey: true, ...extra } as unknown as KeyboardEvent)
     ).toBe('IGNORED');
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
 
   it('consumes repeated Ctrl+number without reactivating an existing tab', () => {
     const f = fixture();
-    expect(
-      f.service.onGlobalKeydown({ key: '2', ctrlKey: true, repeat: true } as KeyboardEvent)
-    ).toBe('HANDLED');
+    expect(dispatch(f.service, { key: '2', ctrlKey: true, repeat: true } as KeyboardEvent)).toBe(
+      'HANDLED'
+    );
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
-    expect(
-      f.service.onGlobalKeydown({ key: '0', ctrlKey: true, repeat: true } as KeyboardEvent)
-    ).toBe('IGNORED');
+    expect(dispatch(f.service, { key: '0', ctrlKey: true, repeat: true } as KeyboardEvent)).toBe(
+      'IGNORED'
+    );
   });
 
   it.each(['input', 'textarea', 'select', '[contenteditable]:not([contenteditable="false"])'])(
@@ -437,7 +547,7 @@ describe('Workbench page file interaction', () => {
       const f = fixture();
       const target = focusedTarget(selector);
       expect(
-        f.service.onGlobalKeydown({ key: '2', ctrlKey: true, target } as unknown as KeyboardEvent)
+        dispatch(f.service, { key: '2', ctrlKey: true, target } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
       expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
     }
@@ -445,7 +555,7 @@ describe('Workbench page file interaction', () => {
 
   it('no longer selects numbered Workspace tabs with Alt+number', () => {
     const f = fixture();
-    expect(f.service.onGlobalKeydown({ key: '2', altKey: true } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { key: '2', altKey: true } as KeyboardEvent)).toBe('IGNORED');
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
 
@@ -455,7 +565,7 @@ describe('Workbench page file interaction', () => {
       const f = fixture();
 
       expect(
-        f.service.onGlobalKeydown({
+        dispatch(f.service, {
           code: 'KeyN',
           key: 'ñ',
           shiftKey: false,
@@ -468,7 +578,7 @@ describe('Workbench page file interaction', () => {
 
       f.nodeReady.value = false;
       expect(
-        f.service.onGlobalKeydown({
+        dispatch(f.service, {
           code: 'KeyN',
           key: 'n',
           [modifier]: true
@@ -489,7 +599,7 @@ describe('Workbench page file interaction', () => {
   ])('does not create a session for an excluded Ctrl+N event: %j', (extra) => {
     const f = fixture();
     expect(
-      f.service.onGlobalKeydown({ key: 'n', ctrlKey: true, ...extra } as unknown as KeyboardEvent)
+      dispatch(f.service, { key: 'n', ctrlKey: true, ...extra } as unknown as KeyboardEvent)
     ).toBe('IGNORED');
     expect(f.openNewSessionComposer).not.toHaveBeenCalled();
   });
@@ -498,13 +608,13 @@ describe('Workbench page file interaction', () => {
     const f = fixture();
     const event = { key: 'n', ctrlKey: true } as KeyboardEvent;
     f.selectedWorkspaceId.value = undefined;
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     f.selectedWorkspaceId.value = 'workspace-1';
     f.view.value = 'settings';
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     f.view.value = 'nodes';
     f.quickOpenFileVisible.value = true;
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     expect(f.openNewSessionComposer).not.toHaveBeenCalled();
   });
 
@@ -514,7 +624,7 @@ describe('Workbench page file interaction', () => {
       const f = fixture();
       const target = focusedTarget(selector);
       expect(
-        f.service.onGlobalKeydown({ key: 'n', ctrlKey: true, target } as unknown as KeyboardEvent)
+        dispatch(f.service, { key: 'n', ctrlKey: true, target } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
       expect(f.openNewSessionComposer).not.toHaveBeenCalled();
     }
@@ -522,14 +632,14 @@ describe('Workbench page file interaction', () => {
 
   it.each(['ArrowLeft', 'ArrowRight'])('does not enable Ctrl+%s as an Alt shortcut', (key) => {
     const f = fixture();
-    expect(f.service.onGlobalKeydown({ key, ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { key, ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
 
   it('leaves Shift+Tab to native focus navigation', () => {
     const f = fixture();
     expect(
-      f.service.onGlobalKeydown({
+      dispatch(f.service, {
         key: 'Tab',
         shiftKey: true,
         ctrlKey: false,
@@ -547,12 +657,12 @@ describe('Workbench page file interaction', () => {
     (modifier) => {
       const f = fixture();
       const escape = { key: 'Escape', keyCode: 27 } as KeyboardEvent;
-      expect(f.service.onGlobalKeydown(escape)).toBe('IGNORED');
-      expect(f.service.onGlobalKeydown(escape)).toBe('IGNORED');
+      expect(dispatch(f.service, escape)).toBe('IGNORED');
+      expect(dispatch(f.service, escape)).toBe('IGNORED');
       expect(f.closeWorkspaceTab).not.toHaveBeenCalled();
-      expect(
-        f.service.onGlobalKeydown({ key: 'w', [modifier]: true } as unknown as KeyboardEvent)
-      ).toBe('HANDLED');
+      expect(dispatch(f.service, { key: 'w', [modifier]: true } as unknown as KeyboardEvent)).toBe(
+        'HANDLED'
+      );
       expect(f.closeWorkspaceTab).toHaveBeenCalledWith(f.workspaceTabs.value[0]);
       expect(f.closeUnpinnedWorkspaceTabs).not.toHaveBeenCalled();
     }
@@ -563,12 +673,12 @@ describe('Workbench page file interaction', () => {
     (modifier) => {
       const f = fixture();
       f.workspaceTabs.value[0] = { ...f.workspaceTabs.value[0]!, pinned: true };
-      expect(
-        f.service.onGlobalKeydown({ key: 'w', [modifier]: true } as unknown as KeyboardEvent)
-      ).toBe('HANDLED');
+      expect(dispatch(f.service, { key: 'w', [modifier]: true } as unknown as KeyboardEvent)).toBe(
+        'HANDLED'
+      );
       expect(f.closeWorkspaceTab).not.toHaveBeenCalled();
       expect(
-        f.service.onGlobalKeydown({
+        dispatch(f.service, {
           key: 'W',
           [modifier]: true,
           shiftKey: true
@@ -585,7 +695,7 @@ describe('Workbench page file interaction', () => {
       f.workspaceTabs.value[0] = { ...f.workspaceTabs.value[0]!, pinned: true };
       for (const shiftKey of [false, true]) {
         expect(
-          f.service.onGlobalKeydown({
+          dispatch(f.service, {
             key: 'w',
             [modifier]: true,
             repeat: true,
@@ -600,9 +710,9 @@ describe('Workbench page file interaction', () => {
 
   it('supports Option+W physical keys and ignores unavailable or modified closing shortcuts', () => {
     const f = fixture();
-    expect(
-      f.service.onGlobalKeydown({ key: '∑', code: 'KeyW', altKey: true } as KeyboardEvent)
-    ).toBe('HANDLED');
+    expect(dispatch(f.service, { key: '∑', code: 'KeyW', altKey: true } as KeyboardEvent)).toBe(
+      'HANDLED'
+    );
     f.closeWorkspaceTab.mockClear();
     for (const extra of [
       { defaultPrevented: true },
@@ -612,19 +722,19 @@ describe('Workbench page file interaction', () => {
       { metaKey: true }
     ]) {
       expect(
-        f.service.onGlobalKeydown({ key: 'w', altKey: true, ...extra } as unknown as KeyboardEvent)
+        dispatch(f.service, { key: 'w', altKey: true, ...extra } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
     }
     f.quickOpenFileVisible.value = true;
-    expect(f.service.onGlobalKeydown({ key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.quickOpenFileVisible.value = false;
     f.view.value = 'settings';
-    expect(f.service.onGlobalKeydown({ key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
+    expect(dispatch(f.service, { key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.view.value = 'nodes';
     f.workspaceTabs.value = [];
-    expect(
-      f.service.onGlobalKeydown({ key: 'w', altKey: true, shiftKey: true } as KeyboardEvent)
-    ).toBe('IGNORED');
+    expect(dispatch(f.service, { key: 'w', altKey: true, shiftKey: true } as KeyboardEvent)).toBe(
+      'IGNORED'
+    );
     expect(f.closeWorkspaceTab).not.toHaveBeenCalled();
     expect(f.closeUnpinnedWorkspaceTabs).not.toHaveBeenCalled();
   });
@@ -638,20 +748,19 @@ describe('Workbench page file interaction', () => {
     '.el-overlay',
     '[role="dialog"]'
   ])('does not close tabs while %s has focus', (selector) => {
-    class Target {
-      closest(pattern: string) {
-        return pattern.includes(selector) ? this : null;
-      }
-    }
-    vi.stubGlobal('Element', Target);
+    const target = focusedTarget(
+      selector === '[contenteditable]'
+        ? '[contenteditable]:not([contenteditable="false"])'
+        : selector
+    );
     const f = fixture();
     for (const shiftKey of [false, true]) {
       expect(
-        f.service.onGlobalKeydown({
+        dispatch(f.service, {
           key: 'w',
           altKey: true,
           shiftKey,
-          target: new Target()
+          target
         } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
     }
@@ -668,7 +777,7 @@ describe('Workbench page file interaction', () => {
       metaKey: false,
       isComposing: false
     } as KeyboardEvent;
-    expect(f.service.onGlobalKeydown(event)).toBe('HANDLED');
+    expect(dispatch(f.service, event)).toBe('HANDLED');
     expect(f.quickOpenFileVisible.value).toBe(true);
   });
 
@@ -676,10 +785,10 @@ describe('Workbench page file interaction', () => {
     const f = fixture();
     const event = { key: 'o', shiftKey: true, ctrlKey: true, metaKey: false } as KeyboardEvent;
     f.view.value = 'settings';
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     f.view.value = 'nodes';
     f.nodes.value = [{ id: 'node-1', connected: false, disabled: false }] as never;
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
   });
 
   it('ignores Workspace tab shortcuts when the Workbench cannot switch tabs', () => {
@@ -695,16 +804,14 @@ describe('Workbench page file interaction', () => {
       keyCode: 37
     } as KeyboardEvent;
     f.view.value = 'settings';
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     f.view.value = 'nodes';
     f.workspaceTabs.value = [];
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
+    expect(dispatch(f.service, event)).toBe('IGNORED');
     f.workspaceTabs.value = tabs;
     f.activeWorkspaceTabId.value = 'missing';
-    expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
-    expect(f.service.onGlobalKeydown({ ...event, isComposing: true } as KeyboardEvent)).toBe(
-      'IGNORED'
-    );
+    expect(dispatch(f.service, event)).toBe('IGNORED');
+    expect(dispatch(f.service, { ...event, isComposing: true } as KeyboardEvent)).toBe('IGNORED');
     expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
   });
 
@@ -719,17 +826,7 @@ describe('Workbench page file interaction', () => {
     '[role="dialog"]',
     '[contenteditable]:not([contenteditable="false"])'
   ])('does not take Workspace tab shortcuts from %s', (selector) => {
-    class Target {
-      closest(pattern: string) {
-        return pattern
-          .split(',')
-          .map((value) => value.trim())
-          .includes(selector)
-          ? this
-          : null;
-      }
-    }
-    vi.stubGlobal('Element', Target);
+    const target = focusedTarget(selector);
     const f = fixture();
     const event = {
       key: 'ArrowRight',
@@ -739,17 +836,15 @@ describe('Workbench page file interaction', () => {
       altKey: true,
       isComposing: false,
       keyCode: 39,
-      target: new Target()
+      target
     } as unknown as KeyboardEvent;
     for (const tabs of [f.workspaceTabs.value, f.workspaceTabs.value.slice(0, 1)]) {
       f.workspaceTabs.value = tabs;
-      expect(f.service.onGlobalKeydown(event)).toBe('IGNORED');
-      expect(f.service.onGlobalKeydown({ ...event, repeat: true } as KeyboardEvent)).toBe(
-        'IGNORED'
-      );
+      expect(dispatch(f.service, event)).toBe('IGNORED');
+      expect(dispatch(f.service, { ...event, repeat: true } as KeyboardEvent)).toBe('IGNORED');
       for (const shiftKey of [false, true]) {
         expect(
-          f.service.onGlobalKeydown({
+          dispatch(f.service, {
             ...event,
             key: 'Tab',
             altKey: false,

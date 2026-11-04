@@ -74,6 +74,15 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
   const operation = agentOperationPresentation(`agent_${action}`, input)!;
   const value = isPlainRecord(result) ? result : {};
   const args = isPlainRecord(input) ? input : {};
+  const message = action === 'start' || action === 'send' ? text(args.content, 2000) : undefined;
+  const title = action === 'start' ? text(args.title, 500) : undefined;
+  if (message || title)
+    operation.detail = {
+      ...(title ? { title } : {}),
+      ...(message
+        ? { message, ...(message !== args.content ? { messageTruncated: true as const } : {}) }
+        : {})
+    };
   const rows = action === 'list' ? value.sessions : action === 'wait' ? value.agents : undefined;
   const records = Array.isArray(rows)
     ? rows
@@ -93,7 +102,32 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
       const agentId = typeof rawId === 'string' && rawId.length <= 128 ? text(rawId) : undefined;
       if (!agentId) return [];
       const title = text(entry.title ?? (action === 'start' ? args.title : undefined), 500);
-      return [{ agentId, sessionId: agentId, ...(title ? { title } : {}) }];
+      const status = ['list', 'view', 'wait'].includes(action) ? text(entry.status) : undefined;
+      const latest = action === 'wait' ? latestWaitMessage(entry.updates) : undefined;
+      const viewMessage =
+        action === 'view' && isPlainRecord(entry.latestMessage) ? entry.latestMessage : undefined;
+      const summary = action === 'wait' ? text(entry.summary, 800) : undefined;
+      const rawMessage = summary ?? latest?.value ?? text(viewMessage?.text, 800);
+      const messageTruncated = summary
+        ? entry.summaryTruncated === true || summary !== entry.summary
+        : latest
+          ? latest.truncated === true
+          : viewMessage?.truncated === true ||
+            (typeof viewMessage?.text === 'string' && viewMessage.text.length > 800);
+      return [
+        {
+          agentId,
+          sessionId: agentId,
+          ...(title ? { title } : {}),
+          ...(status ? { status } : {}),
+          ...(rawMessage
+            ? {
+                message: rawMessage,
+                ...(messageTruncated ? { messageTruncated: true as const } : {})
+              }
+            : {})
+        }
+      ];
     })
     .slice(0, 100);
   // An any-wait may return one result for several requested targets; keep the call multi-target.
@@ -104,11 +138,72 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
         )
       : returnedTargets;
   const presentation: AgentOperationPresentation = { ...operation, targets };
-  if (records.length > returnedTargets.length) presentation.targetsTruncated = true;
+  const messageReceipt = isPlainRecord(value.message) ? value.message : undefined;
+  const messageResult = isPlainRecord(messageReceipt?.result) ? messageReceipt.result : undefined;
+  const auditReceipt = isPlainRecord(messageResult?.auditReceipt)
+    ? messageResult.auditReceipt
+    : undefined;
+  const failures = [value.message, value.goal, value.approval, value.observation, value.start]
+    .filter(
+      (part) =>
+        isPlainRecord(part) &&
+        ['unknown', 'failed', 'partial', 'not_attempted'].includes(String(part.status))
+    )
+    .map((part) => (isPlainRecord(part) ? (text(part.code) ?? text(part.status)) : undefined))
+    .filter((part): part is string => part !== undefined);
+  if (failures.length)
+    presentation.detail = {
+      ...presentation.detail,
+      failed: true,
+      error: failures.join('\n').slice(0, 500)
+    };
+  if (
+    action === 'send' &&
+    message &&
+    failures.length === 0 &&
+    messageReceipt?.status === 'accepted'
+  ) {
+    const delivery =
+      messageResult?.delivery === 'QUEUED' || auditReceipt?.inputMode === 'QUEUE'
+        ? 'QUEUE'
+        : auditReceipt?.inputMode === 'REPLACE_CURRENT'
+          ? 'STEER'
+          : undefined;
+    if (delivery) presentation.detail = { ...presentation.detail, delivery };
+  }
+  if (
+    !presentation.detail &&
+    ((action === 'list' && Array.isArray(value.sessions)) ||
+      (action === 'view' && isPlainRecord(value.session)) ||
+      (action === 'wait' && records.length > 0) ||
+      (action === 'stop' && typeof value.agentId === 'string'))
+  )
+    presentation.detail = {};
+  if (value.truncated === true || records.length > returnedTargets.length)
+    presentation.targetsTruncated = true;
   // Core accepts at most 8 KiB of explicit extension event data.
   while (Buffer.byteLength(JSON.stringify({ agentOperation: presentation }), 'utf8') > 7000) {
-    targets.pop();
-    presentation.targetsTruncated = true;
+    const targetWithMessage = targets.findLast((target) => target.message);
+    if (targetWithMessage?.message) {
+      const shortened = text(
+        targetWithMessage.message,
+        Math.floor(targetWithMessage.message.length / 2)
+      );
+      if (shortened) targetWithMessage.message = shortened;
+      else delete targetWithMessage.message;
+      targetWithMessage.messageTruncated = true;
+    } else if (presentation.detail?.message) {
+      const shortened = text(
+        presentation.detail.message,
+        Math.floor(presentation.detail.message.length / 2)
+      );
+      if (shortened) presentation.detail.message = shortened;
+      else delete presentation.detail.message;
+      presentation.detail.messageTruncated = true;
+    } else if (targets.length) {
+      targets.pop();
+      presentation.targetsTruncated = true;
+    } else break;
   }
   const receipt: Record<string, unknown> = {};
   if (action === 'list' && Array.isArray(value.models)) {

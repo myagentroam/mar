@@ -7,6 +7,13 @@ import ConversationTimeline from '../../src/view/conversation/ConversationTimeli
 
 const integrated = new URL(location.href).searchParams.has('timeline');
 const outputUpdates = new URL(location.href).searchParams.has('updates');
+const performanceProbe = new URL(location.href).searchParams.has('performance');
+const sessionVersion = ref(0);
+const readAssociation = new URL(location.href).searchParams.has('read-association');
+const readPath = new URL(location.href).searchParams.get('read-path') ?? '/fixture/example.ts';
+const readTruncation = new URL(location.href).searchParams.get('read-truncation');
+const dropReadAssociation = ref(false);
+const readText = '  first file\r\nsecond line\r\n';
 const detailOutput = ref<{ blocks: { channel: 'TEXT'; text: string }[]; truncation?: 'SOURCE' }>();
 const failed = ref(false);
 const copyError = ref(false);
@@ -83,9 +90,34 @@ const detailSamples: ConversationItem[] = [
     status: 'COMPLETED',
     payload: {
       toolName: 'read',
-      inputSummary: '/fixture/example.ts',
+      inputSummary: readPath,
       outputSummary: '1: export const result = true;',
-      toolPresentation: { kind: 'READ', paths: ['/fixture/example.ts'] }
+      ...(readAssociation
+        ? {
+            output: {
+              blocks: [{ channel: 'TEXT', text: readText }],
+              ...(readTruncation === 'HEAD' || readTruncation === 'SOURCE'
+                ? { truncation: readTruncation }
+                : {})
+            }
+          }
+        : {}),
+      toolPresentation: {
+        kind: 'READ',
+        paths: [readPath],
+        ...(readAssociation
+          ? {
+              results: [
+                {
+                  path: readPath,
+                  startLine: 3,
+                  endLine: 4,
+                  contentRange: { channel: 'TEXT', start: 0, end: readText.length }
+                }
+              ]
+            }
+          : {})
+      }
     }
   },
   {
@@ -103,7 +135,7 @@ const detailSamples: ConversationItem[] = [
           {
             title: 'Example documentation',
             url: 'https://example.com/docs',
-            snippet: 'A plain-text search summary.'
+            snippet: 'A plain-text search summary. <plain summary>'
           }
         ]
       }
@@ -139,10 +171,122 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (new URL(location.href).searchParams.has('specialized')) {
+  detailSamples.push(
+    {
+      id: 'image',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'view_image',
+        toolPresentation: {
+          kind: 'IMAGE_VIEW',
+          path: '/fixture/image.png',
+          mimeType: 'image/png',
+          width: 30,
+          height: 20
+        }
+      }
+    },
+    {
+      id: 'tool-search',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'tool_search',
+        toolPresentation: { kind: 'TOOL_SEARCH', query: 'find tool', tools: ['mcp__example'] }
+      }
+    },
+    {
+      id: 'compact-request',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'smart_compact',
+        toolPresentation: { kind: 'COMPACT_REQUEST', accepted: true }
+      }
+    }
+  );
+}
+if (new URL(location.href).searchParams.has('agent-cards')) {
+  detailSamples.push({
+    id: 'native-agent-card',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    payload: {
+      namespace: 'codex',
+      toolName: 'spawn_agent',
+      title: 'Native review',
+      subagentOperation: 'START',
+      subagentCallDetail: { message: 'Inspect the native change.' },
+      inputSummary: '{"message":"Inspect the native change."}'
+    }
+  });
+  const stopTruncation = new URL(location.href).searchParams.get('stop-truncation');
+  const task = {
+    agentId: 'peer',
+    sessionId: 'peer',
+    title: new URL(location.href).searchParams.has('long-title')
+      ? 'UnbrokenTitle'.repeat(35)
+      : 'Review the boundary'
+  };
+  for (const [action, detail, targets, output] of [
+    [
+      'START',
+      { title: task.title, message: 'Initial task\nwith a second line.' },
+      [task],
+      'start receipt'
+    ],
+    ['SEND', { message: 'Please check the patch.', delivery: 'QUEUE' }, [task], 'send receipt'],
+    [
+      'WAIT',
+      {},
+      [
+        { ...task, status: 'SUCCEEDED', message: 'Finished review.' },
+        { agentId: 'other', title: 'Other task', status: 'RUNNING', message: 'Still working.' }
+      ],
+      'wait receipt'
+    ],
+    [
+      'LIST',
+      {},
+      [
+        { ...task, status: 'SUCCEEDED' },
+        { agentId: 'other', title: 'Other task', status: 'IDLE' }
+      ],
+      'list receipt'
+    ],
+    [
+      'VIEW',
+      {},
+      [{ ...task, status: 'SUCCEEDED', message: 'Public view result.' }],
+      'view receipt'
+    ],
+    ['STOP', {}, [task], '{"status":"accepted"}\n']
+  ] as const) {
+    detailSamples.push({
+      id: `card-${action}`,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: `agent_${action.toLowerCase()}`,
+        inputSummary: 'Hidden public input',
+        inputTruncated: true,
+        agentOperation: { action, targets, detail },
+        output: {
+          blocks: [{ channel: 'TEXT', text: output }],
+          ...(action === 'STOP' && (stopTruncation === 'HEAD' || stopTruncation === 'SOURCE')
+            ? { truncation: stopTruncation }
+            : {})
+        }
+      }
+    });
+  }
+}
 const turns = computed<ConversationTurn[]>(() => [
   {
     id: 'turn',
-    sessionId: 'session',
+    sessionId: `session-${sessionVersion.value}`,
     runId: 'run',
     status: 'SUCCEEDED',
     items: [
@@ -158,7 +302,34 @@ const turns = computed<ConversationTurn[]>(() => [
             ...item,
             payload:
               item.kind === 'tool_call' && detailOutput.value
-                ? { ...item.payload, output: detailOutput.value }
+                ? {
+                    ...item.payload,
+                    output: detailOutput.value,
+                    ...(item.id === 'read' && readAssociation
+                      ? {
+                          toolPresentation: {
+                            kind: 'READ',
+                            paths: [readPath],
+                            ...(dropReadAssociation.value
+                              ? {}
+                              : {
+                                  results: [
+                                    {
+                                      path: readPath,
+                                      startLine: 3,
+                                      endLine: 4,
+                                      contentRange: {
+                                        channel: 'TEXT',
+                                        start: 0,
+                                        end: detailOutput.value.blocks[0]?.text.length ?? 0
+                                      }
+                                    }
+                                  ]
+                                })
+                          }
+                        }
+                      : {})
+                  }
                 : item.payload,
             processGroup: { id: 'process' }
           }))
@@ -248,6 +419,9 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <button v-if="performanceProbe" data-testid="switch-session" @click="sessionVersion++">
+      Switch fixture session
+    </button>
     <template v-if="integrated && outputUpdates">
       <button
         data-testid="stream-details"
@@ -256,6 +430,15 @@ function finish() {
         "
       >
         Stream output
+      </button>
+      <button
+        data-testid="clear-read-association"
+        @click="
+          dropReadAssociation = true;
+          detailOutput = { blocks: [{ channel: 'TEXT', text: 'unassociated replacement' }] };
+        "
+      >
+        Replace without association
       </button>
       <button
         data-testid="finish-details"

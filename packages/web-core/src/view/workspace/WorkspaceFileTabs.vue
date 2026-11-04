@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { fileKeys } from '../../service/console-shortcut-keys.js';
+import TabStrip from '../common/TabStrip.vue';
+import { tabStripIdentity } from '../../util/tab-strip-identity.js';
+import {
+  consoleKeyboardShortcutService,
+  type ConsoleShortcutBinding
+} from '../../service/console-keyboard-shortcut-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import FilePreviewSurface from './FilePreviewSurface.vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -38,6 +44,7 @@ const emit = defineEmits<{
   forward: [];
 }>();
 const root = ref<HTMLElement>();
+const tabPrefix = `file-tabs-${useId()}`;
 const surface = ref<InstanceType<typeof FilePreviewSurface>>();
 const pageHandles = new Map<number, WorkspaceFilePageHandle>();
 const closing = ref(false);
@@ -122,78 +129,71 @@ async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<b
   }
 }
 
-function close(event: Event, id: number): void {
-  event.stopPropagation();
-  void requestClose(id);
-}
-
-function handleShortcut(event: KeyboardEvent): 'HANDLED' | 'IGNORED' {
-  if (
-    root.value?.contains(event.target as Node) === true &&
-    event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey &&
-    !event.isComposing &&
-    event.keyCode !== 229
-  ) {
-    if (event.key === 'ArrowLeft') {
+const shortcutOwner = () => root.value;
+const activeHandle = () =>
+  activeTab.value === undefined ? undefined : pageHandles.get(activeTab.value.id);
+const shortcutBindings: readonly ConsoleShortcutBinding[] = [
+  {
+    command: 'filePreview.back',
+    priority: 100,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.back,
+    when: () => true,
+    execute: () => {
       if (props.canGoBack) emit('back');
       return 'HANDLED';
     }
-    if (event.key === 'ArrowRight') {
+  },
+  {
+    command: 'filePreview.forward',
+    priority: 100,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.forward,
+    when: () => true,
+    execute: () => {
       if (props.canGoForward) emit('forward');
       return 'HANDLED';
     }
+  },
+  {
+    command: 'filePreview.find',
+    priority: 100,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.find,
+    when: () => true,
+    execute: () => (activeHandle()?.openFind() ? 'HANDLED' : 'IGNORED')
+  },
+  {
+    command: 'filePreview.selectAll',
+    priority: 100,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.selectAll,
+    when: (event) =>
+      !(
+        event.target instanceof Element &&
+        event.target.closest(
+          'input, textarea, [contenteditable]:not([contenteditable="false"])'
+        ) !== null
+      ),
+    execute: () => (activeHandle()?.selectAll() ? 'HANDLED' : 'IGNORED')
+  },
+  {
+    command: 'filePreview.toggleEdit',
+    priority: 100,
+    scope: 'file-preview',
+    owner: shortcutOwner,
+    keys: fileKeys.toggleEdit,
+    when: () => true,
+    execute: () => (activeHandle()?.toggleEdit() === 'CHANGED' ? 'HANDLED' : 'IGNORED')
   }
-  if (
-    root.value?.contains(event.target as Node) !== true ||
-    event.altKey ||
-    event.shiftKey ||
-    event.ctrlKey === event.metaKey ||
-    event.isComposing ||
-    event.keyCode === 229
-  )
-    return 'IGNORED';
-  const target = event.target;
-  if (
-    event.key.toLowerCase() === 'a' &&
-    target instanceof Element &&
-    target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])') !== null
-  )
-    return 'IGNORED';
-  const handle = activeTab.value === undefined ? undefined : pageHandles.get(activeTab.value.id);
-  if (handle === undefined) return 'IGNORED';
-  const key = event.key.toLowerCase();
-  if (key === 'f') return handle.openFind() ? 'HANDLED' : 'IGNORED';
-  if (key === 'a') return handle.selectAll() ? 'HANDLED' : 'IGNORED';
-  if (key !== 'e') return 'IGNORED';
-  return handle.toggleEdit() === 'CHANGED' ? 'HANDLED' : 'IGNORED';
-}
+];
 
 function activate(id: number): void {
   emit('activate', id);
-}
-
-function onTabKeydown(event: KeyboardEvent, id: number): void {
-  const index = props.tabs.findIndex((tab) => tab.id === id);
-  if (index < 0) return;
-  let targetIndex: number | undefined;
-  if (event.key === 'ArrowLeft') targetIndex = (index - 1 + props.tabs.length) % props.tabs.length;
-  else if (event.key === 'ArrowRight') targetIndex = (index + 1) % props.tabs.length;
-  else if (event.key === 'Home') targetIndex = 0;
-  else if (event.key === 'End') targetIndex = props.tabs.length - 1;
-  if (targetIndex === undefined) return;
-  event.preventDefault();
-  const target = props.tabs[targetIndex];
-  if (target === undefined) return;
-  emit('activate', target.id);
-  void nextTick(() => {
-    root.value
-      ?.querySelectorAll<HTMLButtonElement>('.workspace-file-tab-activate')
-      .item(targetIndex)
-      .focus();
-  });
 }
 
 function captureDirtyDrafts(): readonly unknown[] {
@@ -226,10 +226,17 @@ onMounted(() => {
     document.body.classList.add('file-preview-open');
   }
   windowInteraction.mount();
-  unregisterShortcut = consoleKeyboardShortcutService.register({
-    priority: 100,
-    handle: handleShortcut
-  });
+  const unregister = shortcutBindings.map((binding) =>
+    consoleKeyboardShortcutService.register(binding)
+  );
+  unregister.push(
+    consoleKeyboardShortcutService.registerRegion({
+      scope: 'file-preview',
+      root: shortcutOwner,
+      blocksOtherScopes: true
+    })
+  );
+  unregisterShortcut = () => unregister.forEach((release) => release());
 });
 onBeforeUnmount(() => {
   unregisterShortcut?.();
@@ -268,42 +275,26 @@ defineExpose({
       :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
     >
       <header class="workspace-file-tab-header">
-        <nav
+        <TabStrip
           class="workspace-file-tab-list"
-          role="tablist"
-          :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
-        >
-          <div
-            v-for="tab in props.tabs"
-            :key="tab.id"
-            class="workspace-file-tab"
-            :class="{ 'is-active': tab.id === activeTab?.id }"
-          >
-            <button
-              v-tooltip="tab.path"
-              class="workspace-file-tab-activate"
-              :aria-description="tab.path"
-              role="tab"
-              :aria-selected="tab.id === activeTab?.id"
-              :tabindex="tab.id === activeTab?.id ? 0 : -1"
-              type="button"
-              @click="activate(tab.id)"
-              @keydown="onTabKeydown($event, tab.id)"
-            >
-              <span>{{ tab.fileName }}</span>
-            </button>
-            <button
-              v-tooltip="translate('generated.filePreviewDialog.closePreview')"
-              class="icon-button utility-control workspace-file-tab-close"
-              type="button"
-              :disabled="closing"
-              :aria-label="translate('generated.filePreviewDialog.closePreview')"
-              @click="close($event, tab.id)"
-            >
-              <MarIcon name="close" />
-            </button>
-          </div>
-        </nav>
+          :id-prefix="tabPrefix"
+          :items="
+            props.tabs.map((tab) => ({
+              id: tab.id,
+              label: tab.fileName,
+              description: tab.path,
+              closeLabel: translate('generated.filePreviewDialog.closePreview'),
+              closeDisabled: closing
+            }))
+          "
+          :active-id="activeTab?.id"
+          :label="translate('generated.filePreviewDialog.filePreviewTabs')"
+          item-class="workspace-file-tab"
+          tab-class="workspace-file-tab-activate"
+          close-class="workspace-file-tab-close"
+          @activate="(id) => typeof id === 'number' && activate(id)"
+          @close="(id) => typeof id === 'number' && requestClose(id)"
+        />
         <button
           v-tooltip="translate('filePreviewDialog.closeFileWindow')"
           class="icon-button utility-control workspace-file-window-close"
@@ -316,14 +307,22 @@ defineExpose({
         </button>
       </header>
       <div class="workspace-file-tab-content">
-        <template v-for="tab in props.tabs" :key="tab.id">
+        <div
+          v-for="tab in props.tabs"
+          v-show="tab.id === activeTab?.id"
+          :id="tabStripIdentity(tabPrefix, tab.id).panel"
+          :key="tab.id"
+          class="workspace-file-tab-panel"
+          role="tabpanel"
+          :aria-labelledby="tabStripIdentity(tabPrefix, tab.id).tab"
+        >
           <slot
             :tab="tab"
             :active="tab.id === activeTab?.id"
             :register-page-handle="(handle: unknown) => registerPageHandle(tab.id, handle)"
             :request-close="() => requestClose(tab.id)"
           />
-        </template>
+        </div>
       </div>
     </section>
   </FilePreviewSurface>
@@ -360,61 +359,10 @@ defineExpose({
   color: var(--mar-text-secondary);
 }
 
-.workspace-file-tab-list {
-  display: flex;
-  min-width: 0;
-  height: 100%;
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 3px;
-  padding: 3px;
-}
-
-.workspace-file-tab {
-  display: inline-flex;
-  flex-shrink: 0;
-  min-width: 0;
-  align-items: center;
-  border-radius: var(--mar-radius-selection);
-  background: transparent;
-  color: inherit;
-}
-
-.workspace-file-tab-activate {
-  display: inline-flex;
-  min-width: 0;
-  height: 100%;
-  align-items: center;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  padding: 0 4px 0 8px;
-}
-
-.workspace-file-tab-activate > span {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-file-tab.is-active {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-
-.workspace-file-tab:not(.is-active):hover {
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-
 :global(html[data-theme='vscode-dark-2026']) .workspace-file-tab-header {
   background: var(--mar-bg-page);
 }
 
-.workspace-file-tab-close,
 .workspace-file-window-close {
   display: grid;
   width: 24px;
@@ -427,16 +375,11 @@ defineExpose({
   font-size: 13px;
 }
 
-.workspace-file-tab-close {
-  --mar-action-icon-size: 14px;
-}
-
 .workspace-file-window-close {
   flex: 0 0 24px;
   margin-inline: 0.25rem;
 }
 
-.workspace-file-tab-close:focus-visible,
 .workspace-file-window-close:focus-visible {
   outline-offset: 1px;
 }
@@ -447,6 +390,12 @@ defineExpose({
   flex: 1;
   overflow: hidden;
 }
+.workspace-file-tab-panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
 
 @media (max-width: 767px) {
   .workspace-file-tab-header {
@@ -455,22 +404,6 @@ defineExpose({
     flex: 0 0 40px;
   }
 
-  .workspace-file-tab-list {
-    align-items: center;
-    gap: 4px;
-    padding: 2px 4px;
-  }
-
-  .workspace-file-tab {
-    height: 36px;
-    min-height: 36px;
-  }
-
-  .workspace-file-tab-activate > span {
-    max-width: 120px;
-  }
-
-  .workspace-file-tab-close,
   .workspace-file-window-close {
     width: 36px;
     min-width: 36px;

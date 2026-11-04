@@ -1,23 +1,34 @@
-import { ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import { parseComposerTags } from '@myagentroam/protocol';
+import type { QueueEditDraft } from './session-draft-service.js';
 
-export function createComposerQueueService() {
+export function createComposerQueueService(options?: {
+  readonly draft: Ref<QueueEditDraft | undefined>;
+  readonly persist: () => void;
+}) {
   const draggingQueueItemId = ref<string>();
   const editingQueueItemId = ref<string>();
-  const editingContent = ref('');
-  let editingTags = '';
-  let editingOrigin = '';
+  const draft = options?.draft ?? ref<QueueEditDraft>();
+  const editingContent = computed({
+    get: () => draft.value?.content ?? '',
+    set: (content: string) => {
+      if (draft.value === undefined) return;
+      draft.value = { ...draft.value, content };
+      options?.persist();
+    }
+  });
 
   function startEditing(item: { readonly queueItemId: string; readonly content: string }): void {
     editingQueueItemId.value = item.queueItemId;
+    if (draft.value?.queueItemId === item.queueItemId) return;
     const parts = parseComposerTags(item.content);
-    editingContent.value = parts
+    const content = parts
       .flatMap((part) =>
         part.kind === 'text' ? [part.text] : part.kind === 'mar_steer' ? [part.payload.message] : []
       )
       .join('')
       .trim();
-    editingTags = parts
+    const tags = parts
       .filter(
         (part) =>
           part.kind !== 'text' &&
@@ -27,17 +38,25 @@ export function createComposerQueueService() {
       )
       .map((part) => part.raw)
       .join('\n');
-    editingOrigin = parts
+    const origin = parts
       .filter((part) => part.kind === 'mar_session_origin' || part.kind === 'mar_channel')
       .map((part) => part.raw)
       .join('\n');
+    draft.value = { queueItemId: item.queueItemId, content, tags, origin };
+    options?.persist();
   }
 
   function finishEditing(): void {
+    if (draft.value?.queueItemId === editingQueueItemId.value) {
+      draft.value = undefined;
+      options?.persist();
+    }
     editingQueueItemId.value = undefined;
-    editingContent.value = '';
-    editingTags = '';
-    editingOrigin = '';
+  }
+
+  function rebind(): void {
+    draggingQueueItemId.value = undefined;
+    editingQueueItemId.value = draft.value?.queueItemId;
   }
 
   return {
@@ -46,7 +65,8 @@ export function createComposerQueueService() {
     editingContent,
     startEditing,
     finishEditing,
+    rebind,
     serializeEditedContent: (content: string) =>
-      [editingOrigin, content.trim(), editingTags].filter(Boolean).join('\n')
+      [draft.value?.origin, content.trim(), draft.value?.tags].filter(Boolean).join('\n')
   };
 }

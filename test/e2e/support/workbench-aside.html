@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" class="console-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workbench Aside fixture</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { computed, defineComponent, h, onMounted, ref } from 'vue';
+      import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
+      import ElementPlus from 'element-plus';
+      import 'element-plus/dist/index.css';
+      import '/packages/web-core/src/styles.css';
+      import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
+      import TabStrip from '/packages/web-core/src/view/common/TabStrip.vue';
+      import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
+      import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
+      import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
+
+      themePreferenceService().setTheme(
+        new URLSearchParams(location.search).get('theme') === 'dark'
+          ? 'vscode-dark-2026'
+          : 'daylight'
+      );
+      const language = new URLSearchParams(location.search).get('lang');
+      const toolLabels = {
+        files: '文件',
+        search: '搜索',
+        changes: 'Git 变更',
+        history: 'Git 历史',
+        terminal: '终端'
+      };
+      const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
+      const longTitle = new URLSearchParams(location.search).get('long-title');
+      const childTitle = longTitle
+        ? (longTitle === 'zh'
+            ? '需要保持可读的很长会话标题'
+            : 'A long readable session title '
+          ).repeat(8)
+        : 'Child';
+      const aside = createWorkbenchAsideService();
+      aside.ensure(workspace, ['files', 'search', 'changes', 'history', 'terminal']);
+      aside.openSession({ ...workspace, sessionId: 'child' });
+      if (!new URLSearchParams(location.search).has('active-child'))
+        aside.selectTool(workspace, 'files');
+      const terminalMounts = ref(0);
+      const inspectorMounts = ref(0);
+      const Inspector = defineComponent({
+        props: { tool: String },
+        setup(props) {
+          onMounted(() => inspectorMounts.value++);
+          return () =>
+            h('div', { id: 'tool', 'data-mounts': inspectorMounts.value }, [
+              `Tool ${props.tool}`,
+              h('input', { 'aria-label': 'Inspector draft' })
+            ]);
+        }
+      });
+      const Terminal = defineComponent({
+        props: { visible: Boolean },
+        setup(props) {
+          onMounted(() => terminalMounts.value++);
+          return () =>
+            h(
+              'div',
+              {
+                id: 'terminal',
+                style: { display: props.visible ? '' : 'none' },
+                'data-mounts': terminalMounts.value
+              },
+              'Terminal content'
+            );
+        }
+      });
+      createApp({
+        setup() {
+          const state = computed(() => aside.current(workspace));
+          const genericActive = ref('a');
+          const genericItems = [
+            { id: 'a', label: 'One', closeLabel: 'Close One' },
+            { id: 'b', label: 'Disabled', disabled: true },
+            { id: 'c', label: 'Last', closeLabel: 'Close Last' }
+          ];
+          const closed = ref('');
+          const activations = ref(0);
+          return () => [
+            h(
+              WorkbenchAside,
+              {
+                workspace,
+                state: state.value,
+                tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
+                  id,
+                  label: language === 'zh' ? toolLabels[id] : id[0].toUpperCase() + id.slice(1)
+                })),
+                sessions: [{ sessionId: 'child', title: childTitle, active: true }],
+                tabLabel: 'Workbench Aside',
+                closeLabel: (title) => `Close ${title}`,
+                resizeLabel: 'Resize Aside',
+                mobile: new URLSearchParams(location.search).has('mobile'),
+                closeSurfaceLabel: 'Back to Main',
+                style: { maxWidth: '100%' },
+                width: new URLSearchParams(location.search).has('active-child') ? 250 : 500,
+                minWidth: 200,
+                maxWidth: 800,
+                mode: 'content',
+                onSelectTool: (target) => aside.selectTool(target, target.id),
+                onSelectSession: (target) => aside.activateSession(target),
+                onCloseSession: (target) => aside.closeSession(target)
+              },
+              {
+                tool: ({ tool }) => h(Inspector, { tool }),
+                terminal: ({ visible }) => h(Terminal, { visible }),
+                session: ({ target }) => h('div', { id: 'session' }, `Session ${target.sessionId}`)
+              }
+            ),
+            h('div', { style: { width: '160px' } }, [
+              h(TabStrip, {
+                items: genericItems,
+                idPrefix: 'generic-tabs',
+                activeId: genericActive.value,
+                label: 'Generic tabs',
+                onActivate: (id) => {
+                  genericActive.value = id;
+                  activations.value++;
+                },
+                onClose: (id) => (closed.value = id)
+              }),
+              ...genericItems.map((item) =>
+                h(
+                  'div',
+                  {
+                    id: tabStripIdentity('generic-tabs', item.id).panel,
+                    role: 'tabpanel',
+                    'aria-labelledby': tabStripIdentity('generic-tabs', item.id).tab,
+                    style: { display: genericActive.value === item.id ? '' : 'none' }
+                  },
+                  item.label
+                )
+              )
+            ]),
+            h('output', { id: 'closed' }, closed.value),
+            h('output', { id: 'activations' }, activations.value)
+          ];
+        }
+      })
+        .use(ElementPlus)
+        .mount('#app');
+    </script>
+  </body>
+</html>

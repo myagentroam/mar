@@ -25,12 +25,14 @@ import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import NodeDetailsDialogs from '../../src/view/settings/NodeDetailsDialogs.vue';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 const mobileNotificationsOpen = ref(false);
 const mobileNotificationPanelTarget = ref<HTMLElement>();
 localePreferenceService().setLocale(
@@ -156,6 +158,8 @@ const toolbar = {
   attachmentsPending: false,
   effortLabel: String
 };
+const widthFixtureSubmitting = ref(false);
+const widthFixtureHasInput = ref(toolbar.inputHasContent);
 const contextCommands = createWorkbenchContextCommandService({
   workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
   selectedSession: computed(() => ({ id: 'session' }) as Session),
@@ -168,6 +172,7 @@ const contextCommands = createWorkbenchContextCommandService({
     compactCount.value++;
   },
   errorMessage: String,
+  currentRevision: () => 0,
   beginSubmission: () => () => true
 });
 const sessionPerformanceFixture = {
@@ -302,6 +307,54 @@ const app = createApp({
               : compactCount.value++
         })
       ]),
+      new URLSearchParams(location.search).has('composer-widths')
+        ? h('div', [
+            h(
+              'button',
+              {
+                id: 'toggle-submitting',
+                onClick: () => {
+                  widthFixtureSubmitting.value = !widthFixtureSubmitting.value;
+                }
+              },
+              'Toggle submitting'
+            ),
+            h(
+              'button',
+              {
+                id: 'toggle-input-content',
+                onClick: () => {
+                  widthFixtureHasInput.value = !widthFixtureHasInput.value;
+                }
+              },
+              'Toggle input content'
+            ),
+            ...[1100, 420].map((width, index) =>
+              h(
+                'section',
+                {
+                  class: 'composer',
+                  'data-testid': `width-composer-${index}`,
+                  style: `width: ${width}px; max-width: 100%`
+                },
+                [
+                  h(ComposerToolbar, {
+                    ...toolbar,
+                    activeRun: {
+                      id: 'run',
+                      status: 'RUNNING',
+                      recoveryState: 'NONE',
+                      clientMessageId: 'message'
+                    },
+                    canCompactContext: true,
+                    inputHasContent: widthFixtureHasInput.value,
+                    submitting: widthFixtureSubmitting.value
+                  })
+                ]
+              )
+            )
+          ])
+        : null,
       h('output', { 'data-testid': 'compact-count' }, compactCount.value),
       h('button', { onClick: () => (hintDialogOpen.value = true) }, 'Open hint dialog'),
       hintDialogOpen.value

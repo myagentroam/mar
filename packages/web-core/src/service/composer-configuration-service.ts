@@ -7,7 +7,7 @@ import {
 import { defaultEffortForModel } from './runner-profile-service.js';
 
 export function createComposerConfigurationService(options: {
-  readonly selectedSession: Ref<Session | undefined>;
+  readonly selectedSession: Readonly<Ref<Session | undefined>>;
   readonly profiles: Ref<readonly RunnerProfile[]>;
   readonly effortLabel: (effort: string) => string;
 }) {

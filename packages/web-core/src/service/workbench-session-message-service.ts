@@ -29,18 +29,16 @@ interface CommandResult {
 
 export interface WorkbenchSessionMessageOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedWorkspace: ComputedRef<Workspace | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly sessions: Ref<Session[]>;
-  readonly input: Ref<string>;
-  readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
-  readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
   readonly attachments: Ref<ComposerAttachment[]>;
   readonly attachmentsPending: ComputedRef<boolean>;
   readonly composerOpen: ComputedRef<boolean>;
   readonly composerBusy: ComputedRef<boolean>;
-  readonly draftOpen: Ref<boolean>;
+  readonly draftOpen: Readonly<Ref<boolean>>;
+  readonly restoreDraft: () => void;
   readonly selectedCommand: Ref<RunnerCommand | undefined>;
   readonly commandAvailable?: (command: RunnerCommand) => boolean;
   readonly submissionAvailable?: () => boolean;
@@ -61,7 +59,15 @@ export interface WorkbenchSessionMessageOptions {
   readonly temporaryTitle: (content: string) => string;
   readonly consumeAttachments: (submitted: readonly ComposerAttachment[]) => void;
   readonly retainAttachments: (submitted: readonly ComposerAttachment[]) => () => void;
-  readonly clearSkillTokens: () => void;
+  readonly captureDraft: () =>
+    | {
+        readonly input: Ref<string>;
+        readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
+        readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
+        readonly persist: () => void;
+        readonly createdSession?: (session: Session) => void;
+      }
+    | undefined;
   readonly acceptRun: (run: AgentRun) => AgentRun;
   readonly migrateSessionCache: (
     nodeId: string,
@@ -137,12 +143,20 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       return;
     const submissionNodeId = options.workspaceTarget.value?.nodeId;
     const submissionWorkspaceId = options.workspaceTarget.value?.workspaceId;
-    const body = options.input.value.trim();
+    const sameWorkspace = () =>
+      options.workspaceTarget.value?.nodeId === submissionNodeId &&
+      options.workspaceTarget.value?.workspaceId === submissionWorkspaceId;
+    const capturedDraft = options.captureDraft();
+    if (capturedDraft === undefined) return;
+    const draftInput = capturedDraft.input;
+    const draftSkills = capturedDraft.skillTokens;
+    const draftReferences = capturedDraft.references;
+    const body = draftInput.value.trim();
     const titleBody = body;
     if (
       commandOverride === undefined &&
       contentOverride === undefined &&
-      hasUnavailableSkillToken(options.skillTokens.value)
+      hasUnavailableSkillToken(draftSkills.value)
     ) {
       options.notice(translate('composer.skillUnavailable'), 'warning');
       return;
@@ -152,11 +166,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       content =
         commandOverride?.input ??
         contentOverride ??
-        serializeComposerMessage(
-          options.skillTokens.value,
-          options.input.value,
-          options.references?.value
-        );
+        serializeComposerMessage(draftSkills.value, draftInput.value, draftReferences?.value);
     } catch (error) {
       options.notice(
         translate('generated.workbenchSessionMessageService.unableToSendTheMessage', {
@@ -208,7 +218,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         return;
       }
       options.stageDraftCommand(command, commandInput);
-      if (!preserveDraft) options.input.value = '';
+      if (!preserveDraft) {
+        draftInput.value = '';
+        capturedDraft.persist();
+      }
       if (commandOverride === undefined) {
         options.selectedCommand.value = undefined;
         options.commandPickerOpen.value = false;
@@ -239,7 +252,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       }
       if (
         confirmedSessionId === undefined ||
-        options.workspaceTarget.value?.nodeId !== submissionNodeId ||
+        !sameWorkspace() ||
         options.selectedSessionId.value !== confirmedSessionId ||
         options.submissionAvailable?.() === false ||
         options.commandAvailable?.(command) === false
@@ -248,11 +261,12 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     }
 
     const outgoing = contentOverride === undefined ? [...options.attachments.value] : [];
-    const submittedSkillTokens = options.skillTokens.value;
-    const submittedReferences = options.references?.value;
+    const submittedSkillTokens = draftSkills.value;
+    const submittedReferences = draftReferences?.value;
     const selectedWorkspace = options.selectedWorkspace.value;
     let startedDraft = false;
     let submittedSession: Session | undefined;
+    let submittedProvisional: Session | undefined;
     let attemptedRetryCandidate:
       { readonly signature: string; readonly clientMessageId: string } | undefined;
     const submissionSessionId = options.selectedSessionId.value;
@@ -282,9 +296,16 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
             input: `/fast ${options.fastEnabled.value ? 'off' : 'on'}`
           })
         });
-        if (finishSubmission() && options.workspaceTarget.value?.nodeId === submissionNodeId) {
+        if (
+          finishSubmission() &&
+          sameWorkspace() &&
+          options.selectedSessionId.value === submissionSessionId
+        ) {
           options.fastEnabled.value = result.enabled;
-          if (!preserveDraft && options.input.value.trim() === content) options.input.value = '';
+          if (!preserveDraft && draftInput.value.trim() === content) {
+            draftInput.value = '';
+            capturedDraft.persist();
+          }
           if (commandOverride === undefined) {
             options.selectedCommand.value = undefined;
             options.commandPickerOpen.value = false;
@@ -300,11 +321,22 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       if (!active()) return;
       if (session === undefined) throw new Error('SESSION_NOT_FOUND');
       submittedSession = session;
+      if (createdDraft && session.id.startsWith('draft:'))
+        submittedProvisional = options.sessions.value.find(
+          (item) => item.id === session.id && item.workspaceId === session.workspaceId
+        );
       if (command !== undefined) {
         await options.executeCommand(session, command, commandInput);
         if (finishSubmission()) {
-          if (!preserveDraft && options.input.value.trim() === content) options.input.value = '';
-          if (commandOverride === undefined) {
+          if (!preserveDraft && draftInput.value.trim() === content) {
+            draftInput.value = '';
+            capturedDraft.persist();
+          }
+          if (
+            commandOverride === undefined &&
+            sameWorkspace() &&
+            options.selectedSessionId.value === session.id
+          ) {
             options.selectedCommand.value = undefined;
             options.commandPickerOpen.value = false;
           }
@@ -371,10 +403,12 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       );
       if (!active()) return;
       options.consumeAttachments(outgoing);
+      if (createdDraft) capturedDraft.createdSession?.(result.session);
       if (retryCandidate === attemptedRetryCandidate) retryCandidate = undefined;
-      if (createdDraft) options.deferredCommands.value = [];
+      if (createdDraft && sameWorkspace() && options.selectedSessionId.value === session.id)
+        options.deferredCommands.value = [];
       const selectedBeforeDelivery = options.selectedSessionId.value;
-      const nodeStillSelected = options.workspaceTarget.value?.nodeId === submissionNodeId;
+      const nodeStillSelected = sameWorkspace();
       const submittedWasSelected = nodeStillSelected && selectedBeforeDelivery === session.id;
       const identityChanged = session.id !== result.session.id;
       if (identityChanged)
@@ -422,15 +456,14 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       completedInSubmissionWindow = finishSubmission();
       if (
         contentOverride === undefined &&
-        options.workspaceTarget.value?.nodeId === submissionNodeId &&
-        options.workspaceTarget.value?.workspaceId === submissionWorkspaceId &&
-        options.input.value.trim() === body &&
-        options.skillTokens.value === submittedSkillTokens &&
-        options.references?.value === submittedReferences
+        draftInput.value.trim() === body &&
+        draftSkills.value === submittedSkillTokens &&
+        draftReferences?.value === submittedReferences
       ) {
-        options.input.value = '';
-        options.clearSkillTokens();
-        if (options.references !== undefined) options.references.value = [];
+        draftInput.value = '';
+        draftSkills.value = [];
+        if (draftReferences !== undefined) draftReferences.value = [];
+        capturedDraft.persist();
       }
     } catch (error) {
       if (!active()) return;
@@ -438,16 +471,19 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         retryCandidate = undefined;
       completedInSubmissionWindow = finishSubmission();
       if (startedDraft && completedInSubmissionWindow) {
-        if (options.workspaceTarget.value?.nodeId === submissionNodeId)
+        const provisionalStillCurrent =
+          submittedProvisional !== undefined &&
+          options.sessions.value.includes(submittedProvisional);
+        if (sameWorkspace() && provisionalStillCurrent)
           options.sessions.value = options.sessions.value.filter(
-            (session) => !session.id.startsWith('draft:')
+            (session) => session !== submittedProvisional
           );
         if (
-          options.workspaceTarget.value?.nodeId === submissionNodeId &&
+          sameWorkspace() &&
+          provisionalStillCurrent &&
           options.selectedSessionId.value === submittedSession?.id
         ) {
-          options.draftOpen.value = true;
-          options.selectedSessionId.value = undefined;
+          options.restoreDraft();
         }
       }
       if (completedInSubmissionWindow)

@@ -3,6 +3,11 @@ import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from './ComposerSendButton.vue';
 import { translate } from '../../service/locale-preference-service.js';
+import {
+  composerSendKeys,
+  composerStopKeys,
+  shortcutKeyLabel
+} from '../../service/console-shortcut-keys.js';
 import type { SelectInstance } from 'element-plus';
 import { computed, nextTick, ref } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
@@ -125,7 +130,8 @@ function selectFiles(event: Event): void {
       'composer-toolbar',
       {
         'has-runner-select': draftSessionOpen,
-        'has-mobile-send': canInterrupt && inputHasContent
+        'has-mobile-send': canInterrupt && inputHasContent,
+        'is-mobile': mobileViewport
       }
     ]"
   >
@@ -259,12 +265,26 @@ function selectFiles(event: Event): void {
       <i aria-hidden="true" />
       <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
     </button>
-    <span v-if="!mobileViewport" class="composer-hint" :class="{ 'is-submitting': submitting }">
-      <span :aria-hidden="submitting || undefined">{{
-        activeRun
-          ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop')
-          : translate('generated.composerToolbar.enterToSendShiftAltEnterFor')
-      }}</span>
+    <span
+      v-if="!mobileViewport || submitting"
+      class="composer-hint"
+      :class="{ 'is-submitting': submitting }"
+    >
+      <span
+        v-if="!mobileViewport"
+        class="composer-keyboard-hint"
+        :aria-hidden="submitting || undefined"
+        >{{
+          activeRun
+            ? translate('generated.composerToolbar.enterToQueueCtrlEnterToStop', {
+                send: shortcutKeyLabel(composerSendKeys[0]),
+                steer: shortcutKeyLabel(composerSendKeys[1])
+              })
+            : translate('generated.composerToolbar.enterToSendShiftAltEnterFor', {
+                send: shortcutKeyLabel(composerSendKeys[0])
+              })
+        }}</span
+      >
       <span v-if="submitting" class="composer-submitting" role="status">{{
         translate('workbench.sending')
       }}</span>
@@ -273,7 +293,9 @@ function selectFiles(event: Event): void {
       v-tooltip="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
-          : translate('generated.composerToolbar.stopRunEsc')
+          : translate('generated.composerToolbar.stopRunEsc', {
+              stop: shortcutKeyLabel(composerStopKeys[0])
+            })
       "
       v-if="interruptVisible"
       class="composer-stop-button"
@@ -310,9 +332,6 @@ function selectFiles(event: Event): void {
 
 <style scoped>
 .composer-submitting {
-  position: absolute;
-  inset: 0;
-  text-align: right;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   flex-shrink: 0;
@@ -323,9 +342,11 @@ function selectFiles(event: Event): void {
 }
 
 .composer-toolbar {
+  position: relative;
+  container-type: inline-size;
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.4rem;
   border-top: 1px solid var(--mar-border-subtle);
@@ -407,8 +428,9 @@ function selectFiles(event: Event): void {
 }
 
 .composer-hint {
-  position: relative;
+  flex-shrink: 0;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .composer-steer-discovery {
@@ -418,8 +440,14 @@ function selectFiles(event: Event): void {
   line-height: 1.4;
 }
 
-.composer-hint.is-submitting > :first-child {
-  visibility: hidden;
+.composer-hint.is-submitting .composer-keyboard-hint {
+  display: none;
+}
+
+@container (max-width: 960px) {
+  .composer-hint:not(.is-submitting) {
+    display: none;
+  }
 }
 
 .composer-context-button {
@@ -568,6 +596,15 @@ function selectFiles(event: Event): void {
 }
 
 @media (max-width: 767px) {
+  .composer-toolbar.is-mobile .composer-hint.is-submitting {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .composer-toolbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto 28px;

@@ -61,7 +61,7 @@ describe('Workbench surface host slots', () => {
         })
       );
       try {
-        expect(page.setComposerRangeEditor).toHaveBeenCalledOnce();
+        expect(page.setComposerRangeEditor).not.toHaveBeenCalled();
         const text = textContent(rendered.root);
         expect(text).toContain('Host registration');
         expect(text.includes('Host settings')).toBe(view === 'settings');
@@ -70,7 +70,7 @@ describe('Workbench surface host slots', () => {
       } finally {
         rendered.unmount();
       }
-      expect(page.setComposerRangeEditor).toHaveBeenCalledTimes(2);
+      expect(page.setComposerRangeEditor).not.toHaveBeenCalled();
     }
   );
 });

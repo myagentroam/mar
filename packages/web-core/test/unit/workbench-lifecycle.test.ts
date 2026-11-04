@@ -27,7 +27,7 @@ describe('Shared workbench lifecycle', () => {
     const window = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
     vi.stubGlobal('document', document);
     vi.stubGlobal('window', window);
-    const values: Record<string, unknown> = {};
+    const values: Record<string, unknown> = { workspaceShortcuts: [] };
     const options = new Proxy(values, {
       get: (target, name: string) =>
         (target[name] ??= () => {
@@ -50,11 +50,7 @@ describe('Shared workbench lifecycle', () => {
         'visibilitychange',
         options.handleSessionWatchVisibility
       );
-      expect(window.addEventListener).not.toHaveBeenCalledWith(
-        'keydown',
-        options.onGlobalKeydown,
-        true
-      );
+      expect(window.addEventListener.mock.calls.some(([name]) => name === 'keydown')).toBe(false);
       expect(window.addEventListener).toHaveBeenCalledWith('online', options.recoverAuthentication);
       calls.length = 0;
       hooks.unmounted[0]!();

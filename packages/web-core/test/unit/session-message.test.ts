@@ -12,6 +12,7 @@ import {
 import { replaceSessionIdentity } from '../../src/service/workbench-session-identity.js';
 import {
   createWorkbenchSubmissionService,
+  createWorkbenchSubmissionOwner,
   sessionSubmissionContext
 } from '../../src/service/workbench-submission-service.js';
 import { ApiError } from '../../src/util/api-error.js';
@@ -36,6 +37,37 @@ const workspace: Workspace = {
 };
 
 describe('Session identity handoff', () => {
+  it('moves an unselected session admission to its replacement identity', () => {
+    const old = { ...session, id: 'old' };
+    const next = { ...session, id: 'next' };
+    const sessions = ref<Session[]>([old]);
+    const selectedSessionId = ref<string | undefined>('other');
+    const submissions = createWorkbenchSubmissionOwner();
+    const oldSlot = {},
+      nextSlot = {};
+    const finish = submissions.bind(() => oldSlot).begin('session:old')!;
+    replaceSessionIdentity(
+      {
+        sessions,
+        selectedSessionId,
+        currentSelectionRevision: () => 0,
+        preserveManagedActive: (_current, value) => value,
+        mergeSessions: (values) => {
+          sessions.value = [...sessions.value, ...values];
+        },
+        transferSubmission: (previousId, nextId) =>
+          submissions.transfer(oldSlot, nextSlot, previousId, nextId)
+      },
+      old.id,
+      next
+    );
+    const replacement = submissions.bind(() => nextSlot);
+    expect(selectedSessionId.value).toBe('other');
+    expect(replacement.pending.value).toBe(true);
+    expect(replacement.context.value).toBe('session:next');
+    expect(replacement.begin('session:next')).toBeUndefined();
+    expect(finish()).toBe(true);
+  });
   it('does not restore an old selection when a synchronous list observer selects another session', () => {
     const draft: Session = { ...session, id: 'draft:one' };
     const saved: Session = { ...session, id: 'saved' };
@@ -66,7 +98,7 @@ describe('Session identity handoff', () => {
         saved
       );
       expect(selectedSessionId.value).toBe('other');
-      expect(submission.context.value).toBe(sessionSubmissionContext(draft.id));
+      expect(submission.context.value).toBe(sessionSubmissionContext(saved.id));
     } finally {
       stop();
       finish();
@@ -110,7 +142,7 @@ describe('Session identity handoff', () => {
         saved
       );
       expect(selectedSessionId.value).toBe(draft.id);
-      expect(submission.context.value).toBe(sessionSubmissionContext(draft.id));
+      expect(submission.context.value).toBe(sessionSubmissionContext(saved.id));
       expect(sessions.value.some((candidate) => candidate.id === draft.id)).toBe(true);
     } finally {
       stop();
@@ -216,9 +248,7 @@ describe('Session identity handoff', () => {
       );
       expect(sessions.value.map((value) => value.id)).toEqual(['saved']);
       expect(selectedSessionId.value).toBe(selected ? 'saved' : 'other');
-      expect(submission.context.value).toBe(
-        sessionSubmissionContext(selected ? 'saved' : draft.id)
-      );
+      expect(submission.context.value).toBe(sessionSubmissionContext('saved'));
       expect(finish()).toBe(true);
     }
   );
@@ -247,6 +277,7 @@ describe('Composer command dismissal', () => {
         }
       ];
     }
+    const originalSkillTokens = harness.skillTokens.value;
     const command = {
       id: closeInput.split(' ')[0]!.slice(1),
       runner: 'codex' as const,
@@ -299,7 +330,7 @@ describe('Composer command dismissal', () => {
     expect(interaction.deferredDraftCommands.value).toEqual([]);
     expect(harness.inputValue.value).toBe('Immediate Message');
     expect(harness.consumeAttachments).not.toHaveBeenCalled();
-    expect(harness.clearSkillTokens).not.toHaveBeenCalled();
+    expect(harness.skillTokens.value).toBe(originalSkillTokens);
   });
 });
 
@@ -320,7 +351,17 @@ describe('Workbench session message workspace resolution', () => {
 });
 
 function pendingRequestHarness(
-  input: { draft?: boolean; busy?: boolean; attachmentsPending?: boolean } = {}
+  input: {
+    draft?: boolean;
+    busy?: boolean;
+    attachmentsPending?: boolean;
+    captureDraft?: () => {
+      input: { value: string };
+      skillTokens: { value: readonly import('../../src/model/workbench.js').ComposerSkillToken[] };
+      persist: () => void;
+      createdSession?: (session: Session) => void;
+    };
+  } = {}
 ) {
   let resolveRequest!: (value: unknown) => void;
   let rejectRequest!: (reason: unknown) => void;
@@ -342,7 +383,6 @@ function pendingRequestHarness(
   });
   const releaseAttachments = vi.fn();
   const retainAttachments = vi.fn(() => releaseAttachments);
-  const clearSkillTokens = vi.fn(() => (skillTokens.value = []));
   const scrollToLatest = vi.fn();
   const scrollToLatestAfterLayout = vi.fn(async () => undefined);
   const beginSessionWatch = vi.fn();
@@ -354,6 +394,8 @@ function pendingRequestHarness(
   const commandAvailable = vi.fn(() => true);
   const submissionAvailable = vi.fn(() => true);
   const stageDraftCommand = vi.fn();
+  const commandPickerOpen = { value: false };
+  const cacheRun = vi.fn();
   const fastEnabled = { value: false };
   const request = vi.fn((path: string, init?: RequestInit) => {
     void path;
@@ -390,19 +432,23 @@ function pendingRequestHarness(
     },
     selectedRunId: { value: undefined },
     sessions,
-    input: inputValue,
-    skillTokens,
     attachments,
     attachmentsPending: { value: input.attachmentsPending === true },
     composerOpen: { value: true },
     composerBusy: { value: input.busy === true },
     draftOpen,
+    restoreDraft: () => {
+      draftOpen.value = true;
+      selectedSessionId.value = undefined;
+    },
     selectedCommand,
     commandAvailable,
     submissionAvailable,
-    commandPickerOpen: { value: false },
+    commandPickerOpen,
     deferredCommands: { value: [] },
     fastEnabled,
+    captureDraft:
+      input.captureDraft ?? (() => ({ input: inputValue, skillTokens, persist: () => {} })),
     activeRun: { value: undefined },
     loading: { value: false },
     notice,
@@ -430,7 +476,6 @@ function pendingRequestHarness(
     removeQueueItem,
     consumeAttachments,
     retainAttachments,
-    clearSkillTokens,
     restoreAttachments: (values: never[]) => values,
     markSessionActive: vi.fn(),
     forgetSessionActivity: vi.fn(),
@@ -439,7 +484,7 @@ function pendingRequestHarness(
     openRun,
     acceptConversationTurn,
     bindCachedTurn: vi.fn(),
-    cacheRun: vi.fn(),
+    cacheRun,
     beginSessionWatch,
     scrollToLatest,
     scrollToLatestAfterLayout,
@@ -473,8 +518,9 @@ function pendingRequestHarness(
     selectedNodeId,
     attachments,
     skillTokens,
-    clearSkillTokens,
     selectedCommand,
+    commandPickerOpen,
+    cacheRun,
     stageDraftCommand,
     fastEnabled,
     executeCommand,
@@ -502,6 +548,123 @@ const acceptedResult = {
 };
 
 describe('Workbench Message Submission Status', () => {
+  it('caches a late successful delivery without projecting it into another Workspace with the same Session id', async () => {
+    const harness = pendingRequestHarness();
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+    harness.selectedWorkspaceId.value = 'other-workspace';
+    harness.resolveRequest(acceptedResult);
+    await sending;
+    expect(harness.openRun).not.toHaveBeenCalled();
+    expect(harness.beginSessionWatch).not.toHaveBeenCalled();
+    expect(harness.scrollToLatestAfterLayout).not.toHaveBeenCalled();
+    expect(harness.runs.value).toEqual([]);
+    expect(harness.cacheRun).toHaveBeenCalledWith(
+      'node-1',
+      session.workspaceId,
+      expect.objectContaining({ id: 'run-1' })
+    );
+    expect(harness.submission.pending.value).toBe(false);
+  });
+
+  it('does not execute a destructive command after its confirmation crosses Workspaces', async () => {
+    const { ElMessageBox } = await import('element-plus');
+    const harness = pendingRequestHarness();
+    harness.selectedCommand.value = {
+      id: 'clear',
+      runner: 'mar-agent',
+      label: '/clear',
+      description: 'Clear',
+      inputHint: '/clear',
+      source: 'MAR_RUNTIME',
+      interaction: 'DESTRUCTIVE_ACTION',
+      available: true,
+      reasonCode: null
+    };
+    let confirm!: () => void;
+    vi.mocked(ElMessageBox.confirm).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          confirm = () => resolve('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+        })
+    );
+    const sending = harness.service.send(undefined, true);
+    harness.selectedWorkspaceId.value = 'other-workspace';
+    confirm();
+    await sending;
+    expect(harness.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('does not clear a new Workspace command after an old command completes', async () => {
+    const harness = pendingRequestHarness();
+    const command = {
+      id: 'test',
+      runner: 'mar-agent' as const,
+      label: '/test',
+      description: 'Test',
+      inputHint: '/test',
+      source: 'MAR_RUNTIME' as const,
+      interaction: 'IMMEDIATE_ACTION' as const,
+      available: true,
+      reasonCode: null
+    };
+    harness.selectedCommand.value = command;
+    let complete!: () => void;
+    harness.executeCommand.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = () => resolve({});
+        })
+    );
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.executeCommand).toHaveBeenCalledOnce());
+    harness.selectedWorkspaceId.value = 'other-workspace';
+    harness.commandPickerOpen.value = true;
+    complete();
+    await sending;
+    expect(harness.selectedCommand.value).toBe(command);
+    expect(harness.commandPickerOpen.value).toBe(true);
+  });
+  it('settles only the submitted provisional identity after a failed start', async () => {
+    const harness = pendingRequestHarness({ draft: true });
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+    const other = { ...session, id: 'draft:other', workspaceId: 'another-workspace' };
+    harness.sessions.value.push(other);
+    harness.rejectRequest(new Error('failed'));
+    await sending;
+    expect(harness.sessions.value).toEqual([other]);
+    expect(harness.draftOpen.value).toBe(true);
+  });
+  it('does not restore or remove another Workspace draft after a late failed start', async () => {
+    const harness = pendingRequestHarness({ draft: true });
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+    harness.selectedWorkspaceId.value = 'other-workspace';
+    const other = { ...session, id: 'draft:other', workspaceId: 'other-workspace' };
+    harness.sessions.value = [other];
+    harness.rejectRequest(new Error('failed'));
+    await sending;
+    expect(harness.draftOpen.value).toBe(false);
+    expect(harness.selectedSessionId.value).toBe('draft:session-1');
+    expect(harness.sessions.value).toEqual([other]);
+  });
+  it('does not remove or deselect a later replacement with the same provisional identity', async () => {
+    const harness = pendingRequestHarness({ draft: true });
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+    const replacement = {
+      id: 'draft:session-1',
+      workspaceId: session.workspaceId,
+      runner: 'codex' as const
+    };
+    harness.sessions.value = [replacement];
+    harness.rejectRequest(new Error('failed'));
+    await sending;
+    expect(harness.sessions.value).toEqual([replacement]);
+    expect(harness.selectedSessionId.value).toBe(replacement.id);
+    expect(harness.draftOpen.value).toBe(false);
+  });
   it.each(['SUCCEEDED', 'FAILED', 'INTERRUPTED'])(
     'accepts a terminal %s receipt without opening the old Run or restarting observation',
     async (status) => {
@@ -660,7 +823,11 @@ describe('Workbench Message Submission Status', () => {
   });
 
   it('keeps the original node and attachments when draft creation yields across a workspace switch', async () => {
-    const harness = pendingRequestHarness({ draft: true });
+    const originalInput = ref('Immediate Message');
+    const harness = pendingRequestHarness({
+      draft: true,
+      captureDraft: () => ({ input: originalInput, skillTokens: ref([]), persist: () => {} })
+    });
     const sent: ComposerAttachment = {
       id: 'sent-file',
       nodeId: 'node-1',
@@ -683,6 +850,7 @@ describe('Workbench Message Submission Status', () => {
       attachmentIds: ['sent-file']
     });
     expect(harness.inputValue.value).toBe('Immediate Message');
+    expect(originalInput.value).toBe('');
   });
 
   it('Keeps the same submission context when a new session moves from a generic to a specific draft ID', () => {
@@ -990,6 +1158,25 @@ describe('Workbench Message Submission Status', () => {
     }
   );
 
+  it('settles the captured draft, not the newly selected session, after a delayed start', async () => {
+    const draft = {
+      input: ref('Immediate Message'),
+      skillTokens: ref<readonly import('../../src/model/workbench.js').ComposerSkillToken[]>([]),
+      persist: vi.fn(),
+      createdSession: vi.fn()
+    };
+    const harness = pendingRequestHarness({ draft: true, captureDraft: () => draft });
+    const sending = harness.service.send();
+    await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+    harness.selectedSessionId.value = 'other-session';
+    harness.resolveRequest(acceptedResult);
+    await sending;
+    expect(draft.createdSession).toHaveBeenCalledWith(acceptedResult.session);
+    expect(draft.input.value).toBe('');
+    expect(draft.persist).toHaveBeenCalled();
+    expect(harness.inputValue.value).toBe('Immediate Message');
+  });
+
   it('blocks sending while an attachment is still uploading with a warning', async () => {
     const harness = pendingRequestHarness({ attachmentsPending: true });
 
@@ -1037,14 +1224,17 @@ describe('Workbench Message Submission Status', () => {
   it.each(['node', 'workspace'])(
     'does not clear an identical draft on another %s after success',
     async (target) => {
-      const harness = pendingRequestHarness();
+      const submitted = ref('Immediate Message');
+      const harness = pendingRequestHarness({
+        captureDraft: () => ({ input: submitted, skillTokens: ref([]), persist: () => {} })
+      });
       const sending = harness.service.send();
       if (target === 'node') harness.selectedNodeId.value = 'node-2';
       else harness.selectedWorkspaceId.value = 'workspace-2';
       harness.resolveRequest(acceptedResult);
       await sending;
       expect(harness.inputValue.value).toBe('Immediate Message');
-      expect(harness.clearSkillTokens).not.toHaveBeenCalled();
+      expect(submitted.value).toBe('');
     }
   );
 
@@ -1146,7 +1336,7 @@ describe('Workbench Message Submission Status', () => {
     );
     harness.resolveRequest(acceptedResult);
     await sending;
-    expect(harness.clearSkillTokens).toHaveBeenCalledOnce();
+    expect(harness.skillTokens.value).toEqual([]);
   });
 
   it('Allows sending selected skills when the body is empty', async () => {
@@ -1174,7 +1364,7 @@ describe('Workbench Message Submission Status', () => {
     harness.resolveRequest(acceptedResult);
     await sending;
 
-    expect(harness.clearSkillTokens).toHaveBeenCalledOnce();
+    expect(harness.skillTokens.value).toEqual([]);
   });
 
   it('Blocks sending and preserves the complete draft when a skill token is invalid', async () => {
@@ -1216,7 +1406,6 @@ describe('Workbench Message Submission Status', () => {
 
     expect(harness.inputValue.value).toBe('Immediate Message');
     expect(harness.skillTokens.value).toHaveLength(1);
-    expect(harness.clearSkillTokens).not.toHaveBeenCalled();
   });
 
   it('Releases the submission state after five seconds, preserves the draft, and retries with the same message ID', async () => {

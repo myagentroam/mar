@@ -4,7 +4,10 @@ import { dirname, resolve } from 'node:path';
 const productRoot = resolve(import.meta.dirname, '../../..');
 const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package.json'));
 
-export async function startCustomThemeFixture(entry?: string) {
+export async function startCustomThemeFixture(
+  entry?: string,
+  options?: { protocolSource?: boolean }
+) {
   const [{ createServer }, vue, components, resolvers] = await Promise.all([
     import(webRequire.resolve('vite')),
     import(webRequire.resolve('@vitejs/plugin-vue')),
@@ -21,6 +24,9 @@ export async function startCustomThemeFixture(entry?: string) {
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: {
+        ...(options?.protocolSource
+          ? { '@myagentroam/protocol': resolve(productRoot, 'packages/protocol/src/index.ts') }
+          : {}),
         '@': resolve(productRoot, 'ee/web/src'),
         vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
         'element-plus': dirname(webRequire.resolve('element-plus/package.json')),

@@ -17,6 +17,8 @@ import {
 } from '../../service/quick-open-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { fileKeys } from '../../service/console-shortcut-keys.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import FileTypeIcon from './FileTypeIcon.vue';
@@ -198,11 +200,41 @@ function onVisibilityChange(): void {
     scheduleSearch();
   }
 }
+let unregisterShortcuts: (() => void)[] = [];
 onMounted(() => {
+  const owner = () => input.value?.closest('[role="dialog"]') ?? undefined;
+  unregisterShortcuts = [
+    consoleKeyboardShortcutService.register({
+      command: 'quickOpen.choose',
+      scope: 'overlay',
+      priority: 130,
+      owner: () => input.value,
+      keys: fileKeys.choose,
+      when: () =>
+        props.open && !selectionCommitted.value && entries.value[activeIndex.value] !== undefined,
+      execute: (event) => {
+        choose(undefined, event.ctrlKey || event.metaKey);
+        return 'HANDLED';
+      }
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'quickOpen.dismiss',
+      scope: 'overlay',
+      priority: 130,
+      owner,
+      keys: fileKeys.dismiss,
+      when: () => props.open,
+      execute: () => {
+        emit('close');
+        return 'HANDLED';
+      }
+    })
+  ];
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function')
     document.addEventListener('visibilitychange', onVisibilityChange);
 });
 onBeforeUnmount(() => {
+  unregisterShortcuts.forEach((release) => release());
   queryService.dispose();
   if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function')
     document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -277,10 +309,7 @@ function selectActiveEntry(key: string | undefined): void {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.isComposing || event.keyCode === 229) return;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    emit('close');
-  } else if (event.key === 'ArrowDown' && entries.value.length > 0) {
+  if (event.key === 'ArrowDown' && entries.value.length > 0) {
     event.preventDefault();
     selectActiveEntry(entries.value[(activeIndex.value + 1) % entries.value.length]?.key);
   } else if (event.key === 'ArrowUp' && entries.value.length > 0) {
@@ -288,9 +317,6 @@ function onKeydown(event: KeyboardEvent): void {
     selectActiveEntry(
       entries.value[(activeIndex.value - 1 + entries.value.length) % entries.value.length]?.key
     );
-  } else if (event.key === 'Enter') {
-    event.preventDefault();
-    choose(undefined, event.ctrlKey || event.metaKey);
   }
 }
 </script>

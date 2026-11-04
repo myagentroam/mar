@@ -52,6 +52,7 @@ async function renderOfflineSurface() {
     },
     setComposerInputFocus: vi.fn(),
     setComposerRangeEditor: vi.fn(),
+    setAsideSurfaceVisible: vi.fn(),
     workspaceHost: { connected: false },
     workspaceTarget: { nodeId: 'node-1', workspaceId: 'workspace-1' },
     selectedWorkspace: undefined,

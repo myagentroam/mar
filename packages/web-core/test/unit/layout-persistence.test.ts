@@ -47,15 +47,17 @@ describe('Public Workbench Layout Persistence', () => {
     const f = fixture();
     expect(f.service.panelWidths.value).toEqual({});
     f.service.setPanelWidth('sidebar', 330.4);
-    f.service.setPanelWidth('inspector', 510);
+    f.service.setPanelWidth('compact', 510);
+    f.service.setPanelWidth('content', 760);
     expect(JSON.parse(f.local.getItem('mar.workbench.panel-widths.v1')!)).toEqual({
       sidebar: 330,
-      inspector: 510
+      compact: 510,
+      content: 760
     });
     f.service.setPanelWidth('sidebar', -10);
-    f.service.setPanelWidth('inspector', 10000);
+    f.service.setPanelWidth('compact', 10000);
     f.service.restore();
-    expect(f.service.panelWidths.value).toEqual({ sidebar: 220, inspector: 600 });
+    expect(f.service.panelWidths.value).toEqual({ sidebar: 220, compact: 600, content: 760 });
     expect(f.session.getItem('mar.workbench.panel-widths.v1')).toBeNull();
   });
 
@@ -68,19 +70,42 @@ describe('Public Workbench Layout Persistence', () => {
     }
     f.local.setItem('mar.workbench.panel-widths.v1', '{"sidebar":900,"inspector":-1}');
     f.service.restore();
-    expect(f.service.panelWidths.value).toEqual({ sidebar: 420, inspector: 275 });
+    expect(f.service.panelWidths.value).toEqual({ sidebar: 420, compact: 275 });
+    expect(JSON.parse(f.local.getItem('mar.workbench.panel-widths.v1')!)).toEqual({
+      sidebar: 420,
+      compact: 275
+    });
     f.local.setItem.mockImplementation(() => {
       throw new Error('full');
     });
     expect(() => f.service.setPanelWidth('sidebar', 300)).not.toThrow();
     f.service.setPanelWidth('sidebar', NaN);
-    f.service.setPanelWidth('inspector', Infinity);
-    expect(f.service.panelWidths.value).toEqual({ sidebar: 300, inspector: 275 });
+    f.service.setPanelWidth('compact', Infinity);
+    expect(f.service.panelWidths.value).toEqual({ sidebar: 300, compact: 275 });
     f.local.getItem.mockImplementation(() => {
       throw new Error('blocked');
     });
     expect(() => f.service.restore()).not.toThrow();
     expect(f.service.panelWidths.value).toEqual({});
+  });
+
+  it('keeps mode preferences across temporary container constraints and migrates legacy width once', () => {
+    const f = fixture();
+    f.local.setItem('mar.workbench.panel-widths.v1', '{"sidebar":300,"inspector":510}');
+    f.local.setItem.mockClear();
+    f.service.restore();
+    expect(f.service.panelWidths.value).toEqual({ sidebar: 300, compact: 510 });
+    expect(f.local.setItem).toHaveBeenCalledTimes(1);
+    expect(f.service.asideWidth('content', 1200, 360)).toBe(640);
+    f.service.setPanelWidth('content', 760);
+    expect(f.service.asideWidth('content', 1000, 360)).toBe(640);
+    expect(f.service.asideWidth('content', 1300, 360)).toBe(760);
+    expect(f.service.asideWidth('content', 800, 360)).toBeUndefined();
+    f.local.setItem.mockClear();
+    f.service.restore();
+    expect(f.local.setItem).not.toHaveBeenCalled();
+    expect(f.service.panelWidths.value.content).toBe(760);
+    expect(f.service.panelWidths.value.compact).toBe(510);
   });
 
   it('restores pins beyond the normal quota and rejects malformed pin flags', () => {

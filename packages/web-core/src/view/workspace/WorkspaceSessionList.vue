@@ -19,7 +19,6 @@ import BusyIndicator from '../common/BusyIndicator.vue';
 import SessionScheduleDialog from './SessionScheduleDialog.vue';
 import SessionPromptDialog from './SessionPromptDialog.vue';
 import SessionShareDialog from './SessionShareDialog.vue';
-import WorkspaceSessionTreeDialog from './WorkspaceSessionTreeDialog.vue';
 
 const props = defineProps<{
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
@@ -56,11 +55,15 @@ const props = defineProps<{
   readonly workspaceManageable: boolean;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly hasUnread: (sessionId: string) => boolean;
+  readonly asideSupported?: boolean;
 }>();
 
 const emit = defineEmits<{
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
-  openTree: [sessionId: string];
+  openTree: [sessionId: string, anchor: HTMLElement, title: string];
+  openAside: [
+    target: { readonly nodeId: string; readonly workspaceId: string; readonly sessionId: string }
+  ];
   create: [];
   open: [sessionId: string];
   rename: [session: Session];
@@ -75,6 +78,16 @@ const emit = defineEmits<{
 }>();
 
 const draggingPinnedSessionId = ref<string>();
+const asideActionTarget = ref<{ nodeId: string; workspaceId: string; sessionId: string }>();
+function updateSessionActions(visible: boolean, session: Session): void {
+  openSessionActionsId.value = visible ? session.id : undefined;
+  if (visible)
+    asideActionTarget.value = {
+      nodeId: props.nodeId,
+      workspaceId: session.workspaceId,
+      sessionId: session.id
+    };
+}
 const sessionListElement = ref<HTMLElement>();
 const appendMarker = ref<HTMLElement>();
 const retryingAppend = ref(false);
@@ -175,13 +188,6 @@ const dragOverPinnedPosition = ref<'before' | 'after'>('before');
 const hoveredSessionId = ref<string>();
 const focusedSessionId = ref<string>();
 const openSessionActionsId = ref<string>();
-const treeSessionId = ref<string>();
-watch(
-  () => [props.nodeId, props.workspaceId],
-  () => {
-    treeSessionId.value = undefined;
-  }
-);
 const searchInput = ref(props.searchQuery);
 watch(
   () => props.searchQuery,
@@ -295,8 +301,7 @@ function sessionActionsVisible(sessionId: string): boolean {
   return (
     hoveredSessionId.value === sessionId ||
     focusedSessionId.value === sessionId ||
-    openSessionActionsId.value === sessionId ||
-    treeSessionId.value === sessionId
+    openSessionActionsId.value === sessionId
   );
 }
 
@@ -324,6 +329,15 @@ function openSessionActions(sessionId: string, event: MouseEvent): void {
 
 function openSession(sessionId: string): void {
   emit('open', sessionId);
+}
+
+function showTree(sessionId: string): void {
+  const row = [
+    ...(sessionListElement.value?.querySelectorAll<HTMLElement>('.session-row') ?? [])
+  ].find((item) => item.dataset.sessionId === sessionId);
+  const anchor = row?.querySelector<HTMLElement>('.session-link');
+  const session = props.sessions.find((item) => item.id === sessionId);
+  if (anchor && session) emit('openTree', sessionId, anchor, props.title(session));
 }
 
 function submitSessionSearch(): void {
@@ -487,6 +501,7 @@ function submitSessionSearch(): void {
         @focusout="clearFocus($event, () => (focusedSessionId = undefined))"
       >
         <div
+          :data-session-id="session.id"
           :class="[
             'session-row',
             {
@@ -571,8 +586,8 @@ function submitSessionSearch(): void {
             placement="bottom-end"
             popper-class="session-action-menu"
             trigger="click"
-            @visible-change="openSessionActionsId = $event ? session.id : undefined"
-            @command="$event === 'tree' && (treeSessionId = session.id)"
+            @visible-change="updateSessionActions($event, session)"
+            @command="$event === 'tree' && showTree(session.id)"
           >
             <button
               v-tooltip="translate('generated.workspaceSessionList.moreSessionActions2')"
@@ -589,6 +604,14 @@ function submitSessionSearch(): void {
             </button>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item
+                  v-if="asideSupported"
+                  :disabled="loading || !nodeReady"
+                  @click="asideActionTarget && emit('openAside', asideActionTarget)"
+                >
+                  <MarIcon name="split" />
+                  {{ translate('generated.workbenchAside.openSession') }}
+                </el-dropdown-item>
                 <el-dropdown-item v-if="!pinned(session)" @click="emit('pin', session, true)"
                   ><MarIcon name="pin" />{{
                     translate('generated.workspaceSessionList.pin')
@@ -625,7 +648,11 @@ function submitSessionSearch(): void {
                     translate('generated.workspaceSessionList.rename')
                   }}</el-dropdown-item
                 >
-                <el-dropdown-item :disabled="loading || !nodeReady" command="tree">
+                <el-dropdown-item
+                  v-if="asideSupported"
+                  :disabled="loading || !nodeReady"
+                  command="tree"
+                >
                   <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
                 </el-dropdown-item>
                 <el-dropdown-item
@@ -837,17 +864,6 @@ function submitSessionSearch(): void {
       :node-id="nodeId"
       :workspace-id="workspaceId"
       :request="request"
-    />
-    <!-- Let the menu release its focus trap before mounting the dialog. -->
-    <WorkspaceSessionTreeDialog
-      v-if="treeSessionId && openSessionActionsId !== treeSessionId"
-      :key="treeSessionId"
-      :node-id="nodeId"
-      :workspace-id="workspaceId"
-      :session-id="treeSessionId"
-      :request="request"
-      @close="treeSessionId = undefined"
-      @open="emit('openTree', $event)"
     />
   </aside>
 </template>

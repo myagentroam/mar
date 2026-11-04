@@ -8,6 +8,8 @@ import {
   replaceQuickPromptAtCursor
 } from '../../src/service/runner-interaction-service.js';
 import { composerZhCN } from '../../src/i18n/composer.js';
+import { registerComposerShortcuts } from '../../src/service/composer-shortcut-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const command = {
@@ -105,21 +107,9 @@ describe('Web Runner Interaction Status', () => {
     state.updatePicker(input.value.length);
     const sends: Array<readonly [boolean, boolean | undefined]> = [];
 
-    state.onKeydown(
-      {
-        key: 'Enter',
-        ctrlKey: false,
-        shiftKey: false,
-        altKey: false,
-        preventDefault() {}
-      } as KeyboardEvent,
-      {
-        mobile: false,
-        canInterrupt: false,
-        stop: () => undefined,
-        send: (replaceCurrent, preserveDraft) => sends.push([replaceCurrent, preserveDraft])
-      }
-    );
+    state.acceptPicker({
+      send: (replaceCurrent, preserveDraft) => sends.push([replaceCurrent, preserveDraft])
+    });
 
     expect(input.value).toBe('abcd ');
     expect(sends).toEqual([[false, true]]);
@@ -306,58 +296,36 @@ describe('Web Runner Interaction Status', () => {
         profile: { value: undefined } as Options['profile']
       });
       const sends: boolean[] = [];
+      let mobile = false;
+      const target = { nodeType: 1 } as Node;
+      const owner = { contains: (node: Node) => node === target } as Element;
+      const release = registerComposerShortcuts({
+        owner: () => owner,
+        canSend: () => !mobile,
+        canReplace: () => true,
+        canStop: () => false,
+        send: (replace) => sends.push(replace),
+        stop: () => undefined
+      });
       const keydown = (ctrlKey: boolean) =>
-        state.onKeydown(
-          {
-            key: 'Enter',
-            ctrlKey,
-            shiftKey: false,
-            altKey: false,
-            preventDefault() {}
-          } as KeyboardEvent,
-          {
-            mobile: false,
-            canInterrupt: false,
-            stop: () => undefined,
-            send: (replaceCurrent) => sends.push(replaceCurrent)
-          }
-        );
+        consoleKeyboardShortcutService.handle({
+          key: 'Enter',
+          target,
+          ctrlKey,
+          preventDefault() {},
+          stopPropagation() {}
+        } as unknown as KeyboardEvent);
 
       keydown(true);
       keydown(false);
       expect(sends).toEqual([true, false]);
 
-      state.onKeydown(
-        {
-          key: 'Enter',
-          ctrlKey: true,
-          shiftKey: false,
-          altKey: false,
-          preventDefault() {}
-        } as KeyboardEvent,
-        {
-          mobile: false,
-          canInterrupt: false,
-          stop: () => undefined,
-          send: (replaceCurrent) => sends.push(replaceCurrent)
-        }
-      );
+      keydown(true);
       expect(sends).toEqual([true, false, true]);
-      state.onKeydown(
-        {
-          key: 'Enter',
-          preventDefault(): void {
-            throw new Error('Mobile Enter must remain a newline');
-          }
-        } as KeyboardEvent,
-        {
-          mobile: true,
-          canInterrupt: true,
-          stop: () => undefined,
-          send: (replaceCurrent) => sends.push(replaceCurrent)
-        }
-      );
+      mobile = true;
+      keydown(false);
       expect(sends).toEqual([true, false, true]);
+      release();
     }
   );
 
@@ -434,10 +402,7 @@ describe('Web Runner Interaction Status', () => {
         'contains-2'
       ]);
 
-      state.onKeydown({ key: 'Enter', preventDefault() {} } as KeyboardEvent, {
-        mobile: false,
-        canInterrupt: false,
-        stop: () => undefined,
+      state.acceptPicker({
         send: () => {
           throw new Error('Picking a quick prompt must not send the message');
         },

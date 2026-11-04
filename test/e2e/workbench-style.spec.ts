@@ -8,6 +8,16 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Pane model shortcut uses the focused Composer and preserves the draft', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}workbench-style.html?composer=1`);
+  const composer = page.locator('.composer textarea');
+  await composer.fill('kept draft');
+  await composer.press('Alt+m');
+  await expect(page.locator('.composer-model-effort-select [role=combobox]')).toBeFocused();
+  await expect(composer).toHaveValue('kept draft');
+});
+
 test('Manual session dragging immediately takes over activity reorder motion', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -687,6 +697,32 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Workspace recovery stays compact and centered in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&workspace-recovery=1`);
+      const panel = page.locator('.workspace-selection-panel');
+      const failure = panel.locator('[role="status"]');
+      const retry = panel.getByRole('button');
+      await expect(failure).toBeVisible();
+      await expect(panel.locator('.el-empty')).toHaveCount(0);
+      await expect(retry).toHaveClass(/is-link/);
+      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(retry).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+      await expect(retry).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
+      const outer = (await panel.boundingBox())!;
+      const content = (await panel.locator('.workspace-recovery-state').boundingBox())!;
+      expect(Math.abs(content.x + content.width / 2 - outer.x - outer.width / 2)).toBeLessThan(2);
+      expect(Math.abs(content.y + content.height / 2 - outer.y - outer.height / 2)).toBeLessThan(2);
+      await page.screenshot({ path: testInfo.outputPath('workspace-recovery.png') });
+      await retry.click();
+      await expect(retry).toHaveCount(0);
+      await expect(panel.locator('.page-loading-state[role="status"]')).toBeVisible();
+      await expect(panel.locator('.busy-indicator')).toHaveCount(1);
+      await expect(panel.locator('.workspace-recovery-state')).toHaveCount(0);
+    });
+
     test(`Offline Workspace uses a static disconnected icon in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {

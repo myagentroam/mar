@@ -14,6 +14,8 @@ import type {
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import { activeRecentRunStatus } from '../../util/notification-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { activityToggleKeys, shortcutKeyLabel } from '../../service/console-shortcut-keys.js';
 
 const props = withDefaults(
   defineProps<{
@@ -130,35 +132,40 @@ function selectRun(run: RecentRun): void {
   open.value = false;
   emit('openRecentRun', run);
 }
-function onShortcut(event: KeyboardEvent): void {
-  if (
-    event.isComposing ||
-    event.altKey ||
-    !event.shiftKey ||
-    (!event.ctrlKey && !event.metaKey) ||
-    event.key.toLowerCase() !== 'e' ||
-    (event.target instanceof Element && event.target.closest('.terminal-dock') !== null)
-  )
-    return;
-  event.preventDefault();
-  if (event.repeat) return;
-  if (!props.mobileMode && !desktopOpen.value) trigger.value?.querySelector('button')?.focus();
-  toggle();
-}
-function onEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return;
-  if (!popoverOpen.value) return;
-  event.stopPropagation();
-  popoverOpen.value = false;
-}
+let unregisterShortcut: (() => void) | undefined;
+let unregisterEscape: (() => void) | undefined;
 onMounted(() => {
-  window.addEventListener('keydown', onShortcut, true);
-  window.addEventListener('keydown', onEscape);
+  unregisterShortcut = consoleKeyboardShortcutService.register({
+    command: 'activityCenter.toggle',
+    priority: 30,
+    scope: 'global',
+    keys: activityToggleKeys,
+    when: () => true,
+    execute: (event) => {
+      if (!event.repeat) {
+        if (!props.mobileMode && !desktopOpen.value)
+          trigger.value?.querySelector('button')?.focus();
+        toggle();
+      }
+      return 'HANDLED';
+    }
+  });
+  unregisterEscape = consoleKeyboardShortcutService.register({
+    command: 'activityCenter.dismiss',
+    priority: 110,
+    scope: 'overlay',
+    keys: [{ key: 'Escape' }],
+    when: () => popoverOpen.value,
+    execute: () => {
+      popoverOpen.value = false;
+      return 'HANDLED';
+    }
+  });
 });
 onBeforeUnmount(() => {
   dismissPreview();
-  window.removeEventListener('keydown', onShortcut, true);
-  window.removeEventListener('keydown', onEscape);
+  unregisterShortcut?.();
+  unregisterEscape?.();
 });
 </script>
 
@@ -171,7 +178,7 @@ onBeforeUnmount(() => {
         type="button"
         :aria-label="translate('activityCenter.title')"
         :aria-description="entryDescription"
-        aria-keyshortcuts="Control+Shift+E Meta+Shift+E"
+        :aria-keyshortcuts="activityToggleKeys.map((key) => shortcutKeyLabel(key, true)).join(' ')"
         :aria-expanded="open"
         @click.stop="toggle"
       >

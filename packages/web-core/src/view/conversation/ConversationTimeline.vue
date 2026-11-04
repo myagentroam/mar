@@ -403,6 +403,7 @@ watch(
       turn.items.flatMap((item) => [
         item.id,
         `group:${item.id}`,
+        `tool:${item.id}`,
         ...(item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ'
           ? conversationToolEntries([item]).map(({ id }) => id)
           : [])
@@ -816,11 +817,16 @@ function stepDuration(item: ConversationItem): string | undefined {
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
-                <span class="conversation-tool-preview">{{
-                  entry.path ||
-                  conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
-                  conversationItemLabel(entry.item.kind, entry.item.payload)
-                }}</span>
+                <span class="conversation-tool-preview conversation-read-preview">
+                  <span class="conversation-read-path">{{
+                    entry.path ||
+                    conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
+                    conversationItemLabel(entry.item.kind, entry.item.payload)
+                  }}</span>
+                  <span v-if="entry.range" class="conversation-read-range">
+                    · {{ entry.range }}</span
+                  >
+                </span>
                 <span class="conversation-record-meta">{{
                   toolPresentationStatus(entry.item.status)
                 }}</span>
@@ -828,12 +834,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               <template v-if="groupedItemDisclosure[entry.id]">
                 <ConversationToolDetail
                   :item="entry.item"
+                  :read-path="entry.path"
                   @copy="(text, done) => emit('copy', text, done)"
-                >
-                  <pre class="conversation-detail-text">{{
-                    conversationItemDetail(entry.item.kind, entry.item.payload)
-                  }}</pre>
-                </ConversationToolDetail>
+                />
               </template>
             </details>
           </details>
@@ -1437,6 +1440,9 @@ function stepDuration(item: ConversationItem): string | undefined {
           <details
             class="conversation-tool-presentation"
             :data-tool-presentation="toolPresentation(displayItem.item.payload)?.kind"
+            :open="groupedItemDisclosure[`tool:${displayItem.id}`] === true"
+            @toggle="updateGroupedItemDisclosure(`tool:${displayItem.id}`, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[`tool:${displayItem.id}`]"
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
@@ -1459,6 +1465,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               }}</span>
             </summary>
             <ConversationToolDetail
+              v-if="groupedItemDisclosure[`tool:${displayItem.id}`]"
               :item="displayItem.item"
               @copy="(text, done) => emit('copy', text, done)"
             >
@@ -1481,8 +1488,8 @@ function stepDuration(item: ConversationItem): string | undefined {
                     >{{ source.title || source.url }}</a
                   >
                   <span v-else>{{ source.title || source.url }}</span>
-                  <span v-if="source.host" class="conversation-tool-source-host">{{
-                    source.host
+                  <span v-if="source.title && source.url" class="conversation-tool-source-host">{{
+                    source.url
                   }}</span>
                   <p v-if="source.snippet">{{ source.snippet }}</p>
                 </li>
@@ -1995,6 +2002,25 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
+.conversation-read-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.conversation-read-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-read-range {
+  flex: none;
+  color: var(--mar-conversation-muted);
+  font-size: var(--mar-font-size-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 .conversation-item .conversation-command-output,
 .conversation-item .conversation-record-detail {
   margin: 0.5rem 0 0 0.5rem;
@@ -2016,6 +2042,11 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-tool-sources > li + li {
   margin-top: 0.75rem;
+}
+
+.conversation-item .conversation-tool-sources p {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .conversation-tool-source-host {

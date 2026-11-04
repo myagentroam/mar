@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createWorkbenchComposerInteractionController } from '../../src/service/workbench-composer-interaction-controller.js';
 import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
 import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 
 function fixture(sessionEnabled = false) {
   const input = ref('');
@@ -78,6 +79,30 @@ function fixture(sessionEnabled = false) {
   return { ...options, controller: createWorkbenchComposerInteractionController(options) };
 }
 
+function dispatchComposerKey(
+  f: ReturnType<typeof fixture>,
+  key: string,
+  preventDefault = vi.fn()
+): void {
+  const target = { nodeType: 1 } as Node;
+  const root = { contains: (node: Node) => node === target } as Element;
+  const release = f.controller.registerShortcuts(() => root);
+  try {
+    consoleKeyboardShortcutService.handle({
+      key,
+      target,
+      preventDefault,
+      stopPropagation() {}
+    } as unknown as KeyboardEvent);
+  } finally {
+    release();
+  }
+}
+
+function dispatchComposerEscape(f: ReturnType<typeof fixture>, preventDefault = vi.fn()): void {
+  dispatchComposerKey(f, 'Escape', preventDefault);
+}
+
 describe('Public Composer Input Coordination', () => {
   it.each(['@session #topic', '@session /topic'])(
     'keeps %s in session search without loading unrelated prompt or command sources',
@@ -98,7 +123,7 @@ describe('Public Composer Input Coordination', () => {
     const f = fixture();
     f.canInterruptTurn.value = true;
     const preventDefault = vi.fn();
-    f.controller.onComposerKeydown({ key: 'Escape', preventDefault } as unknown as KeyboardEvent);
+    dispatchComposerEscape(f, preventDefault);
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(f.stopActiveRun).toHaveBeenCalledOnce();
     expect(f.sendMessage).not.toHaveBeenCalled();
@@ -108,10 +133,7 @@ describe('Public Composer Input Coordination', () => {
     const f = fixture();
     f.canInterruptTurn.value = true;
     f.fileReferences.open.value = true;
-    f.controller.onComposerKeydown({
-      key: 'Escape',
-      preventDefault: vi.fn()
-    } as unknown as KeyboardEvent);
+    dispatchComposerEscape(f);
     expect(f.fileReferences.open.value).toBe(false);
     expect(f.stopActiveRun).not.toHaveBeenCalled();
   });
@@ -133,7 +155,7 @@ describe('Public Composer Input Coordination', () => {
       expect(f.runnerInteractions.visibleEntryCount.value).toBe(count);
 
       const preventDefault = vi.fn();
-      f.controller.onComposerKeydown({ key: 'Escape', preventDefault } as unknown as KeyboardEvent);
+      dispatchComposerEscape(f, preventDefault);
       expect(preventDefault).toHaveBeenCalledOnce();
       expect(f.commandPickerOpen.value).toBe(false);
       expect(f.runnerInteractions.pickerKind.value).toBeUndefined();
@@ -141,7 +163,7 @@ describe('Public Composer Input Coordination', () => {
       expect(f.stopActiveRun).not.toHaveBeenCalled();
       expect(f.sendMessage).not.toHaveBeenCalled();
 
-      f.controller.onComposerKeydown({ key: 'Escape', preventDefault } as unknown as KeyboardEvent);
+      dispatchComposerEscape(f, preventDefault);
       expect(f.stopActiveRun).toHaveBeenCalledOnce();
     });
   });
@@ -153,7 +175,7 @@ describe('Public Composer Input Coordination', () => {
       f.input.value = input;
       f.controller.onComposerInput();
       const preventDefault = vi.fn();
-      f.controller.onComposerKeydown({ key: 'Escape', preventDefault } as unknown as KeyboardEvent);
+      dispatchComposerEscape(f, preventDefault);
       expect(preventDefault).toHaveBeenCalledOnce();
       expect(f.commandPickerOpen.value).toBe(false);
       expect(f.input.value).toBe(input);
@@ -189,7 +211,7 @@ describe('Public Composer Input Coordination', () => {
     expect(f.commandPickerOpen.value).toBe(false);
     f.fileReferences.entries.value = [{ path: 'src/main.ts', name: 'main.ts', kind: 'FILE' }];
     const preventDefault = vi.fn();
-    f.controller.onComposerKeydown({ key: 'Enter', preventDefault } as unknown as KeyboardEvent);
+    dispatchComposerKey(f, 'Enter', preventDefault);
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(f.input.value).toBe('');
     expect(f.fileReferences.selected.value).toEqual([

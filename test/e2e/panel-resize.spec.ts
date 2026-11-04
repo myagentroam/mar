@@ -50,3 +50,45 @@ test('Panel resize takes over an unfinished width transition without jumping', a
   await page.mouse.move(bounds.x + 53, bounds.y + 30);
   await expect(page.locator('#panel')).toHaveAttribute('data-width', '180');
 });
+
+test('Panel resize supports bounded keyboard adjustment and cancels a drag on mode change', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}panel-resize.html`);
+  const handle = page.getByRole('separator', { name: 'Resize panel' });
+  const panel = page.locator('#panel');
+  await handle.focus();
+  await page.keyboard.press('Home');
+  await expect(panel).toHaveAttribute('data-width', '180');
+  await page.keyboard.press('End');
+  await expect(panel).toHaveAttribute('data-width', '420');
+  const bounds = (await handle.boundingBox())!;
+  await page.mouse.move(bounds.x + 3, bounds.y + 30);
+  await page.mouse.down();
+  await page
+    .getByRole('button', { name: 'Switch mode' })
+    .evaluate((button: HTMLElement) => button.click());
+  await page.mouse.move(bounds.x - 100, bounds.y + 30);
+  await page.mouse.up();
+  await expect(panel).toHaveAttribute('data-width', '420');
+});
+
+test('Panel resize reflects externally changed effective widths without another gesture', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}panel-resize.html`);
+  const panel = page.locator('#panel');
+  const handle = page.getByRole('separator', { name: 'Resize panel' });
+  await panel.evaluate((element: HTMLElement) => {
+    element.style.transition = 'none';
+  });
+  for (const [label, width] of [
+    ['Content width', 400],
+    ['Compact width', 240],
+    ['Constrain width', 190]
+  ] as const) {
+    await page.getByRole('button', { name: label }).click();
+    await expect(handle).toHaveAttribute('aria-valuenow', String(width));
+    expect((await panel.boundingBox())?.width).toBe(width);
+  }
+});

@@ -1278,7 +1278,12 @@ export async function fulfillMockWorkspaceWatch(
     | undefined,
   workspaceKind: 'DIRECTORY' | 'GIT_WORKSPACE',
   fileEntries?: readonly Readonly<Record<string, unknown>>[],
-  changesSnapshot: unknown = { changes: [] }
+  changesSnapshot: unknown = { changes: [] },
+  navigationSnapshot?: (query: {
+    readonly sessionIds: readonly string[];
+    readonly summaryAnchors: readonly string[];
+    readonly treeAnchor?: string;
+  }) => unknown
 ): Promise<void> {
   if (route.request().method() === 'DELETE') {
     await json(route, { released: true });
@@ -1289,7 +1294,14 @@ export async function fulfillMockWorkspaceWatch(
     watchId?: string;
     mode?: string;
     workbenchConnectionId?: string;
-    topics?: { readonly sessionGroup?: 'MAIN' | 'CHILD' };
+    topics?: {
+      readonly sessionGroup?: 'MAIN' | 'CHILD';
+      readonly sessionNavigation?: {
+        readonly sessionIds: readonly string[];
+        readonly summaryAnchors: readonly string[];
+        readonly treeAnchor?: string;
+      };
+    };
   };
   const nodeGeneration = 'mock-node-generation';
   const watchId = request.watchId ?? 'mock-workspace-watch';
@@ -1394,7 +1406,13 @@ export async function fulfillMockWorkspaceWatch(
           watchId,
           workspaceId
         },
-        snapshots
+        snapshots:
+          request.topics?.sessionNavigation && navigationSnapshot
+            ? {
+                ...snapshots,
+                sessionNavigation: navigationSnapshot(request.topics.sessionNavigation)
+              }
+            : snapshots
       }
     );
   } catch (error) {

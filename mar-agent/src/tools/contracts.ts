@@ -201,6 +201,8 @@ export interface ReadEventData {
     path: string;
     startLine?: number;
     endLine?: number;
+    contentRange?: { start: number; end: number };
+    empty?: true;
     error?: { code: string; message: string };
   }>;
   truncated: boolean;

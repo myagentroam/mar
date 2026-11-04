@@ -1,5 +1,11 @@
 export const workbenchShellZhCN = {
   generated: {
+    workbenchAside: {
+      tabs: '工作区工具和会话',
+      close: '关闭 {value0}',
+      resize: '调整工作区侧栏宽度',
+      openSession: '在侧栏打开'
+    },
     panelResize: {
       workspaceTree: '调整工作区树宽度',
       files: '调整文件区宽度'

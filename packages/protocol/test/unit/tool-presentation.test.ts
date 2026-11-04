@@ -8,6 +8,34 @@ import {
 } from '../../src/index.js';
 
 describe('tool presentation protocol', () => {
+  it('accepts bounded image, search and compaction detail facts', () => {
+    for (const value of [
+      { kind: 'IMAGE_VIEW', path: 'image.png', width: 20, height: 30, mimeType: 'image/png' },
+      { kind: 'TOOL_SEARCH', query: 'files', tools: [] },
+      { kind: 'COMPACT_REQUEST', accepted: true }
+    ])
+      expect(toolPresentationSchema.parse(value)).toEqual(value);
+  });
+  it('accepts bounded READ output associations and rejects invalid ranges', () => {
+    const entry = {
+      path: 'a.ts',
+      startLine: 2,
+      endLine: 4,
+      contentRange: { channel: 'TEXT', start: 0, end: 12 }
+    };
+    expect(
+      toolPresentationSchema.parse({ kind: 'READ', paths: ['a.ts'], results: [entry] })
+    ).toMatchObject({ results: [entry] });
+    for (const contentRange of [
+      { channel: 'TEXT', start: 4, end: 3 },
+      { channel: 'TEXT', start: 0, end: 10001 },
+      { channel: 'STDOUT', start: -1, end: 3 }
+    ])
+      expect(
+        toolPresentationSchema.safeParse({ kind: 'READ', results: [{ ...entry, contentRange }] })
+          .success
+      ).toBe(false);
+  });
   it('bounds very large Unicode output without mutating the source or losing SOURCE', () => {
     const text = `${'😀'.repeat(500_001)}end`;
     const blocks = [{ channel: 'COMBINED' as const, text }];

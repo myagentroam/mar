@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
 
-function fixture(withExtension = false) {
+function fixture(withExtension = false, withSecondary = false) {
   const calls: string[] = [];
   const workspace = {
     start: vi.fn(async () => {
@@ -19,10 +19,10 @@ function fixture(withExtension = false) {
     handleEvent: vi.fn(() => false)
   };
   const session = {
-    beginSelectedSessionWatch: vi.fn(() => {
+    beginSelectedSessionWatch: vi.fn((): Promise<void> | void => {
       calls.push('session.begin');
     }),
-    restartSelectedSessionWatch: vi.fn(() => {
+    restartSelectedSessionWatch: vi.fn((): Promise<void> | void => {
       calls.push('session.restart');
     }),
     pauseSelectedSessionWatch: vi.fn(() => {
@@ -50,15 +50,58 @@ function fixture(withExtension = false) {
     handleVisibility: vi.fn(),
     handleEvent: vi.fn(() => true)
   };
+  const secondary = {
+    beginSelectedSessionWatch: vi.fn(),
+    restartSelectedSessionWatch: vi.fn(),
+    pauseSelectedSessionWatch: vi.fn(),
+    stopSelectedSessionWatch: vi.fn(),
+    handleSessionWatchVisibility: vi.fn(),
+    handleEvent: vi.fn(() => false)
+  };
   const coordinator = createWorkbenchWatchCoordinator({
     workspace,
     session,
+    ...(withSecondary ? { secondary } : {}),
     ...(withExtension ? { extension } : {})
   });
-  return { coordinator, workspace, session, extension, calls };
+  return { coordinator, workspace, session, secondary, extension, calls };
 }
 
 describe('shared Workbench Watch coordination', () => {
+  it('returns each pane’s in-flight initial confirmation to its loader', async () => {
+    const f = fixture(false, true);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    f.session.beginSelectedSessionWatch.mockReturnValue(pending);
+    f.secondary.beginSelectedSessionWatch.mockReturnValue(pending);
+    const main = f.coordinator.beginSession('main');
+    const aside = f.coordinator.beginSecondarySession('aside');
+    expect(main).toBe(pending);
+    expect(aside).toBe(pending);
+    finish();
+    await Promise.all([main, aside]);
+    expect(f.session.restartSelectedSessionWatch).not.toHaveBeenCalled();
+    expect(f.secondary.restartSelectedSessionWatch).not.toHaveBeenCalled();
+  });
+  it('keeps two session slots independent and releases both before the exclusive extension', async () => {
+    const f = fixture(true, true);
+    let finish!: () => void;
+    f.session.restartSelectedSessionWatch.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve))
+    );
+    const primary = f.coordinator.restartSession('primary');
+    f.coordinator.beginSecondarySession('secondary');
+    expect(f.secondary.beginSelectedSessionWatch).toHaveBeenCalledWith('secondary', undefined);
+    f.secondary.handleEvent.mockReturnValueOnce(true);
+    expect(f.coordinator.handleEvent({ type: 'secondary-event' })).toBe(true);
+    await f.coordinator.beginExtension();
+    expect(f.session.stopSelectedSessionWatch).toHaveBeenCalledOnce();
+    expect(f.secondary.stopSelectedSessionWatch).toHaveBeenCalledOnce();
+    finish();
+    await primary;
+  });
   it('supports ordinary Workspace/Session watches without a product extension', async () => {
     const f = fixture();
     await f.coordinator.startWorkspace('workspace-1');

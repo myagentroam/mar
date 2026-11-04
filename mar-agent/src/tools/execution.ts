@@ -202,6 +202,8 @@ export async function executeRoundTools(
             : ''
       );
       const structuredData =
+        call.name === 'read' ||
+        call.name === 'web_search' ||
         call.name === 'exec' ||
         call.name === 'exec_wait' ||
         call.name === 'code_exec' ||

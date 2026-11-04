@@ -156,7 +156,6 @@ export function createSessionShareConversationService(options: {
   const sessionWatch = createWorkbenchSessionWatchController({
     workspaceTarget,
     selectedSessionId,
-    sessions,
     followConversation: scroll.following,
     enabled: () => connected.value && access.session.value !== undefined,
     heartbeatMs: 10_000,
@@ -165,7 +164,6 @@ export function createSessionShareConversationService(options: {
     workbenchConnectionId: () => connectionId.value,
     request,
     sessionPathId: encodeURIComponent,
-    mergeSessions,
     applyRunsSnapshot: (runs) => runState.mergeSnapshots(runs.filter(isAgentRun)),
     applySnapshot,
     applyEvent: events.apply,
@@ -270,7 +268,10 @@ export function createSessionShareConversationService(options: {
     errorMessage
   });
   const attachments = createComposerAttachmentService({
-    context: () => (ready.value ? workspaceTarget.value : undefined),
+    context: () =>
+      ready.value && workspaceTarget.value !== undefined
+        ? { kind: 'session', ...workspaceTarget.value, sessionId: target.sessionId }
+        : undefined,
     request,
     resourceUrl: client.resourceUrl,
     notice: options.notice,
@@ -309,15 +310,17 @@ export function createSessionShareConversationService(options: {
     selectedWorkspace: computed(() => undefined),
     selectedSession,
     sessions,
-    input,
-    skillTokens,
-    references,
+    captureDraft: () => ({ input, skillTokens, references, persist: () => {} }),
     attachments: attachments.attachments,
     attachmentsPending,
     composerOpen: ready,
     composerBusy: busy,
     submissionAvailable: () => ready.value && !submission.pending.value,
     draftOpen,
+    restoreDraft: () => {
+      draftOpen.value = true;
+      selectedSessionId.value = undefined;
+    },
     selectedCommand,
     commandAvailable,
     commandPickerOpen,
@@ -337,9 +340,6 @@ export function createSessionShareConversationService(options: {
     temporaryTitle: (value) => value,
     consumeAttachments: attachments.consume,
     retainAttachments: attachments.retainForSubmission,
-    clearSkillTokens: () => {
-      skillTokens.value = [];
-    },
     acceptRun: runState.acceptRun,
     migrateSessionCache: () => undefined,
     openRun: (id) => {
@@ -353,6 +353,7 @@ export function createSessionShareConversationService(options: {
     beginSubmission: submission.begin
   });
   const controls = createWorkbenchRunControlService({
+    currentRevision: () => 0,
     workspaceTarget,
     selectedSessionId,
     selectedRunId: runState.selectedRunId,

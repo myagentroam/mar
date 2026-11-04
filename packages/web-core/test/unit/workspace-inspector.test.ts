@@ -343,6 +343,63 @@ function latestTabs(): FakeView | undefined {
   return fakeViews.tabs.at(-1);
 }
 
+it('keeps the file window owner mounted while the Aside tool is hidden and restored', async () => {
+  fetchRequest.mockImplementation(async (url: string) => {
+    const path = new URL(url, 'http://test.local').pathname;
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        path.endsWith('/files/read')
+          ? {
+              file: {
+                path: 'notes.txt',
+                encoding: 'utf-8',
+                content: 'draft',
+                size: 5,
+                nextOffset: null,
+                revision: 'a'.repeat(64)
+              }
+            }
+          : { files: { entries: [], nextCursor: null, truncated: false } }
+    };
+  });
+  const asideTool = ref<'files' | null>('files');
+  const contentTarget = new TestHostNode('aside-content');
+  const { app, inspector } = mountInspector({}, () => ({
+    asideTool: asideTool.value,
+    contentTarget
+  }));
+  try {
+    await inspector.value!.openWorkspaceFileTab({
+      kind: 'WORKTREE_TEXT',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      path: 'notes.txt',
+      repositoryPath: '',
+      worktreePath: ''
+    });
+    await nextTick();
+    const tabs = latestTabs()!;
+    const active = (tabs.props.tabs as Array<{ id: number }>)[0]!.id;
+    expect(tabs.props.activeTabId).toBe(active);
+    asideTool.value = null;
+    await nextTick();
+    expect(latestTabs()).toBe(tabs);
+    expect(tabs.props.activeTabId).toBe(active);
+    asideTool.value = 'files';
+    await nextTick();
+    expect(latestTabs()).toBe(tabs);
+    tabs.emit('close', active);
+    await nextTick();
+    expect(
+      (inspector.value!.snapshot() as { fileTabs: { tabs: unknown[] } }).fileTabs.tabs
+    ).toEqual([]);
+  } finally {
+    app.unmount();
+  }
+});
+
 beforeEach(() => {
   hostNodes.clear();
   hostNodes.add(testBody);

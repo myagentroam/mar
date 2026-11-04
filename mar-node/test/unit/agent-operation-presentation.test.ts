@@ -22,6 +22,276 @@ function event(value: Record<string, unknown>): AgentEvent {
 }
 
 describe('public Agent operations', () => {
+  it('projects only current public card facts without private goal or configuration', () => {
+    const start = agentOperationEvent(
+      'start',
+      { title: 'Task', content: 'Initial\nmessage', goal: { objective: 'PRIVATE' } },
+      { agentId: 'child' }
+    );
+    expect(start.eventData.agentOperation).toMatchObject({
+      detail: { message: 'Initial\nmessage' }
+    });
+    const send = agentOperationEvent(
+      'send',
+      { agentId: 'child', content: 'Hello', deliveryIntent: 'REPLACE_CURRENT' },
+      {
+        agentId: 'child',
+        message: { status: 'accepted', result: { auditReceipt: { inputMode: 'REPLACE_CURRENT' } } }
+      }
+    );
+    expect(send.eventData.agentOperation).toMatchObject({
+      detail: { message: 'Hello', delivery: 'STEER' }
+    });
+    const list = agentOperationEvent(
+      'list',
+      {},
+      { sessions: [{ id: 'child', title: 'Task', status: 'RUNNING' }] }
+    );
+    expect(list.eventData.agentOperation).toMatchObject({
+      detail: {},
+      targets: [{ title: 'Task', status: 'RUNNING' }]
+    });
+    expect(
+      agentOperationEvent('list', {}, { sessions: [{ id: 'child' }], truncated: true }).eventData
+        .agentOperation.targetsTruncated
+    ).toBe(true);
+    expect(JSON.stringify(start.eventData)).not.toContain('PRIVATE');
+    const normalizer = new MarAgentConversationNormalizer();
+    const [legacy] = normalizer.normalize(
+      event({
+        type: 'tool.started',
+        toolName: 'agent_start',
+        callId: 'old',
+        input: { title: 'Task', content: 'Old record' }
+      })
+    );
+    expect((legacy?.payload.agentOperation as { detail?: unknown })?.detail).toBeUndefined();
+  });
+  it('retains existing target titles before clipping newly added multilingual messages', () => {
+    const title = '标题'.repeat(250);
+    const send = agentOperationEvent(
+      'send',
+      { agentId: 'peer', content: '文'.repeat(2000) },
+      { agentId: 'peer', title }
+    );
+    expect(send.eventData.agentOperation.targets).toEqual([
+      { agentId: 'peer', sessionId: 'peer', title }
+    ]);
+    expect(send.eventData.agentOperation.detail?.messageTruncated).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(send.eventData))).toBeLessThan(7001);
+    const wait = agentOperationEvent(
+      'wait',
+      { agentIds: ['a', 'b', 'c'] },
+      {
+        agents: ['a', 'b', 'c'].map((agentId) => ({
+          agentId,
+          title,
+          updates: [{ kind: 'message', value: '😀'.repeat(400) }]
+        }))
+      }
+    );
+    expect(wait.eventData.agentOperation.targets.map((target) => target.title)).toEqual([
+      title,
+      title,
+      title
+    ]);
+    expect(wait.eventData.agentOperation.targets.some((target) => target.messageTruncated)).toBe(
+      true
+    );
+    expect(Buffer.byteLength(JSON.stringify(wait.eventData))).toBeLessThan(7001);
+  });
+  it('uses delivery receipts, not message intent, and preserves partial failures', () => {
+    const input = { agentId: 'peer', content: 'hello', deliveryIntent: 'REPLACE_CURRENT' };
+    const intentOnly = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      message: { status: 'accepted' }
+    });
+    expect(intentOnly.eventData.agentOperation.detail).not.toHaveProperty('delivery');
+    const queued = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      message: {
+        status: 'accepted',
+        result: { delivery: 'QUEUED', auditReceipt: { inputMode: 'REPLACE_CURRENT' } }
+      }
+    });
+    expect(queued.eventData.agentOperation.detail?.delivery).toBe('QUEUE');
+    const auditQueue = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      message: {
+        status: 'accepted',
+        result: { delivery: 'STARTED', auditReceipt: { inputMode: 'QUEUE' } }
+      }
+    });
+    expect(auditQueue.eventData.agentOperation.detail?.delivery).toBe('QUEUE');
+    const partial = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      goal: { status: 'partial', code: 'GOAL_ERROR' },
+      message: { status: 'accepted', result: { auditReceipt: { inputMode: 'REPLACE_CURRENT' } } }
+    });
+    expect(partial.eventData.agentOperation.detail).toMatchObject({
+      failed: true,
+      error: 'GOAL_ERROR'
+    });
+    expect(partial.eventData.agentOperation.detail).not.toHaveProperty('delivery');
+    const failed = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      message: { status: 'unknown', code: 'AGENT_SEND_FAILED' }
+    });
+    expect(failed.eventData.agentOperation.detail?.failed).toBe(true);
+    expect(failed.eventSummary).toContain('AGENT_SEND_FAILED');
+    expect(
+      agentOperationEvent(
+        'send',
+        { agentId: 'peer', goal: { clear: true } },
+        { agentId: 'peer', message: null }
+      ).eventData.agentOperation.detail
+    ).toBeUndefined();
+  });
+  it('prefers the authoritative wait summary and uses only its own truncation fact', () => {
+    const result = agentOperationEvent(
+      'wait',
+      { agentId: 'peer' },
+      {
+        agentId: 'peer',
+        status: 'SUCCEEDED',
+        summary: '最终结果',
+        updates: [{ kind: 'message', value: '仍在检查', truncated: true }]
+      }
+    );
+    expect(result.eventData.agentOperation.targets[0]).toMatchObject({ message: '最终结果' });
+    expect(result.eventData.agentOperation.targets[0]).not.toHaveProperty('messageTruncated');
+    const messageOnly = agentOperationEvent(
+      'wait',
+      { agentId: 'peer' },
+      { agentId: 'peer', summaryTruncated: true, updates: [{ kind: 'message', value: '完整进度' }] }
+    );
+    expect(messageOnly.eventData.agentOperation.targets[0]).toMatchObject({ message: '完整进度' });
+    expect(messageOnly.eventData.agentOperation.targets[0]).not.toHaveProperty('messageTruncated');
+  });
+  it('projects only the public latest message in an agent_view snapshot', () => {
+    const result = agentOperationEvent(
+      'view',
+      { agentId: 'peer' },
+      {
+        session: {
+          id: 'peer',
+          title: 'Review',
+          status: 'IDLE',
+          latestMessage: { text: 'Public answer', truncated: true },
+          modelId: 'private-model',
+          goal: { objective: 'private-goal' }
+        }
+      }
+    );
+    expect(result.eventData.agentOperation.targets).toEqual([
+      {
+        agentId: 'peer',
+        sessionId: 'peer',
+        title: 'Review',
+        status: 'IDLE',
+        message: 'Public answer',
+        messageTruncated: true
+      }
+    ]);
+    expect(JSON.stringify(result.eventData)).not.toContain('private-');
+  });
+  it('keeps resolved titles while replacing wait outcome facts in terminal snapshot', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const input = { agentIds: ['a', 'b'] };
+    const resolved = agentOperationEvent('wait', input, {
+      agents: [
+        { agentId: 'a', title: 'A' },
+        { agentId: 'b', title: 'B' }
+      ]
+    });
+    const final = agentOperationEvent('wait', input, {
+      agents: [{ agentId: 'b', status: 'SUCCEEDED', summary: 'Done' }]
+    });
+    normalizer.normalize(
+      event({ type: 'tool.started', toolName: 'agent_wait', callId: 'wait', input })
+    );
+    const [progress] = normalizer.normalize(
+      event({
+        type: 'tool.updated',
+        toolName: 'agent_wait',
+        callId: 'wait',
+        data: resolved.eventData
+      })
+    );
+    expect(progress?.payload.agentOperation).toMatchObject({
+      targets: [{ title: 'A' }, { title: 'B' }]
+    });
+    const [complete] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        toolName: 'agent_wait',
+        callId: 'wait',
+        data: final.eventData,
+        summary: final.eventSummary
+      })
+    );
+    expect(complete?.payload.agentOperation).toMatchObject({
+      targets: [{ title: 'A' }, { title: 'B', status: 'SUCCEEDED', message: 'Done' }]
+    });
+    expect(
+      conversationItemSchema.parse({
+        ...complete,
+        id: complete!.itemId,
+        sessionId: 'parent',
+        turnId: 'turn',
+        runId: 'run',
+        parentItemId: null,
+        sourceSequence: 1,
+        revision: 1,
+        startedAt: null,
+        completedAt: null
+      }).payload
+    ).toMatchObject({ agentOperation: { detail: {} } });
+  });
+  it('does not lose later WAIT targets when a bounded progress snapshot had fewer entries', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const input = { agentIds: ['a', 'b'] };
+    normalizer.normalize(
+      event({ type: 'tool.started', toolName: 'agent_wait', callId: 'w', input })
+    );
+    normalizer.normalize(
+      event({
+        type: 'tool.updated',
+        toolName: 'agent_wait',
+        callId: 'w',
+        data: {
+          agentOperation: {
+            action: 'WAIT',
+            targets: [{ agentId: 'a', title: 'A' }],
+            targetsTruncated: true,
+            detail: {}
+          }
+        }
+      })
+    );
+    const final = agentOperationEvent('wait', input, {
+      agents: [
+        { agentId: 'a', status: 'SUCCEEDED' },
+        { agentId: 'b', status: 'RUNNING' }
+      ]
+    });
+    const [completed] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        toolName: 'agent_wait',
+        callId: 'w',
+        data: final.eventData,
+        summary: final.eventSummary
+      })
+    );
+    expect(completed?.payload.agentOperation).toMatchObject({
+      targets: [
+        { agentId: 'a', title: 'A', status: 'SUCCEEDED' },
+        { agentId: 'b', status: 'RUNNING' }
+      ]
+    });
+    expect(completed?.payload.agentOperation).not.toHaveProperty('targetsTruncated');
+  });
   it.each([true, false])('projects real wait messages and mappings (single=%s)', async (single) => {
     const network = new AgentNetworkObservations();
     const observations = network.attach('parent');
@@ -52,7 +322,7 @@ describe('public Agent operations', () => {
       result
     );
     expect(projected.eventData.agentOperation.targets).toEqual([
-      { agentId: 'peer', sessionId: 'peer' }
+      { agentId: 'peer', sessionId: 'peer', status: 'RUNNING', message: 'Public progress' }
     ]);
     const receipt = JSON.parse(projected.eventSummary);
     expect(single ? receipt : receipt.agents[0]).toMatchObject({
@@ -92,7 +362,7 @@ describe('public Agent operations', () => {
     );
     expect(wait.eventData.agentOperation.targets).toEqual([
       { agentId: 'a' },
-      { agentId: 'b', sessionId: 'b' }
+      { agentId: 'b', sessionId: 'b', status: 'SUCCEEDED' }
     ]);
     const profile = agentOperationEvent(
       'list',

@@ -861,6 +861,7 @@ export function registerSessionRunRoutes(input: {
       watchId?: unknown;
       mode?: unknown;
       unit?: unknown;
+      position?: unknown;
     };
   }>('/api/agent-sessions/:sessionId/watch', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -876,7 +877,10 @@ export function registerSessionRunRoutes(input: {
       typeof request.body.watchId !== 'string' ||
       !/^[A-Za-z0-9_-]{8,128}$/.test(request.body.watchId) ||
       (request.body.mode !== 'initial' && request.body.mode !== 'renew') ||
-      (request.body.unit !== undefined && request.body.unit !== 'SEGMENT')
+      (request.body.unit !== undefined && request.body.unit !== 'SEGMENT') ||
+      (request.body.position !== undefined &&
+        request.body.position !== 'primary' &&
+        request.body.position !== 'secondary')
     )
       return sendError(reply, 400, 'SESSION_WATCH_INVALID');
     request.log.info(
@@ -903,7 +907,8 @@ export function registerSessionRunRoutes(input: {
           workbenchConnectionId: request.body.workbenchConnectionId,
           watchId: request.body.watchId,
           mode: request.body.mode,
-          ...(request.body.unit === undefined ? {} : { unit: request.body.unit })
+          ...(request.body.unit === undefined ? {} : { unit: request.body.unit }),
+          ...(request.body.position === undefined ? {} : { position: request.body.position })
         }
       );
       return request.body.mode === 'renew' ? reply.code(204).send() : reply.send(result);
@@ -919,6 +924,7 @@ export function registerSessionRunRoutes(input: {
       workspaceId?: unknown;
       workbenchConnectionId?: unknown;
       watchId?: unknown;
+      position?: unknown;
     };
   }>('/api/agent-sessions/:sessionId/watch', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -930,7 +936,10 @@ export function registerSessionRunRoutes(input: {
       typeof request.body.workspaceId !== 'string' ||
       typeof request.body.workbenchConnectionId !== 'string' ||
       !nodeControl.ownsWorkbenchConnection(admin.sessionHash, request.body.workbenchConnectionId) ||
-      typeof request.body.watchId !== 'string'
+      typeof request.body.watchId !== 'string' ||
+      (request.body.position !== undefined &&
+        request.body.position !== 'primary' &&
+        request.body.position !== 'secondary')
     )
       return sendError(reply, 400, 'SESSION_WATCH_INVALID');
     request.log.info(
@@ -951,7 +960,8 @@ export function registerSessionRunRoutes(input: {
           sessionId: request.params.sessionId,
           workspaceId: request.body.workspaceId,
           workbenchConnectionId: request.body.workbenchConnectionId,
-          watchId: request.body.watchId
+          watchId: request.body.watchId,
+          ...(request.body.position === undefined ? {} : { position: request.body.position })
         })
       );
     } catch (error) {

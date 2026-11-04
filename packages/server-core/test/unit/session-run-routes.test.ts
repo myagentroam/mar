@@ -73,6 +73,54 @@ function fixture(
 }
 
 describe('shared ordinary Session and Run routes', () => {
+  it('forwards validated watch positions and omits an unspecified position', async () => {
+    const { app, requestNode, headers, nodeControl } = fixture();
+    nodeControl.ownsWorkbenchConnection = () => true;
+    const url = '/api/agent-sessions/session-one/watch';
+    const base = {
+      nodeId: 'node-one',
+      workspaceId: 'workspace-one',
+      workbenchConnectionId: 'connection-one',
+      watchId: 'watch-one'
+    };
+    for (const method of ['POST', 'DELETE'] as const) {
+      for (const position of [undefined, 'primary', 'secondary'] as const) {
+        requestNode.mockClear();
+        const payload = {
+          ...base,
+          ...(method === 'POST' ? { mode: 'initial' } : {}),
+          ...(position === undefined ? {} : { position })
+        };
+        const response = await app.inject({ method, url, headers, payload });
+        expect(response.statusCode).toBe(200);
+        expect(requestNode).toHaveBeenCalledOnce();
+        expect(requestNode.mock.calls[0]).toContain(
+          method === 'POST' ? 'session.watch' : 'session.unwatch'
+        );
+        const forwarded = requestNode.mock.calls[0]!.find(
+          (arg) => typeof arg === 'object' && arg !== null && 'watchId' in arg
+        ) as Record<string, unknown>;
+        expect(forwarded).toMatchObject({
+          sessionId: 'session-one',
+          workspaceId: 'workspace-one',
+          workbenchConnectionId: 'connection-one',
+          watchId: 'watch-one'
+        });
+        if (position === undefined) expect(forwarded).not.toHaveProperty('position');
+        else expect(forwarded.position).toBe(position);
+      }
+      requestNode.mockClear();
+      const invalid = await app.inject({
+        method,
+        url,
+        headers,
+        payload: { ...base, ...(method === 'POST' ? { mode: 'initial' } : {}), position: 'other' }
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+  });
+
   it('relays the session tree with the same workspace authorization context', async () => {
     const { app, requestNode, headers } = fixture();
     const tree = {

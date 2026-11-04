@@ -10,13 +10,14 @@ export interface WorkbenchWatchCoordinatorOptions {
     beginSelectedSessionWatch(
       sessionId: string,
       options?: { readonly skipImmediateRenew?: boolean }
-    ): void;
+    ): Promise<void> | void;
     restartSelectedSessionWatch(sessionId: string): Promise<void> | void;
     pauseSelectedSessionWatch(): void;
     stopSelectedSessionWatch(): void;
     handleSessionWatchVisibility(): void;
     handleEvent(event: unknown): boolean;
   };
+  readonly secondary?: WorkbenchWatchCoordinatorOptions['session'];
   readonly extension?: {
     begin(): Promise<void>;
     restart(): Promise<void>;
@@ -61,30 +62,50 @@ export function createWorkbenchWatchCoordinator(options: WorkbenchWatchCoordinat
       return enqueue(() => options.workspace.restart(workspaceId));
     },
     stopWorkspace,
-    beginSession(sessionId: string, input?: { readonly skipImmediateRenew?: boolean }): void {
+    beginSession(
+      sessionId: string,
+      input?: { readonly skipImmediateRenew?: boolean }
+    ): Promise<void> | void {
       options.extension?.stop();
-      options.session.beginSelectedSessionWatch(sessionId, input);
+      return options.session.beginSelectedSessionWatch(sessionId, input);
     },
     restartSession(sessionId: string): Promise<void> | void {
       options.extension?.stop();
       return options.session.restartSelectedSessionWatch(sessionId);
     },
+    beginSecondarySession(
+      sessionId: string,
+      input?: { readonly skipImmediateRenew?: boolean }
+    ): Promise<void> | void {
+      options.extension?.stop();
+      return options.secondary?.beginSelectedSessionWatch(sessionId, input);
+    },
+    restartSecondarySession(sessionId: string): Promise<void> | void {
+      options.extension?.stop();
+      return options.secondary?.restartSelectedSessionWatch(sessionId);
+    },
+    stopSecondarySession(): void {
+      options.secondary?.stopSelectedSessionWatch();
+    },
     async beginExtension(): Promise<void> {
       if (options.extension === undefined) throw new Error('WEB_WATCH_EXTENSION_REQUIRED');
       stopWorkspace();
       options.session.stopSelectedSessionWatch();
+      options.secondary?.stopSelectedSessionWatch();
       return options.extension.begin();
     },
     async restartExtension(): Promise<void> {
       if (options.extension === undefined) throw new Error('WEB_WATCH_EXTENSION_REQUIRED');
       stopWorkspace();
       options.session.stopSelectedSessionWatch();
+      options.secondary?.stopSelectedSessionWatch();
       return options.extension.restart();
     },
     pause(): void {
       trailing = undefined;
       options.workspace.pause();
       options.session.pauseSelectedSessionWatch();
+      options.secondary?.pauseSelectedSessionWatch();
       options.extension?.pause();
     },
     stopSession: options.session.stopSelectedSessionWatch,
@@ -92,12 +113,14 @@ export function createWorkbenchWatchCoordinator(options: WorkbenchWatchCoordinat
     handleVisibility(): void {
       stopWorkspace();
       options.session.handleSessionWatchVisibility();
+      options.secondary?.handleSessionWatchVisibility();
       options.extension?.handleVisibility();
     },
     handleEvent(event: unknown): boolean {
       return (
         options.workspace.handleEvent(event) ||
         options.session.handleEvent(event) ||
+        (options.secondary?.handleEvent(event) ?? false) ||
         (options.extension?.handleEvent(event) ?? false)
       );
     },
@@ -105,6 +128,7 @@ export function createWorkbenchWatchCoordinator(options: WorkbenchWatchCoordinat
       trailing = undefined;
       options.extension?.stop();
       options.session.stopSelectedSessionWatch();
+      options.secondary?.stopSelectedSessionWatch();
       options.workspace.stop();
     }
   };

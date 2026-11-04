@@ -3,11 +3,225 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
-  fixture = await startCustomThemeFixture('test/e2e/support/conversation-tool-detail.html');
+  fixture = await startCustomThemeFixture('test/e2e/support/conversation-tool-detail.html', {
+    protocolSource: true
+  });
 });
 test.afterAll(async () => {
   await fixture?.close();
 });
+
+test('mounts independent details only while open and releases them with the process', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1`);
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
+  const fetch = page.locator('[data-tool-presentation="WEB_FETCH"]');
+  await expect(search.locator('.tool-detail, .conversation-tool-sources a')).toHaveCount(0);
+  await expect(fetch.locator('.tool-detail')).toHaveCount(0);
+  await search.locator('> summary').click();
+  await fetch.locator('> summary').click();
+  await expect(search.locator('.conversation-tool-sources a')).toHaveCount(1);
+  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'href',
+    'https://example.com/docs'
+  );
+  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+    'rel',
+    'noopener noreferrer'
+  );
+  await expect(search.locator('.conversation-tool-source-host')).toHaveText(
+    'https://example.com/docs'
+  );
+  await expect(search.locator('.conversation-tool-sources')).toContainText(
+    'A plain-text search summary.'
+  );
+  await expect(search.locator('.conversation-tool-sources')).toContainText('<plain summary>');
+  await expect(search.locator('.conversation-tool-sources plain')).toHaveCount(0);
+  expect(await search.locator('.conversation-tool-sources').innerHTML()).toContain(
+    '&lt;plain summary&gt;'
+  );
+  await expect(search.locator('.conversation-detail-text')).toContainText('Input: documentation');
+  await expect(fetch.locator('.conversation-detail-text')).toContainText(
+    'Input: https://example.com/docs'
+  );
+  await expect(fetch.locator('.conversation-detail-text')).toHaveCount(1);
+  await search.locator('> summary').click();
+  await expect(search.locator('.tool-detail, .conversation-tool-sources a')).toHaveCount(0);
+  await process.click();
+  await expect(
+    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text')
+  ).toHaveCount(0);
+  await process.click();
+  await expect(
+    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text')
+  ).toHaveCount(0);
+});
+
+test('read file details show only the associated raw file text and real range', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&read-association=1`
+  );
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const read = page.locator('[data-tool-presentation="READ"]');
+  await read.locator('> summary').click();
+  await read.locator('.conversation-tool-detail > summary').click();
+  const detail = read.locator('.conversation-detail-text');
+  await expect(read.locator('.conversation-tool-detail > summary')).toContainText('3–4');
+  await expect(detail).toHaveText('  first file\r\nsecond line\r\n', { useInnerText: false });
+  await expect(detail).not.toContainText('3–4');
+  await expect(detail).not.toContainText('/fixture/example.ts');
+  await expect(detail).not.toContainText('1: export const result');
+});
+
+for (const width of [1280, 390]) {
+  test(`Read keeps the range visible beside a long path at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const path = `/fixture/${'long-directory/'.repeat(24)}README.md`;
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&read-path=${encodeURIComponent(path)}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    const heading = read.locator('.conversation-tool-detail > summary');
+    const range = heading.locator('.conversation-read-range');
+    await expect(range).toHaveText('· 3–4');
+    const geometry = await range.evaluate((element) => {
+      const range = element.getBoundingClientRect();
+      const preview = element.parentElement!.getBoundingClientRect();
+      return { left: range.left, right: range.right, start: preview.left, end: preview.right };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.start);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.end + 1);
+    const pathBox = heading.locator('.conversation-read-path');
+    await expect(pathBox).toHaveText(path);
+    expect((await pathBox.boundingBox())!.width).toBeGreaterThan(32);
+    expect(await pathBox.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true
+    );
+    const height = (await heading.boundingBox())!.height;
+    await heading.click();
+    await expect(read.locator('.conversation-detail-text')).toHaveText(
+      '  first file\r\nsecond line\r\n'
+    );
+    expect((await heading.boundingBox())!.height).toBe(height);
+    await heading.click();
+    await expect(read.locator('.conversation-detail-text')).toHaveCount(0);
+  });
+}
+
+for (const truncation of ['HEAD', 'SOURCE']) {
+  test(`places the ${truncation} notice beside associated READ content`, async ({ page }) => {
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&read-truncation=${truncation}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    await read.locator('.conversation-tool-detail > summary').click();
+    const text = await read.locator('.conversation-detail-text').textContent();
+    expect(text?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
+    if (truncation === 'HEAD') expect(text).toMatch(/^\.\.\.Truncated[\s\S]+second line\s*$/u);
+    else expect(text).toMatch(/^  first file[\s\S]+\.\.\.Truncated$/u);
+  });
+}
+
+test('READ replaces body and association together, then falls back when a snapshot has none', async ({
+  page
+}) => {
+  await page.goto(
+    `${fixture.url}conversation-tool-detail.html?timeline&unified&updates&read-association`
+  );
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const read = page.locator('[data-tool-presentation="READ"]');
+  await read.locator('> summary').click();
+  await read.locator('.conversation-tool-detail > summary').click();
+  const detail = read.locator('.conversation-detail-text');
+  await expect(detail).toContainText('first file');
+  await page.getByTestId('stream-details').click();
+  await expect.poll(() => detail.textContent()).toContain('  live output\n\n  next line\n');
+  await expect(detail).not.toContainText('first file');
+  await page.getByTestId('finish-details').click();
+  await expect.poll(() => detail.textContent()).toContain('  authoritative tail\n');
+  await expect(detail).not.toContainText('live output');
+  await page.getByTestId('clear-read-association').click();
+  await expect(detail).toContainText('unassociated replacement');
+  await expect(detail).not.toContainText('authoritative tail');
+});
+
+test('renders image, search and compact details within the ordinary tool group', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&unified&specialized`);
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const groups = page.locator('details.conversation-record-group:not([data-tool-presentation])');
+  for (const group of await groups.all()) await group.locator('> summary').click();
+  for (const [name, expected] of [
+    ['view_image', '/fixture/image.png'],
+    ['tool_search', 'mcp__example'],
+    ['smart_compact', 'Compaction request accepted']
+  ] as const) {
+    const row = page.locator('details.conversation-tool-detail').filter({ hasText: name }).first();
+    await row.locator(':scope > summary').click();
+    await expect(row.locator('.conversation-detail-text')).toContainText(expected);
+    await expect(row.locator('.tool-detail')).toHaveClass(/conversation-detail-body/);
+  }
+});
+
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`captures specialized details at ${width}px in ${theme}`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      reducedMotion: 'reduce'
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}conversation-tool-detail.html?timeline&unified&specialized&read-association&long&theme=${theme}`
+      );
+      const process = page.locator('.process-heading').first();
+      if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+      const read = page.locator('[data-tool-presentation="READ"]');
+      await read.locator('> summary').click();
+      await read.locator('.conversation-tool-detail > summary').click();
+      await page.locator('[data-tool-presentation="WEB_SEARCH"] > summary').click();
+      for (const group of await page
+        .locator('details.conversation-record-group:not([data-tool-presentation])')
+        .all())
+        await group.locator('> summary').click();
+      for (const name of ['view_image', 'tool_search', 'smart_compact']) {
+        const detail = page
+          .locator('details.conversation-tool-detail')
+          .filter({ hasText: name })
+          .first();
+        await detail.locator('> summary').click();
+        await expect(detail.locator('.tool-detail')).toBeVisible();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`specialized-${theme}-${width}.png`),
+        fullPage: true
+      });
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test('specialized tool details replace live output with the authoritative result', async ({
   page
@@ -30,8 +244,10 @@ test('specialized tool details replace live output with the authoritative result
     child.locator('.conversation-detail-text')
   ];
   await page.getByTestId('stream-details').click();
-  for (const body of bodies) {
-    await expect.poll(() => body.textContent()).toContain(':\n  live output\n\n  next line\n');
+  for (const [index, body] of bodies.entries()) {
+    await expect
+      .poll(() => body.textContent(), { message: `live detail ${index}` })
+      .toContain(':\n  live output\n\n  next line\n');
     await expect(body).not.toContainText('Truncated');
   }
   await page.getByTestId('finish-details').click();
@@ -221,12 +437,21 @@ for (const width of [1280, 390]) {
           expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
           background: getComputedStyle(element.parentElement!).backgroundColor
         }));
+        expect(thinkingStyle.fontSize).toBe('12px');
         expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
         const read = page.locator('[data-tool-presentation="READ"]');
         await read.locator(':scope > summary').click();
         await read.locator('.conversation-tool-detail > summary').click();
         for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
           await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
+        await expect(page.locator('.conversation-tool-sources p')).toHaveCSS(
+          'font-size',
+          thinkingStyle.fontSize
+        );
+        await expect(page.locator('.conversation-tool-sources a')).toHaveCSS(
+          'font-size',
+          thinkingStyle.fontSize
+        );
         const subagent = page.locator('.subagent-group');
         await subagent.locator('.conversation-record-group > summary').click();
         await subagent.locator('.conversation-tool-detail > summary').click();

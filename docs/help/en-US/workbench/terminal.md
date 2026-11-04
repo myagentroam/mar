@@ -1,17 +1,17 @@
 ---
 title: Workspace Terminals
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-04
 ---
 
 # Workspace Terminals
 
-On mobile, select **Open terminal** in the conversation title bar. Terminal slides up from the bottom as a full-width, half-screen sheet. Select the scrim above it to hide the sheet without ending the terminal; reopening preserves its tabs. Explicitly close a terminal tab to end its process.
+Select **Open terminal** in the conversation title bar or choose the fixed Terminal tab in the auxiliary work surface. On mobile, the auxiliary surface covers the area below the top bar; use its back button or browser Back to return to the conversation without ending the terminal.
 
 Open Terminal to start a shell on the selected Node, normally with the Workspace as its working directory. The process runs with the Node service account and receives the authorized secret snapshot created at startup.
 
-Create additional tabs with the plus action. Collapsing the dock, switching Workspaces, or briefly reconnecting Web does not close a terminal. Closing a tab terminates that process; closing the last desktop tab collapses the dock. Restarting Node ends all terminals.
+Opening Terminal for the first time in a Workspace creates a terminal; before it is shown, no terminal is created or connected. Create additional terminal tabs with the plus action. Switching the auxiliary tab, changing Workspaces, or briefly reconnecting Web does not close them. Closing a terminal tab terminates that process; closing the last one leaves the fixed Terminal tab available. Restarting Node ends all terminals.
 
-A new browser page gets its own terminal when you first expand the dock; it does not take over another page's terminal. A read-only attachment can observe output but cannot type. Never use Terminal as a way to bypass Workspace, host, or organizational policy.
+A new browser page gets its own terminal when you first open Terminal; it does not take over another page's terminal. A read-only attachment can observe output but cannot type. Never use Terminal as a way to bypass Workspace, host, or organizational policy.
 
 When a local direct connection between the browser and Node is available, Node-level and Workspace-level Terminals use it after authorization; otherwise they use the Server relay. Disconnections trigger an automatic fallback or retry with output replay from the last received sequence. No transport selection is needed. The Server continues to authorize and renew direct attachments, while the Node validates Terminal input and write permission. Reconnection stops if access is revoked or the Terminal has ended.
 

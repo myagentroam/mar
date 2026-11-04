@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { workspaceSessionNavigationQuerySchema } from '@myagentroam/protocol';
 
 export interface WorkspaceWatch {
   readonly workspaceId: string;
@@ -12,6 +13,7 @@ export interface WorkspaceWatch {
     readonly sessions: boolean;
     readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
     readonly changes: boolean;
+    readonly sessionNavigation?: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery;
     readonly files:
       { readonly path: string; readonly cursor?: string; readonly limit?: number } | undefined;
   };
@@ -39,6 +41,13 @@ export class WorkspaceWatchService {
     if (sessionGroup !== undefined && sessionGroup !== 'MAIN' && sessionGroup !== 'CHILD')
       throw new Error('WORKSPACE_WATCH_INVALID');
     const changes = input.topics.changes === true;
+    const rawNavigation = input.topics.sessionNavigation;
+    let sessionNavigation: WorkspaceWatch['topics']['sessionNavigation'];
+    if (rawNavigation !== undefined) {
+      const parsed = workspaceSessionNavigationQuerySchema.safeParse(rawNavigation);
+      if (!parsed.success) throw new Error('WORKSPACE_WATCH_INVALID');
+      sessionNavigation = parsed.data;
+    }
     const rawFiles = input.topics.files;
     let files: WorkspaceWatch['topics']['files'];
     if (rawFiles !== undefined) {
@@ -59,8 +68,15 @@ export class WorkspaceWatchService {
         ...(typeof rawFiles.limit === 'number' ? { limit: rawFiles.limit } : {})
       };
     }
-    if (!sessions && !changes && files === undefined) throw new Error('WORKSPACE_WATCH_INVALID');
-    return { sessions, changes, files, ...(sessionGroup === undefined ? {} : { sessionGroup }) };
+    if (!sessions && !changes && files === undefined && sessionNavigation === undefined)
+      throw new Error('WORKSPACE_WATCH_INVALID');
+    return {
+      sessions,
+      changes,
+      files,
+      ...(sessionGroup === undefined ? {} : { sessionGroup }),
+      ...(sessionNavigation === undefined ? {} : { sessionNavigation })
+    };
   }
 
   key(input: Record<string, unknown>): string {
@@ -110,10 +126,14 @@ export class WorkspaceWatchService {
     if (previous !== undefined) {
       clearTimeout(previous.timer);
       this.onWatchRemoved(previous);
-      if (previous.topics.sessions && !this.topicActive(workspaceId, 'sessions'))
+      if (
+        (previous.topics.sessions || previous.topics.sessionNavigation !== undefined) &&
+        !this.topicActive(workspaceId, 'sessions')
+      )
         this.onSessionWatchUnused(workspaceId);
     }
-    if (topics.sessions) this.onSessionWatchRequired(workspaceId);
+    if (topics.sessions || topics.sessionNavigation !== undefined)
+      this.onSessionWatchRequired(workspaceId);
     return watch;
   }
 
@@ -202,7 +222,11 @@ export class WorkspaceWatchService {
 
   topicActive(workspaceId: string, topic: 'files' | 'changes' | 'sessions'): boolean {
     return [...(this.watches.get(workspaceId)?.values() ?? [])].some((watch) =>
-      topic === 'files' ? watch.topics.files !== undefined : watch.topics[topic]
+      topic === 'files'
+        ? watch.topics.files !== undefined
+        : topic === 'sessions'
+          ? watch.topics.sessions || watch.topics.sessionNavigation !== undefined
+          : watch.topics[topic]
     );
   }
 

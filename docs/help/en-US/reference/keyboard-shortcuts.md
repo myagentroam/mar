@@ -1,9 +1,13 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-10-26
+lastUpdated: 2026-11-04
 ---
 
 # Keyboard Shortcuts
+
+Session shortcuts apply to the focused Main or Aside conversation. An open dialog prevents background commands from taking focus. Terminals and text editors retain their native input and shortcuts, except for the Terminal toggle. Shortcuts do not take over while an IME is composing.
+
+With an Aside or file tab focused, use the arrow keys or Home/End to move focus, then press Enter or Space to activate it. Moving focus alone does not switch the content.
 
 | Scope                         | Windows/Linux                                               | macOS                                                             | Action                                                        | Available when                                                                                              |
 | ----------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |

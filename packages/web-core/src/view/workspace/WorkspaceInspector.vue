@@ -124,6 +124,8 @@ interface LoadedPreviewFrame extends PreviewFrame {
 }
 
 const props = defineProps<{
+  readonly asideTool?: InspectorSection | null | undefined;
+  readonly contentTarget?: HTMLElement | null | undefined;
   readonly predictionEnabled?: boolean;
   readonly nodeId: string | undefined;
   readonly workspaceId: string | undefined;
@@ -893,7 +895,7 @@ async function openFile(path: string, line?: number, column?: number): Promise<v
     }
     if (generation !== inspectorGeneration || navigation !== fileOpenGeneration) return;
   }
-  activeSection.value = 'files';
+  if (props.asideTool === undefined) activeSection.value = 'files';
   const existing = filePageFrames.value.find(
     (preview) =>
       preview.worktreePath.value === undefined && preview.fileContent.value?.path === path
@@ -1246,7 +1248,7 @@ async function openWorkspaceFileComparison(
 }
 
 async function revealAndOpenWorkspaceFile(path: string, line?: number): Promise<void> {
-  activeSection.value = 'files';
+  if (props.asideTool === undefined) activeSection.value = 'files';
   await fileTree.reveal(path);
   fileTree.selectPath(path);
   await fileTreeView.value?.reveal(path);
@@ -1343,8 +1345,10 @@ function restore(snapshot: unknown): void {
   }
   void restoreWorkspaceFileTabs();
   unavailable.value = false;
-  if (ready.value && activeSection.value === 'changes') void loadChanges(true);
-  else if (ready.value && activeSection.value === 'history') void git.openHistory();
+  if (props.asideTool === undefined && ready.value && activeSection.value === 'changes')
+    void loadChanges(true);
+  else if (props.asideTool === undefined && ready.value && activeSection.value === 'history')
+    void git.openHistory();
 }
 
 function restoreWorkspace(nodeId: string, workspaceId: string, value: unknown): void {
@@ -1658,7 +1662,13 @@ function isBinaryDiff(value: unknown): boolean {
 const loadChanges = git.loadChanges;
 
 function refreshVisibleSection(nodeId: string, workspaceId: string): void {
-  if (props.nodeId !== nodeId || props.workspaceId !== workspaceId || !ready.value) return;
+  if (
+    props.nodeId !== nodeId ||
+    props.workspaceId !== workspaceId ||
+    !ready.value ||
+    props.asideTool === null
+  )
+    return;
   if (activeSection.value === 'files') void filesRefreshTask.request();
   else if (activeSection.value === 'changes') void loadChanges();
 }
@@ -1836,16 +1846,29 @@ watch(
   }
 );
 watch(activePreviewId, () => codeNavigation.cancel(), { flush: 'sync' });
+function syncAsideTool(): void {
+  const tool = props.asideTool;
+  if (tool === undefined || tool === null) return;
+  activeSection.value = tool;
+  if (!ready.value) return;
+  if (tool === 'files') void filesRefreshTask.request();
+  else if (tool === 'changes') void loadChanges(true);
+  else if (tool === 'history') void git.openHistory();
+}
+watch([() => props.asideTool, () => props.nodeId, () => props.workspaceId, ready], syncAsideTool, {
+  flush: 'post'
+});
 watch(
   () => props.filesRevision,
   () => {
-    if (activeSection.value === 'files') void filesRefreshTask.request();
+    if (props.asideTool !== null && activeSection.value === 'files')
+      void filesRefreshTask.request();
   }
 );
 watch(
   () => props.changesRevision,
   () => {
-    if (activeSection.value === 'changes') void loadChanges();
+    if (props.asideTool !== null && activeSection.value === 'changes') void loadChanges();
   }
 );
 function applySubscriptionSnapshot(snapshot = props.subscriptionSnapshot): void {
@@ -1879,6 +1902,7 @@ watch(() => props.subscriptionSnapshot, applySubscriptionSnapshot);
 onMounted(() => {
   reset();
   applySubscriptionSnapshot();
+  syncAsideTool();
 });
 onBeforeUnmount(() => {
   inspectorDisposed = true;
@@ -1894,320 +1918,330 @@ onBeforeUnmount(() => filePreviews.reset());
 </script>
 
 <template>
-  <article class="info-card workspace-inspector">
-    <div class="section-heading">
-      <h2>
-        {{
-          mobileViewport
-            ? translate('generated.workspaceInspector.files2')
-            : translate('generated.workspaceInspector.filesChanges')
-        }}
-      </h2>
-      <span v-if="unavailable">{{
-        translate('generated.workspaceInspector.capabilityUnavailable')
-      }}</span>
-    </div>
-    <p v-if="!enabled" class="empty">
-      {{
-        capabilityLoading
-          ? translate('generated.workspaceInspector.loading')
-          : nodeOnline
-            ? translate('generated.workspaceInspector.capabilityUnavailable')
-            : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
-      }}
-    </p>
-    <p v-else-if="unavailable" class="empty">
-      {{ translate('generated.workspaceInspector.theTargetNodeDoesNotCurrentlySupport') }}
-    </p>
-    <template v-else>
-      <div
-        class="inspector-tabs"
-        role="tablist"
-        :aria-label="translate('generated.workspaceInspector.inspectorContent')"
-      >
-        <el-button
-          :class="{ active: activeSection === 'files' }"
-          role="tab"
-          :aria-selected="activeSection === 'files'"
-          size="small"
-          text
-          @click="activeSection = 'files'"
-        >
-          {{ translate('generated.workspaceInspector.files3') }}
-        </el-button>
-        <el-button
-          v-if="contentSearchEnabled"
-          :class="{ active: activeSection === 'search' }"
-          role="tab"
-          :aria-selected="activeSection === 'search'"
-          size="small"
-          text
-          @click="openSearch"
-        >
-          {{ translate('generated.workspaceInspector.search') }}
-        </el-button>
-        <el-button
-          v-if="workspaceKind === 'GIT_WORKSPACE'"
-          :class="{ active: activeSection === 'changes' }"
-          role="tab"
-          :aria-selected="activeSection === 'changes'"
-          size="small"
-          text
-          @click="openChanges"
-        >
-          {{ translate('generated.workspaceInspector.gitChanges') }}
-        </el-button>
-        <el-button
-          v-if="historyAvailable"
-          :class="{ active: activeSection === 'history' }"
-          role="tab"
-          :aria-selected="activeSection === 'history'"
-          size="small"
-          text
-          @click="openHistory"
-        >
-          {{ translate('generated.workspaceInspector.gitHistory') }}
-        </el-button>
+  <Teleport :to="contentTarget ?? 'body'" :disabled="contentTarget == null">
+    <article v-if="asideTool !== null" class="info-card workspace-inspector">
+      <div v-if="asideTool === undefined" class="section-heading">
+        <h2>
+          {{
+            mobileViewport
+              ? translate('generated.workspaceInspector.files2')
+              : translate('generated.workspaceInspector.filesChanges')
+          }}
+        </h2>
+        <span v-if="unavailable">{{
+          translate('generated.workspaceInspector.capabilityUnavailable')
+        }}</span>
       </div>
-      <el-button
-        v-if="
-          ((activeSection === 'files' &&
-            (filesWatchStatus === 'loading' || filesWatchStatus === 'failed')) ||
-            (activeSection === 'changes' &&
-              (changesWatchStatus === 'loading' || changesWatchStatus === 'failed'))) &&
-          !(
-            (activeSection === 'files' && (filesBusy || fileTree.refreshError.value)) ||
-            (activeSection === 'changes' && (git.changesRefreshing.value || git.changesError.value))
-          )
-        "
-        class="watch-status"
-        link
-        :class="{
-          failed: (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed'
-        }"
-        :aria-disabled="
-          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'
-        "
-        :aria-busy="
-          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading' ||
-          undefined
-        "
-        @click="
-          (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed' &&
-          emit('retryWatch')
-        "
-      >
-        <template
-          v-if="(activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'"
-          ><MarIcon name="loading-action" />
-          {{ translate('generated.workspaceInspector.loading') }}</template
+      <p v-if="!enabled" class="empty">
+        {{
+          capabilityLoading
+            ? translate('generated.workspaceInspector.loading')
+            : nodeOnline
+              ? translate('generated.workspaceInspector.capabilityUnavailable')
+              : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+        }}
+      </p>
+      <p v-else-if="unavailable" class="empty">
+        {{ translate('generated.workspaceInspector.theTargetNodeDoesNotCurrentlySupport') }}
+      </p>
+      <template v-else>
+        <div
+          v-if="asideTool === undefined"
+          class="inspector-tabs"
+          role="tablist"
+          :aria-label="translate('generated.workspaceInspector.inspectorContent')"
         >
-        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </el-button>
-      <template v-if="activeSection === 'files'">
-        <section class="file-explorer">
-          <div class="explorer-toolbar">
-            <input
-              ref="uploadInput"
-              class="workspace-upload-input"
-              type="file"
-              multiple
-              @change="onUploadFiles"
-            />
-            <el-input
-              v-model="fileDisplayFilter"
-              class="file-display-filter"
-              :aria-label="translate('workspaceDisplayFilter.label')"
-              clearable
-              :placeholder="translate('workspaceDisplayFilter.placeholder')"
-              size="small"
-              :clear-icon="marIcon('clear-input')"
-            >
-              <template #prefix><MarIcon name="search" /></template>
-            </el-input>
-            <button
-              v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
-              class="file-explorer-utility-button utility-control"
-              :disabled="filesBusy"
-              :aria-label="translate('generated.workspaceInspector.refreshFiles')"
-              :aria-busy="filesBusy || undefined"
-              type="button"
-              @click="refreshFiles"
-            >
-              <MarIcon name="refresh" />
-            </button>
-            <button
-              v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
-              class="file-explorer-utility-button utility-control"
-              :disabled="preparingUploads"
-              :aria-label="translate('generated.workspaceInspector.uploadFiles')"
-              :aria-busy="preparingUploads || undefined"
-              type="button"
-              @click="chooseUploadFiles"
-            >
-              <MarIcon name="loading-action" v-if="preparingUploads" />
-              <MarIcon name="document-add" v-else />
-            </button>
-          </div>
           <el-button
-            v-if="fileTree.refreshError.value"
-            v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
-            :aria-description="
-              !filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined
-            "
+            :class="{ active: activeSection === 'files' }"
+            role="tab"
+            :aria-selected="activeSection === 'files'"
+            size="small"
+            text
+            @click="activeSection = 'files'"
+          >
+            {{ translate('generated.workspaceInspector.files3') }}
+          </el-button>
+          <el-button
+            v-if="contentSearchEnabled"
+            :class="{ active: activeSection === 'search' }"
+            role="tab"
+            :aria-selected="activeSection === 'search'"
+            size="small"
+            text
+            @click="openSearch"
+          >
+            {{ translate('generated.workspaceInspector.search') }}
+          </el-button>
+          <el-button
+            v-if="workspaceKind === 'GIT_WORKSPACE'"
+            :class="{ active: activeSection === 'changes' }"
+            role="tab"
+            :aria-selected="activeSection === 'changes'"
+            size="small"
+            text
+            @click="openChanges"
+          >
+            {{ translate('generated.workspaceInspector.gitChanges') }}
+          </el-button>
+          <el-button
+            v-if="historyAvailable"
+            :class="{ active: activeSection === 'history' }"
+            role="tab"
+            :aria-selected="activeSection === 'history'"
+            size="small"
+            text
+            @click="openHistory"
+          >
+            {{ translate('generated.workspaceInspector.gitHistory') }}
+          </el-button>
+        </div>
+        <el-button
+          v-if="
+            ((activeSection === 'files' &&
+              (filesWatchStatus === 'loading' || filesWatchStatus === 'failed')) ||
+              (activeSection === 'changes' &&
+                (changesWatchStatus === 'loading' || changesWatchStatus === 'failed'))) &&
+            !(
+              (activeSection === 'files' && (filesBusy || fileTree.refreshError.value)) ||
+              (activeSection === 'changes' &&
+                (git.changesRefreshing.value || git.changesError.value))
+            )
+          "
+          class="watch-status"
+          link
+          :class="{
+            failed: (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed'
+          }"
+          :aria-disabled="
+            (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'
+          "
+          :aria-busy="
+            (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading' ||
+            undefined
+          "
+          @click="
+            (activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'failed' &&
+            emit('retryWatch')
+          "
+        >
+          <template
+            v-if="(activeSection === 'files' ? filesWatchStatus : changesWatchStatus) === 'loading'"
+            ><MarIcon name="loading-action" />
+            {{ translate('generated.workspaceInspector.loading') }}</template
+          >
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </el-button>
+        <template v-if="activeSection === 'files'">
+          <section class="file-explorer">
+            <div class="explorer-toolbar">
+              <input
+                ref="uploadInput"
+                class="workspace-upload-input"
+                type="file"
+                multiple
+                @change="onUploadFiles"
+              />
+              <el-input
+                v-model="fileDisplayFilter"
+                class="file-display-filter"
+                :aria-label="translate('workspaceDisplayFilter.label')"
+                clearable
+                :placeholder="translate('workspaceDisplayFilter.placeholder')"
+                size="small"
+                :clear-icon="marIcon('clear-input')"
+              >
+                <template #prefix><MarIcon name="search" /></template>
+              </el-input>
+              <button
+                v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
+                class="file-explorer-utility-button utility-control"
+                :disabled="filesBusy"
+                :aria-label="translate('generated.workspaceInspector.refreshFiles')"
+                :aria-busy="filesBusy || undefined"
+                type="button"
+                @click="refreshFiles"
+              >
+                <MarIcon name="refresh" />
+              </button>
+              <button
+                v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
+                class="file-explorer-utility-button utility-control"
+                :disabled="preparingUploads"
+                :aria-label="translate('generated.workspaceInspector.uploadFiles')"
+                :aria-busy="preparingUploads || undefined"
+                type="button"
+                @click="chooseUploadFiles"
+              >
+                <MarIcon name="loading-action" v-if="preparingUploads" />
+                <MarIcon name="document-add" v-else />
+              </button>
+            </div>
+            <el-button
+              v-if="fileTree.refreshError.value"
+              v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
+              :aria-description="
+                !filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined
+              "
+              class="watch-status"
+              link
+              :class="{ failed: !filesBusy }"
+              :aria-disabled="filesBusy"
+              :aria-busy="filesBusy || undefined"
+              @click="!filesBusy && refreshFiles()"
+            >
+              <template v-if="filesBusy"
+                ><MarIcon name="loading-action" />
+                {{ translate('generated.workspaceInspector.loading') }}</template
+              >
+              <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+            </el-button>
+            <p v-else-if="filesBusy" class="watch-status" role="status">
+              <MarIcon name="loading-action" />
+              {{ translate('generated.workspaceInspector.loading') }}
+            </p>
+            <WorkspaceFileTree
+              ref="fileTreeView"
+              :root="fileTree.root.value"
+              :root-path="workspacePath"
+              :filter="fileDisplayFilter"
+              :selected-path="fileTree.selectedPath.value"
+              :disabled="filesBusy"
+              :mutations-enabled="true"
+              :local-file-manager-enabled="localFileManagerEnabled"
+              :mobile-viewport="mobileViewport"
+              @toggle="fileTree.toggle"
+              @open="openTreeFile"
+              @open-external="(node) => openWorkspaceFileExternal(node.path)"
+              @action="onFileTreeAction"
+              @move="moveTreeNode"
+              @load-more="fileTree.loadMore"
+              @select="fileTree.select"
+              @drop-files="onTreeFileDrop"
+              @invalid-drop="
+                emit(
+                  'notice',
+                  translate(
+                    'generated.workspaceInspector.foldersCannotBeDroppedCompressThemBefore'
+                  ),
+                  'warning'
+                )
+              "
+            />
+          </section>
+        </template>
+        <section v-else-if="activeSection === 'search'" class="content-search">
+          <div class="content-search-options">
+            <el-checkbox v-model="contentUseRegex" size="small">{{
+              translate('generated.workspaceInspector.useRegularExpression')
+            }}</el-checkbox>
+          </div>
+          <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
+            <el-input
+              ref="contentSearchInput"
+              v-model="contentQuery"
+              :aria-label="translate('generated.workspaceInspector.searchFileContents')"
+              maxlength="256"
+              :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
+              size="small"
+            />
+            <button
+              v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
+              class="content-search-button file-explorer-utility-button utility-control"
+              :disabled="contentSearchLoading"
+              :aria-label="translate('generated.workspaceInspector.runContentSearch')"
+              :aria-busy="contentSearchLoading || undefined"
+              type="submit"
+            >
+              <MarIcon name="search" />
+            </button>
+          </form>
+          <el-button
+            v-if="contentSearchError !== undefined"
+            v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
+            :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
             class="watch-status"
             link
-            :class="{ failed: !filesBusy }"
-            :aria-disabled="filesBusy"
-            :aria-busy="filesBusy || undefined"
-            @click="!filesBusy && refreshFiles()"
+            :class="{ failed: !contentSearchLoading }"
+            :aria-disabled="contentSearchLoading"
+            :aria-busy="contentSearchLoading || undefined"
+            @click="contentSearch.retry()"
           >
-            <template v-if="filesBusy"
+            <template v-if="contentSearchLoading"
               ><MarIcon name="loading-action" />
               {{ translate('generated.workspaceInspector.loading') }}</template
-            >
-            <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+            ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
           </el-button>
-          <p v-else-if="filesBusy" class="watch-status" role="status">
+          <p v-else-if="contentSearchLoading" class="watch-status" role="status">
             <MarIcon name="loading-action" />
             {{ translate('generated.workspaceInspector.loading') }}
           </p>
-          <WorkspaceFileTree
-            ref="fileTreeView"
-            :root="fileTree.root.value"
-            :root-path="workspacePath"
-            :filter="fileDisplayFilter"
-            :selected-path="fileTree.selectedPath.value"
-            :disabled="filesBusy"
-            :mutations-enabled="true"
-            :local-file-manager-enabled="localFileManagerEnabled"
-            :mobile-viewport="mobileViewport"
-            @toggle="fileTree.toggle"
-            @open="openTreeFile"
-            @open-external="(node) => openWorkspaceFileExternal(node.path)"
-            @action="onFileTreeAction"
-            @move="moveTreeNode"
-            @load-more="fileTree.loadMore"
-            @select="fileTree.select"
-            @drop-files="onTreeFileDrop"
-            @invalid-drop="
-              emit(
-                'notice',
-                translate('generated.workspaceInspector.foldersCannotBeDroppedCompressThemBefore'),
-                'warning'
-              )
-            "
-          />
-        </section>
-      </template>
-      <section v-else-if="activeSection === 'search'" class="content-search">
-        <div class="content-search-options">
-          <el-checkbox v-model="contentUseRegex" size="small">{{
-            translate('generated.workspaceInspector.useRegularExpression')
-          }}</el-checkbox>
-        </div>
-        <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
-          <el-input
-            ref="contentSearchInput"
-            v-model="contentQuery"
-            :aria-label="translate('generated.workspaceInspector.searchFileContents')"
-            maxlength="256"
-            :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
-            size="small"
-          />
-          <button
-            v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
-            class="content-search-button file-explorer-utility-button utility-control"
-            :disabled="contentSearchLoading"
-            :aria-label="translate('generated.workspaceInspector.runContentSearch')"
-            :aria-busy="contentSearchLoading || undefined"
-            type="submit"
+          <p v-if="contentSearchTruncated" class="content-search-warning">
+            {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
+          </p>
+          <ul
+            class="content-search-results"
+            :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
           >
-            <MarIcon name="search" />
-          </button>
-        </form>
-        <el-button
-          v-if="contentSearchError !== undefined"
-          v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
-          :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
-          class="watch-status"
-          link
-          :class="{ failed: !contentSearchLoading }"
-          :aria-disabled="contentSearchLoading"
-          :aria-busy="contentSearchLoading || undefined"
-          @click="contentSearch.retry()"
-        >
-          <template v-if="contentSearchLoading"
-            ><MarIcon name="loading-action" />
-            {{ translate('generated.workspaceInspector.loading') }}</template
-          ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
-        </el-button>
-        <p v-else-if="contentSearchLoading" class="watch-status" role="status">
-          <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
-        </p>
-        <p v-if="contentSearchTruncated" class="content-search-warning">
-          {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
-        </p>
-        <ul
-          class="content-search-results"
-          :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
-        >
-          <li v-for="match in contentMatches" :key="`${match.path}:${match.line}:${match.column}`">
-            <button
-              v-tooltip="match.path"
-              :aria-label="match.path"
-              type="button"
-              @click="
-                $event.ctrlKey || $event.metaKey
-                  ? openWorkspaceFileExternal(match.path, match.line, match.column)
-                  : openFile(match.path, match.line, match.column)
-              "
+            <li
+              v-for="match in contentMatches"
+              :key="`${match.path}:${match.line}:${match.column}`"
             >
-              <span class="content-search-name"
-                ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
-                  match.path
-                }}</strong></span
-              ><small>{{
-                translate('generated.workspaceInspector.line', { value0: match.line })
-              }}</small>
-              <code
-                ><template
-                  v-for="(fragment, index) in contentMatchFragments(match.preview)"
-                  :key="index"
-                  ><mark v-if="fragment.match">{{ fragment.text }}</mark
-                  ><template v-else>{{ fragment.text }}</template></template
-                ></code
+              <button
+                v-tooltip="match.path"
+                :aria-label="match.path"
+                type="button"
+                @click="
+                  $event.ctrlKey || $event.metaKey
+                    ? openWorkspaceFileExternal(match.path, match.line, match.column)
+                    : openFile(match.path, match.line, match.column)
+                "
               >
-            </button>
-          </li>
-          <li
-            v-if="
-              contentAppliedQuery !== '' &&
-              contentMatches.length === 0 &&
-              !contentSearchLoading &&
-              contentSearchError === undefined
-            "
-            class="file-search-empty"
-          >
-            {{ translate('generated.workspaceInspector.noMatchingContent') }}
-          </li>
-        </ul>
-      </section>
-      <WorkspaceGitChanges
-        v-else-if="activeSection === 'changes'"
-        :service="git"
-        :target="fileOperationTarget()"
-        @open="openChange"
-        @notice="(value, type, cause) => emit('notice', value, type, cause)"
-      />
-      <WorkspaceGitHistory
-        v-else-if="activeSection === 'history'"
-        :service="git"
-        @open="openHistoryDiff"
-        @notice="(value, type, cause) => emit('notice', value, type, cause)"
-      />
-    </template>
-  </article>
+                <span class="content-search-name"
+                  ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
+                    match.path
+                  }}</strong></span
+                ><small>{{
+                  translate('generated.workspaceInspector.line', { value0: match.line })
+                }}</small>
+                <code
+                  ><template
+                    v-for="(fragment, index) in contentMatchFragments(match.preview)"
+                    :key="index"
+                    ><mark v-if="fragment.match">{{ fragment.text }}</mark
+                    ><template v-else>{{ fragment.text }}</template></template
+                  ></code
+                >
+              </button>
+            </li>
+            <li
+              v-if="
+                contentAppliedQuery !== '' &&
+                contentMatches.length === 0 &&
+                !contentSearchLoading &&
+                contentSearchError === undefined
+              "
+              class="file-search-empty"
+            >
+              {{ translate('generated.workspaceInspector.noMatchingContent') }}
+            </li>
+          </ul>
+        </section>
+        <WorkspaceGitChanges
+          v-else-if="activeSection === 'changes'"
+          :service="git"
+          :target="fileOperationTarget()"
+          @open="openChange"
+          @notice="(value, type, cause) => emit('notice', value, type, cause)"
+        />
+        <WorkspaceGitHistory
+          v-else-if="activeSection === 'history'"
+          :service="git"
+          @open="openHistoryDiff"
+          @notice="(value, type, cause) => emit('notice', value, type, cause)"
+        />
+      </template>
+    </article>
+  </Teleport>
   <Teleport to="body">
     <WorkspaceFileTabs
       v-if="workspaceFileTabs.length > 0"

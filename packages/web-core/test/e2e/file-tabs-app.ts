@@ -4,6 +4,7 @@ import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
 import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
+import TextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type {
   WorkspaceFileOpenIntent,
@@ -66,8 +67,30 @@ const inspector = ref<{
   openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void>;
 }>();
 const completedOpens = ref(0);
+const formatOpens = ref(0);
 createTooltipApp({
   render: () => {
+    if (query.has('text-shortcuts'))
+      return h('div', [
+        h('button', { id: 'outside-text-preview' }, 'Outside preview'),
+        h('span', { id: 'format-opens' }, String(formatOpens.value)),
+        h(TextFilePage, {
+          file: {
+            path: 'README.md',
+            size: 4,
+            encoding: 'utf-8',
+            content: 'text',
+            truncated: false
+          },
+          kind: 'text',
+          downloading: false,
+          targetLine: undefined,
+          markdown: true,
+          onOpenMarkdownPreview: () => {
+            formatOpens.value += 1;
+          }
+        })
+      ]);
     if (query.has('diff-navigation') || query.has('format-focus')) {
       const view = h(Inspector, {
         ref: inspector,

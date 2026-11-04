@@ -8,12 +8,94 @@ function file(name: string, size: number, type = 'text/plain'): File {
 }
 
 describe('Web Composer Attachment State', () => {
+  it('projects two simultaneous targets from one upload owner without reuploading on pane handoff', async () => {
+    const a = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'a' };
+    const b = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'b' };
+    const uploads: Array<() => void> = [];
+    const upload = vi.fn(() => new Promise<void>((resolve) => uploads.push(resolve)));
+    const owner = createComposerAttachmentService({
+      context: () => a,
+      notice: vi.fn(),
+      request: vi.fn().mockResolvedValue(undefined),
+      csrfToken: ref('csrf'),
+      renewCsrfToken: vi.fn(),
+      onUnauthenticated: vi.fn(),
+      direct: { generation: () => 'generation', upload }
+    });
+    const main = owner.forTarget(() => a);
+    const aside = owner.forTarget(() => b);
+    main.add([new File(['a'], 'a.txt')]);
+    aside.add([new File(['b'], 'b.txt')]);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
+    expect(main.attachments.value.map((item) => item.file.name)).toEqual(['a.txt']);
+    expect(aside.attachments.value.map((item) => item.file.name)).toEqual(['b.txt']);
+    uploads.forEach((finish) => finish());
+    await vi.waitFor(() => expect(aside.attachments.value[0]?.status).toBe('COMPLETED'));
+    const moved = owner.forTarget(() => b);
+    expect(moved.attachments.value[0]?.id).toBe(aside.attachments.value[0]?.id);
+    expect(upload).toHaveBeenCalledTimes(2);
+    main.clear();
+    expect(aside.attachments.value).toHaveLength(1);
+    owner.clearAll();
+  });
+  it('keeps a late upload with its original Session and transfers only the created draft target', async () => {
+    const workspace = { kind: 'workspace' as const, nodeId: 'node-1', workspaceId: 'workspace-1' };
+    const a = {
+      kind: 'session' as const,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'a'
+    };
+    const b = {
+      kind: 'session' as const,
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'b'
+    };
+    const target = ref<import('../../src/service/session-draft-service.js').DraftTarget>(a);
+    let finish!: () => void;
+    const upload = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const state = createComposerAttachmentService({
+      context: () => target.value,
+      notice: vi.fn(),
+      request: vi.fn().mockResolvedValue(undefined),
+      csrfToken: ref('csrf'),
+      renewCsrfToken: vi.fn(),
+      onUnauthenticated: vi.fn(),
+      direct: { generation: () => 'generation', upload }
+    });
+    state.add([new File(['text'], 'a.txt')]);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    target.value = b;
+    expect(state.attachments.value).toEqual([]);
+    finish();
+    target.value = a;
+    await vi.waitFor(() => expect(state.attachments.value[0]?.status).toBe('COMPLETED'));
+    target.value = workspace;
+    state.add([new File(['other'], 'new.txt')]);
+    const draft = state.attachments.value[0]!;
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
+    state.moveDraft(workspace, b);
+    expect(state.attachments.value).toEqual([]);
+    target.value = b;
+    expect(state.attachments.value.map((attachment) => attachment.id)).toEqual([draft.id]);
+    finish();
+    await vi.waitFor(() => expect(state.attachments.value[0]?.status).toBe('COMPLETED'));
+    target.value = a;
+    expect(state.attachments.value.map((attachment) => attachment.file.name)).toEqual(['a.txt']);
+    state.clearAll();
+  });
   it.each(['remove', 'clear', 'clearAll'] as const)(
     '%s only changes the next draft while an overlapping submission still owns the attachment',
     (operation) => {
       const request = vi.fn(() => new Promise<never>(() => undefined));
       const state = createComposerAttachmentService({
-        context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+        context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
         notice: vi.fn(),
         request,
         csrfToken: ref('csrf'),
@@ -39,7 +121,7 @@ describe('Web Composer Attachment State', () => {
   it('allows cancelling an unsent attachment after its submission releases it', () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
     const state = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request,
       csrfToken: ref('csrf'),
@@ -58,7 +140,7 @@ describe('Web Composer Attachment State', () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
     const workspaceId = ref('workspace-1');
     const state = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: workspaceId.value }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: workspaceId.value }),
       notice: vi.fn(),
       request,
       csrfToken: ref('csrf'),
@@ -101,7 +183,7 @@ describe('Web Composer Attachment State', () => {
   it('Creates attachments and starts uploads in a valid Workspace', () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
     const state = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request,
       csrfToken: { value: 'csrf' } as never,
@@ -142,7 +224,7 @@ describe('Web Composer Attachment State', () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
     const workspaceId = ref('workspace-1');
     const state = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: workspaceId.value }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: workspaceId.value }),
       notice: vi.fn(),
       request,
       csrfToken: { value: 'csrf' } as never,

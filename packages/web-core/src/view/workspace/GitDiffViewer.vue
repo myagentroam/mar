@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -80,6 +81,7 @@ const workingTreeScrollbarWidth = ref(0);
 const workingTreeScrollbarHeight = ref(0);
 const minimap = ref<HTMLElement>();
 const diffRoot = ref<{ readonly root: HTMLElement | undefined }>();
+let unregisterFindShortcut: (() => void) | undefined;
 const contextMenu = ref<{ open(event: MouseEvent): Promise<void>; close(): void }>();
 watch(
   () => props.active,
@@ -492,37 +494,6 @@ function onMinimapPointerUp(event: PointerEvent): void {
   if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (props.active === false) return;
-  if (findOpen.value && event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    closeFind();
-    return;
-  }
-  if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]'))
-    return;
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-  if (event.key === 'ArrowLeft') {
-    event.preventDefault();
-    if (props.paths.length > 1 && !props.loading) emit('moveFile', -1);
-    return;
-  }
-  if (event.key === 'ArrowRight') {
-    event.preventDefault();
-    if (props.paths.length > 1 && !props.loading) emit('moveFile', 1);
-    return;
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    moveDiff(-1);
-  }
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    moveDiff(1);
-  }
-}
-
 async function openFind(): Promise<void> {
   findOpen.value = true;
   await nextTick();
@@ -621,7 +592,41 @@ watch(
   },
   { immediate: true }
 );
+let unregisterNavigationShortcuts: (() => void)[] = [];
 onMounted(() => {
+  unregisterNavigationShortcuts = (
+    ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const
+  ).map((key) =>
+    consoleKeyboardShortcutService.register({
+      command: `diff.navigate.${key}`,
+      scope: 'file-preview',
+      priority: 120,
+      owner: () => diffRoot.value?.root,
+      keys: [{ key }],
+      when: (event) =>
+        props.active !== false &&
+        !(event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]'),
+      execute: () => {
+        if (key === 'ArrowLeft' || key === 'ArrowRight') {
+          if (props.paths.length > 1 && !props.loading)
+            emit('moveFile', key === 'ArrowLeft' ? -1 : 1);
+        } else moveDiff(key === 'ArrowUp' ? -1 : 1);
+        return 'HANDLED';
+      }
+    })
+  );
+  unregisterFindShortcut = consoleKeyboardShortcutService.register({
+    command: 'diff.dismissFind',
+    scope: 'file-preview',
+    priority: 120,
+    owner: () => diffRoot.value?.root,
+    keys: [{ key: 'Escape' }],
+    when: () => props.active !== false && findOpen.value,
+    execute: () => {
+      closeFind();
+      return 'HANDLED';
+    }
+  });
   if (props.active !== false) focus();
   updateWorkingTreeMetrics();
   if (workingTreePane.value !== undefined) {
@@ -630,6 +635,8 @@ onMounted(() => {
   }
 });
 onBeforeUnmount(() => {
+  unregisterFindShortcut?.();
+  unregisterNavigationShortcuts.forEach((release) => release());
   if (props.embedded !== true && props.active !== false) {
     document.documentElement.classList.remove('file-preview-open');
     document.body.classList.remove('file-preview-open');
@@ -649,7 +656,6 @@ defineExpose({
   <WorkspaceFilePageFrame
     ref="diffRoot"
     tabindex="-1"
-    @keydown="onKeydown"
     :role="embedded ? 'region' : 'dialog'"
     :aria-modal="embedded ? undefined : true"
     :class="{ 'has-inline-find': findOpen, 'is-embedded': embedded }"

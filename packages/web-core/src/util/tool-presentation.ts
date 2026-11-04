@@ -5,12 +5,18 @@ import { formatDateTime } from './time-presentation.js';
 
 export function toolPresentation(
   payload: unknown
-): Exclude<ToolPresentation, { kind: 'EXECUTION' }> | undefined {
+):
+  | Extract<ToolPresentation, { kind: 'READ' | 'WEB_SEARCH' | 'WEB_FETCH' | 'SKILL' | 'SLEEP' }>
+  | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const value = (payload as { toolPresentation?: ToolPresentation }).toolPresentation;
   return value &&
-    value.kind !== 'EXECUTION' &&
-    ['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP'].includes(value.kind)
+    !('detailOnly' in value && value.detailOnly === true) &&
+    (value.kind === 'READ' ||
+      value.kind === 'WEB_SEARCH' ||
+      value.kind === 'WEB_FETCH' ||
+      value.kind === 'SKILL' ||
+      value.kind === 'SLEEP')
     ? value
     : undefined;
 }
@@ -149,6 +155,49 @@ export function readToolOutput(payload: Record<string, unknown>) {
   return undefined;
 }
 
+export function toolPresentationReadRange(payload: unknown, path: string): string {
+  const value = toolPresentation(payload);
+  if (value?.kind !== 'READ') return '';
+  return (value.results ?? [])
+    .filter((item) => item.path === path && item.startLine !== undefined)
+    .map((item) =>
+      item.endLine === undefined || item.endLine === item.startLine
+        ? String(item.startLine)
+        : `${item.startLine}–${item.endLine}`
+    )
+    .join(', ');
+}
+
+/** Read only the public output intervals owned by the selected file. */
+export function readFileDetail(payload: Record<string, unknown>, path: string): string | undefined {
+  const presentation = toolPresentation(payload);
+  if (presentation?.kind !== 'READ') return undefined;
+  const results = presentation.results?.filter((item) => item.path === path);
+  if (!results?.length) return undefined;
+  const output = readToolOutput(payload);
+  if (
+    results.some((item) => !item.contentRange && !item.error && !item.empty) &&
+    !output?.truncation
+  )
+    return undefined;
+  const sections = results
+    .map((item) => {
+      if (item.error) return `${item.error.code}: ${item.error.message}`;
+      if (item.empty) return translate('toolPresentation.detail.empty');
+      const block = output?.blocks.find((entry) => entry.channel === item.contentRange?.channel);
+      if (!item.contentRange || !block)
+        return output?.truncation ? '' : translate('toolPresentation.detail.truncated');
+      const content = block.text.slice(item.contentRange.start, item.contentRange.end);
+      return content || translate('toolPresentation.detail.empty');
+    })
+    .filter((section) => section.length > 0);
+  if (output?.truncation === 'HEAD')
+    sections.unshift(translate('toolPresentation.detail.truncated'));
+  else if (output?.truncation === 'SOURCE')
+    sections.push(translate('toolPresentation.detail.truncated'));
+  return sections.join('\n\n');
+}
+
 export function toolOutputDetail(
   payload: Record<string, unknown>,
   label: string = conversationUiEnUS.presentation.output
@@ -176,8 +225,10 @@ export function toolPresentationDetails(payload: unknown): string {
     typeof text === 'string' && text.length ? `${label}: ${text}` : '';
   const labels = conversationUiEnUS.toolPresentation;
   const details = [line(labels.tool, raw.toolName)];
+  if (value.kind === 'WEB_SEARCH') details.push(line(labels.detail.query, value.query));
   if (value.kind === 'WEB_FETCH')
     details.push(
+      line(labels.detail.title, value.title),
       line(labels.requestUrl, value.requestUrl),
       line(labels.finalUrl, value.url),
       line(labels.mode, value.mode),
@@ -185,7 +236,11 @@ export function toolPresentationDetails(payload: unknown): string {
       line(labels.contentType, value.contentType)
     );
   if (value.kind === 'SKILL')
-    details.push(line(labels.description, value.description), line(labels.source, value.source));
+    details.push(
+      line(labels.detail.name, value.name),
+      line(labels.description, value.description),
+      line(labels.source, value.source)
+    );
   if (value.kind === 'SLEEP')
     details.push(
       line(
@@ -203,8 +258,77 @@ export function toolPresentationDetails(payload: unknown): string {
     );
   details.push(line(conversationUiEnUS.presentation.input, raw.inputSummary));
   if (raw.inputTruncated === true) details.push(translate('toolPresentation.detail.truncated'));
-  details.push(toolOutputDetail(raw));
+  if (value.kind === 'WEB_SEARCH' && value.sourcesOnly && value.sources?.length === 0)
+    details.push(translate('toolPresentation.noResults'));
+  if (
+    !(value.kind === 'WEB_SEARCH' && value.sourcesOnly && value.sources !== undefined) &&
+    !(value.kind === 'SLEEP' && value.elapsedMs !== undefined)
+  )
+    details.push(toolOutputDetail(raw));
   details.push(line(conversationUiEnUS.presentation.error, raw.errorCode));
   if (typeof raw.errorMessage === 'string' && raw.errorMessage) details.push(raw.errorMessage);
   return details.filter(Boolean).join(String.fromCharCode(10));
+}
+
+/** Detail-only kinds deliberately do not affect the legacy grouping projection. */
+export function detailOnlyToolText(payload: Record<string, unknown>): string | undefined {
+  const value = payload.toolPresentation as ToolPresentation | undefined;
+  if (
+    !value ||
+    (value.kind !== 'IMAGE_VIEW' &&
+      value.kind !== 'TOOL_SEARCH' &&
+      value.kind !== 'COMPACT_REQUEST' &&
+      !((value.kind === 'WEB_SEARCH' || value.kind === 'WEB_FETCH') && value.detailOnly === true))
+  )
+    return undefined;
+  const lines: string[] = [];
+  const labels = conversationUiEnUS.toolPresentation;
+  const field = (label: string, text: unknown) => {
+    if (typeof text === 'string' && text) lines.push(`${label}: ${text}`);
+  };
+  field(labels.detail.tool, payload.toolName);
+  field(conversationUiEnUS.presentation.input, payload.inputSummary);
+  if (payload.inputTruncated === true) lines.push(translate('toolPresentation.detail.truncated'));
+  if (value.kind === 'WEB_FETCH') {
+    field(labels.requestUrl, value.requestUrl);
+    field(labels.finalUrl, value.url);
+    field(labels.detail.title, value.title);
+    lines.push(toolOutputDetail(payload));
+  } else if (value.kind === 'WEB_SEARCH') {
+    field(labels.detail.query, value.query);
+    lines.push(toolOutputDetail(payload));
+  } else if (value.kind === 'IMAGE_VIEW') {
+    field(labels.detail.path, value.path);
+    field(labels.detail.resource, value.resourceId);
+    field(labels.detail.format, value.mimeType);
+    if (typeof value.width === 'number' && typeof value.height === 'number')
+      lines.push(`${labels.detail.size}: ${value.width} × ${value.height}`);
+    if (typeof value.sourceWidth === 'number' && typeof value.sourceHeight === 'number')
+      lines.push(`${labels.detail.sourceSize}: ${value.sourceWidth} × ${value.sourceHeight}`);
+    if (value.region) {
+      const region = value.region;
+      lines.push(
+        `${labels.detail.region}: ${region.x}, ${region.y} · ${region.width} × ${region.height}`
+      );
+    }
+    if (value.resize) {
+      const resize = value.resize;
+      lines.push(
+        `${labels.detail.resize}: ${[resize.maxWidth, resize.maxHeight].filter((n) => n !== undefined).join(' × ')}`
+      );
+    }
+    lines.push(translate('toolPresentation.detail.imageUnavailable'));
+  } else if (value.kind === 'TOOL_SEARCH') {
+    field(labels.detail.query, value.query);
+    if (value.tools !== undefined)
+      lines.push(
+        value.tools.length ? value.tools.join('\n') : translate('toolPresentation.noResults')
+      );
+    else lines.push(toolOutputDetail(payload));
+  } else if (value.kind === 'COMPACT_REQUEST' && value.accepted === true)
+    lines.push(translate('toolPresentation.detail.compactAccepted'));
+  else lines.push(toolOutputDetail(payload));
+  field(labels.detail.error, payload.errorCode);
+  if (typeof payload.errorMessage === 'string') lines.push(payload.errorMessage);
+  return lines.filter(Boolean).join('\n');
 }

@@ -15,6 +15,7 @@ import { composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
   toolPresentationReadPaths,
+  toolPresentationReadRange,
   toolPresentationTitle,
   toolPresentationText,
   toolPresentationDetails,
@@ -335,13 +336,21 @@ export function reasoningDisclosureOpen(
   return currentOpen ?? false;
 }
 
-export function conversationToolEntries(
-  items: readonly ConversationItem[]
-): readonly { readonly id: string; readonly item: ConversationItem; readonly path?: string }[] {
+export function conversationToolEntries(items: readonly ConversationItem[]): readonly {
+  readonly id: string;
+  readonly item: ConversationItem;
+  readonly path?: string;
+  readonly range?: string;
+}[] {
   return items.flatMap((item) => {
     const paths = toolPresentationReadPaths(item.payload);
     return paths.length
-      ? paths.map((path) => ({ id: JSON.stringify([item.id, path]), item, path }))
+      ? paths.map((path) => ({
+          id: JSON.stringify([item.id, path]),
+          item,
+          path,
+          range: toolPresentationReadRange(item.payload, path)
+        }))
       : [{ id: item.id, item }];
   });
 }

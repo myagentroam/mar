@@ -39,7 +39,7 @@ export function removeSlashCommandAtCursor(value: string, cursor = value.length)
 /** Returns the quick-prompt phrase under the caret; `#` only starts after whitespace or text start. */
 export function createRunnerInteractionService(options: {
   readonly input: Ref<string>;
-  readonly draftSessionOpen: Ref<boolean>;
+  readonly draftSessionOpen: Readonly<Ref<boolean>>;
   readonly selectedSession: Readonly<Ref<Session | undefined>>;
   readonly profile: Readonly<Ref<RunnerProfile | undefined>>;
   readonly commandAvailable?: (command: RunnerCommand) => boolean;
@@ -258,33 +258,38 @@ export function createRunnerInteractionService(options: {
     updatePicker(cursor);
   }
 
-  function onKeydown(
-    event: KeyboardEvent,
-    callbacks: {
-      readonly mobile: boolean;
-      readonly canInterrupt: boolean;
-      readonly stop: () => void;
-      readonly send: (
-        replaceCurrent: boolean,
-        preserveDraft?: boolean,
-        contentOverride?: string
-      ) => void;
-      readonly selectQuickPrompt?: (prompt: QuickPrompt) => void;
-      readonly selectSkill?: (skill: EffectiveWorkspaceSkill, cursor: number) => void;
-    }
-  ): void {
-    if (event.key === 'Escape' && commandPickerOpen.value) {
-      event.preventDefault();
-      commandPickerOpen.value = false;
-      pickerKind.value = undefined;
+  type PickerCallbacks = {
+    readonly send: (
+      replaceCurrent: boolean,
+      preserveDraft?: boolean,
+      contentOverride?: string
+    ) => void;
+    readonly selectQuickPrompt?: (prompt: QuickPrompt) => void;
+    readonly selectSkill?: (skill: EffectiveWorkspaceSkill, cursor: number) => void;
+  };
+
+  function dismissPicker(): void {
+    commandPickerOpen.value = false;
+    pickerKind.value = undefined;
+  }
+
+  function acceptPicker(callbacks: PickerCallbacks): void {
+    if (pickerKind.value === 'quick-prompt') {
+      const prompt = visibleQuickPrompts.value[activeCommandIndex.value];
+      if (prompt !== undefined) callbacks.selectQuickPrompt?.(prompt);
       return;
     }
-    if (event.key === 'Escape' && callbacks.canInterrupt) {
-      event.preventDefault();
-      callbacks.stop();
+    const command = visibleCommands.value[activeCommandIndex.value];
+    if (command !== undefined) {
+      selectCommand(command, (preserveDraft) => callbacks.send(false, preserveDraft));
       return;
     }
-    if (callbacks.mobile && event.key === 'Enter') return;
+    const skill = visibleSkills.value[activeCommandIndex.value - visibleCommands.value.length];
+    if (skill !== undefined && callbacks.selectSkill !== undefined)
+      selectSkill(skill, callbacks.selectSkill);
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
     if (commandPickerOpen.value && visibleEntryCount.value > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
@@ -293,31 +298,6 @@ export function createRunnerInteractionService(options: {
           (activeCommandIndex.value + delta + visibleEntryCount.value) % visibleEntryCount.value;
         return;
       }
-      if (event.key === 'Enter' && (event.shiftKey || event.altKey)) return;
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        if (pickerKind.value === 'quick-prompt') {
-          const prompt = visibleQuickPrompts.value[activeCommandIndex.value];
-          if (prompt !== undefined) callbacks.selectQuickPrompt?.(prompt);
-          return;
-        }
-        const command = visibleCommands.value[activeCommandIndex.value];
-        if (command !== undefined) {
-          selectCommand(command, (preserveDraft) => callbacks.send(false, preserveDraft));
-          return;
-        }
-        const skill = visibleSkills.value[activeCommandIndex.value - visibleCommands.value.length];
-        if (skill !== undefined && callbacks.selectSkill !== undefined)
-          selectSkill(skill, callbacks.selectSkill);
-        return;
-      }
-    }
-    if (event.key === 'Enter' && (event.shiftKey || event.altKey)) return;
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      // Run and Session snapshots are display hints only. Preserve the explicit keyboard intent
-      // and let Node decide whether replacement or a normal start applies.
-      callbacks.send(event.ctrlKey);
     }
   }
 
@@ -344,6 +324,8 @@ export function createRunnerInteractionService(options: {
     prepareDraftCommand,
     closeCommandState,
     onInput,
+    acceptPicker,
+    dismissPicker,
     onKeydown
   };
 }

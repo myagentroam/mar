@@ -3,7 +3,8 @@ import {
   compactRunnerText,
   compactRunnerValue,
   publicOutputSnapshot,
-  publicToolOutput
+  publicToolOutput,
+  subagentCallDetail
 } from '../normalization.js';
 import { shellExecution } from '../execution-presentation.js';
 import type {
@@ -256,6 +257,23 @@ export function normalizeClaudeTool(
             }
           }
         : {}),
+      ...(toolName === 'WebFetch' && typeof values?.url === 'string'
+        ? {
+            toolPresentation: {
+              kind: 'WEB_FETCH',
+              detailOnly: true,
+              requestUrl: compactRunnerText(values.url, 8192)
+            }
+          }
+        : toolName === 'WebSearch' && typeof values?.query === 'string'
+          ? {
+              toolPresentation: {
+                kind: 'WEB_SEARCH',
+                detailOnly: true,
+                query: compactRunnerText(values.query, 500)
+              }
+            }
+          : {}),
       ...subagent
     }
   };
@@ -316,6 +334,11 @@ function claudeSubagentProjection(
   if (subagentId !== undefined && normalizedName === 'agent') knownSubagents.set(subagentId, title);
   return {
     subagentOperation: operation,
+    ...(operation === 'START'
+      ? subagentCallDetail(record(input)?.prompt)
+      : operation === 'MESSAGE'
+        ? subagentCallDetail(record(input)?.message)
+        : {}),
     subagentId: subagentId === '*' ? null : (subagentId ?? null),
     ...(operation === 'STATUS' ? { subagentWait: inputData?.block === true } : {}),
     ...(title.length === 0 ? {} : { title })

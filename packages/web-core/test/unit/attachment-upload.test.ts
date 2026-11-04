@@ -46,7 +46,7 @@ function fixture() {
   });
   const onUnauthenticated = vi.fn();
   const service = createComposerAttachmentService({
-    context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+    context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
     notice: vi.fn(),
     request: request as never,
     csrfToken,
@@ -115,7 +115,7 @@ describe('Public Composer Attachment Upload', () => {
     const directUpload = vi.fn(async () => undefined);
     const request = vi.fn();
     const service = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request,
       csrfToken: ref('token'),
@@ -146,7 +146,7 @@ describe('Public Composer Attachment Upload', () => {
     const directUpload = vi.fn(async () => undefined);
     const request = vi.fn(async () => ({}));
     const service = createComposerAttachmentService({
-      context: () => ({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request: request as never,
       csrfToken: ref('token'),

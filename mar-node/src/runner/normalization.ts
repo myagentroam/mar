@@ -4,6 +4,20 @@ export function compactRunnerText(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 1))}…`;
 }
 
+/** The current native call's message, never a target's result or inferred history. */
+export function subagentCallDetail(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string' || value.trim().length === 0) return {};
+  let message = value.slice(0, 2000);
+  const last = message.charCodeAt(message.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) message = message.slice(0, -1);
+  return {
+    subagentCallDetail: {
+      message,
+      ...(message.length < value.length ? { messageTruncated: true } : {})
+    }
+  };
+}
+
 export function publicOutputSnapshot(
   value: unknown,
   truncated = false

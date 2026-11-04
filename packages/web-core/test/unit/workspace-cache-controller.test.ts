@@ -93,9 +93,6 @@ function fixture() {
     nextCursor,
     contextUsage,
     queue,
-    draftOpen,
-    input,
-    skillTokens,
     runner,
     modelId,
     effort,
@@ -235,13 +232,14 @@ describe('Public Workspace Cache Controller', () => {
     );
     expect(cache.inspector).toEqual({ tab: 'files', path: 'src/main.ts' });
     expect(cache.draft).toMatchObject({
-      input: 'continue this task',
-      skillTokens: f.skillTokens.value,
       runner: 'codex',
       modelId: 'model-a',
       effort: 'medium',
       access: 'on-request'
     });
+    expect(cache.draft).not.toHaveProperty('input');
+    expect(cache.draft).not.toHaveProperty('skillTokens');
+    expect(cache.draft).not.toHaveProperty('references');
   });
 
   it('Preserves the cached Inspector snapshot when saving while its Vue ref is unmounted', () => {
@@ -315,7 +313,7 @@ describe('Public Workspace Cache Controller', () => {
     expect(f.controller.restoreCachedSessionDetail('missing')).toBeUndefined();
   });
 
-  it('Applies cached Runner configuration when restoring a draft and clears only editable content when the cache is missing', () => {
+  it('restores only cached Runner configuration without overwriting the draft owner', () => {
     const f = fixture();
     f.input.value = 'old input';
     f.skillTokens.value = [
@@ -329,8 +327,8 @@ describe('Public Workspace Cache Controller', () => {
 
     f.controller.restoreWorkspaceDraft(undefined);
 
-    expect(f.input.value).toBe('');
-    expect(f.skillTokens.value).toEqual([]);
+    expect(f.input.value).toBe('old input');
+    expect(f.skillTokens.value).toHaveLength(1);
     expect(f.normalizeDraft).not.toHaveBeenCalled();
     expect(f.runner.value).toBe('codex');
 
@@ -339,8 +337,6 @@ describe('Public Workspace Cache Controller', () => {
       workspaceId: 'workspace-1',
       sessions: [],
       draft: {
-        input: 'restored input',
-        skillTokens: [],
         runner: 'mar-agent',
         modelId: 'gpt-5',
         effort: 'high',
@@ -353,7 +349,7 @@ describe('Public Workspace Cache Controller', () => {
     expect(f.modelId.value).toBe('gpt-5');
     expect(f.effort.value).toBe('high');
     expect(f.access.value).toBe('full-access');
-    expect(f.input.value).toBe('restored input');
+    expect(f.input.value).toBe('old input');
   });
 
   it('Queues Inspector restoration before the Workspace identity update renders an empty state', () => {

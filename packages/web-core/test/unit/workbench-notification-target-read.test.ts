@@ -164,7 +164,7 @@ describe('target read write boundaries', () => {
       });
       const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
         request: request as never,
-        activeTarget: () => (active ? target : undefined)
+        activeTargets: () => (active ? [target] : [])
       });
       state.notifications.value = [{ ...entry('one', target), source: 'server' }];
       const reading = mark(state, target);

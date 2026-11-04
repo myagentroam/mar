@@ -124,6 +124,7 @@ export interface WorkbenchNotificationService {
   markAllRead(): void;
   markRead(id: string): void;
   markSessionRead(nodeId: string, workspaceId: string, sessionId: string): Promise<void>;
+  markVisibleRead(): Promise<void>;
   markConversationRead(nodeId: string, conversationId: string): void;
   clearWebUpdate(): void;
   remove(id: string): void;
@@ -158,7 +159,7 @@ export function createWorkbenchNotificationService(
   username: Ref<string | undefined>,
   options: {
     readonly request?: <T>(path: string, init?: RequestInit) => Promise<T>;
-    readonly activeTarget?: () => ActiveNotificationTarget | undefined;
+    readonly activeTargets?: () => readonly ActiveNotificationTarget[];
     readonly onWorkspaceRunCompleted?: (nodeId: string, workspaceId: string) => void;
     readonly onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>;
   } = {}
@@ -171,7 +172,7 @@ export function createWorkbenchNotificationService(
   let recoveryPromise: Promise<void> | undefined;
   let pendingRecovery:
     | {
-        readonly target: ActiveNotificationTarget | undefined;
+        readonly targets: readonly ActiveNotificationTarget[];
         readonly account: string | undefined;
       }
     | undefined;
@@ -481,24 +482,17 @@ export function createWorkbenchNotificationService(
 
   function recover(): Promise<void> {
     if (openingNotificationCount > 0 || systemNotifications.hasPending()) return load();
-    const target = isWorkbenchForeground() ? options.activeTarget?.() : undefined;
+    const targets = isWorkbenchForeground() ? (options.activeTargets?.() ?? []) : [];
     pendingRecovery = {
-      target: target === undefined ? undefined : { ...target },
+      targets: targets.map((target) => ({ ...target })),
       account: username.value
     };
     if (recoveryPromise !== undefined) return recoveryPromise;
     const generation = loadGeneration;
     const operation = (async () => {
       while (generation === loadGeneration && pendingRecovery !== undefined) {
-        const { target: active, account } = pendingRecovery;
+        const { targets: active, account } = pendingRecovery;
         pendingRecovery = undefined;
-        const canRead = () =>
-          generation === loadGeneration &&
-          openingNotificationCount === 0 &&
-          account === username.value &&
-          active !== undefined &&
-          isActiveTarget(active) &&
-          isWorkbenchForeground();
         try {
           await load();
         } catch (error) {
@@ -506,12 +500,7 @@ export function createWorkbenchNotificationService(
           if (pendingRecovery !== undefined) continue;
           throw error;
         }
-        if (active === undefined || !canRead()) continue;
-        const unread =
-          active.targetType === 'WORKSPACE_SESSION'
-            ? hasUnreadSession(active.nodeId, active.workspaceId, active.sessionId)
-            : hasUnreadConversation(active.nodeId, active.conversationId);
-        if (unread) await readTarget(active, true, canRead);
+        await readVisibleTargets(active, account, generation);
       }
     })();
     const tracked = operation.finally(() => {
@@ -630,20 +619,21 @@ export function createWorkbenchNotificationService(
   }
 
   function isActiveTarget(target: WorkbenchNotificationTarget | ActiveNotificationTarget): boolean {
-    const active = options.activeTarget?.();
-    if (active === undefined || target.targetType === undefined) return false;
-    if (target.targetType === 'HOSTED_CONVERSATION')
+    if (target.targetType === undefined) return false;
+    return (options.activeTargets?.() ?? []).some((active) => {
+      if (target.targetType === 'HOSTED_CONVERSATION')
+        return (
+          active.targetType === 'HOSTED_CONVERSATION' &&
+          active.nodeId === target.nodeId &&
+          active.conversationId === target.conversationId
+        );
       return (
-        active.targetType === 'HOSTED_CONVERSATION' &&
+        active.targetType === 'WORKSPACE_SESSION' &&
         active.nodeId === target.nodeId &&
-        active.conversationId === target.conversationId
+        active.workspaceId === target.workspaceId &&
+        active.sessionId === target.sessionId
       );
-    return (
-      active.targetType === 'WORKSPACE_SESSION' &&
-      active.nodeId === target.nodeId &&
-      active.workspaceId === target.workspaceId &&
-      active.sessionId === target.sessionId
-    );
+    });
   }
 
   function markAllRead(): void {
@@ -713,6 +703,33 @@ export function createWorkbenchNotificationService(
 
   function markSessionRead(nodeId: string, workspaceId: string, sessionId: string): Promise<void> {
     return readTarget({ targetType: 'WORKSPACE_SESSION', nodeId, workspaceId, sessionId });
+  }
+
+  async function readVisibleTargets(
+    targets: readonly ActiveNotificationTarget[],
+    account: string | undefined,
+    generation: number
+  ): Promise<void> {
+    await Promise.all(
+      targets.map(async (target) => {
+        const canRead = () =>
+          generation === loadGeneration &&
+          openingNotificationCount === 0 &&
+          account === username.value &&
+          isActiveTarget(target) &&
+          isWorkbenchForeground();
+        if (!canRead()) return;
+        const unread =
+          target.targetType === 'WORKSPACE_SESSION'
+            ? hasUnreadSession(target.nodeId, target.workspaceId, target.sessionId)
+            : hasUnreadConversation(target.nodeId, target.conversationId);
+        if (unread) await readTarget(target, true, canRead);
+      })
+    );
+  }
+
+  function markVisibleRead(): Promise<void> {
+    return readVisibleTargets(options.activeTargets?.() ?? [], username.value, loadGeneration);
   }
 
   function hasUnreadConversation(nodeId: string, conversationId: string): boolean {
@@ -891,6 +908,7 @@ export function createWorkbenchNotificationService(
     markAllRead,
     markRead,
     markSessionRead,
+    markVisibleRead,
     markConversationRead,
     clearWebUpdate,
     remove,

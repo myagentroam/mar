@@ -249,6 +249,11 @@ for (const width of [1280, 390]) {
       await queueInput.press('Enter');
       await expect(queueInput).toHaveCount(0);
       await expect(queue.locator('.queue-item-content > p')).toHaveText('Saved through Enter');
+      await queueEdit.click();
+      await queueInput.fill('Execute this edit');
+      await queueInput.press('Control+Enter');
+      await expect(page.getByTestId('events')).toContainText('execute');
+      await expect(queueInput).toHaveValue('Execute this edit');
     } finally {
       await context.close();
     }

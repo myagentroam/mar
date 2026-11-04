@@ -1,14 +1,44 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
-import { nextTick, ref, watch } from 'vue';
+import { effectScope, nextTick, ref, watch } from 'vue';
 import { createWorkbenchSessionSelectionService } from '../../src/service/workbench-session-selection-service.js';
+import {
+  createWorkspaceSessionPaneReader,
+  createWorkspaceSessionPaneState
+} from '../../src/service/workspace-session-pane-state.js';
+import { createWorkspaceSessionPaneLoader } from '../../src/service/workspace-session-pane-loader.js';
+import { createWorkbenchSubmissionOwner } from '../../src/service/workbench-submission-service.js';
+import { createSessionDraftService } from '../../src/service/session-draft-service.js';
+import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
 import type { WorkbenchSessionSelectionOptions } from '../../src/service/workbench-session-selection-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
 import { createRunService } from '../../src/service/run-service.js';
+import { createWorkbenchAsideService } from '../../src/service/workbench-aside-service.js';
 import { conversationProjectionFixture } from './support/conversation-paging-fixture.js';
+const paneSubmissions = createWorkbenchSubmissionOwner();
+type SelectionFixtureOptions = Omit<WorkbenchSessionSelectionOptions, 'createPaneLoader'> & {
+  request: <T>(path: string, init?: RequestInit) => Promise<T>;
+  sessionPathId: (sessionId: string) => string;
+};
+function createSelection(options: SelectionFixtureOptions) {
+  const reader = createWorkspaceSessionPaneReader();
+  return createWorkbenchSessionSelectionService(
+    Object.assign(options, {
+      createPaneLoader: (projection) =>
+        createWorkspaceSessionPaneLoader({
+          ...projection,
+          runs: options.runs,
+          readSession: (nodeId, sessionId) =>
+            reader.read(nodeId, sessionId, options.request, options.sessionPathId),
+          readInitialHistory: (nodeId, sessionId) =>
+            reader.readInitialHistory(nodeId, sessionId, options.request, options.sessionPathId)
+        })
+    } satisfies Pick<WorkbenchSessionSelectionOptions, 'createPaneLoader'>)
+  );
+}
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -19,7 +49,7 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
-function tabSessionFixture() {
+function tabSessionFixture(sessionTabLimit = 1) {
   const session: Session = { id: 'outside-page', workspaceId: 'workspace-1', runner: 'mar-agent' };
   const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
   const selectedSessionId = ref<string>();
@@ -27,8 +57,14 @@ function tabSessionFixture() {
   const runs = runOwner.runs;
   const turns = ref<import('../../src/model/workbench.js').ConversationTurn[]>([]);
   const conversationOwner = conversationProjectionFixture(turns, ref<string | null>(null));
+  const aside = createWorkbenchAsideService(sessionTabLimit);
+  aside.ensure(target.value, ['files', 'terminal']);
   let revision = 0;
-  const options: WorkbenchSessionSelectionOptions = {
+  const options: SelectionFixtureOptions = {
+    aside,
+    canOpenAside: () => true,
+    saveAside: vi.fn(),
+    focusMain: vi.fn(),
     workspaceTarget: target,
     selectedSessionId,
     selectedRunId: ref(),
@@ -65,7 +101,7 @@ function tabSessionFixture() {
     openRun: vi.fn(),
     scrollLatest: vi.fn(async () => undefined),
     beginInitialRender: vi.fn(async () => undefined),
-    request: vi.fn(async () => ({ session })) as WorkbenchSessionSelectionOptions['request'],
+    request: vi.fn(async () => ({ session })) as SelectionFixtureOptions['request'],
     sessionPathId: (id) => id,
     replaceSession: vi.fn(),
     canWatch: () => true,
@@ -79,14 +115,185 @@ function tabSessionFixture() {
   return {
     session,
     target,
+    aside,
     options,
     runs,
     turns,
-    service: createWorkbenchSessionSelectionService(options)
+    service: createSelection(options)
   };
 }
 
 describe('Synchronous Session handoff', () => {
+  it('does not apply an old Workspace response to an equal Session id in another Workspace', async () => {
+    const fixture = tabSessionFixture();
+    let resolve!: (value: { session: Session }) => void;
+    fixture.options.request = vi.fn(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    ) as SelectionFixtureOptions['request'];
+    const service = createSelection(fixture.options);
+    const opening = service.openSession(fixture.session.id);
+    await vi.waitFor(() => expect(fixture.options.request).toHaveBeenCalledOnce());
+    fixture.target.value = { nodeId: 'node-1', workspaceId: 'workspace-2' };
+    resolve({ session: fixture.session });
+    await opening;
+    expect(fixture.options.replaceSession).not.toHaveBeenCalled();
+    expect(fixture.options.applyComposerConfiguration).not.toHaveBeenCalledWith(
+      fixture.session,
+      true
+    );
+    expect(fixture.options.beginWatch).not.toHaveBeenCalled();
+  });
+  it('does not start a superseded read after a synchronous selection opens another session', async () => {
+    const fixture = tabSessionFixture();
+    const next = { ...fixture.session, id: 'session-next' };
+    fixture.options.sessions.value.push(next);
+    fixture.options.request = vi.fn(async () => ({
+      session: next
+    })) as SelectionFixtureOptions['request'];
+    vi.spyOn(fixture.options, 'restoreCachedDetail').mockImplementation((id) => ({
+      sessionId: id,
+      contextUsage: undefined,
+      lastAccessedAt: 1,
+      runs: [
+        {
+          id: `run-${id}`,
+          sessionId: id,
+          status: 'RUNNING',
+          recoveryState: '',
+          clientMessageId: ''
+        }
+      ],
+      turns: [],
+      nextCursor: null
+    }));
+    vi.spyOn(fixture.options, 'openRun').mockImplementation((id) => {
+      fixture.options.selectedRunId.value = id;
+    });
+    const service = createSelection(fixture.options);
+    let second: Promise<void> | undefined;
+    const stop = watch(
+      fixture.options.selectedSessionId,
+      (id) => {
+        if (id === fixture.session.id && second === undefined)
+          second = service.openSession(next.id);
+      },
+      { flush: 'sync' }
+    );
+    await service.openSession(fixture.session.id);
+    await second;
+    stop();
+    expect(fixture.options.selectedSessionId.value).toBe(next.id);
+    expect(fixture.options.openRun).toHaveBeenCalled();
+    expect(
+      vi.mocked(fixture.options.openRun).mock.calls.every(([id]) => id === `run-${next.id}`)
+    ).toBe(true);
+    expect(fixture.options.openRun).toHaveBeenCalledWith(`run-${next.id}`);
+    expect(fixture.options.selectedRunId.value).toBe(`run-${next.id}`);
+    expect(fixture.options.request).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fixture.options.request).mock.calls[0]![0]).toContain('/session-next?');
+  });
+  it('deduplicates Main and Aside and promotes Aside through the common Main selection path', async () => {
+    const f = tabSessionFixture(3);
+    f.options.selectedSessionId.value = 'main';
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
+    expect(f.options.focusMain).toHaveBeenCalledOnce();
+    expect(f.aside.current(f.target.value).sessions).toEqual([]);
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'other' })).toBe(true);
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: f.session.id })).toBe(true);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['other', f.session.id]);
+    const opening = f.service.selectSession(f.session.id);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['other']);
+    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
+    await opening;
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+  });
+  it('saves the outgoing Aside before replacing its sole tab and leaves Main unchanged', () => {
+    const f = tabSessionFixture();
+    f.options.selectedSessionId.value = 'main';
+    f.service.openAsideSession({ ...f.target.value, sessionId: 'a' });
+    const saved: unknown[] = [];
+    vi.mocked(f.options.saveAside).mockImplementation(() => {
+      saved.push(f.aside.current(f.target.value).active);
+    });
+    f.service.openAsideSession({ ...f.target.value, sessionId: 'b' });
+    expect(saved).toEqual([{ kind: 'session', sessionId: 'a' }]);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    expect(f.options.selectedSessionId.value).toBe('main');
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    f.service.removeMissingAside(f.target.value, ['a']);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+  });
+  it('does not mutate Aside when capability is absent, and does not reload the active target', () => {
+    const f = tabSessionFixture();
+    vi.spyOn(f.options, 'canOpenAside').mockReturnValue(false);
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'child' })).toBe(false);
+    expect(f.aside.current(f.target.value).sessions).toEqual([]);
+    vi.spyOn(f.options, 'canOpenAside').mockReturnValue(true);
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'child' })).toBe(true);
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'child' })).toBe(true);
+    expect(f.options.saveAside).toHaveBeenCalledOnce();
+    expect(f.options.request).not.toHaveBeenCalled();
+  });
+  it('rebinds an Aside identity only in its captured Workspace and deduplicates Main', () => {
+    const f = tabSessionFixture();
+    f.options.selectedSessionId.value = 'main';
+    const old = { ...f.target.value, sessionId: 'child' };
+    f.service.openAsideSession(old);
+    expect(f.service.replaceAsideSession(old, 'child-new')).toBe(true);
+    expect(f.aside.current(f.target.value).active).toEqual({
+      kind: 'session',
+      sessionId: 'child-new'
+    });
+    expect(f.aside.current(f.target.value).sessions).toEqual(['child-new']);
+    expect(f.service.replaceAsideSession(old, 'stale')).toBe(false);
+    const next = { ...f.target.value, sessionId: 'child-new' };
+    expect(f.service.replaceAsideSession(next, 'main')).toBe(true);
+    expect(f.aside.current(f.target.value).sessions).toEqual([]);
+    expect(f.options.focusMain).toHaveBeenCalled();
+  });
+  it.each(['workspace', 'node'] as const)(
+    'ignores stale Aside intents after switching %s even when session ids match',
+    (changed) => {
+      const f = tabSessionFixture();
+      const old = { ...f.target.value, sessionId: 'same-id' };
+      f.aside.openSession(old);
+      f.target.value = {
+        nodeId: changed === 'node' ? 'other-node' : old.nodeId,
+        workspaceId: changed === 'workspace' ? 'other-workspace' : old.workspaceId
+      };
+      const current = { ...f.target.value, sessionId: 'same-id' };
+      f.aside.openSession(current);
+      expect(f.service.openAsideSession(old)).toBe(false);
+      f.service.closeAsideSession(old);
+      expect(f.aside.current(current).sessions).toEqual(['same-id']);
+      expect(f.aside.current(old).sessions).toEqual(['same-id']);
+    }
+  );
+  it('does not remove an Aside target in another Workspace when Main opens an equal session id', async () => {
+    const f = tabSessionFixture();
+    f.aside.openSession({ ...f.target.value, sessionId: 'same-id' });
+    f.options.sessions.value = [
+      { id: 'same-id', workspaceId: 'different-workspace', runner: 'mar-agent' }
+    ];
+    const opening = f.service.openSession('same-id');
+    expect(f.aside.current(f.target.value).sessions).toEqual(['same-id']);
+    await opening;
+  });
+  it('removes only authoritatively missing Aside targets in the snapshot workspace', () => {
+    const f = tabSessionFixture(3);
+    const otherWorkspace = { nodeId: 'node-1', workspaceId: 'other' };
+    f.aside.openSession({ ...f.target.value, sessionId: 'keep' });
+    f.aside.openSession({ ...f.target.value, sessionId: 'gone' });
+    f.aside.openSession({ ...otherWorkspace, sessionId: 'gone' });
+    f.service.removeMissingAside(f.target.value, ['gone', 'not-open']);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['keep']);
+    expect(f.aside.current(otherWorkspace).sessions).toEqual(['gone']);
+    expect(f.options.saveAside).toHaveBeenCalledOnce();
+  });
   it.each([false, true])(
     'finishes selection without waiting for notification read acknowledgement: alreadyOpen=%s',
     async (alreadyOpen) => {
@@ -188,7 +395,7 @@ async function watchedTabFixture() {
       if (path === '/api/notifications')
         return { notifications: [{ ...entry, read }], recentRuns: [] };
       throw new Error('Unexpected notification path: ' + path);
-    }) as WorkbenchSessionSelectionOptions['request']
+    }) as SelectionFixtureOptions['request']
   });
   await notifications.load();
   const snapshot = vi.fn(() => true);
@@ -198,15 +405,13 @@ async function watchedTabFixture() {
   const controller = createWorkbenchSessionWatchController({
     workspaceTarget: f.target,
     selectedSessionId: f.options.selectedSessionId,
-    sessions: f.options.sessions,
     followConversation: ref(false),
     heartbeatMs: 15_000,
     workbenchConnectionId: () => connection.value,
     requestTimeoutMs: 10_000,
     confirmationTimeoutMs: 45_000,
-    request: watchRequest as WorkbenchSessionSelectionOptions['request'],
+    request: watchRequest as SelectionFixtureOptions['request'],
     sessionPathId: (id) => id,
-    mergeSessions: vi.fn(),
     applySnapshot: snapshot,
     scrollAfterLayout: vi.fn(),
     refreshSnapshot: vi.fn(),
@@ -540,6 +745,73 @@ describe('Shared session selection', () => {
     expect(f.options.notice).toHaveBeenCalledWith(expect.any(String), 'error', failure);
   });
 
+  it.each(['read', 'render'] as const)(
+    'does not continue selection after its scope stops during initial %s',
+    async (pendingStage) => {
+      const f = tabSessionFixture();
+      let readSignal: AbortSignal | undefined;
+      if (pendingStage === 'read') {
+        f.options.request = vi.fn(
+          (_path: string, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              readSignal = init!.signal!;
+              readSignal.addEventListener('abort', () =>
+                reject(new DOMException('aborted', 'AbortError'))
+              );
+            })
+        ) as SelectionFixtureOptions['request'];
+      }
+      const scope = effectScope();
+      const { service, beginRender } = scope.run(() => {
+        const target = ref({
+          kind: 'session' as const,
+          ...f.target.value,
+          sessionId: f.session.id
+        });
+        const drafts = createSessionDraftService({
+          target,
+          storage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }
+        });
+        const attachments = createComposerAttachmentService({
+          context: () => target.value,
+          request: vi.fn() as never,
+          csrfToken: ref('csrf'),
+          renewCsrfToken: vi.fn(),
+          onUnauthenticated: vi.fn(),
+          notice: vi.fn()
+        });
+        const pane = createWorkspaceSessionPaneState({
+          submissions: paneSubmissions,
+          draftTarget: target,
+          drafts,
+          attachments,
+          onConversationOverflow: vi.fn()
+        });
+        const beginRender = vi.fn(pane.conversation.beginInitialRender);
+        const service = createWorkbenchSessionSelectionService({
+          ...f.options,
+          createPaneLoader: (projection) =>
+            pane.createLoader({ ...projection, request: f.options.request, sessionPathId: String }),
+          beginInitialRender: beginRender
+        });
+        return { service, beginRender };
+      })!;
+      const opening = service.openSession(f.session.id, { markReadAfterOpen: true });
+      if (pendingStage === 'read') {
+        expect(readSignal).toBeDefined();
+      } else {
+        await vi.waitFor(() => expect(beginRender).toHaveBeenCalledOnce());
+      }
+      scope.stop();
+      if (pendingStage === 'read') expect(readSignal?.aborted).toBe(true);
+      await opening;
+      expect(f.options.initialLoadFailed.value).toBe(false);
+      expect(f.options.notice).not.toHaveBeenCalled();
+      expect(f.options.scrollLatest).not.toHaveBeenCalled();
+      expect(f.options.markSessionRead).not.toHaveBeenCalled();
+    }
+  );
+
   it('retains unread across missing-connection and same-session retries, then reads after a real snapshot', async () => {
     const f = await watchedTabFixture();
     try {
@@ -818,7 +1090,11 @@ describe('Shared session selection', () => {
     const session: Session = { id: 'session-1', workspaceId: 'workspace-1', runner: 'mar-agent' };
     let finish!: (value: { session: Session }) => void;
     const request = vi.fn(() => new Promise<{ session: Session }>((resolve) => (finish = resolve)));
-    const options: WorkbenchSessionSelectionOptions = {
+    const options: SelectionFixtureOptions = {
+      aside: createWorkbenchAsideService(),
+      canOpenAside: () => true,
+      saveAside: vi.fn(),
+      focusMain: vi.fn(),
       workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
       selectedSessionId: ref(),
       selectedRunId: ref(),
@@ -849,7 +1125,7 @@ describe('Shared session selection', () => {
       openRun: vi.fn(),
       scrollLatest: vi.fn(async () => undefined),
       beginInitialRender: vi.fn(async () => undefined),
-      request: request as WorkbenchSessionSelectionOptions['request'],
+      request: request as SelectionFixtureOptions['request'],
       sessionPathId: (id) => id,
       replaceSession: vi.fn(),
       canWatch: () => true,
@@ -860,7 +1136,7 @@ describe('Shared session selection', () => {
       notice: vi.fn(),
       errorMessage: String
     };
-    const service = createWorkbenchSessionSelectionService(options);
+    const service = createSelection(options);
     const pending = service.selectSession(session.id);
     options.composerMode.value = 'steer';
     options.commandPickerOpen.value = true;
@@ -924,7 +1200,11 @@ describe('Shared session selection', () => {
     const requests: string[] = [];
     const saveCurrent = vi.fn();
     let confirmInitialRender!: () => void;
-    const service = createWorkbenchSessionSelectionService({
+    const service = createSelection({
+      aside: createWorkbenchAsideService(),
+      canOpenAside: () => true,
+      saveAside: vi.fn(),
+      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: 'session-1' },
       selectedRunId: { value: undefined },
@@ -1031,7 +1311,11 @@ describe('Shared session selection', () => {
     const sessions: { value: Session[] } = {
       value: [{ id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }]
     };
-    const service = createWorkbenchSessionSelectionService({
+    const service = createSelection({
+      aside: createWorkbenchAsideService(),
+      canOpenAside: () => true,
+      saveAside: vi.fn(),
+      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },
@@ -1110,7 +1394,11 @@ describe('Shared session selection', () => {
       access: 'full-access'
     };
     const applyComposerConfiguration = vi.fn();
-    const service = createWorkbenchSessionSelectionService({
+    const service = createSelection({
+      aside: createWorkbenchAsideService(),
+      canOpenAside: () => true,
+      saveAside: vi.fn(),
+      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },
@@ -1162,7 +1450,11 @@ describe('Shared session selection', () => {
     const initialLoadFailed = { value: false };
     const notice = vi.fn();
     const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
-    const service = createWorkbenchSessionSelectionService({
+    const service = createSelection({
+      aside: createWorkbenchAsideService(),
+      canOpenAside: () => true,
+      saveAside: vi.fn(),
+      focusMain: vi.fn(),
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }, { value: 'workspace-1' }),
       selectedSessionId: { value: undefined },
       selectedRunId: { value: undefined },

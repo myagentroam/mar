@@ -7,6 +7,8 @@ import { createReadStream } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { AgentError } from '../../error.js';
+import { toolEventSummary } from '../../runtime/event-projection.js';
+import type { ReadEventData } from '../contracts.js';
 
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 import { WorkspacePathResolver } from '../shared/path-resolver.js';
@@ -119,6 +121,55 @@ export interface BatchReadResult {
   mode: 'batch';
   results: Array<ReadResult | ReadErrorResult>;
   truncated: boolean;
+}
+
+/** Produce public text and offsets together, independently of model-visible markup. */
+export function formatReadEventOutput(results: BatchReadResult['results']): {
+  source: string;
+  summary: string;
+  truncated: boolean;
+  data: ReadEventData;
+} {
+  let source = '';
+  const projected: ReadEventData['results'] = [];
+  for (const item of results.slice(0, TOOL_EXECUTION_LIMITS.readMaxBatchItems)) {
+    const path = item.path.slice(0, 4096).replace(/[\uD800-\uDBFF]$/u, '');
+    source += `${source ? '\n\n' : ''}${path}\n`;
+    if ('error' in item) {
+      const error = {
+        code: item.error.code.slice(0, 80),
+        message: item.error.message.slice(0, 1000)
+      };
+      source += `${error.code}: ${error.message}`;
+      projected.push({ path, error });
+    } else {
+      const start = source.length;
+      source += item.text;
+      projected.push({
+        path,
+        startLine: item.startLine,
+        ...(item.endLine === undefined ? {} : { endLine: item.endLine }),
+        ...(item.text.length === 0 ? { empty: true as const } : {}),
+        contentRange: { start, end: source.length }
+      });
+    }
+  }
+  const preview = toolEventSummary(source);
+  const retained = preview.retainedLength;
+  for (const item of projected) {
+    const range = item.contentRange;
+    if (!range) continue;
+    if (range.start > retained || (range.start === retained && range.end > range.start)) {
+      delete item.contentRange;
+    } else {
+      range.end = Math.min(range.end, retained);
+    }
+  }
+  return {
+    source,
+    ...preview,
+    data: { mode: 'batch', results: projected, truncated: preview.truncated }
+  };
 }
 
 export class ReadTool {

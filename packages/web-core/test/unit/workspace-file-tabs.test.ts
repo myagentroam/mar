@@ -507,7 +507,7 @@ describe('File preview window interaction', () => {
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(f.closeTab).toHaveBeenCalledOnce();
     await Promise.resolve();
-    windowListeners.get('keydown')!(keyEvent('Escape'));
+    documentListeners.get('keydown')!(keyEvent('Escape'));
     expect(f.closeWindow).toHaveBeenCalledOnce();
     f.service.dispose();
     expect(documentListeners.size).toBe(0);
@@ -766,19 +766,186 @@ describe('Workspace file tabs frame', () => {
 });
 
 describe('Console keyboard shortcut service', () => {
+  it('matches declared keys and context, respects composition and releases registrations', () => {
+    const service = createConsoleKeyboardShortcutService();
+    const execute = vi.fn(() => 'HANDLED' as const);
+    let active = true;
+    const unregister = service.register({
+      command: 'file.close',
+      priority: 100,
+      scope: 'file-preview',
+      keys: [{ key: 'w', code: 'KeyW', ctrl: true }],
+      when: () => active,
+      execute
+    });
+    const event = (overrides: Partial<KeyboardEvent> = {}) =>
+      ({
+        key: 'w',
+        code: 'KeyW',
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        isComposing: false,
+        keyCode: 0,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        ...overrides
+      }) as unknown as KeyboardEvent;
+    const accepted = event();
+    service.handle(accepted);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(accepted.preventDefault).toHaveBeenCalledOnce();
+    for (const ignored of [
+      event({ altKey: true }),
+      event({ isComposing: true }),
+      event({ keyCode: 229 })
+    ]) {
+      service.handle(ignored);
+      expect(ignored.preventDefault).not.toHaveBeenCalled();
+    }
+    active = false;
+    service.handle(event());
+    unregister();
+    active = true;
+    service.handle(event());
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it('does not send a preview-frame event to a background registration', () => {
+    const service = createConsoleKeyboardShortcutService();
+    const background = vi.fn(() => 'HANDLED' as const);
+    service.register({
+      command: 'background',
+      priority: 10,
+      scope: 'workspace',
+      keys: [{ key: 'x' }],
+      when: () => true,
+      execute: background
+    });
+    const event = keyboardEvent();
+    service.handle(event, 'file-preview');
+    expect(background).not.toHaveBeenCalled();
+    expect(event.prevented).toBe(false);
+  });
+
+  it('blocks background commands in a registered terminal but permits its explicit exception', () => {
+    const service = createConsoleKeyboardShortcutService();
+    const target = { nodeType: 1 } as Node;
+    const root = { contains: (node: Node) => node === target } as Element;
+    const release = service.registerRegion({
+      scope: 'terminal',
+      root: () => root,
+      blocksOtherScopes: true
+    });
+    const background = vi.fn(() => 'HANDLED' as const);
+    const toggle = vi.fn(() => 'HANDLED' as const);
+    service.register({
+      command: 'background',
+      scope: 'global',
+      priority: 10,
+      keys: [{ key: 'e', ctrl: true }],
+      when: () => true,
+      execute: background
+    });
+    service.register({
+      command: 'terminal.toggle',
+      scope: 'global',
+      priority: 10,
+      allowedInBlockedScopes: ['terminal'],
+      keys: [{ key: '`', ctrl: true }],
+      when: () => true,
+      execute: toggle
+    });
+    const event = (key: string) =>
+      ({
+        key,
+        code: key,
+        target,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        isComposing: false,
+        keyCode: 0,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      }) as unknown as KeyboardEvent;
+    const blocked = event('e');
+    service.handle(blocked);
+    expect(background).not.toHaveBeenCalled();
+    expect(blocked.preventDefault).not.toHaveBeenCalled();
+    service.handle(event('`'));
+    expect(toggle).toHaveBeenCalledOnce();
+    release();
+    service.handle(event('e'));
+    expect(background).toHaveBeenCalledOnce();
+  });
+
+  it('dispatches equal-priority bindings only to the focused owner instance', () => {
+    const service = createConsoleKeyboardShortcutService();
+    const a = { nodeType: 1 } as Node;
+    const b = { nodeType: 1 } as Node;
+    const calls: string[] = [];
+    for (const [name, node] of [
+      ['main', a],
+      ['aside', b]
+    ] as const) {
+      service.register({
+        command: 'pane.submit',
+        scope: 'pane',
+        priority: 50,
+        owner: () => ({ contains: (target: Node) => target === node }) as Element,
+        keys: [{ key: 'Enter', ctrl: true }],
+        when: () => true,
+        execute: () => {
+          calls.push(name);
+          return 'HANDLED';
+        }
+      });
+    }
+    const event = (target: Node) =>
+      ({
+        target,
+        key: 'Enter',
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        isComposing: false,
+        keyCode: 0,
+        preventDefault() {},
+        stopPropagation() {}
+      }) as unknown as KeyboardEvent;
+    service.handle(event(b));
+    service.handle(event(a));
+    expect(calls).toEqual(['aside', 'main']);
+  });
+
   it('prevents defaults only for the first target that handles the event', () => {
     const service = createConsoleKeyboardShortcutService();
     const calls: string[] = [];
     service.register({
+      command: 'low',
+      scope: 'workspace',
+      keys: [{ key: 'x' }],
+      when: () => true,
       priority: 1,
-      handle() {
+      execute() {
         calls.push('low');
         return 'HANDLED';
       }
     });
     service.register({
+      command: 'high',
+      scope: 'workspace',
+      keys: [{ key: 'x' }],
+      when: () => true,
       priority: 2,
-      handle() {
+      execute() {
         calls.push('high');
         return 'HANDLED';
       }
@@ -793,7 +960,14 @@ describe('Console keyboard shortcut service', () => {
 
   it('leaves browser behavior intact when all targets ignore the event', () => {
     const service = createConsoleKeyboardShortcutService();
-    service.register({ priority: 1, handle: () => 'IGNORED' });
+    service.register({
+      command: 'ignored',
+      scope: 'workspace',
+      keys: [{ key: 'x' }],
+      when: () => true,
+      priority: 1,
+      execute: () => 'IGNORED'
+    });
     const event = keyboardEvent();
 
     service.handle(event);
@@ -1056,6 +1230,7 @@ describe('Standalone file window service', () => {
 
 function keyboardEvent(): KeyboardEvent & { prevented: boolean } {
   const event = {
+    key: 'x',
     prevented: false,
     preventDefault() {
       event.prevented = true;

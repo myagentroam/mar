@@ -1,4 +1,5 @@
 import { nextTick, onMounted, watch, type WatchStopHandle } from 'vue';
+import { consoleKeyboardShortcutService } from './console-keyboard-shortcut-service.js';
 
 /** Custom auxiliary surfaces keep the header available, unlike modal dialogs. */
 export function createMobileSurfaceFocusService(options: {
@@ -78,11 +79,7 @@ export function createMobileSurfaceFocusService(options: {
         )
     )
       return;
-    if (event.key === 'Escape' && options.close !== undefined && !options.terminal?.()) {
-      event.preventDefault();
-      event.stopPropagation();
-      options.close();
-    } else if (event.key === 'Tab') {
+    if (event.key === 'Tab') {
       const targets = options
         .regions()
         .flatMap((region) =>
@@ -114,7 +111,20 @@ export function createMobileSurfaceFocusService(options: {
   }
 
   let stop: WatchStopHandle | undefined;
+  let unregisterClose: (() => void) | undefined;
   onMounted(() => {
+    if (options.close !== undefined)
+      unregisterClose = consoleKeyboardShortcutService.register({
+        command: 'mobileSurface.close',
+        scope: 'overlay',
+        priority: 20,
+        keys: [{ key: 'Escape' }],
+        when: () => options.isOpen() && !options.terminal?.() && !hasModal(),
+        execute: () => {
+          options.close?.();
+          return 'HANDLED';
+        }
+      });
     stop = watch(
       options.isOpen,
       async (open, wasOpen) => {
@@ -145,6 +155,8 @@ export function createMobileSurfaceFocusService(options: {
       stop = undefined;
       document.removeEventListener('focusin', onFocus);
       window.removeEventListener('keydown', onKey);
+      unregisterClose?.();
+      unregisterClose = undefined;
       if (focusedWithin && contains(document.activeElement)) restoreFocus();
     }
   };

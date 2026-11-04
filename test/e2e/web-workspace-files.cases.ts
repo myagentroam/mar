@@ -8,6 +8,108 @@ import {
 
 // Files, Git, uploads, and the resource tree
 
+test('Stacking the Aside preserves the dirty file window and its owner', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'GIT_WORKSPACE', true);
+  await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
+    json(route, {
+      file: {
+        path: 'src/main.ts',
+        encoding: 'utf-8',
+        size: 6,
+        content: 'source',
+        truncated: false,
+        nextOffset: null,
+        revision: 'a'.repeat(64)
+      }
+    })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.locator('.file-tree-row[data-file-path="src/main.ts"]').click();
+  const editor = page.locator('.workspace-file-tabs .cm-content');
+  await editor.fill('unsaved aside content');
+  await editor.evaluate((element) => {
+    (window as unknown as { asideEditor: Element }).asideEditor = element;
+  });
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(page.locator('.workspace-grid')).toHaveClass(/stacked/);
+  await expect(page.locator('.workspace-aside')).toBeVisible();
+  await expect(page.locator('.conversation-panel')).toBeVisible();
+  await expect(editor).toContainText('unsaved aside content');
+  expect(
+    await editor.evaluate(
+      (element) => element === (window as unknown as { asideEditor: Element }).asideEditor
+    )
+  ).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('.workspace-grid')).not.toHaveClass(/stacked/);
+  await expect(page.locator('.workspace-aside')).toBeVisible();
+  await expect(editor).toContainText('unsaved aside content');
+  await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
+  await expect(page.locator('.el-message-box')).toContainText('未保存的修改');
+  await page.locator('.el-message-box__btns').getByRole('button', { name: '取消' }).click();
+  await expect(editor).toContainText('unsaved aside content');
+});
+
+test('Wide session sidebar stays stable when the Aside stacks and restores its content width', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 2400, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'mar.workbench.panel-widths.v1',
+      JSON.stringify({ sidebar: 420, content: 760 })
+    );
+  });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'GIT_WORKSPACE', true);
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  const aside = page.locator('.workspace-aside');
+  const grid = page.locator('.workspace-grid');
+  const sidebar = page.locator('.conversation-sidebar');
+  await grid.evaluate((element) =>
+    (element as HTMLElement).style.setProperty('--mar-session-sidebar-width', '420px')
+  );
+  await aside.getByRole('tab', { name: '终端', exact: true }).click();
+  await expect
+    .poll(() => aside.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
+    .toBe(760);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(grid).toHaveClass(/stacked/);
+  await expect
+    .poll(() => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
+    .toBe(420);
+  const stability = await grid.evaluate(async (element) => {
+    const samples: boolean[] = [];
+    for (let index = 0; index < 8; index++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      samples.push(element.classList.contains('stacked'));
+    }
+    return samples;
+  });
+  expect(stability).toEqual(Array(8).fill(true));
+  await page.setViewportSize({ width: 2400, height: 900 });
+  await expect(grid).not.toHaveClass(/stacked/);
+  await expect
+    .poll(() => aside.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
+    .toBe(760);
+});
+
 test('Quick Open filters match Workspace Tab selection and tab labels keep their descenders', async ({
   page
 }, testInfo) => {

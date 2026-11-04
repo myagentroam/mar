@@ -320,10 +320,16 @@ describe('tool presentation runner compatibility', () => {
     }
   ])(
     'preserves $runner native tool payloads without inferring MAR metadata',
-    ({ normalize, name }) => {
+    ({ normalize, name, runner }) => {
       const normalized = normalize();
       expect(normalized.kind).toBe('tool_call');
-      expect(normalized.payload).not.toHaveProperty('toolPresentation');
+      if (runner === 'codex') expect(normalized.payload).not.toHaveProperty('toolPresentation');
+      else
+        expect(normalized.payload.toolPresentation).toMatchObject({
+          kind: 'WEB_FETCH',
+          detailOnly: true,
+          requestUrl: 'https://example.test/'
+        });
       const parsed = conversationItemSchema.parse({
         id: 'tool',
         sessionId: 'session',
@@ -339,11 +345,18 @@ describe('tool presentation runner compatibility', () => {
         payload: normalized.payload
       });
       expect(parsed.kind).toBe('tool_call');
+      if (parsed.kind !== 'tool_call') throw new Error('Expected tool call');
       expect(parsed.payload).toMatchObject({
         toolName: name,
         output: { blocks: [{ channel: 'TEXT', text: 'Original output' }] }
       });
-      expect(parsed.payload).not.toHaveProperty('toolPresentation');
+      if (runner === 'codex') expect(parsed.payload).not.toHaveProperty('toolPresentation');
+      else
+        expect(parsed.payload.toolPresentation).toMatchObject({
+          kind: 'WEB_FETCH',
+          detailOnly: true,
+          requestUrl: 'https://example.test/'
+        });
     }
   );
 });

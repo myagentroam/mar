@@ -2,6 +2,60 @@ import { describe, expect, it } from 'vitest';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 
 describe('Web Workspace View Cache', () => {
+  it('captures an Aside detail without changing Main selection or evicting either visible session', () => {
+    const state = createWorkspaceViewCacheService(
+      (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
+    );
+    const main = {
+      id: 'main',
+      workspaceId: 'w',
+      runner: 'codex' as const,
+      externalSessionId: 'native-main'
+    };
+    const child = {
+      id: 'child',
+      workspaceId: 'w',
+      runner: 'codex' as const,
+      externalSessionId: 'native-child'
+    };
+    const queue = { version: 1, paused: false, items: [] };
+    const detail = (sessionId: string) => ({
+      sessionId,
+      runs: [],
+      turns: [],
+      nextCursor: null,
+      contextUsage: null,
+      lastAccessedAt: 1
+    });
+    state.activate('n', 'w');
+    state.captureActive(
+      { sessions: [main], selectedSessionId: 'main', queue, detail: detail('main') },
+      1
+    );
+    state.captureSession('n', 'w', child, queue, detail('child'), 1);
+    expect(state.view('n', 'w').selectedSessionId).toBe('main');
+    expect(state.view('n', 'w').sessions).toEqual([main]);
+    expect(state.detail('n', 'w', 'main')).toBeDefined();
+    expect(state.detail('n', 'w', 'child')).toBeDefined();
+    expect(state.queueFor('n', 'w', 'child')).toEqual(queue);
+    state.captureActive(
+      { sessions: [main], selectedSessionId: 'main', queue, detail: detail('main') },
+      1,
+      'child'
+    );
+    expect(state.detail('n', 'w', 'main')).toBeDefined();
+    expect(state.detail('n', 'w', 'child')).toBeDefined();
+
+    state.captureSession('other-node', 'w', child, queue, detail('child'), 1);
+    state.captureSession('n', 'w', { ...child, workspaceId: 'other' }, queue, detail('child'), 1);
+    state.captureSession('n', 'w', child, queue, detail('other-session'), 1);
+    expect(state.has('other-node', 'w')).toBe(false);
+    expect(state.detail('n', 'w', 'other-session')).toBeUndefined();
+    state.remove('n', 'w');
+    state.captureSession('n', 'w', child, queue, detail('child'), 1);
+    expect(state.has('n', 'w')).toBe(false);
+  });
+
   it('removes all cached state for a deleted session without creating an absent cache', () => {
     const state = createWorkspaceViewCacheService(
       (nodeId, workspaceId) => `${nodeId}:${workspaceId}`

@@ -17,6 +17,83 @@ const base = {
 };
 
 describe('Runner subagent lifecycle tool projection', () => {
+  it('projects confirmed structured native start and message bodies without reading JSON history', () => {
+    const codex = normalizeCodexTool({
+      name: 'spawn_agent',
+      namespace: 'collaboration',
+      rawInput: { task_name: 'review', message: 'Inspect\nthis' }
+    });
+    expect(codex.payload).toMatchObject({
+      subagentOperation: 'START',
+      subagentCallDetail: { message: 'Inspect\nthis' }
+    });
+    const claude = normalizeClaudeTool(
+      'Agent',
+      { description: 'review', prompt: 'Inspect\nthis' },
+      null,
+      false,
+      false
+    );
+    expect(claude.payload).toMatchObject({
+      subagentOperation: 'START',
+      subagentCallDetail: { message: 'Inspect\nthis' }
+    });
+    const openCode = normalizeOpenCodeTool('task', {
+      input: { description: 'review', prompt: 'Inspect\nthis' }
+    });
+    expect(openCode.payload).toMatchObject({
+      subagentOperation: 'START',
+      subagentCallDetail: { message: 'Inspect\nthis' }
+    });
+    const sent = normalizeCodexTool({
+      name: 'send_input',
+      rawInput: { id: 'peer', message: 'Continue' }
+    });
+    expect(sent.payload).toMatchObject({
+      subagentOperation: 'MESSAGE',
+      subagentCallDetail: { message: 'Continue' }
+    });
+    const claudeSent = normalizeClaudeTool(
+      'SendMessage',
+      { to: 'peer', message: 'Continue' },
+      null,
+      false,
+      false
+    );
+    expect(claudeSent.payload).toMatchObject({
+      subagentOperation: 'MESSAGE',
+      subagentId: 'peer',
+      subagentCallDetail: { message: 'Continue' }
+    });
+    for (const [withBody, withoutBody] of [
+      [
+        normalizeCodexTool({
+          name: 'spawn_agent',
+          rawInput: { task_name: 'review', message: 'body' }
+        }),
+        normalizeCodexTool({ name: 'spawn_agent', rawInput: { task_name: 'review' } })
+      ],
+      [
+        normalizeClaudeTool('Agent', { description: 'review', prompt: 'body' }, null, false, false),
+        normalizeClaudeTool('Agent', { description: 'review' }, null, false, false)
+      ],
+      [
+        normalizeOpenCodeTool('task', { input: { description: 'review', prompt: 'body' } }),
+        normalizeOpenCodeTool('task', { input: { description: 'review' } })
+      ]
+    ] as const) {
+      for (const field of ['subagentOperation', 'subagentId', 'title', 'toolName', 'namespace'])
+        expect(withBody.payload[field]).toEqual(withoutBody.payload[field]);
+    }
+    expect(
+      normalizeCodexTool({ name: 'spawn_agent', rawInput: '{"message":"legacy"}' }).payload
+    ).not.toHaveProperty('subagentCallDetail');
+    const bounded = normalizeOpenCodeTool('task', { input: { prompt: '😀'.repeat(1100) } });
+    expect(bounded.payload.subagentCallDetail).toMatchObject({
+      message: '😀'.repeat(1000),
+      messageTruncated: true
+    });
+  });
   it('keeps resolved wait targets from a running update through partial completion', () => {
     const normalizer = new MarAgentConversationNormalizer();
     const targets = [

@@ -20,6 +20,7 @@ describe('Shared Run interrupt control', () => {
     let resolveRequest!: (value: unknown) => void;
     const notice = vi.fn();
     const controller = createWorkbenchRunControlService({
+      currentRevision: () => 0,
       workspaceTarget: workspaceTargetRef(selectedNodeId, ref<string | undefined>('workspace-1')),
       selectedSessionId,
       selectedRunId: runService.selectedRunId,
@@ -56,6 +57,7 @@ describe('Shared Run interrupt control', () => {
     const runService = createRunService(selectedSessionId);
     const notice = vi.fn();
     const controller = createWorkbenchRunControlService({
+      currentRevision: () => 0,
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
         ref<string | undefined>('workspace-1')
@@ -96,6 +98,7 @@ describe('Shared Run interrupt control', () => {
         })
     );
     const controller = createWorkbenchRunControlService({
+      currentRevision: () => 0,
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
         ref<string | undefined>('workspace-1')
@@ -144,6 +147,7 @@ describe('Shared Run interrupt control', () => {
     const error = new Error('INTERRUPT_DENIED');
     let rejectRequest!: (error: Error) => void;
     const controller = createWorkbenchRunControlService({
+      currentRevision: () => 0,
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
         ref<string | undefined>('workspace-1')
@@ -193,6 +197,7 @@ describe('Shared Run interrupt control', () => {
         code: 'RUN_NOT_FOUND'
       });
       const controller = createWorkbenchRunControlService({
+        currentRevision: () => 0,
         workspaceTarget: workspaceTargetRef(
           ref<string | undefined>('node-1'),
           ref<string | undefined>('workspace-1')
@@ -225,6 +230,7 @@ describe('Shared Run interrupt control', () => {
     const notice = vi.fn();
     const error = new Error('INTERRUPT_DENIED');
     const controller = createWorkbenchRunControlService({
+      currentRevision: () => 0,
       workspaceTarget: workspaceTargetRef(
         ref<string | undefined>('node-1'),
         ref<string | undefined>('workspace-1')

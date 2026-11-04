@@ -16,6 +16,8 @@ import {
   nodeResponseErrorPayloadSchema,
   safePublicError,
   nodeCapabilitiesSchema,
+  sessionAsideCapabilitySchema,
+  workspaceSessionNavigationQuerySchema,
   runnerCommandDescriptorSchema,
   runnerDefaultConfigurationSchema,
   runnerNameSchema,
@@ -46,6 +48,33 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
+  it('declares the complete session Aside capability and bounds navigation query shapes', () => {
+    expect(sessionAsideCapabilitySchema.safeParse({ apiVersion: 1 }).success).toBe(true);
+    expect(sessionAsideCapabilitySchema.safeParse({ apiVersion: 2 }).success).toBe(false);
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({
+        sessionIds: ['session'],
+        summaryAnchors: ['session'],
+        treeAnchor: 'session',
+        limit: 100
+      }).success
+    ).toBe(true);
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({
+        sessionIds: [],
+        summaryAnchors: [],
+        limit: 101
+      }).success
+    ).toBe(false);
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({
+        sessionIds: [],
+        summaryAnchors: [],
+        limit: 10,
+        extra: true
+      }).success
+    ).toBe(false);
+  });
   it.each(['summary', 'visible_thinking', 'unspecified'] as const)(
     'preserves reasoning source %s and authoritative process identity',
     (representation) => {

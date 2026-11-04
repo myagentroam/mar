@@ -9,6 +9,17 @@ import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
+import {
+  activityToggleKeys,
+  composerModelKeys,
+  composerSendKeys,
+  composerStopKeys,
+  fileKeys,
+  findNavigationKeys,
+  queueKeys,
+  shortcutKeyLabel,
+  workspaceKeys
+} from '../../service/console-shortcut-keys.js';
 import { iconThemes, type IconThemeId } from '../../icon-themes/index.js';
 import type { UserSessionSummary } from '../../model/workbench.js';
 import type { SettingsSection } from '../../model/settings.js';
@@ -489,45 +500,66 @@ async function confirmLogout(): Promise<void> {
         <h3 id="shortcut-workspace">{{ translate('shortcutGroups.workspace') }}</h3>
         <dl class="shortcut-list">
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>E</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(activityToggleKeys[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openRecentSessions') }}</dd>
           </div>
           <div>
-            <dt><kbd>Alt</kbd><span>+</span><kbd>←/→</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[0]) }}</kbd> /
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.cycleWorkspaceTabs') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>Ctrl</kbd><span>+</span><kbd>Tab</kbd><span>/</span><kbd>Ctrl</kbd><span>+</span
-              ><kbd>Shift</kbd><span>+</span><kbd>Tab</kbd>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[2]) }}</kbd> /
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[3]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.cycleWorkspaceTabsWithCtrlTab') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>1…9/0</kbd></dt>
+            <dt>
+              <kbd
+                >{{ shortcutKeyLabel(workspaceKeys.numbered[1]!) }}…{{
+                  workspaceKeys.numbered[9]!.key
+                }}/{{ workspaceKeys.numbered[0]!.key }}</kbd
+              >
+            </dt>
             <dd>{{ translate('keyboardShortcuts.selectWorkspaceTab') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>/</span><kbd>Alt</kbd><span>+</span><kbd>N</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.newSession[0]) }}</kbd> /
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.newSession[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openNewSession') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>/</span><kbd>Alt</kbd><span>+</span><kbd>W</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[0]) }}</kbd> /
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.closeWorkspaceTab') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>Ctrl</kbd><span>/</span><kbd>Alt</kbd><span>+</span><kbd>Shift</kbd><span>+</span
-              ><kbd>W</kbd>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[2]) }}</kbd> /
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[3]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeAllWorkspaceTabs') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>K</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.changes[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openGitChanges') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>`</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.terminal[0]) }}</kbd>
+            </dt>
             <dd>
               {{ translate('keyboardShortcuts.focusWorkspaceTerminal') }}
             </dd>
@@ -538,17 +570,24 @@ async function confirmLogout(): Promise<void> {
         <h3 id="shortcut-files">{{ translate('shortcutGroups.files') }}</h3>
         <dl class="shortcut-list">
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>O</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.quickOpen[0]!) }}</kbd>
+            </dt>
             <dd>
               {{ translate('keyboardShortcuts.quickOpenWorkspaceFile') }}
             </dd>
           </div>
           <div>
-            <dt><kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd>/<kbd>Esc</kbd></dt>
+            <dt>
+              <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>{{ shortcutKeyLabel(fileKeys.choose[0]) }}</kbd
+              >/<kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.quickOpenNavigation') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.choose[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.quickOpenSeparatePreview') }}</dd>
           </div>
           <div>
@@ -560,23 +599,33 @@ async function confirmLogout(): Promise<void> {
             <dd>{{ translate('keyboardShortcuts.fileTabNavigation') }}</dd>
           </div>
           <div>
-            <dt><kbd>Esc</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.closeFileTab') }}</dd>
           </div>
           <div>
-            <dt><kbd>Alt</kbd><span>+</span><kbd>←</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.back[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.previousPreviewLocation') }}</dd>
           </div>
           <div>
-            <dt><kbd>Alt</kbd><span>+</span><kbd>→</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.forward[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.nextPreviewLocation') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>V</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.preview[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openMarkdownPreview') }}</dd>
           </div>
           <div>
-            <dt><kbd>Esc</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.closeStandalonePreview') }}</dd>
           </div>
         </dl>
@@ -585,41 +634,60 @@ async function confirmLogout(): Promise<void> {
         <h3 id="shortcut-editing">{{ translate('shortcutGroups.editing') }}</h3>
         <dl class="shortcut-list">
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>F</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(workspaceKeys.search[0]!) }}</kbd>
+            </dt>
             <dd>
               {{ translate('keyboardShortcuts.searchWorkspaceContent') }}
             </dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>F</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.find[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.findInPreview') }}</dd>
           </div>
           <div>
-            <dt><kbd>Enter</kbd>/<kbd>Shift</kbd><span>+</span><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(findNavigationKeys[0]) }}</kbd
+              >/<kbd>{{ shortcutKeyLabel(findNavigationKeys[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.findMatchNavigation') }}</dd>
           </div>
           <div>
-            <dt><kbd>Esc</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.closeEmbeddedFind') }}</dd>
           </div>
           <div>
-            <dt><kbd>Alt</kbd><span>+</span><kbd>M</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.symbols[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openEditorSymbols') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>E</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.toggleEdit[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.toggleFileEditing') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>A</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.selectAll[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.selectEditorContent') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>H</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.replace[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.replaceInEditor') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>S</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(fileKeys.save[0]!) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.saveEditor') }}</dd>
           </div>
         </dl>
@@ -628,7 +696,9 @@ async function confirmLogout(): Promise<void> {
         <h3 id="shortcut-composer">{{ translate('shortcutGroups.composer') }}</h3>
         <dl class="shortcut-list">
           <div>
-            <dt><kbd>Alt</kbd><span>+</span><kbd>M</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(composerModelKeys[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.openComposerModelMenu') }}</dd>
           </div>
           <div>
@@ -636,7 +706,9 @@ async function confirmLogout(): Promise<void> {
             <dd>{{ translate('keyboardShortcuts.modelMenuGroup') }}</dd>
           </div>
           <div>
-            <dt><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(composerSendKeys[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.sendMessage') }}</dd>
           </div>
           <div>
@@ -644,11 +716,15 @@ async function confirmLogout(): Promise<void> {
             <dd>{{ translate('keyboardShortcuts.composerNewline') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(composerSendKeys[1]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.replaceRunningMessage') }}</dd>
           </div>
           <div>
-            <dt><kbd>Esc</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(composerStopKeys[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.stopRun') }}</dd>
           </div>
           <div>
@@ -660,11 +736,15 @@ async function confirmLogout(): Promise<void> {
             <dd>{{ translate('keyboardShortcuts.openAgentCommands') }}</dd>
           </div>
           <div>
-            <dt><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(queueKeys.save[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.saveQueuedMessage') }}</dd>
           </div>
           <div>
-            <dt><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd></dt>
+            <dt>
+              <kbd>{{ shortcutKeyLabel(queueKeys.execute[0]) }}</kbd>
+            </dt>
             <dd>{{ translate('keyboardShortcuts.runQueuedMessage') }}</dd>
           </div>
         </dl>

@@ -9,6 +9,9 @@ import type { ExternalSessionResumeService } from '../../src/service/external-se
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
+import { WorkspaceWatchService } from '../../src/workspace/workspace-watch-service.js';
+import { WorkspaceWatchSnapshotService } from '../../src/workspace/workspace-watch-snapshot-service.js';
+import { WorkspaceWatchController } from '../../src/service/workspace-watch-controller.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { capabilities, codexProfileClientFactory } from './support/codex-connector.js';
 
@@ -348,6 +351,41 @@ describe('Node session records and external discovery merge', () => {
         }
       });
       expect(await rootStatus()).toBe('SLEEPING');
+      const child = runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        cwd: workspace.path
+      });
+      runtime.promoteSessionIdentity(child.id, 'child-99');
+      const { run: childRun } = runtime.createMessageRun({
+        sessionId: 'child-99',
+        clientMessageId: 'descendant-status',
+        content: 'Work'
+      });
+      runtime.transitionRun(childRun.id, 'RUNNING');
+      const navigation = (
+        connector as unknown as {
+          sessionCatalogService: import('../../src/session/session-catalog-service.js').SessionCatalogService;
+        }
+      ).sessionCatalogService.navigation({
+        workspaceId: workspace.id,
+        sessionIds: [],
+        summaryAnchors: ['root'],
+        treeAnchor: 'root',
+        limit: 1
+      });
+      expect(navigation.summaries).toEqual([
+        {
+          anchorSessionId: 'root',
+          descendantCount: 101,
+          activeCount: 1,
+          runningCount: 1,
+          sleepingCount: 0,
+          hasActiveDescendants: true
+        }
+      ]);
+      expect(navigation.tree?.truncated).toBe(true);
+      expect(navigation.tree?.nodes.map(({ id }) => id)).not.toContain('child-99');
       const targetTree = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'child-99',
@@ -498,6 +536,7 @@ describe('Node session records and external discovery merge', () => {
       runtime: NodeRuntimeState;
       nativeSessionProjectionService: NativeSessionProjectionService;
       sessionIdentityService: { promote(id: string, nativeId: string): void };
+      sessionCatalogService: SessionCatalogService;
     };
     const discovery = vi.spyOn(internals.nativeSessionProjectionService, 'list');
     try {
@@ -587,9 +626,89 @@ describe('Node session records and external discovery merge', () => {
       await expect(
         execute('session.graph', { workspaceId: foreign.id, sessionId: 'coordinator' })
       ).rejects.toThrow('SESSION_NOT_FOUND');
+      const traverse = vi.spyOn(database, 'sessionTreeRecords');
+      const navigation = internals.sessionCatalogService.navigation({
+        workspaceId: workspace.id,
+        sessionIds: ['fixer'],
+        summaryAnchors: ['coordinator', 'fixer'],
+        treeAnchor: 'fixer',
+        limit: 1
+      });
+      expect(navigation.sessions.map(({ id }) => id)).toEqual(['fixer']);
+      expect(navigation.summaries).toEqual([
+        expect.objectContaining({ anchorSessionId: 'coordinator', descendantCount: 2 }),
+        expect.objectContaining({ anchorSessionId: 'fixer', descendantCount: 1 })
+      ]);
+      expect(navigation.tree).toMatchObject({
+        anchorSessionId: 'fixer',
+        parent: { id: 'coordinator' },
+        nodes: [{ id: 'reviewer' }],
+        truncated: false
+      });
+      expect(traverse.mock.calls).toEqual([
+        [workspace.id, 'coordinator'],
+        [workspace.id, 'fixer']
+      ]);
+      traverse.mockRestore();
+      const events: { type: string; topic: string; payload: unknown }[] = [];
+      const watch = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn());
+      const snapshots = new WorkspaceWatchSnapshotService({
+        requireWorkspace: () => workspace,
+        watch,
+        files: {} as never,
+        changes: {} as never,
+        listSessions: vi.fn(),
+        sessionNavigation: async (workspaceId, query) =>
+          internals.sessionCatalogService.navigation({ workspaceId, ...query }),
+        nodeId: () => 'node',
+        emitWatchEvent: (event) => events.push(event as (typeof events)[number])
+      });
+      const controller = new WorkspaceWatchController({
+        requireWorkspace: () => workspace,
+        watch,
+        snapshots,
+        nodeGeneration: () => 'generation'
+      });
+      await controller.operations()['workspace.watch']!({
+        workspaceId: workspace.id,
+        workbenchConnectionId: 'connection-1',
+        watchId: 'watch-id-1',
+        mode: 'initial',
+        topics: {
+          sessionNavigation: {
+            sessionIds: ['fixer', 'coordinator'],
+            summaryAnchors: ['fixer', 'coordinator'],
+            treeAnchor: 'fixer',
+            limit: 10
+          }
+        }
+      });
+      await vi.waitFor(() => expect(events).toHaveLength(1));
+      database.deleteSessionRecord('fixer');
+      await snapshots.invalidate(workspace.id, 'sessions');
+      await vi.waitFor(() => expect(events).toHaveLength(2));
+      expect(events[1]).toMatchObject({
+        type: 'watch.workspace.snapshot',
+        topic: 'sessionNavigation',
+        payload: {
+          missingSessionIds: ['fixer'],
+          tree: null,
+          sessions: [{ id: 'coordinator' }],
+          summaries: [
+            expect.objectContaining({ anchorSessionId: 'coordinator', descendantCount: 0 })
+          ]
+        }
+      });
+      vi.spyOn(internals.sessionCatalogService, 'navigation').mockImplementation(() => {
+        throw new Error('controlled read failure');
+      });
+      await snapshots.invalidate(workspace.id, 'sessions');
+      await vi.waitFor(() => expect(events).toHaveLength(3));
+      expect(events[2]).toMatchObject({ type: 'watch.failed', topic: 'sessionNavigation' });
+      watch.clearAll();
+      snapshots.clear(workspace.id);
       database.deleteSessionRecord('coordinator');
-      expect((await list()).sessions.map(({ id }) => id)).toEqual(['fixer']);
-      expect(database.getSessionRecord('fixer')?.metadata.parentSessionId).toBe('coordinator');
+      expect((await list()).sessions).toEqual([]);
       expect(discovery).not.toHaveBeenCalled();
     } finally {
       await connector.stop();

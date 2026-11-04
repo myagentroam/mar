@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { nextTick, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { fileKeys, findNavigationKeys } from '../../service/console-shortcut-keys.js';
 
 defineProps<{
   readonly modelValue: string;
@@ -18,6 +20,8 @@ const emit = defineEmits<{
   close: [];
 }>();
 const input = ref<{ focus?: () => void; select?: () => void }>();
+const root = ref<HTMLElement>();
+let unregister: (() => void)[] = [];
 
 async function focus(): Promise<void> {
   await nextTick();
@@ -25,17 +29,46 @@ async function focus(): Promise<void> {
   input.value?.select?.();
 }
 
-function onEnter(event: KeyboardEvent): void {
-  if (event.shiftKey) emit('previous');
-  else emit('next');
-}
-
 defineExpose({ focus });
-onMounted(focus);
+onMounted(() => {
+  const owner = () => root.value?.querySelector('input') ?? undefined;
+  unregister = [
+    consoleKeyboardShortcutService.register({
+      command: 'filePreview.findNext',
+      scope: 'file-preview',
+      priority: 130,
+      owner,
+      keys: findNavigationKeys,
+      when: () => true,
+      execute: (event) => {
+        if (event.shiftKey) emit('previous');
+        else emit('next');
+        return 'HANDLED';
+      }
+    }),
+    consoleKeyboardShortcutService.register({
+      command: 'filePreview.dismissFind',
+      scope: 'file-preview',
+      priority: 130,
+      owner,
+      keys: fileKeys.dismiss,
+      when: () => true,
+      execute: () => {
+        emit('close');
+        return 'HANDLED';
+      }
+    })
+  ];
+  void focus();
+});
+onBeforeUnmount(() => {
+  unregister.forEach((release) => release());
+  unregister = [];
+});
 </script>
 
 <template>
-  <div class="inline-find-row">
+  <div ref="root" class="inline-find-row">
     <div class="inline-find-bar" role="search" :aria-label="translate('inlineFind.label')">
       <el-input
         ref="input"
@@ -43,8 +76,6 @@ onMounted(focus);
         :placeholder="translate('inlineFind.placeholder')"
         clearable
         @update:model-value="emit('update:modelValue', $event)"
-        @keydown.enter.stop.prevent="onEnter"
-        @keydown.esc.stop.prevent="emit('close')"
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>

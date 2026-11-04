@@ -6,6 +6,7 @@ import { errorCode } from '../util/api-error.js';
 import { workspaceFileSha256 } from '../util/workspace-file-checksum.js';
 import { errorMessage } from '../util/error-presentation.js';
 import type { DirectTransferDescriptor } from '@myagentroam/protocol';
+import type { DraftTarget } from './session-draft-service.js';
 import { isBmpAttachment, normalizeComposerImage } from '../util/composer-image-compatibility.js';
 
 const MAX_FILES = 5;
@@ -14,7 +15,7 @@ const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const CHUNK_BYTES = 512 * 1024;
 
 export function createComposerAttachmentService(options: {
-  readonly context: () => { readonly nodeId: string; readonly workspaceId: string } | undefined;
+  readonly context: () => DraftTarget | undefined;
   readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly resourceUrl?: (path: string) => string;
@@ -34,26 +35,32 @@ export function createComposerAttachmentService(options: {
   };
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
+  const owners = new Map<string, DraftTarget>();
+  const sameTarget = (left: DraftTarget | undefined, right: DraftTarget | undefined) =>
+    left !== undefined &&
+    right !== undefined &&
+    left.kind === right.kind &&
+    left.nodeId === right.nodeId &&
+    left.workspaceId === right.workspaceId &&
+    (left.kind === 'workspace' || (right.kind === 'session' && left.sessionId === right.sessionId));
   const submissions = new Map<string, number>();
   const attachmentKey = (attachment: ComposerAttachment) =>
     JSON.stringify([attachment.nodeId, attachment.workspaceId, attachment.id]);
-  const visibleAttachments = computed(() => {
-    const context = options.context();
+  function attachmentsFor(context: DraftTarget | undefined): ComposerAttachment[] {
     return context === undefined
       ? []
-      : attachments.value.filter(
-          (attachment) =>
-            attachment.nodeId === context.nodeId && attachment.workspaceId === context.workspaceId
-        );
-  });
+      : attachments.value.filter((attachment) => sameTarget(owners.get(attachment.id), context));
+  }
+  const visibleAttachments = computed(() => attachmentsFor(options.context()));
   const dragging = ref(false);
   const preview = ref<ComposerAttachment>();
   const previewOpen = ref(false);
   const directRequests = new Map<string, AbortController>();
 
-  function add(files: Iterable<File>): void {
+  function addFor(context: DraftTarget | undefined, files: Iterable<File>): void {
     for (const file of files) {
-      if (visibleAttachments.value.length >= MAX_FILES)
+      const visible = attachmentsFor(context);
+      if (visible.length >= MAX_FILES)
         return options.notice(
           translate('generated.composerAttachmentService.theFirstMessageCanIncludeUpTo'),
           'warning'
@@ -67,16 +74,12 @@ export function createComposerAttachmentService(options: {
         );
         continue;
       }
-      const total = visibleAttachments.value.reduce(
-        (size, attachment) => size + attachment.file.size,
-        0
-      );
+      const total = visible.reduce((size, attachment) => size + attachment.file.size, 0);
       if (total + file.size > MAX_TOTAL_BYTES)
         return options.notice(
           translate('generated.composerAttachmentService.totalAttachmentSizeCannotExceed10MiB'),
           'warning'
         );
-      const context = options.context();
       if (context === undefined)
         return options.notice(
           translate(
@@ -93,6 +96,7 @@ export function createComposerAttachmentService(options: {
         receivedBytes: 0,
         status: 'UPLOADING'
       };
+      owners.set(attachment.id, { ...context });
       attachments.value = [...attachments.value, attachment];
       void upload(attachment);
     }
@@ -104,22 +108,21 @@ export function createComposerAttachmentService(options: {
     if (attachment?.previewUrl !== null && attachment?.previewUrl !== undefined)
       URL.revokeObjectURL(attachment.previewUrl);
     attachments.value = attachments.value.filter((item) => item.id !== id);
+    owners.delete(id);
     if (attachment !== undefined) void cancel(attachment);
   }
 
-  function clear(discardUploads = true): void {
-    const context = options.context();
+  function clearFor(context: DraftTarget | undefined, discardUploads = true): void {
     if (context === undefined) return;
     previewOpen.value = false;
-    const current = visibleAttachments.value;
+    const current = attachmentsFor(context);
     for (const attachment of current) {
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
       if (discardUploads) void cancel(attachment);
+      owners.delete(attachment.id);
     }
-    attachments.value = attachments.value.filter(
-      (attachment) =>
-        attachment.nodeId !== context.nodeId || attachment.workspaceId !== context.workspaceId
-    );
+    const ids = new Set(current.map((attachment) => attachment.id));
+    attachments.value = attachments.value.filter((attachment) => !ids.has(attachment.id));
   }
 
   function clearAll(): void {
@@ -129,6 +132,24 @@ export function createComposerAttachmentService(options: {
       void cancel(attachment);
     }
     attachments.value = [];
+    owners.clear();
+  }
+
+  function moveDraft(from: DraftTarget, to: DraftTarget): void {
+    if (
+      from.kind !== 'workspace' ||
+      to.kind !== 'session' ||
+      from.nodeId !== to.nodeId ||
+      from.workspaceId !== to.workspaceId
+    )
+      return;
+    let moved = false;
+    for (const [id, owner] of owners) {
+      if (!sameTarget(owner, from)) continue;
+      owners.set(id, { ...to });
+      moved = true;
+    }
+    if (moved) attachments.value = [...attachments.value];
   }
 
   function retainForSubmission(submitted: readonly ComposerAttachment[]): () => void {
@@ -159,6 +180,7 @@ export function createComposerAttachmentService(options: {
         return true;
       if (preview.value?.id === attachment.id) previewOpen.value = false;
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
+      owners.delete(attachment.id);
       return false;
     });
   }
@@ -169,6 +191,17 @@ export function createComposerAttachmentService(options: {
     previewOpen.value = true;
   }
 
+  function forTarget(target: () => DraftTarget | undefined) {
+    return {
+      attachments: computed(() => attachmentsFor(target())),
+      add: (files: Iterable<File>) => addFor(target(), files),
+      remove: (id: string) => {
+        if (sameTarget(owners.get(id), target())) remove(id);
+      },
+      clear: (discardUploads = true) => clearFor(target(), discardUploads)
+    };
+  }
+
   async function upload(attachment: ComposerAttachment): Promise<void> {
     try {
       if (isBmpAttachment(attachment.file)) {
@@ -176,9 +209,7 @@ export function createComposerAttachmentService(options: {
         const current = attachments.value.find((item) => item.id === attachment.id);
         if (current === undefined) return;
         const total = attachments.value
-          .filter(
-            (item) => item.nodeId === current.nodeId && item.workspaceId === current.workspaceId
-          )
+          .filter((item) => sameTarget(owners.get(item.id), owners.get(current.id)))
           .reduce((size, item) => size + (item.id === current.id ? file.size : item.file.size), 0);
         if (total > MAX_TOTAL_BYTES) throw new Error('COMPOSER_IMAGE_LIMIT_EXCEEDED');
         current.file = file;
@@ -358,10 +389,12 @@ export function createComposerAttachmentService(options: {
     dragging,
     preview,
     previewOpen,
-    add,
+    add: (files: Iterable<File>) => addFor(options.context(), files),
     remove,
-    clear,
+    clear: (discardUploads = true) => clearFor(options.context(), discardUploads),
     clearAll,
+    moveDraft,
+    forTarget,
     retainForSubmission,
     consume,
     openPreview

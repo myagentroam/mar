@@ -16,16 +16,15 @@ import type { WorkspaceQueueSnapshotSource } from './workspace-queue-projection-
 export function createWorkbenchSessionWatchController(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
-  readonly sessions: Ref<Session[]>;
   readonly followConversation: Ref<boolean>;
   readonly heartbeatMs: number;
   readonly enabled?: () => boolean;
+  readonly position?: 'secondary';
   readonly workbenchConnectionId?: () => string | undefined;
   readonly requestTimeoutMs: number;
   readonly confirmationTimeoutMs: number;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
-  readonly mergeSessions: (sessions: readonly Session[]) => void;
   readonly applyRunsSnapshot?: (runs: readonly unknown[]) => void;
   readonly applySnapshot: (
     sessionId: string,
@@ -41,8 +40,11 @@ export function createWorkbenchSessionWatchController(options: {
     options.workbenchConnectionId === undefined
       ? 'local-test-connection'
       : options.workbenchConnectionId();
+  const enabled = () =>
+    options.position === 'secondary' ? options.enabled?.() === true : options.enabled?.() !== false;
   let watchId: string | undefined;
   let watchedSessionId: string | undefined;
+  let watchedNodeId: string | undefined;
   let watchedWorkspaceId: string | undefined;
   let watchedConnectionId: string | undefined;
   let nodeGeneration: string | undefined;
@@ -104,14 +106,16 @@ export function createWorkbenchSessionWatchController(options: {
     });
   }
   function eligible(sessionId: string): boolean {
-    if (options.enabled?.() === false) return false;
-    const session = options.sessions.value.find((candidate) => candidate.id === sessionId);
-    return session !== undefined && canWatch(session);
+    return enabled() && options.selectedSessionId.value === sessionId && canWatchId(sessionId);
   }
 
   function canWatch(session: Session): boolean {
+    return canWatchId(session.id);
+  }
+
+  function canWatchId(sessionId: string): boolean {
     return (
-      !session.id.startsWith('draft:') &&
+      !sessionId.startsWith('draft:') &&
       (typeof document === 'undefined' || document.visibilityState === 'visible')
     );
   }
@@ -121,7 +125,7 @@ export function createWorkbenchSessionWatchController(options: {
     signal?: AbortSignal,
     mode: 'initial' | 'renew' = 'renew'
   ): Promise<void> {
-    if (options.enabled?.() === false) return;
+    if (!enabled()) return;
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const currentConnectionId = connectionId();
@@ -137,6 +141,7 @@ export function createWorkbenchSessionWatchController(options: {
       watchId = crypto.randomUUID().replace(/-/g, '');
       nodeGeneration = undefined;
       watchedSessionId = sessionId;
+      watchedNodeId = nodeId;
       watchedWorkspaceId = workspaceId;
     } else watchId ??= crypto.randomUUID().replace(/-/g, '');
     const currentWatchId = watchId;
@@ -156,6 +161,7 @@ export function createWorkbenchSessionWatchController(options: {
             workbenchConnectionId: currentConnectionId,
             watchId: currentWatchId,
             mode,
+            ...(options.position === undefined ? {} : { position: options.position }),
             unit: 'SEGMENT'
           }),
           ...(signal === undefined ? {} : { signal })
@@ -202,6 +208,7 @@ export function createWorkbenchSessionWatchController(options: {
     sessionId: string,
     input: { readonly skipImmediateRenew?: boolean; readonly preserveFailures?: boolean } = {}
   ): Promise<void> | undefined {
+    if (!enabled()) return undefined;
     const currentConnectionId = connectionId();
     if (watchedSessionId === sessionId && watchedConnectionId !== currentConnectionId)
       return restart(sessionId, input.preserveFailures !== true);
@@ -212,6 +219,7 @@ export function createWorkbenchSessionWatchController(options: {
       nodeGeneration = undefined;
       if (input.preserveFailures !== true) failureRetries = 0;
       watchedSessionId = sessionId;
+      watchedNodeId = options.workspaceTarget.value?.nodeId;
       watchedWorkspaceId = options.workspaceTarget.value?.workspaceId;
       watchedConnectionId = currentConnectionId;
     }
@@ -231,10 +239,11 @@ export function createWorkbenchSessionWatchController(options: {
     cancelPendingInitial();
     const sessionId = watchedSessionId;
     const currentWatchId = watchId;
-    const nodeId = options.workspaceTarget.value?.nodeId;
+    const nodeId = watchedNodeId;
     const workspaceId = watchedWorkspaceId;
-    const currentConnectionId = connectionId();
+    const currentConnectionId = watchedConnectionId;
     watchedSessionId = undefined;
+    watchedNodeId = undefined;
     watchedWorkspaceId = undefined;
     watchedConnectionId = undefined;
     watchId = undefined;
@@ -258,7 +267,8 @@ export function createWorkbenchSessionWatchController(options: {
           nodeId,
           workspaceId,
           workbenchConnectionId: currentConnectionId,
-          watchId: currentWatchId
+          watchId: currentWatchId,
+          ...(options.position === undefined ? {} : { position: options.position })
         })
       })
       .catch(() => undefined);
@@ -271,6 +281,7 @@ export function createWorkbenchSessionWatchController(options: {
     cancelPendingInitial();
     lifecycle.stop();
     watchedSessionId = undefined;
+    watchedNodeId = undefined;
     watchedWorkspaceId = undefined;
     watchedConnectionId = undefined;
     watchId = undefined;
@@ -298,11 +309,12 @@ export function createWorkbenchSessionWatchController(options: {
       event.nodeId !== options.workspaceTarget.value?.nodeId ||
       event.workspaceId !== watchedWorkspaceId ||
       event.sessionId !== watchedSessionId ||
+      watchId === undefined ||
+      event.watchId !== watchId ||
       typeof event.nodeGeneration !== 'string' ||
       (nodeGeneration !== undefined && event.nodeGeneration !== nodeGeneration)
     )
       return false;
-    if (event.type === 'watch.session.snapshot' && event.watchId !== watchId) return false;
     nodeGeneration ??= event.nodeGeneration;
     failureRetries = 0;
     const sessionId = watchedSessionId;
@@ -492,8 +504,7 @@ export function createWorkbenchSessionWatchController(options: {
       appliedInitialSnapshot.value.sessionId === sessionId &&
       options.selectedSessionId.value === sessionId &&
       appliedInitialSnapshot.value.connectionId === connectionId(),
-    canWatchSessionHistory: (session: Session) =>
-      options.enabled?.() !== false && canWatch(session),
+    canWatchSessionHistory: (session: Session) => enabled() && canWatch(session),
     initializeSelectedSessionWatch: initialize,
     beginSelectedSessionWatch: begin,
     restartSelectedSessionWatch: restart,

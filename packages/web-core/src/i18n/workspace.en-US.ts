@@ -1,6 +1,18 @@
 export const workspaceEnUS = {
   sessionGroups: {
     tree: 'View session tree',
+    treeUnavailable: 'Session tree synchronization is unavailable.',
+    retry: 'Retry',
+    parent: 'Parent session',
+    noDescendants: 'No child sessions',
+    actions: 'Session actions',
+    openAside: 'Open Aside',
+    openMain: 'Open Main',
+    inMain: 'Main',
+    inActiveAside: 'Active Aside',
+    inAside: 'Open in Aside',
+    activeDescendants: '{count} active child sessions',
+    treeSyncUnavailable: 'Child session activity is unavailable',
     statusRUNNING: 'Running',
     statusSLEEPING: 'Sleeping',
     statusIDLE: 'Idle',

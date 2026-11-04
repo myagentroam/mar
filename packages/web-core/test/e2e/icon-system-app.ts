@@ -19,6 +19,7 @@ import { createConversationScrollService } from '../../src/service/conversation-
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
@@ -71,6 +72,7 @@ const style = document.createElement('style');
 style.textContent =
   'body{margin:0;background:var(--mar-bg-app);color:var(--mar-text-primary)}main{padding:24px}.icon-review-columns{display:grid;grid-template-columns:300px 330px minmax(200px,1fr);gap:24px}.icon-review-columns>section{min-width:0;padding:18px;background:var(--mar-bg-panel)}.icon-review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-top:24px}.icon-review-cell{display:flex;gap:8px;align-items:center;flex-direction:column;padding:12px;font-size:12px;background:var(--mar-bg-panel)}@media(max-width:767px){main{padding:12px}.icon-review-columns{grid-template-columns:1fr}}';
 document.head.append(style);
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 const app = createApp({
   setup() {
     const captureRenderAnchor = createConversationScrollService().captureRenderAnchor;
@@ -360,40 +362,59 @@ const app = createApp({
       void service.load();
       const diagnostics = createWebPerformanceDiagnostics();
       return () =>
-        h(WorkbenchNavigation, {
-          webVersion: 'test',
-          view: 'conversations',
-          navigationItems: [
-            { id: 'nodes', label: 'Work' },
-            { id: 'conversations', label: 'Conversations' },
-            { id: 'management', label: 'Management' },
-            { id: 'settings', label: 'Settings' }
-          ],
-          settingsSection: 'account',
-          settingsItems: [],
-          managementSection: 'overview',
-          managementItems: [],
-          sidebarCollapsed: true,
-          mobileSidebarOpen: true,
-          sidebarContentVisible: false,
-          nodes: [],
-          expandedNodeIds: [],
-          workspaceTarget: undefined,
-          draggingWorkspace: undefined,
-          loading: false,
-          nodeLabel: () => '',
-          workspaceLabel: () => '',
-          workspaces: () => [],
-          mobileViewport: mobile,
-          mobileUtilityPanel: mobileUtilityPanel.value,
-          onSelectMobileUtilityPanel: (panel: typeof mobileUtilityPanel.value) => {
-            mobileUtilityPanel.value = panel;
-          },
-          notificationService: service,
-          performanceDiagnostics: diagnostics,
-          uploads: [],
-          uploadStatusLabel: () => ''
-        });
+        h('div', [
+          h(WorkbenchNavigation, {
+            webVersion: 'test',
+            view: 'conversations',
+            navigationItems: [
+              { id: 'nodes', label: 'Work' },
+              { id: 'conversations', label: 'Conversations' },
+              { id: 'management', label: 'Management' },
+              { id: 'settings', label: 'Settings' }
+            ],
+            settingsSection: 'account',
+            settingsItems: [],
+            managementSection: 'overview',
+            managementItems: [],
+            sidebarCollapsed: true,
+            mobileSidebarOpen: true,
+            sidebarContentVisible: false,
+            nodes: [],
+            expandedNodeIds: [],
+            workspaceTarget: undefined,
+            draggingWorkspace: undefined,
+            loading: false,
+            nodeLabel: () => '',
+            workspaceLabel: () => '',
+            workspaces: () => [],
+            mobileViewport: mobile,
+            mobileUtilityPanel: mobileUtilityPanel.value,
+            onSelectMobileUtilityPanel: (panel: typeof mobileUtilityPanel.value) => {
+              mobileUtilityPanel.value = panel;
+            },
+            notificationService: service,
+            performanceDiagnostics: diagnostics,
+            uploads: [],
+            uploadStatusLabel: () => ''
+          }),
+          ...(new URL(location.href).searchParams.has('terminal-boundary')
+            ? [
+                h(TerminalDock, {
+                  errorMessage: String,
+                  nodeId: undefined,
+                  workspaceId: undefined,
+                  csrfToken: 'fixture',
+                  renewCsrfToken: async () => 'fixture',
+                  enabled: false,
+                  capability: undefined,
+                  nodeOsRelease: undefined,
+                  visible: true,
+                  mobileMode: mobile,
+                  active: true
+                })
+              ]
+            : [])
+        ]);
     }
     if (new URL(location.href).searchParams.has('disclosure')) {
       return () =>

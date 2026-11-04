@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import {
   createWorkbenchPresentationStateService,
+  createWorkspaceSessionPresentationStateService,
   sessionHasActiveGoal
 } from '../../src/service/workbench-presentation-state-service';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service';
@@ -16,6 +17,7 @@ import type {
 } from '../../src/model/workbench';
 
 vi.mock('../../src/service/workbench-clock-service', () => ({
+  createSessionActivityClock: () => ref(0),
   createWorkbenchClockService: () => ({
     working: ref(false),
     workingNow: ref(0),
@@ -65,7 +67,7 @@ function controlsFixture() {
   const draftOpen = ref(false);
   const queue = ref<WorkspaceQueue>({ version: 1, paused: false, items: [] });
   const sessionContextUsage = ref<SessionContextUsage | null>();
-  const state = createWorkbenchPresentationStateService({
+  const inputs = {
     workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
     selectedSessionId,
     selectedRunId: runService.selectedRunId,
@@ -80,7 +82,10 @@ function controlsFixture() {
     composerProfile: configuration.profile,
     composerModels: configuration.models,
     composerAccessOptions: configuration.accessOptions,
-    workspaceQueue: queue,
+    currentSessionQueue: computed(() => ({
+      ...queue.value,
+      items: queue.value.items.filter((item) => item.sessionId === selectedSessionId.value)
+    })),
     sessionContextUsage,
     channelToken: ref(undefined),
     loading,
@@ -114,6 +119,11 @@ function controlsFixture() {
     runService,
     formatTokenCount: String,
     formatPercentage: String
+  } satisfies Parameters<typeof createWorkspaceSessionPresentationStateService>[0] &
+    Omit<Parameters<typeof createWorkbenchPresentationStateService>[0], 'pane'>;
+  const state = createWorkbenchPresentationStateService({
+    ...inputs,
+    pane: createWorkspaceSessionPresentationStateService(inputs)
   });
   return {
     state,

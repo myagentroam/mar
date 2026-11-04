@@ -88,16 +88,22 @@ function recoveryFixture(
   entries: ServerNotification[],
   onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>
 ) {
-  const active = { target: notification('active').target as NotificationTarget | undefined };
+  const active = {
+    target: notification('active').target as NotificationTarget | undefined,
+    others: [] as NotificationTarget[]
+  };
   const server = {
     entries,
     recentRuns: [] as RecentRun[],
     readError: undefined as Error | undefined,
-    readGate: undefined as (() => Promise<void>) | undefined
+    readGate: undefined as (() => Promise<void>) | undefined,
+    loadGate: undefined as (() => Promise<void>) | undefined
   };
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
-    if (path === '/api/notifications')
+    if (path === '/api/notifications') {
+      await server.loadGate?.();
       return { notifications: server.entries, recentRuns: server.recentRuns };
+    }
     if (path.endsWith('/read') && init?.method === 'POST') {
       await server.readGate?.();
       if (server.readError !== undefined) throw server.readError;
@@ -125,7 +131,8 @@ function recoveryFixture(
   const username = { value: 'admin' };
   const state = createWorkbenchNotificationService(username as never, {
     request: request as never,
-    activeTarget: () => active.target,
+    activeTargets: () =>
+      active.target === undefined ? active.others : [active.target, ...active.others],
     onWorkspaceRunCompleted,
     ...(onNotificationClick === undefined ? {} : { onNotificationClick })
   });
@@ -141,6 +148,56 @@ function recoveryFixture(
 }
 
 describe('Workspace session unread queries', () => {
+  it('reads both visible targets on reconnect without reading targets hidden during the load', async () => {
+    const first = notification('first', 'session-1');
+    const second = notification('second', 'session-2');
+    const background = notification('background', 'session-3');
+    const f = recoveryFixture([first, second, background]);
+    f.active.target = first.target;
+    f.active.others = [second.target];
+    let release!: () => void;
+    f.server.loadGate = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    const recovering = f.state.recover();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    f.active.others = [background.target];
+    f.server.loadGate = undefined;
+    release();
+    await recovering;
+    expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+      'session-1'
+    ]);
+    expect(f.state.notifications.value.find((item) => item.id === 'second')?.read).toBe(false);
+    expect(f.state.notifications.value.find((item) => item.id === 'background')?.read).toBe(false);
+    await f.state.markVisibleRead();
+    expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+      'session-1',
+      'session-3'
+    ]);
+  });
+
+  it('automatically reads new notifications in both visible panes but previews a hidden one', async () => {
+    const first = notification('first', 'session-1');
+    const second = notification('second', 'session-2');
+    const background = notification('background', 'session-3');
+    const f = recoveryFixture([first, second, background]);
+    f.active.target = first.target;
+    f.active.others = [second.target];
+    f.state.projectServerMessage({ type: 'notification.created', notification: first });
+    f.state.projectServerMessage({ type: 'notification.created', notification: second });
+    f.state.projectServerMessage({ type: 'notification.created', notification: background });
+    await vi.waitFor(() => expect(f.reads().length).toBe(2));
+    expect(
+      f
+        .reads()
+        .map(([path]) => path)
+        .sort()
+    ).toEqual(['/api/notifications/first/read', '/api/notifications/second/read']);
+    await vi.waitFor(() => expect(f.state.notificationRevision.value).toBe(1));
+    expect(f.state.unreadCount.value).toBe(1);
+  });
   it('isolates session identities and excludes read, expired, local and hosted notifications', () => {
     const state = createWorkbenchNotificationService({ value: 'admin' } as never);
     const target = notification('target').target;
@@ -639,12 +696,14 @@ describe('Web Workbench notification state', () => {
     const onWorkspaceRunCompleted = vi.fn();
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: vi.fn(async () => ({ notifications: [] })) as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      }),
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
+        }
+      ],
       onWorkspaceRunCompleted
     });
     try {
@@ -1446,12 +1505,14 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
+        }
+      ]
     });
 
     state.projectServerMessage({ type: 'notification.created', notification: current });
@@ -1500,11 +1561,13 @@ describe('Web Workbench notification state', () => {
     }));
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'HOSTED_CONVERSATION',
-        nodeId: 'node-1',
-        conversationId: 'conversation-current'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'HOSTED_CONVERSATION',
+          nodeId: 'node-1',
+          conversationId: 'conversation-current'
+        }
+      ]
     });
 
     await state.load();
@@ -1612,12 +1675,14 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-current'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-current'
+        }
+      ]
     });
     expect(
       state.projectServerMessage({ type: 'notification.created', notification: current })
@@ -1654,12 +1719,14 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
+        }
+      ]
     });
 
     state.projectServerMessage({ type: 'notification.created', notification: current });
@@ -1678,12 +1745,14 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
+        }
+      ]
     });
 
     state.projectServerMessage({ type: 'notification.created', notification: current });
@@ -1712,12 +1781,14 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
+        }
+      ]
     });
 
     state.projectServerMessage({ type: 'notification.created', notification: current });
@@ -1776,11 +1847,13 @@ describe('Web Workbench notification state', () => {
     });
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: request as never,
-      activeTarget: () => ({
-        targetType: 'HOSTED_CONVERSATION',
-        nodeId: 'node-1',
-        conversationId: 'conversation-current'
-      })
+      activeTargets: () => [
+        {
+          targetType: 'HOSTED_CONVERSATION',
+          nodeId: 'node-1',
+          conversationId: 'conversation-current'
+        }
+      ]
     });
     state.projectServerMessage({
       type: 'notification.created',
@@ -1822,7 +1895,10 @@ describe('Web Workbench notification state', () => {
     const created = notification('settings-page');
     const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
       request: vi.fn(async () => ({ notifications: [created] })) as never,
-      activeTarget: () => undefined
+      activeTargets: () => {
+        const target = undefined;
+        return target === undefined ? [] : [target];
+      }
     });
     state.projectServerMessage({
       type: 'notification.created',

@@ -46,6 +46,7 @@ function fixture() {
   });
   const service = createWorkbenchSessionHistoryMutationService({
     current: () => selected,
+    currentRevision: () => 0,
     canRewind: () => enabled,
     canRollback: () => enabled,
     confirmRewind: confirm,

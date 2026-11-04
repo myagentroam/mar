@@ -18,6 +18,8 @@ export interface TestElement {
   style: Record<string, string>;
   parent: TestElement | null;
   children: TestElement[];
+  clientWidth: number;
+  querySelector(): null;
   addEventListener(): void;
   getRootNode(): null;
 }
@@ -30,6 +32,8 @@ function element(type: string, text = ''): TestElement {
     style: {},
     parent: null,
     children: [],
+    clientWidth: 1280,
+    querySelector: () => null,
     addEventListener() {},
     getRootNode: () => null
   };
@@ -156,7 +160,7 @@ export function renderComponent(
       ...(node.type === type ? [node] : []),
       ...node.children.flatMap(visit)
     ];
-    return visit(root);
+    return [...visit(root), ...visit(teleportRoot)];
   }
   return { root, findAll, unmount: () => app.unmount() };
 }

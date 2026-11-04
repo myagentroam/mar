@@ -7,9 +7,11 @@ export interface NodeFeatureVersionRange {
 
 /** Reserved example only; business code must register and query real post-baseline features. */
 export const FEATURE_DEMO = '__feature-demo__';
+export const SESSION_ASIDE = 'sessionAside';
 
 export const NODE_FEATURES: Readonly<Record<string, NodeFeatureVersionRange>> = {
-  [FEATURE_DEMO]: { introducedIn: '0.9.119' }
+  [FEATURE_DEMO]: { introducedIn: '0.9.119' },
+  [SESSION_ASIDE]: { introducedIn: '0.11.69' }
 };
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
@@ -49,4 +51,15 @@ export function isNodeVersionInFeatureRange(
 export function supportsNodeFeature(nodeAppVersion: string, feature: string): boolean {
   const range = NODE_FEATURES[feature as NodeFeature];
   return range !== undefined && isNodeVersionInFeatureRange(nodeAppVersion, range);
+}
+
+export function supportsSessionAside(
+  nodeAppVersion: string | undefined,
+  capability: { readonly apiVersion: number } | undefined
+): boolean {
+  return (
+    nodeAppVersion !== undefined &&
+    capability?.apiVersion === 1 &&
+    supportsNodeFeature(nodeAppVersion, SESSION_ASIDE)
+  );
 }

@@ -92,6 +92,7 @@ describe('Workspace file page behavior', () => {
       try {
         const root = view.findAll('section')[0]!;
         Object.assign(root, {
+          nodeType: 1,
           contains: (target: unknown) => target === root,
           getClientRects: () => [],
           querySelectorAll: () => []

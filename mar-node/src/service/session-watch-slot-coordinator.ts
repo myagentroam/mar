@@ -1,5 +1,6 @@
 export type SessionWatchSlotKind = 'session' | 'hosted-conversation';
 export type SessionWatchSlotToken = symbol;
+export type SessionWatchPosition = 'primary' | 'secondary';
 
 interface SessionWatchSlot {
   readonly kind: SessionWatchSlotKind;
@@ -7,30 +8,46 @@ interface SessionWatchSlot {
   readonly release: () => void;
 }
 
-/** Coordinates the single Session Watch slot owned by one logical Workbench connection. */
+/** Coordinates bounded ordinary positions and the mutually exclusive hosted watch. */
 export class SessionWatchSlotCoordinator {
-  private readonly slots = new Map<string, SessionWatchSlot>();
+  private readonly slots = new Map<
+    string,
+    Map<SessionWatchPosition | 'hosted', SessionWatchSlot>
+  >();
 
   replace(
     ownerKey: string,
     kind: SessionWatchSlotKind,
-    release: () => void
+    release: () => void,
+    position: SessionWatchPosition = 'primary'
   ): SessionWatchSlotToken {
+    const key = kind === 'session' ? position : 'hosted';
     const previous = this.slots.get(ownerKey);
     if (previous !== undefined) {
-      this.slots.delete(ownerKey);
-      previous.release();
+      for (const [slotKey, slot] of previous) {
+        if (kind === 'hosted-conversation' || slotKey === 'hosted' || slotKey === key) {
+          previous.delete(slotKey);
+          slot.release();
+        }
+      }
     }
     const token = Symbol(kind);
-    this.slots.set(ownerKey, { kind, token, release });
+    const slots = this.slots.get(ownerKey) ?? new Map();
+    slots.set(key, { kind, token, release });
+    this.slots.set(ownerKey, slots);
     return token;
   }
 
   owns(ownerKey: string, token: SessionWatchSlotToken): boolean {
-    return this.slots.get(ownerKey)?.token === token;
+    return [...(this.slots.get(ownerKey)?.values() ?? [])].some((slot) => slot.token === token);
   }
 
   release(ownerKey: string, token: SessionWatchSlotToken): void {
-    if (this.slots.get(ownerKey)?.token === token) this.slots.delete(ownerKey);
+    const slots = this.slots.get(ownerKey);
+    if (slots === undefined) return;
+    for (const [key, slot] of slots) {
+      if (slot.token === token) slots.delete(key);
+    }
+    if (slots.size === 0) this.slots.delete(ownerKey);
   }
 }

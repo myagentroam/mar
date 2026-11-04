@@ -1,7 +1,21 @@
-import { describe, expect, it } from 'vitest';
-import type { AgentEvent } from '@myagentroam/agent';
-import { toolPresentationSchema } from '@myagentroam/protocol';
+import { createServer } from 'node:http';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { countModelTokens, createAgent, SecretValue } from '@myagentroam/agent';
+import type { AgentEvent, AgentModelConfiguration } from '@myagentroam/agent';
+import { LocalAgentHost } from '@myagentroam/agent/host';
+import { conversationItemSchema, toolPresentationSchema } from '@myagentroam/protocol';
+import type { NodeConfig } from '../../src/config.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
+import { createWebToolsExtensions } from '../../src/runner/mar-agent/web-tools-extensions.js';
+import { WebToolService } from '../../src/service/web-tool-service.js';
+import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
+import { structuredToolEventData } from '../../../mar-agent/src/tools/output-projection.js';
+import { mergeConversationPayload } from '@myagentroam/web-core/conversation-history';
+import { conversationItemDetail } from '@myagentroam/web-core/conversation-presentation';
+import { readFileDetail } from '../../../packages/web-core/src/util/tool-presentation.js';
 
 function event(payload: Record<string, unknown>): AgentEvent {
   return {
@@ -16,6 +30,391 @@ function event(payload: Record<string, unknown>): AgentEvent {
 }
 
 describe('MAR tool presentation projection', () => {
+  it('carries SDK source intervals through the public schema and snapshot reducer to file detail', () => {
+    const contents = '  first 😀\r\n  second\r\n';
+    const sdk = formatReadEventOutput([
+      {
+        path: 'src/a.ts',
+        text: contents,
+        content: 'numbered model output',
+        encoding: 'utf-8',
+        newline: 'crlf',
+        startLine: 5,
+        endLine: 6,
+        eof: true,
+        truncated: false
+      }
+    ]);
+    const normalizer = new MarAgentConversationNormalizer();
+    const [start] = normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'read-chain',
+        toolName: 'read',
+        input: { reads: [{ path: 'src/a.ts' }] }
+      })
+    );
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'read-chain',
+        toolName: 'read',
+        summary: sdk.summary,
+        data: structuredToolEventData('read', { ...sdk.data })
+      })
+    );
+    const publicItem = conversationItemSchema.parse({
+      id: done!.itemId,
+      kind: done!.kind,
+      payload: done!.payload,
+      sessionId: 'session',
+      turnId: 'turn',
+      runId: 'run',
+      parentItemId: null,
+      sourceSequence: 1,
+      revision: 1,
+      status: 'COMPLETED',
+      startedAt: null,
+      completedAt: null
+    });
+    const merged = mergeConversationPayload(
+      start!.payload,
+      publicItem.payload,
+      undefined
+    ) as Record<string, unknown>;
+    expect(readFileDetail(merged, 'src/a.ts')).toContain(contents);
+    expect(readFileDetail(merged, 'src/a.ts')).not.toContain('numbered model output');
+    const replacement = mergeConversationPayload(
+      merged,
+      {
+        output: { blocks: [{ channel: 'TEXT', text: 'replacement' }] },
+        toolPresentation: { kind: 'READ', paths: ['src/a.ts'] }
+      },
+      undefined
+    ) as Record<string, unknown>;
+    expect(readFileDetail(replacement, 'src/a.ts')).toBeUndefined();
+    expect(replacement.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'replacement' }] });
+  });
+  it('preserves a source-owned sources-only search fact', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'search-only',
+        toolName: 'web_search',
+        input: { query: 'fixture' }
+      })
+    );
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'search-only',
+        toolName: 'web_search',
+        summary: 'Search results',
+        data: {
+          query: 'fixture',
+          sourcesOnly: true,
+          sources: [{ title: 'One', url: 'https://example.test/' }]
+        }
+      })
+    );
+    expect(done?.payload.toolPresentation).toMatchObject({
+      kind: 'WEB_SEARCH',
+      sourcesOnly: true,
+      sources: [{ title: 'One' }]
+    });
+  });
+  it('shows truncated Search output and keeps source links through live and history projection', async () => {
+    const url = 'https://example.test/original-source';
+    const source = {
+      title: 'Original title',
+      url,
+      snippet: 'Search summary '.repeat(1000)
+    };
+    const request = vi.fn(
+      async () => new Response(JSON.stringify({ query: 'fixture', results: [source] }))
+    );
+    const service = new WebToolService(
+      () =>
+        ({ serverUrl: 'https://server.test', nodeId: 'n', credential: 'fixture' }) as NodeConfig,
+      request
+    );
+    const home = await mkdtemp(join(tmpdir(), 'mar-web-search-truncation-'));
+    const workspace = join(home, 'workspace');
+    await mkdir(workspace);
+    const modelRequests: Record<string, unknown>[] = [];
+    const assistantMessage = {
+      type: 'message',
+      id: 'search-answer',
+      role: 'assistant',
+      phase: 'final_answer',
+      status: 'completed',
+      content: [{ type: 'output_text', text: 'Search complete.' }]
+    };
+    const modelServer = createServer((incoming, outgoing) => {
+      let body = '';
+      incoming.setEncoding('utf8');
+      incoming.on('data', (chunk) => (body += chunk));
+      incoming.on('end', () => {
+        modelRequests.push(JSON.parse(body) as Record<string, unknown>);
+        const firstRequest = modelRequests.length === 1;
+        const functionCall = {
+          type: 'function_call',
+          id: 'search-call-item',
+          call_id: 'search-call',
+          name: 'web_search',
+          arguments: JSON.stringify({ query: 'fixture', maxResults: 1, maxTokens: 512 })
+        };
+        const events = firstRequest
+          ? [
+              { type: 'response.created', response: { id: 'search-response' } },
+              { type: 'response.output_item.done', item: functionCall },
+              {
+                type: 'response.completed',
+                response: {
+                  id: 'search-response',
+                  output: [functionCall],
+                  usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: {} }
+                }
+              }
+            ]
+          : [
+              { type: 'response.created', response: { id: 'answer-response' } },
+              {
+                type: 'response.output_item.done',
+                item: assistantMessage
+              },
+              {
+                type: 'response.completed',
+                response: {
+                  id: 'answer-response',
+                  output: [assistantMessage],
+                  usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: {} }
+                }
+              }
+            ];
+        outgoing.writeHead(200, { 'content-type': 'text/event-stream' });
+        outgoing.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
+      });
+    });
+    await new Promise<void>((resolve) => modelServer.listen(0, '127.0.0.1', resolve));
+    const address = modelServer.address();
+    if (!address || typeof address === 'string') throw new Error('No fake model server address');
+    let searchResult: Awaited<ReturnType<WebToolService['webSearch']>> | undefined;
+    const host = new LocalAgentHost({
+      homeDirectory: home,
+      workspace,
+      extensions: createWebToolsExtensions({
+        enabled: true,
+        hostedWebSearch: false,
+        webSearch: async (input, signal) => {
+          searchResult = await service.webSearch(input, signal);
+          return searchResult;
+        }
+      })
+    });
+    const agent = await createAgent({
+      mode: 'normal',
+      host,
+      models: [
+        {
+          id: 'responses',
+          name: 'Responses',
+          protocol: 'OPENAI_RESPONSES',
+          baseUrl: `http://127.0.0.1:${address.port}`,
+          apiKey: new SecretValue('fake-test-key'),
+          modelId: 'test-model',
+          contextWindowTokens: 200_000,
+          maxOutputTokens: 4096,
+          inputCapabilities: ['TEXT'],
+          outputCapabilities: ['TEXT'],
+          reasoningEfforts: ['medium'],
+          defaultReasoningEffort: 'medium',
+          titleGeneration: false,
+          codeMode: false,
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false,
+          hostedWebSearch: false,
+          enabled: true
+        } satisfies AgentModelConfiguration
+      ]
+    });
+
+    try {
+      const session = await agent.createSession({ workspace, title: 'Web Search truncation' });
+      const execution = session.run({ prompt: 'Search for the fixture.' });
+      const events: AgentEvent[] = [];
+      for await (const publicEvent of execution) events.push(publicEvent);
+      await expect(execution.result()).resolves.toMatchObject({ status: 'completed' });
+
+      if (!searchResult) throw new Error('WebToolService was not called.');
+      expect(countModelTokens(searchResult.content)).toBeLessThanOrEqual(512);
+      expect(searchResult.truncated).toBe(true);
+      expect(searchResult.content).toContain('Search results (truncated):');
+      expect((searchResult.data as { results: (typeof source)[] }).results[0]!.url).toBe(url);
+      expect(modelRequests).toHaveLength(2);
+      expect(modelRequests[0]?.tools).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'web_search' })])
+      );
+      expect(modelRequests[1]?.input).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'function_call_output', call_id: 'search-call' })
+        ])
+      );
+
+      const completedEvent = events.find(
+        (publicEvent): publicEvent is Extract<AgentEvent, { type: 'tool.completed' }> =>
+          publicEvent.type === 'tool.completed' && publicEvent.toolName === 'web_search'
+      );
+      expect(completedEvent?.truncated).toBe(true);
+
+      const render = (sourceEvents: readonly AgentEvent[]) => {
+        const normalizer = new MarAgentConversationNormalizer();
+        let started: ReturnType<typeof normalizer.normalize>[number] | undefined;
+        let completed: ReturnType<typeof normalizer.normalize>[number] | undefined;
+        for (const publicEvent of sourceEvents) {
+          const [item] = normalizer.normalize(publicEvent);
+          if (publicEvent.type === 'tool.started' && publicEvent.toolName === 'web_search')
+            started = item;
+          if (publicEvent.type === 'tool.completed' && publicEvent.toolName === 'web_search')
+            completed = item;
+        }
+        if (!started || !completed) throw new Error('Search lifecycle was not normalized.');
+        const payload = mergeConversationPayload(started.payload, completed.payload, undefined);
+        const publicItem = conversationItemSchema.parse({
+          id: completed.itemId,
+          kind: completed.kind,
+          payload,
+          sessionId: session.id,
+          turnId: completedEvent?.turnId ?? 'turn',
+          runId: completedEvent?.executionId ?? 'run',
+          parentItemId: null,
+          sourceSequence: completedEvent?.sequence ?? 1,
+          revision: 1,
+          status: 'COMPLETED',
+          startedAt: null,
+          completedAt: null
+        });
+        if (publicItem.kind !== 'tool_call') throw new Error('Search item was not a tool call.');
+        const presentation = toolPresentationSchema.parse(publicItem.payload.toolPresentation);
+        expect(presentation).toMatchObject({
+          kind: 'WEB_SEARCH',
+          sources: [{ url, title: source.title }]
+        });
+        return conversationItemDetail('tool_call', publicItem.payload);
+      };
+
+      const liveDetail = render(events);
+      const history = await agent.sessionHistory(session.id);
+      const historyEvents = history.entries.flatMap((entry) =>
+        entry.kind === 'event' ? [entry.event] : []
+      );
+      const historyDetail = render(historyEvents);
+      for (const detail of [liveDetail, historyDetail]) {
+        expect(detail).toContain('Search results (truncated):');
+        expect(detail).toContain('URL: https://example.test/original-source');
+        expect(detail).toContain('Search snippet:');
+      }
+      expect(historyDetail).toBe(liveDetail);
+      expect(completedEvent?.data).toMatchObject({ sources: [{ url }], sourceCount: 1 });
+      expect(completedEvent?.data).not.toHaveProperty('sourcesOnly');
+    } finally {
+      await agent.dispose();
+      await service.close();
+      await new Promise<void>((resolve, reject) =>
+        modelServer.close((error) => (error ? reject(error) : resolve()))
+      );
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+  it.each([
+    [
+      'view_image',
+      { path: 'a.png', resize: { maxWidth: 400 } },
+      { path: 'a.png', mimeType: 'image/png', width: 300, height: 200, sha256: 'private-hash' },
+      {
+        kind: 'IMAGE_VIEW',
+        path: 'a.png',
+        mimeType: 'image/png',
+        width: 300,
+        height: 200,
+        resize: { maxWidth: 400 }
+      }
+    ],
+    [
+      'tool_search',
+      { query: 'files' },
+      { tools: ['mcp__files'], schemas: [{ private: true }] },
+      { kind: 'TOOL_SEARCH', query: 'files', tools: ['mcp__files'] }
+    ],
+    ['smart_compact', {}, { status: 'accepted' }, { kind: 'COMPACT_REQUEST', accepted: true }]
+  ])('projects only public %s detail facts', (name, input, data, expected) => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(event({ type: 'tool.started', callId: name, toolName: name, input }));
+    const [item] = normalizer.normalize(
+      event({ type: 'tool.completed', callId: name, toolName: name, summary: 'done', data })
+    );
+    expect(item?.payload.toolPresentation).toEqual(expected);
+    expect(item?.payload.toolCategory).not.toBe('IMAGE_GENERATION');
+  });
+  it('atomically projects read snapshots and adjusts associations to the bounded output', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    normalizer.normalize(
+      event({
+        type: 'tool.started',
+        callId: 'r',
+        toolName: 'read',
+        input: { reads: [{ path: 'a' }, { path: 'b' }] }
+      })
+    );
+    const summary = `${'x'.repeat(10_002)}😀keep`;
+    const [done] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'r',
+        toolName: 'read',
+        summary,
+        data: {
+          mode: 'batch',
+          truncated: false,
+          results: [
+            { path: 'a', startLine: 1, endLine: 1, contentRange: { start: 0, end: 10_002 } },
+            {
+              path: 'b',
+              startLine: 2,
+              endLine: 2,
+              contentRange: { start: 10_002, end: summary.length }
+            }
+          ]
+        }
+      })
+    );
+    const output = done!.payload.output as { blocks: Array<{ text: string }>; truncation?: string };
+    const presentation = done!.payload.toolPresentation as {
+      results: Array<{ contentRange?: { start: number; end: number } }>;
+    };
+    const range = presentation.results[1]!.contentRange!;
+    expect(output.blocks[0]!.text.slice(range.start, range.end)).toBe('😀keep');
+    expect(output.truncation).toBe('HEAD');
+    const [next] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        callId: 'r',
+        toolName: 'read',
+        summary: 'new',
+        data: { mode: 'batch', results: [{ path: 'a' }] }
+      })
+    );
+    expect(next!.payload.output).toEqual({ blocks: [{ channel: 'TEXT', text: 'new' }] });
+    expect(next!.payload.toolPresentation).toMatchObject({
+      kind: 'READ',
+      results: [{ path: 'a' }]
+    });
+    expect(
+      (next!.payload.toolPresentation as { results: Array<{ contentRange?: unknown }> }).results[0]!
+        .contentRange
+    ).toBeUndefined();
+  });
   it.each([undefined, 'cell'])(
     'retains Read paths, status and details on direct/nested replay (%s)',
     (parentCallId) => {

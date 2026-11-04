@@ -22,7 +22,8 @@ afterEach(async () => {
 async function fixture(
   codeMode = false,
   toolCall?: { name: string; input: unknown },
-  additionalModels: readonly Partial<AgentModelConfiguration>[] = []
+  additionalModels: readonly Partial<AgentModelConfiguration>[] = [],
+  receipt?: { result: unknown; resolved: readonly unknown[] }
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mar-network-prompt-'));
   const configuration: AgentModelConfiguration = {
@@ -44,7 +45,10 @@ async function fixture(
     enabled: true
   };
   const requests: ModelRequest[] = [];
-  const invoke = vi.fn().mockResolvedValue({});
+  const invoke = vi.fn(async (...args: unknown[]) => {
+    if (receipt && typeof args[4] === 'function') await args[4](receipt.resolved);
+    return receipt?.result ?? {};
+  });
   let context!: SessionExtensionContext;
   const agent = await createAgentWithAdapter(
     {
@@ -292,6 +296,46 @@ it('refreshes the injected models after reconfiguration and represents an empty 
   }
   expect(test.invoke).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'preserves bounded agent details through SDK events with Code Mode %s',
+  async (codeMode) => {
+    const text = '初始内容😀'.repeat(200);
+    const test = await fixture(
+      codeMode,
+      { name: 'agent_send', input: { agentId: 'child', content: text } },
+      [],
+      {
+        resolved: [{ id: 'child', customTitle: 'Resolved task' }],
+        result: {
+          agentId: 'child',
+          message: {
+            status: 'accepted',
+            result: { auditReceipt: { inputMode: 'REPLACE_CURRENT' } }
+          }
+        }
+      }
+    );
+    const normalizer = new MarAgentConversationNormalizer();
+    const items = test.publicEvents
+      .flatMap((entry) => normalizer.normalize(entry))
+      .filter((item) => item.kind === 'tool_call' && item.payload.toolName === 'agent_send');
+    expect(items.at(-1)?.payload.agentOperation).toMatchObject({
+      targets: [{ title: 'Resolved task' }],
+      detail: { message: text, delivery: 'STEER' }
+    });
+    const metadata = test.publicEvents.flatMap((entry) =>
+      'data' in entry &&
+      entry.data &&
+      typeof entry.data === 'object' &&
+      'agentOperation' in entry.data
+        ? [entry.data]
+        : []
+    );
+    expect(metadata.length).toBeGreaterThan(0);
+    expect(metadata.every((value) => Buffer.byteLength(JSON.stringify(value)) <= 8192)).toBe(true);
+  }
+);
 
 it.each([false, true])('defaults native messages to steer with Code Mode %s', async (codeMode) => {
   for (const message of [

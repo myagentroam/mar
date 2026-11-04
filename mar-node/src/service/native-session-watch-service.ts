@@ -11,6 +11,7 @@ import {
 import { safeErrorCode } from '../util/safe-error.js';
 import {
   SessionWatchSlotCoordinator,
+  type SessionWatchPosition,
   type SessionWatchSlotToken
 } from './session-watch-slot-coordinator.js';
 
@@ -30,6 +31,7 @@ interface NativeSessionWatch {
 
 interface NativeSessionLease {
   readonly ownerKey: string;
+  readonly slotOwnerKey: string;
   readonly sessionHash: string;
   readonly workbenchConnectionId: string;
   readonly watchId: string;
@@ -90,6 +92,9 @@ export class NativeSessionWatchService {
       typeof input.watchId !== 'string' ||
       typeof input.workbenchConnectionId !== 'string' ||
       (input.mode !== 'initial' && input.mode !== 'renew') ||
+      (input.position !== undefined &&
+        input.position !== 'primary' &&
+        input.position !== 'secondary') ||
       (input.unit !== undefined && input.unit !== 'SEGMENT')
     )
       throw new Error('SESSION_INVALID');
@@ -98,7 +103,7 @@ export class NativeSessionWatchService {
       const lease = this.leases.get(ownerKey);
       if (
         lease === undefined ||
-        !this.sessionWatchSlots.owns(ownerKey, lease.slotToken) ||
+        !this.sessionWatchSlots.owns(lease.slotOwnerKey, lease.slotToken) ||
         lease.watchId !== input.watchId ||
         lease.sessionId !== input.sessionId ||
         (input.workspaceId !== undefined && lease.workspaceId !== input.workspaceId)
@@ -119,7 +124,7 @@ export class NativeSessionWatchService {
     const unit = input.unit === 'SEGMENT' ? 'SEGMENT' : 'TURN';
     if (
       existing?.watchId === input.watchId &&
-      this.sessionWatchSlots.owns(ownerKey, existing.slotToken) &&
+      this.sessionWatchSlots.owns(existing.slotOwnerKey, existing.slotToken) &&
       existing.sessionId === input.sessionId &&
       (input.workspaceId === undefined || existing.workspaceId === input.workspaceId) &&
       existing.unit === unit &&
@@ -131,11 +136,17 @@ export class NativeSessionWatchService {
       return this.accepted(existing);
     }
     this.removeLease(ownerKey);
-    const slotToken = this.sessionWatchSlots.replace(ownerKey, 'session', () =>
-      this.removeLease(ownerKey)
+    const slotOwnerKey = this.slotOwnerKey(input);
+    const position: SessionWatchPosition = input.position === 'secondary' ? 'secondary' : 'primary';
+    const slotToken = this.sessionWatchSlots.replace(
+      slotOwnerKey,
+      'session',
+      () => this.removeLease(ownerKey),
+      position
     );
     const lease: NativeSessionLease = {
       ownerKey,
+      slotOwnerKey,
       sessionHash: this.sessionHash(input),
       workbenchConnectionId: input.workbenchConnectionId,
       watchId: input.watchId,
@@ -162,7 +173,10 @@ export class NativeSessionWatchService {
     if (
       typeof input.sessionId !== 'string' ||
       typeof input.watchId !== 'string' ||
-      typeof input.workbenchConnectionId !== 'string'
+      typeof input.workbenchConnectionId !== 'string' ||
+      (input.position !== undefined &&
+        input.position !== 'primary' &&
+        input.position !== 'secondary')
     )
       throw new Error('SESSION_INVALID');
     const ownerKey = this.ownerKey(input);
@@ -257,15 +271,15 @@ export class NativeSessionWatchService {
     workspaceId: string,
     sessionId: string
   ): boolean {
-    const ownerKey = `${sessionHash}:${connectionId}`;
-    const lease = this.leases.get(ownerKey);
-    return (
-      lease !== undefined &&
-      lease.ready &&
-      lease.expiresAt > Date.now() &&
-      lease.sessionId === sessionId &&
-      lease.workspaceId === workspaceId &&
-      this.sessionWatchSlots.owns(ownerKey, lease.slotToken)
+    const slotOwnerKey = `${sessionHash}:${connectionId}`;
+    return [...this.leases.values()].some(
+      (lease) =>
+        lease.slotOwnerKey === slotOwnerKey &&
+        lease.ready &&
+        lease.expiresAt > Date.now() &&
+        lease.sessionId === sessionId &&
+        lease.workspaceId === workspaceId &&
+        this.sessionWatchSlots.owns(slotOwnerKey, lease.slotToken)
     );
   }
 
@@ -381,6 +395,10 @@ export class NativeSessionWatchService {
   }
 
   private ownerKey(input: Record<string, unknown>): string {
+    return `${this.slotOwnerKey(input)}:${input.position === 'secondary' ? 'secondary' : 'primary'}`;
+  }
+
+  private slotOwnerKey(input: Record<string, unknown>): string {
     return `${this.sessionHash(input)}:${input.workbenchConnectionId as string}`;
   }
 
@@ -474,7 +492,7 @@ export class NativeSessionWatchService {
     if (lease === undefined) return;
     clearTimeout(lease.timer);
     this.leases.delete(ownerKey);
-    this.sessionWatchSlots.release(ownerKey, lease.slotToken);
+    this.sessionWatchSlots.release(lease.slotOwnerKey, lease.slotToken);
     const observer = this.watches.get(lease.sessionId);
     const nextExpiry = this.latestLeaseExpiry(lease.sessionId);
     if (nextExpiry === 0) this.stop(lease.sessionId);

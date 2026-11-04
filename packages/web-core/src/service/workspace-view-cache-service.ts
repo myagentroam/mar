@@ -6,7 +6,6 @@ import { shallowRef } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
-  ComposerSkillToken,
   ConversationTurn,
   Session,
   WorkspaceQueue
@@ -24,9 +23,6 @@ import {
 } from '../util/conversation-history.js';
 
 export interface WorkspaceCacheDraft {
-  readonly input: string;
-  readonly skillTokens: readonly ComposerSkillToken[];
-  readonly references?: readonly import('@myagentroam/protocol').ComposerReference[];
   readonly runner: Session['runner'];
   readonly modelId: string;
   readonly effort: string;
@@ -58,7 +54,7 @@ interface WorkspaceViewCache {
   readonly workspaceId: string;
   sessions: readonly Session[];
   selectedSessionId?: string;
-  /** Composer text and configuration; the Workspace tab owns attachments and uploads. */
+  /** Workspace draft Runner configuration; editable content belongs to the draft owner. */
   draft?: WorkspaceCacheDraft;
   /** Only safely restorable Inspector views, excluding file bodies and incomplete uploads. */
   inspector?: unknown;
@@ -203,7 +199,7 @@ export function createWorkspaceViewCacheService(
     cache: WorkspaceViewCache,
     detail: Readonly<CachedSessionDetail>,
     maximum: number,
-    protectedSessionId: string,
+    protectedSessionIds: ReadonlySet<string>,
     historyAlreadyBounded = false
   ): void {
     const historyLimited = historyAlreadyBounded
@@ -217,7 +213,7 @@ export function createWorkspaceViewCacheService(
     });
     while (cache.sessionDetails.size > maximum) {
       const leastRecentlyUsed = [...cache.sessionDetails.values()]
-        .filter((candidate) => candidate.sessionId !== protectedSessionId)
+        .filter((candidate) => !protectedSessionIds.has(candidate.sessionId))
         .reduce<CachedSessionDetail | undefined>(
           (oldest, candidate) =>
             oldest === undefined || candidate.lastAccessedAt < oldest.lastAccessedAt
@@ -233,7 +229,8 @@ export function createWorkspaceViewCacheService(
   function capture(
     cache: WorkspaceViewCache,
     input: WorkspaceCacheCapture,
-    maximumDetails: number
+    maximumDetails: number,
+    otherVisibleSessionId?: string
   ): void {
     cache.sessions = input.sessions.filter(
       (session) => session.workspaceId === cache.workspaceId && sessionHasNativeIdentity(session)
@@ -261,18 +258,48 @@ export function createWorkspaceViewCacheService(
         cache,
         input.detail,
         maximumDetails,
-        selected.id,
+        new Set(
+          otherVisibleSessionId === undefined ? [selected.id] : [selected.id, otherVisibleSessionId]
+        ),
         input.detailHistoryAlreadyBounded === true
       );
   }
 
-  function captureActive(input: WorkspaceCacheCapture, maximumDetails: number): void {
+  /** Save another visible session without changing the Workspace's main selection. */
+  function captureSession(
+    nodeId: string,
+    workspaceId: string,
+    session: Session,
+    queue: WorkspaceQueue,
+    detail: Readonly<CachedSessionDetail>,
+    maximumDetails: number
+  ): void {
+    const cache = caches.get(tabId(nodeId, workspaceId));
+    if (
+      cache === undefined ||
+      session.workspaceId !== workspaceId ||
+      session.id !== detail.sessionId ||
+      !sessionHasNativeIdentity(session)
+    )
+      return;
+    cache.queues.set(session.id, newestWorkspaceQueueSnapshot(cache.queues.get(session.id), queue));
+    const protectedIds = new Set([session.id]);
+    if (cache.selectedSessionId !== undefined) protectedIds.add(cache.selectedSessionId);
+    saveDetail(cache, detail, maximumDetails, protectedIds, true);
+  }
+
+  function captureActive(
+    input: WorkspaceCacheCapture,
+    maximumDetails: number,
+    otherVisibleSessionId?: string
+  ): void {
     const cache = active.value;
     if (cache === undefined) return;
     capture(
       cache,
       { ...input, inspector: 'inspector' in input ? input.inspector : cache.inspector },
-      maximumDetails
+      maximumDetails,
+      otherVisibleSessionId
     );
   }
 
@@ -396,6 +423,7 @@ export function createWorkspaceViewCacheService(
     has,
     captureCommandTarget,
     captureActive,
+    captureSession,
     activate,
     deactivate,
     remove,

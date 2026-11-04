@@ -1,6 +1,6 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { ComputedRef, Ref } from 'vue';
+import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import type { Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
 
@@ -15,19 +15,28 @@ export function createWorkbenchRunnerChannelService(options: {
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly sessionPathId: (sessionId: string) => string;
   readonly errorMessage: (error: unknown) => string;
+  readonly currentRevision: () => number;
 }) {
+  const scope = getCurrentScope();
   async function refreshToken(): Promise<void> {
     const session = options.selectedSession.value;
-    const nodeId = options.workspaceTarget.value?.nodeId;
-    if (nodeId === undefined || session?.runner !== 'claude-code') return;
+    const target = options.workspaceTarget.value;
+    const nodeId = target?.nodeId;
+    if (target === undefined || nodeId === undefined || session?.runner !== 'claude-code') return;
+    const revision = options.currentRevision();
+    const current = () =>
+      scope?.active !== false &&
+      options.currentRevision() === revision &&
+      options.workspaceTarget.value?.nodeId === nodeId &&
+      options.workspaceTarget.value.workspaceId === target.workspaceId &&
+      options.selectedSession.value?.id === session.id;
     try {
-      options.token.value = (
-        await options.request<{ token: string }>(
-          `/api/agent-sessions/${options.sessionPathId(session.id)}/channel-token?nodeId=${encodeURIComponent(nodeId)}`
-        )
-      ).token;
+      const result = await options.request<{ token: string }>(
+        `/api/agent-sessions/${options.sessionPathId(session.id)}/channel-token?nodeId=${encodeURIComponent(nodeId)}`
+      );
+      if (current()) options.token.value = result.token;
     } catch {
-      options.token.value = undefined;
+      if (current()) options.token.value = undefined;
     }
   }
 

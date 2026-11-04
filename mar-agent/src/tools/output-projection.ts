@@ -14,7 +14,6 @@ import type {
   ViewImageResult
 } from './contracts.js';
 import { TOOL_EXECUTION_LIMITS } from './execution-limits.js';
-import type { BatchReadResult } from './local/read.js';
 import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
 import { publicToolMetadata, type PublicToolMetadata } from '../runtime/public-tool-metadata.js';
@@ -376,13 +375,19 @@ export function structuredToolEventData(
         typeof result.path === 'string' &&
         (result.startLine === undefined || isNonnegativeInteger(result.startLine)) &&
         (result.endLine === undefined || isNonnegativeInteger(result.endLine)) &&
+        (result.empty === undefined || result.empty === true) &&
+        (result.contentRange === undefined ||
+          (isRecord(result.contentRange) &&
+            isNonnegativeInteger(result.contentRange.start) &&
+            isNonnegativeInteger(result.contentRange.end) &&
+            result.contentRange.end >= result.contentRange.start)) &&
         (result.error === undefined ||
           (isRecord(result.error) &&
             typeof result.error.code === 'string' &&
             typeof result.error.message === 'string'))
     )
   ) {
-    const result = value as unknown as BatchReadResult;
+    const result = value as unknown as ReadEventData;
     return {
       mode: 'batch',
       truncated: result.truncated,
@@ -392,6 +397,8 @@ export function structuredToolEventData(
           ? { startLine: item.startLine }
           : {}),
         ...('endLine' in item && item.endLine !== undefined ? { endLine: item.endLine } : {}),
+        ...(item.contentRange === undefined ? {} : { contentRange: { ...item.contentRange } }),
+        ...(item.empty === true ? { empty: true as const } : {}),
         ...('error' in item ? { error: { ...item.error } } : {})
       }))
     };

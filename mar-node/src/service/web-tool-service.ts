@@ -171,16 +171,18 @@ export class WebToolService {
         else metadataLimit = Math.floor(metadataLimit / 2);
       } while (countModelTokens(content) > budget && metadataLimit >= 32);
       if (countModelTokens(content) > budget) throw invalidResult();
+      const data = {
+        query: parsed.data.query,
+        results: results.map((item, index) => ({
+          ...item,
+          url: parsed.data.results[index]!.url
+        })),
+        truncated
+      };
       return {
         content,
-        data: {
-          query: parsed.data.query,
-          results: results.map((item, index) => ({
-            ...item,
-            url: parsed.data.results[index]!.url
-          })),
-          truncated
-        },
+        data,
+        eventData: { ...data, sourcesOnly: true },
         truncated
       };
     } catch (error) {

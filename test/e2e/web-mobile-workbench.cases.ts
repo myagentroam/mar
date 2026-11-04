@@ -17,6 +17,123 @@ const currentVersion = (
 
 // Mobile Workbench
 
+test.describe('Aside terminal touch interaction', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test('opens from Files and retains its PTY when switching away and back', async ({ page }) => {
+    test.setTimeout(90_000);
+    let created = false;
+    let creations = 0;
+    const terminal = {
+      id: 'terminal-1',
+      workspaceId: 'workspace-1',
+      profileId: 'default',
+      state: 'RUNNING',
+      latestSequence: 0
+    };
+    await page.addInitScript(() => {
+      class MockWebSocket extends EventTarget {
+        static readonly OPEN = 1;
+        static readonly CLOSED = 3;
+        static readonly resizeRows: number[] = [];
+        static readonly instances: MockWebSocket[] = [];
+        readyState = MockWebSocket.OPEN;
+        constructor(readonly url: string) {
+          super();
+          MockWebSocket.instances.push(this);
+          queueMicrotask(() =>
+            this.dispatchEvent(
+              new MessageEvent('message', {
+                data: JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 })
+              })
+            )
+          );
+        }
+        send(data: string): void {
+          const frame = JSON.parse(data) as { type: string; rows?: number };
+          if (frame.type === 'resize' && frame.rows !== undefined)
+            MockWebSocket.resizeRows.push(frame.rows);
+        }
+        close(): void {
+          this.readyState = MockWebSocket.CLOSED;
+        }
+      }
+      Object.defineProperty(window, 'WebSocket', { configurable: true, value: MockWebSocket });
+    });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.route('**/api/terminals**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/attach-ticket')) return json(route, { ticket: 'ticket-1' });
+      if (route.request().method() === 'POST') {
+        created = true;
+        creations++;
+        return json(route, { terminal });
+      }
+      return json(route, { terminals: created ? [terminal] : [] });
+    });
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).tap();
+    await page.getByRole('button', { name: '工作', exact: true }).tap();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .tap();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).tap();
+    await page.getByRole('button', { name: '打开辅助工作面' }).tap();
+    const aside = page.locator('.workbench-aside');
+    await aside.getByRole('tab', { name: '终端', exact: true }).tap();
+    const dock = page.locator('.terminal-dock');
+    await expect(dock).toBeVisible();
+    await expect(dock).not.toHaveAttribute('inert', '');
+    await expect.poll(() => creations).toBe(1);
+    const input = dock.locator('.xterm-helper-textarea');
+    await expect(input).toBeAttached();
+    await input.focus();
+    await expect(input).toBeFocused();
+    let desktopRows = 0;
+    for (const viewport of [
+      { width: 1600, height: 900 },
+      { width: 1600, height: 1200 },
+      { width: 390, height: 844 }
+    ]) {
+      await page.setViewportSize(viewport);
+      if (viewport.width < 768) {
+        await expect(aside).toBeHidden();
+        await page.getByRole('button', { name: '打开辅助工作面' }).tap();
+      }
+      await expect(dock).toBeVisible();
+      await expect
+        .poll(() =>
+          dock.evaluate((element) => {
+            const body = element.querySelector('.admin-terminal-body')!.getBoundingClientRect();
+            return Math.abs(element.getBoundingClientRect().bottom - body.bottom);
+          })
+        )
+        .toBeLessThanOrEqual(1);
+      const rows = () =>
+        page.evaluate(
+          () => (window.WebSocket as unknown as { resizeRows: number[] }).resizeRows.at(-1) ?? 0
+        );
+      await expect.poll(rows).toBeGreaterThan(0);
+      if (viewport.width === 1600) {
+        await expect.poll(rows).toBeGreaterThan(desktopRows);
+        desktopRows = await rows();
+      }
+      await aside.screenshot({
+        path: test.info().outputPath(`terminal-fill-${viewport.width}-${viewport.height}.png`)
+      });
+    }
+    await aside.getByRole('tab', { name: '文件', exact: true }).tap();
+    await expect(dock).not.toBeVisible();
+    await aside.getByRole('button', { name: '关闭工作区工具' }).tap();
+    await expect(page.getByRole('textbox', { name: '输入消息' })).toBeVisible();
+    await page.getByRole('button', { name: '打开辅助工作面' }).tap();
+    await aside.getByRole('tab', { name: '终端', exact: true }).tap();
+    await expect(dock).toBeVisible();
+    expect(creations).toBe(1);
+  });
+});
+
 for (const labels of [
   { locale: 'zh-CN', enter: '进入控制台', work: '工作', sessions: '打开会话列表' },
   { locale: 'en-US', enter: 'Open console', work: 'Work', sessions: 'Open session list' }
@@ -183,12 +300,12 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
   );
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  const notificationButton = page.getByRole('button', { name: '打开通知中心' });
-  const badge = notificationButton.locator('.workbench-notification-badge');
+  const notificationButton = page.getByRole('button', { name: '会话与通知' });
+  const badge = notificationButton.locator('.activity-entry-count');
   await expect(badge).toHaveText('1');
   const badgePosition = await notificationButton.evaluate((button) => {
-    const icon = button.querySelector('.el-icon')!.getBoundingClientRect();
-    const badge = button.querySelector('.workbench-notification-badge')!.getBoundingClientRect();
+    const icon = button.querySelector('.mar-icon')!.getBoundingClientRect();
+    const badge = button.querySelector('.activity-entry-count')!.getBoundingClientRect();
     return {
       horizontalOverlap: icon.right - badge.left,
       rightInset: button.getBoundingClientRect().right - badge.right,
@@ -208,7 +325,6 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  await nodesButton.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await expect(page.locator('.conversation-header h2')).toHaveText('新建会话');
 
@@ -266,7 +382,7 @@ test('Mobile file upload confirmation remains fully visible with accessible acti
     .click();
   await nodesButton.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('button', { name: '打开文件' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(page.locator('.workspace-inspector')).toBeVisible();
   await page.locator('.explorer-toolbar .workspace-upload-input').setInputFiles({
     name: 'mobile-upload-confirmation.json',
@@ -386,6 +502,9 @@ test('Mobile Composer anchors to the visual viewport bottom with matching conver
 test('Mobile Workbench keeps one conversation surface and opens sessions, files, and terminals as tool layers', async ({
   page
 }) => {
+  test.setTimeout(90_000);
+  const pageErrors: Error[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error));
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -590,7 +709,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await brand.getByRole('img', { name: 'MyAgentRoam' }).hover();
   await expect(page.getByRole('tooltip', { name: `MyAgentRoam ${currentVersion}` })).toBeVisible();
   await page.mouse.move(389, 843);
-  const notificationsButton = page.getByRole('button', { name: '打开通知中心' });
+  const notificationsButton = page.getByRole('button', { name: '会话与通知' });
   const documentationLink = page.getByRole('link', { name: '帮助' });
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
@@ -638,7 +757,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     (notificationGeometry?.y ?? Infinity) + (notificationGeometry?.height ?? 0)
   ).toBeLessThanOrEqual((brandGeometryBox?.y ?? 0) + (brandGeometryBox?.height ?? 0));
   await notificationsButton.click();
-  const notificationCenter = page.getByRole('complementary', { name: '通知中心' });
+  const notificationCenter = page.locator('.workbench-activity-panel.mobile-mode');
+  await notificationCenter.getByRole('tab', { name: '通知', exact: true }).click();
   await expect(notificationCenter.getByText('后台运行已完成', { exact: true })).toBeVisible();
   await expect
     .poll(() =>
@@ -655,9 +775,15 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       })
     )
     .toBe(true);
+  await notificationsButton.click();
+  await expect(notificationsButton).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('heading', { name: '账户安全' })).toBeVisible();
+  await expect(notificationsButton).toHaveAttribute('aria-expanded', 'false');
   await notificationsButton.click();
+  await expect(notificationsButton).toHaveAttribute('aria-expanded', 'true');
+  expect(pageErrors).toEqual([]);
+  await expect(notificationCenter).toBeVisible();
   await notificationCenter
     .locator('.workbench-notification-list > li')
     .first()
@@ -666,11 +792,15 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     .click();
   await expect(page.getByRole('button', { name: '工作', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: '打开会话列表' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开文件' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开终端' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '打开辅助工作面' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '打开文件', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开终端', exact: true })).toHaveCount(0);
+  await page
+    .locator('.conversation-header')
+    .screenshot({ path: test.info().outputPath('mobile-more-entry.png'), animations: 'disabled' });
   await expect(page.locator('.workbench-header')).toHaveCount(0);
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
-  await expect(page.locator('.inspector-column')).not.toBeVisible();
+  await expect(page.locator('.workspace-aside')).not.toBeVisible();
   await expect(page.locator('.terminal-dock')).not.toBeVisible();
 
   const initialLayout = await page.evaluate(() => {
@@ -712,8 +842,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const sendControl = composerRow.controls.at(-1);
   if (sendControl === undefined) throw new Error('发送按钮未渲染');
   expect(Math.max(...controlCenters) - Math.min(...controlCenters)).toBeLessThanOrEqual(1);
-  expect(sendControl.right - sendControl.left).toBe(36);
-  expect(sendControl.bottom - sendControl.top).toBe(36);
+  expect(sendControl.right - sendControl.left).toBe(28);
+  expect(sendControl.bottom - sendControl.top).toBe(28);
   expect(composerRow.controls.every((control) => control.left >= composerRow.toolbar.left)).toBe(
     true
   );
@@ -724,6 +854,14 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const closeMobileWorkspaceSurface = async () => {
     const scrim = page.locator('.workspace-surface-scrim');
     await expect(scrim).toBeVisible();
+    const asideClose = page
+      .locator('.workspace-aside')
+      .getByRole('button', { name: '关闭工作区工具' });
+    if (await asideClose.isVisible()) {
+      await asideClose.click();
+      await expect(scrim).toHaveCount(0);
+      return;
+    }
     const bounds = await scrim.boundingBox();
     if (bounds === null) throw new Error('工作区工具遮罩未生成可点击区域');
     await page.mouse.click(bounds.x + bounds.width - 12, bounds.y + 64);
@@ -738,22 +876,14 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
   await expect(page.locator('.conversation-header h2')).toHaveText('新建会话');
 
-  await page.getByRole('button', { name: '打开文件' }).click();
-  await expect(page.locator('.inspector-column')).toBeVisible();
-  await expect(page.locator('.workspace-inspector').getByRole('heading', { level: 2 })).toHaveText(
-    '文件'
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
+  await expect(page.locator('.workspace-aside')).toBeVisible();
+  await expect(page.getByRole('tab', { name: '文件', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
   );
-  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '13px');
-  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
-    'font-size',
-    '12px'
-  );
-  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
-    'font-weight',
-    '500'
-  );
-  await expect(page.locator('.inspector-column')).toHaveCSS('top', '46px');
-  const inspectorBounds = await page.locator('.inspector-column').evaluate((element) => {
+  await expect(page.locator('.workspace-aside')).toHaveCSS('top', '46px');
+  const inspectorBounds = await page.locator('.workspace-aside').evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { bottom: rect.bottom, viewportHeight: window.innerHeight };
   });
@@ -761,28 +891,31 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await page.getByRole('button', { name: '刷新文件' }).click();
   await page.getByRole('treeitem', { name: 'AGENTS.md', exact: true }).click();
   const preview = page.getByRole('dialog', { name: 'AGENTS.md 文件预览' });
-  const previewSurface = page.locator('.workspace-file-tabs');
-  await expect(previewSurface).toHaveCSS('position', 'fixed');
+  const previewSurface = preview;
+  await expect(page.locator('.el-overlay').filter({ has: preview })).toHaveCSS('position', 'fixed');
   await expect(preview).toBeVisible();
-  const previewBounds = await previewSurface.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return {
-      left: rect.left,
-      top: rect.top,
-      right: rect.right,
-      bottom: rect.bottom,
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-  });
-  expect(previewBounds).toEqual({
-    left: 0,
-    top: 0,
-    right: previewBounds.width,
-    bottom: previewBounds.height,
-    width: previewBounds.width,
-    height: previewBounds.height
-  });
+  await expect
+    .poll(() =>
+      previewSurface.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: window.innerWidth,
+          height: window.innerHeight
+        };
+      })
+    )
+    .toEqual({
+      left: 0,
+      top: 0,
+      right: 390,
+      bottom: 844,
+      width: 390,
+      height: 844
+    });
   await expect(preview.locator('.mobile-preview-actions')).toBeVisible();
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: '下载文件' })
@@ -791,7 +924,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: 'Markdown 预览设置' })
   ).toBeVisible();
-  await expect(preview.getByRole('button', { name: '关闭预览' })).toHaveCount(0);
+  await expect(preview.getByRole('button', { name: '关闭预览', exact: true })).toBeVisible();
   const mobilePreviewActionBounds = await page
     .getByRole('button', { name: '关闭文件窗口', exact: true })
     .evaluate((close) => {
@@ -835,28 +968,31 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await page.getByRole('tab', { name: 'Git 变更', exact: true }).click();
   await page.getByRole('button', { name: '查看 src/main.ts 的 Diff' }).click();
   const diff = page.getByRole('dialog', { name: 'src/main.ts Git 差异' });
-  const diffSurface = page.locator('.workspace-file-tabs');
-  await expect(diffSurface).toHaveCSS('position', 'fixed');
+  const diffSurface = diff;
+  await expect(page.locator('.el-overlay').filter({ has: diff })).toHaveCSS('position', 'fixed');
   await expect(diff).toBeVisible();
-  const diffBounds = await diffSurface.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return {
-      left: rect.left,
-      top: rect.top,
-      right: rect.right,
-      bottom: rect.bottom,
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-  });
-  expect(diffBounds).toEqual({
-    left: 0,
-    top: 0,
-    right: diffBounds.width,
-    bottom: diffBounds.height,
-    width: diffBounds.width,
-    height: diffBounds.height
-  });
+  await expect
+    .poll(() =>
+      diffSurface.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: window.innerWidth,
+          height: window.innerHeight
+        };
+      })
+    )
+    .toEqual({
+      left: 0,
+      top: 0,
+      right: 390,
+      bottom: 844,
+      width: 390,
+      height: 844
+    });
   await expect(diff.locator('.mobile-preview-actions')).toBeVisible();
   const diffSummary = diff.getByLabel('Diff 摘要');
   await expect(diffSummary.getByText('文件 1 / 1', { exact: true })).toBeVisible();
@@ -888,14 +1024,16 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(diff.getByRole('search', { name: '文件内查找' })).toBeVisible();
   await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
   await diff.getByRole('button', { name: '关闭查找' }).click();
-  await expect(diff.getByRole('button', { name: '关闭 Diff 预览' })).toHaveCount(0);
+  await expect(diff.getByRole('button', { name: '关闭预览', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
   await closeMobileWorkspaceSurface();
-  await expect(page.locator('.inspector-column')).not.toBeVisible();
+  await expect(page.locator('.workspace-aside')).not.toBeVisible();
 
-  await page.getByRole('button', { name: '打开终端' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
+  await page.locator('.workspace-aside').getByRole('tab', { name: '终端', exact: true }).click();
   await expect(page.locator('.terminal-dock')).toBeVisible();
   const terminalDock = page.locator('.terminal-dock');
+  const asidePanel = page.locator('.workspace-aside > .workbench-aside');
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 320, height: 568 },
@@ -904,23 +1042,23 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     await page.setViewportSize(viewport);
     await expect(terminalDock).toBeVisible();
     await expect
-      .poll(async () => {
-        const bounds = await terminalDock.boundingBox();
-        return (
-          bounds && {
-            x: Math.round(bounds.x),
-            y: Math.round(bounds.y),
-            width: Math.round(bounds.width),
-            height: Math.round(bounds.height)
-          }
-        );
-      })
-      .toEqual({
-        x: 0,
-        y: viewport.height / 2,
-        width: viewport.width,
-        height: viewport.height / 2
-      });
+      .poll(() =>
+        page.locator('.workspace-aside').evaluate((element) => element.getAnimations().length)
+      )
+      .toBe(0);
+    const [dockBounds, asideBounds] = await Promise.all([
+      terminalDock.boundingBox(),
+      asidePanel.boundingBox()
+    ]);
+    expect(dockBounds).not.toBeNull();
+    expect(asideBounds).not.toBeNull();
+    const borderLeft = await asidePanel.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).borderLeftWidth)
+    );
+    expect(dockBounds!.x).toBeCloseTo(asideBounds!.x + borderLeft, 0);
+    expect(dockBounds!.width).toBeCloseTo(asideBounds!.width - borderLeft, 0);
+    expect(dockBounds!.y).toBeGreaterThanOrEqual(asideBounds!.y);
+    expect(dockBounds!.y + dockBounds!.height).toBeCloseTo(viewport.height, 0);
     await expect(page.locator('.admin-terminal-body')).toBeVisible();
     await expect(terminalDock.locator('.admin-terminal-actions')).toHaveCount(0);
     const terminalChrome = await terminalDock.evaluate((dock) => {
@@ -962,7 +1100,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await closeMobileWorkspaceSurface();
   await expect(terminalDock).not.toBeVisible();
   expect(mobileTerminalCreated).toBe(true);
-  await page.getByRole('button', { name: '打开终端' }).click();
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(terminalDock).toBeVisible();
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   expect(terminalLifecycleRequests).toEqual(['create']);
@@ -990,6 +1128,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   }));
   expect(sessionIdLayout.scrollHeight).toBeLessThanOrEqual(sessionIdLayout.clientHeight);
   expect(writes).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });
 
 test('Mobile messages entered during a Run can be sent to the queue', async ({ page }) => {

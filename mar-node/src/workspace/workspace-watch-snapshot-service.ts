@@ -4,7 +4,7 @@ import type { WorkspaceFileService } from './workspace-file-service.js';
 import type { WorkspaceWatch } from './workspace-watch-service.js';
 import type { WorkspaceWatchService } from './workspace-watch-service.js';
 
-export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes';
+export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes' | 'sessionNavigation';
 
 const FILES_REFRESH_INTERVAL_MS = 30_000;
 
@@ -16,6 +16,10 @@ export interface WorkspaceWatchSnapshotServiceOptions {
   readonly listSessions: (
     workspaceId: string,
     sessionGroup?: import('@myagentroam/protocol').SessionGroup
+  ) => Promise<unknown>;
+  readonly sessionNavigation?: (
+    workspaceId: string,
+    query: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery
   ) => Promise<unknown>;
   readonly nodeId: () => string;
   readonly emitWatchEvent: (payload: unknown) => void;
@@ -33,7 +37,12 @@ export class WorkspaceWatchSnapshotService {
   // Weak keys release the two resource payloads with their lease, not a second TTL cache.
   private readonly resourceSnapshots = new WeakMap<
     WorkspaceWatch,
-    Partial<Record<'files' | 'changes', { readonly payload: unknown; readonly revision: number }>>
+    Partial<
+      Record<
+        'sessions' | 'files' | 'changes',
+        { readonly payload: unknown; readonly revision: number }
+      >
+    >
   >();
   private filesRefreshTimer: NodeJS.Timeout | undefined;
 
@@ -50,7 +59,9 @@ export class WorkspaceWatchSnapshotService {
         const revision = this.readRevision(workspace.id, topic);
         try {
           const retained =
-            topic === 'sessions' || previous === undefined
+            topic === 'sessionNavigation' ||
+            previous === undefined ||
+            (topic === 'sessions' && previous.topics.sessionGroup !== watch.topics.sessionGroup)
               ? undefined
               : this.resourceSnapshots.get(previous)?.[topic];
           const payload =
@@ -65,7 +76,8 @@ export class WorkspaceWatchSnapshotService {
             void this.invalidate(workspace.id, topic);
             return;
           }
-          this.signatures.set(this.viewKey(workspace.id, topic, watch), signature(payload));
+          if (topic !== 'sessionNavigation')
+            this.signatures.set(this.viewKey(workspace.id, topic, watch), signature(payload));
           this.deliver(workspace, watch, topic, payload);
         } catch {
           if (revision === this.readRevision(workspace.id, topic))
@@ -94,6 +106,7 @@ export class WorkspaceWatchSnapshotService {
   }
 
   async invalidate(workspaceId: string, topic: WorkspaceWatchTopic): Promise<void> {
+    if (topic === 'sessions') void this.invalidate(workspaceId, 'sessionNavigation');
     const key = `${workspaceId}:${topic}`;
     const active = this.refreshes.get(key);
     if (active !== undefined) {
@@ -157,6 +170,19 @@ export class WorkspaceWatchSnapshotService {
     const workspace = this.options.requireWorkspace(workspaceId);
     const subscribers = this.subscribers(workspaceId, topic);
     if (subscribers.length === 0) return;
+    if (topic === 'sessionNavigation') {
+      await Promise.all(
+        subscribers.map(async (watch) => {
+          try {
+            const payload = await this.read(workspace, topic, watch);
+            this.deliver(workspace, watch, topic, payload);
+          } catch {
+            this.fail(workspaceId, watch, topic);
+          }
+        })
+      );
+      return;
+    }
     if (topic === 'changes') {
       const first = subscribers[0];
       if (first === undefined) return;
@@ -214,25 +240,30 @@ export class WorkspaceWatchSnapshotService {
     watch: WorkspaceWatch
   ): Promise<unknown> {
     const key =
-      topic === 'files'
-        ? `${workspace.id}:files:${JSON.stringify(watch.topics.files)}`
-        : `${workspace.id}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}:${this.readRevision(workspace.id, topic)}`;
+      topic === 'sessionNavigation'
+        ? `${workspace.id}:sessionNavigation:${watch.watchId}`
+        : topic === 'files'
+          ? `${workspace.id}:files:${JSON.stringify(watch.topics.files)}`
+          : `${workspace.id}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}:${this.readRevision(workspace.id, topic)}`;
     const active = this.reads.get(key);
     if (active !== undefined) return active;
     const read = (
-      topic === 'sessions'
-        ? this.options.listSessions(workspace.id, watch.topics.sessionGroup)
-        : topic === 'changes'
-          ? workspace.kind === 'GIT_WORKSPACE'
-            ? this.options.changes.current(workspace)
-            : Promise.resolve(
-                workspace.includeParentRepository === false
-                  ? { workspace, changes: [], repositories: [] }
-                  : null
-              )
-          : this.options.files
-              .list(workspace, watch.topics.files!)
-              .then((files) => ({ files, workspace: this.options.requireWorkspace(workspace.id) }))
+      topic === 'sessionNavigation'
+        ? this.options.sessionNavigation!(workspace.id, watch.topics.sessionNavigation!)
+        : topic === 'sessions'
+          ? this.options.listSessions(workspace.id, watch.topics.sessionGroup)
+          : topic === 'changes'
+            ? workspace.kind === 'GIT_WORKSPACE'
+              ? this.options.changes.current(workspace)
+              : Promise.resolve(
+                  workspace.includeParentRepository === false
+                    ? { workspace, changes: [], repositories: [] }
+                    : null
+                )
+            : this.options.files.list(workspace, watch.topics.files!).then((files) => ({
+                files,
+                workspace: this.options.requireWorkspace(workspace.id)
+              }))
     ).finally(() => {
       if (this.reads.get(key) === read) this.reads.delete(key);
     });
@@ -252,9 +283,11 @@ export class WorkspaceWatchSnapshotService {
   }
 
   private viewKey(workspaceId: string, topic: WorkspaceWatchTopic, watch: WorkspaceWatch): string {
-    return topic === 'files'
-      ? `${workspaceId}:files:${JSON.stringify(watch.topics.files)}`
-      : `${workspaceId}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}`;
+    return topic === 'sessionNavigation'
+      ? `${workspaceId}:sessionNavigation:${watch.sessionHash}:${watch.workbenchConnectionId}`
+      : topic === 'files'
+        ? `${workspaceId}:files:${JSON.stringify(watch.topics.files)}`
+        : `${workspaceId}:${topic}:${watch.topics.sessionGroup ?? 'ALL'}`;
   }
 
   private readActive(
@@ -272,13 +305,18 @@ export class WorkspaceWatchSnapshotService {
     return this.options.watch
       .activeWatches(workspaceId)
       .filter((watch) =>
-        topic === 'files' ? watch.topics.files !== undefined : watch.topics[topic]
+        topic === 'files'
+          ? watch.topics.files !== undefined
+          : topic === 'sessionNavigation'
+            ? watch.topics.sessionNavigation !== undefined
+            : watch.topics[topic]
       );
   }
 
   private subscribedTopics(watch: WorkspaceWatch): WorkspaceWatchTopic[] {
     return [
       ...(watch.topics.sessions ? (['sessions'] as const) : []),
+      ...(watch.topics.sessionNavigation === undefined ? [] : (['sessionNavigation'] as const)),
       ...(watch.topics.files === undefined ? [] : (['files'] as const)),
       ...(watch.topics.changes ? (['changes'] as const) : [])
     ];
@@ -291,7 +329,7 @@ export class WorkspaceWatchSnapshotService {
     payload: unknown
   ): void {
     if (!this.matches(workspace.id, watch)) return;
-    if (topic !== 'sessions') {
+    if (topic !== 'sessionNavigation') {
       const snapshots = this.resourceSnapshots.get(watch) ?? {};
       snapshots[topic] = { payload, revision: this.readRevision(workspace.id, topic) };
       this.resourceSnapshots.set(watch, snapshots);
@@ -313,7 +351,7 @@ export class WorkspaceWatchSnapshotService {
 
   private fail(workspaceId: string, watch: WorkspaceWatch, topic: WorkspaceWatchTopic): void {
     if (!this.matches(workspaceId, watch)) return;
-    if (topic !== 'sessions') {
+    if (topic !== 'sessionNavigation') {
       const snapshots = this.resourceSnapshots.get(watch);
       if (snapshots !== undefined) delete snapshots[topic];
     }

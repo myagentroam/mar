@@ -283,7 +283,9 @@ html.console-ui,
   --mar-control-bg-color-overlay: #ffffff;
 
   --el-component-size-small: 24px;
+  --mar-font-size-detail: 12px;
   --mar-font-size-body: 13px;
+  --mar-font-size-navigation: 13px;
   --mar-font-size-meta: 11px;
   --mar-font-size-nano: 9px;
   --mar-font-size-title: 14px;
@@ -1391,7 +1393,7 @@ pre {
   border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-code);
   color: var(--mar-conversation-text);
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-detail);
   font-weight: 400;
   line-height: 1.65;
   overflow-wrap: anywhere;

@@ -51,6 +51,78 @@ import { publicHostedToolEvents } from '../../src/runtime/event-projection.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 
 describe('public tool metadata', () => {
+  it('exposes only the tool-search names and compact acceptance receipt', () => {
+    expect(
+      structuredToolEventData('tool_search', {
+        tools: ['mcp__one', 'mcp__two'],
+        schemas: [{ secret: true }]
+      })
+    ).toEqual({ tools: ['mcp__one', 'mcp__two'] });
+    expect(structuredToolEventData('tool_search', { tools: [] })).toEqual({ tools: [] });
+    expect(structuredToolEventData('smart_compact', { status: 'accepted', private: true })).toEqual(
+      { status: 'accepted' }
+    );
+  });
+  it('retains the search producer’s sources-only fact without inferring it', () => {
+    expect(structuredToolEventData('web_search', { results: [], sourcesOnly: true })).toMatchObject(
+      { sourcesOnly: true }
+    );
+    expect(structuredToolEventData('web_search', { results: [] })).not.toHaveProperty(
+      'sourcesOnly'
+    );
+    const source = { url: 'https://example.test', title: 'x'.repeat(1001), snippet: 'excerpt' };
+    expect(
+      structuredToolEventData('web_search', { results: [source], sourcesOnly: true })
+    ).not.toHaveProperty('sourcesOnly');
+    expect(
+      structuredToolEventData('web_search', {
+        results: [{ ...source, title: 'title' }],
+        sourcesOnly: true
+      })
+    ).toHaveProperty('sourcesOnly', true);
+    expect(
+      structuredToolEventData('web_search', {
+        results: [{ ...source, title: 'title', snippet: 's'.repeat(2001) }],
+        sourcesOnly: true
+      })
+    ).not.toHaveProperty('sourcesOnly');
+    expect(
+      structuredToolEventData('web_search', {
+        results: Array(21).fill({ ...source, title: 'title' }),
+        sourcesOnly: true
+      })
+    ).not.toHaveProperty('sourcesOnly');
+    expect(structuredToolEventData('web_search', { sourcesOnly: true })).not.toHaveProperty(
+      'sourcesOnly'
+    );
+    expect(
+      structuredToolEventData('web_search', {
+        results: [],
+        sourcesOnly: true,
+        sourcesTruncated: true
+      })
+    ).not.toHaveProperty('sourcesOnly');
+  });
+  it('does not mark truncated search metadata as sources-only', () => {
+    const source = {
+      url: 'https://example.test/original',
+      title: 'Original title',
+      snippet: 'Bounded search excerpt'
+    };
+    const data = structuredToolEventData('web_search', {
+      query: 'fixture',
+      results: [source],
+      sourcesOnly: true,
+      truncated: true
+    });
+
+    expect(data).not.toHaveProperty('sourcesOnly');
+    expect(data).toMatchObject({
+      query: 'fixture',
+      sources: [source],
+      sourceCount: 1
+    });
+  });
   it.each(['code_exec', 'code_exec_wait'])('keeps bounded %s failure facts public', (toolName) => {
     const result = structuredToolEventData(toolName, {
       cellId: 'cell',

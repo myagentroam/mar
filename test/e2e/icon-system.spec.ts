@@ -761,19 +761,19 @@ for (const theme of ['dark', 'light']) {
 }
 
 for (const mobile of [false, true]) {
-  test(`Recent Sessions shortcut owns Ctrl and Cmd Shift E without opening notifications: ${mobile ? 'mobile' : 'desktop'}`, async ({
+  test(`Activity shortcut owns Ctrl and Cmd Shift E outside Terminal: ${mobile ? 'mobile' : 'desktop'}`, async ({
     page
   }) => {
     await page.setViewportSize({ width: mobile ? 390 : 1280, height: 900 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(`${fixture.url}icon-system.html?navigation=1${mobile ? '&mobile=1' : ''}`);
-    const recent = page.locator('.recent-sessions-trigger');
-    const notifications = page.locator('.workbench-notification-trigger');
+    await page.goto(
+      `${fixture.url}icon-system.html?navigation=1&terminal-boundary=1${mobile ? '&mobile=1' : ''}`
+    );
+    const recent = page.locator('.activity-center-trigger');
     await expect(recent).toHaveAttribute('aria-expanded', 'false');
     for (const modifier of ['Control', 'Meta']) {
       await page.keyboard.press(`${modifier}+Shift+E`);
       await expect(recent).toHaveAttribute('aria-expanded', 'true');
-      await expect(notifications).toHaveAttribute('aria-expanded', 'false');
       if (!mobile) await expect(recent).toBeFocused();
       const repeated = await page.evaluate(() => {
         const event = new KeyboardEvent('keydown', {
@@ -810,12 +810,10 @@ for (const mobile of [false, true]) {
       await expect(recent).toHaveAttribute('aria-expanded', 'false');
     }
     await page.evaluate(() => {
-      const terminal = document.createElement('div');
-      terminal.className = 'terminal-dock';
+      const terminal = document.querySelector('.admin-terminal')!;
       const input = document.createElement('input');
       input.setAttribute('aria-label', 'Terminal shortcut boundary');
       terminal.append(input);
-      document.body.append(terminal);
     });
     // Dispatch at the terminal target: the navigation-only mobile fixture keeps its drawer focus trap active.
     expect(
@@ -832,22 +830,8 @@ for (const mobile of [false, true]) {
       })
     ).toBe(false);
     await expect(recent).toHaveAttribute('aria-expanded', 'false');
-    if (!mobile) {
-      await notifications.click();
-      await page.locator('.workbench-notification-panel').evaluate((panel) => {
-        panel.setAttribute('tabindex', '-1');
-        (panel as HTMLElement).focus();
-      });
-      await expect(notifications).toHaveAttribute('aria-expanded', 'true');
-      await recent.focus();
-      await expect(notifications).toHaveAttribute('aria-expanded', 'false');
-      await expect(recent).toHaveAttribute('aria-expanded', 'false');
-    }
-    await notifications.click();
-    await expect(notifications).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('Control+Shift+E');
+    await recent.click();
     await expect(recent).toHaveAttribute('aria-expanded', 'true');
-    await expect(notifications).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Control+Shift+E');
     await expect(recent).toHaveAttribute('aria-expanded', 'false');
     // Removing the owning view must also remove its global shortcut listener.

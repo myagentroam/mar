@@ -1,5 +1,7 @@
 import {
   consoleKeyboardShortcutService,
+  invokeConsoleShortcut,
+  type ConsoleShortcutBinding,
   type ConsoleShortcutResult
 } from './console-keyboard-shortcut-service.js';
 import { createMobileLayerHistoryService } from './mobile-layer-history-service.js';
@@ -17,6 +19,7 @@ export function createFilePreviewWindowInteractionService(
   let mounted = false;
   let closing = false;
   let unregisterShortcut: (() => void) | undefined;
+  let unregisterEscape: (() => void) | undefined;
   const history = createMobileLayerHistoryService({
     isOpen: options.isOpen,
     close: () => requestClose(true)
@@ -44,21 +47,27 @@ export function createFilePreviewWindowInteractionService(
     }
   }
 
+  const closeBinding: ConsoleShortcutBinding = {
+    command: 'filePreview.close',
+    priority: 110,
+    scope: 'file-preview',
+    modalOwner: () => options.root?.(),
+    keys: [
+      { key: 'w', code: 'KeyW', ctrl: true },
+      { key: 'w', code: 'KeyW', ctrl: true, shift: true },
+      { key: 'w', code: 'KeyW', alt: true },
+      { key: 'w', code: 'KeyW', alt: true, shift: true }
+    ],
+    when: options.isOpen,
+    execute: (event) => {
+      // Foreground ownership remains in effect while confirmation is pending.
+      if (!event.repeat) void requestClose(event.shiftKey);
+      return 'HANDLED';
+    }
+  };
+
   function handleShortcut(event: KeyboardEvent): ConsoleShortcutResult {
-    if (
-      !options.isOpen() ||
-      event.defaultPrevented ||
-      event.isComposing ||
-      event.keyCode === 229 ||
-      event.metaKey ||
-      event.altKey === event.ctrlKey ||
-      (event.code !== 'KeyW' && event.key.toLowerCase() !== 'w')
-    )
-      return 'IGNORED';
-    // The foreground file window owns close combinations, including while a
-    // confirmation is pending; they must never reach a Workspace underneath.
-    if (!event.repeat) void requestClose(event.shiftKey);
-    return 'HANDLED';
+    return invokeConsoleShortcut(closeBinding, event);
   }
 
   function isEscapeBlocked(event: KeyboardEvent): boolean {
@@ -80,11 +89,23 @@ export function createFilePreviewWindowInteractionService(
     );
   }
 
+  const escapeBinding: ConsoleShortcutBinding = {
+    command: 'filePreview.closeWindow',
+    priority: 105,
+    scope: 'file-preview',
+    modalOwner: () => options.root?.(),
+    keys: [{ key: 'Escape' }],
+    when: (event) => options.isOpen() && !isEscapeBlocked(event),
+    execute: (event) => {
+      if (!event.repeat) void requestClose(true);
+      return 'HANDLED';
+    }
+  };
+
   function handleEscape(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !options.isOpen() || isEscapeBlocked(event)) return;
+    if (invokeConsoleShortcut(escapeBinding, event) !== 'HANDLED') return;
     event.preventDefault();
     event.stopPropagation();
-    if (!event.repeat) void requestClose(true);
   }
 
   function bindFrame(frame: HTMLIFrameElement): void {
@@ -99,28 +120,20 @@ export function createFilePreviewWindowInteractionService(
     }
     const frameWindow = frameDocument?.defaultView;
     if (frameDocument === null || frameWindow === null || frameWindow === undefined) return;
-    const onKeydown = (event: KeyboardEvent): void => {
-      if (handleShortcut(event) !== 'HANDLED') return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
+    // Events from a same-origin preview must not fall through to its background Workspace.
+    const onKeydown = (event: KeyboardEvent): void =>
+      consoleKeyboardShortcutService.handle(event, 'file-preview');
     frameDocument.addEventListener('keydown', onKeydown, { capture: true });
-    frameWindow.addEventListener('keydown', handleEscape);
     frameBindings.set(frame, () => {
       frameDocument.removeEventListener('keydown', onKeydown, { capture: true });
-      frameWindow.removeEventListener('keydown', handleEscape);
     });
   }
 
   function mount(): void {
     if (mounted) return;
     mounted = true;
-    unregisterShortcut = consoleKeyboardShortcutService.register({
-      priority: 110,
-      handle: handleShortcut
-    });
-    // Escape runs after the focused editor, find panel and context menu.
-    window.addEventListener('keydown', handleEscape);
+    unregisterShortcut = consoleKeyboardShortcutService.register(closeBinding);
+    unregisterEscape = consoleKeyboardShortcutService.register(escapeBinding);
     history.start();
   }
 
@@ -129,7 +142,8 @@ export function createFilePreviewWindowInteractionService(
     mounted = false;
     unregisterShortcut?.();
     unregisterShortcut = undefined;
-    window.removeEventListener('keydown', handleEscape);
+    unregisterEscape?.();
+    unregisterEscape = undefined;
     for (const unbind of frameBindings.values()) unbind();
     frameBindings.clear();
     history.dispose();

@@ -18,6 +18,7 @@ export function replaceSessionIdentity(
   const wasSelected = options.selectedSessionId.value === previousId;
   const selectionRevision = options.currentSelectionRevision();
   options.mergeSessions([value]);
+  if (previousId !== value.id) options.transferSubmission(previousId, value.id);
   if (
     previousId !== value.id &&
     current !== undefined &&
@@ -34,7 +35,6 @@ export function replaceSessionIdentity(
       options.selectedSessionId.value === value.id) &&
     options.currentSelectionRevision() === selectionRevision
   ) {
-    options.transferSubmission(previousId, value.id);
     if (
       options.selectedSessionId.value === previousId &&
       options.currentSelectionRevision() === selectionRevision

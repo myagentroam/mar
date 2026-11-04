@@ -547,10 +547,8 @@ it.each(['zh-CN', 'en-US'] as const)(
     expect(html).not.toContain('data-group-type="tool_group"');
     expect(html).toContain(locale === 'zh-CN' ? '网页搜索' : 'Web search');
     expect(html).toContain(locale === 'zh-CN' ? '已等待 3 分钟 12 秒' : 'Waited 3 min 12 sec');
-    expect(html).toContain('href="https://example.com/page"');
-    expect(html).toContain('rel="noopener noreferrer"');
-    expect(html).toContain('example.com');
-    expect(html).toContain('&lt;plain summary&gt;');
+    expect(html).not.toContain('href="https://example.com/page"');
+    expect(html).not.toContain('&lt;plain summary&gt;');
     expect(html).not.toContain('<plain summary>');
     expect(html).not.toMatch(/<details[^>]*class="conversation-tool-presentation"[^>]*open/);
   }
@@ -898,7 +896,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain('private handoff summary');
   });
 
-  it('renders a draft header with the selected runner and every available mobile capability', async () => {
+  it('renders a draft header with the selected runner and one shared mobile Aside entry', async () => {
     const draft: Session = {
       id: 'draft:session-1',
       workspaceId: 'workspace-1',
@@ -918,8 +916,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('data-runner="mar-agent"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.newSession'));
     expect(html).toContain(i18n.global.t('generated.conversationHeader.sessions'));
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.files'));
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.terminal'));
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.more'));
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
+    expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openFiles'));
+    expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openTerminal'));
     expect(html).not.toContain('must not render for draft');
     expect(html).not.toContain('conversation-session-id');
   });
@@ -952,7 +952,68 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain(i18n.global.t('generated.conversationHeader.sessions'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.files'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
+    expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openAside'));
   });
+
+  it.each([
+    { filesReady: true, terminalReady: false },
+    { filesReady: false, terminalReady: true }
+  ])('keeps the shared mobile entry with either tool capability (%j)', async (capabilities) => {
+    const html = await render(ConversationHeader, {
+      session: undefined,
+      runner: 'mar-agent',
+      ...capabilities,
+      contentSearchReady: false,
+      runnerIcon: () => '/icon.svg',
+      sessionTitle: () => 'Session'
+    });
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
+    expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openFiles'));
+    expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openTerminal'));
+  });
+
+  it('keeps the mobile entry for existing Aside content without file or terminal capability', async () => {
+    const html = await render(ConversationHeader, {
+      session: undefined,
+      runner: 'mar-agent',
+      filesReady: false,
+      terminalReady: false,
+      asideReady: true,
+      contentSearchReady: false,
+      runnerIcon: () => '/icon.svg',
+      sessionTitle: () => 'Session'
+    });
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.more'));
+  });
+
+  it.each(['ready', 'failed'] as const)(
+    'keeps the tree icon accessible without a tooltip (%s)',
+    async (status) => {
+      const tooltipValues: unknown[] = [];
+      const html = await render(
+        WorkspaceSessionTreeButton,
+        {
+          sessionId: 'session-1',
+          open: false,
+          status,
+          summary: {
+            anchorSessionId: 'session-1',
+            descendantCount: 2,
+            activeCount: 1,
+            runningCount: 1,
+            sleepingCount: 0,
+            hasActiveDescendants: true
+          }
+        },
+        undefined,
+        tooltipValues
+      );
+      expect(tooltipValues).toEqual([]);
+      expect(html).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
+      expect(html).toContain('aria-description=');
+    }
+  );
 
   it('offers the session tree shortcut for root and child sessions, but not drafts', async () => {
     const session: Session = {
