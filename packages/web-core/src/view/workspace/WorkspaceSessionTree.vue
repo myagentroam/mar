@@ -6,6 +6,7 @@ import type {
   NavigationSnapshot
 } from '../../service/session-navigation-projection.js';
 import MarIcon from '../common/MarIcon.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import {
   formatRelativeSessionActivity,
   isKnownSessionActivityAt
@@ -47,20 +48,6 @@ const rows = computed(() => {
     const siblings = children.get(parent) ?? [];
     siblings.push(node);
     children.set(parent, siblings);
-  }
-  function hasActiveDescendant(node: TreeNode): boolean {
-    return (children.get(node.id) ?? []).some(
-      (child) => child.status !== 'IDLE' || hasActiveDescendant(child)
-    );
-  }
-  const priority: Record<string, number> = { RUNNING: 0, SLEEPING: 1, IDLE: 2 };
-  for (const siblings of children.values()) {
-    siblings.sort(
-      (a, b) =>
-        Number(b.status !== 'IDLE' || hasActiveDescendant(b)) -
-          Number(a.status !== 'IDLE' || hasActiveDescendant(a)) ||
-        (priority[a.status] ?? 2) - (priority[b.status] ?? 2)
-    );
   }
   const flattened: Array<{
     node: TreeNode;
@@ -107,11 +94,15 @@ function openContext(event: MouseEvent): void {
 </script>
 
 <template>
-  <div
-    v-loading="tree === undefined && status !== 'failed'"
-    class="session-tree"
-    :aria-busy="tree === undefined && status !== 'failed'"
-  >
+  <div class="session-tree" :aria-busy="tree === undefined && status !== 'failed'">
+    <div
+      v-if="tree === undefined && status !== 'failed'"
+      class="session-tree-loading"
+      role="status"
+      :aria-label="translate('common.loading')"
+    >
+      <BusyIndicator class="read-loading-indicator" />
+    </div>
     <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
       {{ translate('sessionGroups.treeUnavailable') }}
       <el-button link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</el-button>
@@ -282,6 +273,13 @@ function openContext(event: MouseEvent): void {
 </template>
 
 <style scoped>
+.session-tree-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 5rem;
+}
+
 .session-tree-parent {
   display: flex;
   align-items: center;

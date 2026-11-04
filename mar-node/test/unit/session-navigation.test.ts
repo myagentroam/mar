@@ -4,6 +4,7 @@ import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
 
 function fixture() {
   const database = new NodeDatabase(':memory:', 'session-navigation');
@@ -12,11 +13,18 @@ function fixture() {
     kind: 'DIRECTORY',
     gitSummary: null
   });
+  let now = 1000;
   const runtime = new NodeRuntimeState(
     () => 'node',
-    (id) => database.getWorkspace(id)
+    (id) => database.getWorkspace(id),
+    () => now
   );
-  const runners = {} as RunnerRegistry;
+  const runners = {
+    require: () => ({ managedAliasId: () => undefined })
+  } as unknown as RunnerRegistry;
+  const native: NodeAgentSession[] = [];
+  const cachedNative = vi.fn(() => native);
+  const present = vi.fn((session: NodeAgentSession) => session);
   const discovery = vi.fn(async () => []);
   const history = vi.fn(async () => ({ turns: [], nextCursor: null }));
   const catalog = new SessionCatalogService({
@@ -26,11 +34,11 @@ function fixture() {
     runners,
     projection: new NativeSessionProjectionService({ runtime, runners } as never),
     runnerAvailable: () => true,
-    cachedNative: () => [],
+    cachedNative,
     cachedWorkspace: discovery,
     discoverWorkspace: discovery,
     discoveryPending: () => false,
-    present: (session) => session,
+    present,
     nativeIds: () => new Set(),
     forget: () => undefined,
     refreshActivity: async () => undefined,
@@ -94,6 +102,12 @@ function fixture() {
     database,
     workspace,
     runtime,
+    native,
+    present,
+    cachedNative,
+    setTime: (time: number) => {
+      now = time;
+    },
     catalog,
     discovery,
     history,
@@ -104,6 +118,183 @@ function fixture() {
 }
 
 describe('Session Navigation bounded tree', () => {
+  it('selects active descendants first and newest idle descendants before the cap using a request-local lookup', () => {
+    const f = fixture();
+    try {
+      for (let index = 0; index < 185; index++) {
+        const id = `idle-${String(index).padStart(3, '0')}`;
+        f.register(id, 'root');
+        f.runtime.createAgentSession({
+          workspaceId: f.workspace.id,
+          cwd: f.workspace.path,
+          runner: 'codex',
+          externalSessionId: id,
+          lastActivityAt: index + 100
+        });
+      }
+      f.register('z-running', 'root');
+      f.setTime(10);
+      f.activate('z-running');
+      f.register('z-sleeping', 'root');
+      f.setTime(20);
+      f.activate('z-sleeping', true);
+      const lookup = vi.spyOn(f.runtime, 'getAgentSession');
+      const indexes = vi.spyOn(f.runtime, 'createSessionLookup');
+      const tails = vi.spyOn(f.runtime, 'conversationTail');
+      const prepare = vi.spyOn(f.database.raw, 'prepare');
+      const snapshot = f.navigation(5);
+      expect(snapshot.tree?.nodes.map((node) => node.id)).toEqual([
+        'z-sleeping',
+        'z-running',
+        'idle-184',
+        'idle-183',
+        'idle-182'
+      ]);
+      expect(snapshot.tree?.nodes.map((node) => node.lastActivityAt)).toEqual([
+        20, 10, 284, 283, 282
+      ]);
+      expect(snapshot.summaries[0]).toMatchObject({ descendantCount: 187, activeCount: 2 });
+      expect(snapshot.tree?.truncated).toBe(true);
+      expect(f.present).toHaveBeenCalledTimes(5);
+      expect(lookup).not.toHaveBeenCalled();
+      expect(indexes).toHaveBeenCalledTimes(1);
+      expect(tails).toHaveBeenCalledTimes(2);
+      expect(prepare.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(f.discovery).not.toHaveBeenCalled();
+      expect(f.history).not.toHaveBeenCalled();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('retains ancestry when a recent idle grandchild is selected ahead of older siblings', () => {
+    const f = fixture();
+    try {
+      f.register('idle-parent', 'root');
+      f.register('recent-grandchild', 'idle-parent');
+      f.runtime.createAgentSession({
+        workspaceId: f.workspace.id,
+        cwd: f.workspace.path,
+        runner: 'codex',
+        externalSessionId: 'recent-grandchild',
+        lastActivityAt: 5000
+      });
+      f.register('other-idle', 'root');
+      f.runtime.createAgentSession({
+        workspaceId: f.workspace.id,
+        cwd: f.workspace.path,
+        runner: 'codex',
+        externalSessionId: 'other-idle',
+        lastActivityAt: 3000
+      });
+      f.register('active-parent', 'root');
+      f.register('active-grandchild', 'active-parent');
+      f.activate('active-grandchild');
+      const snapshot = f.navigation(4);
+      expect(snapshot.tree?.nodes.map((node) => node.id)).toEqual([
+        'active-grandchild',
+        'active-parent',
+        'recent-grandchild',
+        'idle-parent'
+      ]);
+      expect(snapshot.tree?.nodes).toHaveLength(4);
+      expect(snapshot.tree?.truncated).toBe(true);
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it.each([2, 100])(
+    'does not let an oversized active path displace a fitting active session at limit %i',
+    (limit) => {
+      const f = fixture();
+      try {
+        let parent = 'root';
+        for (let index = 0; index < limit; index++) {
+          const id = `ancestor-${String(index).padStart(3, '0')}`;
+          f.register(id, parent);
+          parent = id;
+        }
+        f.register('deep-running', parent);
+        f.setTime(2000);
+        f.activate('deep-running');
+        f.register('direct-running', 'root');
+        f.setTime(1000);
+        f.activate('direct-running');
+        const snapshot = f.navigation(limit);
+        expect(snapshot.tree?.nodes).toHaveLength(limit);
+        expect(snapshot.tree?.nodes).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 'direct-running', status: 'RUNNING' })
+          ])
+        );
+        expect(snapshot.tree?.nodes.some((node) => node.id === 'deep-running')).toBe(false);
+        expect(snapshot.tree?.truncated).toBe(true);
+        expect(snapshot.summaries[0]).toMatchObject({ activeCount: 2, descendantCount: limit + 2 });
+        const selected = new Set(['root', ...snapshot.tree!.nodes.map((node) => node.id)]);
+        expect(snapshot.tree!.nodes.every((node) => selected.has(node.parentSessionId!))).toBe(
+          true
+        );
+      } finally {
+        f.database.close();
+      }
+    }
+  );
+
+  it('uses cached native activity, puts unknown times last, and breaks equal-time ties by stable id', () => {
+    const f = fixture();
+    try {
+      for (const id of ['unknown-z', 'unknown-a', 'cached', 'equal-z', 'equal-a'])
+        f.register(id, 'root');
+      for (const id of ['equal-z', 'equal-a'])
+        f.runtime.createAgentSession({
+          workspaceId: f.workspace.id,
+          cwd: f.workspace.path,
+          runner: 'codex',
+          externalSessionId: id,
+          lastActivityAt: 100
+        });
+      const cached = f.runtime.createAgentSession({
+        workspaceId: f.workspace.id,
+        cwd: f.workspace.path,
+        runner: 'codex',
+        externalSessionId: 'cached',
+        lastActivityAt: 50
+      });
+      f.native.push({ ...cached, lastActivityAt: 200 });
+      expect(f.navigation().tree?.nodes.map((node) => [node.id, node.lastActivityAt])).toEqual([
+        ['cached', 200],
+        ['equal-a', 100],
+        ['equal-z', 100],
+        ['unknown-a', 0],
+        ['unknown-z', 0]
+      ]);
+      expect(f.navigation().tree?.truncated).toBe(false);
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('does not project native or live session details for summary-only watches', () => {
+    const f = fixture();
+    try {
+      f.register('child', 'root');
+      f.activate('child');
+      const snapshot = f.catalog.navigation({
+        workspaceId: f.workspace.id,
+        sessionIds: [],
+        summaryAnchors: ['root'],
+        limit: 100
+      });
+      expect(snapshot.summaries[0]).toMatchObject({ descendantCount: 1, activeCount: 1 });
+      expect(snapshot.tree).toBe(null);
+      expect(f.cachedNative).not.toHaveBeenCalled();
+      expect(f.present).not.toHaveBeenCalled();
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('selects running and sleeping descendants beyond the first 100 records before truncating', () => {
     const f = fixture();
     try {
@@ -163,10 +354,10 @@ describe('Session Navigation bounded tree', () => {
       const snapshot = f.navigation(3);
       expect(snapshot.tree?.nodes.map((node) => node.id)).toEqual([
         'a-running',
-        'z-branch',
-        'z-grandchild'
+        'z-grandchild',
+        'z-branch'
       ]);
-      expect(snapshot.tree?.nodes[1]?.status).toBe('IDLE');
+      expect(snapshot.tree?.nodes.find((node) => node.id === 'z-branch')?.status).toBe('IDLE');
       expect(snapshot.summaries[0]).toMatchObject({ descendantCount: 243, activeCount: 2 });
       expect(snapshot.tree?.truncated).toBe(true);
     } finally {
