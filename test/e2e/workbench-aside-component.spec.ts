@@ -64,6 +64,21 @@ for (const [language, theme, width] of [
       expect(geometry.activity.afterTitle).toBe(true);
       expect(geometry.activity.beforeClose).toBe(true);
       expect(geometry.activity.centerOffset).toBeLessThan(1);
+      const seams = await tabs.evaluate((element) => {
+        const items = Array.from(element.querySelectorAll<HTMLElement>('.tab-strip-item'));
+        return items.slice(1).flatMap((item, index) => {
+          const previous = items[index]!;
+          if (previous.nextElementSibling !== item) return [];
+          return [previous.getBoundingClientRect().right - item.getBoundingClientRect().left];
+        });
+      });
+      expect(seams.length).toBeGreaterThan(0);
+      for (const overlap of seams) expect(overlap).toBeCloseTo(width < 768 ? -4 : 1, 1);
+      const borders = await tabs.evaluate((element) => ({
+        strip: getComputedStyle(element).borderBottomWidth,
+        header: getComputedStyle(element.parentElement!).borderBottomWidth
+      }));
+      expect(borders).toEqual({ strip: '0px', header: '1px' });
       const colors = await tabs.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
@@ -102,6 +117,14 @@ for (const [language, theme, width] of [
       await expect(page.locator('.mar-tooltip:visible')).toContainText(await session.innerText());
       await page.locator('.workbench-aside').screenshot({
         path: test.info().outputPath(`aside-tabs-${language}-${theme}-${width}.png`)
+      });
+      await tabs.getByRole('tab', { name: 'Files', exact: true }).click();
+      await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      await page.locator('.workbench-aside').screenshot({
+        path: test.info().outputPath(`aside-tools-${language}-${theme}-${width}.png`)
       });
       await tabs.getByRole('button', { name: /^Close / }).click();
       await expect(session).toHaveCount(0);
@@ -160,9 +183,7 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
   }
 });
 
-test('Shared TabStrip skips disabled tabs and exposes close intent independently', async ({
-  page
-}) => {
+test('MarTab skips disabled tabs and exposes close intent independently', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
   try {
     await page.goto(`${fixture.url}workbench-aside.html`);

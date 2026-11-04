@@ -14,7 +14,7 @@
       import 'element-plus/dist/index.css';
       import '/packages/web-core/src/styles.css';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
-      import TabStrip from '/packages/web-core/src/view/common/TabStrip.vue';
+      import MarTab from '/packages/web-core/src/view/common/MarTab.vue';
       import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
       import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
@@ -129,7 +129,7 @@
               }
             ),
             h('div', { style: { width: '160px' } }, [
-              h(TabStrip, {
+              h(MarTab, {
                 items: genericItems,
                 idPrefix: 'generic-tabs',
                 activeId: genericActive.value,

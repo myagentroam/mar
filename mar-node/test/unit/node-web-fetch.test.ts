@@ -564,7 +564,7 @@ describe('Node web fetch service', () => {
     ).resolves.toMatchObject({ content: 'AFTER\\_CANCEL' });
   }, 20_000);
 
-  it('bounds browser concurrency and releases launch-failure slots', async () => {
+  it('queues excess browser reads and releases launch-failure slots', async () => {
     const releases: Array<() => void> = [];
     const launchBrowser = vi.fn(
       () =>
@@ -579,19 +579,57 @@ describe('Node web fetch service', () => {
         code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
       })
     );
-    await expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
-      code: 'MAR_AGENT_WEB_FETCH_BUSY'
-    });
-    expect(launchBrowser).toHaveBeenCalledTimes(1);
+    const queued = expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject(
+      {
+        code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
+      }
+    );
+    await vi.waitFor(() => expect(launchBrowser).toHaveBeenCalledTimes(1));
     releases.splice(0).forEach((release) => release());
     await Promise.all(first);
+    await vi.waitFor(() => expect(launchBrowser).toHaveBeenCalledTimes(2));
+    releases.splice(0).forEach((release) => release());
+    await queued;
     const third = expect(fetcher.fetch(input, new AbortController().signal)).rejects.toMatchObject({
       code: 'MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE'
     });
+    await vi.waitFor(() => expect(launchBrowser).toHaveBeenCalledTimes(3));
     releases.splice(0).forEach((release) => release());
     await third;
-    expect(launchBrowser).toHaveBeenCalledTimes(2);
+    expect(launchBrowser).toHaveBeenCalledTimes(3);
   });
+
+  it('completes six parallel reads by waiting for browser capacity', async () => {
+    const held: Array<() => void> = [];
+    let firstBatchReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      firstBatchReady = resolve;
+    });
+    const url = await target((request, response) => {
+      const reply = () => {
+        response.writeHead(200, { 'content-type': 'text/plain' });
+        response.end(`Fetched ${request.url}`);
+      };
+      if (held.length < 4) {
+        held.push(reply);
+        if (held.length === 4) firstBatchReady();
+      } else reply();
+    });
+    const fetcher = service();
+    const results = Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        fetcher.fetch({ url: `${url}/${index}`, mode: 'browser' }, new AbortController().signal)
+      )
+    );
+    await Promise.all([
+      ready.then(() => held.forEach((reply) => reply())),
+      expect(results).resolves.toEqual(
+        Array.from({ length: 6 }, (_, index) =>
+          expect.objectContaining({ content: `Fetched /${index}` })
+        )
+      )
+    ]);
+  }, 20_000);
 
   it('classifies deadline expiry separately from cancellation', async () => {
     const timeout = new AbortController();

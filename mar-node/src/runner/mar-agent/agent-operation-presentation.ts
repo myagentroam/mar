@@ -152,6 +152,8 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
         )
       : returnedTargets;
   const presentation: AgentOperationPresentation = { ...operation, targets };
+  const scope = action === 'list' ? text(value.scope, 32) : undefined;
+  if (scope) presentation.scope = scope;
   const messageReceipt = isPlainRecord(value.message) ? value.message : undefined;
   const messageResult = isPlainRecord(messageReceipt?.result) ? messageReceipt.result : undefined;
   const auditReceipt = isPlainRecord(messageResult?.auditReceipt)

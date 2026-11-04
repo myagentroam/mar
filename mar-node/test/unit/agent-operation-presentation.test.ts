@@ -22,6 +22,15 @@ function event(value: Record<string, unknown>): AgentEvent {
 }
 
 describe('public Agent operations', () => {
+  it.each(['tree', 'active'])('projects the effective LIST scope %s from the result', (scope) => {
+    const operation = agentOperationEvent('list', {}, { scope, sessions: [] });
+    expect(operation.eventData.agentOperation).toMatchObject({
+      action: 'LIST',
+      scope,
+      targets: []
+    });
+  });
+
   it.each([{ agentId: 'child' }, {}, { agentIds: ['child'] }, { agentIds: ['a', 'b'] }])(
     'only projects a wait mode for an explicit multi-target call: %j',
     (selection) => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue';
-import TabStrip from '../common/TabStrip.vue';
+import MarTab from '../common/MarTab.vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import MarIcon from '../common/MarIcon.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
@@ -120,13 +120,13 @@ function close(id: string | number): void {
       >
         <MarIcon name="chevron-left" />
       </button>
-      <TabStrip
+      <MarTab
         class="workbench-aside-tabs"
+        size="small"
         :items="entries"
         :id-prefix="tabPrefix"
         :active-id="activeId"
         :label="tabLabel"
-        tab-class="workbench-aside-tab"
         @activate="activate"
         @close="close"
       >
@@ -139,7 +139,7 @@ function close(id: string | number): void {
             ><i />
           </span>
         </template>
-      </TabStrip>
+      </MarTab>
     </header>
     <div class="workbench-aside-content">
       <div
@@ -214,13 +214,10 @@ function close(id: string | number): void {
 }
 .workbench-aside-header {
   --mar-tab-strip-active-bg: var(--mar-fill-selection);
-  --mar-tab-strip-item-height: 28px;
-  --mar-tab-strip-close-size: 24px;
   display: flex;
   flex: none;
   min-height: 32px;
   min-width: 0;
-  font-weight: 500;
   border-bottom: 1px solid var(--mar-border-strong);
   background: var(--mar-bg-subtle);
 }
@@ -233,15 +230,6 @@ function close(id: string | number): void {
   background: transparent;
   color: var(--mar-text-primary);
   cursor: pointer;
-}
-.workbench-aside-tabs {
-  height: auto;
-  padding-block: 3px 0;
-}
-.workbench-aside-header :deep(.workbench-aside-tab) {
-  gap: 0.35rem;
-  justify-content: center;
-  font-size: var(--mar-font-size-meta);
 }
 .workbench-aside-content {
   display: flex;

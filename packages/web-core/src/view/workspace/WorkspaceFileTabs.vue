@@ -2,7 +2,7 @@
 import MarIcon from '../common/MarIcon.vue';
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { fileKeys } from '../../service/console-shortcut-keys.js';
-import TabStrip from '../common/TabStrip.vue';
+import MarTab from '../common/MarTab.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
 import {
   consoleKeyboardShortcutService,
@@ -275,7 +275,7 @@ defineExpose({
       :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
     >
       <header class="workspace-file-tab-header">
-        <TabStrip
+        <MarTab
           class="workspace-file-tab-list"
           :id-prefix="tabPrefix"
           :items="

@@ -43,7 +43,8 @@ describe('Web tool details', () => {
       expect(toolPresentationTitle(payload)).toBe('');
       const html = await render(payload);
       expect(html).toContain('web-detail');
-      expect(html).toContain('Native public output');
+      if (kind === 'WEB_SEARCH') expect(html).not.toContain('Native public output');
+      else expect(html).toContain('Native public output');
       expect(html).not.toContain('copy-only input');
       expect(html).toContain(
         kind === 'WEB_SEARCH'
@@ -87,7 +88,7 @@ describe('Web tool details', () => {
   );
 
   it.each(['HEAD', 'SOURCE'] as const)(
-    'retains unrepresented output and %s truncation without parsing JSON',
+    'hides raw search output while retaining source links and %s truncation',
     async (truncation) => {
       const text = '{"sources":[{"url":"https://extra.test"}],"extra":"preserve me"}';
       const html = await render({
@@ -95,10 +96,11 @@ describe('Web tool details', () => {
         output: { blocks: [{ channel: 'TEXT', text }], truncation },
         toolPresentation: { kind: 'WEB_SEARCH', sources: [{ url: 'https://example.com' }] }
       });
-      expect(html).toContain('preserve me');
+      expect(html).not.toContain('preserve me');
+      expect(html).not.toContain('Output:');
+      expect(html).toContain('href="https://example.com/"');
       expect(html).not.toContain('href="https://extra.test');
       expect(html).toContain('[Truncated]');
-      expect(html.indexOf('[Truncated]') < html.indexOf('preserve me')).toBe(truncation === 'HEAD');
     }
   );
 
@@ -171,12 +173,31 @@ describe('Web tool details', () => {
     expect(html.match(/href="https:\/\/example.com\/"/gu)).toHaveLength(1);
   });
 
-  it('keeps output when a sources-only flag has no structured source array', async () => {
+  it('does not fall back to raw output when structured sources are absent', async () => {
     const html = await render({
       outputSummary: 'Only available public output',
       toolPresentation: { kind: 'WEB_SEARCH', sourcesOnly: true }
     });
-    expect(html).toContain('Only available public output');
+    expect(html).not.toContain('Only available public output');
+    expect(html).not.toContain('Output:');
+    expect(html).not.toContain('No results');
+  });
+
+  it('keeps structured search errors visible without displaying raw output', async () => {
+    const html = await render(
+      {
+        outputSummary: 'Raw provider response',
+        errorCode: 'SEARCH_FAILED',
+        errorMessage: 'Search provider unavailable',
+        toolPresentation: { kind: 'WEB_SEARCH', query: 'documentation' }
+      },
+      { status: 'FAILED' }
+    );
+    expect(html).toContain('documentation');
+    expect(html).toContain('SEARCH_FAILED');
+    expect(html).toContain('Search provider unavailable');
+    expect(html).not.toContain('Raw provider response');
+    expect(html).not.toContain('No results');
   });
 
   it('keeps failure and permission facts in specialized details and honors explicit empty output', async () => {

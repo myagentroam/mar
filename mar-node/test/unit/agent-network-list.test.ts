@@ -102,6 +102,7 @@ describe('native Agent Network list', () => {
     f.start(active);
     f.create('idle');
     expect(await f.terminalList()).toEqual({
+      scope: 'active',
       currentAgentId: null,
       sessions: [{ id: 'active', parentSessionId: null, title: 'active', status: 'RUNNING' }],
       truncated: false
@@ -140,6 +141,7 @@ describe('native Agent Network list', () => {
     const before = f.runtime.listAgentSessions().length;
     const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
     expect(await f.list(source)).toEqual({
+      scope: 'tree',
       currentAgentId: source.id,
       sessions: [root, parent, sibling, source, child]
         .sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.id.localeCompare(b.id))
@@ -175,6 +177,7 @@ describe('native Agent Network list', () => {
     const content = vi.spyOn(f.runtime, 'conversationTail');
     const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
     expect(await f.list(source, { query: 'Registered 063', limit: 1 })).toEqual({
+      scope: 'tree',
       currentAgentId: source.id,
       sessions: [
         {
@@ -244,6 +247,7 @@ describe('native Agent Network list', () => {
     const source = f.create('source', 'root');
     const discover = vi.spyOn(f.nativeSessionProjectionService, 'discover');
     expect(await f.list(source)).toEqual({
+      scope: 'tree',
       currentAgentId: source.id,
       sessions: expect.arrayContaining([
         { id: 'root', parentSessionId: null, title: 'root', status: 'IDLE' },
@@ -309,6 +313,7 @@ describe('native Agent Network list', () => {
     });
     f.start(foreign);
     expect(await f.list(source, { scope: 'active' })).toEqual({
+      scope: 'active',
       currentAgentId: source.id,
       sessions: expect.arrayContaining([
         {
@@ -327,6 +332,7 @@ describe('native Agent Network list', () => {
       truncated: false
     });
     expect(await f.list(source, { scope: 'active', query: 'queued' })).toEqual({
+      scope: 'active',
       currentAgentId: source.id,
       sessions: [],
       truncated: false
@@ -342,6 +348,7 @@ describe('native Agent Network list', () => {
     Object.assign(f.create('second', source.id, 'ＴＡＳＫ One'), { lastActivityAt: 100 });
     Object.assign(f.create('third', source.id, 'Task Two'), { lastActivityAt: 200 });
     expect(await f.list(source, { query: ' task ', limit: 1 })).toEqual({
+      scope: 'tree',
       currentAgentId: source.id,
       sessions: [
         {
@@ -354,6 +361,7 @@ describe('native Agent Network list', () => {
       truncated: true
     });
     expect(await f.list(source, { query: 'missing', limit: 1 })).toEqual({
+      scope: 'tree',
       currentAgentId: source.id,
       sessions: [],
       truncated: false
@@ -406,6 +414,7 @@ describe('native Agent Network list', () => {
       }
       const source = f.create('source', 'outside');
       expect(await f.list(source)).toEqual({
+        scope: 'tree',
         currentAgentId: source.id,
         sessions: [
           {

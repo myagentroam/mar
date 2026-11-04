@@ -2,9 +2,16 @@ import { AgentError, countModelTokens, type ToolExecutionResult } from '@myagent
 import { z } from 'zod';
 import type { NodeConfig } from '../config.js';
 import { readWebSearchError } from './web-search-error.js';
-import { WebFetchService } from './web-fetch-service.js';
+import { WebFetchError, WebFetchService } from './web-fetch-service.js';
 import { browserFetchResultSchema, type WebFetchRequest } from './web-fetch-contracts.js';
 import { WebSnapshots } from './web-snapshots.js';
+
+const WEB_FETCH_REQUEST_FAILURES = new Set([
+  'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED',
+  'MAR_AGENT_WEB_FETCH_TIMEOUT',
+  'MAR_AGENT_WEB_FETCH_UNSUPPORTED_CONTENT',
+  'MAR_AGENT_WEB_FETCH_EMPTY_CONTENT'
+]);
 
 /** Owns Node web reads and the authenticated Server search adapter. */
 export class WebToolService {
@@ -56,6 +63,19 @@ export class WebToolService {
         ...(allowUntrustedTls === undefined ? {} : { allowUntrustedTls })
       });
       combined.throwIfAborted();
+    } catch (error) {
+      if (
+        combined.aborted ||
+        !(error instanceof WebFetchError) ||
+        !WEB_FETCH_REQUEST_FAILURES.has(error.code)
+      )
+        throw error;
+      const data = {
+        error: error.code,
+        message: error.publicMessage,
+        ...(error.publicParameters ? { details: error.publicParameters } : {})
+      };
+      return { content: JSON.stringify(data), data, eventData: data };
     } finally {
       pending.delete(controller);
       if (pending.size === 0) this.#pending.delete(scope);

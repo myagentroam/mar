@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { displayConversationItem } from '../../src/util/conversation-domain.js';
-import { mergeConversationPayload } from '../../src/util/conversation-history.js';
+import {
+  conversationPayload,
+  mergeConversationPayload
+} from '../../src/util/conversation-history.js';
 import {
   conversationDisplayItems,
   conversationItemDetail,
@@ -10,6 +13,7 @@ import {
 } from '../../src/util/conversation-presentation.js';
 import {
   toolPresentationDetails,
+  readToolOutput,
   readFileDetail,
   toolPresentationReadRange,
   detailOnlyToolText,
@@ -277,9 +281,9 @@ describe('independent tool presentation', () => {
           sources: [{ url: 'https://example.com', title: 'Example' }]
         }
       })
-    ).toContain('Example https://example.com');
+    ).not.toContain('Example https://example.com');
   });
-  it('shows truncated search output while retaining structured source links', () => {
+  it('hides raw search output while retaining truncation and structured source links', () => {
     localePreferenceService().setLocale('en-US');
     const url = 'https://example.com/search';
     const value = {
@@ -300,9 +304,11 @@ describe('independent tool presentation', () => {
     };
 
     const detail = conversationItemDetail('tool_call', value);
-    expect(detail).toContain('Search results (truncated):');
+    expect(detail).not.toContain('Search results (truncated):');
+    expect(detail).not.toContain('Output:');
     expect(detail).toContain('[Truncated]');
     expect(toolPresentationSources(value)).toMatchObject([{ url, href: url, title: 'Example' }]);
+    expect(readToolOutput(value)?.blocks[0]?.text).toContain('Search results (truncated):');
   });
   it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
     'uses authoritative output across snapshots and terminal replacement for %s',
@@ -315,7 +321,8 @@ describe('independent tool presentation', () => {
       const label = kind === 'SUBAGENT' ? 'Result' : 'Output';
       const detail = (output?: { text: string; truncated: boolean }) =>
         conversationItemDetail('tool_call', { ...base, ...(output ? { output } : {}) });
-      expect(detail()).toContain(`${label}:\nOriginal output`);
+      if (kind === 'WEB_SEARCH') expect(detail()).not.toContain('Original output');
+      else expect(detail()).toContain(`${label}:\nOriginal output`);
       let current = mergeConversationPayload(
         base,
         { output: { text: '  live\n', truncated: false } },
@@ -327,7 +334,11 @@ describe('independent tool presentation', () => {
         'output'
       );
       const live = conversationItemDetail('tool_call', current);
-      expect(live).toContain(`${label}:\n  live\n\nnext\n`);
+      expect(readToolOutput(conversationPayload(current)!)?.blocks[0]?.text).toBe(
+        '  live\n\nnext\n'
+      );
+      if (kind === 'WEB_SEARCH') expect(live).not.toContain('live');
+      else expect(live).toContain(`${label}:\n  live\n\nnext\n`);
       expect(live).not.toContain('Original output');
       expect(live).not.toContain('Truncated');
       current = mergeConversationPayload(
@@ -336,7 +347,11 @@ describe('independent tool presentation', () => {
         undefined
       );
       const terminal = conversationItemDetail('tool_call', current);
-      expect(terminal).toContain(`${label}:\n  final tail\n\n[Truncated]`);
+      expect(readToolOutput(conversationPayload(current)!)?.blocks[0]?.text).toBe('  final tail\n');
+      if (kind === 'WEB_SEARCH') {
+        expect(terminal).not.toContain('final tail');
+        expect(terminal).toContain('[Truncated]');
+      } else expect(terminal).toContain(`${label}:\n  final tail\n\n[Truncated]`);
       expect(terminal).not.toContain('live');
       expect(terminal).not.toContain('Original output');
       const empty = detail({ text: '', truncated: false });
@@ -361,7 +376,9 @@ describe('independent tool presentation', () => {
           const original = Object.freeze({ ...payload({ kind }), outputSummary: output });
           const detail = toolPresentationDetails({ ...original, truncated: true });
           expect(detail).toBe(toolPresentationDetails(original));
-          expect(detail).toContain(output);
+          if (kind === 'WEB_SEARCH') expect(detail).not.toContain(output);
+          else expect(detail).toContain(output);
+          expect(readToolOutput(original)?.blocks[0]?.text).toBe(output);
         }
       }
     }

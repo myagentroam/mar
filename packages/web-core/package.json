@@ -20,6 +20,7 @@
     "./theme": "./src/service/theme-preference-service.ts",
     "./styles.css": "./src/styles.css",
     "./MarIcon.vue": "./src/view/common/MarIcon.vue",
+    "./MarTab.vue": "./src/view/common/MarTab.vue",
     "./icons": "./src/util/mar-icons.ts",
     "./auth": "./src/service/admin-auth-service.ts",
     "./session-state": "./src/service/admin-session-state-service.ts",

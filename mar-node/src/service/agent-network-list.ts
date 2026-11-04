@@ -118,6 +118,7 @@ export async function listAgentNetworkSessions(
     );
   const limit = input.limit ?? 10;
   return {
+    scope,
     currentAgentId: source?.id ?? null,
     sessions: matches
       .slice(0, limit)
