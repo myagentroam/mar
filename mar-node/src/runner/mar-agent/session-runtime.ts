@@ -27,10 +27,10 @@ import {
 import { canonicalJson } from '../../util/canonical-json.js';
 import {
   compactRuntimeConfigurations,
-  marAgentCompactExtensionSource,
   updateMarAgentCompactState,
   type MarAgentCompactState
 } from './compact-extensions.js';
+import { marAgentRuntimeExtensionSource } from './runtime-extensions.js';
 import { MarAgentConversationNormalizer } from './conversation-normalizer.js';
 import { type MarAgentMcpClientCache, type MarAgentMcpClientLease } from './mcp-client-pool.js';
 import {
@@ -195,7 +195,7 @@ export async function createSessionRuntime(
       models,
       input.models.map((model) => model.id)
     );
-    const compactSource = marAgentCompactExtensionSource(compactState);
+    const runtimeSource = marAgentRuntimeExtensionSource(compactState);
     const networkProvider = networkContext;
     agent = await dependencies.createAgent({
       mode: 'node',
@@ -206,10 +206,10 @@ export async function createSessionRuntime(
       defaultModelId: input.model.id,
       extensions:
         networkProvider === undefined
-          ? compactSource
+          ? runtimeSource
           : {
               async resolve(request) {
-                const snapshot = await compactSource.resolve(request);
+                const snapshot = await runtimeSource.resolve(request);
                 return {
                   ...snapshot,
                   extensions: [

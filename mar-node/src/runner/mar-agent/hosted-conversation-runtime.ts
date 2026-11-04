@@ -53,10 +53,10 @@ import { createWebToolsExtensions } from './web-tools-extensions.js';
 import { combineExecutionExtensions } from './execution-extensions.js';
 import {
   compactRuntimeConfigurations,
-  marAgentCompactExtensionSource,
   updateMarAgentCompactState,
   type MarAgentCompactState
 } from './compact-extensions.js';
+import { marAgentRuntimeExtensionSource } from './runtime-extensions.js';
 import { webSessionScope, type WebFetchHandler } from '../../service/web-fetch-contracts.js';
 
 export interface HostedLocalAgentHostInput {
@@ -571,7 +571,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         models: sdkModelConfigurations(
           models.filter((model) => input.models.some((candidate) => candidate.id === model.id))
         ),
-        extensions: marAgentCompactExtensionSource(compactState),
+        extensions: marAgentRuntimeExtensionSource(compactState),
         defaultModelId: 'defaultModelId' in input ? input.defaultModelId : input.modelId,
         workspaceMapping: {
           logicalPath: '/workspace',
