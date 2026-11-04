@@ -13,7 +13,8 @@ describe('shared web browser lifecycle', () => {
       isConnected: () => true,
       close: vi.fn(async () => undefined)
     } as unknown as Browser;
-    const service = new WebFetchService({ launchBrowser: vi.fn(() => launch) as never });
+    const launchBrowser = vi.fn(() => launch);
+    const service = new WebFetchService({ launchBrowser });
     const controller = new AbortController();
     const request = service.fetch(
       { url: 'https://example.test/', mode: 'browser' },
@@ -22,6 +23,7 @@ describe('shared web browser lifecycle', () => {
     const failure = expect(request).rejects.toMatchObject({
       code: 'MAR_AGENT_WEB_FETCH_CANCELLED'
     });
+    await vi.waitFor(() => expect(launchBrowser).toHaveBeenCalledOnce());
     controller.abort();
     await failure;
     let closed = false;
@@ -157,8 +159,9 @@ describe('shared web browser lifecycle', () => {
       });
       await vi.waitFor(() => expect(firstBrowser.newContext).toHaveBeenCalledOnce());
       await vi.advanceTimersByTimeAsync(60 * 60_000);
-      await expect(service.fetch(input, new AbortController().signal)).rejects.toMatchObject({
-        code: 'MAR_AGENT_WEB_FETCH_BUSY'
+      const queued = service.fetch(input, new AbortController().signal);
+      const queuedFailure = expect(queued).rejects.toMatchObject({
+        code: 'MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED'
       });
       expect(firstBrowser.close).not.toHaveBeenCalled();
       finishContext();
@@ -170,9 +173,10 @@ describe('shared web browser lifecycle', () => {
       const results = Promise.all(requests.map((request) => expect(request).rejects.toThrow()));
       expect(launchBrowser).toHaveBeenCalledTimes(1);
       finishClose();
+      await queuedFailure;
       await results;
       expect(launchBrowser).toHaveBeenCalledTimes(2);
-      expect(nextBrowser.newContext).toHaveBeenCalledTimes(4);
+      expect(nextBrowser.newContext).toHaveBeenCalledTimes(5);
     } finally {
       finishContext();
       finishClose();

@@ -21,15 +21,24 @@ afterEach(async () => {
 });
 
 describe('Node web tools model projection', () => {
-  it.each([false, true])(
-    'projects bounded page refs and continuation in codeMode=%s',
-    async (codeMode) => {
+  it.each(
+    [false, true].flatMap((codeMode) =>
+      [false, true].map((partialFailure) => ({ codeMode, partialFailure }))
+    )
+  )(
+    'projects bounded reads without sibling cancellation in codeMode=$codeMode, partialFailure=$partialFailure',
+    async ({ codeMode, partialFailure }) => {
       const root = await mkdtemp(join(tmpdir(), 'mar-web-model-projection-'));
       roots.push(root);
       const home = join(root, 'home');
       const workspace = join(root, 'workspace');
       await Promise.all([mkdir(home), mkdir(workspace)]);
       const server = createServer((_request, response) => {
+        if (_request.url === '/failure') {
+          response.writeHead(401, { 'content-type': 'text/html' });
+          response.end('PRIVATE_FAILURE_BODY');
+          return;
+        }
         response.writeHead(200, { 'content-type': 'text/html' });
         response.end(`<p>${'PAGE_START '.repeat(1500)}EXCLUSIVE_TAIL_MARKER</p>`);
       });
@@ -67,21 +76,27 @@ describe('Node web tools model projection', () => {
           async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
             round++;
             if (round === 1) {
-              const input = { action: 'open', url, maxTokens: 512 };
-              yield codeMode
-                ? {
+              const urls = partialFailure
+                ? [`${url}failure`, ...Array.from({ length: 5 }, (_, i) => `${url}?page=${i}`)]
+                : [url];
+              const inputs = urls.map((url) => ({ action: 'open', url, maxTokens: 512 }));
+              if (codeMode) {
+                yield {
+                  type: 'client_tool.call',
+                  callId: 'cell',
+                  name: 'code_exec',
+                  inputMode: 'freeform',
+                  arguments: `const results = await Promise.all(${JSON.stringify(inputs)}.map(input => tools.web_fetch(input))); for (const result of results) observe.result(result);`
+                };
+              } else {
+                for (const [index, input] of inputs.entries())
+                  yield {
                     type: 'client_tool.call',
-                    callId: 'cell',
-                    name: 'code_exec',
-                    inputMode: 'freeform',
-                    arguments: `observe.result(await tools.web_fetch(${JSON.stringify(input)}));`
-                  }
-                : {
-                    type: 'client_tool.call',
-                    callId: 'direct',
+                    callId: `direct-${index}`,
                     name: 'web_fetch',
                     arguments: input
                   };
+              }
               yield { type: 'completed', reason: 'tool_use' };
             } else {
               observed.push(
@@ -117,7 +132,16 @@ describe('Node web tools model projection', () => {
         expect(projection).toContain('Ref:');
         expect(projection).toContain('nextCursor:');
         expect(projection).not.toContain('EXCLUSIVE_TAIL_MARKER');
-        expect(countModelTokens(projection)).toBeLessThan(1200);
+        expect(projection).not.toContain('PRIVATE_FAILURE_BODY');
+        expect(projection.match(/Ref:/gu)).toHaveLength(partialFailure ? 5 : 1);
+        if (partialFailure) {
+          expect(projection).toContain('MAR_AGENT_WEB_FETCH_UPSTREAM_FAILED');
+          expect(projection).toContain('upstreamStatus');
+          expect(projection).toContain('401');
+          expect(projection).not.toContain('MAR_AGENT_WEB_FETCH_CANCELLED');
+          expect(projection).not.toContain('MAR_AGENT_CODE_INCOMPLETE');
+        }
+        expect(countModelTokens(projection)).toBeLessThan(partialFailure ? 4000 : 1200);
       } finally {
         await agent.dispose();
         await service.close();

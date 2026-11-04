@@ -40,6 +40,7 @@ export class WebFetchService {
   readonly #allowUntrustedTls: boolean;
   readonly #launchBrowser: typeof chromium.launch;
   readonly #pendingContexts = new Set<Promise<unknown>>();
+  readonly #waiting = new Set<() => void>();
   #browser: Browser | undefined;
   #browserStartedAt: number | undefined;
   #launching: Promise<Browser> | undefined;
@@ -138,6 +139,7 @@ export class WebFetchService {
       .catch(() => undefined)
       .finally(() => {
         if (this.#browserClosing === closing) this.#browserClosing = undefined;
+        this.#drainQueue();
       });
     this.#browserClosing = closing;
   }
@@ -184,29 +186,46 @@ export class WebFetchService {
     return this.#fetchBrowser(input, signal, allowUntrustedTls);
   }
 
+  #acquireBrowserSlot(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const grant = () => {
+        signal.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const cancel = () => {
+        this.#waiting.delete(grant);
+        reject(signal.reason);
+      };
+      this.#waiting.add(grant);
+      signal.addEventListener('abort', cancel, { once: true });
+      this.#drainQueue();
+    });
+  }
+
+  #drainQueue(): void {
+    if (this.#shutdown.signal.aborted) return;
+    if (this.#expired()) {
+      if (this.#browserRequests > 0) return;
+      if (this.#idle) clearTimeout(this.#idle);
+      this.#idle = undefined;
+      this.#retireBrowser();
+    }
+    if (this.#browserClosing) return;
+    for (const grant of this.#waiting) {
+      if (this.#browserRequests >= MAX_BROWSER_REQUESTS) break;
+      this.#waiting.delete(grant);
+      this.#browserRequests++;
+      grant();
+    }
+  }
+
   async #fetchBrowser(
     input: BrowserFetchRequest,
     signal: AbortSignal,
     allowUntrustedTls: boolean
   ): Promise<BrowserFetchResult> {
-    if (this.#expired()) {
-      if (this.#browserRequests > 0)
-        throw new WebFetchError(
-          'MAR_AGENT_WEB_FETCH_BUSY',
-          429,
-          'Node web fetch browser capacity is exhausted.'
-        );
-      if (this.#idle) clearTimeout(this.#idle);
-      this.#idle = undefined;
-      this.#retireBrowser();
-    }
-    if (this.#browserRequests >= MAX_BROWSER_REQUESTS)
-      throw new WebFetchError(
-        'MAR_AGENT_WEB_FETCH_BUSY',
-        429,
-        'Node web fetch browser capacity is exhausted.'
-      );
-    this.#browserRequests++;
+    await this.#acquireBrowserSlot(signal);
     if (this.#idle) clearTimeout(this.#idle);
     this.#idle = undefined;
     let browser: Browser | undefined;
@@ -217,6 +236,7 @@ export class WebFetchService {
     };
     signal.addEventListener('abort', cancel, { once: true });
     try {
+      signal.throwIfAborted();
       try {
         browser = await abortable(this.#getBrowser(), signal);
       } catch {
@@ -513,6 +533,7 @@ export class WebFetchService {
       signal.removeEventListener('abort', cancel);
       await context?.close().catch(() => undefined);
       this.#browserRequests--;
+      this.#drainQueue();
       this.#scheduleIdle();
     }
   }
