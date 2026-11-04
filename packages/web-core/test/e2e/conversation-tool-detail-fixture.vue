@@ -10,6 +10,7 @@ const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
 const sessionVersion = ref(0);
 const readAssociation = new URL(location.href).searchParams.has('read-association');
+const readPath = new URL(location.href).searchParams.get('read-path') ?? '/fixture/example.ts';
 const readTruncation = new URL(location.href).searchParams.get('read-truncation');
 const dropReadAssociation = ref(false);
 const readText = '  first file\r\nsecond line\r\n';
@@ -89,7 +90,7 @@ const detailSamples: ConversationItem[] = [
     status: 'COMPLETED',
     payload: {
       toolName: 'read',
-      inputSummary: '/fixture/example.ts',
+      inputSummary: readPath,
       outputSummary: '1: export const result = true;',
       ...(readAssociation
         ? {
@@ -103,12 +104,12 @@ const detailSamples: ConversationItem[] = [
         : {}),
       toolPresentation: {
         kind: 'READ',
-        paths: ['/fixture/example.ts'],
+        paths: [readPath],
         ...(readAssociation
           ? {
               results: [
                 {
-                  path: '/fixture/example.ts',
+                  path: readPath,
                   startLine: 3,
                   endLine: 4,
                   contentRange: { channel: 'TEXT', start: 0, end: readText.length }
@@ -308,13 +309,13 @@ const turns = computed<ConversationTurn[]>(() => [
                       ? {
                           toolPresentation: {
                             kind: 'READ',
-                            paths: ['/fixture/example.ts'],
+                            paths: [readPath],
                             ...(dropReadAssociation.value
                               ? {}
                               : {
                                   results: [
                                     {
-                                      path: '/fixture/example.ts',
+                                      path: readPath,
                                       startLine: 3,
                                       endLine: 4,
                                       contentRange: {

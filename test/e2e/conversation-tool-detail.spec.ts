@@ -66,6 +66,44 @@ test('read file details show only the associated raw file text and real range', 
   await expect(detail).not.toContainText('1: export const result');
 });
 
+for (const width of [1280, 390]) {
+  test(`Read keeps the range visible beside a long path at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const path = `/fixture/${'long-directory/'.repeat(24)}README.md`;
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&read-path=${encodeURIComponent(path)}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    const heading = read.locator('.conversation-tool-detail > summary');
+    const range = heading.locator('.conversation-read-range');
+    await expect(range).toHaveText('· 3–4');
+    const geometry = await range.evaluate((element) => {
+      const range = element.getBoundingClientRect();
+      const preview = element.parentElement!.getBoundingClientRect();
+      return { left: range.left, right: range.right, start: preview.left, end: preview.right };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.start);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.end + 1);
+    const pathBox = heading.locator('.conversation-read-path');
+    await expect(pathBox).toHaveText(path);
+    expect((await pathBox.boundingBox())!.width).toBeGreaterThan(32);
+    expect(await pathBox.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true
+    );
+    const height = (await heading.boundingBox())!.height;
+    await heading.click();
+    await expect(read.locator('.conversation-detail-text')).toHaveText(
+      '  first file\r\nsecond line\r\n'
+    );
+    expect((await heading.boundingBox())!.height).toBe(height);
+    await heading.click();
+    await expect(read.locator('.conversation-detail-text')).toHaveCount(0);
+  });
+}
+
 for (const truncation of ['HEAD', 'SOURCE']) {
   test(`places the ${truncation} notice beside associated READ content`, async ({ page }) => {
     await page.goto(

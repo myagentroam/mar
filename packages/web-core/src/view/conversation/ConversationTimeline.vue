@@ -817,12 +817,12 @@ function stepDuration(item: ConversationItem): string | undefined {
             >
               <summary class="mar-disclosure-summary">
                 <MarIcon class="mar-disclosure-icon" name="chevron-right" />
-                <span class="conversation-tool-preview">
-                  {{
+                <span class="conversation-tool-preview conversation-read-preview">
+                  <span class="conversation-read-path">{{
                     entry.path ||
                     conversationItemText(entry.item.kind, entry.item.payload, entry.item.status) ||
                     conversationItemLabel(entry.item.kind, entry.item.payload)
-                  }}
+                  }}</span>
                   <span v-if="entry.range" class="conversation-read-range">
                     · {{ entry.range }}</span
                   >
@@ -2002,7 +2002,20 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
+.conversation-read-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.conversation-read-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .conversation-read-range {
+  flex: none;
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
