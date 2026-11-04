@@ -80,6 +80,7 @@ const inspectorFixture =
   contentSearchFixture ||
   new URL(location.href).searchParams.has('git-previews');
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
+const embeddedTerminal = new URL(location.href).searchParams.has('embedded-terminal');
 const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
 const workspaces: Workspace[] = [
   { id: 'plain', path: '/plain', kind: 'DIRECTORY' },
@@ -493,14 +494,15 @@ if (composerFixture) {
     </section>
     <section aria-label="Terminal fixture">
       <TerminalDock
+        :embedded="embeddedTerminal"
         node-id="node"
         workspace-id="workspace"
         csrf-token="fixture"
         :renew-csrf-token="async () => 'fixture'"
         :enabled="true"
         :active="true"
-        :visible="false"
-        :mobile-mode="false"
+        :visible="embeddedTerminal"
+        :mobile-mode="embeddedTerminal && mobile"
         :node-os-release="undefined"
         :capability="
           {

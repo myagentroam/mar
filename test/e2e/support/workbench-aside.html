@@ -19,11 +19,23 @@
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
       import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
 
-      themePreferenceService().setTheme(
-        new URLSearchParams(location.search).get('theme') === 'dark'
-          ? 'vscode-dark-2026'
-          : 'daylight'
-      );
+      const theme = new URLSearchParams(location.search).get('theme');
+      const themes = themePreferenceService();
+      if (theme === 'custom') {
+        const custom = themes.saveCustomTheme(
+          JSON.stringify({
+            version: 1,
+            name: 'Aside custom palette',
+            colors: {
+              '--mar-text-primary': '#f4eefc',
+              '--mar-text-secondary': '#b0a2c2',
+              '--mar-color-brand': '#ec79c2',
+              '--mar-fill-selection': '#43344f'
+            }
+          })
+        );
+        themes.setTheme(custom.id);
+      } else themes.setTheme(theme === 'dark' ? 'vscode-dark-2026' : 'daylight');
       const language = new URLSearchParams(location.search).get('lang');
       const toolLabels = {
         files: '文件',

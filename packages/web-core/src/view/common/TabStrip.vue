@@ -174,6 +174,7 @@ watch(
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
+  height: var(--mar-tab-strip-item-height, auto);
   max-width: min(15rem, 100%);
   box-sizing: border-box;
   align-items: center;
@@ -181,7 +182,7 @@ watch(
   border-bottom: 0;
   border-radius: var(--mar-radius-selection) var(--mar-radius-selection) 0 0;
   background: var(--mar-bg-subtle);
-  color: inherit;
+  color: var(--mar-text-secondary);
 }
 .tab-strip-separator {
   align-self: center;
@@ -216,7 +217,7 @@ watch(
   white-space: nowrap;
 }
 .tab-strip-item.is-active {
-  background: var(--mar-bg-page);
+  background: var(--mar-tab-strip-active-bg, var(--mar-bg-page));
   color: var(--mar-text-primary);
 }
 .tab-strip-item:not(.is-active):hover {
@@ -246,16 +247,16 @@ watch(
     padding: 2px 4px;
   }
   .tab-strip-item {
-    height: 36px;
-    min-height: 36px;
+    height: var(--mar-tab-strip-item-height, 36px);
+    min-height: var(--mar-tab-strip-item-height, 36px);
   }
   .tab-strip-tab > span {
     max-width: 120px;
   }
   .tab-strip-close {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
+    width: var(--mar-tab-strip-close-size, 36px);
+    min-width: var(--mar-tab-strip-close-size, 36px);
+    height: var(--mar-tab-strip-close-size, 36px);
   }
 }
 </style>

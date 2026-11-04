@@ -1,25 +1,32 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
-for (const [language, theme] of [
-  ['en', 'light'],
-  ['en', 'dark'],
-  ['zh', 'light'],
-  ['zh', 'dark']
-]) {
-  test(`Aside tabs keep compact type and bound long titles (${language}, ${theme})`, async ({
+for (const [language, theme, width] of [
+  ['en', 'light', 1280],
+  ['en', 'dark', 1280],
+  ['zh', 'light', 1280],
+  ['zh', 'dark', 1280],
+  ['en', 'custom', 1280],
+  ['en', 'light', 390],
+  ['en', 'dark', 390],
+  ['zh', 'light', 390],
+  ['zh', 'dark', 390],
+  ['en', 'custom', 390]
+] as const) {
+  test(`Aside tabs keep compact type and bound long titles (${language}, ${theme}, ${width}px)`, async ({
     page
   }) => {
     const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
     try {
+      await page.setViewportSize({ width, height: 900 });
       await page.goto(
-        `${fixture.url}workbench-aside.html?active-child&long-title=${language}&theme=${theme}`
+        `${fixture.url}workbench-aside.html?active-child&long-title=${language}&theme=${theme}${width < 768 ? '&mobile' : ''}`
       );
       const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
       const session = tabs.getByRole('tab', {
         name: language === 'zh' ? /需要保持可读/ : /A long readable/
       });
-      await expect(session).toHaveCSS('font-size', '12px');
+      await expect(session).toHaveCSS('font-size', width < 768 ? '11px' : '12px');
       await expect(session).toHaveCSS('font-weight', '500');
       const geometry = await session.evaluate((element) => {
         const item = element.closest('.tab-strip-item')!;
@@ -33,17 +40,52 @@ for (const [language, theme] of [
             strip.clientWidth
           ),
           truncated: label.scrollWidth > label.clientWidth,
-          closeFits: close.getBoundingClientRect().right <= strip.getBoundingClientRect().right + 1
+          closeFits: close.getBoundingClientRect().right <= strip.getBoundingClientRect().right + 1,
+          headerHeight: item.closest('header')!.getBoundingClientRect().height,
+          tabHeight: item.getBoundingClientRect().height,
+          activity: (() => {
+            const dot = item.querySelector('.workbench-aside-activity')!.getBoundingClientRect();
+            const title = label.getBoundingClientRect();
+            const button = element.getBoundingClientRect();
+            return {
+              afterTitle: dot.left >= title.right,
+              beforeClose: dot.right <= close.getBoundingClientRect().left,
+              centerOffset: Math.abs(dot.top + dot.height / 2 - button.top - button.height / 2)
+            };
+          })()
         };
       });
       expect(geometry.width).toBeLessThanOrEqual(geometry.limit);
       expect(geometry.truncated).toBe(true);
       expect(geometry.closeFits).toBe(true);
+      expect(geometry.headerHeight).toBeLessThanOrEqual(32);
+      expect(geometry.tabHeight).toBe(28);
+      expect(geometry.activity.afterTitle).toBe(true);
+      expect(geometry.activity.beforeClose).toBe(true);
+      expect(geometry.activity.centerOffset).toBeLessThan(1);
+      const colors = await tabs.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const resolve = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const result = {
+          primary: resolve('--mar-text-primary'),
+          secondary: resolve('--mar-text-secondary'),
+          selected: resolve('--mar-fill-selection')
+        };
+        probe.remove();
+        return result;
+      });
+      await expect(session).toHaveCSS('color', colors.primary);
+      await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
+      await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       await session.hover();
       await expect(page.locator('.mar-tooltip:visible')).toContainText(await session.innerText());
-      await page
-        .locator('.workbench-aside')
-        .screenshot({ path: test.info().outputPath(`aside-tabs-${language}-${theme}.png`) });
+      await page.locator('.workbench-aside').screenshot({
+        path: test.info().outputPath(`aside-tabs-${language}-${theme}-${width}.png`)
+      });
       await tabs.getByRole('button', { name: /^Close / }).click();
       await expect(session).toHaveCount(0);
     } finally {
