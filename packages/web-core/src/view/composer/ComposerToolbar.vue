@@ -34,6 +34,7 @@ const props = defineProps<{
   readonly accessDisabled: boolean;
   readonly fastEnabled: boolean;
   readonly contextUsage: { readonly percentage: number } | null | undefined;
+  readonly hideContextUsage?: boolean;
   readonly contextUsageLabel: string;
   readonly canCompactContext: boolean;
   readonly mobileViewport: boolean;
@@ -78,6 +79,7 @@ const contextHint = computed(() =>
     )
   ].join('\n')
 );
+const contextPercentage = computed(() => props.contextUsage?.percentage ?? 0);
 const modelSelect = ref<SelectInstance>();
 
 function openModelMenu(): boolean {
@@ -251,19 +253,19 @@ function selectFiles(event: Event): void {
     </div>
     <button
       v-tooltip="{ content: contextHint, placement: 'top', touch: !canCompactContext }"
-      v-if="contextUsage !== undefined && contextUsage !== null"
+      v-if="!hideContextUsage"
       class="composer-context-button utility-control"
       type="button"
       :aria-label="contextUsageLabel"
       :aria-description="contextHint"
       :aria-disabled="!canCompactContext"
       :style="{
-        '--context-usage': `${Math.min(100, Math.max(0, contextUsage.percentage))}%`
+        '--context-usage': `${Math.min(100, Math.max(0, contextPercentage))}%`
       }"
       @click="canCompactContext && emit('compact')"
     >
       <i aria-hidden="true" />
-      <span>{{ Math.round(contextUsage.percentage * 10) / 10 }}%</span>
+      <span>{{ Math.round(contextPercentage * 10) / 10 }}%</span>
     </button>
     <span
       v-if="!mobileViewport || submitting"

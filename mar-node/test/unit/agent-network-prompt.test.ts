@@ -12,6 +12,7 @@ import {
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
 import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { marAgentRuntimeExtensionSource } from '../../src/runner/mar-agent/runtime-extensions.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -23,7 +24,8 @@ async function fixture(
   codeMode = false,
   toolCall?: { name: string; input: unknown },
   additionalModels: readonly Partial<AgentModelConfiguration>[] = [],
-  receipt?: { result: unknown; resolved: readonly unknown[] }
+  receipt?: { result: unknown; resolved: readonly unknown[] },
+  networkEnabled = true
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mar-network-prompt-'));
   const configuration: AgentModelConfiguration = {
@@ -50,21 +52,31 @@ async function fixture(
     return receipt?.result ?? {};
   });
   let context!: SessionExtensionContext;
+  const runtimeSource = marAgentRuntimeExtensionSource({ revision: 0 });
   const agent = await createAgentWithAdapter(
     {
       mode: 'node',
       host: new LocalAgentHost({ mode: 'node', homeDirectory: directory, workspace: directory }),
       models: [configuration, ...additionalModels.map((model) => ({ ...configuration, ...model }))],
-      extensions: [
-        agentNetworkExtension(invoke, () => 'execution'),
-        {
-          id: 'capture',
-          apiVersion: '1.0',
-          attachSession(value) {
-            context = value;
-          }
+      extensions: {
+        async resolve(request) {
+          const snapshot = await runtimeSource.resolve(request);
+          return {
+            ...snapshot,
+            extensions: [
+              ...snapshot.extensions,
+              ...(networkEnabled ? [agentNetworkExtension(invoke, () => 'execution')] : []),
+              {
+                id: 'capture',
+                apiVersion: '1.0' as const,
+                attachSession(value: SessionExtensionContext) {
+                  context = value;
+                }
+              }
+            ]
+          };
         }
-      ]
+      }
     },
     () => ({
       configuration,
@@ -111,6 +123,32 @@ async function fixture(
   await events;
   return { agent, configuration, session, context, requests, invoke, failures, publicEvents };
 }
+
+it.each([false, true])(
+  'provides file preview guidance independently of Agent Network (%s)',
+  async (networkEnabled) => {
+    const test = await fixture(false, undefined, [], undefined, networkEnabled);
+    const guidance =
+      'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview.';
+    for (const mode of ['run', 'plan', 'compact'] as const) {
+      const composed = await test.context.prompts.composeDefault({ mode, tools: ['read'] });
+      expect(composed.sections.filter((section) => section.id === 'mar.node.file-links')).toEqual([
+        { id: 'mar.node.file-links', text: mode === 'compact' ? null : guidance }
+      ]);
+    }
+    expect(await test.session.run({ prompt: 'Continue' }).result()).toHaveProperty(
+      'status',
+      'completed'
+    );
+    for (const request of test.requests) {
+      const blocks = request.messages.filter(
+        (message) => message.contextualBlock?.id === 'mar.node.file-links'
+      );
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]?.content).toContain(guidance);
+    }
+  }
+);
 
 it('exposes a state-only Agent view schema to the model', async () => {
   const test = await fixture();

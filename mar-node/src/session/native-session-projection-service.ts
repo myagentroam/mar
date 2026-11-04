@@ -451,9 +451,9 @@ export class NativeSessionProjectionService {
   }
 
   projectionsForNative(
-    native: readonly NodeAgentSession[]
+    native: readonly NodeAgentSession[],
+    lookup: AgentSessionLookup = this.options.runtime.createSessionLookup()
   ): ReadonlyMap<NodeAgentSession, NodeAgentSession | undefined> {
-    const lookup = this.options.runtime.createSessionLookup();
     return new Map(
       native.map((session) => [session, this.resolveNativeProjection(session, lookup, false)])
     );

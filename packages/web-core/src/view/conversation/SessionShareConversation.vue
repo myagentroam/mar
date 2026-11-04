@@ -344,6 +344,7 @@ onBeforeUnmount(() => {
             :runner-label="selectedSession?.runner"
             hide-model-selection
             hide-access-selection
+            hide-context-usage
             :model-effort-selection="undefined"
             :model-effort-label="selectedSession?.modelId ?? ''"
             :selected-model="selectedSession?.modelId ?? ''"

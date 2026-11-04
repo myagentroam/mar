@@ -20,7 +20,7 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import WorkspaceSessionTreeButton from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
-import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
+import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
 import MarIcon from '../../src/view/common/MarIcon.vue';
@@ -117,6 +117,7 @@ it('preserves generic public text, truncation, empty snapshots and legacy agent 
   const generic = conversationItem('generic', 'tool_call', {
     toolName: 'custom',
     inputSummary: '  <input>\n  second\n',
+    inputSummaryKey: 'nodeMessages.invalidRequest',
     inputTruncated: true,
     outputSummary: 'stale output',
     output: { blocks: [{ channel: 'TEXT', text: '  <result>\n  end\n' }], truncation: 'HEAD' },
@@ -544,7 +545,7 @@ it.each(['en-US', 'zh-CN'] as const)(
           }
         });
         const html = await render(ConversationToolDetail, { item });
-        expect(html).toContain('Output:');
+        expect(html).toContain(locale === 'en-US' ? 'Output:' : '输出:');
         expect(html).toContain('retained output');
         expect(html).toContain('[Truncated]');
         expect(html.indexOf('[Truncated]') < html.indexOf('retained output')).toBe(before);
@@ -590,7 +591,7 @@ it.each([
   }
 );
 
-it('preserves newlines and whitespace in execution output after the English label', async () => {
+it('preserves newlines and whitespace in execution output after the localized label', async () => {
   localePreferenceService().setLocale('zh-CN');
   try {
     const item = conversationItem('output', 'command_execution', {
@@ -604,41 +605,38 @@ it('preserves newlines and whitespace in execution output after the English labe
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain('Code:');
+    expect(html).toContain('代码:');
     expect(html).toContain('run');
-    expect(html).toContain('Output:');
+    expect(html).toContain('输出:');
     expect(html).toContain('first\n  indented\n\nlast');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
 });
 
-it.each(['en-US', 'zh-CN'] as const)(
-  'keeps execution detail fields in English in %s',
-  async (locale) => {
-    localePreferenceService().setLocale(locale);
-    try {
-      const item = {
-        ...conversationItem('declined', 'command_execution', {
-          command: 'run',
-          cwd: null,
-          outputPreview: '',
-          exitCode: null,
-          truncated: false,
-          toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
-        }),
-        status: 'DECLINED' as const
-      };
-      const html = await render(ConversationToolDetail, { item });
-      expect(html).toContain('Command:');
-      expect(html).toContain('run');
-      expect(html).not.toContain('Status:');
-      expect(html).not.toContain('状态：');
-    } finally {
-      localePreferenceService().setLocale(originalLocale);
-    }
+it.each(['en-US', 'zh-CN'] as const)('localizes execution detail fields in %s', async (locale) => {
+  localePreferenceService().setLocale(locale);
+  try {
+    const item = {
+      ...conversationItem('declined', 'command_execution', {
+        command: 'run',
+        cwd: null,
+        outputPreview: '',
+        exitCode: null,
+        truncated: false,
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'SHELL' } }
+      }),
+      status: 'DECLINED' as const
+    };
+    const html = await render(ConversationToolDetail, { item });
+    expect(html).toContain(locale === 'en-US' ? 'Command:' : '命令:');
+    expect(html).toContain('run');
+    expect(html).not.toContain('Status:');
+    expect(html).not.toContain('状态：');
+  } finally {
+    localePreferenceService().setLocale(originalLocale);
   }
-);
+});
 
 // The custom host renderer has no CSS engine; browser tests cover transition timing.
 vi.mock('vue', async (importOriginal) => {

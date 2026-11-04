@@ -1,17 +1,17 @@
 ---
 title: Context, Compact, and Plan
-lastUpdated: 2026-11-02
+lastUpdated: 2026-11-04
 ---
 
 # Context, Compact, and Plan
 
-When an Agent reports context usage, Composer shows used and maximum tokens. Use `/compact` only when offered and no run is active; compaction is performed by the Agent and becomes part of its session history.
+The context indicator in Workspace sessions stays visible. Before valid usage is available, it shows a `0%` placeholder with `0 / maximum` tokens in the details. If capacity is also unknown, the details show `0 / —`; the browser does not guess model capacity. This placeholder is not a measured zero. The indicator updates when the Agent reports context usage. Use `/compact` only when offered and no run is active; compaction is performed by the Agent and becomes part of its session history.
 
 Before compacting a long conversation, preserve important decisions in files, a plan, or a clear follow-up. Wait for the operation's completion status rather than assuming a page refresh means failure. Compact does not delete the original conversation history and is not a redaction tool: review secrets, attachments, and tool output separately.
 
 MAR Agent Context GC differs from Compact: deterministic rules reclaim stale or otherwise eligible tool content from the active context sent to later requests, while Compact organizes semantic information for continuation. Neither provides unlimited memory or guarantees that every old detail remains visible. Preserve important decisions in project files or explicit task instructions.
 
-When MAR Agent reports context usage, the indicator details show the GC count followed by reclaimed tokens on one line, covering only the period since the latest successful Compact, or the session start before its first Compact. Tokens sum measured decreases between pre-GC and post-GC request inputs. Intervening additions affect this value; it is not an exact deletion count or billing savings. Unpaired usage is shown as `—`, without an estimated fallback. Refreshing preserves the statistics; successful Compact resets both, while failed or cancelled Compact does not. Skipped or failed GC attempts are not counted. Clear, rollback and fork use the retained session records. Agents without GC statistics omit this line.
+The indicator details always show the GC count and reclaimed tokens. Missing statistics use the placeholder `GC: 0 · 0 tokens`; each missing value also defaults to `0` for display. This does not mean a measured zero or GC support, and does not change stored statistics. MAR Agent's actual statistics cover only the period since the latest successful Compact, or the session start before its first Compact. Tokens sum measured decreases between pre-GC and post-GC request inputs. Intervening additions affect this value; it is not an exact deletion count or billing savings. Refreshing preserves the statistics; successful Compact resets both, while failed or cancelled Compact does not. Skipped or failed GC attempts are not counted. Clear, rollback and fork use the retained session records.
 
 Tap context usage on a touchscreen to open the compact confirmation with full usage details. Compact runs only after confirmation. While compaction is unavailable, including during a run, tapping still shows full usage and the unavailable notice.
 

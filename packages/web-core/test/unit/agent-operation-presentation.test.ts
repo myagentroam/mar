@@ -48,10 +48,8 @@ describe('Agent operation presentation', () => {
     ];
     const groups = conversationDisplayItems(items);
     expect(groups).toMatchObject([{ type: 'subagent_group', id: 'start', items }]);
-    expect(conversationItemText('tool_call', items[0]!.payload)).toBe(
-      'agent_start Inspect changes'
-    );
-    expect(conversationItemText('tool_call', items[1]!.payload)).toBe('agent_send');
+    expect(conversationItemText('tool_call', items[0]!.payload)).toBe('start Inspect changes');
+    expect(conversationItemText('tool_call', items[1]!.payload)).toBe('send');
     expect(agentOperationTargets(items[2]!.payload)).toEqual([
       { agentId: 'peer', sessionId: 'peer' },
       { agentId: 'other', sessionId: 'other' }
@@ -71,7 +69,7 @@ describe('Agent operation presentation', () => {
       });
       expect(conversationDisplayItems([entry])[0]?.type).toBe('subagent_group');
       expect(agentOperationTargets(entry.payload)).toEqual([{ agentId: 'native-id' }]);
-      expect(conversationItemText('tool_call', entry.payload)).toBe(`${toolName} Native task`);
+      expect(conversationItemText('tool_call', entry.payload)).toBe('start Native task');
     }
     const entry = item('failed', {
       toolName: 'agent_send',
@@ -116,10 +114,10 @@ describe('Agent operation presentation', () => {
       { type: 'subagent_group', id: 'first', items: calls },
       { type: 'subagent_group', id: 'next', items: [next] }
     ]);
-    expect(conversationItemText('tool_call', calls[1]!.payload)).toBe('agent_send');
-    expect(conversationItemText('tool_call', calls[2]!.payload)).toBe('agent_wait First, Second');
-    expect(conversationItemText('tool_call', calls[3]!.payload)).toBe('Task');
-    expect(conversationItemText('tool_call', calls[4]!.payload)).toBe('agent_list');
+    expect(conversationItemText('tool_call', calls[1]!.payload)).toBe('send');
+    expect(conversationItemText('tool_call', calls[2]!.payload)).toBe('wait First, Second');
+    expect(conversationItemText('tool_call', calls[3]!.payload)).toBe('view');
+    expect(conversationItemText('tool_call', calls[4]!.payload)).toBe('list profile');
     expect(calls.map((call) => call.status)).toEqual([
       'COMPLETED',
       'FAILED',
@@ -134,7 +132,7 @@ describe('Agent operation presentation', () => {
         subagentOperation: 'START',
         title: 'Image generated'
       })
-    ).toBe('task Image generated');
+    ).toBe('start Image generated');
   });
 
   it('renders original Tool, identities, output and error in the shared detail surface', () => {

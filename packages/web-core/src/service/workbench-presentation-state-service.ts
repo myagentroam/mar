@@ -249,18 +249,15 @@ export function createWorkspaceSessionPresentationStateService(
   );
   const contextUsageLabel = computed(() => {
     const usage = options.sessionContextUsage.value;
-    if (usage === undefined || usage === null) return '';
-    const detail = `${options.formatTokenCount(usage.usedTokens)} / ${options.formatTokenCount(usage.maxTokens)} tokens (${options.formatPercentage(usage.percentage)})`;
+    const used = options.formatTokenCount(usage?.usedTokens ?? 0);
+    const maximum = usage == null ? '—' : options.formatTokenCount(usage.maxTokens);
+    const detail = `${used} / ${maximum} tokens (${options.formatPercentage(usage?.percentage ?? 0)})`;
     const label = translate('generated.workbenchPresentationStateService.contextWindow', {
       value0: detail
     });
-    if (usage.gcCount === undefined) return label;
     const gc = translate('generated.workbenchPresentationStateService.gcCount', {
-      value0: usage.gcCount,
-      value1:
-        usage.gcReclaimedTokens === undefined
-          ? '—'
-          : options.formatTokenCount(usage.gcReclaimedTokens)
+      value0: usage?.gcCount ?? 0,
+      value1: options.formatTokenCount(usage?.gcReclaimedTokens ?? 0)
     });
     return `${label}\n${gc}`;
   });

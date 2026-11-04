@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HostDescription, AgentHost } from '../../../mar-agent/src/host.js';
 import type { AgentEvent, AgentSession } from '../../../mar-agent/src/index.js';
 import { AgentError } from '../../../mar-agent/src/index.js';
+import type { ExtensionSource } from '@myagentroam/agent/extensions';
 import {
   conversationTurnSchema,
   type MarAgentRuntimeModelConfiguration
@@ -238,6 +239,14 @@ describe('MAR Agent hosted conversation runtime', () => {
         ]
       })
     );
+    for (const [options] of createAgent.mock.calls) {
+      const source = options.extensions as ExtensionSource;
+      expect(
+        (await source.resolve({ signal: new AbortController().signal })).extensions.map(
+          (extension) => extension.id
+        )
+      ).toContain('mar.node.file-links');
+    }
     expect(reopenedSession.run).toHaveBeenCalledWith({
       prompt: 'Create a report.',
       clientMessageId: 'message-1',

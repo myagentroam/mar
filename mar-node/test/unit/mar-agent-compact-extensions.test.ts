@@ -289,7 +289,7 @@ describe('MAR Agent compact extension', () => {
         { createAgent: createAgent as never, modelFactory: factory }
       );
       const main = runtimeModel(model({ id: 'main', conversationModel: true }));
-      const compact = runtimeModel(model({ subagentModel: false }));
+      const compact = runtimeModel(model({ subagentModel: false, gcEnabled: false }));
       if (credentialType === 'RUNTIME_TICKET') {
         delete compact.apiKey;
         compact.credential = {
@@ -334,6 +334,11 @@ describe('MAR Agent compact extension', () => {
       const reconfigureCompleted = Promise.withResolvers<void>();
       try {
         await run({ ...input, runId: 'first' });
+        expect(
+          (await compactSource.resolve({ signal: new AbortController().signal })).extensions.map(
+            (extension) => extension.id
+          )
+        ).toContain('mar.node.file-links');
         const sourceRevision = async () =>
           (await compactSource.resolve({ signal: new AbortController().signal })).revision;
         const firstRevision = await sourceRevision();

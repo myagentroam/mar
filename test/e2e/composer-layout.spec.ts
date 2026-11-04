@@ -10,6 +10,25 @@ test.afterAll(async () => {
 });
 test.use({ deviceScaleFactor: 3 });
 
+test('Workspace context indicator stays visible without a usage snapshot', async ({ page }) => {
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?empty-context${width < 768 ? '&mobile=1' : ''}`
+    );
+    const indicator = page.locator('.composer-context-button');
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toHaveText('0%');
+    await expect(indicator).toHaveAttribute(
+      'aria-label',
+      'Context Window: 0 / — tokens (0%)\nGC: 0 · 0 tokens'
+    );
+    expect(
+      await indicator.evaluate((element) => element.style.getPropertyValue('--context-usage'))
+    ).toBe('0%');
+  }
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Composer actions have a single visible circle: ${theme}`, async ({ page }, testInfo) => {
     for (const width of [390, 1280]) {

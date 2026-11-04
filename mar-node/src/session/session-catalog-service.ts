@@ -65,6 +65,7 @@ interface SessionTreeCleanup {
 }
 
 type SessionNavigationQuery = WorkspaceSessionNavigationQuery & { readonly workspaceId: string };
+type RegisteredSession = ReturnType<NodeDatabase['listSessionRecords']>[number];
 
 export class SessionCatalogService {
   private rewindQueue: Promise<void> = Promise.resolve();
@@ -147,7 +148,9 @@ export class SessionCatalogService {
       ancestors.add(parent.id);
       root = parent;
     }
-    const project = this.navigationProjector(input.workspaceId);
+    const { project } = this.navigationProjector(input.workspaceId, (id) =>
+      sessionActivityStatus(this.options.runtime, id)
+    );
     const queue = [root];
     const visited = new Set([root.id]);
     const nodes = [];
@@ -170,10 +173,24 @@ export class SessionCatalogService {
 
   navigation(query: SessionNavigationQuery) {
     const database = this.options.database();
-    const project = this.navigationProjector(query.workspaceId);
+    const statuses = new Map<string, ReturnType<typeof sessionActivityStatus>>();
+    const status = (id: string) => {
+      const cached = statuses.get(id);
+      if (cached !== undefined) return cached;
+      const value = sessionActivityStatus(this.options.runtime, id);
+      statuses.set(id, value);
+      return value;
+    };
+    let projection: ReturnType<SessionCatalogService['navigationProjector']> | undefined;
+    const projector = () => (projection ??= this.navigationProjector(query.workspaceId, status));
+    const project = (record: RegisteredSession) => projector().project(record);
+    const registered = new Map<string, RegisteredSession | undefined>();
     const get = (id: string) => {
+      if (registered.has(id)) return registered.get(id);
       const record = database.getSessionRecord(id);
-      return record?.workspaceId === query.workspaceId ? record : undefined;
+      const scoped = record?.workspaceId === query.workspaceId ? record : undefined;
+      registered.set(id, scoped);
+      return scoped;
     };
     const requestedIds = new Set([
       ...query.sessionIds,
@@ -186,18 +203,12 @@ export class SessionCatalogService {
       return record === undefined ? [] : [project(record)];
     });
     const descendantsByAnchor = new Map<string, ReturnType<typeof database.sessionTreeRecords>>();
-    const statuses = new Map<string, ReturnType<typeof sessionActivityStatus>>();
-    const status = (id: string) => {
-      const cached = statuses.get(id);
-      if (cached !== undefined) return cached;
-      const value = sessionActivityStatus(this.options.runtime, id);
-      statuses.set(id, value);
-      return value;
-    };
     const descendants = (anchor: string) => {
       let records = descendantsByAnchor.get(anchor);
       if (records === undefined) {
-        records = database.sessionTreeRecords(query.workspaceId, anchor).slice(1);
+        const tree = database.sessionTreeRecords(query.workspaceId, anchor);
+        for (const record of tree) registered.set(record.id, record);
+        records = tree.slice(1);
         descendantsByAnchor.set(anchor, records);
       }
       return records;
@@ -235,12 +246,32 @@ export class SessionCatalogService {
           activePaths.add(record.metadata.parentSessionId);
       }
     }
-    // Select active paths before idle filler, not after truncating arbitrary records.
-    // Stable breadth-first order keeps selected children connected to their ancestors.
-    const prioritized = [
-      ...records.filter((record) => activePaths.has(record.id)),
-      ...records.filter((record) => !activePaths.has(record.id))
-    ];
+    const activity = new Map(
+      records.map((record) => [record.id, projector().lastActivityAt(record)])
+    );
+    const compare = (left: RegisteredSession, right: RegisteredSession) =>
+      Number(activePaths.has(right.id)) - Number(activePaths.has(left.id)) ||
+      activity.get(right.id)! - activity.get(left.id)! ||
+      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const prioritized = [...records].sort(compare);
+    const byId = new Map(records.map((record) => [record.id, record]));
+    const selected = new Map<string, RegisteredSession>();
+    const fill = (candidates: readonly RegisteredSession[]) => {
+      for (const record of candidates) {
+        if (selected.size >= query.limit) break;
+        const path: RegisteredSession[] = [];
+        let current: RegisteredSession | undefined = record;
+        while (current !== undefined && !selected.has(current.id)) {
+          path.push(current);
+          current = byId.get(current.metadata.parentSessionId ?? '');
+        }
+        if (path.length > query.limit - selected.size) continue;
+        for (const ancestor of path.reverse()) selected.set(ancestor.id, ancestor);
+      }
+    };
+    // An unfit path must not consume slots before another active session that can fit.
+    fill(prioritized.filter((record) => status(record.id) !== 'IDLE'));
+    fill(prioritized);
     const parent = anchor?.metadata.parentSessionId
       ? get(anchor.metadata.parentSessionId)
       : undefined;
@@ -250,17 +281,21 @@ export class SessionCatalogService {
         : {
             anchorSessionId: anchor.id,
             parent: parent === undefined ? null : project(parent),
-            nodes: prioritized.slice(0, query.limit).map(project),
+            nodes: [...selected.values()].sort(compare).map(project),
             truncated: records.length > query.limit
           };
     return { sessions, summaries, tree, missingSessionIds };
   }
 
-  private navigationProjector(workspaceId: string) {
+  private navigationProjector(
+    workspaceId: string,
+    status: (id: string) => ReturnType<typeof sessionActivityStatus>
+  ) {
+    const lookup = this.options.runtime.createSessionLookup();
     const native = this.options
       .cachedNative()
       .filter((session) => session.workspaceId === workspaceId);
-    const projections = this.options.projection.projectionsForNative(native);
+    const projections = this.options.projection.projectionsForNative(native, lookup);
     const activityById = new Map<string, number>();
     for (const source of native) {
       const id = projections.get(source)?.id ?? source.id;
@@ -269,8 +304,17 @@ export class SessionCatalogService {
         latestSessionActivityAt(activityById.get(id) ?? 0, source.lastActivityAt)
       );
     }
-    return (session: ReturnType<NodeDatabase['listSessionRecords']>[number]) => {
-      const active = this.options.runtime.getAgentSession(session.id);
+    const current = (session: RegisteredSession) =>
+      lookup.getAgentSessionById(session.id) ??
+      lookup.findAgentSessionByExternalSession(session.runner, session.id, workspaceId);
+    const lastActivityAt = (session: RegisteredSession) =>
+      latestSessionActivityAt(
+        current(session)?.lastActivityAt ?? 0,
+        activityById.get(session.id) ?? 0
+      );
+    const projected = new Map<string, ReturnType<typeof project>>();
+    const project = (session: RegisteredSession) => {
+      const active = current(session);
       const live = active === undefined ? undefined : this.options.present(active);
       return {
         id: session.id,
@@ -283,12 +327,23 @@ export class SessionCatalogService {
           'Untitled session',
         runner: session.runner,
         activity: live && 'activity' in live ? live.activity : 'IDLE',
-        status: sessionActivityStatus(this.options.runtime, session.id),
+        status: status(session.id),
         lastActivityAt: latestSessionActivityAt(
           live?.lastActivityAt ?? 0,
           activityById.get(session.id) ?? 0
         )
       };
+    };
+    return {
+      lastActivityAt,
+      project: (session: RegisteredSession) => {
+        let value = projected.get(session.id);
+        if (value === undefined) {
+          value = project(session);
+          projected.set(session.id, value);
+        }
+        return value;
+      }
     };
   }
 
