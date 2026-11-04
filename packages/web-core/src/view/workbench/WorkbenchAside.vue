@@ -125,6 +125,7 @@ function close(id: string | number): void {
         :id-prefix="tabPrefix"
         :active-id="activeId"
         :label="tabLabel"
+        tab-class="workbench-aside-tab"
         @activate="activate"
         @close="close"
       >
@@ -226,6 +227,9 @@ function close(id: string | number): void {
   background: transparent;
   color: var(--mar-text-primary);
   cursor: pointer;
+}
+.workbench-aside-header :deep(.workbench-aside-tab) {
+  font-size: var(--mar-font-size-meta);
 }
 .workbench-aside-content {
   display: flex;

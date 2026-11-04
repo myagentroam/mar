@@ -759,13 +759,13 @@ test('Main and Aside keep independent visible session watches through stacked la
     undefined,
     '0.11.69'
   );
-  const sessions = [1, 2].map((index) => ({
+  const sessions = [1, 2, 3].map((index) => ({
     id: `session-${index}`,
     workspaceId: 'workspace-1',
     runner: 'codex',
     externalSessionId: `native-${index}`,
     customTitle: `双工作面会话 ${index}`,
-    activity: 'IDLE',
+    activity: 'MANAGED_ACTIVE',
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   }));
   const watches: { sessionId: string; method: string; mode?: string; position?: string }[] = [];
@@ -800,11 +800,11 @@ test('Main and Aside keep independent visible session watches through stacked la
   await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
     fulfillMockWorkspaceWatch(page, route, undefined, 'DIRECTORY')
   );
-  await page.route(/\/api\/agent-sessions\/session-[12]\?nodeId=node-1$/, (route) => {
+  await page.route(/\/api\/agent-sessions\/session-[123]\?nodeId=node-1$/, (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-1);
     return json(route, { session: sessions.find((item) => item.id === id) });
   });
-  await page.route(/\/api\/agent-sessions\/session-[12]\/watch(?:\?.*)?$/, (route) => {
+  await page.route(/\/api\/agent-sessions\/session-[123]\/watch(?:\?.*)?$/, (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
     const session = sessions.find((item) => item.id === id)!;
     const body = JSON.parse(route.request().postData() ?? '{}') as {
@@ -853,13 +853,13 @@ test('Main and Aside keep independent visible session watches through stacked la
       await json(route, {});
     }
   );
-  await page.route(/\/api\/agent-sessions\/session-[12]\/context\?nodeId=node-1$/, (route) =>
+  await page.route(/\/api\/agent-sessions\/session-[123]\/context\?nodeId=node-1$/, (route) =>
     json(route, { context: null })
   );
-  await page.route(/\/api\/agent-sessions\/session-[12]\/runs\?nodeId=node-1$/, (route) =>
+  await page.route(/\/api\/agent-sessions\/session-[123]\/runs\?nodeId=node-1$/, (route) =>
     json(route, { runs: [] })
   );
-  await page.route(/\/api\/agent-sessions\/session-[12]\/messages$/, (route) => {
+  await page.route(/\/api\/agent-sessions\/session-[123]\/messages$/, (route) => {
     const sessionId = new URL(route.request().url()).pathname.split('/').at(-2)!;
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       content: string;
@@ -1048,6 +1048,78 @@ test('Main and Aside keep independent visible session watches through stacked la
     .toBe(true);
   await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
   await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await asideComposer.fill('retained Aside draft');
+  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
+    json(route, { upload: { uploadId: 'aside-draft-upload', receivedBytes: 0, size: 4 } })
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/chunks(?:\?.*)?$/, (route) =>
+    json(route, { upload: { receivedBytes: 4 } })
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/complete$/, (route) =>
+    json(route, { upload: { receivedBytes: 4 } })
+  );
+  await aside.locator('.attachment-file-input').setInputFiles({
+    name: 'aside-note.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('note')
+  });
+  await expect(aside.locator('.composer-attachments')).toContainText('aside-note.txt');
+  await expect(aside.locator('.composer-keyboard-hint')).toBeHidden();
+  const actions = await aside.locator('.composer-toolbar').evaluate((el) => {
+    const stop = el.querySelector('.composer-stop-button')!.getBoundingClientRect();
+    const send = el.querySelector('.composer-send-button')!.getBoundingClientRect();
+    return { stopY: stop.top + stop.height / 2, sendY: send.top + send.height / 2 };
+  });
+  expect(Math.abs(actions.stopY - actions.sendY)).toBeLessThan(1);
+  await aside.screenshot({ path: test.info().outputPath('aside-running-draft-attachment.png') });
+
+  const beforeReplacement = watches.length;
+  const thirdRow = page.locator('.session-row').filter({ hasText: '双工作面会话 3' });
+  await thirdRow.hover();
+  await thirdRow.locator('.session-more-button').click();
+  await page.getByRole('menuitem', { name: '在侧栏打开', exact: true }).click();
+  await expect(aside.getByText('正文 session-3', { exact: true })).toBeVisible();
+  await expect(aside.getByRole('tab', { name: /^session-/ })).toHaveCount(1);
+  await expect(aside.getByRole('tab', { name: 'session-2', exact: true })).toHaveCount(0);
+  await expect(asideComposer).toHaveValue('');
+  await expect(aside.locator('.composer-attachments')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeReplacement)
+        .some(
+          (item) =>
+            item.sessionId === 'session-2' &&
+            item.method === 'DELETE' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeReplacement)
+        .some(
+          (item) =>
+            item.sessionId === 'session-3' &&
+            item.mode === 'initial' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+
+  await secondRow.hover();
+  await secondRow.locator('.session-more-button').click();
+  await page.getByRole('menuitem', { name: '在侧栏打开', exact: true }).click();
+  await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  await expect(aside.getByRole('tab', { name: /^session-/ })).toHaveCount(1);
+  await expect(asideComposer).toHaveValue('retained Aside draft');
+  await expect(aside.locator('.composer-attachments')).toContainText('aside-note.txt');
+  await expect(aside.getByRole('tab', { name: '文件', exact: true })).toBeVisible();
+  await expect(aside.getByRole('tab', { name: '终端', exact: true })).toBeVisible();
 });
 
 test('Workspace tab direct Link icon preserves hover and compact status layout', async ({

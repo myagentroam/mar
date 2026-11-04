@@ -19,7 +19,7 @@ for (const [language, theme] of [
       const session = tabs.getByRole('tab', {
         name: language === 'zh' ? /需要保持可读/ : /A long readable/
       });
-      await expect(session).toHaveCSS('font-size', '13px');
+      await expect(session).toHaveCSS('font-size', '12px');
       await expect(session).toHaveCSS('font-weight', '500');
       const geometry = await session.evaluate((element) => {
         const item = element.closest('.tab-strip-item')!;
@@ -180,6 +180,8 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
         await expect(tabs.getByRole('tab')).toHaveCount(6);
         for (const width of [320, 390, 430]) {
           await page.setViewportSize({ width, height: 844 });
+          await expect(tabs.getByRole('tab').first()).toHaveCSS('font-size', '11px');
+          await expect(tabs.getByRole('tab').last()).toHaveCSS('font-size', '11px');
           const spacing = await tabs.getByRole('tab').evaluateAll((elements) =>
             elements.flatMap((element) => {
               const item = element.closest('.tab-strip-item')!;

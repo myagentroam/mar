@@ -11,6 +11,8 @@ Group tabs show only their names and selected state, without running counts or u
 
 A session cannot occupy both the main work area and Aside at once. **Open in Aside** focuses the main work area if that session is already there. **Open in Main** moves a session from Aside to the main work area and removes its Aside tab. The handoff preserves its draft and reading context. Closing an Aside session tab stops displaying its conversation there; it does not end the Agent's task or delete the session.
 
+Aside keeps at most one session tab per Workspace. Opening another session replaces the previous session tab without clearing its draft or ending its task. Tool tabs such as Files and Terminal are unaffected.
+
 Agent operations follow the [conversation work-process grouping rules](conversation.md), without splitting by target, operation, or target count. Records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
 When an Agent sends a message or sets a Goal on an ancestor session that has ended or is stopping, the operation returns `AGENT_ANCESTOR_NOT_ACTIVE` without restarting it. Sending works again once the ancestor is running. Users can still resume sessions manually.

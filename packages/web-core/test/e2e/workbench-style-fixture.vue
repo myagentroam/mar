@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, shallowReactive } from 'vue';
+import { computed, ref, shallowReactive } from 'vue';
 import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
-import type { NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
+import type { AgentRun, NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
 import { registerWorkspacePaneShortcuts } from '../../src/service/workspace-session-pane-state.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
+import type { PromptCompletionBinding } from '../../src/service/prompt-completion-client-service.js';
+import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
+import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
@@ -13,8 +16,8 @@ import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegis
 import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
-const composerFixture = new URL(location.href).searchParams.has('composer');
 const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
+const composerFixture = new URL(location.href).searchParams.has('composer') && !gestureFixture;
 const hostedGestureFixture = new URL(location.href).searchParams.has('hosted-gesture');
 const submittedIntents = ref<string[]>([]);
 const fixtureInput = ref(gestureFixture ? 'Follow up on mobile layout.' : '');
@@ -22,6 +25,45 @@ const offlineFixture = new URL(location.href).searchParams.has('offline');
 const workspaceRecoveryFixture = new URL(location.href).searchParams.has('workspace-recovery');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const managedSessionOnly = new URL(location.href).searchParams.has('managed-session-only');
+const gestureSessionId = ref('active');
+const gestureWorkspaceId = ref('plain');
+const gestureActiveRun = ref<AgentRun | undefined>(
+  gestureFixture && !idleComposer && !managedSessionOnly
+    ? {
+        id: 'run-a',
+        sessionId: 'active',
+        status: 'RUNNING',
+        recoveryState: 'NONE',
+        clientMessageId: 'fixture-run-a',
+        startedAt: Date.now()
+      }
+    : undefined
+);
+const gestureContextKey = computed(() =>
+  JSON.stringify([gestureWorkspaceId.value, gestureSessionId.value])
+);
+const gestureCompletion = computed<PromptCompletionBinding>(() => ({
+  enabled: false,
+  contextKey: gestureContextKey.value,
+  request: async () => {
+    throw new DOMException('Prompt completion is disabled in this fixture.', 'AbortError');
+  }
+}));
+function submitGestureIntent(intent: 'SEND' | 'REPLACE_CURRENT' = 'SEND'): void {
+  submittedIntents.value.push(intent);
+  fixtureInput.value = '';
+}
+function changeGestureRun(): void {
+  gestureActiveRun.value = {
+    id: 'run-b',
+    sessionId: gestureSessionId.value,
+    workspaceId: gestureWorkspaceId.value,
+    status: 'RUNNING',
+    recoveryState: 'NONE',
+    clientMessageId: 'fixture-run-b',
+    startedAt: Date.now()
+  };
+}
 const mobile = window.matchMedia('(max-width: 767px)').matches;
 const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
@@ -263,6 +305,63 @@ if (composerFixture) {
 
 <template>
   <HostedComposerGestureFixture v-if="hostedGestureFixture" />
+  <section v-else-if="gestureFixture" class="gesture-composer-fixture">
+    <ConversationComposer
+      v-model:input="fixtureInput"
+      placeholder="Message"
+      :working="!idleComposer"
+      working-label="Running"
+      :working-busy="!idleComposer"
+      :elapsed-label="idleComposer ? '' : '7m 13s'"
+      :readonly="false"
+      :drop-target="false"
+      :mobile-viewport="mobile"
+      :command-states="[]"
+      :loading="false"
+      :skill-tokens="[]"
+      :completion="gestureCompletion"
+      @submit="submitGestureIntent()"
+    >
+      <template #toolbar>
+        <ComposerToolbar
+          :draft-session-open="true"
+          runner="mar"
+          :runner-options="[]"
+          :runner-loading="false"
+          runner-label="MAR Agent"
+          :model-effort-selection="undefined"
+          model-effort-label="Model"
+          selected-model=""
+          selected-effort=""
+          :models="[]"
+          :efforts="[]"
+          access="auto"
+          access-label="Auto"
+          :access-options="[]"
+          :configuration-disabled="false"
+          :access-disabled="false"
+          :fast-enabled="false"
+          :context-usage="undefined"
+          context-usage-label=""
+          :can-compact-context="false"
+          :mobile-viewport="mobile"
+          :context-key="gestureContextKey"
+          :active-run="gestureActiveRun"
+          :can-interrupt="!idleComposer"
+          :interrupt-visible="!idleComposer"
+          :input-has-content="fixtureInput.trim().length > 0"
+          :has-selected-command="false"
+          :loading="false"
+          :submitting="false"
+          :attachments-pending="false"
+          :effort-label="String"
+          @stop="submittedIntents.push('STOP')"
+          @send="submitGestureIntent()"
+          @steer="submitGestureIntent('REPLACE_CURRENT')"
+        />
+      </template>
+    </ConversationComposer>
+  </section>
   <Surface
     v-else-if="composerFixture || offlineFixture || workspaceRecoveryFixture"
     :page="surfacePage as never"
@@ -420,27 +519,10 @@ if (composerFixture) {
   </main>
   <aside v-if="gestureFixture" class="gesture-fixture-controls">
     <output aria-label="Submitted intents">{{ submittedIntents.join(',') }}</output>
-    <button
-      type="button"
-      @click="Object.assign(surfacePage, { activeComposerRun: { id: 'run-b', status: 'RUNNING' } })"
-    >
-      Change run
-    </button>
+    <button type="button" @click="changeGestureRun">Change run</button>
     <button type="button" @click="fixtureInput = ''">Clear draft</button>
-    <button type="button" @click="Object.assign(surfacePage, { selectedSessionId: 'other' })">
-      Change session
-    </button>
-    <button
-      type="button"
-      @click="
-        Object.assign(surfacePage, {
-          selectedWorkspace: workspaces[1],
-          activeWorkspaceTabId: 'node:grouped'
-        })
-      "
-    >
-      Change workspace
-    </button>
+    <button type="button" @click="gestureSessionId = 'other'">Change session</button>
+    <button type="button" @click="gestureWorkspaceId = 'grouped'">Change workspace</button>
   </aside>
 </template>
 
@@ -465,5 +547,13 @@ main > section {
   top: 70px;
   right: 8px;
   z-index: 100;
+}
+.gesture-composer-fixture {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.gesture-composer-fixture :deep(.composer-host) {
+  margin-top: auto;
 }
 </style>

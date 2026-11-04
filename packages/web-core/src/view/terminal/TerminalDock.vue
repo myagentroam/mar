@@ -416,6 +416,7 @@ defineExpose({ release, toggle: toggleTerminal });
   <section
     ref="terminalRoot"
     class="admin-terminal"
+    :class="{ 'is-embedded': embedded }"
     :aria-label="translate('common.adminTerminal')"
   >
     <header class="admin-terminal-header">
@@ -505,7 +506,7 @@ defineExpose({ release, toggle: toggleTerminal });
         </el-button>
       </div>
     </header>
-    <div v-if="hasOpened" v-show="expanded">
+    <div v-if="hasOpened" v-show="expanded" class="admin-terminal-content">
       <div class="terminal-context-cache">
         <TerminalTabView
           v-for="item in terminals"
@@ -528,6 +529,7 @@ defineExpose({ release, toggle: toggleTerminal });
           :windows-con-pty="capability?.supportsConPty === true"
           :windows-build-number="windowsBuildNumber"
           :active="item.id === activeTerminalId"
+          :fill-available="embedded === true"
           :visible="active && visible && expanded"
           @exited="handleTerminalExited"
           @notice="(message, type, cause) => emit('notice', message, type, cause)"
@@ -541,6 +543,19 @@ defineExpose({ release, toggle: toggleTerminal });
 .admin-terminal {
   border-top: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-chrome);
+}
+
+.admin-terminal.is-embedded,
+.admin-terminal.is-embedded .admin-terminal-content,
+.admin-terminal.is-embedded .terminal-context-cache {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.admin-terminal.is-embedded .admin-terminal-header {
+  flex: none;
 }
 
 .admin-terminal-header {

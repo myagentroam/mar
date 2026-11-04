@@ -1196,33 +1196,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       transform 0.16s ease,
       visibility 0s;
   }
-
-  .terminal-dock :deep(.admin-terminal) {
-    display: flex;
-    min-height: 0;
-    flex: 1 1 auto;
-    flex-direction: column;
-  }
-
-  .terminal-dock :deep(.admin-terminal > div) {
-    display: flex;
-    min-height: 0;
-    flex: 1 1 auto;
-    flex-direction: column;
-  }
-
-  .terminal-dock :deep(.terminal-context-cache) {
-    display: flex;
-    min-height: 0;
-    flex: 1 1 auto;
-    flex-direction: column;
-  }
-
-  .terminal-dock :deep(.admin-terminal-body) {
-    block-size: auto;
-    min-height: 0;
-    flex: 1 1 auto;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1241,12 +1214,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   height: 100%;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-}
-.terminal-dock :deep(.admin-terminal) {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
   flex-direction: column;
 }
 @media (max-width: 767px) {

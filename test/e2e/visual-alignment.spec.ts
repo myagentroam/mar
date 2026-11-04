@@ -29,12 +29,26 @@ test('Composer keyboard hint follows each container without hiding sending or co
       (el as HTMLElement).style.width = '420px';
     });
     await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+    for (const width of [740, 780, 900, 960]) {
+      await wide.evaluate((el, width) => {
+        (el as HTMLElement).style.width = `${width}px`;
+      }, width);
+      await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+      const controls = await wide.locator('.composer-toolbar').evaluate((el) => {
+        const bounds = el.getBoundingClientRect();
+        const stop = el.querySelector('.composer-stop-button')!.getBoundingClientRect();
+        const send = el.querySelector('.composer-send-button')!.getBoundingClientRect();
+        return {
+          centerDifference: Math.abs(stop.top + stop.height / 2 - send.top - send.height / 2),
+          contained: stop.left >= bounds.left && send.right <= bounds.right,
+          ordered: stop.right <= send.left
+        };
+      });
+      expect(controls.centerDifference).toBeLessThan(1);
+      expect(controls.contained && controls.ordered).toBe(true);
+    }
     await wide.evaluate((el) => {
-      (el as HTMLElement).style.width = '900px';
-    });
-    await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
-    await wide.evaluate((el) => {
-      (el as HTMLElement).style.width = '740px';
+      (el as HTMLElement).style.width = '1100px';
     });
     await expect(wide.locator('.composer-keyboard-hint')).toBeVisible();
     expect(
@@ -55,6 +69,19 @@ test('Composer keyboard hint follows each container without hiding sending or co
         });
       })
     ).toBe(true);
+    await wide.screenshot({ path: test.info().outputPath(`composer-wide-${locale}.png`) });
+    await wide.evaluate((el) => {
+      (el as HTMLElement).style.width = '780px';
+    });
+    await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+    await wide.screenshot({ path: test.info().outputPath(`composer-narrow-${locale}.png`) });
+    await page.locator('#toggle-input-content').click();
+    await expect(wide.locator('.composer-send-button')).toHaveCount(0);
+    await expect(wide.locator('.composer-stop-button')).toBeVisible();
+    await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
+    await page.locator('#toggle-input-content').click();
+    await expect(wide.locator('.composer-send-button')).toBeVisible();
+    await expect(wide.locator('.composer-keyboard-hint')).toBeHidden();
     await page.locator('#toggle-submitting').click();
     for (const composer of [wide, narrow]) {
       await expect(composer.getByRole('status')).toBeVisible();

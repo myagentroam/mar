@@ -24,6 +24,7 @@ const props = defineProps<{
   readonly windowsBuildNumber: number | undefined;
   readonly active: boolean;
   readonly visible: boolean;
+  readonly fillAvailable?: boolean;
 }>();
 const emit = defineEmits<{
   exited: [terminalId: string];
@@ -255,7 +256,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-show="active" class="admin-terminal-body">
+  <div v-show="active" class="admin-terminal-body" :class="{ 'fills-available': fillAvailable }">
     <div
       ref="host"
       class="xterm-host"
@@ -309,6 +310,12 @@ onBeforeUnmount(() => {
   background: var(--mar-terminal-background);
   padding: 4px;
   position: relative;
+}
+
+.admin-terminal-body.fills-available {
+  block-size: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .admin-terminal-status {

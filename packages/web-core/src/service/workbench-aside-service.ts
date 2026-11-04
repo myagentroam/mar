@@ -37,13 +37,32 @@ export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
     : 'compact';
 }
 
-export function createWorkbenchAsideService() {
+export function createWorkbenchAsideService(sessionTabLimit = 1) {
   const workspaces = shallowRef<ReadonlyMap<string, ReadonlyMap<string, AsideState>>>(new Map());
 
   function current(target: AsideWorkspace): AsideState {
     return workspaces.value.get(target.nodeId)?.get(target.workspaceId) ?? empty;
   }
   function put(target: AsideWorkspace, state: AsideState): void {
+    if (state.sessions.length > sessionTabLimit) {
+      const retainedSessionId =
+        state.active?.kind === 'session' && valid(state, state.active)
+          ? state.active.sessionId
+          : state.terminalReturn?.kind === 'session'
+            ? state.terminalReturn.sessionId
+            : undefined;
+      const removed = new Set(
+        state.sessions
+          .filter((id) => id !== retainedSessionId)
+          .slice(0, state.sessions.length - sessionTabLimit)
+      );
+      state = { ...state, sessions: state.sessions.filter((id) => !removed.has(id)) };
+    }
+    if (
+      state.terminalReturn?.kind === 'session' &&
+      !state.sessions.includes(state.terminalReturn.sessionId)
+    )
+      state = { ...state, terminalReturn: undefined };
     const nodes = new Map(workspaces.value);
     const entries = new Map(nodes.get(target.nodeId));
     entries.set(target.workspaceId, state);

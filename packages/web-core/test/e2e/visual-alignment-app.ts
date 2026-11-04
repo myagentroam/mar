@@ -159,6 +159,7 @@ const toolbar = {
   effortLabel: String
 };
 const widthFixtureSubmitting = ref(false);
+const widthFixtureHasInput = ref(toolbar.inputHasContent);
 const contextCommands = createWorkbenchContextCommandService({
   workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
   selectedSession: computed(() => ({ id: 'session' }) as Session),
@@ -318,7 +319,17 @@ const app = createApp({
               },
               'Toggle submitting'
             ),
-            ...[900, 420].map((width, index) =>
+            h(
+              'button',
+              {
+                id: 'toggle-input-content',
+                onClick: () => {
+                  widthFixtureHasInput.value = !widthFixtureHasInput.value;
+                }
+              },
+              'Toggle input content'
+            ),
+            ...[1100, 420].map((width, index) =>
               h(
                 'section',
                 {
@@ -336,6 +347,7 @@ const app = createApp({
                       clientMessageId: 'message'
                     },
                     canCompactContext: true,
+                    inputHasContent: widthFixtureHasInput.value,
                     submitting: widthFixtureSubmitting.value
                   })
                 ]

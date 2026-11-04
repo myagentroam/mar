@@ -35,9 +35,12 @@ test.describe('Aside terminal touch interaction', () => {
       class MockWebSocket extends EventTarget {
         static readonly OPEN = 1;
         static readonly CLOSED = 3;
+        static readonly resizeRows: number[] = [];
+        static readonly instances: MockWebSocket[] = [];
         readyState = MockWebSocket.OPEN;
         constructor(readonly url: string) {
           super();
+          MockWebSocket.instances.push(this);
           queueMicrotask(() =>
             this.dispatchEvent(
               new MessageEvent('message', {
@@ -46,7 +49,11 @@ test.describe('Aside terminal touch interaction', () => {
             )
           );
         }
-        send(): void {}
+        send(data: string): void {
+          const frame = JSON.parse(data) as { type: string; rows?: number };
+          if (frame.type === 'resize' && frame.rows !== undefined)
+            MockWebSocket.resizeRows.push(frame.rows);
+        }
         close(): void {
           this.readyState = MockWebSocket.CLOSED;
         }
@@ -83,6 +90,39 @@ test.describe('Aside terminal touch interaction', () => {
     await expect(input).toBeAttached();
     await input.focus();
     await expect(input).toBeFocused();
+    let desktopRows = 0;
+    for (const viewport of [
+      { width: 1600, height: 900 },
+      { width: 1600, height: 1200 },
+      { width: 390, height: 844 }
+    ]) {
+      await page.setViewportSize(viewport);
+      if (viewport.width < 768) {
+        await expect(aside).toBeHidden();
+        await page.getByRole('button', { name: '打开辅助工作面' }).tap();
+      }
+      await expect(dock).toBeVisible();
+      await expect
+        .poll(() =>
+          dock.evaluate((element) => {
+            const body = element.querySelector('.admin-terminal-body')!.getBoundingClientRect();
+            return Math.abs(element.getBoundingClientRect().bottom - body.bottom);
+          })
+        )
+        .toBeLessThanOrEqual(1);
+      const rows = () =>
+        page.evaluate(
+          () => (window.WebSocket as unknown as { resizeRows: number[] }).resizeRows.at(-1) ?? 0
+        );
+      await expect.poll(rows).toBeGreaterThan(0);
+      if (viewport.width === 1600) {
+        await expect.poll(rows).toBeGreaterThan(desktopRows);
+        desktopRows = await rows();
+      }
+      await aside.screenshot({
+        path: test.info().outputPath(`terminal-fill-${viewport.width}-${viewport.height}.png`)
+      });
+    }
     await aside.getByRole('tab', { name: '文件', exact: true }).tap();
     await expect(dock).not.toBeVisible();
     await aside.getByRole('button', { name: '关闭工作区工具' }).tap();

@@ -49,7 +49,7 @@ function turn(id: string, overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
-function tabSessionFixture() {
+function tabSessionFixture(sessionTabLimit = 1) {
   const session: Session = { id: 'outside-page', workspaceId: 'workspace-1', runner: 'mar-agent' };
   const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
   const selectedSessionId = ref<string>();
@@ -57,7 +57,7 @@ function tabSessionFixture() {
   const runs = runOwner.runs;
   const turns = ref<import('../../src/model/workbench.js').ConversationTurn[]>([]);
   const conversationOwner = conversationProjectionFixture(turns, ref<string | null>(null));
-  const aside = createWorkbenchAsideService();
+  const aside = createWorkbenchAsideService(sessionTabLimit);
   aside.ensure(target.value, ['files', 'terminal']);
   let revision = 0;
   const options: SelectionFixtureOptions = {
@@ -196,7 +196,7 @@ describe('Synchronous Session handoff', () => {
     expect(vi.mocked(fixture.options.request).mock.calls[0]![0]).toContain('/session-next?');
   });
   it('deduplicates Main and Aside and promotes Aside through the common Main selection path', async () => {
-    const f = tabSessionFixture();
+    const f = tabSessionFixture(3);
     f.options.selectedSessionId.value = 'main';
     expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
     expect(f.options.focusMain).toHaveBeenCalledOnce();
@@ -209,6 +209,23 @@ describe('Synchronous Session handoff', () => {
     expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
     await opening;
     expect(f.options.selectedSessionId.value).toBe(f.session.id);
+  });
+  it('saves the outgoing Aside before replacing its sole tab and leaves Main unchanged', () => {
+    const f = tabSessionFixture();
+    f.options.selectedSessionId.value = 'main';
+    f.service.openAsideSession({ ...f.target.value, sessionId: 'a' });
+    const saved: unknown[] = [];
+    vi.mocked(f.options.saveAside).mockImplementation(() => {
+      saved.push(f.aside.current(f.target.value).active);
+    });
+    f.service.openAsideSession({ ...f.target.value, sessionId: 'b' });
+    expect(saved).toEqual([{ kind: 'session', sessionId: 'a' }]);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    expect(f.options.selectedSessionId.value).toBe('main');
+    expect(f.service.openAsideSession({ ...f.target.value, sessionId: 'main' })).toBe(true);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
+    f.service.removeMissingAside(f.target.value, ['a']);
+    expect(f.aside.current(f.target.value).sessions).toEqual(['b']);
   });
   it('does not mutate Aside when capability is absent, and does not reload the active target', () => {
     const f = tabSessionFixture();
@@ -267,7 +284,7 @@ describe('Synchronous Session handoff', () => {
     await opening;
   });
   it('removes only authoritatively missing Aside targets in the snapshot workspace', () => {
-    const f = tabSessionFixture();
+    const f = tabSessionFixture(3);
     const otherWorkspace = { nodeId: 'node-1', workspaceId: 'other' };
     f.aside.openSession({ ...f.target.value, sessionId: 'keep' });
     f.aside.openSession({ ...f.target.value, sessionId: 'gone' });

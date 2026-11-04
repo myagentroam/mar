@@ -346,7 +346,7 @@ function selectFiles(event: Event): void {
   container-type: inline-size;
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.4rem;
   border-top: 1px solid var(--mar-border-subtle);
@@ -428,7 +428,9 @@ function selectFiles(event: Event): void {
 }
 
 .composer-hint {
+  flex-shrink: 0;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .composer-steer-discovery {
@@ -442,7 +444,7 @@ function selectFiles(event: Event): void {
   display: none;
 }
 
-@container (max-width: 720px) {
+@container (max-width: 960px) {
   .composer-hint:not(.is-submitting) {
     display: none;
   }

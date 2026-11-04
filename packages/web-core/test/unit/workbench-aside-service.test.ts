@@ -2,8 +2,80 @@ import { describe, expect, it } from 'vitest';
 import { createWorkbenchAsideService } from '../../src/service/workbench-aside-service.js';
 
 describe('Workspace Aside metadata', () => {
-  it('keeps independent session tabs and chooses neighboring sessions before the latest tool', () => {
+  it('replaces the sole session tab without removing tools or retaining a stale Terminal return', () => {
     const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    service.ensure(workspace, ['files', 'search', 'terminal']);
+    service.selectTool(workspace, 'search');
+    service.openSession({ ...workspace, sessionId: 'a' });
+    service.toggleTerminal(workspace);
+    service.openSession({ ...workspace, sessionId: 'b' });
+    service.openSession({ ...workspace, sessionId: 'b' });
+    expect(service.current(workspace)).toMatchObject({
+      tools: ['files', 'search', 'terminal'],
+      sessions: ['b'],
+      active: { kind: 'session', sessionId: 'b' },
+      terminalReturn: undefined
+    });
+    expect(service.activateSession({ ...workspace, sessionId: 'a' })).toBe(false);
+    service.toggleTerminal(workspace);
+    service.toggleTerminal(workspace);
+    expect(service.current(workspace).active).toEqual({ kind: 'session', sessionId: 'b' });
+    service.closeSession({ ...workspace, sessionId: 'a' });
+    expect(service.current(workspace).sessions).toEqual(['b']);
+    service.closeSession({ ...workspace, sessionId: 'b' });
+    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'search' });
+  });
+
+  it.each([
+    { active: { kind: 'session' as const, sessionId: 'a' }, sessionId: 'a' },
+    {
+      active: { kind: 'tool' as const, id: 'terminal' as const },
+      terminalReturn: { kind: 'session' as const, sessionId: 'b' },
+      sessionId: 'b'
+    },
+    { active: { kind: 'tool' as const, id: 'files' as const }, sessionId: 'c' }
+  ])('limits restored metadata while preserving the current target: $sessionId', (saved) => {
+    const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    service.restore(workspace, { ...saved, sessions: ['a', 'b', 'c', 'a'] }, ['files', 'terminal']);
+    expect(service.current(workspace).sessions).toEqual([saved.sessionId]);
+    expect(service.current(workspace).active).toEqual(saved.active);
+    expect(service.snapshot(workspace).sessions).toEqual([saved.sessionId]);
+  });
+
+  it('can raise the capacity without changing the tab model or selection operations', () => {
+    const service = createWorkbenchAsideService(2);
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    service.ensure(workspace, ['files']);
+    for (const sessionId of ['a', 'b', 'c']) service.openSession({ ...workspace, sessionId });
+    expect(service.current(workspace).sessions).toEqual(['b', 'c']);
+    service.activateSession({ ...workspace, sessionId: 'b' });
+    expect(service.current(workspace).sessions).toEqual(['b', 'c']);
+    service.closeSession({ ...workspace, sessionId: 'b' });
+    expect(service.current(workspace).active).toEqual({ kind: 'session', sessionId: 'c' });
+  });
+
+  it('keeps a valid Terminal return when the restored active session is no longer present', () => {
+    const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    service.restore(
+      workspace,
+      {
+        sessions: ['a', 'b', 'c'],
+        active: { kind: 'session', sessionId: 'missing' },
+        terminalReturn: { kind: 'session', sessionId: 'b' }
+      },
+      ['files', 'terminal']
+    );
+    expect(service.current(workspace).sessions).toEqual(['b']);
+    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'files' });
+    expect(service.current(workspace).terminalReturn).toEqual({ kind: 'session', sessionId: 'b' });
+    expect(service.activateSession({ ...workspace, sessionId: 'b' })).toBe(true);
+  });
+
+  it('keeps independent session tabs and chooses neighboring sessions before the latest tool', () => {
+    const service = createWorkbenchAsideService(3);
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['files', 'search', 'terminal']);
     service.selectTool(workspace, 'search');
@@ -43,7 +115,7 @@ describe('Workspace Aside metadata', () => {
   });
 
   it('removes only authoritatively missing sessions without dropping other Workspace tabs', () => {
-    const service = createWorkbenchAsideService();
+    const service = createWorkbenchAsideService(3);
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['files']);
     for (const sessionId of ['a', 'b', 'c']) service.openSession({ ...workspace, sessionId });
