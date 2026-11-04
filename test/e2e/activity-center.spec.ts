@@ -183,6 +183,49 @@ test('Activity entry distinguishes all four states and caps unread counts', asyn
 
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Activity tabs share MarTab styling and preserve keyboard activation at ${width}px ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      const trigger = page.locator('.activity-center-trigger');
+      await trigger.click();
+      const panel = page.locator('.workbench-activity-panel:visible');
+      const tabs = panel.locator('.activity-tabs');
+      const recent = tabs.getByRole('tab', { name: 'Recent Sessions', exact: true });
+      const notifications = tabs.getByRole('tab', { name: 'Notifications', exact: true });
+      await expect(notifications).toHaveAttribute('aria-selected', 'true');
+      await expect(notifications.locator('..')).toHaveCSS('border-top-width', '1px');
+      const overlap = await recent.evaluate((element) => {
+        const row = element.parentElement!;
+        return (
+          row.getBoundingClientRect().right - row.nextElementSibling!.getBoundingClientRect().left
+        );
+      });
+      expect(overlap).toBeCloseTo(width < 768 ? -4 : 1, 1);
+      await notifications.focus();
+      for (const key of ['ArrowLeft', 'End', 'Home', 'ArrowRight']) {
+        const target = key === 'ArrowLeft' || key === 'Home' ? recent : notifications;
+        await page.keyboard.press(key);
+        await expect(target).toBeFocused();
+        await expect(target).toHaveAttribute('aria-selected', 'true');
+        const identity = await target.evaluate((element) => ({
+          tab: element.id,
+          panel: element.getAttribute('aria-controls')
+        }));
+        expect(identity.tab).not.toBe('');
+        expect(identity.panel).toBeTruthy();
+        await expect(panel.locator('[role="tabpanel"]')).toHaveAttribute('id', identity.panel!);
+        await expect(panel.locator('[role="tabpanel"]')).toHaveAttribute(
+          'aria-labelledby',
+          identity.tab
+        );
+        await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
+      }
+      await expect(tabs.locator('.activity-unread-count')).toHaveText('30');
+      await tabs.screenshot({ path: testInfo.outputPath(`activity-tabs-${width}-${theme}.png`) });
+    });
+
     test(`Activity notification badges share dimensions at ${width}px ${theme}`, async ({
       page
     }) => {

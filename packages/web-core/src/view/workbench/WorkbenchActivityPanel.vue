@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, useId } from 'vue';
+import MarTab from '../common/MarTab.vue';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type {
   WorkbenchNotification,
@@ -14,6 +15,7 @@ import {
   recentRunTimeReference
 } from '../../util/notification-presentation.js';
 import { formatDateTime } from '../../util/time-presentation.js';
+import { tabStripIdentity } from '../../util/tab-strip-identity.js';
 import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
 import WorkbenchNotificationList from './WorkbenchNotificationList.vue';
 
@@ -34,7 +36,15 @@ const emit = defineEmits<{
   cancelUpload: [task: WorkspaceUploadTask];
   removeUpload: [task: WorkspaceUploadTask];
 }>();
-const tabs = ['recent-sessions', 'notifications'] as const;
+const tabPrefix = `activity-${useId()}`;
+const tabs = computed(() => [
+  { id: 'recent-sessions', label: translate('workbenchNotificationCenter.recentSessions') },
+  {
+    id: 'notifications',
+    label: translate('generated.workbenchNotificationCenter.notifications'),
+    description: translate('activityCenter.unreadCount', { count: props.service.unreadCount.value })
+  }
+]);
 const visibleRuns = computed(() =>
   props.service.recentRuns.value.filter(
     (run) => (run.sessionGroup ?? 'MAIN') === props.sessionGroup
@@ -55,21 +65,8 @@ function runTime(run: RecentRun): string {
     startedAt: formatDateTime(run.startedAt)
   });
 }
-function navigate(event: KeyboardEvent): void {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  event.preventDefault();
-  const next =
-    event.key === 'Home'
-      ? tabs[0]
-      : event.key === 'End'
-        ? tabs[1]
-        : props.page === tabs[0]
-          ? tabs[1]
-          : tabs[0];
-  emit('update:page', next);
-  (event.currentTarget as HTMLElement).parentElement
-    ?.querySelector<HTMLButtonElement>(`[data-page="${next}"]`)
-    ?.focus();
+function activate(id: string | number): void {
+  if (id === 'recent-sessions' || id === 'notifications') emit('update:page', id);
 }
 </script>
 
@@ -79,42 +76,32 @@ function navigate(event: KeyboardEvent): void {
     :class="{ 'mobile-mode': mobileMode }"
     :aria-label="translate('activityCenter.title')"
   >
-    <div class="activity-tabs" role="tablist" :aria-label="translate('activityCenter.title')">
-      <button
-        v-for="tab in tabs"
-        :key="tab"
-        type="button"
-        role="tab"
-        :data-page="tab"
-        :aria-selected="page === tab"
-        :aria-description="
-          tab === 'notifications'
-            ? translate('activityCenter.unreadCount', { count: service.unreadCount.value })
-            : undefined
-        "
-        :tabindex="page === tab ? 0 : -1"
-        @click="emit('update:page', tab)"
-        @keydown="navigate"
-      >
-        {{
-          translate(
-            tab === 'recent-sessions'
-              ? 'workbenchNotificationCenter.recentSessions'
-              : 'generated.workbenchNotificationCenter.notifications'
-          )
-        }}
+    <MarTab
+      class="activity-tabs"
+      size="small"
+      activation-mode="automatic"
+      :items="tabs"
+      :active-id="page"
+      :id-prefix="tabPrefix"
+      :label="translate('activityCenter.title')"
+      @activate="activate"
+    >
+      <template #label="{ item }">
+        <span>{{ item.label }}</span>
         <span
-          v-if="tab === 'notifications' && service.unreadCount.value > 0"
+          v-if="item.id === 'notifications' && service.unreadCount.value > 0"
           class="activity-unread-count mar-activity-count-badge"
           aria-hidden="true"
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
-      </button>
-    </div>
+      </template>
+    </MarTab>
     <div
       v-if="page === 'recent-sessions'"
       class="activity-recent-content"
       role="tabpanel"
+      :id="tabStripIdentity(tabPrefix, 'recent-sessions').panel"
+      :aria-labelledby="tabStripIdentity(tabPrefix, 'recent-sessions').tab"
       :aria-label="translate('workbenchNotificationCenter.recentSessions')"
     >
       <p class="activity-running-count">
@@ -133,6 +120,8 @@ function navigate(event: KeyboardEvent): void {
     <WorkbenchNotificationList
       v-else
       role="tabpanel"
+      :id="tabStripIdentity(tabPrefix, 'notifications').panel"
+      :aria-labelledby="tabStripIdentity(tabPrefix, 'notifications').tab"
       :service="service"
       :uploads="uploads"
       :status-label="statusLabel"
@@ -158,37 +147,10 @@ function navigate(event: KeyboardEvent): void {
   max-height: none;
 }
 .activity-tabs {
+  --mar-tab-strip-active-bg: var(--mar-fill-selection);
   flex: none;
-  display: flex;
-  align-items: stretch;
-  gap: 0.25rem;
-  padding: 0.45rem 0.65rem 0;
-  border-bottom: 1px solid var(--mar-border-default);
-}
-.activity-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 0;
-  border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
-  padding: 0.5rem 0.65rem;
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  font-size: var(--mar-font-size-meta);
-  cursor: pointer;
-}
-.activity-tabs button:hover {
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.activity-tabs button[aria-selected='true'] {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-.activity-tabs button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: -2px;
+  border-bottom: 1px solid var(--mar-border-strong);
+  background: var(--mar-bg-subtle);
 }
 .activity-recent-content {
   display: flex;

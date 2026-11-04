@@ -18,6 +18,7 @@ const props = defineProps<{
   readonly label: string;
   readonly idPrefix: string;
   readonly size?: 'default' | 'small' | undefined;
+  readonly activationMode?: 'manual' | 'automatic' | undefined;
   readonly itemClass?: string | undefined;
   readonly tabClass?: string | undefined;
   readonly closeClass?: string | undefined;
@@ -60,6 +61,7 @@ function onKeydown(event: KeyboardEvent): void {
   event.preventDefault();
   focusedId.value = props.items[target]!.id;
   tabs[target]?.focus();
+  if (props.activationMode === 'automatic') emit('activate', props.items[target]!.id);
   revealTab(tabs[target]);
 }
 
