@@ -342,6 +342,15 @@ export const conversationUiZhCN = {
       LIST: '查询列表',
       VIEW: '查看'
     },
+    agentOperationShort: {
+      START: 'start',
+      SEND: 'send',
+      WAIT: 'wait',
+      VIEW: 'view',
+      LIST: 'list',
+      STOP: 'stop',
+      RESUME: 'resume'
+    },
     subagentOperation: {
       START: '启动',
       STATUS: '查看状态',

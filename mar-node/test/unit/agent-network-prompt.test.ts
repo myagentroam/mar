@@ -337,6 +337,40 @@ it.each([false, true])(
   }
 );
 
+it.each([false, true])(
+  'publishes effective wait facts while running and completed in Code Mode %s',
+  async (codeMode) => {
+    for (const options of [
+      {},
+      { waitFor: 'message', waitMs: 0 },
+      { waitFor: 'completion', waitMs: 300000, mode: 'all' }
+    ] as const) {
+      const input =
+        'mode' in options ? { agentIds: ['child'], ...options } : { agentId: 'child', ...options };
+      const test = await fixture(codeMode, { name: 'agent_wait', input }, [], {
+        resolved: [{ id: 'child', customTitle: 'Resolved task' }],
+        result: { agents: [{ agentId: 'child', title: 'Resolved task' }] }
+      });
+      const effective = { waitFor: 'completion', waitMs: 30000, ...options };
+      expect(test.invoke.mock.calls[0]![2]).toEqual({ ...input, ...effective });
+      const normalizer = new MarAgentConversationNormalizer();
+      const items = test.publicEvents
+        .flatMap((entry) => normalizer.normalize(entry))
+        .filter((item) => item.kind === 'tool_call' && item.payload.toolName === 'agent_wait');
+      expect(
+        items.some(
+          (item) =>
+            item.status === 'IN_PROGRESS' &&
+            (item.payload.agentOperation as { detail?: { wait?: unknown } })?.detail?.wait !==
+              undefined
+        )
+      ).toBe(true);
+      expect(items.at(-1)?.payload.agentOperation).toMatchObject({ detail: { wait: effective } });
+      expect(items.at(-1)?.payload.inputSummary).toBe(JSON.stringify(input));
+    }
+  }
+);
+
 it.each([false, true])('defaults native messages to steer with Code Mode %s', async (codeMode) => {
   for (const message of [
     { content: 'Continue the task' },

@@ -32,26 +32,37 @@ for (const [width, theme] of [
     await expect(group.locator('.agent-detail')).toHaveCount(0);
     expect(apiRequests).toEqual([]);
     const rows = group.locator('.conversation-tool-detail');
-    const native = rows.filter({ has: page.locator('summary').filter({ hasText: 'spawn_agent' }) });
+    const native = rows.filter({
+      has: page.locator('summary').filter({ hasText: 'start Native review' })
+    });
     await native.locator(':scope > summary').click();
     await expect(native.locator('.agent-detail-text')).toHaveText('Inspect the native change.');
     for (const action of ['start', 'send', 'wait', 'list', 'view', 'stop']) {
       const row = rows
-        .filter({ has: page.locator('summary').filter({ hasText: `agent_${action}` }) })
+        .filter({
+          has: page.locator('summary').filter({ hasText: new RegExp(`^${action}(?: |$)`) })
+        })
         .last();
       await row.locator(':scope > summary').click();
       await expect(row.locator('.agent-detail')).toHaveCount(1);
     }
-    const start = rows.filter({ has: page.locator('summary').filter({ hasText: 'agent_start' }) });
-    const send = rows
-      .filter({ has: page.locator('summary').filter({ hasText: 'agent_send' }) })
+    const start = rows
+      .filter({ has: page.locator('summary').filter({ hasText: /^start\b/ }) })
       .last();
-    const stop = rows.filter({ has: page.locator('summary').filter({ hasText: 'agent_stop' }) });
+    const send = rows
+      .filter({ has: page.locator('summary').filter({ hasText: /^send\b/ }) })
+      .last();
+    const stop = rows.filter({ has: page.locator('summary').filter({ hasText: /^stop\b/ }) });
+    const wait = rows.filter({ has: page.locator('summary').filter({ hasText: /^wait\b/ }) });
+    await expect(wait.locator('.agent-detail > .agent-detail-meta')).toHaveText(
+      'completion · any · 300000ms'
+    );
+    await expect(wait.locator('.agent-detail-entry')).toHaveCount(2);
     await expect(start.locator('.agent-detail-text')).toHaveText(
       'Initial task\nwith a second line.'
     );
     await expect(send.locator('.agent-detail')).toContainText('queue');
-    const list = rows.filter({ has: page.locator('summary').filter({ hasText: 'agent_list' }) });
+    const list = rows.filter({ has: page.locator('summary').filter({ hasText: /^list\b/ }) });
     await expect(list.locator('.agent-detail')).toContainText('Ready');
     await expect(list.locator('.agent-detail')).not.toContainText('IDLE');
     await expect(stop.locator('.agent-detail-text')).toHaveText('{"status":"accepted"}\n');
@@ -92,6 +103,41 @@ for (const [width, theme] of [
   });
 }
 
+for (const [width, zero] of [
+  [1280, false],
+  [390, true]
+] as const) {
+  test(`shows the single active wait condition and duration at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&agent-cards&agent-wait-single&${zero ? 'wait-zero&' : ''}theme=${width === 390 ? 'dark' : 'daylight'}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const group = page.locator('.subagent-group');
+    await group.locator('.conversation-record-group > summary').click();
+    const row = group
+      .locator('.conversation-tool-detail')
+      .filter({ has: page.locator('summary').filter({ hasText: /^wait\b/ }) });
+    await expect(row.locator('> summary')).toContainText('wait Review the boundary');
+    await expect(row.locator('> summary')).not.toContainText('agent_wait');
+    await row.locator('> summary').click();
+    const title = row.locator('.agent-detail-meta > span').first();
+    await expect(title).toHaveText(`Review the boundary · completion · ${zero ? 0 : 300000}ms`);
+    await expect(title).toBeInViewport({ ratio: 1 });
+    await expect(title).toHaveCSS('font-size', '12px');
+    await expect(title).toHaveCSS('font-weight', '400');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.screenshot({ path: testInfo.outputPath(`agent-wait-${width}.png`), fullPage: true });
+    await row.locator('> summary').click();
+    await expect(row.locator('.agent-detail')).toHaveCount(0);
+  });
+}
+
 test('wraps a long unbroken target title without overflowing on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(
@@ -103,13 +149,14 @@ test('wraps a long unbroken target title without overflowing on mobile', async (
   await group.locator('.conversation-record-group > summary').click();
   const list = group
     .locator('.conversation-tool-detail')
-    .filter({ has: page.locator('summary').filter({ hasText: 'agent_list' }) });
+    .filter({ has: page.locator('summary').filter({ hasText: /^list\b/ }) });
   await list.locator(':scope > summary').click();
   await expect(list.locator('.agent-detail')).toContainText('可继续');
   await expect(list.locator('.agent-detail')).not.toContainText('IDLE');
   const start = group
     .locator('.conversation-tool-detail')
-    .filter({ has: page.locator('summary').filter({ hasText: 'agent_start' }) });
+    .filter({ has: page.locator('summary').filter({ hasText: /^start\b/ }) })
+    .last();
   await start.locator(':scope > summary').click();
   const title = start.locator('.agent-detail-meta > span').first();
   const geometry = await title.evaluate((element) => ({
@@ -135,7 +182,7 @@ for (const truncation of ['HEAD', 'SOURCE'] as const) {
     await group.locator('.conversation-record-group > summary').click();
     const stop = group
       .locator('.conversation-tool-detail')
-      .filter({ has: page.locator('summary').filter({ hasText: 'agent_stop' }) });
+      .filter({ has: page.locator('summary').filter({ hasText: /^stop\b/ }) });
     await stop.locator(':scope > summary').click();
     const content = stop.locator('.agent-detail');
     await expect(content.locator('.agent-detail-text')).toHaveText('{"status":"accepted"}\n');

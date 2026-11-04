@@ -329,6 +329,8 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     }
   });
   const stopTruncation = new URL(location.href).searchParams.get('stop-truncation');
+  const singleWait = new URL(location.href).searchParams.has('agent-wait-single');
+  const waitMs = new URL(location.href).searchParams.has('wait-zero') ? 0 : 300000;
   const task = {
     agentId: 'peer',
     sessionId: 'peer',
@@ -346,11 +348,13 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     ['SEND', { message: 'Please check the patch.', delivery: 'QUEUE' }, [task], 'send receipt'],
     [
       'WAIT',
-      {},
-      [
-        { ...task, status: 'SUCCEEDED', message: 'Finished review.' },
-        { agentId: 'other', title: 'Other task', status: 'RUNNING', message: 'Still working.' }
-      ],
+      { wait: { waitFor: 'completion', waitMs, ...(singleWait ? {} : { mode: 'any' }) } },
+      singleWait
+        ? [task]
+        : [
+            { ...task, status: 'SUCCEEDED', message: 'Finished review.' },
+            { agentId: 'other', title: 'Other task', status: 'RUNNING', message: 'Still working.' }
+          ],
       'wait receipt'
     ],
     [
@@ -373,7 +377,7 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     detailSamples.push({
       id: `card-${action}`,
       kind: 'tool_call',
-      status: 'COMPLETED',
+      status: action === 'WAIT' && singleWait ? 'IN_PROGRESS' : 'COMPLETED',
       payload: {
         toolName: `agent_${action.toLowerCase()}`,
         inputSummary: 'Hidden public input',

@@ -2219,6 +2219,13 @@ export const agentOperationPresentationSchema = z.object({
       message: z.string().min(1).max(2000).optional(),
       messageTruncated: z.literal(true).optional(),
       delivery: z.enum(['QUEUE', 'STEER']).optional(),
+      wait: z
+        .object({
+          waitFor: z.enum(['message', 'completion']),
+          waitMs: z.number().int().min(0).max(300000),
+          mode: z.enum(['any', 'all']).optional()
+        })
+        .optional(),
       failed: z.literal(true).optional(),
       error: z.string().max(500).optional()
     })

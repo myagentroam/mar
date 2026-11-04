@@ -355,6 +355,15 @@ export const conversationUiEnUS = {
       LIST: 'List',
       VIEW: 'View'
     },
+    agentOperationShort: {
+      START: 'start',
+      SEND: 'send',
+      WAIT: 'wait',
+      VIEW: 'view',
+      LIST: 'list',
+      STOP: 'stop',
+      RESUME: 'resume'
+    },
     subagentOperation: {
       START: 'Start',
       STATUS: 'View status',

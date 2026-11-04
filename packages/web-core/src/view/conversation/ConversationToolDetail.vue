@@ -133,6 +133,10 @@ const detailOnlyText = computed(() => detailOnlyToolText(payload.value));
 const agentDetail = computed(() =>
   props.item.permissionStop ? undefined : agentOperationDetail(payload.value, props.item.status)
 );
+const agentWaitText = computed(() => {
+  const wait = agentDetail.value?.wait;
+  return wait ? [wait.waitFor, wait.mode, `${wait.waitMs}ms`].filter(Boolean).join(' · ') : '';
+});
 const outputs = computed(() => {
   const value = execution.value;
   if (!value) return undefined;
@@ -234,13 +238,20 @@ onBeforeUnmount(() => {
           </p>
         </template>
         <template v-else-if="agentDetail.action === 'WAIT' || agentDetail.action === 'VIEW'">
+          <p v-if="agentDetail.targets.length !== 1 && agentWaitText" class="agent-detail-meta">
+            {{ agentWaitText }}
+          </p>
           <div
             v-for="(target, index) in agentDetail.targets"
             :key="index"
             class="agent-detail-entry"
           >
             <div class="agent-detail-row agent-detail-meta">
-              <span>{{ target.title }}</span
+              <span
+                >{{ target.title
+                }}<template v-if="agentDetail.targets.length === 1 && agentWaitText">
+                  · {{ agentWaitText }}</template
+                ></span
               ><span v-if="target.status">{{ agentTargetStatus(target.status) }}</span>
             </div>
             <p v-if="target.message" class="agent-detail-text">{{ target.message }}</p>
@@ -540,7 +551,7 @@ onBeforeUnmount(() => {
 }
 .agent-detail-meta {
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
+  font-size: var(--mar-font-size-detail);
   font-weight: 400;
 }
 .agent-detail-text {

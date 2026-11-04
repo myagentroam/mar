@@ -22,6 +22,21 @@ function event(value: Record<string, unknown>): AgentEvent {
 }
 
 describe('public Agent operations', () => {
+  it.each([{ agentId: 'child' }, {}, { agentIds: ['child'] }, { agentIds: ['a', 'b'] }])(
+    'only projects a wait mode for an explicit multi-target call: %j',
+    (selection) => {
+      const result = agentOperationEvent(
+        'wait',
+        { ...selection, waitFor: 'message', waitMs: 0, mode: 'all' },
+        {}
+      );
+      expect(result.eventData.agentOperation.detail?.wait).toEqual({
+        waitFor: 'message',
+        waitMs: 0,
+        ...('agentIds' in selection ? { mode: 'all' } : {})
+      });
+    }
+  );
   it('projects only current public card facts without private goal or configuration', () => {
     const start = agentOperationEvent(
       'start',

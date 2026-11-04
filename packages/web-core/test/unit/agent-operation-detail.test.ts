@@ -1,8 +1,60 @@
 import { describe, expect, it } from 'vitest';
 import { agentOperationDetail } from '../../src/util/agent-operation-presentation';
 import { mergeConversationPayload } from '../../src/util/conversation-history';
+import { conversationItemText } from '../../src/util/conversation-presentation';
 
 describe('Agent operation card projection', () => {
+  it('uses semantic short actions instead of native command names', () => {
+    for (const action of ['START', 'SEND', 'WAIT', 'VIEW', 'LIST', 'STOP'] as const)
+      expect(
+        conversationItemText('tool_call', {
+          toolName: 'unrelated_native_name',
+          agentOperation: { action, targets: [{ agentId: 'x', title: 'Task' }] }
+        })
+      ).toBe(`${action.toLowerCase()} Task`);
+    for (const [operation, label] of [
+      ['MESSAGE', 'send'],
+      ['CANCEL', 'stop'],
+      ['STATUS', 'view'],
+      ['RESUME', 'resume']
+    ] as const)
+      expect(
+        conversationItemText('tool_call', {
+          toolName: 'native',
+          subagentOperation: operation,
+          title: 'Task'
+        })
+      ).toBe(`${label} Task`);
+    expect(
+      conversationItemText('tool_call', {
+        toolName: 'native',
+        subagentOperation: 'STATUS',
+        subagentWait: true,
+        title: 'Task'
+      })
+    ).toBe('wait Task');
+  });
+  it('keeps wait facts from the producer and does not infer them from raw summaries', () => {
+    const payload = {
+      agentOperation: {
+        action: 'WAIT',
+        targets: [{ agentId: 'x', title: 'Task' }],
+        detail: { wait: { waitFor: 'message', waitMs: 0 } }
+      }
+    };
+    expect(agentOperationDetail(payload, 'IN_PROGRESS')).toMatchObject({
+      wait: { waitFor: 'message', waitMs: 0 }
+    });
+    expect(
+      agentOperationDetail(
+        {
+          agentOperation: { action: 'WAIT', targets: [], detail: {} },
+          inputSummary: '{"waitFor":"message","waitMs":50}'
+        },
+        'COMPLETED'
+      )
+    ).not.toHaveProperty('wait');
+  });
   it('renders native call facts without interpreting legacy summaries or inventing targets', () => {
     expect(
       agentOperationDetail(

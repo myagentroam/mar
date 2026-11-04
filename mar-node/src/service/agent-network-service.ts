@@ -6,6 +6,7 @@ import { safeErrorCode } from '../util/safe-error.js';
 import { parseAgentGoal, type AgentGoalChange } from './agent-network-goal.js';
 import type { AgentNetworkObservations } from './agent-network-observations.js';
 import {
+  AGENT_WAIT_DEFAULTS,
   validateAgentWaitOptions,
   waitForAgentTargets,
   type AgentWaitTarget
@@ -504,7 +505,7 @@ export class AgentNetworkService {
           }
         },
         single: input.agentIds === undefined,
-        waitMs: input.waitMs ?? 30_000,
+        waitMs: input.waitMs ?? AGENT_WAIT_DEFAULTS.waitMs,
         ...(input.mode === undefined ? {} : { mode: input.mode }),
         ...(input.waitFor === undefined ? {} : { waitFor: input.waitFor }),
         ...(input.signal === undefined ? {} : { signal: input.signal }),

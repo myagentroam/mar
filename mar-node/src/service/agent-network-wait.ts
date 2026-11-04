@@ -2,6 +2,8 @@ import { AgentError } from '@myagentroam/agent';
 import { waitForToolCondition, type ToolWaitInterrupt } from '@myagentroam/agent/extensions';
 import type { AgentObservationSnapshot, ParentObservations } from './agent-network-observations.js';
 
+export const AGENT_WAIT_DEFAULTS = { waitFor: 'completion', waitMs: 30_000, mode: 'any' } as const;
+
 export interface AgentWaitTarget {
   readonly agentId: string;
   readonly runId: string;
@@ -50,7 +52,7 @@ export async function waitForAgentTargets(input: {
   )
     throw new AgentError('AGENT_WAIT_INVALID', 'The agent wait target selection is invalid.');
   input.signal?.throwIfAborted();
-  const waitMs = input.waitMs ?? 30_000;
+  const waitMs = input.waitMs ?? AGENT_WAIT_DEFAULTS.waitMs;
   const snapshot = waitMs === 0;
   const terminalSnapshots = new Map<string, AgentObservationSnapshot>();
   const read = (target: AgentWaitTarget) => {
@@ -162,13 +164,13 @@ export async function waitForAgentTargets(input: {
   if (input.single)
     return {
       ...agents[0],
-      waitFor: input.waitFor ?? 'completion',
+      waitFor: input.waitFor ?? AGENT_WAIT_DEFAULTS.waitFor,
       ...(groupOutcome === 'interrupted' ? { waitOutcome: 'interrupted' as const } : {}),
       ...(groupOutcome === 'interrupted' ? { reason: 'steer' as const } : {})
     };
   return {
-    mode: input.mode ?? 'any',
-    waitFor: input.waitFor ?? 'completion',
+    mode: input.mode ?? AGENT_WAIT_DEFAULTS.mode,
+    waitFor: input.waitFor ?? AGENT_WAIT_DEFAULTS.waitFor,
     waitOutcome: snapshot ? 'snapshot' : groupOutcome,
     ...(groupOutcome === 'interrupted' ? { reason: 'steer' as const } : {}),
     agents,
