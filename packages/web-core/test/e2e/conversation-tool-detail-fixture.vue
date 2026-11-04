@@ -228,7 +228,6 @@ if (webLayout) {
     toolPresentation: {
       kind: 'WEB_SEARCH',
       query: 'Documentation and release notes',
-      sourcesOnly: true,
       sources: [
         {
           title: 'Example documentation',
@@ -315,6 +314,7 @@ if (new URL(location.href).searchParams.has('specialized')) {
   );
 }
 if (new URL(location.href).searchParams.has('agent-cards')) {
+  const params = new URL(location.href).searchParams;
   detailSamples.push({
     id: 'native-agent-card',
     kind: 'tool_call',
@@ -382,7 +382,12 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
         toolName: `agent_${action.toLowerCase()}`,
         inputSummary: 'Hidden public input',
         inputTruncated: true,
-        agentOperation: { action, targets, detail },
+        agentOperation: {
+          action,
+          targets: action === 'LIST' && params.has('empty-list') ? [] : targets,
+          ...(action === 'LIST' ? { scope: params.get('list-scope') ?? 'tree' } : {}),
+          detail
+        },
         output: {
           blocks: [{ channel: 'TEXT', text: output }],
           ...(action === 'STOP' && (stopTruncation === 'HEAD' || stopTruncation === 'SOURCE')

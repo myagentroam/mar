@@ -88,9 +88,7 @@ const webMetadata = computed(() => {
     .join(' · ');
 });
 const webOutput = computed(() => {
-  const value = webDetail.value;
-  // Only the producer can declare that the structured sources cover the public output.
-  if (value?.kind === 'WEB_SEARCH' && value.sourcesOnly && value.sources !== undefined) return [];
+  if (webDetail.value?.kind === 'WEB_SEARCH') return [];
   return genericOutput.value?.blocks.filter((block) => block.text.length > 0) ?? [];
 });
 const executionSource = computed(() => {

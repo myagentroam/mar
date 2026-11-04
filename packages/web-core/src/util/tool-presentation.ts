@@ -298,10 +298,10 @@ export function toolPresentationDetails(payload: unknown): string {
   if (raw.inputTruncated === true) details.push(translate('toolPresentation.detail.truncated'));
   if (value.kind === 'WEB_SEARCH' && value.sourcesOnly && value.sources?.length === 0)
     details.push(translate('toolPresentation.noResults'));
-  if (
-    !(value.kind === 'WEB_SEARCH' && value.sourcesOnly && value.sources !== undefined) &&
-    !(value.kind === 'SLEEP' && value.elapsedMs !== undefined)
-  )
+  if (value.kind === 'WEB_SEARCH') {
+    if (readToolOutput(raw)?.truncation)
+      details.push(translate('toolPresentation.detail.truncated'));
+  } else if (!(value.kind === 'SLEEP' && value.elapsedMs !== undefined))
     details.push(toolOutputDetail(raw));
   details.push(line(conversationUiEnUS.presentation.error, raw.errorCode));
   if (typeof raw.errorMessage === 'string' && raw.errorMessage) details.push(raw.errorMessage);

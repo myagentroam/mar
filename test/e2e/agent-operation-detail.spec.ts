@@ -63,6 +63,7 @@ for (const [width, theme] of [
     );
     await expect(send.locator('.agent-detail')).toContainText('queue');
     const list = rows.filter({ has: page.locator('summary').filter({ hasText: /^list\b/ }) });
+    await expect(list.locator(':scope > summary')).toContainText('list tree');
     await expect(list.locator('.agent-detail')).toContainText('Ready');
     await expect(list.locator('.agent-detail')).not.toContainText('IDLE');
     await expect(stop.locator('.agent-detail-text')).toHaveText('{"status":"accepted"}\n');
@@ -192,5 +193,30 @@ for (const truncation of ['HEAD', 'SOURCE'] as const) {
     const result = text.indexOf('{"status":"accepted"}');
     expect(marker).toBeGreaterThanOrEqual(0);
     expect(truncation === 'HEAD' ? marker < result : marker > result).toBe(true);
+  });
+}
+
+for (const [width, scope] of [
+  [1280, 'tree'],
+  [390, 'active']
+] as const) {
+  test(`shows LIST ${scope} with empty results at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&agent-cards&empty-list&list-scope=${scope}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const group = page.locator('.subagent-group');
+    await group.locator('.conversation-record-group > summary').click();
+    const list = group.locator('.conversation-tool-detail').filter({
+      has: page.locator('summary').filter({ hasText: `list ${scope}` })
+    });
+    await expect(list.locator(':scope > summary')).toContainText(`list ${scope}`);
+    await list.locator(':scope > summary').click();
+    await expect(list.locator('.agent-detail')).toHaveText('No sessions');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
   });
 }

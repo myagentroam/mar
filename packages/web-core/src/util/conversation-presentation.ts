@@ -513,8 +513,10 @@ export function conversationItemText(
     const toolName = stringField(value, 'toolName');
     const title = stringField(value, 'title');
     if (isSubagentToolCall(value)) {
-      const taskTitle = subagentTaskTitle(value);
-      return [subagentOperationShortText(value), taskTitle].filter(Boolean).join(' ');
+      const agent = agentOperation(value);
+      const context =
+        agent?.action === 'LIST' && agent.scope ? agent.scope : subagentTaskTitle(value);
+      return [subagentOperationShortText(value), context].filter(Boolean).join(' ');
     }
     if (toolPresentation(payload)) return toolPresentationText(payload, status ?? 'COMPLETED');
     if (toolName.length > 0) return toolName;

@@ -177,7 +177,8 @@ test('mounts independent details only while open and releases them with the proc
   );
   await expect(search.locator('.web-query')).toHaveText('documentation');
   await expect(search.locator('.tool-detail')).not.toContainText('Input:');
-  await expect(search.locator('.web-output')).toContainText('Relevant documentation found.');
+  await expect(search.locator('.web-output')).toHaveCount(0);
+  await expect(search.locator('.tool-detail')).not.toContainText('Relevant documentation found.');
   await expect(fetch.locator('.web-page-url a')).toHaveAttribute(
     'href',
     'https://example.com/docs'
@@ -531,7 +532,10 @@ for (const width of [1280, 390]) {
       await expect(row.locator('.web-detail')).toHaveCount(0);
       await row.locator('> summary').click();
       await expect(row.locator('.web-detail')).toContainText(text);
-      await expect(row.locator('.web-detail')).toContainText('Native public output');
+      if (name === 'WebSearch') {
+        await expect(row.locator('.web-output')).toHaveCount(0);
+        await expect(row.locator('.web-detail')).not.toContainText('Native public output');
+      } else await expect(row.locator('.web-detail')).toContainText('Native public output');
       await expect(row.locator('.web-detail')).not.toContainText('copy-only native input');
       await expect(row.locator('.conversation-tool-sources')).toHaveCount(0);
       await row.locator('> summary').click();
@@ -610,6 +614,7 @@ for (const [width, theme] of [
 test('specialized tool details replace live output with the authoritative result', async ({
   page
 }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1`);
   const process = page.locator('.process-heading').first();
   if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
@@ -625,9 +630,10 @@ test('specialized tool details replace live output with the authoritative result
     read.locator('.conversation-detail-text'),
     child.locator('.conversation-detail-text')
   ];
-  const webRegions = ['WEB_SEARCH', 'WEB_FETCH'].map((kind) =>
-    page.locator(`[data-tool-presentation="${kind}"] .web-detail`)
-  );
+  const webRegions = ['WEB_SEARCH', 'WEB_FETCH'].map((kind) => ({
+    kind,
+    region: page.locator(`[data-tool-presentation="${kind}"] .web-detail`)
+  }));
   await page.getByTestId('stream-details').click();
   for (const [index, body] of bodies.entries()) {
     await expect
@@ -635,10 +641,14 @@ test('specialized tool details replace live output with the authoritative result
       .toContain(':\n  live output\n\n  next line\n');
     await expect(body).not.toContainText('Truncated');
   }
-  for (const region of webRegions) {
-    await expect
-      .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
-      .toBe('  live output\n\n  next line\n');
+  for (const { kind, region } of webRegions) {
+    if (kind === 'WEB_SEARCH') {
+      await expect(region.locator('.web-output')).toHaveCount(0);
+      await expect(region).not.toContainText('live output');
+    } else
+      await expect
+        .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+        .toBe('  live output\n\n  next line\n');
     await expect(region).not.toContainText('[Truncated]');
   }
   await page.getByTestId('finish-details').click();
@@ -649,12 +659,18 @@ test('specialized tool details replace live output with the authoritative result
     await expect(body).not.toContainText('The requested page content.');
     await expect(body).not.toContainText('Message delivered.');
   }
-  for (const region of webRegions) {
-    await expect
-      .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
-      .toBe('  authoritative tail\n');
-    const text = await region.textContent();
-    expect(text!.indexOf('[Truncated]')).toBeGreaterThan(text!.indexOf('authoritative tail'));
+  for (const { kind, region } of webRegions) {
+    if (kind === 'WEB_SEARCH') {
+      await expect(region.locator('.web-output')).toHaveCount(0);
+      await expect(region).not.toContainText('authoritative tail');
+      await expect(region).toContainText('[Truncated]');
+    } else {
+      await expect
+        .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+        .toBe('  authoritative tail\n');
+      const text = await region.textContent();
+      expect(text!.indexOf('[Truncated]')).toBeGreaterThan(text!.indexOf('authoritative tail'));
+    }
     await expect(region).not.toContainText('live output');
     await expect(region).not.toContainText('Relevant documentation found.');
     await expect(region).not.toContainText('The requested page content.');
@@ -663,6 +679,13 @@ test('specialized tool details replace live output with the authoritative result
     'href',
     'https://example.com/docs'
   );
+  await page.locator('[data-tool-presentation="WEB_SEARCH"] .tool-detail-copy').click();
+  await expect(page.getByTestId('copied')).toContainText('authoritative tail');
+  const copied = JSON.parse((await page.getByTestId('copied').textContent())!);
+  expect(copied.payload.output).toMatchObject({
+    blocks: [{ channel: 'TEXT', text: '  authoritative tail\n' }],
+    truncation: 'SOURCE'
+  });
 });
 
 test('places the HEAD marker before authoritative output without repeating it at the end', async ({
@@ -863,6 +886,10 @@ for (const width of [1280, 390]) {
           'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
+        const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
+        await expect(search.locator('.web-detail')).toBeVisible();
+        await expect(search.locator('.web-output')).toHaveCount(0);
+        await expect(search.locator('.conversation-detail-body')).toHaveCount(1);
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
           const spacing = await surface.evaluate((element) => {

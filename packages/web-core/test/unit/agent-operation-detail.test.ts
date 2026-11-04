@@ -4,6 +4,24 @@ import { mergeConversationPayload } from '../../src/util/conversation-history';
 import { conversationItemText } from '../../src/util/conversation-presentation';
 
 describe('Agent operation card projection', () => {
+  it.each(['tree', 'active'])('shows the LIST query scope %s even with no results', (scope) => {
+    for (const targets of [[], [{ agentId: 'child', title: 'Task' }]])
+      expect(
+        conversationItemText('tool_call', {
+          toolName: 'agent_list',
+          inputSummary: '{"scope":"not-a-source"}',
+          agentOperation: { action: 'LIST', scope, targets }
+        })
+      ).toBe(`list ${scope}`);
+    expect(
+      conversationItemText('tool_call', {
+        toolName: 'agent_list',
+        inputSummary: `{"scope":"${scope}"}`,
+        agentOperation: { action: 'LIST', targets: [] }
+      })
+    ).toBe('list');
+  });
+
   it('uses semantic short actions instead of native command names', () => {
     for (const action of ['START', 'SEND', 'WAIT', 'VIEW', 'LIST', 'STOP'] as const)
       expect(
