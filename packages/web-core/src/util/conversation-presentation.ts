@@ -528,8 +528,11 @@ export function conversationItemText(
     if (execution?.kind === 'CONTROL') {
       if (execution.action === 'poll') {
         const source = conversationPayload(execution.source);
-        const command = source?.kind === 'SHELL' ? rawTextField(source, 'text').trim() : '';
-        const target = command || rawTextField(execution, 'targetId').trim();
+        const sourceText =
+          source?.kind === 'SHELL' || source?.kind === 'CODE'
+            ? rawTextField(source, 'text').trim()
+            : '';
+        const target = sourceText || rawTextField(execution, 'targetId').trim();
         return translate('toolPresentation.executionWait', { target }).trimEnd();
       }
       return stringField(execution, 'toolName');

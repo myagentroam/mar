@@ -1834,21 +1834,32 @@ describe('Conversation Show Aggregation', () => {
   });
 
   it.each(['exec_wait', 'code_exec_wait'])(
-    'uses the command or resource identity for %s wait rows without changing their details',
+    'uses the original command, code or resource identity for %s wait rows without changing their details',
     (toolName) => {
       const targetId = toolName === 'exec_wait' ? 'p_fixture' : 'c_fixture';
       for (const locale of ['zh-CN', 'en-US'] as const) {
         localePreferenceService().setLocale(locale);
-        for (const source of [
-          { kind: 'SHELL', text: 'pnpm test --filter fixture', truncated: false },
-          { kind: 'SHELL', text: '  ', truncated: false },
-          {
-            kind: 'CODE',
-            text: 'await tools.exec({ command: "not inferred" });',
-            truncated: false
-          },
-          undefined
-        ]) {
+        for (const [source, preview] of [
+          [
+            { kind: 'SHELL', text: 'pnpm test --filter fixture', truncated: false },
+            'pnpm test --filter fixture'
+          ],
+          [{ kind: 'SHELL', text: '  ', truncated: false }, undefined],
+          [
+            {
+              kind: 'CODE',
+              text: 'await tools.exec({ command: "not inferred" });',
+              truncated: false
+            },
+            'await tools.exec({ command: "not inferred" });'
+          ],
+          [{ kind: 'CODE', text: ' \n ', truncated: false }, undefined],
+          [
+            { kind: 'CODE', text: 'await tools.agent_wait(', truncated: true },
+            'await tools.agent_wait('
+          ],
+          [undefined, undefined]
+        ] as const) {
           const payload = {
             command: 'legacy command is not a source',
             toolPresentation: {
@@ -1862,10 +1873,7 @@ describe('Conversation Show Aggregation', () => {
               }
             }
           };
-          const expected =
-            source?.kind === 'SHELL' && source.text.trim()
-              ? 'wait pnpm test --filter fixture'
-              : `wait ${targetId}`;
+          const expected = `wait ${preview ?? targetId}`;
           const record = JSON.stringify(payload);
           const detail = conversationItemDetail('command_execution', payload);
           for (const status of ['IN_PROGRESS', 'COMPLETED', 'FAILED'] as const) {

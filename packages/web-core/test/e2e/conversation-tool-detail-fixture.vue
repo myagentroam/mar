@@ -415,13 +415,17 @@ if (new URL(location.href).searchParams.has('wait-titles')) {
   };
   for (const [toolName, targetId, executionSource] of [
     ['exec_wait', 'p_known', source],
-    ['code_exec_wait', 'c_known', source],
-    ['exec_wait', 'p_unknown', undefined],
     [
       'code_exec_wait',
-      'c_unknown',
-      { kind: 'CODE', text: 'await tools.exec({ command: "not inferred" });', truncated: false }
-    ]
+      'c_known',
+      {
+        kind: 'CODE',
+        text: `await tools.exec({ command: "${source.text}" });\nawait tools.agent_wait({ agentId: "peer" });`,
+        truncated: false
+      }
+    ],
+    ['exec_wait', 'p_unknown', undefined],
+    ['code_exec_wait', 'c_unknown', undefined]
   ] as const) {
     detailSamples.push({
       id: `wait-title-${targetId}`,

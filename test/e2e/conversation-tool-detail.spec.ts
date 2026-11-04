@@ -300,7 +300,7 @@ for (const [width, theme, locale] of [
 }
 
 for (const width of [1280, 390]) {
-  test(`wait rows use explicit commands or resource IDs at ${width}px`, async ({ page }) => {
+  test(`wait rows use explicit commands, code or resource IDs at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto(
@@ -310,19 +310,19 @@ for (const width of [1280, 390]) {
     if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
     await page.locator('.command-group > details > summary').click();
     const source = `pnpm test --filter fixture ${'long-argument-'.repeat(24)}`;
+    const code = `await tools.exec({ command: "${source}" });\nawait tools.agent_wait({ agentId: "peer" });`;
     for (const [targetId, toolName, title] of [
       ['p_known', 'exec_wait', `wait ${source}`],
-      ['c_known', 'code_exec_wait', `wait ${source}`],
+      ['c_known', 'code_exec_wait', `wait ${code}`],
       ['p_unknown', 'exec_wait', 'wait p_unknown'],
       ['c_unknown', 'code_exec_wait', 'wait c_unknown']
     ] as const) {
       const row = page.locator('.conversation-command-detail').filter({
         has: page.locator('.conversation-command-preview', { hasText: title })
       });
-      const matchingRow =
-        title === `wait ${source}` ? row.nth(targetId === 'p_known' ? 0 : 1) : row;
+      const matchingRow = row;
       const preview = matchingRow.locator('.conversation-command-preview');
-      await expect(preview).toHaveText(title);
+      await expect(preview).toHaveText(title.replaceAll('\n', ' '));
       if (targetId === 'p_known' || targetId === 'c_known') {
         expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
           true
@@ -331,13 +331,20 @@ for (const width of [1280, 390]) {
       await expect(matchingRow.locator('.tool-detail')).toHaveCount(0);
       await matchingRow.locator('> summary').click();
       await expect(matchingRow.locator('.tool-detail-heading')).toContainText(`${toolName} · Poll`);
-      if (targetId === 'p_unknown')
+      if (targetId === 'p_unknown' || targetId === 'c_unknown')
         await expect(matchingRow.locator('.tool-detail-heading')).toContainText(targetId);
+      if (targetId === 'c_known') {
+        await expect(matchingRow.locator('.execution-detail')).toContainText('Code:');
+        await expect(matchingRow.locator('.execution-detail')).toContainText(code);
+        await expect(matchingRow.locator('.tool-detail-heading')).not.toContainText(targetId);
+      }
       await matchingRow.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
       await expect(matchingRow.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
       const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
       expect(copied.payload.toolPresentation.execution.toolName).toBe(toolName);
       expect(copied.payload.toolPresentation.execution.targetId).toBe(targetId);
+      if (targetId === 'c_known')
+        expect(copied.payload.toolPresentation.execution.source.text).toBe(code);
       await matchingRow.locator('> summary').click();
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
