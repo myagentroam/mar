@@ -132,9 +132,7 @@ export function webToolPresentation(payload: unknown) {
   return value?.kind === 'WEB_SEARCH' || value?.kind === 'WEB_FETCH' ? value : undefined;
 }
 
-export function toolPresentationSources(payload: unknown) {
-  const value = webToolPresentation(payload);
-  if (value?.kind !== 'WEB_SEARCH') return [];
+export function toolPresentationSources(value: Extract<ToolPresentation, { kind: 'WEB_SEARCH' }>) {
   return (value.sources ?? []).map((source) => ({
     ...source,
     ...toolPresentationLink(source.url)

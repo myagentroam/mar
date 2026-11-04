@@ -26,7 +26,7 @@ import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
-import ConversationToolDetail from './ConversationToolDetail.vue';
+import ConversationToolDetail from './tool-detail/ConversationToolDetail.vue';
 import ConversationDetailPreview from './ConversationDetailPreview.vue';
 import {
   conversationWorkProcessProjection,

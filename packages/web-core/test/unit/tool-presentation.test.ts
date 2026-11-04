@@ -286,12 +286,13 @@ describe('independent tool presentation', () => {
   it('hides raw search output while retaining truncation and structured source links', () => {
     localePreferenceService().setLocale('en-US');
     const url = 'https://example.com/search';
+    const search = {
+      kind: 'WEB_SEARCH' as const,
+      query: 'example',
+      sources: [{ url, title: 'Example' }]
+    };
     const value = {
-      ...payload({
-        kind: 'WEB_SEARCH',
-        query: 'example',
-        sources: [{ url, title: 'Example' }]
-      }),
+      ...payload(search),
       output: {
         blocks: [
           {
@@ -307,7 +308,7 @@ describe('independent tool presentation', () => {
     expect(detail).not.toContain('Search results (truncated):');
     expect(detail).not.toContain('Output:');
     expect(detail).toContain('[Truncated]');
-    expect(toolPresentationSources(value)).toMatchObject([{ url, href: url, title: 'Example' }]);
+    expect(toolPresentationSources(search)).toMatchObject([{ url, href: url, title: 'Example' }]);
     expect(readToolOutput(value)?.blocks[0]?.text).toContain('Search results (truncated):');
   });
   it.each(['READ', 'WEB_SEARCH', 'WEB_FETCH', 'SKILL', 'SLEEP', 'GENERIC', 'SUBAGENT'])(
@@ -554,15 +555,13 @@ describe('independent tool presentation', () => {
     ).toBe('Waited 3 min 12 sec');
   });
   it('keeps metadata and output in details and exposes only webpage URLs as source links', () => {
-    const sources = toolPresentationSources(
-      payload({
-        kind: 'WEB_SEARCH',
-        sources: [
-          { url: 'https://example.com/page', title: '原始 title', snippet: '<plain text>' },
-          { url: 'javascript:alert(1)' }
-        ]
-      })
-    );
+    const sources = toolPresentationSources({
+      kind: 'WEB_SEARCH',
+      sources: [
+        { url: 'https://example.com/page', title: '原始 title', snippet: '<plain text>' },
+        { url: 'javascript:alert(1)' }
+      ]
+    });
     expect(sources[0]).toMatchObject({
       href: 'https://example.com/page',
       host: 'example.com',

@@ -29,6 +29,70 @@ async function expectUnclippedDetail(content: Locator) {
     .toBe(true);
 }
 
+test('updates a conditional fallback slot and does not schedule copy feedback after unmount', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?lifecycle-probe&locale=en-US`);
+  const probe = page.getByTestId('lifecycle-probe');
+  const detail = probe.getByTestId('lifecycle-detail').locator('.tool-detail');
+  await expect(detail).not.toHaveClass(/conversation-detail-body/);
+  await probe.getByTestId('toggle-slot').click();
+  await expect(detail).toHaveClass(/conversation-detail-body/);
+  await expect(probe.getByTestId('lifecycle-slot')).toHaveText('Slot content');
+  await probe.getByTestId('toggle-slot').click();
+  await expect(detail).not.toHaveClass(/conversation-detail-body/);
+  await expect(probe.getByTestId('lifecycle-slot')).toHaveCount(0);
+
+  await detail.getByRole('button', { name: 'Copy public record' }).click();
+  await expect(probe.getByTestId('copy-pending')).toHaveText('true');
+  await probe.getByTestId('unmount-detail').click();
+  await expect(detail).toHaveCount(0);
+  await page.evaluate(() => {
+    const original = window.setTimeout;
+    (window as Window & { feedbackTimers?: number }).feedbackTimers = 0;
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      if (timeout === 500) (window as Window & { feedbackTimers: number }).feedbackTimers++;
+      return original(handler, timeout, ...args);
+    }) as typeof window.setTimeout;
+  });
+  await probe.getByTestId('resolve-copy').click();
+  await expect(probe.getByTestId('copy-completed')).toHaveText('true');
+  expect(
+    await page.evaluate(() => (window as Window & { feedbackTimers: number }).feedbackTimers)
+  ).toBe(0);
+});
+
+test('updates fixed labels in the mounted detail without changing raw text or expansion', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?lifecycle-probe&locale=en-US`);
+  const detail = page.getByTestId('locale-detail').locator('.tool-detail');
+  const input = '  input stays\n  unchanged\n';
+  const output = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n');
+  expect(
+    await detail.locator('pre').evaluateAll((nodes) => nodes.map((node) => node.textContent))
+  ).toEqual([input, output]);
+  await expect(detail).toContainText('Input:');
+  await expect(detail).toContainText('Output:');
+  await detail.getByRole('button', { name: 'Show more' }).click();
+  await expect(detail.getByRole('button', { name: 'Show less' })).toBeVisible();
+  await detail.evaluate((element) => {
+    (window as Window & { originalDetail?: Element }).originalDetail = element;
+  });
+  await page.getByTestId('switch-locale').click();
+  expect(
+    await detail.evaluate(
+      (element) => element === (window as Window & { originalDetail?: Element }).originalDetail
+    )
+  ).toBe(true);
+  await expect(detail).toContainText('输入:');
+  await expect(detail).toContainText('输出:');
+  expect(
+    await detail.locator('pre').evaluateAll((nodes) => nodes.map((node) => node.textContent))
+  ).toEqual([input, output]);
+  await expect(detail.getByRole('button', { name: '收起' })).toBeVisible();
+});
+
 async function expectGenericDetail(detail: Locator) {
   await expect(detail.locator('pre')).toHaveText(['Preserved input', 'Partial inspection output']);
   for (const text of [
@@ -90,7 +154,7 @@ for (const { width, theme, locale } of [
       await expectUnclippedDetail(visibleDetail);
       if (name === 'view_image') {
         await expect(body.locator('img')).toHaveCount(0);
-        await expect(body).toContainText('Source size');
+        await expect(body).toContainText(locale === 'en-US' ? 'Source size' : '原始尺寸');
         await expect(body).toContainText('1600 × 1200');
       }
       if (name === 'tool_search') {
@@ -367,8 +431,12 @@ for (const [width, theme, locale] of [
       .filter({ has: page.locator('.conversation-command-preview', { hasText: 'printf test' }) });
     await shell.locator('> summary').click();
     await expect(shell.locator('.tool-detail-heading')).toHaveText('exec');
-    await expect(shell.locator('.tool-source-text')).toHaveText('Command: printf test');
-    await expect(shell.locator('.execution-output').nth(0)).toContainText('Output:');
+    await expect(shell.locator('.tool-source-text')).toHaveText(
+      locale === 'en-US' ? 'Command: printf test' : '命令: printf test'
+    );
+    await expect(shell.locator('.execution-output').nth(0)).toContainText(
+      locale === 'en-US' ? 'Output:' : '输出:'
+    );
     await expect(shell.locator('.execution-output').nth(1)).toContainText('stderr:');
     const code = page.locator('.conversation-command-detail').filter({
       has: page.locator('.conversation-command-preview', {
@@ -377,7 +445,9 @@ for (const [width, theme, locale] of [
     });
     await code.locator('> summary').click();
     await expect(code.locator('.tool-detail-heading')).toHaveText('code_exec');
-    await expect(code.locator('.tool-source-text')).toContainText('Code: const result');
+    await expect(code.locator('.tool-source-text')).toContainText(
+      locale === 'en-US' ? 'Code: const result' : '代码: const result'
+    );
     await expect(code.locator('.tool-output-text')).toHaveText('Observed the requested file.');
     await expect(code.locator('.tool-exit')).toHaveCount(0);
     for (const body of [read, skill, shell, code]) {
@@ -444,7 +514,9 @@ for (const width of [1280, 390]) {
       if (targetId === 'p_unknown' || targetId === 'c_unknown')
         await expect(matchingRow.locator('.tool-detail-heading')).toContainText(targetId);
       if (targetId === 'c_known') {
-        await expect(matchingRow.locator('.execution-detail')).toContainText('Code:');
+        await expect(matchingRow.locator('.execution-detail')).toContainText(
+          width === 390 ? '代码:' : 'Code:'
+        );
         await expect(matchingRow.locator('.execution-detail')).toContainText(code);
         await expect(matchingRow.locator('.tool-detail-heading')).not.toContainText(targetId);
       }

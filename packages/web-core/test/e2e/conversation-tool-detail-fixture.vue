@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
-import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
+import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import ConversationDetailPreview from '../../src/view/conversation/ConversationDetailPreview.vue';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
@@ -10,6 +11,31 @@ const integrated = new URL(location.href).searchParams.has('timeline');
 const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
 const previewProbe = new URL(location.href).searchParams.has('preview-probe');
+const lifecycleProbe = new URL(location.href).searchParams.has('lifecycle-probe');
+const lifecycleMounted = ref(true);
+const showLifecycleSlot = ref(false);
+const pendingCopy = ref<() => void>();
+const copyCompleted = ref(false);
+const lifecycleItem: ConversationItem = {
+  id: 'lifecycle',
+  kind: 'reasoning',
+  status: 'COMPLETED',
+  payload: {}
+};
+const localeItem: ConversationItem = {
+  id: 'locale',
+  kind: 'tool_call',
+  status: 'COMPLETED',
+  payload: {
+    toolName: 'custom',
+    inputSummary: '  input stays\n  unchanged\n',
+    output: {
+      blocks: [
+        { channel: 'TEXT', text: Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n') }
+      ]
+    }
+  }
+};
 const probeText = ref('wrapped content '.repeat(50));
 const sessionVersion = ref(0);
 const webLayout = new URL(location.href).searchParams.has('web-layout');
@@ -636,6 +662,40 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <section v-if="lifecycleProbe" data-testid="lifecycle-probe">
+      <button data-testid="toggle-slot" @click="showLifecycleSlot = !showLifecycleSlot">
+        Toggle slot
+      </button>
+      <button data-testid="unmount-detail" @click="lifecycleMounted = false">Unmount detail</button>
+      <button
+        data-testid="resolve-copy"
+        @click="
+          copyCompleted = true;
+          pendingCopy?.();
+        "
+      >
+        Resolve copy
+      </button>
+      <output data-testid="copy-pending">{{ Boolean(pendingCopy) }}</output>
+      <output data-testid="copy-completed">{{ copyCompleted }}</output>
+      <div data-testid="lifecycle-detail">
+        <ConversationToolDetail
+          v-if="lifecycleMounted"
+          :item="lifecycleItem"
+          @copy="(_text, done) => (pendingCopy = done)"
+        >
+          <template v-if="showLifecycleSlot" #default>
+            <span data-testid="lifecycle-slot">Slot content</span>
+          </template>
+        </ConversationToolDetail>
+      </div>
+      <button data-testid="switch-locale" @click="localePreferenceService().setLocale('zh-CN')">
+        Switch locale
+      </button>
+      <div data-testid="locale-detail">
+        <ConversationToolDetail :item="localeItem" @copy="copy" />
+      </div>
+    </section>
     <section v-if="previewProbe" data-testid="preview-probe" class="conversation-detail-body">
       <button data-testid="stretch-preview" @click="probeText = 'wrapped content '.repeat(800)">
         Stretch preview

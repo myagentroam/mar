@@ -3,7 +3,7 @@ import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversationItem } from '../../src/model/workbench.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
+import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import { toolPresentation, toolPresentationTitle } from '../../src/util/tool-presentation.js';
 
 const originalLocale = localePreferenceService().locale.value;
@@ -72,9 +72,9 @@ describe('Web tool details', () => {
           ]
         }
       });
-      expect(html).toContain('web_search · Search');
-      expect(html).toContain('Query:');
-      expect(html).toContain('Sources:');
+      expect(html).toContain(locale === 'en-US' ? 'web_search · Search' : 'web_search · 搜索');
+      expect(html).toContain(locale === 'en-US' ? 'Query:' : '查询:');
+      expect(html).toContain(locale === 'en-US' ? 'Sources:' : '来源:');
       expect(html).toContain('original query');
       expect(html).toContain('href="https://example.com/docs"');
       expect(html).toContain('rel="noopener noreferrer"');
