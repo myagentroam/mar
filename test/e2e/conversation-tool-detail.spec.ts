@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -10,6 +10,24 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await fixture?.close();
 });
+
+async function expectUnclippedDetail(content: Locator) {
+  await expect
+    .poll(() =>
+      content.evaluate((element) => {
+        const bottom = element.getBoundingClientRect().bottom;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          if (
+            ['hidden', 'clip'].includes(getComputedStyle(parent).overflowY) &&
+            parent.getBoundingClientRect().bottom < bottom - 1
+          )
+            return false;
+        }
+        return true;
+      })
+    )
+    .toBe(true);
+}
 
 for (const variant of [
   { width: 1280, theme: 'daylight', locale: 'en-US', more: 'Show more', less: 'Show less' },
@@ -96,7 +114,10 @@ test('uses area height for wrapped single-line execution output and keeps copy o
   ).toBe(true);
   await more.click();
   await expect(exec.locator('.detail-preview-window')).toHaveCSS('max-height', 'none');
-  await expect(exec.locator('pre')).toContainText('TAIL\n[Truncated]\nExit code: 0');
+  await expect(exec.locator('.tool-output-text')).toContainText('TAIL');
+  await expect(exec.locator('.execution-detail')).toHaveText(/TAIL\s+\[Truncated\]\s+Exit 0$/, {
+    useInnerText: true
+  });
   await expect(exec.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
 });
 
@@ -171,7 +192,7 @@ test('mounts independent details only while open and releases them with the proc
   ).toHaveCount(0);
 });
 
-test('read file details show only the associated raw file text and real range', async ({
+test('read file details separate their path and range from the associated raw file text', async ({
   page
 }) => {
   await page.goto(
@@ -184,11 +205,95 @@ test('read file details show only the associated raw file text and real range', 
   await read.locator('.conversation-tool-detail > summary').click();
   const detail = read.locator('.conversation-detail-text');
   await expect(read.locator('.conversation-tool-detail > summary')).toContainText('3–4');
+  await expect(read.locator('.tool-detail-heading')).toHaveText('/fixture/example.ts · 3–4');
   await expect(detail).toHaveText('  first file\r\nsecond line\r\n', { useInnerText: false });
   await expect(detail).not.toContainText('3–4');
   await expect(detail).not.toContainText('/fixture/example.ts');
   await expect(detail).not.toContainText('1: export const result');
 });
+
+for (const [width, theme, locale] of [
+  [1280, 'daylight', 'en-US'],
+  [390, 'dark', 'zh-CN']
+] as const) {
+  test(`renders the revised Read, Skill and execution layouts at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&detail-layout&theme=${theme}&locale=${locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    await read.locator('.conversation-tool-detail > summary').click();
+    await expect(read.locator('.tool-detail-heading')).toHaveText('/fixture/example.ts · 3–4');
+    const skill = page.locator('[data-tool-presentation="SKILL"]');
+    await skill.locator('> summary').click();
+    await expect(skill.locator('.tool-detail-heading')).toHaveText('mar-web-spec');
+    const description = skill.locator('.conversation-detail-text');
+    await expect(description).toHaveText(
+      'Design <plain> interfaces.\nKeep the original description and its line breaks.'
+    );
+    await expect(skill.locator('plain')).toHaveCount(0);
+    await expect(skill).not.toContainText('Complete skill output');
+    await expect(skill).not.toContainText('original skill request');
+    await expect(skill).not.toContainText('Output:');
+    await skill.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+    await expect(skill.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
+    const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(copied.payload.output.blocks[0].text).toBe(
+      'Complete skill output is copied, not displayed.'
+    );
+    await page.locator('.command-group > details > summary').click();
+    const shell = page
+      .locator('.conversation-command-detail')
+      .filter({ has: page.locator('.conversation-command-preview', { hasText: 'printf test' }) });
+    await shell.locator('> summary').click();
+    await expect(shell.locator('.tool-detail-heading')).toHaveText('exec');
+    await expect(shell.locator('.tool-source-text')).toHaveText('Command: printf test');
+    await expect(shell.locator('.execution-output').nth(0)).toContainText('Output:');
+    await expect(shell.locator('.execution-output').nth(1)).toContainText('stderr:');
+    const code = page.locator('.conversation-command-detail').filter({
+      has: page.locator('.conversation-command-preview', {
+        hasText: 'const result = await tools.read'
+      })
+    });
+    await code.locator('> summary').click();
+    await expect(code.locator('.tool-detail-heading')).toHaveText('code_exec');
+    await expect(code.locator('.tool-source-text')).toContainText('Code: const result');
+    await expect(code.locator('.tool-output-text')).toHaveText('Observed the requested file.');
+    await expect(code.locator('.tool-exit')).toHaveCount(0);
+    for (const body of [read, skill, shell, code]) {
+      const heading = body.locator('.tool-detail-heading');
+      await expect(heading).toHaveCSS('font-size', '12px');
+      await expect(heading).toHaveCSS('font-weight', '400');
+      for (const content of await body.locator('.conversation-detail-text').all()) {
+        await expect(content).toHaveCSS('font-size', '12px');
+        await expect(content).toHaveCSS('font-weight', '400');
+      }
+      expect(await heading.evaluate((element) => getComputedStyle(element).color)).not.toBe(
+        await body
+          .locator('.conversation-detail-text')
+          .first()
+          .evaluate((element) => getComputedStyle(element).color)
+      );
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.setViewportSize({ width, height: 1600 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expectUnclippedDetail(code.locator('.execution-detail'));
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`revised-details-${width}-${theme}.png`),
+      fullPage: true
+    });
+  });
+}
 
 for (const width of [1280, 390]) {
   test(`wait rows use explicit commands or resource IDs at ${width}px`, async ({ page }) => {
@@ -221,8 +326,9 @@ for (const width of [1280, 390]) {
       }
       await expect(matchingRow.locator('.tool-detail')).toHaveCount(0);
       await matchingRow.locator('> summary').click();
-      await expect(matchingRow.locator('pre')).toContainText(`Tool: ${toolName}`);
-      await expect(matchingRow.locator('pre')).toContainText(`Target: ${targetId}`);
+      await expect(matchingRow.locator('.tool-detail-heading')).toContainText(`${toolName} · Poll`);
+      if (targetId === 'p_unknown')
+        await expect(matchingRow.locator('.tool-detail-heading')).toContainText(targetId);
       await matchingRow.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
       await expect(matchingRow.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
       const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
@@ -426,8 +532,9 @@ test('places the HEAD marker before authoritative output without repeating it at
   const exec = page.getByTestId('exec');
   await exec.locator('summary').click();
   await page.getByTestId('finish').click();
-  const pre = exec.locator('pre');
-  await expect(pre).toHaveText(/Output:\n\[Truncated\]\nx+TAIL\nExit code: 0$/);
+  const pre = exec.locator('.tool-output-text');
+  await expect(pre).toHaveText(/^\[Truncated\]\nx+TAIL$/);
+  await expect(exec.locator('.tool-exit')).toHaveText('Exit 0');
   await expect(pre).not.toContainText('TAIL\n[Truncated]');
   await expect(pre).not.toContainText('visible stdout');
 });
@@ -445,7 +552,9 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}conversation-tool-detail.html`);
       const exec = page.getByTestId('exec');
       await exec.locator('summary').click();
-      await expect(exec.locator('pre')).toHaveText(/^Tool: exec\nCommand: printf test[\s\S]*/);
+      await expect(exec.locator('.tool-detail-heading')).toHaveText('exec');
+      await expect(exec.locator('.tool-source-text')).toHaveText('Command: printf test');
+      await expect(exec.locator('.execution-detail')).toContainText('Working directory: /fixture');
       await expect(exec).toContainText('visible stdout');
       await expect(exec).toContainText('visible stderr');
       await expect(exec).not.toContainText('combined should not replace streams');
@@ -471,7 +580,7 @@ for (const width of [1280, 390]) {
       expect(copied.payload.command).toBe('printf test');
       await expect(exec.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
       await page.getByTestId('empty').locator('summary').click();
-      await expect(page.getByTestId('empty').locator('pre')).not.toContainText('Output:');
+      await expect(page.getByTestId('empty').locator('.execution-output')).toHaveCount(0);
       await expect(page.getByTestId('empty')).not.toContainText('No output');
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
@@ -480,8 +589,11 @@ for (const width of [1280, 390]) {
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
-      await expect(page.getByTestId('wait').locator('pre')).toHaveText(
-        /^Tool: exec_wait\nCommand: pnpm test --filter fixture\nAction: poll\nTarget: p_fixture[\s\S]*/
+      await expect(page.getByTestId('wait').locator('.tool-detail-heading')).toHaveText(
+        'exec_wait · Poll'
+      );
+      await expect(page.getByTestId('wait').locator('.tool-source-text')).toHaveText(
+        'Command: pnpm test --filter fixture'
       );
       await page.getByTestId('declined').locator('summary').click();
       await expect(page.getByTestId('declined')).toContainText('Declined');
@@ -491,7 +603,9 @@ for (const width of [1280, 390]) {
       await page.getByTestId('finish').click();
       await expect(exec).toContainText('TAIL');
       await expect(exec).toContainText('[Truncated]');
-      await expect(exec.locator('pre')).toHaveText(/\[Truncated\]\nExit code: 0$/);
+      await expect(exec.locator('.execution-detail')).toHaveText(/\[Truncated\]\s+Exit 0$/, {
+        useInnerText: true
+      });
       await expect(exec).not.toContainText('visible stdout');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
@@ -529,36 +643,30 @@ for (const width of [1280, 390]) {
         const detail = command.locator('.tool-detail');
         await expect(detail).toContainText('visible stdout');
         await expect(detail).toContainText('visible stderr');
-        await expect(detail.locator('pre')).toHaveCount(1);
+        await expect(detail.locator('.tool-source-text')).toHaveCount(1);
+        await expect(detail.locator('.execution-output')).toHaveCount(2);
         await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
-        await expect(detail.locator('pre')).toContainText('Code: observe.result(await tools.exec(');
-        await expect(detail.locator('pre')).toContainText(
-          'Output:\nvisible stdout\nstderr:\nvisible stderr'
+        await expect(detail.locator('.tool-source-text')).toContainText(
+          'Code: observe.result(await tools.exec('
         );
+        await expect(detail.locator('.execution-output > .tool-detail-meta')).toHaveText([
+          'Output:',
+          'stderr:'
+        ]);
+        await expect(detail.locator('.tool-output-text')).toHaveText([
+          'visible stdout',
+          'visible stderr'
+        ]);
         await expect(detail).not.toContainText('Working directory:');
         await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        const textBounds = await detail.locator('pre').boundingBox();
+        const expand = detail.getByRole('button', { name: 'Show more', exact: true });
+        if (await expand.isVisible()) await expand.click();
+        const textBounds = await detail.locator('.tool-source-text').boundingBox();
         const titleBounds = await command.locator('.conversation-command-preview').boundingBox();
         expect(Math.abs(textBounds!.x - titleBounds!.x)).toBeLessThan(3);
-        await expect(detail.locator('pre')).toHaveCSS('font-weight', '400');
+        await expect(detail.locator('.tool-source-text')).toHaveCSS('font-weight', '400');
 
-        await expect
-          .poll(() =>
-            detail.evaluate((element) => {
-              const output = element.querySelector('pre');
-              if (!output) return false;
-              const bottom = output.getBoundingClientRect().bottom;
-              for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-                if (
-                  ['hidden', 'clip'].includes(getComputedStyle(parent).overflowY) &&
-                  parent.getBoundingClientRect().bottom < bottom - 1
-                )
-                  return false;
-              }
-              return true;
-            })
-          )
-          .toBe(true);
+        await expectUnclippedDetail(detail.locator('.execution-detail'));
 
         const button = detail.getByRole('button', { name: 'Copy public record' });
         await expect(button).toHaveText('');
@@ -637,14 +745,12 @@ for (const width of [1280, 390]) {
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
           );
           await expect(surface).toHaveCSS('border-radius', radius);
-          await expect(surface.locator('.conversation-detail-text')).toHaveCSS(
-            'font-size',
-            thinkingStyle.fontSize
-          );
-          await expect(surface.locator('.conversation-detail-text')).toHaveCSS(
-            'line-height',
-            thinkingStyle.lineHeight
-          );
+          const contents = surface.locator('.conversation-detail-text');
+          expect(await contents.count()).toBeGreaterThan(0);
+          for (const content of await contents.all()) {
+            await expect(content).toHaveCSS('font-size', thinkingStyle.fontSize);
+            await expect(content).toHaveCSS('line-height', thinkingStyle.lineHeight);
+          }
           await expect(surface).toHaveCSS('overflow-y', 'visible');
         }
         await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(

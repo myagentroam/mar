@@ -184,6 +184,40 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (new URL(location.href).searchParams.has('detail-layout')) {
+  detailSamples.push(
+    {
+      id: 'skill-layout',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'skill',
+        inputSummary: 'original skill request',
+        output: {
+          blocks: [{ channel: 'TEXT', text: 'Complete skill output is copied, not displayed.' }]
+        },
+        toolPresentation: {
+          kind: 'SKILL',
+          name: 'mar-web-spec',
+          description:
+            'Design <plain> interfaces.\nKeep the original description and its line breaks.'
+        }
+      }
+    },
+    {
+      id: 'code-layout',
+      kind: 'command_execution',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'code_exec',
+        command:
+          'const result = await tools.read({ reads: [{ path: "src/fixture.ts" }] });\nobserve.result(result);',
+        output: { blocks: [{ channel: 'TEXT', text: 'Observed the requested file.' }] },
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CODE' } }
+      }
+    }
+  );
+}
 if (new URL(location.href).searchParams.has('specialized')) {
   detailSamples.push(
     {
