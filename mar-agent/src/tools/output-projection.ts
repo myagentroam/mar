@@ -217,6 +217,7 @@ export function publicOutputTruncation(
   data: unknown
 ): 'HEAD' | 'SOURCE' | undefined {
   if (!isRecord(data)) return undefined;
+  if (toolName === 'read' && data.mode === 'batch' && data.truncated === true) return 'SOURCE';
   if (toolName === 'code_exec' || toolName === 'code_exec_wait') {
     if (data.outputSourceTruncated === true) return 'SOURCE';
     if (data.outputHeadTruncated === true) return 'HEAD';

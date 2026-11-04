@@ -4,6 +4,16 @@ import {
   structuredToolEventData
 } from '../../src/tools/output-projection.js';
 
+it('publishes bounded READ source clipping independently of model and summary limits', () => {
+  const data = structuredToolEventData('read', { mode: 'batch', results: [], truncated: true });
+  expect(publicOutputTruncation('read', data)).toBe('SOURCE');
+  expect(
+    publicOutputTruncation('read', { mode: 'batch', results: [], truncated: false })
+  ).toBeUndefined();
+  expect(publicOutputTruncation('read', { truncated: true })).toBeUndefined();
+  expect(publicOutputTruncation('other', data)).toBeUndefined();
+});
+
 it('distinguishes source truncation from local observation head clipping', () => {
   const value = (id: string, text: string, truncated = false) => ({
     type: 'value',
