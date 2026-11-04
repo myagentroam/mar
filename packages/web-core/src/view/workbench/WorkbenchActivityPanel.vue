@@ -97,39 +97,46 @@ function activate(id: string | number): void {
       </template>
     </MarTab>
     <div
-      v-if="page === 'recent-sessions'"
-      class="activity-recent-content"
+      v-show="page === 'recent-sessions'"
+      class="activity-tabpanel activity-recent-content"
       role="tabpanel"
       :id="tabStripIdentity(tabPrefix, 'recent-sessions').panel"
       :aria-labelledby="tabStripIdentity(tabPrefix, 'recent-sessions').tab"
       :aria-label="translate('workbenchNotificationCenter.recentSessions')"
     >
-      <p class="activity-running-count">
-        {{ translate('activityCenter.runningCount', { count: activeCount }) }}
-      </p>
-      <WorkbenchRecentSessionList
-        :runs="visibleRuns"
-        :has-unread-session="service.hasUnreadSession"
-        :session-group="sessionGroup"
-        :mobile-mode="mobileMode"
-        :run-time="runTime"
-        @select-group="emit('update:sessionGroup', $event)"
-        @open-recent-run="emit('openRecentRun', $event)"
-      />
+      <template v-if="page === 'recent-sessions'">
+        <p class="activity-running-count">
+          {{ translate('activityCenter.runningCount', { count: activeCount }) }}
+        </p>
+        <WorkbenchRecentSessionList
+          :runs="visibleRuns"
+          :has-unread-session="service.hasUnreadSession"
+          :session-group="sessionGroup"
+          :mobile-mode="mobileMode"
+          :run-time="runTime"
+          @select-group="emit('update:sessionGroup', $event)"
+          @open-recent-run="emit('openRecentRun', $event)"
+        />
+      </template>
     </div>
-    <WorkbenchNotificationList
-      v-else
+    <div
+      v-show="page === 'notifications'"
+      class="activity-tabpanel activity-notification-content"
       role="tabpanel"
       :id="tabStripIdentity(tabPrefix, 'notifications').panel"
       :aria-labelledby="tabStripIdentity(tabPrefix, 'notifications').tab"
-      :service="service"
-      :uploads="uploads"
-      :status-label="statusLabel"
-      @open-notification="emit('openNotification', $event)"
-      @retry-upload="emit('retryUpload', $event)"
-      @cancel-upload="emit('cancelUpload', $event)"
-      @remove-upload="emit('removeUpload', $event)"
-    />
+    >
+      <WorkbenchNotificationList
+        v-if="page === 'notifications'"
+        :service="service"
+        :uploads="uploads"
+        :status-label="statusLabel"
+        @open-notification="emit('openNotification', $event)"
+        @retry-upload="emit('retryUpload', $event)"
+        @cancel-upload="emit('cancelUpload', $event)"
+        @remove-upload="emit('removeUpload', $event)"
+      />
+    </div>
   </section>
 </template>
 
@@ -152,10 +159,13 @@ function activate(id: string | number): void {
   border-bottom: 1px solid var(--mar-border-strong);
   background: var(--mar-bg-subtle);
 }
-.activity-recent-content {
+.activity-tabpanel {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.activity-notification-content {
+  flex: 1;
 }
 .activity-running-count {
   flex: none;

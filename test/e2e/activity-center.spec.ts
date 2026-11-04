@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 test.use({ hasTouch: true });
@@ -7,6 +7,38 @@ test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/workbench-mobile-drawer.html');
 });
 test.afterAll(async () => fixture.close());
+
+async function expectActivityPanels(panel: Locator, activeTab: Locator) {
+  const tabs = panel.locator('.activity-tabs [role="tab"]');
+  await expect(tabs).toHaveCount(2);
+  await expect(panel.locator('[role="tabpanel"]')).toHaveCount(2);
+  await expect(panel.getByRole('tabpanel')).toHaveCount(1);
+  await expect(panel.locator('[role="tabpanel"]:visible')).toHaveCount(1);
+  const identities = await tabs.evaluateAll((elements) =>
+    elements.map((element) => ({ tab: element.id, panel: element.getAttribute('aria-controls')! }))
+  );
+  const activeId = await activeTab.getAttribute('id');
+  for (const identity of identities) {
+    expect(identity.tab).not.toBe('');
+    expect(identity.panel).toBeTruthy();
+    await expect(panel.page().locator(`[id="${identity.tab}"]`)).toHaveCount(1);
+    const target = panel.page().locator(`[id="${identity.panel}"]`);
+    await expect(target).toHaveCount(1);
+    await expect(target).toHaveAttribute('role', 'tabpanel');
+    await expect(target).toHaveAttribute('aria-labelledby', identity.tab);
+    if (identity.tab === activeId) {
+      await expect(target).toBeVisible();
+      expect(await target.getByRole('button').count()).toBeGreaterThan(0);
+    } else {
+      await expect(target).toBeHidden();
+      await expect(target).toHaveCSS('display', 'none');
+      // Only the stable shell survives: inactive list controls cannot retain focus.
+      await expect(target.locator('button, input, a, [tabindex]')).toHaveCount(0);
+      await expect(target).toBeEmpty();
+    }
+  }
+  return identities;
+}
 
 async function prepareActivityInteraction(page: Page, width = 1280) {
   await page.setViewportSize({ width, height: 760 });
@@ -157,6 +189,14 @@ test('Aggregated notifications preserve upload recovery, removal and cancellatio
   await expect(opened).toHaveText('remove:FAILED');
   await tasks.last().getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(opened).toHaveText('cancel:UPLOADING');
+  await page
+    .locator('.workbench-notification-list > li')
+    .first()
+    .getByRole('button')
+    .first()
+    .click();
+  await expect(opened).toHaveText('notification-0');
+  await expect(page.locator('.workbench-activity-panel')).toHaveCount(0);
 });
 
 test('Activity entry distinguishes all four states and caps unread counts', async ({ page }) => {
@@ -195,6 +235,18 @@ for (const width of [1280, 390]) {
       const recent = tabs.getByRole('tab', { name: 'Recent Sessions', exact: true });
       const notifications = tabs.getByRole('tab', { name: 'Notifications', exact: true });
       await expect(notifications).toHaveAttribute('aria-selected', 'true');
+      const identities = await expectActivityPanels(panel, notifications);
+      for (const target of [recent, notifications]) {
+        await target.click();
+        await expect(target).toHaveAttribute('aria-selected', 'true');
+        expect(await expectActivityPanels(panel, target)).toEqual(identities);
+        await page.keyboard.press('Tab');
+        expect(
+          await panel
+            .getByRole('tabpanel')
+            .evaluate((element) => element.contains(document.activeElement))
+        ).toBe(true);
+      }
       await expect(notifications.locator('..')).toHaveCSS('border-top-width', '1px');
       const overlap = await recent.evaluate((element) => {
         const row = element.parentElement!;
@@ -209,17 +261,7 @@ for (const width of [1280, 390]) {
         await page.keyboard.press(key);
         await expect(target).toBeFocused();
         await expect(target).toHaveAttribute('aria-selected', 'true');
-        const identity = await target.evaluate((element) => ({
-          tab: element.id,
-          panel: element.getAttribute('aria-controls')
-        }));
-        expect(identity.tab).not.toBe('');
-        expect(identity.panel).toBeTruthy();
-        await expect(panel.locator('[role="tabpanel"]')).toHaveAttribute('id', identity.panel!);
-        await expect(panel.locator('[role="tabpanel"]')).toHaveAttribute(
-          'aria-labelledby',
-          identity.tab
-        );
+        expect(await expectActivityPanels(panel, target)).toEqual(identities);
         await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
       }
       await expect(tabs.locator('.activity-unread-count')).toHaveText('30');

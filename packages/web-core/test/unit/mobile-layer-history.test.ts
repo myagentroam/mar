@@ -176,6 +176,25 @@ afterEach(() => {
 });
 
 describe('mobile temporary-layer history', () => {
+  it('restores the existing guard without inserting history from a Back event', () => {
+    const browser = installFakeBrowser({ page: 'workbench' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    coordinator.register(vi.fn());
+    const closeChild = vi.fn();
+    coordinator.register(closeChild);
+    const childState = browser.history.state;
+    const pushState = vi.spyOn(browser.history, 'pushState');
+
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(pushState).not.toHaveBeenCalled();
+    expect(closeChild).not.toHaveBeenCalled();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual(childState);
+    expect(closeChild).toHaveBeenCalledOnce();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
   it('returns through nested layers one at a time', async () => {
     const routeState = { page: 'workbench', workspaceId: 'w-17', selectedTab: 'files' };
     const browser = installFakeBrowser(routeState);
@@ -193,6 +212,7 @@ describe('mobile temporary-layer history', () => {
 
     browser.history.back();
     expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.state[key]).toBe(childToken);
     expect(closeChild).toHaveBeenCalledTimes(1);
     expect(closeParent).not.toHaveBeenCalled();
@@ -203,6 +223,7 @@ describe('mobile temporary-layer history', () => {
 
     browser.history.back();
     expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.state[key]).toBe(parentToken);
     await flushMicrotasks();
     expect(closeParent).toHaveBeenCalledTimes(1);
@@ -210,7 +231,221 @@ describe('mobile temporary-layer history', () => {
     expect(browser.history.state).toEqual(routeState);
   });
 
-  it('restores the layer guard synchronously and ignores repeated returns while close is pending', async () => {
+  it('recovers two queued Back requests within the owned ancestor chain without closing the parent', () => {
+    const browser = installFakeBrowser({ route: 'workbench' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const closeAside = vi.fn();
+    coordinator.register(closeAside);
+    const closeFile = vi.fn();
+    const releaseFile = coordinator.register(closeFile);
+    browser.history.back();
+    browser.history.back();
+    for (let step = 0; step < 8; step++) browser.history.flushTraversal();
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(closeFile).toHaveBeenCalledOnce();
+    expect(closeAside).not.toHaveBeenCalled();
+    releaseFile();
+    expect(browser.history.flushTraversal()).toBe(true);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeAside).toHaveBeenCalledOnce();
+  });
+
+  it('borrows the restored entry for an asynchronous close confirmation', async () => {
+    const browser = installFakeBrowser({ page: 'workbench', draft: 'keep' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const closeParent = vi.fn();
+    coordinator.register(closeParent);
+    let finishClose!: () => void;
+    const closeFile = vi.fn(() => new Promise<void>((resolve) => (finishClose = resolve)));
+    const releaseFile = coordinator.register(closeFile);
+    const fileState = browser.history.state;
+    const pushState = vi.spyOn(browser.history, 'pushState');
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+
+    let releaseConfirmation = () => {};
+    const closeConfirmation = vi.fn(() => releaseConfirmation());
+    releaseConfirmation = coordinator.register(closeConfirmation);
+    expect(pushState).not.toHaveBeenCalled();
+    expect(browser.history.state).toEqual(fileState);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeConfirmation).toHaveBeenCalledOnce();
+    expect(closeFile).toHaveBeenCalledOnce();
+    expect(closeParent).not.toHaveBeenCalled();
+    expect(browser.history.state).toEqual(fileState);
+    expect(browser.history.queuedTraversals).toBe(0);
+    expect(pushState).not.toHaveBeenCalled();
+    finishClose();
+    await flushMicrotasks();
+    releaseFile();
+    expect(browser.history.flushTraversal()).toBe(true);
+  });
+
+  it('does not close a released instance while restoring its history entry', () => {
+    const routeState = { page: 'workbench' };
+    const browser = installFakeBrowser(routeState);
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const closeOld = vi.fn();
+    const releaseOld = coordinator.register(closeOld);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    releaseOld();
+    const closeNew = vi.fn();
+    const releaseNew = coordinator.register(closeNew);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeOld).not.toHaveBeenCalled();
+    expect(closeNew).not.toHaveBeenCalled();
+    expect(browser.history.queuedTraversals).toBe(0);
+    releaseNew();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual(routeState);
+  });
+
+  it('retains a shared entry until its confirmation releases after the file unmounts', () => {
+    const routeState = { page: 'workbench' };
+    const browser = installFakeBrowser(routeState);
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const releaseFile = coordinator.register(() => new Promise<void>(() => {}));
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    const closeConfirmation = vi.fn();
+    const releaseConfirmation = coordinator.register(closeConfirmation);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    releaseFile();
+    const url = 'https://console.example/new';
+    browser.history.replaceState({ route: 'new' }, '', url);
+    coordinator.captureRoute();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeConfirmation).toHaveBeenCalledOnce();
+    expect(browser.history.queuedTraversals).toBe(0);
+    releaseConfirmation();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual({ route: 'new' });
+    expect(browser.history.currentUrl).toBe(url);
+    expect(browser.popstateListenerCount()).toBe(0);
+  });
+
+  it('preserves route updates during restoration before guarded close', () => {
+    const browser = installFakeBrowser({ route: 'old' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const close = vi.fn();
+    const release = coordinator.register(close);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    const url = 'https://console.example/new?filter=active';
+    browser.history.replaceState({ route: 'new' }, '', url);
+    coordinator.captureRoute();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(close).toHaveBeenCalledOnce();
+    expect(browser.history.currentUrl).toBe(url);
+    release();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual({ route: 'new' });
+    expect(browser.history.currentUrl).toBe(url);
+  });
+
+  it('retains parent ownership after a captured route update during child restoration', () => {
+    const browser = installFakeBrowser({ route: 'old' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const closeAside = vi.fn();
+    const releaseAside = coordinator.register(closeAside);
+    const releaseFile = coordinator.register(vi.fn());
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    browser.history.replaceState(
+      { ...browser.history.state, route: 'new' },
+      '',
+      'https://console.example/new'
+    );
+    coordinator.captureRoute();
+    expect(browser.history.flushTraversal()).toBe(true);
+    releaseFile();
+    expect(browser.history.flushTraversal()).toBe(true);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(closeAside).toHaveBeenCalledOnce();
+    releaseAside();
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.state).toEqual({ route: 'new' });
+    expect(browser.history.currentUrl).toBe('https://console.example/new');
+    expect(browser.popstateListenerCount()).toBe(0);
+  });
+
+  it('does not rewrite an unrelated route reached instead of the expected restoration', () => {
+    const browser = installFakeBrowser({ route: 'old' });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const close = vi.fn();
+    const release = coordinator.register(close);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    const url = 'https://console.example/foreign';
+    browser.history.entries[1] = { state: { route: 'foreign' }, url };
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(close).not.toHaveBeenCalled();
+    expect(browser.history.currentUrl).toBe(url);
+    expect(browser.history.state).toEqual({ route: 'foreign' });
+    release();
+    expect(browser.history.queuedTraversals).toBe(0);
+  });
+
+  it('does not overwrite a same-marker route changed by an earlier restoration listener', () => {
+    const browser = installFakeBrowser({ route: 'old' });
+    let redirect = false;
+    window.addEventListener('popstate', () => {
+      if (!redirect) return;
+      browser.history.replaceState(
+        { ...browser.history.state, route: 'foreign' },
+        '',
+        'https://console.example/foreign'
+      );
+    });
+    const coordinator = createMobileLayerHistoryCoordinator();
+    const close = vi.fn();
+    coordinator.register(close);
+    browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
+    redirect = true;
+    expect(browser.history.flushTraversal()).toBe(true);
+    expect(close).not.toHaveBeenCalled();
+    expect(browser.history.state).toMatchObject({ route: 'foreign' });
+    expect(browser.history.currentUrl).toBe('https://console.example/foreign');
+    expect(browser.history.queuedTraversals).toBe(0);
+  });
+
+  it.each([false, true])(
+    'preserves an earlier release listener route update with explicit capture=%s',
+    (capture) => {
+      const browser = installFakeBrowser({ route: 'old' });
+      window.addEventListener('popstate', () => {
+        browser.history.replaceState(
+          { ...browser.history.state, route: 'new' },
+          '',
+          'https://console.example/new'
+        );
+        if (capture) coordinator.captureRoute();
+      });
+      const coordinator = createMobileLayerHistoryCoordinator();
+      const close = vi.fn();
+      const release = coordinator.register(close);
+      release();
+      expect(browser.history.flushTraversal()).toBe(true);
+      expect(browser.history.state).toEqual({ route: 'new' });
+      expect(browser.history.currentUrl).toBe('https://console.example/new');
+      expect(browser.history.queuedTraversals).toBe(0);
+      expect(close).not.toHaveBeenCalled();
+    }
+  );
+
+  it('restores the guard before close and ignores repeated returns while close is pending', async () => {
     const routeState = { page: 'workbench', draft: 'keep me' };
     const browser = installFakeBrowser(routeState);
     const coordinator = createMobileLayerHistoryCoordinator();
@@ -227,10 +462,12 @@ describe('mobile temporary-layer history', () => {
 
     browser.history.back();
     expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.state[key]).toBe(token);
     expect(close).toHaveBeenCalledTimes(1);
 
     browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.state[key]).toBe(token);
     await flushMicrotasks();
@@ -327,6 +564,7 @@ describe('mobile temporary-layer history', () => {
     expect(closeNew).not.toHaveBeenCalled();
     browser.history.back();
     expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(closeNew).toHaveBeenCalledOnce();
     releaseNew();
     expect(browser.history.flushTraversal()).toBe(true);
@@ -374,6 +612,7 @@ describe('mobile temporary-layer history', () => {
 
     browser.history.back();
     expect(browser.history.flushTraversal()).toBe(true);
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(closeOld).toHaveBeenCalledTimes(1);
     releaseOld();
     const closeNew = vi.fn();
@@ -387,6 +626,7 @@ describe('mobile temporary-layer history', () => {
     expect(browser.history.queuedTraversals).toBe(0);
 
     browser.history.back();
+    expect(browser.history.flushTraversal()).toBe(true);
     expect(browser.history.flushTraversal()).toBe(true);
     resolveOldClose();
     await flushMicrotasks();
@@ -432,6 +672,7 @@ describe('mobile temporary-layer history', () => {
     coordinator.captureRoute();
     for (let i = 0; i < 2; i++) {
       browser.history.back();
+      expect(browser.history.flushTraversal()).toBe(true);
       expect(browser.history.flushTraversal()).toBe(true);
       await flushMicrotasks();
       expect(browser.history.flushTraversal()).toBe(true);
