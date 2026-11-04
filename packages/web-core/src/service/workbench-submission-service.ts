@@ -1,4 +1,5 @@
 import { computed, ref, shallowRef, type Ref } from 'vue';
+import type { DraftTarget } from './session-draft-service.js';
 
 const SUBMISSION_TIMEOUT_MS = 5_000;
 
@@ -29,6 +30,23 @@ export function createWorkbenchSubmissionOwner() {
     timeout?: ReturnType<typeof setTimeout> | undefined;
   }
   const groups = new WeakMap<object, Group>();
+  const targets = new Map<string, object>();
+  const targetKeys = new WeakMap<object, string>();
+  function forTarget(target: DraftTarget): object {
+    const key = JSON.stringify([
+      target.nodeId,
+      target.workspaceId,
+      target.kind,
+      target.kind === 'session' ? target.sessionId : null
+    ]);
+    let slot = targets.get(key);
+    if (slot === undefined) {
+      slot = {};
+      targets.set(key, slot);
+      targetKeys.set(slot, key);
+    }
+    return slot;
+  }
   const revision = ref(0);
   const emptySlot = {};
   function groupFor(slot: object): Group {
@@ -74,7 +92,13 @@ export function createWorkbenchSubmissionOwner() {
       begin
     };
   }
-  function transfer(from: object, to: object, previousId: string, nextId: string): void {
+  function transfer(
+    from: object,
+    to: object,
+    previousId: string,
+    nextId: string,
+    releaseSource = false
+  ): void {
     const source = groups.get(from);
     if (source === undefined) return;
     const target = groups.get(to) ?? source;
@@ -92,7 +116,14 @@ export function createWorkbenchSubmissionOwner() {
     } else target.tokens.value = [...target.tokens.value];
     groups.set(to, target);
     target.slots.add(to);
+    if (releaseSource && from !== to) {
+      groups.delete(from);
+      target.slots.delete(from);
+      // Retire this source identity so a late reply cannot claim a newer Workspace submission.
+      const key = targetKeys.get(from);
+      if (key !== undefined && targets.get(key) === from) targets.delete(key);
+    }
     revision.value += 1;
   }
-  return { bind, transfer };
+  return { bind, transfer, forTarget };
 }

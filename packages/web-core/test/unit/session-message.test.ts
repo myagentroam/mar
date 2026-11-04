@@ -21,6 +21,7 @@ import { createWorkspaceSessionService } from '../../src/service/workspace-sessi
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 import { temporarySessionTitle } from '../../src/util/session-presentation.js';
+import { createSessionDraftService } from '../../src/service/session-draft-service.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
 
@@ -1176,6 +1177,44 @@ describe('Workbench Message Submission Status', () => {
     expect(draft.persist).toHaveBeenCalled();
     expect(harness.inputValue.value).toBe('Immediate Message');
   });
+
+  it.each([
+    ['success', 'New input after switching'],
+    ['failure', 'New input after switching'],
+    ['success', 'Immediate Message '],
+    ['success', ' Immediate Message'],
+    ['success', 'Immediate Message\n']
+  ] as const)(
+    'preserves newer Pane input after switching sessions during a delayed %s: %j',
+    async (outcome, newerInput) => {
+      const target = ref({
+        kind: 'session' as const,
+        nodeId: 'node-1',
+        workspaceId: workspace.id,
+        sessionId: session.id
+      });
+      const drafts = createSessionDraftService({
+        target,
+        storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+      });
+      const main = drafts.bindTarget(target);
+      const aside = drafts.bindTarget(target, 'aside');
+      main.input.value = 'Immediate Message';
+      aside.input.value = 'Aside input';
+      const harness = pendingRequestHarness({ captureDraft: () => main.slot.value });
+      const sending = harness.service.send();
+      await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+      target.value = { ...target.value, sessionId: 'another-session' };
+      harness.selectedSessionId.value = 'another-session';
+      expect(main.input.value).toBe('Immediate Message');
+      main.input.value = newerInput;
+      if (outcome === 'success') harness.resolveRequest(acceptedResult);
+      else harness.rejectRequest(new ApiError('RUN_EXECUTION_NOT_FOUND', 'Execution not found'));
+      await sending;
+      expect(main.input.value).toBe(newerInput);
+      expect(aside.input.value).toBe('Aside input');
+    }
+  );
 
   it('blocks sending while an attachment is still uploading with a warning', async () => {
     const harness = pendingRequestHarness({ attachmentsPending: true });

@@ -151,7 +151,8 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     const draftInput = capturedDraft.input;
     const draftSkills = capturedDraft.skillTokens;
     const draftReferences = capturedDraft.references;
-    const body = draftInput.value.trim();
+    const originalInput = draftInput.value;
+    const body = originalInput.trim();
     const titleBody = body;
     if (
       commandOverride === undefined &&
@@ -302,7 +303,11 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           options.selectedSessionId.value === submissionSessionId
         ) {
           options.fastEnabled.value = result.enabled;
-          if (!preserveDraft && draftInput.value.trim() === content) {
+          if (
+            !preserveDraft &&
+            draftInput.value === originalInput &&
+            originalInput.trim() === content
+          ) {
             draftInput.value = '';
             capturedDraft.persist();
           }
@@ -328,7 +333,11 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       if (command !== undefined) {
         await options.executeCommand(session, command, commandInput);
         if (finishSubmission()) {
-          if (!preserveDraft && draftInput.value.trim() === content) {
+          if (
+            !preserveDraft &&
+            draftInput.value === originalInput &&
+            originalInput.trim() === content
+          ) {
             draftInput.value = '';
             capturedDraft.persist();
           }
@@ -456,7 +465,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       completedInSubmissionWindow = finishSubmission();
       if (
         contentOverride === undefined &&
-        draftInput.value.trim() === body &&
+        draftInput.value === originalInput &&
         draftSkills.value === submittedSkillTokens &&
         draftReferences?.value === submittedReferences
       ) {

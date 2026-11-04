@@ -340,6 +340,7 @@ export function createWorkbenchPageController<
   let reloadAsideSession = () => {};
   let saveAsideContext = () => {};
   const asidePane = createWorkspaceSessionPaneState({
+    pane: 'aside',
     draftTarget: asideTarget,
     drafts: baseState.draft,
     attachments: composerAttachmentService,
@@ -350,8 +351,6 @@ export function createWorkbenchPageController<
   const { pending: submissionPending } = submissionService;
   const focusComposerInputAt = mainPane.focusInput;
   const editComposerRange = mainPane.editRange;
-
-  const sessionDraftService = baseState.draft;
 
   const {
     input: sessionInput,
@@ -3128,8 +3127,8 @@ export function createWorkbenchPageController<
     if (previousId === nextId) return;
     const target = { kind: 'session' as const, nodeId, workspaceId };
     submissionOwner.transfer(
-      sessionDraftService.forTarget({ ...target, sessionId: previousId }),
-      sessionDraftService.forTarget({ ...target, sessionId: nextId }),
+      submissionOwner.forTarget({ ...target, sessionId: previousId }),
+      submissionOwner.forTarget({ ...target, sessionId: nextId }),
       previousId,
       nextId
     );
@@ -3312,7 +3311,6 @@ export function createWorkbenchPageController<
       hostedConversationWorkspace.selectedNodeId,
       hostedConversationWorkspace.selectedConversationId
     ],
-    sessionInput,
     documentTitle,
     newSessionRunner,
     newSessionModel,
@@ -3322,7 +3320,6 @@ export function createWorkbenchPageController<
     conversationScroll,
     followConversation,
     persistWorkbenchState,
-    persistSessionDraft,
     syncWorkbenchRoute,
     normalizeNewSessionOptions,
     clearRunnerCommand,

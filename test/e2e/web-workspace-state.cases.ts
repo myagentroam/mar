@@ -658,6 +658,7 @@ test('same session stays independent in Main and Aside without a title flash dur
     return route.fallback();
   });
   const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  await main.getByRole('textbox', { name: '输入消息' }).fill('main pane draft');
   await main.getByRole('button', { name: '查看会话树' }).click();
   const tree = page.locator('.session-tree-popup');
   await tree.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
@@ -665,6 +666,7 @@ test('same session stays independent in Main and Aside without a title flash dur
   await expect(aside.getByText('正文 tree-2', { exact: true })).toBeVisible();
   const tab = aside.getByRole('tab', { name: '树会话 2', exact: true });
   await expect(tab).toBeVisible();
+  await aside.getByRole('textbox', { name: '输入消息' }).fill('aside pane draft');
   await page.evaluate(() => {
     const title = () =>
       document.querySelector(
@@ -718,8 +720,8 @@ test('same session stays independent in Main and Aside without a title flash dur
   ).toBe(true);
   const mainSame = page.locator('.conversation-panel').filter({ hasText: '正文 tree-2' }).first();
   const draft = mainSame.getByRole('textbox', { name: '输入消息' });
-  await draft.fill('shared pane draft');
-  await expect(aside.getByRole('textbox', { name: '输入消息' })).toHaveValue('shared pane draft');
+  await expect(draft).toHaveValue('main pane draft');
+  await expect(aside.getByRole('textbox', { name: '输入消息' })).toHaveValue('aside pane draft');
   await aside.getByRole('button', { name: /关闭.*树会话 2/ }).click();
   await expect
     .poll(() =>
@@ -735,7 +737,7 @@ test('same session stays independent in Main and Aside without a title flash dur
   await expect(
     page.locator('.conversation-panel').getByText('正文 tree-2', { exact: true })
   ).toBeVisible();
-  await expect(draft).toHaveValue('shared pane draft');
+  await expect(draft).toHaveValue('main pane draft');
   await emitMockSessionEvent(page, 'conversation', {
     sessionId: 'tree-2',
     runId: 'run-1',
@@ -749,6 +751,14 @@ test('same session stays independent in Main and Aside without a title flash dur
     }
   });
   await expect(mainSame.getByText('Main remains live', { exact: true })).toBeVisible();
+  await mainSame.getByRole('button', { name: '查看会话树' }).click();
+  await tree.getByRole('button', { name: /树会话 3,/ }).click();
+  await expect(aside.getByText('正文 tree-3', { exact: true })).toBeVisible();
+  await expect(aside.getByRole('textbox', { name: '输入消息' })).toHaveValue('aside pane draft');
+  await expect(draft).toHaveValue('main pane draft');
+  await aside.getByRole('button', { name: '查看会话树' }).click();
+  await tree.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+  await expect(aside.getByRole('textbox', { name: '输入消息' })).toHaveValue('aside pane draft');
 });
 
 test('samples mobile Aside open and close with a long mounted conversation', async ({ page }) => {
@@ -4187,7 +4197,6 @@ test('Returning to a Workspace Tab restores its Inspector without leaking anothe
     return json(route, { error: { code: 'CAPABILITY_UNAVAILABLE' } }, 404);
   });
   await page.getByRole('tab', { name: '文件' }).click();
-  await page.getByRole('button', { name: '刷新文件', exact: true }).click();
   await expect.poll(() => oldFilesStarted).toBe(true);
 
   workspaceTwoChanged = true;
@@ -4483,27 +4492,19 @@ test('Workspaces restore target drafts first and failed background refreshes can
 
   failNode1Refresh = true;
   const requestsBeforeSwitch = node1WorkspaceRequests;
-  await page.getByRole('tab', { name: 'project node-1' }).click();
+  const nodeOneTab = page.getByRole('tab', { name: 'project', exact: true });
+  await nodeOneTab.click();
 
   await expect.poll(() => node1WorkspaceRequests).toBe(requestsBeforeSwitch + 1);
-  await expect(page.getByRole('tab', { name: 'project node-1' })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  );
+  await expect(nodeOneTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('Node 1 的草稿');
   releaseNode1Refresh();
   await expect(page.getByText(/无法读取节点工作区/)).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'project node-1' })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  );
+  await expect(nodeOneTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('Node 1 的草稿');
   failNode1Refresh = false;
-  await page.getByRole('tab', { name: 'project node-1' }).click();
-  await expect(page.getByRole('tab', { name: 'project node-1' })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  );
+  await nodeOneTab.click();
+  await expect(nodeOneTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '输入消息' })).toBeEditable();
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('Node 1 的草稿');
 });
@@ -4937,7 +4938,12 @@ test('Layout and unsent drafts are persisted only in the current browser session
         nodeOrder: [],
         workspaceOrderByNode: { 'node-1': ['workspace-1'] }
       }),
-      draft: JSON.stringify({ input: '只在当前标签保留', skillTokens: [] })
+      draft: JSON.stringify({
+        input: '只在当前标签保留',
+        skillTokens: [],
+        references: [],
+        sessionDraftsMigrated: true
+      })
     });
   expect(writes).toEqual([]);
 });

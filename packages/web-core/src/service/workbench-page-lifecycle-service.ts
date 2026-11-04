@@ -10,7 +10,6 @@ interface WorkbenchPageLifecycleOptions {
   readonly persistenceSources: WatchSource<unknown>[];
   readonly cacheSources: WatchSource<unknown>[];
   readonly routeSources: WatchSource<unknown>[];
-  readonly sessionInput: Ref<string>;
   readonly documentTitle: Readonly<Ref<string>>;
   readonly newSessionRunner: WatchSource<unknown>;
   readonly newSessionModel: WatchSource<unknown>;
@@ -20,7 +19,6 @@ interface WorkbenchPageLifecycleOptions {
   readonly conversationScroll: Ref<HTMLElement | undefined>;
   readonly followConversation: Readonly<Ref<boolean>>;
   readonly persistWorkbenchState: () => void;
-  readonly persistSessionDraft: () => void;
   readonly syncWorkbenchRoute: () => void;
   readonly normalizeNewSessionOptions: () => void;
   readonly clearRunnerCommand: () => void;
@@ -63,7 +61,6 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
   }
 
   watch(options.persistenceSources, options.persistWorkbenchState, { deep: true });
-  watch(options.sessionInput, options.persistSessionDraft);
   watch(options.documentTitle, (title) => (document.title = title), { immediate: true });
   watch(options.routeSources, options.syncWorkbenchRoute);
   watch(options.newSessionRunner, () => {
