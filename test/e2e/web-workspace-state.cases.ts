@@ -364,10 +364,15 @@ test('tree and node icon badges retain surface isolation on desktop and mobile',
               ? '.state-dot'
               : '.activity-entry-running'
         );
-        expect(geometry.dot.width).toBe(6);
-        expect(geometry.dot.height).toBe(6);
-        expect(geometry.dot.x + 3).toBeGreaterThan(geometry.icon.x + geometry.icon.width / 2);
-        expect(geometry.dot.y + 3).toBeGreaterThan(geometry.icon.y + geometry.icon.height / 2);
+        const dotSize = button === treeButton ? 4 : 6;
+        expect(geometry.dot.width).toBe(dotSize);
+        expect(geometry.dot.height).toBe(dotSize);
+        expect(geometry.dot.x + dotSize / 2).toBeGreaterThan(
+          geometry.icon.x + geometry.icon.width / 2
+        );
+        expect(geometry.dot.y + dotSize / 2).toBeGreaterThan(
+          geometry.icon.y + geometry.icon.height / 2
+        );
         expect(geometry.shadow).toContain('0px 0px 0px 1.5px');
         if (button === treeButton)
           expect(geometry.hit, `${width}/${theme}: ${geometry.hitElement}`).toBe(true);

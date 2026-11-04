@@ -2029,16 +2029,8 @@ export class JsonlSessionStore implements SessionStore {
       throw error;
     }
   }
-  async list(input: SessionListInput = {}) {
-    this.#assertOpen();
-    await this.#refreshIndex();
-    const filter = sessionListFilter(input);
-    const start = decodeSessionListCursor(input.cursor, this.#shared.index.revision, filter);
-    const limit = Math.min(200, Math.max(1, input.limit ?? 50));
-    const ordered = this.#shared.index.sessions
-      .filter((session) => sessionMatchesFilter(session, filter))
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
-    const sessions = ordered.slice(start, start + limit).map((session) => ({
+  #sessionSummary(session: SessionMeta) {
+    return {
       id: session.id,
       title: session.title,
       ...(session.resume?.firstUserMessagePreview === undefined
@@ -2047,7 +2039,7 @@ export class JsonlSessionStore implements SessionStore {
       workspace: session.workspace,
       createdAt: session.createdAt,
       lastActivityAt: session.lastActivityAt,
-      source: normalizeSessionSource(session.source),
+      source: structuredClone(normalizeSessionSource(session.source)),
       ...(session.resume?.modelId === undefined
         ? {}
         : {
@@ -2059,7 +2051,25 @@ export class JsonlSessionStore implements SessionStore {
               ? {}
               : { reasoningEffort: session.resume.reasoningEffort })
           })
-    }));
+    };
+  }
+  async listSnapshot() {
+    this.#assertOpen();
+    await this.#refreshIndex();
+    return this.#shared.index.sessions.map((session) => this.#sessionSummary(session));
+  }
+  async list(input: SessionListInput = {}) {
+    this.#assertOpen();
+    await this.#refreshIndex();
+    const filter = sessionListFilter(input);
+    const start = decodeSessionListCursor(input.cursor, this.#shared.index.revision, filter);
+    const limit = Math.min(200, Math.max(1, input.limit ?? 50));
+    const ordered = this.#shared.index.sessions
+      .filter((session) => sessionMatchesFilter(session, filter))
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+    const sessions = ordered
+      .slice(start, start + limit)
+      .map((session) => this.#sessionSummary(session));
     const next =
       start + limit < ordered.length
         ? encodeSessionListCursor(this.#shared.index.revision, start + limit, filter)

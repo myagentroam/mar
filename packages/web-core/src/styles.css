@@ -1112,8 +1112,8 @@ pre {
 
 .mar-icon-status-badge {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: var(--mar-icon-status-size, 6px);
+  height: var(--mar-icon-status-size, 6px);
   border-radius: 50%;
   background: var(--el-color-success);
   box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);

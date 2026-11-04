@@ -418,76 +418,64 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     try {
       catalog = await openAgentSessionCatalog({ homeDirectory: this.homeDirectory });
       const activeCatalog = catalog;
-      const listed = await activeCatalog.list({ limit: 200 });
-      if (context.cleanup) {
-        const sessions = [...listed.sessions];
-        let cursor = listed.nextCursor;
-        while (cursor !== undefined) {
-          const next = await activeCatalog.list({ limit: 200, cursor });
-          sessions.push(...next.sessions);
-          cursor = next.nextCursor;
-        }
-        const workspaces = workspace ? [workspace] : context.workspaces;
-        return sessions.flatMap((session) => {
-          const target = workspaces.find(
-            (candidate) => resolve(candidate.path) === resolve(session.workspace)
-          );
-          return target
-            ? [
-                context.createProjection({
-                  workspace: target,
-                  runner: this.name,
-                  externalSessionId: session.id,
-                  cwd: session.workspace,
-                  ...(session.source?.parentSessionId === undefined
-                    ? {}
-                    : { parentSessionId: session.source.parentSessionId }),
-                  lastActivityAt: Date.parse(session.lastActivityAt)
-                })
-              ]
-            : [];
-        });
-      }
       const workspaces = workspace ? [workspace] : context.workspaces;
-      return (
-        await Promise.all(
-          listed.sessions.map(async (session) => {
-            const target = workspaces.find(
-              (candidate) => resolve(candidate.path) === resolve(session.workspace)
-            );
-            if (!target) return [];
+      const sessions = (await activeCatalog.listSnapshot()).flatMap((session) => {
+        const target = workspaces.find(
+          (candidate) => resolve(candidate.path) === resolve(session.workspace)
+        );
+        return target ? [{ session, target }] : [];
+      });
+      if (context.cleanup) {
+        return sessions.map(({ session, target }) =>
+          context.createProjection({
+            workspace: target,
+            runner: this.name,
+            externalSessionId: session.id,
+            cwd: session.workspace,
+            ...(session.source?.parentSessionId === undefined
+              ? {}
+              : { parentSessionId: session.source.parentSessionId }),
+            lastActivityAt: Date.parse(session.lastActivityAt)
+          })
+        );
+      }
+      const discovered: NodeAgentSession[] = [];
+      const batchSize = 8;
+      for (let offset = 0; offset < sessions.length; offset += batchSize) {
+        const batch = await Promise.allSettled(
+          sessions.slice(offset, offset + batchSize).map(async ({ session, target }) => {
             const executionConfiguration =
               session.modelId === undefined
                 ? await activeCatalog.executionConfiguration(session.id)
                 : session;
             const title = await marAgentSessionTitle(session, activeCatalog);
-            return [
-              {
-                ...context.createProjection({
-                  workspace: target,
-                  runner: this.name,
-                  externalSessionId: session.id,
-                  cwd: session.workspace,
-                  ...(session.source?.parentSessionId === undefined
-                    ? {}
-                    : { parentSessionId: session.source.parentSessionId }),
-                  ...title,
-                  lastActivityAt: Date.parse(session.lastActivityAt)
-                }),
-                ...(executionConfiguration?.modelId === undefined
+            return {
+              ...context.createProjection({
+                workspace: target,
+                runner: this.name,
+                externalSessionId: session.id,
+                cwd: session.workspace,
+                ...(session.source?.parentSessionId === undefined
                   ? {}
-                  : { modelId: executionConfiguration.modelId }),
-                ...(executionConfiguration?.reasoningEffort === undefined
-                  ? {}
-                  : { effort: executionConfiguration.reasoningEffort })
-              }
-            ];
+                  : { parentSessionId: session.source.parentSessionId }),
+                ...title,
+                lastActivityAt: Date.parse(session.lastActivityAt)
+              }),
+              ...(executionConfiguration?.modelId === undefined
+                ? {}
+                : { modelId: executionConfiguration.modelId }),
+              ...(executionConfiguration?.reasoningEffort === undefined
+                ? {}
+                : { effort: executionConfiguration.reasoningEffort })
+            };
           })
-        )
-      ).flat();
-    } catch (error) {
-      if (context.cleanup) throw error;
-      return [];
+        );
+        for (const entry of batch) {
+          if (entry.status === 'rejected') throw entry.reason;
+          discovered.push(entry.value);
+        }
+      }
+      return discovered;
     } finally {
       await catalog?.close().catch(() => undefined);
     }

@@ -49,6 +49,8 @@ export interface AgentSessionImage {
 /** Public session catalog facade. Storage details remain SDK-private. */
 export interface AgentSessionCatalog {
   list(input?: SessionListInput): Promise<AgentSessionPage>;
+  /** Complete, detached metadata from one directory read; unordered and without history reads. */
+  listSnapshot(): Promise<AgentSessionSummary[]>;
   firstUserMessagePreview(sessionId: string): Promise<string | undefined>;
   executionConfiguration(
     sessionId: string
@@ -103,6 +105,7 @@ export function createSessionCatalog(
   store: Pick<
     SessionStore,
     | 'list'
+    | 'listSnapshot'
     | 'firstUserMessagePreview'
     | 'executionConfiguration'
     | 'readPage'
@@ -127,6 +130,10 @@ export function createSessionCatalog(
     list: async (options) => {
       assertOpen();
       return store.list(options);
+    },
+    listSnapshot: async () => {
+      assertOpen();
+      return store.listSnapshot();
     },
     firstUserMessagePreview: async (sessionId) => {
       assertOpen();

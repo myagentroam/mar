@@ -49,6 +49,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   height: 1.25rem;
 }
 .tree-active-indicator {
+  --mar-icon-status-size: 4px;
   --mar-icon-status-surface: var(--mar-bg-panel);
   inset-block-end: 0;
   inset-inline-end: 0;
