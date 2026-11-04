@@ -110,6 +110,8 @@ export interface SessionStore {
   }): Promise<SessionStoreSession>;
   getSession(sessionId: string): Promise<AgentSessionSummary & { automaticTitlePending: boolean }>;
   list(input?: SessionListInput): Promise<AgentSessionPage>;
+  /** Complete, detached metadata from one directory read; unordered and without history reads. */
+  listSnapshot(): Promise<AgentSessionSummary[]>;
   listSubagentChildren(parentSessionId: string): Promise<
     Array<
       AgentSessionSummary & {

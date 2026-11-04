@@ -1919,7 +1919,11 @@ onBeforeUnmount(() => filePreviews.reset());
 
 <template>
   <Teleport :to="contentTarget ?? 'body'" :disabled="contentTarget == null">
-    <article v-if="asideTool !== null" class="info-card workspace-inspector">
+    <article
+      v-if="asideTool !== null"
+      class="info-card workspace-inspector"
+      :class="{ 'workspace-inspector-aside': asideTool !== undefined }"
+    >
       <div v-if="asideTool === undefined" class="section-heading">
         <h2>
           {{
@@ -2437,6 +2441,10 @@ onBeforeUnmount(() => filePreviews.reset());
   border-radius: 0;
   background: transparent;
   padding: 0.55rem 0.7rem 0.7rem;
+}
+
+.workspace-inspector-aside.info-card {
+  padding-top: 0;
 }
 
 .workspace-inspector > .section-heading h2 {

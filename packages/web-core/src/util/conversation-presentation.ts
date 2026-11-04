@@ -710,7 +710,7 @@ export function conversationErrorCodeVisible(error: ConversationErrorPresentatio
   return error.code.length > 0 && error.code !== `HTTP_${error.httpStatus}`;
 }
 
-function isSubagentToolCall(value: Record<string, unknown> | undefined): boolean {
+export function isSubagentToolCall(value: Record<string, unknown> | undefined): boolean {
   return agentOperation(value) !== undefined || subagentOperation(value) !== undefined;
 }
 

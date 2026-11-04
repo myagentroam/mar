@@ -38,7 +38,7 @@ import {
 } from '../util/conversation-segments.js';
 import { ApiError } from '../util/api-error.js';
 import { composerModelKeys } from './console-shortcut-keys.js';
-import type { DraftTarget, createSessionDraftService } from './session-draft-service.js';
+import type { DraftPane, DraftTarget, createSessionDraftService } from './session-draft-service.js';
 import type { Session } from '../model/workbench.js';
 import type { createComposerAttachmentService } from './composer-attachment-service.js';
 import {
@@ -113,11 +113,9 @@ export function createWorkspaceSessionPaneReader() {
 
 /** State local to one visible session surface; durable drafts and attachments remain shared owners. */
 export function createWorkspaceSessionPaneState(options: {
+  readonly pane?: DraftPane;
   readonly draftTarget: Readonly<Ref<DraftTarget | undefined>>;
-  readonly drafts: Pick<
-    ReturnType<typeof createSessionDraftService>,
-    'bindTarget' | 'forTarget' | 'moveDraft'
-  >;
+  readonly drafts: Pick<ReturnType<typeof createSessionDraftService>, 'bindTarget' | 'forTarget'>;
   readonly attachments: Pick<
     ReturnType<typeof createComposerAttachmentService>,
     'forTarget' | 'moveDraft' | 'consume' | 'retainForSubmission'
@@ -140,13 +138,14 @@ export function createWorkspaceSessionPaneState(options: {
     return { nodeId: target.nodeId, workspaceId: target.workspaceId };
   });
   const attachments = options.attachments.forTarget(() => options.draftTarget.value);
-  const draft = options.drafts.bindTarget(options.draftTarget);
+  const draft = options.drafts.bindTarget(options.draftTarget, options.pane);
   const skillTokens = createComposerSkillTokenService(draft.skillTokens);
+  watch(draft.input, draft.persist);
   watch(draft.skillTokens, draft.persist, { deep: true });
   watch(draft.references, draft.persist, { deep: true });
   const submission = options.submissions.bind(() => {
     const target = options.draftTarget.value;
-    return target === undefined ? undefined : draft.slot.value;
+    return target === undefined ? undefined : options.submissions.forTarget(target);
   });
   const scroll = createConversationScrollService();
   const run = createRunService(sessionId);
@@ -199,16 +198,25 @@ export function createWorkspaceSessionPaneState(options: {
   const captureDraft = () => {
     const target = options.draftTarget.value;
     if (target === undefined) return undefined;
-    const slot = options.drafts.forTarget(target);
+    const slot = options.drafts.forTarget(target, options.pane);
+    const submissionSlot = options.submissions.forTarget(target);
+    let created = false;
     return {
       ...slot,
       createdSession: (session: { readonly id: string; readonly workspaceId: string }) => {
-        if (target.kind !== 'workspace' || target.workspaceId !== session.workspaceId) return;
+        if (created || target.kind !== 'workspace' || target.workspaceId !== session.workspaceId)
+          return;
+        created = true;
+        if (options.submissions.forTarget(target) !== submissionSlot) return;
         const next = { ...target, kind: 'session' as const, sessionId: session.id };
-        if (options.drafts.moveDraft(target, next, slot)) {
-          options.submissions.transfer(slot, slot, 'draft:', session.id);
-          options.attachments.moveDraft(target, next);
-        }
+        options.submissions.transfer(
+          submissionSlot,
+          options.submissions.forTarget(next),
+          'draft:',
+          session.id,
+          true
+        );
+        options.attachments.moveDraft(target, next);
       }
     };
   };
@@ -425,7 +433,8 @@ export function createWorkspaceSessionPaneState(options: {
         finishEditing: queue.finishEditing,
         captureEditing: (queueItemId) => {
           const target = options.draftTarget.value;
-          const slot = target === undefined ? undefined : options.drafts.forTarget(target);
+          const slot =
+            target === undefined ? undefined : options.drafts.forTarget(target, options.pane);
           const captured = slot?.queueEdit.value;
           return () => {
             if (

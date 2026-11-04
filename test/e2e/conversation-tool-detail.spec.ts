@@ -29,6 +29,115 @@ async function expectUnclippedDetail(content: Locator) {
     .toBe(true);
 }
 
+async function expectGenericDetail(detail: Locator) {
+  await expect(detail.locator('pre')).toHaveText(['Preserved input', 'Partial inspection output']);
+  for (const text of [
+    'Details: Inspect fixture',
+    'Input:',
+    'Output:',
+    '[Truncated]',
+    'Progress: Stopped at the last file',
+    'Error: INSPECTION_FAILED'
+  ])
+    await expect(detail).toContainText(text);
+}
+
+for (const { width, theme, locale } of [
+  { width: 1280, theme: 'daylight', locale: 'en-US' },
+  { width: 390, theme: 'dark', locale: 'zh-CN' }
+]) {
+  test(`compact and generic tool details remain readable at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&compact-tools&theme=${theme}&locale=${locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    for (const group of await page
+      .locator('details.conversation-record-group:not([data-tool-presentation]) > summary')
+      .all())
+      if (!(await group.locator('..').evaluate((element) => (element as HTMLDetailsElement).open)))
+        await group.click();
+    const sleep = page.locator('[data-tool-presentation="SLEEP"]');
+    await sleep.locator('> summary').click();
+    const sleepBody = sleep.locator('.compact-detail');
+    await expect(sleepBody).toContainText('sleep');
+    await expect(sleepBody).toContainText('800');
+    await expect(sleepBody).not.toContainText('raw input for copying');
+    await sleepBody.scrollIntoViewIfNeeded();
+    await expectUnclippedDetail(sleepBody);
+    for (const [name, expected] of [
+      ['tool_search', 'tools <query>'],
+      ['view_image', '/fixture/example.png'],
+      ['smart_compact', locale === 'en-US' ? 'Compaction request accepted' : '已接受压缩请求']
+    ] as const) {
+      const row = page
+        .locator('details.conversation-tool-detail')
+        .filter({ hasText: name })
+        .first();
+      await row.locator('> summary').click();
+      const body = row.locator('.compact-detail');
+      await expect(body).toContainText(expected);
+      await expect(body).not.toContainText('raw input for copying');
+      const meta = body.locator('.tool-detail-meta').first();
+      await expect(meta).toHaveCSS('font-weight', '400');
+      await expect(meta).toHaveCSS('font-size', '12px');
+      const visibleDetail = name === 'tool_search' ? row.locator('.detail-preview-window') : body;
+      await visibleDetail.scrollIntoViewIfNeeded();
+      await expectUnclippedDetail(visibleDetail);
+      if (name === 'view_image') {
+        await expect(body.locator('img')).toHaveCount(0);
+        await expect(body).toContainText('Source size');
+        await expect(body).toContainText('1600 × 1200');
+      }
+      if (name === 'tool_search') {
+        const more = row.getByRole('button', { name: /Show more|展开更多/ });
+        await expect(more).toBeVisible();
+        await row.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+        const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+        expect(copied.payload.inputSummary).toBe('raw input for copying');
+        expect(copied.payload.toolPresentation.tools).toHaveLength(20);
+        await more.click();
+        await expect(row.getByRole('button', { name: /Show less|收起/ })).toBeVisible();
+        await row.locator('> summary').click();
+        await expect(row.locator('.compact-detail')).toHaveCount(0);
+        await row.locator('> summary').click();
+        await expect(row.getByRole('button', { name: /Show more|展开更多/ })).toBeVisible();
+      }
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    const compact = page
+      .locator('details.conversation-tool-detail')
+      .filter({ hasText: 'smart_compact' })
+      .first()
+      .locator('.compact-detail');
+    await compact.scrollIntoViewIfNeeded();
+    await expectUnclippedDetail(compact);
+    await page.screenshot({
+      path: testInfo.outputPath(`compact-details-${width}-${theme}.png`),
+      fullPage: true
+    });
+    await process.click();
+    await expect(page.locator('.compact-detail')).toHaveCount(0);
+    await page.goto(`${fixture.url}conversation-tool-detail.html?theme=${theme}&locale=${locale}`);
+    const generic = page.getByTestId('generic');
+    await generic.locator('> summary').click();
+    await expect(generic.locator('.generic-detail')).toContainText('Partial inspection output');
+    await expect(generic.locator('.generic-detail')).toContainText('INSPECTION_FAILED');
+    await generic.scrollIntoViewIfNeeded();
+    await expectUnclippedDetail(generic.locator('.generic-detail'));
+    await page.screenshot({
+      path: testInfo.outputPath(`generic-details-${width}-${theme}.png`),
+      fullPage: true
+    });
+  });
+}
+
 for (const variant of [
   { width: 1280, theme: 'daylight', locale: 'en-US', more: 'Show more', less: 'Show less' },
   { width: 390, theme: 'dark', locale: 'zh-CN', more: '展开更多', less: '收起' }
@@ -561,7 +670,7 @@ test('renders image, search and compact details within the ordinary tool group',
   ] as const) {
     const row = page.locator('details.conversation-tool-detail').filter({ hasText: name }).first();
     await row.locator(':scope > summary').click();
-    await expect(row.locator('.conversation-detail-text')).toContainText(expected);
+    await expect(row.locator('.tool-detail')).toContainText(expected);
     await expect(row.locator('.tool-detail')).toHaveClass(/conversation-detail-body/);
   }
 });
@@ -747,9 +856,7 @@ for (const width of [1280, 390]) {
       await expect(page.getByTestId('empty')).not.toContainText('No output');
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
-      await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
-      );
+      await expectGenericDetail(page.getByTestId('generic').locator('.generic-detail'));
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
       await expect(page.getByTestId('wait').locator('.tool-detail-heading')).toHaveText(
@@ -882,9 +989,7 @@ for (const width of [1280, 390]) {
         const generic = page.locator('.tool-group:not(:has([data-tool-presentation="READ"]))');
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
-        await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
-        );
+        await expectGenericDetail(generic.locator('.generic-detail'));
         const surfaces = page.locator('.conversation-detail-body');
         const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
         await expect(search.locator('.web-detail')).toBeVisible();

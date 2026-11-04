@@ -29,25 +29,25 @@ const options = () => ({
 });
 
 describe('shared Workbench state composition', () => {
-  it('binds existing sessions and new-session drafts to distinct targets', () => {
+  it('retains the Main input across existing sessions and new-session targets', () => {
     const state = createWorkbenchBaseStateService(options());
     state.selection.workspaceTarget.value = { nodeId: 'n', workspaceId: 'w' };
     state.surface.draftSessionOpen.value = true;
     state.draft.input.value = 'new';
     state.surface.draftSessionOpen.value = false;
     state.selection.selectedSessionId.value = 'a';
-    expect(state.draft.input.value).toBe('');
+    expect(state.draft.input.value).toBe('new');
     state.draft.input.value = 'a';
     state.selection.selectedSessionId.value = 'b';
-    expect(state.draft.input.value).toBe('');
+    expect(state.draft.input.value).toBe('a');
     state.draft.input.value = 'b';
     state.selection.selectedSessionId.value = 'a';
-    expect(state.draft.input.value).toBe('a');
+    expect(state.draft.input.value).toBe('b');
     state.surface.draftSessionOpen.value = true;
-    expect(state.draft.input.value).toBe('new');
+    expect(state.draft.input.value).toBe('b');
     state.surface.draftSessionOpen.value = false;
     state.selection.selectedSessionId.value = 'draft:pending';
-    expect(state.draft.input.value).toBe('new');
+    expect(state.draft.input.value).toBe('b');
   });
   it('creates isolated ordinary state without product navigation or enterprise targets', () => {
     const a = createWorkbenchBaseStateService(options());
@@ -98,6 +98,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -119,7 +120,7 @@ describe('shared Workbench state composition', () => {
     main.draft.input.value = 'main draft';
     aside.draft.input.value = 'aside draft';
     expect(drafts.forTarget(mainTarget.value).input.value).toBe('main draft');
-    expect(drafts.forTarget(asideTarget.value).input.value).toBe('aside draft');
+    expect(drafts.forTarget(asideTarget.value, 'aside').input.value).toBe('aside draft');
     const search = { ready: () => true, sessionsReady: () => true, request: vi.fn() as never };
     const mainReferences = main.createReferences(search);
     const asideReferences = aside.createReferences(search);
@@ -248,15 +249,15 @@ describe('shared Workbench state composition', () => {
     mainTarget.value = { ...asideTarget.value };
     expect(mainReferences.open.value).toBe(false);
     expect(asideReferences.open.value).toBe(true);
-    expect(mainReferences.selected.value[0]?.label).toBe('child.txt');
-    expect(main.skillTokens.tokens.value).toEqual([]);
+    expect(mainReferences.selected.value[0]?.label).toBe('main.txt');
+    expect(main.skillTokens.tokens.value[0]?.name).toBe('main');
     mainTarget.value = { ...mainTarget.value, sessionId: 'main' };
     expect(mainReferences.selected.value[0]?.label).toBe('main.txt');
     expect(main.skillTokens.tokens.value[0]?.name).toBe('main');
     attachments.clearAll();
   });
 
-  it('shares the same-session draft and admission between independent Pane instances', () => {
+  it('isolates same-session Pane drafts while sharing submission admission', () => {
     const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'same' };
     const mainTarget = ref<typeof target | undefined>(target);
     const asideTarget = ref<typeof target | undefined>(target);
@@ -278,19 +279,21 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions,
       draftTarget: asideTarget,
       drafts,
       attachments,
       onConversationOverflow: vi.fn()
     });
-    main.draft.input.value = 'shared';
-    expect(aside.draft.input.value).toBe('shared');
+    main.draft.input.value = 'main';
+    aside.draft.input.value = 'aside';
+    expect(main.draft.input.value).toBe('main');
     const finish = main.submission.begin('session:same', undefined, null)!;
     expect(aside.submission.pending.value).toBe(true);
     expect(aside.submission.begin('session:same', undefined, null)).toBeUndefined();
     asideTarget.value = undefined;
-    expect(main.draft.input.value).toBe('shared');
+    expect(main.draft.input.value).toBe('main');
     expect(main.submission.pending.value).toBe(true);
     expect(finish()).toBe(true);
   });
@@ -316,6 +319,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -421,6 +425,7 @@ describe('shared Workbench state composition', () => {
         onConversationOverflow: vi.fn()
       }),
       aside: createWorkspaceSessionPaneState({
+        pane: 'aside',
         submissions: paneSubmissions,
         draftTarget: asideTarget,
         drafts,
@@ -495,6 +500,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -599,6 +605,7 @@ describe('shared Workbench state composition', () => {
         onConversationOverflow: vi.fn()
       });
       const aside = createWorkspaceSessionPaneState({
+        pane: 'aside',
         submissions,
         draftTarget: asideTarget,
         drafts,
@@ -690,6 +697,7 @@ describe('shared Workbench state composition', () => {
         onConversationOverflow: vi.fn()
       });
       const aside = createWorkspaceSessionPaneState({
+        pane: 'aside',
         submissions,
         draftTarget: asideTarget,
         drafts,
@@ -787,6 +795,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -864,6 +873,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       draftTarget: target,
       drafts,
       attachments,
@@ -1108,6 +1118,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -1164,6 +1175,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: b,
       drafts,
@@ -1291,6 +1303,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions,
       draftTarget: asideTarget,
       drafts,
@@ -1301,7 +1314,7 @@ describe('shared Workbench state composition', () => {
     const finishOther = aside.submission.begin('session:created', undefined, null)!;
     expect(finishOther).toBeDefined();
     const otherWorkspace = submissions.bind(() =>
-      drafts.forTarget({ ...session, workspaceId: 'other-workspace' })
+      submissions.forTarget({ ...session, workspaceId: 'other-workspace' })
     );
     const finishOtherWorkspace = otherWorkspace.begin('session:created', undefined, null)!;
     expect(finishOtherWorkspace).toBeDefined();
@@ -1309,7 +1322,7 @@ describe('shared Workbench state composition', () => {
     main
       .captureDraft()!
       .createdSession({ id: session.sessionId, workspaceId: session.workspaceId });
-    expect(drafts.forTarget(session)).toBe(slot);
+    expect(drafts.forTarget(session).input).toBe(slot.input);
     expect(main.submission.pending.value).toBe(false);
     const finishNewWorkspace = main.submission.begin('session:draft', undefined, null)!;
     expect(finishNewWorkspace).toBeDefined();
@@ -1331,6 +1344,46 @@ describe('shared Workbench state composition', () => {
     expect(aside.submission.pending.value).toBe(false);
     expect(finishOther()).toBe(true);
     expect(finishOtherWorkspace()).toBe(true);
+  });
+
+  it('does not migrate a newer Workspace submission when an older creation reply arrives', () => {
+    const target = ref<DraftTarget>({ kind: 'workspace', nodeId: 'n', workspaceId: 'w' });
+    const drafts = createSessionDraftService({ target });
+    const attachments = createComposerAttachmentService({
+      context: () => target.value,
+      request: vi.fn() as never,
+      renewCsrfToken: vi.fn(),
+      csrfToken: ref('csrf'),
+      onUnauthenticated: vi.fn(),
+      notice: vi.fn()
+    });
+    const moveAttachments = vi.spyOn(attachments, 'moveDraft');
+    const submissions = createWorkbenchSubmissionOwner();
+    const pane = createWorkspaceSessionPaneState({
+      submissions,
+      draftTarget: target,
+      drafts,
+      attachments,
+      onConversationOverflow: vi.fn()
+    });
+    const first = pane.captureDraft()!;
+    const finishFirst = pane.submission.begin('session:draft', undefined, null)!;
+    // Timeout releases admission, but the first request can still return after a retry starts.
+    finishFirst();
+    const retry = pane.captureDraft()!;
+    const finishRetry = pane.submission.begin('session:draft', undefined, null)!;
+    first.createdSession({ id: 'first', workspaceId: 'w' });
+    expect(pane.submission.pending.value).toBe(false);
+    const finishNewer = pane.submission.begin('session:draft', undefined, null)!;
+    expect(finishNewer).toBeDefined();
+    retry.createdSession({ id: 'retry', workspaceId: 'w' });
+    expect(pane.submission.pending.value).toBe(true);
+    expect(moveAttachments).toHaveBeenCalledTimes(1);
+    expect(pane.submission.begin('session:draft', undefined, null)).toBeUndefined();
+    expect(finishRetry()).toBe(true);
+    expect(pane.submission.pending.value).toBe(true);
+    expect(finishNewer()).toBe(true);
+    attachments.clearAll();
   });
 
   it('loads older history independently through the common Pane conversation window', async () => {
@@ -1358,6 +1411,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -1415,6 +1469,7 @@ describe('shared Workbench state composition', () => {
       onConversationOverflow: vi.fn()
     });
     const aside = createWorkspaceSessionPaneState({
+      pane: 'aside',
       submissions: paneSubmissions,
       draftTarget: asideTarget,
       drafts,
@@ -1682,7 +1737,7 @@ describe('shared Workbench state composition', () => {
         .input.value
     ).toBe('original');
     expect(pane.draft.input.value).toBe('current');
-    expect(drafts.forTarget(workspace).input.value).toBe('');
+    expect(drafts.forTarget(workspace).input.value).toBe('original');
     attachments.clearAll();
   });
 

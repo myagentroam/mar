@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { executionPresentationSchema } from '@myagentroam/protocol';
+import { executionPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../../i18n/conversation-ui.en-US.js';
 import MarIcon from '../common/MarIcon.vue';
 import ConversationDetailPreview from './ConversationDetailPreview.vue';
-import { conversationItemDetail } from '../../util/conversation-presentation.js';
+import {
+  conversationItemDetail,
+  isSubagentToolCall,
+  stringField
+} from '../../util/conversation-presentation.js';
 import { agentOperationDetail } from '../../util/agent-operation-presentation.js';
 import { runStatusLabel } from '../../util/session-presentation.js';
 import {
   detailOnlyToolText,
+  durationLabel,
   readFileDetail,
   readToolOutput,
   toolPresentation,
@@ -128,6 +133,48 @@ const outputTruncation = computed(() =>
     : execution.value?.truncation?.output
 );
 const detailOnlyText = computed(() => detailOnlyToolText(payload.value));
+const compactDetail = computed(() => {
+  const value = payload.value.toolPresentation as ToolPresentation | undefined;
+  return value &&
+    (value.kind === 'TOOL_SEARCH' ||
+      value.kind === 'SLEEP' ||
+      value.kind === 'IMAGE_VIEW' ||
+      value.kind === 'COMPACT_REQUEST')
+    ? value
+    : undefined;
+});
+const genericTool = computed(
+  () =>
+    props.item.kind === 'tool_call' &&
+    !isSubagentToolCall(payload.value) &&
+    payload.value.toolCategory !== 'IMAGE_GENERATION' &&
+    toolPresentation(payload.value) === undefined &&
+    detailOnlyText.value === undefined &&
+    execution.value === undefined
+);
+const outputText = computed(() =>
+  genericOutput.value?.blocks
+    .map((block) => block.text)
+    .filter(Boolean)
+    .join('\n')
+);
+const detailDuration = (milliseconds: number): string =>
+  milliseconds >= 1000 && milliseconds % 1000 !== 0
+    ? translate('toolPresentation.milliseconds', { value: milliseconds })
+    : durationLabel(milliseconds);
+const compactShowsOutput = computed(() => {
+  const value = compactDetail.value;
+  if (!value) return false;
+  return (
+    props.item.status === 'FAILED' ||
+    props.item.status === 'DECLINED' ||
+    props.item.status === 'CANCELLED' ||
+    props.item.status === 'INTERRUPTED' ||
+    (value.kind === 'TOOL_SEARCH' && value.tools === undefined) ||
+    (value.kind === 'SLEEP' && value.elapsedMs === undefined) ||
+    (value.kind === 'COMPACT_REQUEST' && value.accepted !== true)
+  );
+});
 const agentDetail = computed(() =>
   props.item.permissionStop ? undefined : agentOperationDetail(payload.value, props.item.status)
 );
@@ -207,6 +254,8 @@ onBeforeUnmount(() => {
           skillDetail !== undefined ||
           webDetail !== undefined ||
           execution !== undefined ||
+          compactDetail !== undefined ||
+          genericTool ||
           detailOnlyText !== undefined ||
           detailText ||
           $slots.default)
@@ -453,6 +502,190 @@ onBeforeUnmount(() => {
           class="tool-detail-meta tool-content-section tool-exit"
         >
           {{ labels.exit }} {{ payload.exitCode }}
+        </p>
+      </div>
+      <div v-else-if="compactDetail" class="tool-content compact-detail">
+        <p v-if="typeof payload.toolName === 'string'" class="tool-detail-heading tool-detail-meta">
+          {{ payload.toolName
+          }}<template
+            v-if="compactDetail.kind === 'SLEEP' && compactDetail.durationMs !== undefined"
+          >
+            · {{ detailDuration(compactDetail.durationMs) }}</template
+          >
+        </p>
+        <template v-if="compactDetail.kind === 'TOOL_SEARCH'">
+          <div v-if="compactDetail.query" class="tool-content-section">
+            <p class="tool-detail-meta">{{ labels.query }}:</p>
+            <p class="conversation-detail-text">{{ compactDetail.query }}</p>
+          </div>
+          <p
+            v-for="(tool, index) in compactDetail.tools"
+            :key="index"
+            class="conversation-detail-text"
+          >
+            {{ tool }}
+          </p>
+          <p v-if="compactDetail.tools?.length === 0" class="conversation-detail-text">
+            {{ translate('toolPresentation.noResults') }}
+          </p>
+        </template>
+        <template v-else-if="compactDetail.kind === 'SLEEP'">
+          <p v-if="compactDetail.elapsedMs !== undefined" class="conversation-detail-text">
+            <span class="tool-detail-meta"
+              >{{ conversationUiEnUS.toolPresentation.elapsedDuration }}:</span
+            >
+            {{ detailDuration(compactDetail.elapsedMs) }}
+          </p>
+          <p v-if="compactDetail.wakeReason" class="conversation-detail-text">
+            <span class="tool-detail-meta"
+              >{{ conversationUiEnUS.toolPresentation.wakeReason }}:</span
+            >
+            {{ translate(`toolPresentation.wake.${compactDetail.wakeReason}`) }}
+          </p>
+        </template>
+        <template v-else-if="compactDetail.kind === 'IMAGE_VIEW'">
+          <p v-if="compactDetail.path || compactDetail.resourceId" class="tool-detail-meta">
+            {{ compactDetail.path || compactDetail.resourceId }}
+          </p>
+          <p
+            v-if="compactDetail.mimeType || (compactDetail.width && compactDetail.height)"
+            class="conversation-detail-text"
+          >
+            {{
+              [
+                compactDetail.mimeType,
+                compactDetail.width && compactDetail.height
+                  ? `${compactDetail.width} × ${compactDetail.height}`
+                  : ''
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            }}
+          </p>
+          <p
+            v-if="
+              compactDetail.sourceWidth &&
+              compactDetail.sourceHeight &&
+              (compactDetail.sourceWidth !== compactDetail.width ||
+                compactDetail.sourceHeight !== compactDetail.height)
+            "
+            class="conversation-detail-text"
+          >
+            <span class="tool-detail-meta">{{ labels.sourceSize }}:</span>
+            {{ compactDetail.sourceWidth }} × {{ compactDetail.sourceHeight }}
+          </p>
+          <p v-if="compactDetail.region" class="conversation-detail-text">
+            <span class="tool-detail-meta">{{ labels.region }}:</span> {{ compactDetail.region.x }},
+            {{ compactDetail.region.y }} · {{ compactDetail.region.width }} ×
+            {{ compactDetail.region.height }}
+          </p>
+          <p
+            v-if="
+              compactDetail.resize?.maxWidth !== undefined ||
+              compactDetail.resize?.maxHeight !== undefined
+            "
+            class="conversation-detail-text"
+          >
+            <span class="tool-detail-meta">{{ labels.resize }}:</span>
+            <template v-if="compactDetail.resize?.maxWidth !== undefined">
+              {{ labels.maxWidth }}: {{ compactDetail.resize.maxWidth }}
+            </template>
+            <template v-if="compactDetail.resize?.maxHeight !== undefined">
+              <template v-if="compactDetail.resize.maxWidth !== undefined"> · </template>
+              {{ labels.maxHeight }}: {{ compactDetail.resize.maxHeight }}
+            </template>
+          </p>
+          <p class="tool-detail-meta">
+            {{ translate('toolPresentation.detail.imageUnavailable') }}
+          </p>
+        </template>
+        <p v-else-if="compactDetail.accepted" class="conversation-detail-text">
+          {{ translate('toolPresentation.detail.compactAccepted') }}
+        </p>
+        <p v-if="payload.inputTruncated === true" class="tool-detail-meta">
+          {{ conversationUiEnUS.presentation.input }}:
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+        <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+        <pre v-if="compactShowsOutput && outputText" class="conversation-detail-text">{{
+          outputText
+        }}</pre>
+        <p
+          v-if="genericOutput?.truncation && genericOutput.truncation !== 'HEAD'"
+          class="tool-detail-meta"
+        >
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+        <p
+          v-if="typeof payload.errorCode === 'string' && payload.errorCode"
+          class="conversation-detail-text"
+        >
+          <span class="tool-detail-meta">{{ labels.error }}:</span> {{ payload.errorCode }}
+        </p>
+        <p
+          v-if="typeof payload.errorMessage === 'string' && payload.errorMessage"
+          class="conversation-detail-text"
+        >
+          {{ payload.errorMessage }}
+        </p>
+        <p v-if="item.permissionStop?.reason" class="conversation-detail-text">
+          <span class="tool-detail-meta">{{ labels.permission }}:</span>
+          {{ item.permissionStop.reason }}
+        </p>
+      </div>
+      <div v-else-if="genericTool" class="tool-content generic-detail">
+        <p
+          v-if="
+            stringField(payload, 'title') &&
+            stringField(payload, 'title') !== stringField(payload, 'toolName')
+          "
+          class="conversation-detail-text"
+        >
+          <span class="tool-detail-meta">{{ conversationUiEnUS.presentation.detail }}:</span>
+          {{ stringField(payload, 'title') }}
+        </p>
+        <div
+          v-if="typeof payload.inputSummary === 'string' && payload.inputSummary.length"
+          class="tool-content-section"
+        >
+          <p class="tool-detail-meta">{{ conversationUiEnUS.presentation.input }}:</p>
+          <pre class="conversation-detail-text">{{ payload.inputSummary }}</pre>
+        </div>
+        <p v-if="payload.inputTruncated === true" class="tool-detail-meta">
+          <template v-if="typeof payload.inputSummary !== 'string' || !payload.inputSummary.length"
+            >{{ conversationUiEnUS.presentation.input }}:
+          </template>
+          {{ translate('toolPresentation.detail.truncated') }}
+        </p>
+        <div v-if="outputText || genericOutput?.truncation" class="tool-content-section">
+          <p class="tool-detail-meta">{{ conversationUiEnUS.presentation.output }}:</p>
+          <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
+            {{ translate('toolPresentation.detail.truncated') }}
+          </p>
+          <pre v-if="outputText" class="conversation-detail-text">{{ outputText }}</pre>
+          <p
+            v-if="genericOutput?.truncation && genericOutput.truncation !== 'HEAD'"
+            class="tool-detail-meta"
+          >
+            {{ translate('toolPresentation.detail.truncated') }}
+          </p>
+        </div>
+        <p v-if="stringField(payload, 'progressLabel')" class="conversation-detail-text">
+          <span class="tool-detail-meta">{{ conversationUiEnUS.presentation.progress }}:</span>
+          {{ stringField(payload, 'progressLabel') }}
+        </p>
+        <p v-if="stringField(payload, 'errorCode')" class="conversation-detail-text">
+          <span class="tool-detail-meta">{{ labels.error }}:</span>
+          {{ stringField(payload, 'errorCode') }}
+        </p>
+        <p v-if="stringField(payload, 'errorMessage')" class="conversation-detail-text">
+          {{ stringField(payload, 'errorMessage') }}
+        </p>
+        <p v-if="item.permissionStop?.reason" class="conversation-detail-text">
+          <span class="tool-detail-meta">{{ labels.permission }}:</span>
+          {{ item.permissionStop.reason }}
         </p>
       </div>
       <pre v-else-if="detailOnlyText !== undefined" class="conversation-detail-text">{{

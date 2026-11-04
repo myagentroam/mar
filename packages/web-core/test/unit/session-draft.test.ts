@@ -41,66 +41,34 @@ describe('Web Workspace Draft State', () => {
     });
     expect(restored.forTarget(b).queueEdit.value).toBeUndefined();
   });
-  it('does not resurrect the source draft in this page when storage fails during handoff', () => {
-    const values = new Map<string, string>();
-    let failWrites = false;
-    const workspace = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' };
-    const session = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+  it('keeps the workspace input through session creation when storage writes fail', () => {
+    const target = ref<import('../../src/service/session-draft-service.js').DraftTarget>({
+      kind: 'workspace',
+      nodeId: 'n',
+      workspaceId: 'w'
+    });
     const owner = createSessionDraftService({
-      target: ref(workspace),
+      target,
       storage: {
-        getItem: (key) => values.get(key) ?? null,
-        setItem: (key, value) => {
-          if (failWrites) throw new Error('quota');
-          values.set(key, value);
+        getItem: () => null,
+        setItem: () => {
+          throw new Error('quota');
         },
-        removeItem: (key) => void values.delete(key)
+        removeItem: () => {
+          throw new Error('quota');
+        }
       }
     });
-    const draft = owner.forTarget(workspace);
-    draft.input.value = 'follow-up';
-    draft.persist();
-    failWrites = true;
-    expect(owner.moveDraft(workspace, session, draft)).toBe(true);
-    expect(owner.forTarget(session).input.value).toBe('follow-up');
-    const fresh = owner.forTarget(workspace);
-    expect(fresh.input.value).toBe('');
-    fresh.restore();
-    expect(fresh.input.value).toBe('');
-    fresh.input.value = 'new draft';
-    fresh.restore();
-    expect(fresh.input.value).toBe('new draft');
-    failWrites = false;
-    fresh.persist();
-    fresh.input.value = '';
-    fresh.restore();
-    expect(fresh.input.value).toBe('new draft');
+    owner.input.value = 'follow-up';
+    owner.persist();
+    target.value = { kind: 'session', nodeId: 'n', workspaceId: 'w', sessionId: 'created' };
+    expect(owner.input.value).toBe('follow-up');
+    owner.input.value = 'newer input';
+    owner.persist();
+    target.value = { kind: 'workspace', nodeId: 'n', workspaceId: 'w' };
+    expect(owner.input.value).toBe('newer input');
   });
-  it('hands a workspace draft to the created Session only once without overwriting another draft', () => {
-    const values = new Map<string, string>();
-    const workspace = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' };
-    const session = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
-    const owner = createSessionDraftService({
-      target: ref(workspace),
-      storage: {
-        getItem: (key) => values.get(key) ?? null,
-        setItem: (key, value) => void values.set(key, value),
-        removeItem: (key) => void values.delete(key)
-      }
-    });
-    const draft = owner.forTarget(workspace);
-    draft.input.value = 'follow-up';
-    draft.persist();
-    expect(owner.moveDraft(workspace, session, draft)).toBe(true);
-    expect(owner.forTarget(session)).toBe(draft);
-    expect(owner.forTarget(workspace).input.value).toBe('');
-    expect(values.has('mar.workbench.draft.n.w')).toBe(false);
-    owner.forTarget(workspace).input.value = 'new draft';
-    expect(owner.moveDraft(workspace, session, draft)).toBe(false);
-    expect(owner.forTarget(workspace).input.value).toBe('new draft');
-    expect(owner.forTarget(session).input.value).toBe('follow-up');
-  });
-  it('owns simultaneous pane drafts by complete target and reuses them when a pane moves', () => {
+  it('owns independent workspace Pane drafts and reuses each side on session changes', () => {
     const values = new Map<string, string>();
     const a = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'a' };
     const b = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'b' };
@@ -113,19 +81,19 @@ describe('Web Workspace Draft State', () => {
       }
     });
     const main = owner.forTarget(a);
-    const aside = owner.forTarget(b);
+    const aside = owner.forTarget(b, 'aside');
     main.input.value = 'main draft';
     aside.input.value = 'aside draft';
     aside.persist();
     expect(main.input.value).toBe('main draft');
-    const moved = owner.forTarget(b);
+    const moved = owner.forTarget(b, 'aside');
     expect(moved).toBe(aside);
     expect(moved.input.value).toBe('aside draft');
     moved.input.value = 'moved draft';
     expect(aside.input.value).toBe('moved draft');
     expect(main.input.value).toBe('main draft');
   });
-  it('binds two live pane projections to the same target-owned slots without copying drafts', () => {
+  it('keeps live Pane input independent when both sides switch to the same target', () => {
     const values = new Map<string, string>();
     const a = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'a' };
     const b = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'b' };
@@ -140,18 +108,18 @@ describe('Web Workspace Draft State', () => {
       }
     });
     const main = owner.bindTarget(targetA);
-    const aside = owner.bindTarget(targetB);
+    const aside = owner.bindTarget(targetB, 'aside');
     main.input.value = 'main';
     aside.input.value = 'aside';
     expect(owner.input.value).toBe('main');
-    expect(owner.forTarget(b).input.value).toBe('aside');
+    expect(owner.forTarget(b, 'aside').input.value).toBe('aside');
     targetA.value = b;
-    expect(main.input.value).toBe('aside');
+    expect(main.input.value).toBe('main');
     main.input.value = 'moved';
-    expect(aside.input.value).toBe('moved');
-    expect(owner.forTarget(a).input.value).toBe('main');
+    expect(aside.input.value).toBe('aside');
+    expect(owner.forTarget(a).input.value).toBe('moved');
   });
-  it('keeps workspace and full Session identities separate without copying a legacy draft', () => {
+  it('restores the same workspace input across session identities and new-session mode', () => {
     const values = new Map<string, string>();
     const target = ref<import('../../src/service/session-draft-service.js').DraftTarget>({
       kind: 'workspace',
@@ -175,7 +143,7 @@ describe('Web Workspace Draft State', () => {
       sessionId: 'a'
     };
     state.restore();
-    expect(state.input.value).toBe('');
+    expect(state.input.value).toBe('new session draft');
     state.input.value = 'draft A';
     state.persist();
     target.value = {
@@ -185,7 +153,7 @@ describe('Web Workspace Draft State', () => {
       sessionId: 'b'
     };
     state.restore();
-    expect(state.input.value).toBe('');
+    expect(state.input.value).toBe('draft A');
     target.value = {
       kind: 'session',
       nodeId: 'node-1',
@@ -196,7 +164,7 @@ describe('Web Workspace Draft State', () => {
     expect(state.input.value).toBe('draft A');
     target.value = { kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' };
     state.restore();
-    expect(state.input.value).toBe('new session draft');
+    expect(state.input.value).toBe('draft A');
   });
   it('Persists and restores drafts per Node and Workspace; empty content clears storage', () => {
     const values = new Map<string, string>();

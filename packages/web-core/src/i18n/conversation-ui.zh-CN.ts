@@ -69,6 +69,8 @@ export const conversationUiZhCN = {
       sourceSize: '原始尺寸',
       region: '裁剪区域',
       resize: '缩放',
+      maxWidth: '最大宽度',
+      maxHeight: '最大高度',
       query: '查询',
       search: '搜索',
       webContent: '网页内容',

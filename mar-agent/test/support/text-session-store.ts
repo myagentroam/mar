@@ -93,6 +93,7 @@ export function textSessionStore() {
     list: async () => ({
       sessions: [...sessions.values()].map((session) => structuredClone(session))
     }),
+    listSnapshot: async () => structuredClone([...sessions.values()]),
     listSubagentChildren: async () => [],
     executionConfiguration: async () => undefined,
     firstUserMessagePreview: async () => undefined,
