@@ -155,16 +155,28 @@ export function readToolOutput(payload: Record<string, unknown>) {
   return undefined;
 }
 
+function readLineRange(
+  startLine: number | undefined,
+  endLine: number | undefined
+): string | undefined {
+  if (startLine === undefined) return undefined;
+  return endLine === undefined || endLine === startLine
+    ? String(startLine)
+    : `${startLine}–${endLine}`;
+}
+
 export function toolPresentationReadRange(payload: unknown, path: string): string {
   const value = toolPresentation(payload);
   if (value?.kind !== 'READ') return '';
-  return (value.results ?? [])
-    .filter((item) => item.path === path && item.startLine !== undefined)
-    .map((item) =>
-      item.endLine === undefined || item.endLine === item.startLine
-        ? String(item.startLine)
-        : `${item.startLine}–${item.endLine}`
-    )
+  const results = (value.results ?? []).filter((item) => item.path === path);
+  if (
+    results.length > 1 &&
+    results.some((item) => readLineRange(item.startLine, item.endLine) === undefined)
+  )
+    return '';
+  return results
+    .map((item) => readLineRange(item.startLine, item.endLine))
+    .filter((range): range is string => range !== undefined)
     .join(', ');
 }
 
@@ -174,6 +186,11 @@ export function readFileDetail(payload: Record<string, unknown>, path: string): 
   if (presentation?.kind !== 'READ') return undefined;
   const results = presentation.results?.filter((item) => item.path === path);
   if (!results?.length) return undefined;
+  if (
+    results.length > 1 &&
+    results.some((item) => readLineRange(item.startLine, item.endLine) === undefined)
+  )
+    return undefined;
   const output = readToolOutput(payload);
   if (
     results.some((item) => !item.contentRange && !item.error && !item.empty) &&
@@ -182,13 +199,22 @@ export function readFileDetail(payload: Record<string, unknown>, path: string): 
     return undefined;
   const sections = results
     .map((item) => {
-      if (item.error) return `${item.error.code}: ${item.error.message}`;
-      if (item.empty) return translate('toolPresentation.detail.empty');
-      const block = output?.blocks.find((entry) => entry.channel === item.contentRange?.channel);
-      if (!item.contentRange || !block)
-        return output?.truncation ? '' : translate('toolPresentation.detail.truncated');
-      const content = block.text.slice(item.contentRange.start, item.contentRange.end);
-      return content || translate('toolPresentation.detail.empty');
+      let text: string;
+      if (item.error) text = `${item.error.code}: ${item.error.message}`;
+      else if (item.empty) text = translate('toolPresentation.detail.empty');
+      else {
+        const block = output?.blocks.find((entry) => entry.channel === item.contentRange?.channel);
+        if (!item.contentRange || !block)
+          text = output?.truncation ? '' : translate('toolPresentation.detail.truncated');
+        else {
+          const content = block.text.slice(item.contentRange.start, item.contentRange.end);
+          text = content || translate('toolPresentation.detail.empty');
+        }
+      }
+      const range = results.length > 1 ? readLineRange(item.startLine, item.endLine) : undefined;
+      return range && text.length > 0
+        ? `${translate('toolPresentation.detail.lineRange', { range })}\n${text}`
+        : text;
     })
     .filter((section) => section.length > 0);
   if (output?.truncation === 'HEAD')
