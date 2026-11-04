@@ -42,6 +42,7 @@ export type ExecInput =
 export const execToolDefinition: ClientToolDefinition = {
   name: 'exec',
   allowedCallers: ['direct', 'programmatic'],
+  codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
     'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, call exec_wait directly with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, and timeout. A foreground wait may return interrupted with reason=steer; the process keeps running.',

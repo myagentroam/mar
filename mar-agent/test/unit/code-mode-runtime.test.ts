@@ -310,7 +310,7 @@ describe('Code Mode SDK and protocol integration', () => {
         );
         for (const request of requests) {
           expect(request.tools.some((tool) => tool.name === 'exec_wait')).toBe(true);
-          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(false);
+          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
           expect(description).toContain('"name":"exec_wait"');
           expect(description).toContain('"name":"exec"');
@@ -1044,11 +1044,12 @@ describe('Code Mode SDK and protocol integration', () => {
             'apply_patch',
             'code_exec',
             'code_exec_wait',
+            'exec',
             'exec_wait',
             'sleep'
           ]);
           expect(effectiveInstructions(request)).toContain(
-            'Available client tools: apply_patch, code_exec, code_exec_wait, exec_wait, sleep.'
+            'Available client tools: apply_patch, code_exec, code_exec_wait, exec, exec_wait, sleep.'
           );
           expect(effectiveInstructions(request)).toContain('Code Mode Only');
           const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(

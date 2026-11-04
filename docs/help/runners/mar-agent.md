@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-02
+lastUpdated: 2026-11-04
 ---
 
 # 配置和使用 MAR Agent
@@ -195,11 +195,11 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 
 Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启后默认采用 **Code Mode Only**：支持编排的工具（包括单工具操作）默认经 `code_exec` 调用，direct-only 工具及明确支持双边展示的工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
 
-开启 Code Mode 时，`apply_patch` 和 `exec_wait` 同时保留直接调用和程序化调用入口。`apply_patch` 由模型按任务自主选择；单进程纯等待优先直接调用 `exec_wait`，并行等待或组合处理仍使用 `tools.exec_wait`。不要通过两种入口重复等待同一进程。其他工具的默认展示策略和原有调用权限不变。
+开启 Code Mode 时，`apply_patch`、`exec` 和 `exec_wait` 同时保留直接调用和程序化调用入口。`apply_patch` 和 `exec` 由模型按任务自主选择；单进程纯等待优先直接调用 `exec_wait`，并行等待或组合处理仍使用 `tools.exec_wait`。不要通过两种入口重复等待同一进程。其他工具的默认展示策略和原有调用权限不变。
 
 每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。使用 `observe.result(result)` 登记未经修改的完整工具结果或捕获的工具错误；对派生值使用 `observe.text(value)`，对图片使用 `observe.image(value)`。观察只选择传给模型的证据，不代表已经读取或检查；没有 `out` 别名。文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 
-`code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程用 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `exec_wait` 或 cell 内的 `tools.exec_wait` 控制，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic；Only 模式下 `exec` 仅展示 Code Mode 入口，`exec_wait` 保留双入口。cell 内等待仍遵守工具自身超时及 Host 策略。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
+`code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。后台进程可直接用 `exec({ command, ... })` 或 cell 内的 `tools.exec({ command, ... })` 启动；返回 `processId` 后通过 `exec_wait` 或 cell 内的 `tools.exec_wait` 控制，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。两个进程工具均支持 direct 和 programmatic，Only 模式下也均保留双入口。cell 内等待仍遵守工具自身超时及 Host 策略。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒、最多 30 秒，`exec_wait` 默认 10 秒、最多 300 秒；显式 `yieldMs: 0` 立即返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
 
 后台 cell 属于 Session 温资源。`code_exec` 首次默认等待 30 秒，`code_exec_wait` 默认等待 10 秒；显式等待值不改变内部工具的等待窗口。`cell.yield_control()` 只结束当前等待并返回已有输出，JS 继续后台执行；也可通过首行 `// @options: {"yieldMs":30000}` 设置首次等待窗口；输出预算由 Runtime 固定控制。返回 `cellId` 后直接调用 `code_exec_wait` 获取增量或终态，`action` 默认 `poll` 等待，传 `action: "cancel"` 才显式终止。当前 Execution 结束或取消不会终止已登记的 cell；后续 Execution 可从保留资源提示接管。Session 资源回收、超时或 Host 退出会终止 cell，进程重启不恢复 JS 执行状态。终态结果仅有界缓存，重复领取带 `cached: true`。
 
