@@ -31,7 +31,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
     <MarIcon name="session-tree" />
     <span
       v-if="summary?.hasActiveDescendants"
-      class="tree-active-indicator"
+      class="tree-active-indicator mar-icon-status-badge"
       :class="{ paused: status !== 'ready' }"
       aria-hidden="true"
     />
@@ -49,18 +49,12 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   height: 1.25rem;
 }
 .tree-active-indicator {
-  position: absolute;
-  inset-block-start: 0;
+  --mar-icon-status-surface: var(--mar-bg-panel);
+  inset-block-end: 0;
   inset-inline-end: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--el-color-success);
-  box-shadow: 0 0 5px var(--el-color-success);
   animation: tree-pulse 2s ease-in-out infinite;
 }
 .tree-active-indicator.paused {
-  box-shadow: none;
   opacity: 0.6;
   animation: none;
 }

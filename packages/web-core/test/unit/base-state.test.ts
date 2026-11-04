@@ -256,6 +256,45 @@ describe('shared Workbench state composition', () => {
     attachments.clearAll();
   });
 
+  it('shares the same-session draft and admission between independent Pane instances', () => {
+    const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'same' };
+    const mainTarget = ref<typeof target | undefined>(target);
+    const asideTarget = ref<typeof target | undefined>(target);
+    const drafts = createSessionDraftService({ target: mainTarget });
+    const submissions = createWorkbenchSubmissionOwner();
+    const attachments = createComposerAttachmentService({
+      context: () => mainTarget.value,
+      notice: vi.fn(),
+      request: vi.fn(),
+      csrfToken: ref('csrf'),
+      renewCsrfToken: vi.fn(),
+      onUnauthenticated: vi.fn()
+    });
+    const main = createWorkspaceSessionPaneState({
+      submissions,
+      draftTarget: mainTarget,
+      drafts,
+      attachments,
+      onConversationOverflow: vi.fn()
+    });
+    const aside = createWorkspaceSessionPaneState({
+      submissions,
+      draftTarget: asideTarget,
+      drafts,
+      attachments,
+      onConversationOverflow: vi.fn()
+    });
+    main.draft.input.value = 'shared';
+    expect(aside.draft.input.value).toBe('shared');
+    const finish = main.submission.begin('session:same', undefined, null)!;
+    expect(aside.submission.pending.value).toBe(true);
+    expect(aside.submission.begin('session:same', undefined, null)).toBeUndefined();
+    asideTarget.value = undefined;
+    expect(main.draft.input.value).toBe('shared');
+    expect(main.submission.pending.value).toBe(true);
+    expect(finish()).toBe(true);
+  });
+
   it('routes two real Pane Watches without requiring descendants in a Main session list', async () => {
     const workspace = { nodeId: 'n', workspaceId: 'w' };
     const mainTarget = ref({ kind: 'session' as const, ...workspace, sessionId: 'main' });

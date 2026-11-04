@@ -2,19 +2,32 @@
 import { computed, ref } from 'vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationToolDetail from '../../src/view/conversation/ConversationToolDetail.vue';
+import ConversationDetailPreview from '../../src/view/conversation/ConversationDetailPreview.vue';
 
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
 const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
+const previewProbe = new URL(location.href).searchParams.has('preview-probe');
+const probeText = ref('wrapped content '.repeat(50));
 const sessionVersion = ref(0);
 const readAssociation = new URL(location.href).searchParams.has('read-association');
 const readPath = new URL(location.href).searchParams.get('read-path') ?? '/fixture/example.ts';
 const readTruncation = new URL(location.href).searchParams.get('read-truncation');
+const longPreview = new URL(location.href).searchParams.has('preview');
 const dropReadAssociation = ref(false);
 const readText = '  first file\r\nsecond line\r\n';
 const detailOutput = ref<{ blocks: { channel: 'TEXT'; text: string }[]; truncation?: 'SOURCE' }>();
+if (longPreview)
+  detailOutput.value = {
+    blocks: [
+      {
+        channel: 'TEXT',
+        text: Array.from({ length: 40 }, (_, index) => `Returned line ${index + 1}`).join('\n')
+      }
+    ]
+  };
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
@@ -171,6 +184,40 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (new URL(location.href).searchParams.has('detail-layout')) {
+  detailSamples.push(
+    {
+      id: 'skill-layout',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'skill',
+        inputSummary: 'original skill request',
+        output: {
+          blocks: [{ channel: 'TEXT', text: 'Complete skill output is copied, not displayed.' }]
+        },
+        toolPresentation: {
+          kind: 'SKILL',
+          name: 'mar-web-spec',
+          description:
+            'Design <plain> interfaces.\nKeep the original description and its line breaks.'
+        }
+      }
+    },
+    {
+      id: 'code-layout',
+      kind: 'command_execution',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'code_exec',
+        command:
+          'const result = await tools.read({ reads: [{ path: "src/fixture.ts" }] });\nobserve.result(result);',
+        output: { blocks: [{ channel: 'TEXT', text: 'Observed the requested file.' }] },
+        toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CODE' } }
+      }
+    }
+  );
+}
 if (new URL(location.href).searchParams.has('specialized')) {
   detailSamples.push(
     {
@@ -283,6 +330,42 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     });
   }
 }
+if (new URL(location.href).searchParams.has('wait-titles')) {
+  const source = {
+    kind: 'SHELL' as const,
+    text: `pnpm test --filter fixture ${'long-argument-'.repeat(24)}`,
+    truncated: false
+  };
+  for (const [toolName, targetId, executionSource] of [
+    ['exec_wait', 'p_known', source],
+    ['code_exec_wait', 'c_known', source],
+    ['exec_wait', 'p_unknown', undefined],
+    [
+      'code_exec_wait',
+      'c_unknown',
+      { kind: 'CODE', text: 'await tools.exec({ command: "not inferred" });', truncated: false }
+    ]
+  ] as const) {
+    detailSamples.push({
+      id: `wait-title-${targetId}`,
+      kind: 'command_execution',
+      status: 'COMPLETED',
+      payload: {
+        command: '',
+        toolPresentation: {
+          kind: 'EXECUTION',
+          execution: {
+            kind: 'CONTROL',
+            toolName,
+            action: 'poll',
+            targetId,
+            ...(executionSource === undefined ? {} : { source: executionSource })
+          }
+        }
+      }
+    });
+  }
+}
 const turns = computed<ConversationTurn[]>(() => [
   {
     id: 'turn',
@@ -317,7 +400,7 @@ const turns = computed<ConversationTurn[]>(() => [
                                     {
                                       path: readPath,
                                       startLine: 3,
-                                      endLine: 4,
+                                      endLine: longPreview ? 42 : 4,
                                       contentRange: {
                                         channel: 'TEXT',
                                         start: 0,
@@ -419,6 +502,15 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <section v-if="previewProbe" data-testid="preview-probe" class="conversation-detail-body">
+      <button data-testid="stretch-preview" @click="probeText = 'wrapped content '.repeat(800)">
+        Stretch preview
+      </button>
+      <ConversationDetailPreview>
+        <pre class="conversation-detail-text">{{ probeText }}</pre>
+        <a href="#fixture-source" data-testid="preview-link">Open fixture source</a>
+      </ConversationDetailPreview>
+    </section>
     <button v-if="performanceProbe" data-testid="switch-session" @click="sessionVersion++">
       Switch fixture session
     </button>

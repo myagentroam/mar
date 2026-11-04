@@ -19,6 +19,7 @@ for (const [language, theme, width] of [
     const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
     try {
       await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.goto(
         `${fixture.url}workbench-aside.html?active-child&long-title=${language}&theme=${theme}${width < 768 ? '&mobile' : ''}`
       );
@@ -73,7 +74,8 @@ for (const [language, theme, width] of [
         const result = {
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
-          selected: resolve('--mar-fill-selection')
+          selected: resolve('--mar-fill-selection'),
+          success: resolve('--el-color-success')
         };
         probe.remove();
         return result;
@@ -81,6 +83,21 @@ for (const [language, theme, width] of [
       await expect(session).toHaveCSS('color', colors.primary);
       await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
+      const activity = session.locator('.workbench-aside-activity');
+      const dot = activity.locator('i');
+      await expect(dot).toBeVisible();
+      await expect(dot).toHaveCSS('background-color', colors.success);
+      await expect(activity).toHaveCSS('overflow', 'visible');
+      const glow = await dot.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { shadow: style.boxShadow, animation: style.animationName };
+      });
+      expect(glow.shadow).not.toBe('none');
+      expect(glow.animation).not.toBe('none');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(dot).toHaveCSS('animation-name', 'none');
+      await expect(dot).toHaveCSS('background-color', colors.success);
+      await expect(dot).toHaveCSS('box-shadow', glow.shadow);
       await session.hover();
       await expect(page.locator('.mar-tooltip:visible')).toContainText(await session.innerText());
       await page.locator('.workbench-aside').screenshot({
@@ -222,6 +239,22 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
         await expect(tabs.getByRole('tab')).toHaveCount(6);
         for (const width of [320, 390, 430]) {
           await page.setViewportSize({ width, height: 844 });
+          const back = page.locator('.workbench-aside-back');
+          const headerGeometry = await back.evaluate((element) => {
+            const button = element.getBoundingClientRect();
+            const icon = element.querySelector('svg')!.getBoundingClientRect();
+            const tabs = element
+              .parentElement!.querySelector('[role="tablist"]')!
+              .getBoundingClientRect();
+            return {
+              button: { width: button.width, right: button.right },
+              icon: { left: icon.left, right: icon.right },
+              tabsLeft: tabs.left
+            };
+          });
+          expect(headerGeometry.button.width).toBe(30);
+          expect(headerGeometry.tabsLeft).toBe(headerGeometry.button.right);
+          expect(headerGeometry.icon.right).toBeLessThanOrEqual(headerGeometry.button.right);
           await expect(tabs.getByRole('tab').first()).toHaveCSS('font-size', '11px');
           await expect(tabs.getByRole('tab').last()).toHaveCSS('font-size', '11px');
           const spacing = await tabs.getByRole('tab').evaluateAll((elements) =>

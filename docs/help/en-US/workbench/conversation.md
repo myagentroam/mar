@@ -11,6 +11,8 @@ Conversation groups your messages, Agent replies, reasoning summaries, plans, co
 
 Expand a file-read entry to see the actual line range and corresponding content when supplied by the source. Older records and Runners without per-file associations retain the overall call result. Skills, commands, web calls, and other tools show details supported by their available facts; image-view tools show metadata when no preview is available. Results can be truncated by the source or display limits. The copy button copies the call's public record without rereading a file or webpage.
 
+Tall detail areas initially use a limited-height preview. Select **Show more** to reveal the rest of the returned content, or **Show less** to restore the preview. This does not reread the source or affect copying. `[Truncated]` means the returned content itself is incomplete, not that the interface preview is collapsed.
+
 Cross-session message headings distinguish parent, child, descendant, and other sessions using the saved sender name. Hover to see the source session ID. Older messages without a saved relationship retain their original source label.
 
 Images in the conversation load as thumbnails. Click one to open an aspect-ratio-preserving preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears at the top right. This loads the original image while still fitting it entirely within the dialog, preserving its aspect ratio without cropping or image scrollbars. Long screenshots also fit as a whole, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.

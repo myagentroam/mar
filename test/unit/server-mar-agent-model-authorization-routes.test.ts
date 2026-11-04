@@ -13,6 +13,7 @@ import { registerNodeRoutes } from '../../ee/server/src/route/node-routes.js';
 import { registerResourceGrantRoutes } from '../../ee/server/src/route/resource-grant-routes.js';
 import { registerRunControlRoutes } from '../../ee/server/src/route/run-control-routes.js';
 import { registerSessionRunRoutes } from '../../ee/server/src/route/session-run-routes.js';
+import { MarAgentRunner } from '../../mar-node/src/runner/mar-agent-runner.js';
 import type { EnvironmentSecretService } from '../../ee/server/src/service/environment-secret-service.js';
 import type { MarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
 import type { MarAgentRuntimeModelService } from '../../ee/server/src/service/mar-agent-runtime-model-service.js';
@@ -103,6 +104,113 @@ describe('Server MAR Agent model authorization routes', () => {
       120_000
     );
     await app.close();
+  });
+
+  it('authorizes child configuration with request-scoped summaries and rejects a later revocation', async () => {
+    const fixture = routeFixture();
+    const [summary] = await fixture.models.listForUser(8);
+    const authorized = { ...summary!, conversationModel: true, subagentModel: true };
+    fixture.models.listForUser.mockClear();
+    fixture.models.listForUser.mockResolvedValue([authorized]);
+    const runner = new MarAgentRunner();
+    runner.configureModels([authorized]);
+    const update = vi.fn((modelId: string) => ({ session: { id: 'child', modelId } }));
+    fixture.nodeControl.requestNode.mockImplementation(
+      async (_nodeId: string, operation: string, data: Record<string, unknown>) => {
+        expect(operation).toBe('session.config.update');
+        runner.assertChildModel(data.modelId as string, runner.prepareExecutionContext(data));
+        return update(data.modelId as string);
+      }
+    );
+    const app = Fastify();
+    registerSessionRunRoutes({
+      app,
+      ...fixture,
+      marAgentModels: fixture.models,
+      publicOrigin: undefined
+    });
+    try {
+      const request = {
+        method: 'PATCH' as const,
+        url: '/api/agent-sessions/child/config',
+        headers,
+        payload: {
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          modelId: authorized.id,
+          effort: 'high',
+          access: 'full-access',
+          marAgentModels: [authorized]
+        }
+      };
+      const accepted = await app.inject(request);
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.json()).toEqual({ session: { id: 'child', modelId: authorized.id } });
+      expect(fixture.models.listForUser).toHaveBeenCalledWith(8);
+      expect(fixture.secrets.resolve).toHaveBeenCalledWith(8, 'node-1', 'workspace-1');
+      const { access: _access, ...nodeSummary } = authorized;
+      expect(fixture.nodeControl.requestNode).toHaveBeenLastCalledWith(
+        'node-1',
+        'session.config.update',
+        {
+          sessionId: 'child',
+          modelId: authorized.id,
+          effort: 'high',
+          access: 'full-access',
+          secretEnvironment: {},
+          marAgentModels: [nodeSummary]
+        },
+        { userId: 8, sessionHash: 'session-hash', workspaceId: 'workspace-1' },
+        undefined
+      );
+      expect(nodeSummary).not.toHaveProperty('credential');
+      expect(fixture.models.runtimeForUser).not.toHaveBeenCalled();
+      expect(fixture.models.runtimeConfigurationsForUser).not.toHaveBeenCalled();
+
+      fixture.models.listForUser.mockResolvedValue([]);
+      const revoked = await app.inject(request);
+      expect(revoked.statusCode).toBe(400);
+      expect(revoked.json()).toMatchObject({
+        error: { code: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE' }
+      });
+      expect(update).toHaveBeenCalledOnce();
+      expect(fixture.models.listForUser).toHaveBeenCalledTimes(2);
+      expect(fixture.nodeControl.requestNode.mock.lastCall?.[2]).toMatchObject({
+        marAgentModels: []
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not update configuration when the authorized model catalog cannot be loaded', async () => {
+    const fixture = routeFixture();
+    fixture.models.listForUser.mockRejectedValue(new Error('MAR_AGENT_MODEL_FORBIDDEN'));
+    const app = Fastify();
+    registerSessionRunRoutes({
+      app,
+      ...fixture,
+      marAgentModels: fixture.models,
+      publicOrigin: undefined
+    });
+    try {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/agent-sessions/child/config',
+        headers,
+        payload: {
+          nodeId: 'node-1',
+          modelId: 'coding-id',
+          effort: 'high',
+          access: 'full-access'
+        }
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ error: { code: 'MAR_AGENT_MODEL_FORBIDDEN' } });
+      expect(fixture.nodeControl.requestNode).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 
   it('passes only the current user runtime model set to the parent Agent and Subagents', async () => {

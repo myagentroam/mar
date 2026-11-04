@@ -2591,7 +2591,6 @@ export function createWorkbenchPageController<
         nodeManifest.value?.sessionAside
       ),
     saveAside: () => saveAsideContext(),
-    focusMain: () => focusComposerInputAt(sessionInput.value.length),
     workspaceTarget,
     selectedSessionId,
     selectedRunId,
@@ -3725,6 +3724,15 @@ export function createWorkbenchPageController<
     },
     sessionNavigationSnapshot: computed(() => {
       return sessionNavigation.current(workspaceTarget.value, navigationQuery.value);
+    }),
+    asideSessionMetadata: computed(() => {
+      const workspace = workspaceTarget.value;
+      return navigationQuery.value === undefined || workspace === undefined
+        ? []
+        : sessionNavigation.knownSessions(
+            workspace,
+            workbenchAsideService.current(workspace).sessions
+          );
     }),
     workspaceSelectionLoading: workbenchWorkspaceSelectionService.loading,
     retryWorkspaceSelection: () => {

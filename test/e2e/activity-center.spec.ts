@@ -191,7 +191,7 @@ for (const width of [1280, 390]) {
         ['one-notification=1', '1'],
         ['', '30'],
         ['many-notifications=1', '99+']
-      ]) {
+      ] as const) {
         await page.goto(
           `${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}&${query}`
         );

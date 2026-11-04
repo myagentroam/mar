@@ -1110,6 +1110,16 @@ pre {
   color: var(--mar-text-secondary);
 }
 
+.mar-icon-status-badge {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-color-success);
+  box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);
+  pointer-events: none;
+}
+
 .utility-control.el-button {
   --el-button-bg-color: transparent;
   --el-button-border-color: transparent;
@@ -1399,7 +1409,7 @@ pre {
   overflow-wrap: anywhere;
 }
 
-.conversation-detail-body > .conversation-detail-text {
+.conversation-detail-body .conversation-detail-text {
   margin: 0;
   padding: 0;
   border: 0;

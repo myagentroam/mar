@@ -71,6 +71,136 @@ vi.mock('element-plus/es', async (importOriginal) => {
 
 const originalLocale = localePreferenceService().locale.value;
 
+it.each(['en-US', 'zh-CN'] as const)(
+  'heads associated Read content with its path and range in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      const item = conversationItem('read-heading', 'tool_call', {
+        toolName: 'read',
+        inputSummary: 'original read input',
+        output: { blocks: [{ channel: 'TEXT', text: 'file content\n' }] },
+        toolPresentation: {
+          kind: 'READ',
+          paths: ['src/fixture.ts'],
+          results: [
+            {
+              path: 'src/fixture.ts',
+              startLine: 8,
+              endLine: 9,
+              contentRange: { channel: 'TEXT', start: 0, end: 13 }
+            }
+          ]
+        }
+      });
+      const html = await render(ConversationToolDetail, { item, readPath: 'src/fixture.ts' });
+      expect(html).toContain('src/fixture.ts · 8–9');
+      expect(html).toContain('file content\n');
+      expect(html.indexOf('src/fixture.ts · 8–9')).toBeLessThan(html.indexOf('file content'));
+      expect(html).not.toContain('original read input');
+      expect(html).not.toContain('Output:');
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
+it.each(['en-US', 'zh-CN'] as const)(
+  'shows Skill name and description without its input or output in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      const item = conversationItem('skill-description', 'tool_call', {
+        toolName: 'skill',
+        inputSummary: 'hidden input',
+        output: {
+          blocks: [{ channel: 'TEXT', text: 'hidden full skill body' }],
+          truncation: 'SOURCE'
+        },
+        toolPresentation: {
+          kind: 'SKILL',
+          name: 'mar-web-spec',
+          description: 'Design <plain> interfaces.\nPreserve this line.',
+          source: '/private/source'
+        }
+      });
+      const html = await render(ConversationToolDetail, { item });
+      expect(html).toContain('mar-web-spec');
+      expect(html).toContain('Design &lt;plain&gt; interfaces.\nPreserve this line.');
+      expect(html).not.toContain('<plain>');
+      for (const hidden of [
+        'hidden input',
+        'hidden full skill body',
+        '/private/source',
+        'Output:',
+        '[Truncated]'
+      ])
+        expect(html).not.toContain(hidden);
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
+it('keeps Skill errors without using output as a missing description', async () => {
+  const item = {
+    ...conversationItem('failed-skill', 'tool_call', {
+      toolName: 'skill',
+      outputSummary: 'not a description',
+      errorCode: 'SKILL_NOT_FOUND',
+      errorMessage: 'Skill could not be loaded.',
+      toolPresentation: { kind: 'SKILL', name: 'missing-skill' }
+    }),
+    status: 'FAILED' as const
+  };
+  const html = await render(ConversationToolDetail, { item });
+  expect(html).toContain('missing-skill');
+  expect(html).toContain('SKILL_NOT_FOUND');
+  expect(html).toContain('Skill could not be loaded.');
+  expect(html).not.toContain('not a description');
+  expect(html).not.toContain('Output:');
+});
+
+it('keeps a source-free control target in the heading without inventing command or exit fields', async () => {
+  const item = conversationItem('wait-heading', 'command_execution', {
+    command: '',
+    toolPresentation: {
+      kind: 'EXECUTION',
+      execution: {
+        kind: 'CONTROL',
+        toolName: 'code_exec_wait',
+        action: 'poll',
+        targetId: 'c_fixture'
+      }
+    }
+  });
+  const html = await render(ConversationToolDetail, { item });
+  expect(html).toContain('code_exec_wait · Poll · c_fixture');
+  for (const missing of ['Command:', 'Code:', 'Output:', 'Exit '])
+    expect(html).not.toContain(missing);
+});
+
+it.each([
+  ['poll', 'Poll'],
+  ['write', 'Write'],
+  ['cancel', 'Cancel'],
+  ['start', 'Start'],
+  ['constructor', 'constructor']
+])(
+  'formats known control action %s without rewriting unknown native values',
+  async (action, label) => {
+    const item = conversationItem('control-action', 'command_execution', {
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', toolName: 'exec_wait', action, targetId: 'p_fixture' }
+      }
+    });
+    expect(await render(ConversationToolDetail, { item })).toContain(
+      `exec_wait · ${label} · p_fixture`
+    );
+  }
+);
+
 it.each(['HEAD', 'SOURCE'] as const)(
   'clears legacy %s truncation for complete and empty public snapshots',
   async (direction) => {
@@ -117,8 +247,11 @@ it('marks a truncated wait source independently from a head-truncated output tai
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain('Command: partial command\n...Truncated');
-    expect(html).toContain('Output:\n...Truncated\noutput tail');
+    expect(html).toContain('Command:');
+    expect(html).toContain('partial command');
+    expect(html.indexOf('partial command')).toBeLessThan(html.indexOf('[Truncated]'));
+    expect(html).toContain('Output:');
+    expect(html).toContain('[Truncated]\noutput tail');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
@@ -144,9 +277,12 @@ it.each(['SHELL', 'CODE'] as const)(
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain(
-      `Tool: ${toolName}\n${label}: original input\nAction: poll\nTarget: target-1`
-    );
+    expect(html).toContain(`${toolName} · Poll`);
+    expect(html).toContain(`${label}:`);
+    expect(html).toContain('original input');
+    expect(html.indexOf(`${toolName} · Poll`)).toBeLessThan(html.indexOf('original input'));
+    expect(html).not.toContain('Tool:');
+    expect(html).not.toContain('Action:');
     expect(html).not.toContain(`Command: ${toolName}`);
   }
 );
@@ -156,9 +292,9 @@ it.each(['en-US', 'zh-CN'] as const)(
   async (locale) => {
     localePreferenceService().setLocale(locale);
     try {
-      for (const [truncation, expected] of [
-        [{ output: 'HEAD' }, 'Output:\n...Truncated\nretained output'],
-        [{ output: 'SOURCE' }, 'Output:\nretained output\n...Truncated']
+      for (const [truncation, before] of [
+        [{ output: 'HEAD' }, true],
+        [{ output: 'SOURCE' }, false]
       ] as const) {
         const item = conversationItem('output', 'command_execution', {
           command: 'run',
@@ -172,7 +308,10 @@ it.each(['en-US', 'zh-CN'] as const)(
           }
         });
         const html = await render(ConversationToolDetail, { item });
-        expect(html).toContain(expected);
+        expect(html).toContain('Output:');
+        expect(html).toContain('retained output');
+        expect(html).toContain('[Truncated]');
+        expect(html.indexOf('[Truncated]') < html.indexOf('retained output')).toBe(before);
       }
     } finally {
       localePreferenceService().setLocale(originalLocale);
@@ -203,10 +342,15 @@ it.each([
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain(
-      `Code: original input\n...Truncated\nOutput:\n${headOutput ? '...Truncated\n' : ''}latest tail`
-    );
-    expect(html).not.toContain('latest tail\n...Truncated');
+    expect(html).toContain('Code:');
+    expect(html).toContain('original input');
+    expect(html).toContain('Output:');
+    expect(html).toContain('latest tail');
+    expect([...html.matchAll(/\[Truncated\]/g)]).toHaveLength(headOutput ? 2 : 1);
+    expect(html.indexOf('original input')).toBeLessThan(html.indexOf('[Truncated]'));
+    expect(html.indexOf('[Truncated]')).toBeLessThan(html.indexOf('Output:'));
+    expect(html.lastIndexOf('[Truncated]')).toBeLessThan(html.indexOf('latest tail'));
+    expect(html).not.toContain('latest tail\n[Truncated]');
   }
 );
 
@@ -224,7 +368,10 @@ it('preserves newlines and whitespace in execution output after the English labe
       }
     });
     const html = await render(ConversationToolDetail, { item });
-    expect(html).toContain('Code: run\nOutput:\nfirst\n  indented\n\nlast');
+    expect(html).toContain('Code:');
+    expect(html).toContain('run');
+    expect(html).toContain('Output:');
+    expect(html).toContain('first\n  indented\n\nlast');
   } finally {
     localePreferenceService().setLocale(originalLocale);
   }
@@ -247,7 +394,8 @@ it.each(['en-US', 'zh-CN'] as const)(
         status: 'DECLINED' as const
       };
       const html = await render(ConversationToolDetail, { item });
-      expect(html).toContain('Command: run');
+      expect(html).toContain('Command:');
+      expect(html).toContain('run');
       expect(html).not.toContain('Status:');
       expect(html).not.toContain('状态：');
     } finally {

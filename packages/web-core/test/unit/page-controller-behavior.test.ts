@@ -383,10 +383,9 @@ describe('Workbench controller composition behavior', () => {
     page.draftSessionOpen.value = false;
     page.selectedSessionId.value = 'main';
     expect(page.openAsideSession({ ...workspace, sessionId: 'gone' })).toBe(true);
-    expect(page.openAsideSession({ ...workspace, sessionId: 'live' })).toBe(true);
     expect(captured.workspaceWatch?.sessionNavigation?.()).toEqual({
-      sessionIds: ['gone', 'live'],
-      summaryAnchors: ['main', 'live'],
+      sessionIds: ['gone'],
+      summaryAnchors: ['main', 'gone'],
       limit: 100
     });
 
@@ -400,7 +399,7 @@ describe('Workbench controller composition behavior', () => {
       1,
       query
     );
-    expect(page.asideState.value?.sessions).toEqual(['gone', 'live']);
+    expect(page.asideState.value?.sessions).toEqual(['gone']);
     captured.workspaceWatch?.onSnapshot(
       'node-a',
       'workspace-a',
@@ -409,7 +408,7 @@ describe('Workbench controller composition behavior', () => {
       1,
       query
     );
-    expect(page.asideState.value?.sessions).toEqual(['live']);
+    expect(page.asideState.value?.sessions).toEqual([]);
     expect(page.sessionNavigationSnapshot.value).toBeUndefined();
     const updatedQuery = captured.workspaceWatch!.sessionNavigation!()!;
     captured.workspaceWatch?.onSnapshot(
@@ -433,6 +432,48 @@ describe('Workbench controller composition behavior', () => {
     expect(page.sessionNavigationSnapshot.value).toMatchObject({ ...workspace, ...updatedPayload });
     page.workspaceTarget.value = { nodeId: 'node-b', workspaceId: 'workspace-a' };
     expect(page.sessionNavigationSnapshot.value).toBeUndefined();
+  });
+
+  it('keeps an Aside title while the captured tree query changes without exposing the old tree', () => {
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    page.nodes.value = [{ ...node, nodeAppVersion: '0.11.69' }];
+    page.workspaceTarget.value = workspace;
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionAside: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    page.draftSessionOpen.value = false;
+    page.selectedSessionId.value = 'main';
+    page.openAsideSession({ ...workspace, sessionId: 'child' });
+    const query = captured.workspaceWatch!.sessionNavigation!()!;
+    const child = {
+      id: 'child',
+      parentSessionId: 'main',
+      title: 'Child title',
+      runner: 'codex',
+      activity: 'IDLE',
+      status: 'IDLE',
+      lastActivityAt: 0
+    };
+    captured.workspaceWatch?.onSnapshot(
+      'node-a',
+      'workspace-a',
+      {
+        sessionNavigation: { sessions: [child], summaries: [], tree: null, missingSessionIds: [] }
+      },
+      'sessionNavigation',
+      1,
+      query
+    );
+    expect(page.asideSessionMetadata.value).toEqual([child]);
+    page.setSessionTreeAnchor('main');
+    expect(page.sessionNavigationSnapshot.value).toBeUndefined();
+    expect(page.asideSessionMetadata.value).toEqual([child]);
+    page.workspaceTarget.value = { nodeId: 'node-b', workspaceId: 'workspace-a' };
+    expect(page.asideSessionMetadata.value).toEqual([]);
   });
 
   it.each(['ready', 'changed-target', 'hidden', 'closed'] as const)(

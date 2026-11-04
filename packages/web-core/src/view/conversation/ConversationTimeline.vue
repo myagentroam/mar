@@ -31,6 +31,7 @@ import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import ConversationToolDetail from './ConversationToolDetail.vue';
+import ConversationDetailPreview from './ConversationDetailPreview.vue';
 import {
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
@@ -669,7 +670,9 @@ function stepDuration(item: ConversationItem): string | undefined {
               >
             </summary>
             <div v-if="reasoningDisclosure[displayItem.id]" class="conversation-detail-body">
-              <p class="conversation-detail-text">{{ displayItem.text }}</p>
+              <ConversationDetailPreview>
+                <p class="conversation-detail-text">{{ displayItem.text }}</p>
+              </ConversationDetailPreview>
             </div>
           </details>
         </template>
@@ -1964,7 +1967,7 @@ details.conversation-record-group[open] > details:last-child {
   );
 }
 
-.conversation-item .conversation-detail-body > .conversation-detail-text {
+.conversation-item .conversation-detail-body .conversation-detail-text {
   margin: 0;
   font-size: inherit;
   line-height: inherit;

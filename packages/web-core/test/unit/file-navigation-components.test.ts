@@ -13,6 +13,7 @@ import {
   type QuickOpenCandidate
 } from '../../src/service/quick-open-service.js';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -622,6 +623,44 @@ describe('public file navigation components', () => {
       } finally {
         app.unmount();
       }
+    });
+
+    it('registers and unregisters the file tree menu shortcut with the component', () => {
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          disconnect(): void {}
+        }
+      );
+      vi.stubGlobal('HTMLElement', TestHostNode);
+      const unregister = vi.fn();
+      const register = vi
+        .spyOn(consoleKeyboardShortcutService, 'register')
+        .mockReturnValue(unregister);
+      const root = fileTreeNode('.', 'workspace', 'DIRECTORY');
+      const app = createTestRenderer().createApp({
+        render: () =>
+          h(WorkspaceFileTree, {
+            root,
+            filter: '',
+            selectedPath: undefined,
+            disabled: false,
+            mutationsEnabled: true,
+            mobileViewport: true
+          })
+      });
+      app.provide(ssrContextKey, { modules: new Set<string>() });
+      app.config.warnHandler = () => {};
+      app.mount(new TestHostNode('container'));
+      try {
+        expect(register).toHaveBeenCalledWith(
+          expect.objectContaining({ command: 'workspaceFileTree.dismissMenu', scope: 'overlay' })
+        );
+      } finally {
+        app.unmount();
+        register.mockRestore();
+      }
+      expect(unregister).toHaveBeenCalledOnce();
     });
   });
 

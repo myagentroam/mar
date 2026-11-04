@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { toolResultResourceInputSchema, toolResultResourcePageSchema } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import { protectedAdmin, validCsrf } from './session.js';
-import { sendError, safeErrorCode } from './http-errors.js';
+import { sendError } from './http-errors.js';
 import { requestUserNode, isNonEmptyString, isPlainObject } from './workspace-http-support.js';
 import {
   parseWorkbenchPage,
@@ -28,6 +28,7 @@ import { runnerNameSchema, workspaceSessionCleanupResultSchema } from '@myagentr
 import type { MarctlUserCredentials } from './marctl-user-credentials.js';
 import { requireMarAgentAutoSupport } from './mar-agent-auto-support.js';
 import { SessionInputService } from './session-input-service.js';
+import { prepareRunnerProfileContext } from './runner-profile-context.js';
 export function registerSessionRunRoutes(input: {
   readonly app: FastifyInstance;
   readonly databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
@@ -41,16 +42,7 @@ export function registerSessionRunRoutes(input: {
   readonly audits?: ConversationAuditObserver;
   readonly publicOrigin: string | undefined;
 }): void {
-  const {
-    app,
-    databaseError,
-    database,
-    nodeControl,
-    secrets,
-    marAgentRuntimeModels,
-    audits,
-    publicOrigin
-  } = input;
+  const { app, databaseError, database, nodeControl, secrets, audits, publicOrigin } = input;
   const sessionInputs = new SessionInputService(input);
   app.get<{
     Params: { sessionId: string; resourceRef: string };
@@ -412,11 +404,13 @@ export function registerSessionRunRoutes(input: {
             modelId: body.modelId,
             effort: body.effort,
             access: body.access,
-            secretEnvironment: await secrets.resolve(
-              admin.userId,
-              body.nodeId,
-              typeof body.workspaceId === 'string' ? body.workspaceId : undefined
-            )
+            ...(await prepareRunnerProfileContext({
+              userId: admin.userId,
+              nodeId: body.nodeId,
+              ...(typeof body.workspaceId === 'string' ? { workspaceId: body.workspaceId } : {}),
+              secrets,
+              ...(input.marAgentModels === undefined ? {} : { models: input.marAgentModels })
+            }))
           },
           typeof body.workspaceId === 'string' ? body.workspaceId : undefined
         )

@@ -1834,11 +1834,56 @@ describe('Conversation Show Aggregation', () => {
   });
 
   it.each(['exec_wait', 'code_exec_wait'])(
-    'uses the original %s tool name for control rows instead of a command fallback',
+    'uses the command or resource identity for %s wait rows without changing their details',
+    (toolName) => {
+      const targetId = toolName === 'exec_wait' ? 'p_fixture' : 'c_fixture';
+      for (const locale of ['zh-CN', 'en-US'] as const) {
+        localePreferenceService().setLocale(locale);
+        for (const source of [
+          { kind: 'SHELL', text: 'pnpm test --filter fixture', truncated: false },
+          { kind: 'SHELL', text: '  ', truncated: false },
+          {
+            kind: 'CODE',
+            text: 'await tools.exec({ command: "not inferred" });',
+            truncated: false
+          },
+          undefined
+        ]) {
+          const payload = {
+            command: 'legacy command is not a source',
+            toolPresentation: {
+              kind: 'EXECUTION',
+              execution: {
+                kind: 'CONTROL',
+                toolName,
+                action: 'poll',
+                targetId,
+                ...(source === undefined ? {} : { source })
+              }
+            }
+          };
+          const expected =
+            source?.kind === 'SHELL' && source.text.trim()
+              ? 'wait pnpm test --filter fixture'
+              : `wait ${targetId}`;
+          const record = JSON.stringify(payload);
+          const detail = conversationItemDetail('command_execution', payload);
+          for (const status of ['IN_PROGRESS', 'COMPLETED', 'FAILED'] as const) {
+            expect(conversationItemText('command_execution', payload, status)).toBe(expected);
+          }
+          expect(conversationItemDetail('command_execution', payload)).toBe(detail);
+          expect(JSON.stringify(payload)).toBe(record);
+        }
+      }
+    }
+  );
+
+  it.each(['exec_wait', 'code_exec_wait'])(
+    'uses the original %s tool name for write, cancel and unspecified control actions',
     (toolName) => {
       for (const locale of ['zh-CN', 'en-US'] as const) {
         localePreferenceService().setLocale(locale);
-        for (const action of ['poll', 'write', 'cancel']) {
+        for (const action of ['write', 'cancel', undefined]) {
           const payload = {
             command: '',
             title: 'Command wait',
@@ -1864,6 +1909,17 @@ describe('Conversation Show Aggregation', () => {
       }
     }
   );
+
+  it('keeps a source-free wait readable without inventing an execution target', () => {
+    const payload = {
+      command: 'legacy command',
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', toolName: 'exec_wait', action: 'poll' }
+      }
+    };
+    expect(conversationItemText('command_execution', payload)).toBe('wait');
+  });
 
   it('shows a normalized Code Exec command with unchanged JavaScript and output in both locales', () => {
     const code =

@@ -140,9 +140,7 @@ const asideTools = computed(() => [
 ]);
 const asideSessions = computed(() =>
   (props.page.asideState?.sessions ?? []).map((sessionId) => {
-    const session = props.page.sessionNavigationSnapshot?.sessions.find(
-      (item) => item.id === sessionId
-    );
+    const session = props.page.asideSessionMetadata.find((item) => item.id === sessionId);
     return {
       sessionId,
       title: session?.title ?? sessionId,

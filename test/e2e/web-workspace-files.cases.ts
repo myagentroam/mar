@@ -8,6 +8,272 @@ import {
 
 // Files, Git, uploads, and the resource tree
 
+test('samples first and warm mobile Files opening with a populated directory', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY', true);
+  const entries = Array.from({ length: 180 }, (_, index) => ({
+    path: `file-${String(index).padStart(3, '0')}.ts`,
+    name: `file-${String(index).padStart(3, '0')}.ts`,
+    kind: 'FILE',
+    size: 25,
+    modifiedAt: 1
+  }));
+  await page.route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>
+    json(route, { files: { entries, nextCursor: null, truncated: false } })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.getByRole('button', { name: '打开会话列表' }).click();
+  await page.locator('.session-link').first().click();
+  await expect(page.getByText('正在同步对话', { exact: true })).toBeVisible();
+  await page.waitForTimeout(700);
+  const open = page.getByRole('button', { name: '打开辅助工作面' });
+  const aside = page.locator('.workspace-aside');
+  const cdp = process.env.MAR_FILES_TRACE === '1' ? await page.context().newCDPSession(page) : null;
+  if (cdp) await cdp.send('Profiler.enable');
+  const results: Array<{
+    firstFrame: number;
+    frames: number[];
+    longTasks: number[];
+    nodes: number;
+  }> = [];
+  for (const phase of ['first', 'warm']) {
+    const before = await page.evaluate(() => ({
+      nodes: document.querySelectorAll('*').length,
+      poppers: document.querySelectorAll('.el-popper').length,
+      markdown: document.querySelectorAll('.agent-markdown').length
+    }));
+    await page.evaluate(() => {
+      const main = document.querySelector('.conversation-panel');
+      if (!main) throw new Error('MAIN_PANEL_MISSING');
+      const markdown = [...main.querySelectorAll('.agent-markdown')];
+      const state = { added: 0, removed: 0, markdown, observer: new MutationObserver(() => {}) };
+      state.observer = new MutationObserver((records) => {
+        for (const record of records) {
+          state.added += record.addedNodes.length;
+          state.removed += record.removedNodes.length;
+        }
+      });
+      state.observer.observe(main, { childList: true, subtree: true });
+      (window as unknown as { __mainMutationSample: typeof state }).__mainMutationSample = state;
+    });
+    if (cdp) {
+      await cdp.send('Profiler.start');
+      await cdp.send('Tracing.start', {
+        categories: 'devtools.timeline,v8,blink.user_timing',
+        transferMode: 'ReturnAsStream'
+      });
+    }
+    await open.evaluate((element) => {
+      element.addEventListener(
+        'click',
+        () => {
+          const state = {
+            firstFrame: 0,
+            frames: [] as number[],
+            longTasks: [] as number[],
+            nodes: 0,
+            stop: () => {}
+          };
+          (window as unknown as { __filesOpenSample: typeof state }).__filesOpenSample = state;
+          const started = performance.now();
+          let last = 0;
+          let running = true;
+          const observer = new PerformanceObserver((list) =>
+            state.longTasks.push(...list.getEntries().map((entry) => entry.duration))
+          );
+          observer.observe({ type: 'longtask' });
+          const frame = (time: number) => {
+            if (!running) return;
+            if (!state.firstFrame) state.firstFrame = performance.now() - started;
+            if (last) state.frames.push(time - last);
+            last = time;
+            requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+          state.stop = () => {
+            running = false;
+            observer.disconnect();
+            state.nodes = document.querySelectorAll('*').length;
+          };
+        },
+        { once: true, capture: true }
+      );
+    });
+    await open.click();
+    await page.waitForTimeout(700);
+    results.push(
+      await page.evaluate(() => {
+        const state = (
+          window as unknown as {
+            __filesOpenSample: {
+              firstFrame: number;
+              frames: number[];
+              longTasks: number[];
+              nodes: number;
+              stop(): void;
+            };
+          }
+        ).__filesOpenSample;
+        state.stop();
+        return {
+          firstFrame: state.firstFrame,
+          frames: state.frames,
+          longTasks: state.longTasks,
+          nodes: state.nodes
+        };
+      })
+    );
+    if (cdp) {
+      const profile = await cdp.send('Profiler.stop');
+      await test.info().attach(`mobile-files-${phase}-cpu.json`, {
+        body: JSON.stringify(profile.profile),
+        contentType: 'application/json'
+      });
+      const tracingComplete = new Promise<{ stream?: string }>((resolve) =>
+        cdp.once('Tracing.tracingComplete', resolve)
+      );
+      await cdp.send('Tracing.end');
+      const { stream } = await tracingComplete;
+      if (!stream) throw new Error('TRACE_STREAM_MISSING');
+      let trace = '';
+      for (;;) {
+        const chunk = await cdp.send('IO.read', { handle: stream });
+        trace += chunk.base64Encoded
+          ? Buffer.from(chunk.data, 'base64').toString('utf8')
+          : chunk.data;
+        if (chunk.eof) break;
+      }
+      await cdp.send('IO.close', { handle: stream });
+      const events = (
+        JSON.parse(trace) as {
+          traceEvents: Array<{ name: string; ph: string; dur?: number; args?: unknown }>;
+        }
+      ).traceEvents;
+      await test.info().attach(`mobile-files-${phase}-trace.json`, {
+        body: trace,
+        contentType: 'application/json'
+      });
+      await test.info().attach(`mobile-files-${phase}-top-events.json`, {
+        body: JSON.stringify(
+          events
+            .filter((event) => event.ph === 'X' && (event.dur ?? 0) >= 10_000)
+            .sort((a, b) => (b.dur ?? 0) - (a.dur ?? 0))
+            .slice(0, 30)
+        ),
+        contentType: 'application/json'
+      });
+    }
+    await expect(aside).toBeVisible();
+    await expect(aside.getByRole('treeitem', { name: 'file-000.ts' })).toBeVisible();
+    await test.info().attach(`mobile-files-${phase}-geometry.json`, {
+      body: JSON.stringify(
+        await aside.locator('.workspace-file-tree').evaluate((tree) => ({
+          clientHeight: tree.clientHeight,
+          scrollHeight: tree.scrollHeight,
+          renderedRows: tree.querySelectorAll('.file-tree-row').length,
+          asideNodes: tree.closest('.workspace-aside')?.querySelectorAll('*').length,
+          tooltipNodes: document.querySelectorAll('.el-popper').length,
+          markdownNodes: document.querySelectorAll('.agent-markdown').length,
+          bounds: tree.getBoundingClientRect().toJSON()
+        }))
+      ),
+      contentType: 'application/json'
+    });
+    await test.info().attach(`mobile-files-${phase}-before.json`, {
+      body: JSON.stringify(before),
+      contentType: 'application/json'
+    });
+    await test.info().attach(`mobile-files-${phase}-main-mutations.json`, {
+      body: JSON.stringify(
+        await page.evaluate(() => {
+          const state = (
+            window as unknown as {
+              __mainMutationSample: {
+                added: number;
+                removed: number;
+                markdown: Element[];
+                observer: MutationObserver;
+              };
+            }
+          ).__mainMutationSample;
+          state.observer.disconnect();
+          return {
+            added: state.added,
+            removed: state.removed,
+            markdownConnected: state.markdown.map((node) => node.isConnected)
+          };
+        })
+      ),
+      contentType: 'application/json'
+    });
+    expect(
+      await aside
+        .locator('.file-tree-virtual-space')
+        .evaluate((element) => element.getBoundingClientRect().height)
+    ).toBeGreaterThan(4000);
+    const more = aside.getByRole('button', { name: 'file-000.ts 更多操作' });
+    const copyPath = page.getByRole('menuitem', { name: '复制相对路径' });
+    await more.click();
+    await expect(copyPath).toBeVisible();
+    const openedMenu = await copyPath.evaluateHandle((element) =>
+      element.closest('.el-dropdown__popper')
+    );
+    await test.info().attach(`mobile-files-${phase}-menu-focus.json`, {
+      body: JSON.stringify(
+        await page.evaluate(() => ({
+          active: document.activeElement?.outerHTML.slice(0, 500),
+          inDropdown: document.activeElement?.closest('.el-dropdown__popper') !== null
+        }))
+      ),
+      contentType: 'application/json'
+    });
+    await page.keyboard.press('Escape');
+    await expect(copyPath).toBeHidden();
+    await expect.poll(() => openedMenu.evaluate((element) => element?.isConnected)).toBe(false);
+    await expect(more).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(copyPath).toBeVisible();
+    await expect(
+      page.locator('.el-dropdown__popper :is([role="menu"], [role="menuitem"]):focus')
+    ).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await test.info().attach(`mobile-files-${phase}-keyboard-focus.json`, {
+      body: JSON.stringify(
+        await page.evaluate(() => ({ active: document.activeElement?.outerHTML.slice(0, 600) }))
+      ),
+      contentType: 'application/json'
+    });
+    await expect(page.locator('.el-dropdown__popper [role="menuitem"]:focus')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(copyPath).toBeHidden();
+    await aside.getByRole('treeitem', { name: 'file-000.ts' }).click({ button: 'right' });
+    await expect(copyPath).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(copyPath).toBeHidden();
+    await expect(more).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(aside).toBeHidden();
+    await expect(page.getByText('正在同步对话', { exact: true })).toBeVisible();
+    await page.waitForTimeout(700);
+  }
+  await test.info().attach('mobile-files-open-samples.json', {
+    body: JSON.stringify(results),
+    contentType: 'application/json'
+  });
+  expect(
+    results.every((sample) => sample.firstFrame > 0 && sample.frames.length > 5),
+    JSON.stringify(results)
+  ).toBe(true);
+});
+
 test('Stacking the Aside preserves the dirty file window and its owner', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });

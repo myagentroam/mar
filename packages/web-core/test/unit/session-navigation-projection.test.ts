@@ -107,4 +107,55 @@ describe('Session Navigation projection', () => {
       expect(projection.current(workspace, next)).toBeUndefined();
     expect(projection.current({ ...workspace, nodeId: 'other' }, query)).toBeUndefined();
   });
+
+  it('retains only requested same-Workspace metadata while a new tree query is pending', () => {
+    const projection = createSessionNavigationProjection(vi.fn());
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    const query = { sessionIds: ['tab'], summaryAnchors: ['main'], limit: 100 };
+    const metadata = {
+      id: 'tab',
+      parentSessionId: null,
+      title: 'Known title',
+      runner: 'codex',
+      activity: 'IDLE',
+      status: 'IDLE',
+      lastActivityAt: 0
+    };
+    const child = { ...metadata, id: 'child', title: 'Known child' };
+    expect(
+      projection.accept(workspace, query, {
+        sessions: [metadata],
+        summaries: [],
+        tree: null,
+        missingSessionIds: []
+      })
+    ).toBe(true);
+    const treeQuery = { ...query, treeAnchor: 'main' };
+    expect(projection.current(workspace, treeQuery)).toBeUndefined();
+    expect(projection.knownSessions(workspace, ['tab'])).toEqual([metadata]);
+    expect(projection.knownSessions({ ...workspace, nodeId: 'other' }, ['tab'])).toEqual([]);
+    expect(
+      projection.accept(workspace, treeQuery, {
+        sessions: [metadata],
+        summaries: [],
+        tree: { anchorSessionId: 'main', parent: null, nodes: [child], truncated: false },
+        missingSessionIds: []
+      })
+    ).toBe(true);
+    expect(projection.knownSessions(workspace, ['child'])).toEqual([child]);
+    expect(projection.knownSessions(workspace, ['unrequested'])).toEqual([]);
+    expect(
+      projection.accept(
+        workspace,
+        { ...query, sessionIds: ['tab'] },
+        {
+          sessions: [],
+          summaries: [],
+          tree: null,
+          missingSessionIds: ['tab']
+        }
+      )
+    ).toBe(true);
+    expect(projection.knownSessions(workspace, ['tab', 'child'])).toEqual([]);
+  });
 });

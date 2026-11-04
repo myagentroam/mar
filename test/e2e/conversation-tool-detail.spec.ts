@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -9,6 +9,138 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+async function expectUnclippedDetail(content: Locator) {
+  await expect
+    .poll(() =>
+      content.evaluate((element) => {
+        const bottom = element.getBoundingClientRect().bottom;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          if (
+            ['hidden', 'clip'].includes(getComputedStyle(parent).overflowY) &&
+            parent.getBoundingClientRect().bottom < bottom - 1
+          )
+            return false;
+        }
+        return true;
+      })
+    )
+    .toBe(true);
+}
+
+for (const variant of [
+  { width: 1280, theme: 'daylight', locale: 'en-US', more: 'Show more', less: 'Show less' },
+  { width: 390, theme: 'dark', locale: 'zh-CN', more: '展开更多', less: '收起' }
+]) {
+  test(`previews the complete detail area by height at ${variant.width}px`, async ({
+    page
+  }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: variant.width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1&read-association=1&preview=1&theme=${variant.theme}&locale=${variant.locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    const file = read.locator('.conversation-tool-detail');
+    await file.locator('> summary').click();
+    const preview = file.locator('.detail-preview-window');
+    const more = file.getByRole('button', { name: variant.more, exact: true });
+    await expect(more).toBeVisible();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(file.locator('pre')).toContainText('Returned line 40');
+    await expect(file.locator('pre')).not.toContainText('[Truncated]');
+    const heights = await preview.evaluate((element) => ({
+      visible: element.getBoundingClientRect().height,
+      full: element.firstElementChild!.getBoundingClientRect().height,
+      limit: parseFloat(getComputedStyle(element).lineHeight) * 12
+    }));
+    expect(heights.visible).toBeLessThanOrEqual(heights.limit + 1);
+    expect(heights.full).toBeGreaterThan(heights.visible);
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`detail-preview-${variant.width}.png`),
+      fullPage: true
+    });
+    await file.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+    const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(copied.payload.output.blocks[0].text).toContain('Returned line 40');
+    await more.focus();
+    await page.keyboard.press('Enter');
+    const less = file.getByRole('button', { name: variant.less, exact: true });
+    await expect(less).toHaveAttribute('aria-expanded', 'true');
+    await expect(preview).toHaveCSS('max-height', 'none');
+    await less.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    await file.locator('> summary').click();
+    await expect(file.locator('.detail-preview')).toHaveCount(0);
+    await file.locator('> summary').click();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('stream-details').click();
+    await expect(file.locator('pre')).toContainText('live output');
+    await expect(more).toHaveCount(0);
+    await page.getByTestId('finish-details').click();
+    await expect(file.locator('pre')).toContainText('[Truncated]');
+    await expect(more).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+test('uses area height for wrapped single-line execution output and keeps copy outside', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${fixture.url}conversation-tool-detail.html`);
+  const exec = page.getByTestId('exec');
+  await exec.locator('summary').click();
+  await expect(exec.getByRole('button', { name: 'Show more', exact: true })).toHaveCount(0);
+  await page.getByTestId('finish').click();
+  const more = exec.getByRole('button', { name: 'Show more', exact: true });
+  await expect(more).toBeVisible();
+  await expect(exec.getByRole('button', { name: 'Copy public record' })).toBeVisible();
+  expect(
+    await exec
+      .locator('.detail-preview-window')
+      .evaluate((element) => element.scrollHeight > element.clientHeight)
+  ).toBe(true);
+  await more.click();
+  await expect(exec.locator('.detail-preview-window')).toHaveCSS('max-height', 'none');
+  await expect(exec.locator('.tool-output-text')).toContainText('TAIL');
+  await expect(exec.locator('.execution-detail')).toHaveText(/TAIL\s+\[Truncated\]\s+Exit 0$/, {
+    useInnerText: true
+  });
+  await expect(exec.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
+});
+
+test('remeasures on resize and reveals a keyboard-focused link below the preview', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}conversation-tool-detail.html?preview-probe=1`);
+  const probe = page.getByTestId('preview-probe');
+  const more = probe.getByRole('button', { name: 'Show more', exact: true });
+  const less = probe.getByRole('button', { name: 'Show less', exact: true });
+  await expect(more).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(more).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(more).toHaveCount(0);
+  await page.getByTestId('stretch-preview').click();
+  await expect(more).toBeVisible();
+  const link = page.getByTestId('preview-link');
+  await link.focus();
+  await expect(less).toHaveAttribute('aria-expanded', 'true');
+  await expect(link).toBeFocused();
+  await expect(link).toBeInViewport();
 });
 
 test('mounts independent details only while open and releases them with the process', async ({
@@ -60,7 +192,7 @@ test('mounts independent details only while open and releases them with the proc
   ).toHaveCount(0);
 });
 
-test('read file details show only the associated raw file text and real range', async ({
+test('read file details separate their path and range from the associated raw file text', async ({
   page
 }) => {
   await page.goto(
@@ -73,13 +205,142 @@ test('read file details show only the associated raw file text and real range', 
   await read.locator('.conversation-tool-detail > summary').click();
   const detail = read.locator('.conversation-detail-text');
   await expect(read.locator('.conversation-tool-detail > summary')).toContainText('3–4');
+  await expect(read.locator('.tool-detail-heading')).toHaveText('/fixture/example.ts · 3–4');
   await expect(detail).toHaveText('  first file\r\nsecond line\r\n', { useInnerText: false });
   await expect(detail).not.toContainText('3–4');
   await expect(detail).not.toContainText('/fixture/example.ts');
   await expect(detail).not.toContainText('1: export const result');
 });
 
+for (const [width, theme, locale] of [
+  [1280, 'daylight', 'en-US'],
+  [390, 'dark', 'zh-CN']
+] as const) {
+  test(`renders the revised Read, Skill and execution layouts at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&detail-layout&theme=${theme}&locale=${locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const read = page.locator('[data-tool-presentation="READ"]');
+    await read.locator('> summary').click();
+    await read.locator('.conversation-tool-detail > summary').click();
+    await expect(read.locator('.tool-detail-heading')).toHaveText('/fixture/example.ts · 3–4');
+    const skill = page.locator('[data-tool-presentation="SKILL"]');
+    await skill.locator('> summary').click();
+    await expect(skill.locator('.tool-detail-heading')).toHaveText('mar-web-spec');
+    const description = skill.locator('.conversation-detail-text');
+    await expect(description).toHaveText(
+      'Design <plain> interfaces.\nKeep the original description and its line breaks.'
+    );
+    await expect(skill.locator('plain')).toHaveCount(0);
+    await expect(skill).not.toContainText('Complete skill output');
+    await expect(skill).not.toContainText('original skill request');
+    await expect(skill).not.toContainText('Output:');
+    await skill.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+    await expect(skill.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
+    const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(copied.payload.output.blocks[0].text).toBe(
+      'Complete skill output is copied, not displayed.'
+    );
+    await page.locator('.command-group > details > summary').click();
+    const shell = page
+      .locator('.conversation-command-detail')
+      .filter({ has: page.locator('.conversation-command-preview', { hasText: 'printf test' }) });
+    await shell.locator('> summary').click();
+    await expect(shell.locator('.tool-detail-heading')).toHaveText('exec');
+    await expect(shell.locator('.tool-source-text')).toHaveText('Command: printf test');
+    await expect(shell.locator('.execution-output').nth(0)).toContainText('Output:');
+    await expect(shell.locator('.execution-output').nth(1)).toContainText('stderr:');
+    const code = page.locator('.conversation-command-detail').filter({
+      has: page.locator('.conversation-command-preview', {
+        hasText: 'const result = await tools.read'
+      })
+    });
+    await code.locator('> summary').click();
+    await expect(code.locator('.tool-detail-heading')).toHaveText('code_exec');
+    await expect(code.locator('.tool-source-text')).toContainText('Code: const result');
+    await expect(code.locator('.tool-output-text')).toHaveText('Observed the requested file.');
+    await expect(code.locator('.tool-exit')).toHaveCount(0);
+    for (const body of [read, skill, shell, code]) {
+      const heading = body.locator('.tool-detail-heading');
+      await expect(heading).toHaveCSS('font-size', '12px');
+      await expect(heading).toHaveCSS('font-weight', '400');
+      for (const content of await body.locator('.conversation-detail-text').all()) {
+        await expect(content).toHaveCSS('font-size', '12px');
+        await expect(content).toHaveCSS('font-weight', '400');
+      }
+      expect(await heading.evaluate((element) => getComputedStyle(element).color)).not.toBe(
+        await body
+          .locator('.conversation-detail-text')
+          .first()
+          .evaluate((element) => getComputedStyle(element).color)
+      );
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.setViewportSize({ width, height: 1600 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expectUnclippedDetail(code.locator('.execution-detail'));
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`revised-details-${width}-${theme}.png`),
+      fullPage: true
+    });
+  });
+}
+
 for (const width of [1280, 390]) {
+  test(`wait rows use explicit commands or resource IDs at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&wait-titles&locale=${width === 390 ? 'zh-CN' : 'en-US'}&theme=${width === 390 ? 'dark' : 'daylight'}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    await page.locator('.command-group > details > summary').click();
+    const source = `pnpm test --filter fixture ${'long-argument-'.repeat(24)}`;
+    for (const [targetId, toolName, title] of [
+      ['p_known', 'exec_wait', `wait ${source}`],
+      ['c_known', 'code_exec_wait', `wait ${source}`],
+      ['p_unknown', 'exec_wait', 'wait p_unknown'],
+      ['c_unknown', 'code_exec_wait', 'wait c_unknown']
+    ] as const) {
+      const row = page.locator('.conversation-command-detail').filter({
+        has: page.locator('.conversation-command-preview', { hasText: title })
+      });
+      const matchingRow =
+        title === `wait ${source}` ? row.nth(targetId === 'p_known' ? 0 : 1) : row;
+      const preview = matchingRow.locator('.conversation-command-preview');
+      await expect(preview).toHaveText(title);
+      if (targetId === 'p_known' || targetId === 'c_known') {
+        expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          true
+        );
+      }
+      await expect(matchingRow.locator('.tool-detail')).toHaveCount(0);
+      await matchingRow.locator('> summary').click();
+      await expect(matchingRow.locator('.tool-detail-heading')).toContainText(`${toolName} · Poll`);
+      if (targetId === 'p_unknown')
+        await expect(matchingRow.locator('.tool-detail-heading')).toContainText(targetId);
+      await matchingRow.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
+      await expect(matchingRow.getByRole('button', { name: /Copied|已复制/ })).toBeVisible();
+      const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+      expect(copied.payload.toolPresentation.execution.toolName).toBe(toolName);
+      expect(copied.payload.toolPresentation.execution.targetId).toBe(targetId);
+      await matchingRow.locator('> summary').click();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+  });
+
   test(`Read keeps the range visible beside a long path at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const path = `/fixture/${'long-directory/'.repeat(24)}README.md`;
@@ -128,9 +389,9 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     await read.locator('> summary').click();
     await read.locator('.conversation-tool-detail > summary').click();
     const text = await read.locator('.conversation-detail-text').textContent();
-    expect(text?.match(/\.\.\.Truncated/gu)).toHaveLength(1);
-    if (truncation === 'HEAD') expect(text).toMatch(/^\.\.\.Truncated[\s\S]+second line\s*$/u);
-    else expect(text).toMatch(/^  first file[\s\S]+\.\.\.Truncated$/u);
+    expect(text?.match(/\[Truncated\]/gu)).toHaveLength(1);
+    if (truncation === 'HEAD') expect(text).toMatch(/^\[Truncated\][\s\S]+second line\s*$/u);
+    else expect(text).toMatch(/^  first file[\s\S]+\[Truncated\]$/u);
   });
 }
 
@@ -252,9 +513,7 @@ test('specialized tool details replace live output with the authoritative result
   }
   await page.getByTestId('finish-details').click();
   for (const body of bodies) {
-    await expect
-      .poll(() => body.textContent())
-      .toContain(':\n  authoritative tail\n\n...Truncated');
+    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\n[Truncated]');
     await expect(body).not.toContainText('live output');
     await expect(body).not.toContainText('export const result');
     await expect(body).not.toContainText('The requested page content.');
@@ -273,9 +532,10 @@ test('places the HEAD marker before authoritative output without repeating it at
   const exec = page.getByTestId('exec');
   await exec.locator('summary').click();
   await page.getByTestId('finish').click();
-  const pre = exec.locator('pre');
-  await expect(pre).toHaveText(/Output:\n\.\.\.Truncated\nx+TAIL\nExit code: 0$/);
-  await expect(pre).not.toContainText('TAIL\n...Truncated');
+  const pre = exec.locator('.tool-output-text');
+  await expect(pre).toHaveText(/^\[Truncated\]\nx+TAIL$/);
+  await expect(exec.locator('.tool-exit')).toHaveText('Exit 0');
+  await expect(pre).not.toContainText('TAIL\n[Truncated]');
   await expect(pre).not.toContainText('visible stdout');
 });
 
@@ -292,7 +552,9 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}conversation-tool-detail.html`);
       const exec = page.getByTestId('exec');
       await exec.locator('summary').click();
-      await expect(exec.locator('pre')).toHaveText(/^Tool: exec\nCommand: printf test[\s\S]*/);
+      await expect(exec.locator('.tool-detail-heading')).toHaveText('exec');
+      await expect(exec.locator('.tool-source-text')).toHaveText('Command: printf test');
+      await expect(exec.locator('.execution-detail')).toContainText('Working directory: /fixture');
       await expect(exec).toContainText('visible stdout');
       await expect(exec).toContainText('visible stderr');
       await expect(exec).not.toContainText('combined should not replace streams');
@@ -318,17 +580,20 @@ for (const width of [1280, 390]) {
       expect(copied.payload.command).toBe('printf test');
       await expect(exec.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
       await page.getByTestId('empty').locator('summary').click();
-      await expect(page.getByTestId('empty').locator('pre')).not.toContainText('Output:');
+      await expect(page.getByTestId('empty').locator('.execution-output')).toHaveCount(0);
       await expect(page.getByTestId('empty')).not.toContainText('No output');
       await expect(page.getByTestId('empty')).not.toContainText('stderr');
       await page.getByTestId('generic').locator('summary').click();
       await expect(page.getByTestId('generic').locator('pre')).toHaveText(
-        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+        'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
       );
       await page.getByTestId('wait').locator('summary').click();
       await expect(page.getByTestId('wait')).toContainText('Wait failed');
-      await expect(page.getByTestId('wait').locator('pre')).toHaveText(
-        /^Tool: exec_wait\nCommand: pnpm test --filter fixture\nAction: poll\nTarget: p_fixture[\s\S]*/
+      await expect(page.getByTestId('wait').locator('.tool-detail-heading')).toHaveText(
+        'exec_wait · Poll'
+      );
+      await expect(page.getByTestId('wait').locator('.tool-source-text')).toHaveText(
+        'Command: pnpm test --filter fixture'
       );
       await page.getByTestId('declined').locator('summary').click();
       await expect(page.getByTestId('declined')).toContainText('Declined');
@@ -337,8 +602,10 @@ for (const width of [1280, 390]) {
       );
       await page.getByTestId('finish').click();
       await expect(exec).toContainText('TAIL');
-      await expect(exec).toContainText('...Truncated');
-      await expect(exec.locator('pre')).toHaveText(/\.\.\.Truncated\nExit code: 0$/);
+      await expect(exec).toContainText('[Truncated]');
+      await expect(exec.locator('.execution-detail')).toHaveText(/\[Truncated\]\s+Exit 0$/, {
+        useInnerText: true
+      });
       await expect(exec).not.toContainText('visible stdout');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
@@ -376,36 +643,30 @@ for (const width of [1280, 390]) {
         const detail = command.locator('.tool-detail');
         await expect(detail).toContainText('visible stdout');
         await expect(detail).toContainText('visible stderr');
-        await expect(detail.locator('pre')).toHaveCount(1);
+        await expect(detail.locator('.tool-source-text')).toHaveCount(1);
+        await expect(detail.locator('.execution-output')).toHaveCount(2);
         await expect(detail.locator('strong, dl, dt, dd')).toHaveCount(0);
-        await expect(detail.locator('pre')).toContainText('Code: observe.result(await tools.exec(');
-        await expect(detail.locator('pre')).toContainText(
-          'Output:\nvisible stdout\nstderr:\nvisible stderr'
+        await expect(detail.locator('.tool-source-text')).toContainText(
+          'Code: observe.result(await tools.exec('
         );
+        await expect(detail.locator('.execution-output > .tool-detail-meta')).toHaveText([
+          'Output:',
+          'stderr:'
+        ]);
+        await expect(detail.locator('.tool-output-text')).toHaveText([
+          'visible stdout',
+          'visible stderr'
+        ]);
         await expect(detail).not.toContainText('Working directory:');
         await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        const textBounds = await detail.locator('pre').boundingBox();
+        const expand = detail.getByRole('button', { name: 'Show more', exact: true });
+        if (await expand.isVisible()) await expand.click();
+        const textBounds = await detail.locator('.tool-source-text').boundingBox();
         const titleBounds = await command.locator('.conversation-command-preview').boundingBox();
         expect(Math.abs(textBounds!.x - titleBounds!.x)).toBeLessThan(3);
-        await expect(detail.locator('pre')).toHaveCSS('font-weight', '400');
+        await expect(detail.locator('.tool-source-text')).toHaveCSS('font-weight', '400');
 
-        await expect
-          .poll(() =>
-            detail.evaluate((element) => {
-              const output = element.querySelector('pre');
-              if (!output) return false;
-              const bottom = output.getBoundingClientRect().bottom;
-              for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-                if (
-                  ['hidden', 'clip'].includes(getComputedStyle(parent).overflowY) &&
-                  parent.getBoundingClientRect().bottom < bottom - 1
-                )
-                  return false;
-              }
-              return true;
-            })
-          )
-          .toBe(true);
+        await expectUnclippedDetail(detail.locator('.execution-detail'));
 
         const button = detail.getByRole('button', { name: 'Copy public record' });
         await expect(button).toHaveText('');
@@ -435,7 +696,8 @@ for (const width of [1280, 390]) {
           lineHeight: getComputedStyle(element).lineHeight,
           color: getComputedStyle(element).color,
           expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
-          background: getComputedStyle(element.parentElement!).backgroundColor
+          background: getComputedStyle(element.closest('.conversation-detail-body')!)
+            .backgroundColor
         }));
         expect(thinkingStyle.fontSize).toBe('12px');
         expect(thinkingStyle.color).toBe(thinkingStyle.expectedColor);
@@ -459,13 +721,13 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expect(generic.locator('.conversation-detail-text')).toHaveText(
-          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n...Truncated\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
+          'Details: Inspect fixture\nInput: Preserved input\nOutput:\nPartial inspection output\n[Truncated]\nProgress: Stopped at the last file\nError: INSPECTION_FAILED'
         );
         const surfaces = page.locator('.conversation-detail-body');
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
           const spacing = await surface.evaluate((element) => {
-            const text = element.querySelector(':scope > .conversation-detail-text')!;
+            const text = element.querySelector('.conversation-detail-text')!;
             const heading = element.parentElement!.querySelector(':scope > summary')!;
             const title = heading.querySelector(
               ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
@@ -483,14 +745,12 @@ for (const width of [1280, 390]) {
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
           );
           await expect(surface).toHaveCSS('border-radius', radius);
-          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
-            'font-size',
-            thinkingStyle.fontSize
-          );
-          await expect(surface.locator(':scope > .conversation-detail-text')).toHaveCSS(
-            'line-height',
-            thinkingStyle.lineHeight
-          );
+          const contents = surface.locator('.conversation-detail-text');
+          expect(await contents.count()).toBeGreaterThan(0);
+          for (const content of await contents.all()) {
+            await expect(content).toHaveCSS('font-size', thinkingStyle.fontSize);
+            await expect(content).toHaveCSS('line-height', thinkingStyle.lineHeight);
+          }
           await expect(surface).toHaveCSS('overflow-y', 'visible');
         }
         await expect(page.locator('.conversation-tool-sources a')).toHaveAttribute(

@@ -27,6 +27,38 @@ describe('Session Watch connection slots', () => {
     expect(hostedRelease).toHaveBeenCalledOnce();
   });
 
+  it('keeps same-session positions independently leased and releases only the requested one', async () => {
+    const session = { id: 'a', workspaceId: 'workspace', runner: 'codex' } as NodeAgentSession;
+    const events: unknown[] = [];
+    const service = createTestSessionWatch({
+      resolve: async () => session,
+      managedActive: () => false,
+      refreshActivity: async () => undefined,
+      present: (value) => value,
+      readPage: async () => ({ turns: [] }),
+      emitSession: vi.fn(),
+      emitPage: vi.fn(),
+      emitWatchEvent: (event) => events.push(event)
+    });
+    const watch = service.operations()['session.watch']!;
+    const unwatch = service.operations()['session.unwatch']!;
+    const base = { workspaceId: 'workspace', workbenchConnectionId: 'connection', sessionId: 'a' };
+    try {
+      await watch({ ...base, watchId: 'watch-primary', mode: 'initial' });
+      await watch({ ...base, watchId: 'watch-secondary', position: 'secondary', mode: 'initial' });
+      await vi.waitFor(() => expect(events).toHaveLength(2));
+      await unwatch({ ...base, watchId: 'watch-secondary', position: 'secondary' });
+      await expect(
+        watch({ ...base, watchId: 'watch-secondary', position: 'secondary', mode: 'renew' })
+      ).rejects.toThrow('SESSION_WATCH_NOT_FOUND');
+      await expect(
+        watch({ ...base, watchId: 'watch-primary', mode: 'renew' })
+      ).resolves.toBeDefined();
+      expect(service.observes('local-test', 'connection', 'workspace', 'a')).toBe(true);
+    } finally {
+      service.clear();
+    }
+  });
   it('routes independent leases and checks readiness of either exact target', async () => {
     const sessions = ['a', 'b', 'c'].map(
       (id) =>

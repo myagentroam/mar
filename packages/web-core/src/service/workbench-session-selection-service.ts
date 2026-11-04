@@ -40,7 +40,6 @@ export interface WorkbenchSessionSelectionOptions {
   readonly aside: ReturnType<typeof createWorkbenchAsideService>;
   readonly canOpenAside: () => boolean;
   readonly saveAside: () => void;
-  readonly focusMain: () => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
   readonly selectedRunId: Ref<string | undefined>;
@@ -121,25 +120,11 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
   const loadingInitialContent = computed(
     () => options.loadingInitial.value && !restoredContent.value
   );
-  function promoteAside(sessionId: string): void {
-    const workspace = options.workspaceTarget.value;
-    if (workspace === undefined || !options.aside.current(workspace).sessions.includes(sessionId))
-      return;
-    const session = options.sessions.value.find((candidate) => candidate.id === sessionId);
-    if (session !== undefined && session.workspaceId !== workspace.workspaceId) return;
-    options.saveAside();
-    options.aside.closeSession({ ...workspace, sessionId });
-  }
-
   function openAsideSession(target: AsideSession): boolean {
     const workspace = options.workspaceTarget.value;
     if (workspace?.nodeId !== target.nodeId || workspace.workspaceId !== target.workspaceId)
       return false;
     const { sessionId } = target;
-    if (!options.draftOpen.value && options.selectedSessionId.value === sessionId) {
-      options.focusMain();
-      return true;
-    }
     if (!options.canOpenAside()) return false;
     const active = options.aside.current(workspace).active;
     if (active?.kind === 'session' && active.sessionId === sessionId) return true;
@@ -169,11 +154,6 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     if (nextSessionId === target.sessionId) return true;
     const active = options.aside.current(workspace).active;
     if (active?.kind === 'session' && active.sessionId === target.sessionId) options.saveAside();
-    if (!options.draftOpen.value && options.selectedSessionId.value === nextSessionId) {
-      options.aside.closeSession(target);
-      options.focusMain();
-      return true;
-    }
     return options.aside.replaceSession(target, nextSessionId);
   }
 
@@ -282,7 +262,6 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     const nodeId = options.workspaceTarget.value?.nodeId;
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     if (nodeId === undefined) return;
-    promoteAside(sessionId);
     const initialRequestId = options.nextRequest();
     const operation: OpeningSession = {
       requestId: initialRequestId,
@@ -386,7 +365,6 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
   ): Promise<void> {
     const target = options.workspaceTarget.value;
     if (target === undefined) return;
-    promoteAside(sessionId);
     if (options.selectedSessionId.value === sessionId && !options.draftOpen.value) {
       options.closeMobileSurface();
       if (options.loadingInitial.value) {
