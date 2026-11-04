@@ -146,8 +146,12 @@ const toolbar = {
   configurationDisabled: false,
   accessDisabled: false,
   fastEnabled: false,
-  contextUsage: { percentage: 42 },
-  contextUsageLabel: '42% used; 42000 of 100000 tokens\nGC: 3 · 12345 tokens',
+  contextUsage: new URLSearchParams(location.search).has('empty-context')
+    ? null
+    : { percentage: 42 },
+  contextUsageLabel: new URLSearchParams(location.search).has('empty-context')
+    ? 'Context Window: 0 / — tokens (0%)\nGC: 0 · 0 tokens'
+    : '42% used; 42000 of 100000 tokens\nGC: 3 · 12345 tokens',
   mobileViewport: mobile,
   activeRun: undefined,
   canInterrupt: new URLSearchParams(location.search).has('interrupt'),

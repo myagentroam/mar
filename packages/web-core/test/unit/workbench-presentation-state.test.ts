@@ -151,19 +151,21 @@ describe('Workbench context usage label', () => {
     try {
       preference.setLocale(locale);
       const f = controlsFixture();
-      expect(f.state.contextUsageLabel.value).toBe('');
+      const emptyGc = locale === 'zh-CN' ? 'GC：0 次 · 0 tokens' : 'GC: 0 · 0 tokens';
+      const emptyLabel = `${locale === 'zh-CN' ? '上下文窗口：' : 'Context Window: '}0 / — tokens (0)\n${emptyGc}`;
+      expect(f.state.contextUsageLabel.value).toBe(emptyLabel);
       f.sessionContextUsage.value = {
         model: 'gpt-6.1-sol',
         usedTokens: 203000,
         maxTokens: 258000,
         percentage: 78.8
       };
-      expect(f.state.contextUsageLabel.value).toBe(expected);
+      expect(f.state.contextUsageLabel.value).toBe(`${expected}\n${emptyGc}`);
       f.sessionContextUsage.value = { ...f.sessionContextUsage.value, model: null };
-      expect(f.state.contextUsageLabel.value).toBe(expected);
+      expect(f.state.contextUsageLabel.value).toBe(`${expected}\n${emptyGc}`);
       f.sessionContextUsage.value = { ...f.sessionContextUsage.value, gcCount: 3 };
       expect(f.state.contextUsageLabel.value).toBe(
-        `${expected}\n${locale === 'zh-CN' ? 'GC：3 次 · — tokens' : 'GC: 3 · — tokens'}`
+        `${expected}\n${locale === 'zh-CN' ? 'GC：3 次 · 0 tokens' : 'GC: 3 · 0 tokens'}`
       );
       f.sessionContextUsage.value = { ...f.sessionContextUsage.value, gcReclaimedTokens: 12345 };
       expect(f.state.contextUsageLabel.value).toBe(
@@ -177,8 +179,17 @@ describe('Workbench context usage label', () => {
       expect(f.state.contextUsageLabel.value).toBe(
         `${expected}\n${locale === 'zh-CN' ? 'GC：0 次 · 0 tokens' : 'GC: 0 · 0 tokens'}`
       );
+      f.sessionContextUsage.value = {
+        model: null,
+        usedTokens: 0,
+        maxTokens: 258000,
+        percentage: 0
+      };
+      expect(f.state.contextUsageLabel.value).toBe(
+        `${locale === 'zh-CN' ? '上下文窗口：' : 'Context Window: '}0 / 258000 tokens (0)\n${emptyGc}`
+      );
       f.sessionContextUsage.value = null;
-      expect(f.state.contextUsageLabel.value).toBe('');
+      expect(f.state.contextUsageLabel.value).toBe(emptyLabel);
     } finally {
       preference.setLocale(previousLocale);
     }

@@ -636,6 +636,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         modelEffortSelection: undefined,
         modelEffortLabel: 'Original model',
         hideModelSelection: hidden,
+        hideContextUsage: hidden,
         selectedModel: '',
         selectedEffort: '',
         models: [],
@@ -690,6 +691,19 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         expect(compactable).toContain(
           `aria-description="Original context summary\nGC: 3 · 12345 tokens\n${locale === 'zh-CN' ? '点击压缩上下文' : 'Click to compact context'}"`
         );
+        for (const contextUsage of [undefined, null, { percentage: 0 }]) {
+          const empty = await render(ComposerToolbar, {
+            ...props,
+            contextUsage,
+            contextUsageLabel: '0 / — tokens (0%)\nGC: 0 · 0 tokens'
+          });
+          expect(empty).toContain('composer-context-button');
+          expect(empty).toContain('aria-label="0 / — tokens (0%)\nGC: 0 · 0 tokens"');
+          expect(empty).toContain('aria-disabled="true"');
+          expect(empty).toContain('--context-usage:0%');
+          expect(empty).toMatch(/<span\b[^>]*>0%<\/span>/u);
+          expect(empty).not.toContain('NaN');
+        }
       }
       expect(html).toContain(
         locale === 'zh-CN'
