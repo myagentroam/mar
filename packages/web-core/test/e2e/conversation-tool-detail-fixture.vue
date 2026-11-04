@@ -398,6 +398,50 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     });
   }
 }
+if (new URL(location.href).searchParams.has('compact-tools')) {
+  for (const [id, toolName, presentation] of [
+    [
+      'compact-search',
+      'tool_search',
+      {
+        kind: 'TOOL_SEARCH',
+        query: 'tools <query>',
+        tools: Array.from({ length: 20 }, (_, index) => `tool_result_${index + 1}`)
+      }
+    ],
+    [
+      'compact-sleep',
+      'sleep',
+      { kind: 'SLEEP', durationMs: 1200, elapsedMs: 800, wakeReason: 'steer' }
+    ],
+    [
+      'compact-image',
+      'view_image',
+      {
+        kind: 'IMAGE_VIEW',
+        path: '/fixture/example.png',
+        mimeType: 'image/png',
+        width: 800,
+        height: 600,
+        sourceWidth: 1600,
+        sourceHeight: 1200
+      }
+    ],
+    ['compact-compact', 'smart_compact', { kind: 'COMPACT_REQUEST', accepted: true }]
+  ] as const) {
+    detailSamples.push({
+      id,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName,
+        title: toolName,
+        inputSummary: 'raw input for copying',
+        toolPresentation: presentation
+      }
+    });
+  }
+}
 if (new URL(location.href).searchParams.has('external-web')) {
   for (const [toolName, presentation] of [
     ['WebSearch', { kind: 'WEB_SEARCH', query: 'Native documentation query' }],

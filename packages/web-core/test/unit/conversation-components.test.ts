@@ -71,6 +71,150 @@ vi.mock('element-plus/es', async (importOriginal) => {
 
 const originalLocale = localePreferenceService().locale.value;
 
+it('distinguishes image resize axes and omits an empty resize', async () => {
+  for (const [resize, expected, absent] of [
+    [{ maxWidth: 480 }, 'Max width: 480', 'Max height'],
+    [{ maxHeight: 480 }, 'Max height: 480', 'Max width'],
+    [{}, '', 'Resize:']
+  ] as const) {
+    const item = conversationItem('image', 'tool_call', {
+      toolName: 'view_image',
+      toolPresentation: { kind: 'IMAGE_VIEW', resize }
+    });
+    const html = await render(ConversationToolDetail, { item });
+    if (expected) expect(html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ')).toContain(expected);
+    expect(html).not.toContain(absent);
+  }
+  const originalSize = { sourceWidth: 800, sourceHeight: 600, width: 800, height: 600 };
+  const image = (extra: Record<string, unknown>) =>
+    conversationItem('image', 'tool_call', {
+      toolName: 'view_image',
+      toolPresentation: { kind: 'IMAGE_VIEW', ...originalSize, ...extra }
+    });
+  expect(await render(ConversationToolDetail, { item: image({}) })).not.toContain('Source size');
+  expect(
+    await render(ConversationToolDetail, { item: image({ resize: { maxWidth: 480 } }) })
+  ).not.toContain('Source size');
+  const different = await render(ConversationToolDetail, {
+    item: image({ sourceWidth: 1280, sourceHeight: 960, width: 640, height: 480 })
+  });
+  expect(different).toContain('Source size');
+  expect(different).toContain('1280');
+  expect(different).toContain('960');
+});
+
+it('preserves fractional-second sleep durations rather than rounding them down', async () => {
+  const item = conversationItem('sleep', 'tool_call', {
+    toolName: 'sleep',
+    toolPresentation: { kind: 'SLEEP', durationMs: 1200, elapsedMs: 2300 }
+  });
+  const html = await render(ConversationToolDetail, { item });
+  expect(html).toContain('1200 ms');
+  expect(html).toContain('2300 ms');
+});
+
+it('preserves generic public text, truncation, empty snapshots and legacy agent fallback', async () => {
+  const generic = conversationItem('generic', 'tool_call', {
+    toolName: 'custom',
+    inputSummary: '  <input>\n  second\n',
+    inputTruncated: true,
+    outputSummary: 'stale output',
+    output: { blocks: [{ channel: 'TEXT', text: '  <result>\n  end\n' }], truncation: 'HEAD' },
+    progressLabel: 'progress here',
+    errorCode: 'FAIL',
+    errorMessage: 'failure detail'
+  });
+  const html = await render(ConversationToolDetail, { item: generic });
+  expect(html).toContain('  &lt;input&gt;\n  second\n');
+  expect(html).toContain('  &lt;result&gt;\n  end\n');
+  expect(html.indexOf('[Truncated]', html.indexOf('Output:'))).toBeLessThan(
+    html.indexOf('&lt;result&gt;')
+  );
+  expect(html).toContain('progress here');
+  expect(html).toContain('FAIL');
+  expect(html).toContain('failure detail');
+  expect(html).not.toContain('stale output');
+  const empty = conversationItem('empty', 'tool_call', {
+    toolName: 'unknown',
+    outputSummary: 'stale output',
+    output: { blocks: [] }
+  });
+  expect(await render(ConversationToolDetail, { item: empty })).not.toContain('stale output');
+  const legacy = conversationItem('legacy', 'tool_call', {
+    toolName: 'agent_wait',
+    subagentOperation: 'STATUS',
+    subagentId: 'peer-123',
+    subagentModelName: 'legacy-model',
+    inputSummary: 'legacy input'
+  });
+  const legacyHtml = await render(ConversationToolDetail, { item: legacy });
+  expect(legacyHtml).toContain('peer-123');
+  expect(legacyHtml).toContain('legacy-model');
+  expect(legacyHtml).toContain('legacy input');
+});
+
+it('retains explicit empty search, failed compact output and input truncation without duplicated input', async () => {
+  const search = conversationItem('empty-search', 'tool_call', {
+    toolName: 'tool_search',
+    inputSummary: 'private query record',
+    inputTruncated: true,
+    toolPresentation: { kind: 'TOOL_SEARCH', tools: [] }
+  });
+  const searchHtml = await render(ConversationToolDetail, { item: search });
+  expect(searchHtml).toContain('No results');
+  expect(searchHtml).toContain('Input:');
+  expect(searchHtml).toContain('[Truncated]');
+  expect(searchHtml).not.toContain('private query record');
+  const compact = {
+    ...conversationItem('failed-compact', 'tool_call', {
+      toolName: 'smart_compact',
+      output: { blocks: [{ channel: 'TEXT', text: 'request rejected' }], truncation: 'SOURCE' },
+      toolPresentation: { kind: 'COMPACT_REQUEST' }
+    }),
+    status: 'FAILED'
+  };
+  const compactHtml = await render(ConversationToolDetail, { item: compact });
+  expect(compactHtml).toContain('request rejected');
+  expect(compactHtml.indexOf('request rejected')).toBeLessThan(compactHtml.indexOf('[Truncated]'));
+  expect(compactHtml).not.toContain('Compaction request accepted');
+});
+
+it.each(['en-US', 'zh-CN'] as const)(
+  'renders compact structured tool details without repeating inputs in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      for (const [kind, facts, expected] of [
+        ['TOOL_SEARCH', { query: 'find tools', tools: ['alpha', 'beta'] }, 'alpha'],
+        ['SLEEP', { durationMs: 1000, elapsedMs: 500, wakeReason: 'steer' }, '500'],
+        [
+          'IMAGE_VIEW',
+          { path: '/fixture/a.png', mimeType: 'image/png', width: 10, height: 20 },
+          '/fixture/a.png'
+        ],
+        [
+          'COMPACT_REQUEST',
+          { accepted: true },
+          locale === 'en-US' ? 'Compaction request accepted' : '已接受压缩请求'
+        ]
+      ] as const) {
+        const item = conversationItem(kind, 'tool_call', {
+          toolName: kind.toLowerCase(),
+          inputSummary: 'DUPLICATE INPUT',
+          toolPresentation: { kind, ...facts },
+          errorCode: 'EXAMPLE_ERROR'
+        });
+        const html = await render(ConversationToolDetail, { item });
+        expect(html).toContain(expected);
+        expect(html).toContain('EXAMPLE_ERROR');
+        expect(html).not.toContain('DUPLICATE INPUT');
+      }
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
 it.each(['en-US', 'zh-CN'] as const)(
   'heads associated Read content with its path and range in %s',
   async (locale) => {

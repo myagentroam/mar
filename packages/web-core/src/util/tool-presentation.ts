@@ -45,7 +45,7 @@ export function toolPresentationStatus(status: string): string {
   return translate(`toolPresentation.status.${key}`);
 }
 
-function durationLabel(ms: number): string {
+export function durationLabel(ms: number): string {
   if (ms > 0 && ms < 1000) return translate('toolPresentation.milliseconds', { value: ms });
   const seconds = Math.floor(ms / 1000);
   const hours = Math.floor(seconds / 3600);

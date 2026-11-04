@@ -69,6 +69,8 @@ export const conversationUiEnUS = {
       sourceSize: 'Source size',
       region: 'Region',
       resize: 'Resize',
+      maxWidth: 'Max width',
+      maxHeight: 'Max height',
       query: 'Query',
       search: 'Search',
       webContent: 'Web content',
