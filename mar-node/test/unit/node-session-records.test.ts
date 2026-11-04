@@ -385,7 +385,9 @@ describe('Node session records and external discovery merge', () => {
         }
       ]);
       expect(navigation.tree?.truncated).toBe(true);
-      expect(navigation.tree?.nodes.map(({ id }) => id)).not.toContain('child-99');
+      expect(navigation.tree?.nodes).toEqual([
+        expect.objectContaining({ id: 'child-99', status: 'RUNNING', parentSessionId: 'root' })
+      ]);
       const targetTree = (await execute('session.graph', {
         workspaceId: workspace.id,
         sessionId: 'child-99',

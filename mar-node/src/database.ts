@@ -605,13 +605,39 @@ export class NodeDatabase {
     workspaceId: string,
     sessionId: string
   ): ReturnType<NodeDatabase['listSessionRecords']> {
-    const root = this.getSessionRecord(sessionId);
-    if (root === undefined || root.workspaceId !== workspaceId)
-      throw new Error('SESSION_NOT_FOUND');
+    // UNION bounds corrupt cycles; the in-memory traversal still reports them.
+    // Keep the frontier outermost so SQLite uses both columns of the parent index.
+    const rows = this.raw
+      .prepare(
+        `
+      WITH RECURSIVE tree(id) AS (
+        SELECT id FROM agent_sessions WHERE workspace_id = ? AND id = ?
+        UNION
+        SELECT child.id FROM tree CROSS JOIN agent_sessions child ON child.parent_session_id = tree.id
+        WHERE child.workspace_id = ?
+      )
+      SELECT session.id, session.workspace_id, session.runner, session.pin_order,
+             session.metadata, session.parent_session_id
+      FROM tree CROSS JOIN agent_sessions session ON session.id = tree.id ORDER BY session.id
+    `
+      )
+      .all(workspaceId, sessionId, workspaceId) as readonly SqlRow[];
+    const children = new Map<string, ReturnType<NodeDatabase['listSessionRecords']>[number][]>();
+    let root: ReturnType<NodeDatabase['getSessionRecord']>;
+    for (const row of rows) {
+      const record = sessionRecord(row);
+      if (record.id === sessionId) root = record;
+      const parent = record.metadata.parentSessionId ?? null;
+      if (parent === null) continue;
+      const siblings = children.get(parent) ?? [];
+      siblings.push(record);
+      children.set(parent, siblings);
+    }
+    if (root === undefined) throw new Error('SESSION_NOT_FOUND');
     const records = [root];
     const seen = new Set([root.id]);
     for (let index = 0; index < records.length; index++) {
-      for (const child of this.listChildSessionRecords(workspaceId, records[index]!.id)) {
+      for (const child of children.get(records[index]!.id) ?? []) {
         if (seen.has(child.id)) throw new Error('SESSION_RELATION_INVALID');
         seen.add(child.id);
         records.push(child);

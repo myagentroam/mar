@@ -186,6 +186,14 @@ export class SessionCatalogService {
       return record === undefined ? [] : [project(record)];
     });
     const descendantsByAnchor = new Map<string, ReturnType<typeof database.sessionTreeRecords>>();
+    const statuses = new Map<string, ReturnType<typeof sessionActivityStatus>>();
+    const status = (id: string) => {
+      const cached = statuses.get(id);
+      if (cached !== undefined) return cached;
+      const value = sessionActivityStatus(this.options.runtime, id);
+      statuses.set(id, value);
+      return value;
+    };
     const descendants = (anchor: string) => {
       let records = descendantsByAnchor.get(anchor);
       if (records === undefined) {
@@ -200,9 +208,9 @@ export class SessionCatalogService {
       let sleepingCount = 0;
       const records = descendants(anchorSessionId);
       for (const record of records) {
-        const status = sessionActivityStatus(this.options.runtime, record.id);
-        if (status === 'RUNNING') runningCount++;
-        else if (status === 'SLEEPING') sleepingCount++;
+        const activity = status(record.id);
+        if (activity === 'RUNNING') runningCount++;
+        else if (activity === 'SLEEPING') sleepingCount++;
       }
       return [
         {
@@ -217,6 +225,22 @@ export class SessionCatalogService {
     });
     const anchor = query.treeAnchor === undefined ? undefined : get(query.treeAnchor);
     const records = anchor === undefined ? [] : descendants(anchor.id);
+    const activePaths = new Set<string>();
+    // Records are breadth-first: propagate activity to ancestors in one reverse pass.
+    for (let index = records.length - 1; index >= 0; index--) {
+      const record = records[index]!;
+      if (status(record.id) !== 'IDLE' || activePaths.has(record.id)) {
+        activePaths.add(record.id);
+        if (typeof record.metadata.parentSessionId === 'string')
+          activePaths.add(record.metadata.parentSessionId);
+      }
+    }
+    // Select active paths before idle filler, not after truncating arbitrary records.
+    // Stable breadth-first order keeps selected children connected to their ancestors.
+    const prioritized = [
+      ...records.filter((record) => activePaths.has(record.id)),
+      ...records.filter((record) => !activePaths.has(record.id))
+    ];
     const parent = anchor?.metadata.parentSessionId
       ? get(anchor.metadata.parentSessionId)
       : undefined;
@@ -226,7 +250,7 @@ export class SessionCatalogService {
         : {
             anchorSessionId: anchor.id,
             parent: parent === undefined ? null : project(parent),
-            nodes: records.slice(0, query.limit).map(project),
+            nodes: prioritized.slice(0, query.limit).map(project),
             truncated: records.length > query.limit
           };
     return { sessions, summaries, tree, missingSessionIds };
