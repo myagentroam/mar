@@ -241,6 +241,66 @@ describe('Session Navigation bounded tree', () => {
     }
   );
 
+  it('bounds ancestor reads for multiple oversized active paths while retaining a fitting candidate', () => {
+    const f = fixture();
+    try {
+      const depth = 160;
+      const limit = 5;
+      let parent = 'root';
+      for (let index = 0; index < depth; index++) {
+        const id = `chain-${String(index).padStart(3, '0')}`;
+        f.register(id, parent);
+        parent = id;
+      }
+      for (const [id, time] of [
+        ['deep-a', 4000],
+        ['deep-b', 3000],
+        ['deep-c', 2000]
+      ] as const) {
+        f.register(id, parent);
+        f.setTime(time);
+        f.activate(id);
+      }
+      f.register('direct-running', 'root');
+      f.setTime(1000);
+      f.activate('direct-running');
+
+      let parentReads = 0;
+      const originalSessionTreeRecords = f.database.sessionTreeRecords.bind(f.database);
+      vi.spyOn(f.database, 'sessionTreeRecords').mockImplementation((workspaceId, sessionId) =>
+        originalSessionTreeRecords(workspaceId, sessionId).map(
+          (record) =>
+            new Proxy(record, {
+              get(target, property, receiver) {
+                if (property !== 'metadata') return Reflect.get(target, property, receiver);
+                return new Proxy(target.metadata, {
+                  get(metadata, metadataProperty, metadataReceiver) {
+                    if (metadataProperty === 'parentSessionId') parentReads++;
+                    return Reflect.get(metadata, metadataProperty, metadataReceiver);
+                  }
+                });
+              }
+            })
+        )
+      );
+
+      const snapshot = f.navigation(limit);
+      const nodes = snapshot.tree?.nodes ?? [];
+      expect(nodes).toHaveLength(limit);
+      expect(nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'direct-running', status: 'RUNNING' })
+        ])
+      );
+      expect(nodes.some((node) => node.id.startsWith('deep-'))).toBe(false);
+      const selected = new Set(['root', ...nodes.map((node) => node.id)]);
+      expect(nodes.every((node) => selected.has(node.parentSessionId!))).toBe(true);
+      expect(parentReads).toBeLessThanOrEqual(2 * depth + 3 * 2 * (limit + 1) + 4 * limit + 10);
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('uses cached native activity, puts unknown times last, and breaks equal-time ties by stable id', () => {
     const f = fixture();
     try {
