@@ -96,7 +96,8 @@ test('restores an overflowed active tab and returns focus after closing it', asy
         child.evaluate((el) => {
           const bounds = el.getBoundingClientRect();
           const parent = el.closest('[role=tablist]')!.getBoundingClientRect();
-          return bounds.left >= parent.left && bounds.right <= parent.right;
+          // Native nearest scrolling rounds offsets while layout edges can be fractional.
+          return bounds.left >= parent.left - 1 && bounds.right <= parent.right + 1;
         })
       )
       .toBe(true);
@@ -106,6 +107,64 @@ test('restores an overflowed active tab and returns focus after closing it', asy
     await expect(child).toHaveCount(0);
     await expect(tabs.getByRole('tab', { name: 'Files' })).toBeFocused();
   } finally {
+    await fixture.close();
+  }
+});
+
+test('Aside tool tabs keep balanced label spacing on touch screens', async ({ browser }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const page = await context.newPage();
+    for (const language of ['en', 'zh']) {
+      for (const theme of ['light', 'dark']) {
+        await page.goto(
+          `${fixture.url}workbench-aside.html?mobile&lang=${language}&theme=${theme}`
+        );
+        const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+        await expect(tabs.getByRole('tab')).toHaveCount(6);
+        for (const width of [320, 390, 430]) {
+          await page.setViewportSize({ width, height: 844 });
+          const spacing = await tabs.getByRole('tab').evaluateAll((elements) =>
+            elements.flatMap((element) => {
+              const item = element.closest('.tab-strip-item')!;
+              if (item.querySelector('.tab-strip-close')) return [];
+              const bounds = item.getBoundingClientRect();
+              const label = element.lastElementChild!.getBoundingClientRect();
+              return [
+                {
+                  label: element.textContent,
+                  left: label.left - bounds.left,
+                  right: bounds.right - label.right
+                }
+              ];
+            })
+          );
+          expect(spacing).toHaveLength(5);
+          for (const { label, left, right } of spacing) {
+            expect(
+              Math.abs(left - right),
+              `${label} at ${width}px (${language}, ${theme})`
+            ).toBeLessThanOrEqual(0.5);
+          }
+        }
+        await tabs
+          .getByRole('tab', { name: language === 'zh' ? '终端' : 'Terminal', exact: true })
+          .tap();
+        await expect(page.locator('#terminal')).toBeVisible();
+        await tabs.getByRole('button', { name: 'Close Child' }).tap();
+        await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveCount(0);
+        await page
+          .locator('.workbench-aside-header')
+          .screenshot({ path: test.info().outputPath(`aside-spacing-${language}-${theme}.png`) });
+      }
+    }
+  } finally {
+    await context.close();
     await fixture.close();
   }
 });

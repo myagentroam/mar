@@ -191,7 +191,10 @@ watch(
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 0 4px 0 8px;
+  padding: 0 0.5rem;
+}
+.tab-strip-tab:not(:last-child) {
+  padding-inline-end: 0.25rem;
 }
 .tab-strip-tab > span {
   max-width: 180px;
