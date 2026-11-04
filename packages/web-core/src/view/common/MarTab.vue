@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import MarIcon from './MarIcon.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
 
-export interface TabStripItem {
+export interface MarTabItem {
   readonly id: string | number;
   readonly label: string;
   readonly description?: string | undefined;
@@ -13,10 +13,11 @@ export interface TabStripItem {
   readonly separatorBefore?: boolean | undefined;
 }
 const props = defineProps<{
-  readonly items: readonly TabStripItem[];
+  readonly items: readonly MarTabItem[];
   readonly activeId?: string | number | undefined;
   readonly label: string;
   readonly idPrefix: string;
+  readonly size?: 'default' | 'small' | undefined;
   readonly itemClass?: string | undefined;
   readonly tabClass?: string | undefined;
   readonly closeClass?: string | undefined;
@@ -112,6 +113,7 @@ watch(
   <nav
     ref="root"
     class="tab-strip"
+    :class="{ 'is-small': size === 'small' }"
     role="tablist"
     :aria-label="label"
     @keydown="onKeydown"
@@ -170,6 +172,14 @@ watch(
   gap: 0;
   padding: 3px 4px 0;
 }
+.tab-strip.is-small {
+  --mar-tab-strip-item-height: 28px;
+  --mar-tab-strip-close-size: 24px;
+  --mar-tab-font-size: var(--mar-font-size-meta);
+  height: auto;
+  padding-block: 3px 0;
+  font-weight: 500;
+}
 .tab-strip-item {
   display: inline-flex;
   flex-shrink: 0;
@@ -202,10 +212,14 @@ watch(
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: var(--mar-font-size-navigation);
+  font-size: var(--mar-tab-font-size, var(--mar-font-size-navigation));
   overflow: hidden;
   cursor: pointer;
   padding: 0 0.5rem;
+}
+.tab-strip.is-small .tab-strip-tab {
+  gap: 0.35rem;
+  justify-content: center;
 }
 .tab-strip-tab:not(:last-child) {
   padding-inline-end: 0.25rem;
@@ -239,6 +253,11 @@ watch(
 }
 .tab-strip-close:focus-visible {
   outline-offset: 1px;
+}
+@media (min-width: 768px) {
+  .tab-strip-item + .tab-strip-item {
+    margin-inline-start: -1px;
+  }
 }
 @media (max-width: 767px) {
   .tab-strip {
