@@ -36,7 +36,7 @@ export class MarAgentModelService extends CoreMarAgentModelService {
       `SELECT model.id,model.name,model.protocol,model.base_url,model.model_id,
               model.context_window_tokens,model.max_output_tokens,model.input_capabilities,
               model.output_capabilities,model.reasoning_efforts,
-              model.default_reasoning_effort,model.conversation_model,model.title_generation,model.code_mode,
+              model.default_reasoning_effort,model.conversation_model,model.subagent_model,model.title_generation,model.code_mode,
               model.credential,
               model.enabled,model.sort_order,
               model.last_tested_at,model.last_test_status,model.last_test_code,

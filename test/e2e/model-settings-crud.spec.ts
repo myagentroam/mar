@@ -1,7 +1,62 @@
 import { expect, test } from '@playwright/test';
 import mysql from 'mysql2/promise';
 import { MarAgentModelService } from '../../packages/server-core/src/mar-agent-model-service.js';
+import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
+import { MarAgentModelService as EnterpriseMarAgentModelService } from '../../ee/server/src/service/mar-agent-model-service.js';
 import { createEnterpriseTestServer } from './support/enterprise-test-server.js';
+
+test('enterprise model summaries preserve Subagent usage after saving and reloading', async () => {
+  const server = await createEnterpriseTestServer('model-subagent-usage');
+  const pool = mysql.createPool(server.databaseUrl);
+  const database = { raw: pool } as MysqlServerDatabase;
+  const models = new EnterpriseMarAgentModelService(database, Date.now, () => 'subagent-model');
+  try {
+    const [users] = await pool.execute<mysql.RowDataPacket[]>(
+      'SELECT id FROM users WHERE is_fixed_admin=TRUE'
+    );
+    const userId = Number(users[0]!['id']);
+    const created = await models.create(userId, {
+      name: 'Subagent model',
+      protocol: 'ANTHROPIC_MESSAGES',
+      baseUrl: 'https://models.example.test',
+      credential: { type: 'INLINE_API_KEY', value: 'fixture-secret' },
+      modelId: 'upstream-model',
+      contextWindowTokens: 200_000,
+      maxOutputTokens: 16_384,
+      inputCapabilities: ['TEXT'],
+      outputCapabilities: ['TEXT'],
+      reasoningEfforts: ['high'],
+      defaultReasoningEffort: 'high',
+      hostedWebSearch: false,
+      enabled: true
+    });
+    expect(created.subagentModel).toBe(false);
+
+    for (const subagentModel of [true, false]) {
+      expect(await models.update(userId, created.id, { subagentModel })).toMatchObject({
+        id: created.id,
+        conversationModel: true,
+        subagentModel
+      });
+      const reader = new EnterpriseMarAgentModelService(database);
+      for (const summaries of [
+        await reader.listManagedForUser(userId),
+        await reader.listForUser(userId)
+      ]) {
+        expect(summaries).toEqual([
+          expect.objectContaining({ id: created.id, conversationModel: true, subagentModel })
+        ]);
+      }
+      expect(await reader.stored(created.id)).toMatchObject({ subagentModel });
+      expect(await reader.update(userId, created.id, { name: 'Renamed model' })).toMatchObject({
+        subagentModel
+      });
+    }
+  } finally {
+    await pool.end();
+    await server.close();
+  }
+});
 
 test('model settings follow transactional create, duplicate, update and deletion', async () => {
   const server = await createEnterpriseTestServer('model-settings-crud');
