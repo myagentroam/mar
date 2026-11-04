@@ -7,6 +7,7 @@ import type {
 } from '../../service/agent-network-service.js';
 import { agentNetworkWaitModelOutput } from './agent-network-wait-output.js';
 import { agentOperationEvent } from './agent-operation-presentation.js';
+import { AGENT_WAIT_DEFAULTS } from '../../service/agent-network-wait.js';
 
 const text = { type: 'string', minLength: 1 } as const;
 const runner = {
@@ -239,6 +240,15 @@ export function agentNetworkExtension(
             if (!executionId) throw new Error('AGENT_ACTOR_NOT_ACTIVE');
             const args = input as Record<string, unknown>;
             let operationInput = args;
+            if (tool.action === 'wait')
+              operationInput = {
+                ...args,
+                waitFor: args.waitFor ?? AGENT_WAIT_DEFAULTS.waitFor,
+                waitMs: args.waitMs ?? AGENT_WAIT_DEFAULTS.waitMs,
+                ...(Array.isArray(args.agentIds)
+                  ? { mode: args.mode ?? AGENT_WAIT_DEFAULTS.mode }
+                  : {})
+              };
             if (tool.action === 'send') {
               const { delivery, ...sendInput } = args;
               const hasMessage = typeof args.content === 'string' && !!args.content.trim();

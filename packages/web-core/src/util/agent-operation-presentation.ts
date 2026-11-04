@@ -1,4 +1,8 @@
-import { agentOperationPresentationSchema, subagentCallDetailSchema } from '@myagentroam/protocol';
+import {
+  agentOperationPresentationSchema,
+  subagentCallDetailSchema,
+  type AgentOperationPresentation
+} from '@myagentroam/protocol';
 import { conversationPayload } from './conversation-history.js';
 import { readToolOutput } from './tool-presentation.js';
 
@@ -29,6 +33,7 @@ export function agentOperationDetail(
       message?: string;
       messageTruncated?: true;
       delivery?: 'QUEUE' | 'STEER';
+      wait?: NonNullable<AgentOperationPresentation['detail']>['wait'];
       error?: string;
       targetsTruncated?: true;
       output?: string;
@@ -78,6 +83,9 @@ export function agentOperationDetail(
     ...(operation.detail.message ? { message: operation.detail.message } : {}),
     ...(operation.detail.messageTruncated ? { messageTruncated: true as const } : {}),
     ...(operation.detail.delivery ? { delivery: operation.detail.delivery } : {}),
+    ...(operation.action === 'WAIT' && operation.detail.wait
+      ? { wait: operation.detail.wait }
+      : {}),
     ...(operation.detail.error ? { error: operation.detail.error } : {}),
     ...(operation.targetsTruncated ? { targetsTruncated: true as const } : {}),
     ...(output !== undefined

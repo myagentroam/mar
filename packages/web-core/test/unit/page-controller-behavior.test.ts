@@ -185,6 +185,39 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('projects and closes the image preview from its owning Main or Aside pane', () => {
+    const { page } = controller();
+    const main = page.mainPaneController.images;
+    const aside = page.asidePaneController.images;
+    aside.open({ name: 'aside.png', previewUrl: '/api/aside-image' });
+    expect(page.conversationImagePreviewOpen.value).toBe(true);
+    expect(page.conversationImagePreview.value).toEqual({
+      name: 'aside.png',
+      url: '/api/aside-image'
+    });
+    page.conversationImagePreviewOpen.value = false;
+    expect(aside.previewOpen.value).toBe(false);
+    main.open({ name: 'main.png', previewUrl: '/api/main-image' });
+    expect(page.conversationImagePreview.value?.name).toBe('main.png');
+    aside.open({ name: 'aside-again.png', previewUrl: '/api/aside-image-2' });
+    expect(main.previewOpen.value).toBe(false);
+    expect(page.conversationImagePreview.value?.name).toBe('aside-again.png');
+    page.conversationImagePreviewOpen.value = false;
+    page.conversationImagePreview.value = undefined;
+    expect(aside.previewOpen.value).toBe(false);
+    expect(aside.preview.value).toBeUndefined();
+  });
+
+  it('routes preview load failures to the pane that opened the image', async () => {
+    const { page } = controller();
+    const aside = vi.spyOn(page.asidePaneController.images, 'previewFailed');
+    const main = vi.spyOn(page.mainPaneController.images, 'previewFailed');
+    page.asidePaneController.images.open({ name: 'aside.png', previewUrl: '/api/aside-image' });
+    await page.handleConversationImagePreviewError('/api/aside-image');
+    expect(aside).toHaveBeenCalledWith('/api/aside-image');
+    expect(main).not.toHaveBeenCalled();
+  });
+
   it('projects only actually visible Main and Aside sessions to the notification owner', async () => {
     const { page } = controller();
     const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };

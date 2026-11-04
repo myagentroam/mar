@@ -70,6 +70,11 @@ export const conversationUiEnUS = {
       region: 'Region',
       resize: 'Resize',
       query: 'Query',
+      search: 'Search',
+      webContent: 'Web content',
+      sources: 'Sources',
+      content: 'Content',
+      from: 'From',
       title: 'Title',
       name: 'Name',
       action: 'Action',
@@ -88,6 +93,7 @@ export const conversationUiEnUS = {
       waiting: 'Waiting for output',
       unavailable: 'Output not provided',
       empty: 'No output',
+      lineRange: 'Line range: {range}',
       imageUnavailable: 'Image preview unavailable',
       compactAccepted: 'Compaction request accepted',
       truncated: '[Truncated]',
@@ -349,6 +355,15 @@ export const conversationUiEnUS = {
       STOP: 'Stop',
       LIST: 'List',
       VIEW: 'View'
+    },
+    agentOperationShort: {
+      START: 'start',
+      SEND: 'send',
+      WAIT: 'wait',
+      VIEW: 'view',
+      LIST: 'list',
+      STOP: 'stop',
+      RESUME: 'resume'
     },
     subagentOperation: {
       START: 'Start',

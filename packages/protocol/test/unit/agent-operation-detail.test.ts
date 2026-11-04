@@ -2,6 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { agentOperationPresentationSchema, subagentCallDetailSchema } from '../../src/index.js';
 
 describe('Agent operation detail facts', () => {
+  it('keeps explicit wait conditions and millisecond limits without adding legacy defaults', () => {
+    const value = {
+      action: 'WAIT',
+      targets: [{ agentId: 'a' }],
+      detail: { wait: { waitFor: 'message', waitMs: 0, mode: 'all' } }
+    };
+    expect(agentOperationPresentationSchema.parse(value)).toEqual(value);
+    expect(
+      agentOperationPresentationSchema.parse({ action: 'WAIT', targets: [] })
+    ).not.toHaveProperty('detail');
+    for (const wait of [
+      { waitFor: 'unknown', waitMs: 30000 },
+      { waitFor: 'completion', waitMs: -1 },
+      { waitFor: 'completion', waitMs: 300001 },
+      { waitFor: 'completion', waitMs: 1.5 }
+    ])
+      expect(
+        agentOperationPresentationSchema.safeParse({
+          action: 'WAIT',
+          targets: [],
+          detail: { wait }
+        }).success
+      ).toBe(false);
+  });
   it('bounds the native current-call message independently of target result fields', () => {
     expect(subagentCallDetailSchema.parse({ message: 'hello', messageTruncated: true })).toEqual({
       message: 'hello',

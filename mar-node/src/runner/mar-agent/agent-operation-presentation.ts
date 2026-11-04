@@ -74,6 +74,20 @@ export function agentOperationEvent(action: string, input: unknown, result: unkn
   const operation = agentOperationPresentation(`agent_${action}`, input)!;
   const value = isPlainRecord(result) ? result : {};
   const args = isPlainRecord(input) ? input : {};
+  if (
+    action === 'wait' &&
+    (args.waitFor === 'message' || args.waitFor === 'completion') &&
+    typeof args.waitMs === 'number'
+  )
+    operation.detail = {
+      wait: {
+        waitFor: args.waitFor,
+        waitMs: args.waitMs,
+        ...(Array.isArray(args.agentIds) && (args.mode === 'any' || args.mode === 'all')
+          ? { mode: args.mode }
+          : {})
+      }
+    };
   const message = action === 'start' || action === 'send' ? text(args.content, 2000) : undefined;
   const title = action === 'start' ? text(args.title, 500) : undefined;
   if (message || title)

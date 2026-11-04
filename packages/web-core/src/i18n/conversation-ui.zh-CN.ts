@@ -70,6 +70,11 @@ export const conversationUiZhCN = {
       region: '裁剪区域',
       resize: '缩放',
       query: '查询',
+      search: '搜索',
+      webContent: '网页内容',
+      sources: '来源',
+      content: '正文',
+      from: '来源地址',
       title: '标题',
       name: '名称',
       action: '操作',
@@ -88,6 +93,7 @@ export const conversationUiZhCN = {
       waiting: '等待输出',
       unavailable: '来源未提供输出',
       empty: '无输出',
+      lineRange: 'Line range: {range}',
       imageUnavailable: '图片预览不可用',
       compactAccepted: '已接受压缩请求',
       truncated: '[Truncated]',
@@ -336,6 +342,15 @@ export const conversationUiZhCN = {
       STOP: '停止',
       LIST: '查询列表',
       VIEW: '查看'
+    },
+    agentOperationShort: {
+      START: 'start',
+      SEND: 'send',
+      WAIT: 'wait',
+      VIEW: 'view',
+      LIST: 'list',
+      STOP: 'stop',
+      RESUME: 'resume'
     },
     subagentOperation: {
       START: '启动',

@@ -514,7 +514,7 @@ export function conversationItemText(
     const title = stringField(value, 'title');
     if (isSubagentToolCall(value)) {
       const taskTitle = subagentTaskTitle(value);
-      return [rawTextField(value, 'toolName').trim(), taskTitle].filter(Boolean).join(' ');
+      return [subagentOperationShortText(value), taskTitle].filter(Boolean).join(' ');
     }
     if (toolPresentation(payload)) return toolPresentationText(payload, status ?? 'COMPLETED');
     if (toolName.length > 0) return toolName;
@@ -528,8 +528,11 @@ export function conversationItemText(
     if (execution?.kind === 'CONTROL') {
       if (execution.action === 'poll') {
         const source = conversationPayload(execution.source);
-        const command = source?.kind === 'SHELL' ? rawTextField(source, 'text').trim() : '';
-        const target = command || rawTextField(execution, 'targetId').trim();
+        const sourceText =
+          source?.kind === 'SHELL' || source?.kind === 'CODE'
+            ? rawTextField(source, 'text').trim()
+            : '';
+        const target = sourceText || rawTextField(execution, 'targetId').trim();
         return translate('toolPresentation.executionWait', { target }).trimEnd();
       }
       return stringField(execution, 'toolName');
@@ -735,6 +738,22 @@ export function subagentOperationText(payload: unknown): string {
   return translate(
     `presentation.subagentOperation.${operation === 'STATUS' && value?.subagentWait === true ? 'WAIT' : operation}`
   );
+}
+
+function subagentOperationShortText(payload: unknown): string {
+  const agent = agentOperation(payload);
+  if (agent) return translate(`presentation.agentOperationShort.${agent.action}`);
+  const value = conversationPayload(payload);
+  const operation = subagentOperation(value);
+  if (!operation) return '';
+  const action = {
+    START: 'START',
+    MESSAGE: 'SEND',
+    CANCEL: 'STOP',
+    RESUME: 'RESUME',
+    STATUS: value?.subagentWait === true ? 'WAIT' : 'VIEW'
+  }[operation];
+  return translate(`presentation.agentOperationShort.${action}`);
 }
 
 function subagentToolDetail(value: Record<string, unknown>): string {

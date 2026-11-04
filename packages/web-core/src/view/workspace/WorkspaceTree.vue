@@ -1120,11 +1120,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .state-dot {
   right: -2px;
   bottom: -1px;
-  background: var(--mar-text-faint);
-}
-
-.state-dot.ready {
-  background: var(--mar-color-success-text);
 }
 
 .state-dot.offline {

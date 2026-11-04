@@ -3,7 +3,7 @@ import { clearMessages, showMessage } from './message-feedback-service.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { ElMessageBox } from './message-box-service.js';
 import { createHostedConversationSelectionService } from '@myagentroam/web-core/hosted-selection';
 import { createAdminAuthService } from './admin-auth-service.js';
@@ -981,9 +981,26 @@ export function createWorkbenchPageController<
     { flush: 'sync' }
   );
   const conversationImageService = mainPaneController.images;
+  const imagePreviewOwner = shallowRef(conversationImageService);
+  for (const images of [mainPaneController.images, asidePaneController.images])
+    watch(
+      images.previewOpen,
+      (open) => {
+        if (!open || imagePreviewOwner.value === images) return;
+        imagePreviewOwner.value.previewOpen.value = false;
+        imagePreviewOwner.value = images;
+      },
+      { flush: 'sync' }
+    );
+  const conversationImagePreview = computed({
+    get: () => imagePreviewOwner.value.preview.value,
+    set: (value) => (imagePreviewOwner.value.preview.value = value)
+  });
+  const conversationImagePreviewOpen = computed({
+    get: () => imagePreviewOwner.value.previewOpen.value,
+    set: (value) => (imagePreviewOwner.value.previewOpen.value = value)
+  });
   const {
-    preview: conversationImagePreview,
-    previewOpen: conversationImagePreviewOpen,
     attachments: userMessageImageAttachments,
     retain: retainRunImagePreviews,
     markUnavailable: markRunImageUnavailable,
@@ -3440,7 +3457,8 @@ export function createWorkbenchPageController<
     contextUsageLabel,
     conversationImagePreview,
     conversationImagePreviewOpen,
-    handleConversationImagePreviewError: conversationImageService.previewFailed,
+    handleConversationImagePreviewError: (url: string) =>
+      imagePreviewOwner.value.previewFailed(url),
     conversationInitialRenderVersion,
     conversationNextCursor,
     conversationScroll,

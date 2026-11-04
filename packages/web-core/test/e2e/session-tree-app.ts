@@ -44,6 +44,18 @@ createTooltipApp({
               nodeId: 'node',
               workspaceId: 'workspace',
               sessionId: session.id,
+              open: false,
+              status: 'ready',
+              summary: query.has('activity')
+                ? {
+                    anchorSessionId: session.id,
+                    descendantCount: 2,
+                    activeCount: 2,
+                    runningCount: 1,
+                    sleepingCount: 1,
+                    hasActiveDescendants: true
+                  }
+                : undefined,
               request: async <T>(_path: string, init?: RequestInit) => {
                 requests.value++;
                 if (query.has('delayed') && requests.value === 1) {

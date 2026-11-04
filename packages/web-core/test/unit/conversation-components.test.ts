@@ -106,6 +106,98 @@ it.each(['en-US', 'zh-CN'] as const)(
 );
 
 it.each(['en-US', 'zh-CN'] as const)(
+  'associates each same-path Read body with its range in %s',
+  async (locale) => {
+    localePreferenceService().setLocale(locale);
+    try {
+      const first = 'first\n\nsecond';
+      const other = 'other path output';
+      const last = 'last';
+      const output = `${first}${other}${last}`;
+      const item = conversationItem('read-ranges', 'tool_call', {
+        toolName: 'read',
+        output: { blocks: [{ channel: 'TEXT', text: output }] },
+        toolPresentation: {
+          kind: 'READ',
+          paths: ['src/fixture.ts', 'other.ts'],
+          results: [
+            {
+              path: 'src/fixture.ts',
+              startLine: 3,
+              endLine: 5,
+              contentRange: { channel: 'TEXT', start: 0, end: first.length }
+            },
+            {
+              path: 'other.ts',
+              startLine: 20,
+              endLine: 20,
+              contentRange: {
+                channel: 'TEXT',
+                start: first.length,
+                end: first.length + other.length
+              }
+            },
+            {
+              path: 'src/fixture.ts',
+              startLine: 9,
+              endLine: 9,
+              contentRange: {
+                channel: 'TEXT',
+                start: first.length + other.length,
+                end: output.length
+              }
+            },
+            { path: 'src/fixture.ts', startLine: 12, endLine: 12, empty: true },
+            {
+              path: 'src/fixture.ts',
+              startLine: 15,
+              endLine: 16,
+              error: { code: 'ENOENT', message: 'not found' }
+            }
+          ]
+        }
+      });
+      const html = await render(ConversationToolDetail, { item, readPath: 'src/fixture.ts' });
+      const emptyStatus = locale === 'en-US' ? 'No output' : '无输出';
+      expect(html).toContain('src/fixture.ts · 3–5, 9, 12, 15–16');
+      expect(html).toContain(
+        `Line range: 3–5\n${first}\n\nLine range: 9\n${last}\n\nLine range: 12\n${emptyStatus}\n\nLine range: 15–16\nENOENT: not found`
+      );
+      expect(html).not.toContain('行范围：');
+      expect(html).not.toContain(other);
+    } finally {
+      localePreferenceService().setLocale(originalLocale);
+    }
+  }
+);
+
+it('falls back to the public output when Read line-range metadata is incomplete', async () => {
+  const text = 'firstsecond';
+  const item = conversationItem('read-unknown-range', 'tool_call', {
+    toolName: 'read',
+    output: { blocks: [{ channel: 'TEXT', text }] },
+    toolPresentation: {
+      kind: 'READ',
+      paths: ['src/fixture.ts'],
+      results: [
+        {
+          path: 'src/fixture.ts',
+          startLine: 3,
+          endLine: 3,
+          contentRange: { channel: 'TEXT', start: 0, end: 5 }
+        },
+        { path: 'src/fixture.ts', contentRange: { channel: 'TEXT', start: 5, end: text.length } }
+      ]
+    }
+  });
+  const html = await render(ConversationToolDetail, { item, readPath: 'src/fixture.ts' });
+  expect(html).toContain('Output:');
+  expect(html).toContain(text);
+  expect(html).not.toContain('Line range: 3');
+  expect(html).not.toContain('src/fixture.ts · 3');
+});
+
+it.each(['en-US', 'zh-CN'] as const)(
   'shows Skill name and description without its input or output in %s',
   async (locale) => {
     localePreferenceService().setLocale(locale);

@@ -52,20 +52,8 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   --mar-icon-status-surface: var(--mar-bg-panel);
   inset-block-end: 0;
   inset-inline-end: 0;
-  animation: tree-pulse 2s ease-in-out infinite;
 }
 .tree-active-indicator.paused {
   opacity: 0.6;
-  animation: none;
-}
-@keyframes tree-pulse {
-  50% {
-    opacity: 0.55;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tree-active-indicator {
-    animation: none;
-  }
 }
 </style>
