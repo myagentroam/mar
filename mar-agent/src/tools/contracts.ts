@@ -95,7 +95,7 @@ export interface McpToolCallContext extends Pick<
 export interface AgentToolImageArtifact {
   kind: 'image';
   name: string;
-  mimeType: 'image/png';
+  mimeType: 'image/png' | 'image/gif';
   byteSize: number;
   sha256: string;
   fileName: string;

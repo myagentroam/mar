@@ -13,6 +13,7 @@ import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-
 
 const PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7';
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -20,16 +21,25 @@ afterEach(async () => {
 });
 
 it.each(
-  (['CODEX', 'BYTED_ARK'] as const).flatMap((provider) => [
-    { provider, codeMode: false, failSecond: false, observeResults: true, edit: false },
-    { provider, codeMode: true, failSecond: false, observeResults: true, edit: false },
-    { provider, codeMode: true, failSecond: true, observeResults: true, edit: false },
-    { provider, codeMode: true, failSecond: false, observeResults: false, edit: false },
-    { provider, codeMode: true, failSecond: false, observeResults: true, edit: true }
-  ])
+  (['CODEX', 'BYTED_ARK'] as const).flatMap((provider) =>
+    [
+      { provider, codeMode: false, failSecond: false, observeResults: true, edit: false },
+      { provider, codeMode: true, failSecond: false, observeResults: true, edit: false },
+      { provider, codeMode: true, failSecond: true, observeResults: true, edit: false },
+      { provider, codeMode: true, failSecond: false, observeResults: false, edit: false },
+      { provider, codeMode: true, failSecond: false, observeResults: true, edit: true }
+    ].flatMap((scenario) => [
+      { ...scenario, animated: false },
+      ...(provider === 'CODEX' && !scenario.failSecond && !scenario.edit && scenario.observeResults
+        ? [{ ...scenario, animated: true }]
+        : [])
+    ])
+  )
 )(
-  'delivers concurrent $provider hosted images (codeMode=$codeMode, failSecond=$failSecond, observe=$observeResults, edit=$edit)',
-  async ({ provider, codeMode, failSecond, observeResults, edit }) => {
+  'delivers concurrent $provider hosted images (codeMode=$codeMode, failSecond=$failSecond, observe=$observeResults, edit=$edit, animated=$animated)',
+  async ({ provider, codeMode, failSecond, observeResults, edit, animated }) => {
+    const image = animated ? GIF : PNG;
+    const imageOptions = animated ? { gif: {}, transparent_background: true } : {};
     const root = await mkdtemp(join(tmpdir(), 'mar-hosted-image-'));
     roots.push(root);
     const home = join(root, 'home');
@@ -64,7 +74,7 @@ it.each(
       }
       return failSecond && prompt === 'A circle'
         ? new Response('{}', { status: 400 })
-        : new Response(JSON.stringify({ data: [{ b64_json: PNG }] }));
+        : new Response(JSON.stringify({ data: [{ b64_json: image }] }));
     });
     const ticket = {
       userId: 1,
@@ -99,7 +109,7 @@ it.each(
       imageGeneration: {
         provider,
         config: {},
-        imageModelId: 'image',
+        imageModelId: provider === 'CODEX' ? 'gpt-image-2.6-flare' : 'image',
         generateEndpoint: 'https://example.test/images',
         editEndpoint: 'https://example.test/images',
         httpVersion: '1.1',
@@ -121,8 +131,11 @@ it.each(
     }));
     let round = 0;
     const register = vi.fn(
-      (_runId: string, _roots: readonly string[], images: readonly { name: string }[]) =>
-        images.map((image) => ({ id: image.name, name: image.name }))
+      (
+        _runId: string,
+        _roots: readonly string[],
+        images: readonly { name: string; mime: string }[]
+      ) => images.map((image) => ({ id: image.name, name: image.name, mime: image.mime }))
     );
     const runtime = new MarAgentHostedConversationRuntime({
       generateTitle: async () => undefined,
@@ -170,8 +183,8 @@ it.each(
                     name: 'code_exec',
                     inputMode: 'freeform',
                     arguments: `const results = await Promise.allSettled([
-                      tools.${name}(${JSON.stringify({ prompt: 'A square', ...(edit ? { referenced_image_paths: ['/workspace/reference.png'] } : {}) })}),
-                      tools.${name}(${JSON.stringify({ prompt: 'A circle', ...(edit ? { referenced_image_paths: ['/workspace/reference.png'] } : {}) })})
+                      tools.${name}(${JSON.stringify({ prompt: 'A square', ...imageOptions, ...(edit ? { referenced_image_paths: ['/workspace/reference.png'] } : {}) })}),
+                      tools.${name}(${JSON.stringify({ prompt: 'A circle', ...imageOptions, ...(edit ? { referenced_image_paths: ['/workspace/reference.png'] } : {}) })})
                     ]);
                     ${observeResults ? 'for (const result of results) observe.result(result.status === "fulfilled" ? result.value : result.reason);' : ''}`
                   };
@@ -181,7 +194,7 @@ it.each(
                       type: 'client_tool.call',
                       callId: `image-call-${index}`,
                       name,
-                      arguments: { prompt }
+                      arguments: { prompt, ...imageOptions }
                     };
                   }
                 }
@@ -246,6 +259,9 @@ it.each(
       expect(completed).toHaveLength(failSecond ? 1 : 2);
       for (const event of completed) {
         expect(event.type === 'tool.completed' && event.artifacts).toHaveLength(1);
+        expect(event.type === 'tool.completed' && event.artifacts?.[0]?.mimeType).toBe(
+          animated ? 'image/gif' : 'image/png'
+        );
         if (codeMode) expect(event).toMatchObject({ parentCallId: 'image-code' });
       }
       expect(
@@ -257,8 +273,10 @@ it.each(
       const directory = join(home, '.mar', 'agent', 'sessions', sessionId, 'generated_images');
       const files = await readdir(directory);
       expect(files).toHaveLength(failSecond ? 1 : 2);
-      for (const file of files)
-        expect(await readFile(join(directory, file))).toEqual(Buffer.from(PNG, 'base64'));
+      for (const file of files) {
+        expect(file).toMatch(animated ? /\.gif$/u : /\.png$/u);
+        expect(await readFile(join(directory, file))).toEqual(Buffer.from(image, 'base64'));
+      }
       expect(prompts.sort()).toEqual(['A circle', 'A square']);
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(resolveCredential).toHaveBeenCalledTimes(provider === 'CODEX' ? 1 : 0);
@@ -278,7 +296,8 @@ it.each(
         homeDirectory: home
       });
       expect(JSON.stringify(history)).toContain('IMAGE_GENERATION');
-      expect(JSON.stringify(history)).not.toContain(PNG);
+      expect(JSON.stringify(history)).not.toContain(image);
+      if (animated) expect(JSON.stringify(history)).toContain('image/gif');
       expect(JSON.stringify(history)).not.toContain(home);
       for (const file of files) expect(JSON.stringify(history)).toContain(file);
     } finally {

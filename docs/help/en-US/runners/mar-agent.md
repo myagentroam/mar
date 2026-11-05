@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # Configure and Use MAR Agent
@@ -188,6 +188,8 @@ Codex uses a credential and model ID. Volcengine Ark uses an API key, model ID, 
 ### Request generation or editing
 
 Each Run selects only the first enabled image model available to the current user. Codex requires an in-scope credential that does not need sign-in again; Ark requires a configured key. Unavailable entries are skipped; text tasks still work when no image model is available. Changes apply to the next Run, and failed requests do not automatically switch providers. Regardless of the text model, including TEXT-only coding models, MAR Agent exposes only the selected provider’s `codex_image_gen` / `codex-imagegen` or `byted_ark_image_gen` / `byted_ark-imagegen` tool and Node-provided Skill. These tools are available to the root Agent, not Subagents. Both support text-to-image and reference-image editing. Ark produces a single 2K PNG and does not support image groups. Request image generation or editing directly; no Skill installation or explicit Skill name is needed. Agent instructions require loading the Skill before performing image work you requested or explicitly authorized, rather than adding unsolicited images. Only the name and purpose are initially included in context; complete guidance is loaded on demand without creating Skill files in HOME or the Workspace. It does not provide an additional Python CLI or API-key fallback.
+
+Codex can request transparent backgrounds and simple looping GIFs: 2–16 frames at 20–2000 ms per frame, defaulting to 9 frames at 200 ms. Each call saves one PNG or GIF; actual support depends on the configured model. Describe transparency or animation directly in your request. GIF originals preserve animation; static thumbnails do not verify the full animation.
 
 ## Code Mode tool orchestration
 

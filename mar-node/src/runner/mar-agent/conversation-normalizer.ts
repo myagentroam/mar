@@ -49,7 +49,7 @@ export interface MarAgentNormalizedItem {
 
 export interface MarAgentGeneratedImageArtifact {
   readonly name: string;
-  readonly mime: 'image/png';
+  readonly mime: 'image/png' | 'image/gif';
   readonly byteSize: number;
   readonly fileName: string;
 }
@@ -2358,7 +2358,7 @@ function imageArtifacts(
     const byteSize = nonnegativeInteger(artifact?.byteSize);
     if (
       artifact?.kind !== 'image' ||
-      artifact.mimeType !== 'image/png' ||
+      (artifact.mimeType !== 'image/png' && artifact.mimeType !== 'image/gif') ||
       typeof artifact.sha256 !== 'string' ||
       !/^[a-f0-9]{64}$/iu.test(artifact.sha256) ||
       name.length === 0 ||
@@ -2370,9 +2370,9 @@ function imageArtifacts(
       fileName === '..' ||
       fileName.includes('/') ||
       fileName.includes('\\') ||
-      !fileName.toLocaleLowerCase().endsWith('.png')
+      !fileName.endsWith(artifact.mimeType === 'image/gif' ? '.gif' : '.png')
     )
       return [];
-    return [{ name, mime: 'image/png' as const, byteSize, fileName }];
+    return [{ name, mime: artifact.mimeType, byteSize, fileName }];
   });
 }

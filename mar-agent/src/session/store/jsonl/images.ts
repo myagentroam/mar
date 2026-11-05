@@ -24,7 +24,7 @@ export function generatedImageFileNames(records: readonly SessionRecord[]): read
         artifact.kind !== 'image' ||
         typeof artifact.fileName !== 'string' ||
         basename(artifact.fileName) !== artifact.fileName ||
-        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.png$/u.test(artifact.fileName)
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(?:png|gif)$/u.test(artifact.fileName)
       )
         continue;
       names.add(artifact.fileName);
