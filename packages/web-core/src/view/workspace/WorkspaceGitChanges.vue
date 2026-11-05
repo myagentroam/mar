@@ -627,8 +627,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .repository-title-row .changes-refresh-button {
+  --mar-action-icon-size: 14px;
   flex: 0 0 auto;
   margin-left: auto;
+  font-size: var(--mar-action-icon-size);
 }
 
 .repository-tags-row {
