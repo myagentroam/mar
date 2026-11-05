@@ -76,7 +76,7 @@ const outputText = computed(() =>
 .tool-content p {
   margin: 0;
 }
-.tool-content .tool-content-section {
+.tool-content > .tool-content-section:not(:first-child) {
   margin-top: 0.5rem;
 }
 .tool-detail-meta {

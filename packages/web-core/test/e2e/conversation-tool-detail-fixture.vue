@@ -9,6 +9,51 @@ import { goalMessage } from './support/localized-fixture-data.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
+const spacingProbe = new URL(location.href).searchParams.has('spacing-probe');
+const spacingCases: [string, Record<string, unknown>][] = [
+  ['generic-input', { inputSummary: 'Only input' }],
+  ['generic-output', { output: { blocks: [{ channel: 'TEXT', text: 'Only output' }] } }],
+  [
+    'generic-sections',
+    { inputSummary: 'Input', output: { blocks: [{ channel: 'TEXT', text: 'Output' }] } }
+  ],
+  [
+    'execution-output',
+    {
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', output: [{ channel: 'STDOUT', text: 'Only output' }] }
+      }
+    }
+  ],
+  [
+    'execution-error',
+    {
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', error: { code: 'EXEC_FAILED', message: 'Only error' } }
+      }
+    }
+  ],
+  [
+    'execution-heading',
+    {
+      toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CONTROL', toolName: 'exec_wait' } }
+    }
+  ],
+  ['skill-error', { toolPresentation: { kind: 'SKILL' }, errorCode: 'SKILL_FAILED' }],
+  ['skill-heading', { toolPresentation: { kind: 'SKILL', name: 'Only skill' } }],
+  ['search-heading', { toolPresentation: { kind: 'WEB_SEARCH' } }],
+  ['fetch-heading', { toolPresentation: { kind: 'WEB_FETCH' } }],
+  ['tool-search-query', { toolPresentation: { kind: 'TOOL_SEARCH', query: 'Only query' } }],
+  ['tool-search-heading', { toolName: 'tool_search', toolPresentation: { kind: 'TOOL_SEARCH' } }]
+];
+const spacingSamples: ConversationItem[] = spacingCases.map(([id, payload]) => ({
+  id,
+  kind: 'tool_call',
+  status: 'COMPLETED',
+  payload
+}));
 const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
 const previewProbe = new URL(location.href).searchParams.has('preview-probe');
@@ -212,6 +257,40 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (spacingProbe) {
+  detailSamples.push(
+    {
+      id: 'spacing-file',
+      kind: 'file_change',
+      status: 'COMPLETED',
+      payload: {
+        changes: [{ path: '/fixture/spacing.ts', change: 'ADDED', additions: 1, deletions: 0 }]
+      }
+    },
+    {
+      id: 'spacing-plan-steps',
+      kind: 'plan',
+      status: 'COMPLETED',
+      payload: { steps: [{ text: 'Only step' }] }
+    },
+    {
+      id: 'spacing-plan-intro',
+      kind: 'plan',
+      status: 'COMPLETED',
+      payload: { explanation: 'Plan introduction', steps: [{ text: 'Following step' }] }
+    },
+    {
+      id: 'spacing-image',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'generate_image',
+        toolCategory: 'IMAGE_GENERATION',
+        outputSummary: 'Image generation detail'
+      }
+    }
+  );
+}
 if (new URL(location.href).searchParams.has('reasoning-pair')) {
   detailSamples.splice(detailSamples.findIndex((item) => item.kind === 'reasoning') + 1, 0, {
     id: 'thinking-next',
@@ -681,6 +760,15 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <section v-if="spacingProbe" data-testid="spacing-probe">
+      <ConversationToolDetail
+        v-for="item in spacingSamples"
+        :key="item.id"
+        :data-testid="`spacing-${item.id}`"
+        :item="item"
+        @copy="copy"
+      />
+    </section>
     <section v-if="lifecycleProbe" data-testid="lifecycle-probe">
       <button data-testid="toggle-slot" @click="showLifecycleSlot = !showLifecycleSlot">
         Toggle slot

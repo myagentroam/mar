@@ -1957,6 +1957,14 @@ details.conversation-record-group[open] > details:last-child {
   font-size: inherit;
 }
 
+.conversation-content-detail > :first-child {
+  margin-top: 0;
+}
+
+.conversation-content-detail > :last-child {
+  margin-bottom: 0;
+}
+
 .conversation-item .conversation-detail-body .conversation-detail-text {
   margin: 0;
   font-size: inherit;

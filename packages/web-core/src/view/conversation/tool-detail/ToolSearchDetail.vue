@@ -74,10 +74,10 @@ const compactShowsOutput = computed(
 .tool-content p {
   margin: 0;
 }
-.tool-content > .tool-detail-heading {
+.tool-content > .tool-detail-heading:not(:last-child) {
   margin-bottom: 0.375rem;
 }
-.tool-content .tool-content-section {
+.tool-content > .tool-content-section:not(:first-child) {
   margin-top: 0.5rem;
 }
 .tool-detail-meta {
