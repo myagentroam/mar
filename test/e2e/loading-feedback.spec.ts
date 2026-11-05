@@ -29,6 +29,20 @@ async function expectReadIndicator(indicator: Locator, size: number) {
   expect(actual.size).toBeCloseTo(size);
 }
 
+async function expectNeutralRetry(button: Locator) {
+  const color = await button.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--el-text-color-regular)';
+    element.append(probe);
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    return expected;
+  });
+  await expect(button).toHaveCSS('color', color);
+  await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Session cleanup uses button loading without a content mask: ${theme}`, async ({
     page
@@ -275,6 +289,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.getByRole('button', { name: 'Fail history load', exact: true }).click();
       const retry = history.locator('button[data-history-action="retry"]');
       await expect(retry).toHaveText('Failed to load. Retry');
+      await expectNeutralRetry(retry);
       await scroll.dispatchEvent('wheel', { deltaY: -100 });
       await expect(history).toHaveAttribute('data-request-count', '1');
       await retry.focus();
@@ -294,6 +309,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const initial = page.getByTestId('history-initial');
       const reload = initial.locator('button.conversation-reload');
       await expect(reload).toHaveText('Failed to load. Retry');
+      await expectNeutralRetry(reload);
       await reload.focus();
       await reload.press('Enter');
       await expect(reload).toBeFocused();

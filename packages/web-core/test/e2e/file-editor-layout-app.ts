@@ -164,6 +164,12 @@ createApp({
               (longContent ? content : '')
           },
           loading: false,
+          loadFailed: query.has('load-failed'),
+          onRetry: () => {
+            document.documentElement.dataset.diffRetries = String(
+              Number(document.documentElement.dataset.diffRetries ?? '0') + 1
+            );
+          },
           previewEnabled: true
         })
       );

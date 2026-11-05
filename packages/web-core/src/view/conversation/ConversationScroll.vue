@@ -421,7 +421,6 @@ onBeforeUnmount(() => {
   font-size: var(--mar-font-size-meta);
 }
 .conversation-history-error {
-  color: var(--mar-color-danger-text);
   overflow-wrap: anywhere;
   margin: 0;
 }

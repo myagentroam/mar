@@ -880,7 +880,7 @@ defineExpose({
       <template v-if="!props.loading">
         <section v-if="props.loadFailed" class="diff-state-message">
           <p>{{ translate('generated.gitDiffViewer.gitDiffLoadFailed') }}</p>
-          <el-button type="primary" @click="emit('retry')">
+          <el-button @click="emit('retry')">
             {{ translate('generated.gitDiffViewer.retry') }}
           </el-button>
         </section>
