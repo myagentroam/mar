@@ -280,9 +280,13 @@ export function aggregateConversationDisplayItems(
   const result: (ConversationDisplayItem | undefined)[] = [];
   const anchors = new Map<string, number>();
   let groupId: string | undefined;
+  let taskListIndex: number | undefined;
   for (const entry of projected) {
     const item = 'items' in entry ? entry.items[0]! : entry.item;
-    if (item.processGroup?.id !== groupId) anchors.clear();
+    if (item.processGroup?.id !== groupId) {
+      anchors.clear();
+      taskListIndex = undefined;
+    }
     groupId = item.processGroup?.id;
     // Independent tool rows and task lists do not split categories in the same process.
     if (
@@ -292,6 +296,10 @@ export function aggregateConversationDisplayItems(
       (item.kind === 'todo_list' ||
         (item.kind === 'tool_call' && toolPresentation(item.payload) !== undefined))
     ) {
+      if (item.kind === 'todo_list') {
+        if (taskListIndex !== undefined) result[taskListIndex] = undefined;
+        taskListIndex = result.length;
+      }
       result.push(entry);
       continue;
     }

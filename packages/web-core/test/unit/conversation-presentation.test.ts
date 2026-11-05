@@ -1033,6 +1033,85 @@ describe('Conversation Show Aggregation', () => {
     );
   });
 
+  it('shows only the latest task snapshot at its own position without mutating records', () => {
+    const processGroup = { id: 'task-snapshots' };
+    const records = [
+      item('command-1', 'command_execution', { command: 'inspect' }, 'COMPLETED', processGroup),
+      item(
+        'tasks-1',
+        'todo_list',
+        { items: [{ text: 'Inspect', status: 'PENDING' }] },
+        'COMPLETED',
+        processGroup
+      ),
+      item('command-2', 'command_execution', { command: 'verify' }, 'COMPLETED', processGroup),
+      item(
+        'tasks-2',
+        'todo_list',
+        { items: [{ text: 'Verify', status: 'COMPLETED' }] },
+        'COMPLETED',
+        processGroup
+      )
+    ];
+    const original = structuredClone(records);
+    const projected = conversationDisplayItems(records);
+    expect(projected.map(({ id }) => id)).toEqual(['command-1', 'tasks-2']);
+    expect(projected[0]).toMatchObject({ items: [records[0], records[2]] });
+    expect(projected[1]).toEqual({ type: 'item', id: 'tasks-2', item: records[3] });
+    expect(records).toEqual(original);
+    expect(conversationDisplayItems(records.slice(0, 2)).map(({ id }) => id)).toEqual([
+      'command-1',
+      'tasks-1'
+    ]);
+    const cleared = item('tasks-3', 'todo_list', { items: [] }, 'COMPLETED', processGroup);
+    expect(conversationDisplayItems([...records, cleared]).map(({ id }) => id)).toEqual([
+      'command-1',
+      'tasks-3'
+    ]);
+    expect(conversationDisplayItems([...records, cleared]).at(-1)).toEqual({
+      type: 'item',
+      id: 'tasks-3',
+      item: cleared
+    });
+  });
+
+  it('keeps task snapshots separate across processes and unassigned records', () => {
+    const tasks = (id: string, group?: string) =>
+      item(id, 'todo_list', { items: [] }, 'COMPLETED', group ? { id: group } : undefined);
+    expect(
+      conversationDisplayItems([
+        tasks('first-old', 'first'),
+        tasks('first-latest', 'first'),
+        tasks('second-old', 'second'),
+        tasks('second-latest', 'second'),
+        tasks('unassigned-1'),
+        tasks('unassigned-2')
+      ]).map(({ id }) => id)
+    ).toEqual(['first-latest', 'second-latest', 'unassigned-1', 'unassigned-2']);
+  });
+
+  it('does not hide permission stops or reset task snapshots at category boundaries', () => {
+    const processGroup = { id: 'task-boundaries' };
+    const tasks = (id: string) => item(id, 'todo_list', { items: [] }, 'COMPLETED', processGroup);
+    const stop: ConversationItem = {
+      ...tasks('permission-stop'),
+      permissionStop: {
+        action: 'ask',
+        reason: 'Confirmation required',
+        source: {
+          sessionId: 'session',
+          executionId: 'execution',
+          callId: 'call',
+          toolName: 'todo_write'
+        }
+      }
+    };
+    const approval = item('approval', 'approval_request', {}, 'COMPLETED', processGroup);
+    expect(
+      conversationDisplayItems([tasks('old'), stop, approval, tasks('latest')]).map(({ id }) => id)
+    ).toEqual(['permission-stop', 'approval', 'latest']);
+  });
+
   it('moves an interleaved group to its latest record without moving on content or status updates', () => {
     const processGroup = { id: 'process-order' } as const;
     const records = [

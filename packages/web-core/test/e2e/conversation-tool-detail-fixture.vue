@@ -9,6 +9,49 @@ import { goalMessage } from './support/localized-fixture-data.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
+const listLayout = new URL(location.href).searchParams.has('list-layout');
+const listSamples: ConversationItem[] = [
+  {
+    id: 'list-tasks',
+    kind: 'todo_list',
+    status: 'COMPLETED',
+    processGroup: { id: 'process' },
+    payload: {
+      items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status) => ({
+        text: `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
+        status
+      }))
+    }
+  },
+  {
+    id: 'list-files',
+    kind: 'file_change',
+    status: 'COMPLETED',
+    processGroup: { id: 'process' },
+    payload: {
+      changes: ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED'].map(
+        (change) => ({
+          path: `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
+          change,
+          additions: 12,
+          deletions: 3
+        })
+      )
+    }
+  }
+];
+const taskSnapshotProbe = new URL(location.href).searchParams.has('task-snapshots');
+function taskSnapshot(id: string, groupId: string, text: string): ConversationItem {
+  return {
+    id,
+    kind: 'todo_list',
+    status: 'COMPLETED',
+    processGroup: { id: groupId },
+    payload: { items: [{ text, status: 'COMPLETED' }] }
+  };
+}
+const taskSnapshots = ref([taskSnapshot('tasks-initial', 'process', 'Initial task snapshot')]);
+const otherProcessTasks = taskSnapshot('tasks-other', 'other-process', 'Separate process task');
 const spacingProbe = new URL(location.href).searchParams.has('spacing-probe');
 const spacingCases: [string, Record<string, unknown>][] = [
   ['generic-input', { inputSummary: 'Only input' }],
@@ -638,6 +681,8 @@ const turns = computed<ConversationTurn[]>(() => [
         payload: { text: 'Check the command output' }
       },
       { ...command.value, status: 'COMPLETED', processGroup: { id: 'process', isStart: true } },
+      ...(listLayout ? listSamples : []),
+      ...(taskSnapshotProbe ? [...taskSnapshots.value, otherProcessTasks] : []),
       ...(new URL(location.href).searchParams.has('unified')
         ? detailSamples.map((item) => ({
             ...item,
@@ -760,6 +805,13 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <button
+      v-if="taskSnapshotProbe"
+      data-testid="append-task-snapshot"
+      @click="taskSnapshots.push(taskSnapshot('tasks-latest', 'process', 'Latest task snapshot'))"
+    >
+      Append task snapshot
+    </button>
     <section v-if="spacingProbe" data-testid="spacing-probe">
       <ConversationToolDetail
         v-for="item in spacingSamples"

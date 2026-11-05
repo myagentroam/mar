@@ -1449,8 +1449,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(page.locator('.theme-preview .user-message')).toHaveCSS(property, actual);
       }
       for (const [selector, edge, size] of [
-        ['.task-list-items', 'border-top-width', '1px'],
-        ['.task-list-items > li', 'border-bottom-width', '1px'],
+        ['.task-list-items', 'border-top-width', '0px'],
+        ['.task-list-items > li', 'border-bottom-width', '0px'],
         ['.conversation-record-group', 'border-left-width', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'padding-top', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'border-top-width', '0px'],

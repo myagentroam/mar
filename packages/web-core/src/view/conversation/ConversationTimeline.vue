@@ -1619,8 +1619,8 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .task-list-items {
   display: grid;
+  gap: 0.25rem;
   margin: 0;
-  border-top: 1px solid var(--mar-conversation-process-border);
   padding: 0;
   list-style: none;
 }
@@ -1631,14 +1631,12 @@ function stepDuration(item: ConversationItem): string | undefined {
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: start;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--mar-conversation-process-border);
-  padding: 0.42rem 0;
+  padding: 0;
 }
 
 .task-list-status {
   align-self: start;
   display: inline-flex;
-  min-width: 4.25rem;
   justify-content: center;
   line-height: 1.45;
   white-space: nowrap;
@@ -2081,6 +2079,7 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-status,
 .task-list-status {
   flex: 0 0 auto;
+  width: 5.5rem;
   border: 1px solid color-mix(in srgb, var(--el-color-info) 48%, transparent);
   border-radius: var(--mar-radius-marker);
   background: color-mix(in srgb, var(--el-color-info) 12%, transparent);
@@ -2095,7 +2094,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-file-change-status {
   grid-column: 1;
-  min-width: 2.75rem;
   line-height: 1.3;
 }
 
