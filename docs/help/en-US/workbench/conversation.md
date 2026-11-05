@@ -31,6 +31,8 @@ Details present facts supplied by the source: start and send focus on the task n
 
 When an Agent request or model call finally fails, the error card shows the HTTP status when available and the returned error message. In an ordinary session, a terminal failure returns the session to Idle and pauses any remaining queued messages until you resume the queue or send a new ordinary message after reviewing the error. MAR Agent may retry eligible transient model failures before its first semantic output; an active Goal may also retry failed executions through bounded automatic continuation before blocking.
 
+Task lists start expanded; click the heading to collapse or reopen them. Each update remains a separate list with its original item statuses and content. File changes, plans, and image-generation text keep their existing actions; image thumbnails retain their separate preview.
+
 ## Inspect this file change
 
 Supporting MAR Agent Nodes save a read-only Diff for each `apply_patch` operation, in both Direct and Code Mode. Expand a file-change card to see trusted green `+N` and red `-N` counts at the end of each entry. Click a file to open **This change**, with single-column added and removed lines for additions, deletions, edits, and both paths of a move. Overwriting an existing file is shown as a modification. Added or deleted empty files still show their path change with `+0/-0`, without inventing an added line.

@@ -86,3 +86,91 @@ test('automatic process collapse also releases its reasoning disclosure state', 
   await expect(process.locator('details[open]')).toHaveCount(0);
   await expect(process.locator('.reasoning-group .conversation-detail-body')).toHaveCount(0);
 });
+
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'vscode-dark-2026']
+] as const) {
+  test(`structured details share the tool surface without changing their content (${width}px, ${theme})`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(`${fixture.url}conversation-style.html?detail-surfaces=1&theme=${theme}`);
+
+    const tasks = page.locator('.task-list');
+    await expect(tasks).toHaveAttribute('open', '');
+    await expect(tasks.locator('.task-list-items > li')).toHaveCount(3);
+    await tasks.locator(':scope > summary').click();
+    await expect(tasks.locator('.conversation-detail-body')).toHaveCount(0);
+    await tasks.locator(':scope > summary').click();
+    await expect(tasks.locator('.task-list-items > li')).toHaveCount(3);
+
+    const files = page.locator('.conversation-file-change-details');
+    await files.locator(':scope > summary').click();
+    await expect(files.locator('.conversation-file-change-list > li')).toHaveCount(2);
+    await expect(files.getByRole('button', { name: /src\/a\.ts/u })).toBeVisible();
+    await expect(files.getByRole('button', { name: /src\/b\.ts/u })).toBeVisible();
+
+    const plan = page.locator('.conversation-item.plan');
+    await expect(plan.locator('.plan-step-list > li')).toHaveCount(2);
+    const image = page.locator('[data-entry-key$=":generated-detail"]');
+    await image.locator(':scope > details > summary').click();
+    await expect(image.locator('.conversation-content-detail')).toContainText(
+      'Preserve the image prompt'
+    );
+    await expect(image.locator('img')).toBeVisible();
+    expect(
+      await image
+        .locator('img')
+        .evaluate((element) => element.closest('.conversation-detail-body') === null)
+    ).toBe(true);
+
+    const fallback = page.locator('[data-entry-key$=":fallback-detail"]');
+    await fallback.locator('summary').click();
+    await expect(fallback.locator('.conversation-content-detail')).toContainText(
+      'Preserve the fallback detail'
+    );
+
+    await page.locator('.conversation-item.command_execution summary').click();
+    await page.locator('.command_execution .conversation-command-detail > summary').click();
+    const toolSurface = await page
+      .locator('.command_execution .tool-detail')
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          radius: style.borderRadius,
+          paddingTop: style.paddingTop,
+          paddingBottom: style.paddingBottom,
+          paddingLeft: style.paddingLeft
+        };
+      });
+    expect(toolSurface.background).not.toBe('rgba(0, 0, 0, 0)');
+    for (const owner of [tasks, files, plan, image, fallback]) {
+      const surface = owner.locator('.conversation-content-detail');
+      await expect(surface).toBeVisible();
+      await surface.scrollIntoViewIfNeeded();
+      await expect(surface).toBeInViewport({ ratio: 1 });
+      await expect(surface.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      expect(
+        await surface.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            background: style.backgroundColor,
+            radius: style.borderRadius,
+            paddingTop: style.paddingTop,
+            paddingBottom: style.paddingBottom,
+            paddingLeft: style.paddingLeft
+          };
+        })
+      ).toEqual(toolSurface);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page
+      .locator('.conversation-timeline')
+      .screenshot({ path: testInfo.outputPath('detail-surfaces.png') });
+    await fallback.screenshot({ path: testInfo.outputPath('fallback-detail.png') });
+  });
+}

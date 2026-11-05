@@ -685,7 +685,9 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               }}</span>
             </summary>
-            <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
+            <div class="conversation-detail-body conversation-content-detail">
+              <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
+            </div>
           </details>
           <div v-else class="conversation-item-heading">
             <strong>{{ translate('presentation.imageGeneration') }}</strong>
@@ -909,79 +911,86 @@ function stepDuration(item: ConversationItem): string | undefined {
                 {{ translate('generated.conversationTimeline.files') }}</span
               >
             </summary>
-            <ul v-if="groupedItemDisclosure[displayItem.id]" class="conversation-file-change-list">
-              <li
-                v-for="(entry, index) in conversationFileChangeEntries(displayItem.items)"
-                :key="entry.sourceId ?? `${index}:${entry.status}:${entry.path}`"
-              >
-                <span
-                  v-if="entry.status"
-                  class="conversation-file-change-status"
-                  :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
-                  >{{ entry.status }}</span
+            <div
+              v-if="groupedItemDisclosure[displayItem.id]"
+              class="conversation-detail-body conversation-content-detail"
+            >
+              <ul class="conversation-file-change-list">
+                <li
+                  v-for="(entry, index) in conversationFileChangeEntries(displayItem.items)"
+                  :key="entry.sourceId ?? `${index}:${entry.status}:${entry.path}`"
                 >
-                <button
-                  v-tooltip="
-                    translate(
-                      entry.diff?.status === 'available' && toolChangeEnabled
-                        ? 'presentation.viewThisChange'
-                        : 'presentation.openCurrentFile',
-                      {
-                        value0: entry.path
-                      }
-                    )
-                  "
-                  class="conversation-file-change-button"
-                  type="button"
-                  :aria-label="
-                    translate(
-                      entry.diff?.status === 'available' && toolChangeEnabled
-                        ? 'presentation.viewThisChange'
-                        : 'presentation.openCurrentFile',
-                      {
-                        value0: entry.path
-                      }
-                    )
-                  "
-                  @click.stop="
-                    entry.diff?.status === 'available' && entry.changeId && toolChangeEnabled
-                      ? emit('openFileChange', entry)
-                      : emit(
-                          'openFile',
-                          entry.path,
-                          undefined,
-                          undefined,
-                          $event.ctrlKey || $event.metaKey
-                        )
-                  "
-                >
-                  {{ entry.path }}
-                </button>
-                <span
-                  v-tooltip="{
-                    content: translate(`presentation.diffUnavailable.${entry.diff.reason}`),
-                    touch: true
-                  }"
-                  v-if="entry.diff?.status === 'unavailable'"
-                  class="conversation-file-change-note"
-                  >{{ translate('presentation.diffUnavailableLabel') }}</span
-                >
-                <span class="conversation-file-change-stats">
                   <span
-                    v-if="entry.additions !== undefined"
-                    class="change-additions"
-                    :aria-label="translate('presentation.addedLines', { count: entry.additions })"
-                    >+{{ entry.additions }}</span
+                    v-if="entry.status"
+                    class="conversation-file-change-status"
+                    :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
+                    >{{ entry.status }}</span
                   >
+                  <button
+                    v-tooltip="
+                      translate(
+                        entry.diff?.status === 'available' && toolChangeEnabled
+                          ? 'presentation.viewThisChange'
+                          : 'presentation.openCurrentFile',
+                        {
+                          value0: entry.path
+                        }
+                      )
+                    "
+                    class="conversation-file-change-button"
+                    type="button"
+                    :aria-label="
+                      translate(
+                        entry.diff?.status === 'available' && toolChangeEnabled
+                          ? 'presentation.viewThisChange'
+                          : 'presentation.openCurrentFile',
+                        {
+                          value0: entry.path
+                        }
+                      )
+                    "
+                    @click.stop="
+                      entry.diff?.status === 'available' && entry.changeId && toolChangeEnabled
+                        ? emit('openFileChange', entry)
+                        : emit(
+                            'openFile',
+                            entry.path,
+                            undefined,
+                            undefined,
+                            $event.ctrlKey || $event.metaKey
+                          )
+                    "
+                  >
+                    {{ entry.path }}
+                  </button>
                   <span
-                    v-if="entry.deletions !== undefined"
-                    class="change-deletions"
-                    :aria-label="translate('presentation.deletedLines', { count: entry.deletions })"
-                    >-{{ entry.deletions }}</span
+                    v-tooltip="{
+                      content: translate(`presentation.diffUnavailable.${entry.diff.reason}`),
+                      touch: true
+                    }"
+                    v-if="entry.diff?.status === 'unavailable'"
+                    class="conversation-file-change-note"
+                    >{{ translate('presentation.diffUnavailableLabel') }}</span
                   >
-                </span>
-              </li>
-            </ul>
+                  <span class="conversation-file-change-stats">
+                    <span
+                      v-if="entry.additions !== undefined"
+                      class="change-additions"
+                      :aria-label="translate('presentation.addedLines', { count: entry.additions })"
+                      >+{{ entry.additions }}</span
+                    >
+                    <span
+                      v-if="entry.deletions !== undefined"
+                      class="change-deletions"
+                      :aria-label="
+                        translate('presentation.deletedLines', { count: entry.deletions })
+                      "
+                      >-{{ entry.deletions }}</span
+                    >
+                  </span>
+                </li>
+              </ul>
+            </div>
           </details>
           <div v-else class="conversation-item-heading">
             <strong>{{ conversationItemLabel('file_change') }}</strong>
@@ -1321,33 +1330,47 @@ function stepDuration(item: ConversationItem): string | undefined {
           </RunnerApprovalCard>
         </template>
         <template v-else-if="displayItem.item.kind === 'todo_list'">
-          <section v-if="taskListItems(displayItem.item.payload).length" class="task-list">
-            <div class="task-list-heading">
+          <details
+            v-if="taskListItems(displayItem.item.payload).length"
+            class="task-list"
+            :open="groupedItemDisclosure[displayItem.id] !== false"
+            @toggle="updateGroupedItemDisclosure(displayItem.id, $event)"
+            @vue:unmounted="delete groupedItemDisclosure[displayItem.id]"
+          >
+            <summary class="mar-disclosure-summary conversation-record-heading task-list-heading">
+              <MarIcon class="mar-disclosure-icon" name="chevron-right" />
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
-              <span>{{
+              <span class="conversation-group-meta">{{
                 conversationItemText(displayItem.item.kind, displayItem.item.payload)
               }}</span>
+            </summary>
+            <div
+              v-if="groupedItemDisclosure[displayItem.id] !== false"
+              class="conversation-detail-body conversation-content-detail"
+            >
+              <ul class="task-list-items">
+                <li v-for="(task, index) in taskListItems(displayItem.item.payload)" :key="index">
+                  <span class="task-list-status" :class="`task-list-status--${task.tone}`">
+                    {{ task.status }}
+                  </span>
+                  <div class="task-list-content">
+                    <AgentMarkdown
+                      :content="task.text"
+                      v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
+                      :image-resource-url="imageResourceUrl"
+                      @open-image="
+                        (source, name) => emit('openImage', { name, previewUrl: source })
+                      "
+                      @open-file="
+                        (path, line, column, external) =>
+                          emit('openFile', path, line, column, external)
+                      "
+                    />
+                  </div>
+                </li>
+              </ul>
             </div>
-            <ul class="task-list-items">
-              <li v-for="(task, index) in taskListItems(displayItem.item.payload)" :key="index">
-                <span class="task-list-status" :class="`task-list-status--${task.tone}`">
-                  {{ task.status }}
-                </span>
-                <div class="task-list-content">
-                  <AgentMarkdown
-                    :content="task.text"
-                    v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
-                    :image-resource-url="imageResourceUrl"
-                    @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
-                    @open-file="
-                      (path, line, column, external) =>
-                        emit('openFile', path, line, column, external)
-                    "
-                  />
-                </div>
-              </li>
-            </ul>
-          </section>
+          </details>
           <div v-else class="conversation-item-heading">
             <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
           </div>
@@ -1390,41 +1413,44 @@ function stepDuration(item: ConversationItem): string | undefined {
                 {{ translate('generated.conversationTimeline.planItems') }}</span
               >
             </summary>
-            <AgentMarkdown
-              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
-              :image-resource-url="imageResourceUrl"
-              @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
-              @open-file="
-                (path, line, column, external) => emit('openFile', path, line, column, external)
-              "
-            />
-            <ol v-if="planSteps(displayItem.item.payload).length" class="plan-step-list">
-              <li v-for="(step, index) in planSteps(displayItem.item.payload)" :key="index">
-                <span v-if="step.status" class="plan-step-status">{{ step.status }}</span>
-                <AgentMarkdown
-                  :content="step.text"
-                  v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
-                  :image-resource-url="imageResourceUrl"
-                  @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
-                  @open-file="
-                    (path, line, column, external) => emit('openFile', path, line, column, external)
-                  "
-                />
-              </li>
-            </ol>
-            <div
-              v-if="displayItem.item.id === latestPlanItemId && planContinuation"
-              class="conversation-card-actions"
-            >
-              <el-button
-                type="primary"
-                size="small"
-                :disabled="loading"
-                @click="emit('implementPlan', displayItem.item)"
-                >{{ planContinuation.continuation?.label }}</el-button
+            <div class="conversation-detail-body conversation-content-detail">
+              <AgentMarkdown
+                v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+                :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+                v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
+                :image-resource-url="imageResourceUrl"
+                @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+                @open-file="
+                  (path, line, column, external) => emit('openFile', path, line, column, external)
+                "
+              />
+              <ol v-if="planSteps(displayItem.item.payload).length" class="plan-step-list">
+                <li v-for="(step, index) in planSteps(displayItem.item.payload)" :key="index">
+                  <span v-if="step.status" class="plan-step-status">{{ step.status }}</span>
+                  <AgentMarkdown
+                    :content="step.text"
+                    v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
+                    :image-resource-url="imageResourceUrl"
+                    @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+                    @open-file="
+                      (path, line, column, external) =>
+                        emit('openFile', path, line, column, external)
+                    "
+                  />
+                </li>
+              </ol>
+              <div
+                v-if="displayItem.item.id === latestPlanItemId && planContinuation"
+                class="conversation-card-actions"
               >
+                <el-button
+                  type="primary"
+                  size="small"
+                  :disabled="loading"
+                  @click="emit('implementPlan', displayItem.item)"
+                  >{{ planContinuation.continuation?.label }}</el-button
+                >
+              </div>
             </div>
           </details>
           <div v-else class="conversation-item-heading">
@@ -1499,9 +1525,14 @@ function stepDuration(item: ConversationItem): string | undefined {
                 {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
               </p>
             </div>
-            <p v-else-if="conversationItemDetail(displayItem.item.kind, displayItem.item.payload)">
-              {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
-            </p>
+            <div
+              v-else-if="conversationItemDetail(displayItem.item.kind, displayItem.item.payload)"
+              class="conversation-detail-body conversation-content-detail"
+            >
+              <p>
+                {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
+              </p>
+            </div>
           </details>
           <div v-else class="conversation-item-heading">
             <strong>
@@ -1578,11 +1609,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
-}
-
-.task-list {
-  display: grid;
-  gap: 0.45rem;
 }
 
 .task-list-heading {
@@ -1706,7 +1732,8 @@ function stepDuration(item: ConversationItem): string | undefined {
     .file-change-group
   )
   > details[open],
-.conversation-item > details.conversation-tool-presentation[open] {
+.conversation-item > details.conversation-tool-presentation[open],
+.conversation-item > details[open]:has(> .conversation-content-detail) {
   background: transparent;
 }
 
@@ -1924,6 +1951,10 @@ details.conversation-record-group[open] > details:last-child {
   margin-inline-start: calc(
     var(--conversation-item-inset) + var(--conversation-detail-start, calc(1em + 0.5rem)) - 0.75rem
   );
+}
+
+.conversation-item .conversation-content-detail {
+  font-size: inherit;
 }
 
 .conversation-item .conversation-detail-body .conversation-detail-text {
