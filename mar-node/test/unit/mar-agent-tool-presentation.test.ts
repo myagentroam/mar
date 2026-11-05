@@ -180,7 +180,7 @@ describe('MAR tool presentation projection', () => {
       sources: [{ title: 'One' }]
     });
   });
-  it('shows truncated Search output and keeps source links through live and history projection', async () => {
+  it('keeps Search source links without exposing raw search output in live and history projection', async () => {
     const url = 'https://example.test/original-source';
     const source = {
       title: 'Original title',
@@ -367,9 +367,9 @@ describe('MAR tool presentation projection', () => {
       );
       const historyDetail = render(historyEvents);
       for (const detail of [liveDetail, historyDetail]) {
-        expect(detail).toContain('Search results (truncated):');
-        expect(detail).toContain('URL: https://example.test/original-source');
-        expect(detail).toContain('Search snippet:');
+        expect(detail).toContain('Tool: web_search');
+        expect(detail).not.toContain('Search results (truncated):');
+        expect(detail).not.toContain('Search snippet:');
       }
       expect(historyDetail).toBe(liveDetail);
       expect(completedEvent?.data).toMatchObject({ sources: [{ url }], sourceCount: 1 });

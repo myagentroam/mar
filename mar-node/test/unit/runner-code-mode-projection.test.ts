@@ -727,7 +727,7 @@ describe('Code Mode conversation projection', () => {
         `const command = await tools.exec({command: ${JSON.stringify(command)}, yieldMs: 5000});`,
         'await tools.apply_patch("*** Begin Patch\\n*** Add File: created.txt\\n+created\\n*** End Patch");',
         'try { await tools.apply_patch("invalid patch"); } catch (error) {}',
-        'await tools.web_fetch({ url: "https://example.test/page", mode: "http" });',
+        'await tools.web_fetch({ action: "open", url: "https://example.test/page" });',
         'await tools.web_search({ query: "Original query" });',
         'observe.text(command.data.stdout);'
       ].join('\n');

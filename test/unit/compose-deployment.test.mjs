@@ -40,7 +40,7 @@ test('unified Server serves Web directly while preserving the site port', async 
   const compose = await readFile(resolve(root, 'compose.yaml'), 'utf8');
   assert.match(compose, /127\.0\.0\.1:5190:5190/u);
   assert.doesNotMatch(compose, /5191/u);
-  assert.doesNotMatch(compose, /^  web:/mu);
+  assert.doesNotMatch(compose, /^ {2}web:/mu);
 });
 
 test('Server installation and image do not bundle a Node execution domain', async () => {

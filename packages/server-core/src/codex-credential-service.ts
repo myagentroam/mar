@@ -55,7 +55,6 @@ import {
   CHATGPT_JWKS_ENDPOINT,
   CHATGPT_REVOKE_ENDPOINT,
   CHATGPT_PLAN_SCOPE,
-  CHATGPT_ISSUER,
   chatgptTokenResponseSchema,
   verifyChatgptIdentity,
   codexCredentialDetailsSchema,

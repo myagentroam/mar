@@ -414,15 +414,20 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       status: 'COMPLETED',
       payload: {
         exitCode: 0,
-        outputPreview: expect.stringContaining('HOSTED_SANDBOX_HOME=/home/mar')
+        output: {
+          blocks: expect.arrayContaining([
+            { channel: 'STDOUT', text: expect.stringContaining('HOSTED_SANDBOX_HOME=/home/mar') }
+          ])
+        }
       }
     });
-    expect(sandboxCommand.payload.outputPreview).toContain('SDK_SESSION_HOME_MARKER=hidden');
-    expect(sandboxCommand.payload.outputPreview).toContain(
-      'HOSTED_ALIAS_GUIDE=template version one'
-    );
-    expect(sandboxCommand.payload.outputPreview).toContain('HOSTED_TEMPLATE_TOOL=template tool');
-    expect(sandboxCommand.payload.outputPreview).toMatch(
+    const sandboxOutput = sandboxCommand.payload.output;
+    if (!sandboxOutput || !('blocks' in sandboxOutput)) throw new Error('HOSTED_OUTPUT_MISSING');
+    const sandboxStdout = sandboxOutput.blocks.find((block) => block.channel === 'STDOUT')?.text;
+    expect(sandboxStdout).toContain('SDK_SESSION_HOME_MARKER=hidden');
+    expect(sandboxStdout).toContain('HOSTED_ALIAS_GUIDE=template version one');
+    expect(sandboxStdout).toContain('HOSTED_TEMPLATE_TOOL=template tool');
+    expect(sandboxStdout).toMatch(
       /HOSTED_ADDRESS_LIMIT=(?:unlimited|4194304|[5-9][0-9]{6,}|[1-9][0-9]{7,})/u
     );
     for (const { homeDirectory } of diskSessions.values()) {
@@ -479,7 +484,11 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       status: 'COMPLETED',
       payload: {
         exitCode: 0,
-        outputPreview: expect.stringContaining('HOSTED_GENERATED_IMAGE_COPY=ok')
+        output: {
+          blocks: expect.arrayContaining([
+            { channel: 'STDOUT', text: expect.stringContaining('HOSTED_GENERATED_IMAGE_COPY=ok') }
+          ])
+        }
       }
     });
     await expect(
@@ -584,7 +593,11 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       status: 'COMPLETED',
       payload: {
         exitCode: 0,
-        outputPreview: expect.stringContaining('HOSTED_OUTPUT_WORK_RESUME=ok')
+        output: {
+          blocks: expect.arrayContaining([
+            { channel: 'STDOUT', text: expect.stringContaining('HOSTED_OUTPUT_WORK_RESUME=ok') }
+          ])
+        }
       }
     });
     expect(
@@ -879,7 +892,14 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       status: 'COMPLETED',
       payload: {
         exitCode: 0,
-        outputPreview: expect.stringContaining('HOSTED_SWITCH_GUIDE=switched template guide')
+        output: {
+          blocks: expect.arrayContaining([
+            {
+              channel: 'STDOUT',
+              text: expect.stringContaining('HOSTED_SWITCH_GUIDE=switched template guide')
+            }
+          ])
+        }
       }
     });
     expect(JSON.stringify(modelRequests.at(requestsBeforeSwitchedRun))).toContain(

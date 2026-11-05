@@ -547,6 +547,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .change-append-state {
   --mar-action-icon-size: 1em;
+  min-height: 1px;
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
   text-align: center;

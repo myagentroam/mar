@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
 import { createEnvelope, type NodeEnvelope } from '../../packages/protocol/src/index.js';
 import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
@@ -74,6 +75,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
           capabilities: {
             platform: 'linux',
             architecture: 'x64',
+            nodeAppVersion: nodePackage.version,
             nodeVersion: process.version,
             codex: { available: true, version: 'test' },
             claudeCode: { available: true, version: 'test' }

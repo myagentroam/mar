@@ -8,7 +8,6 @@ import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import { NODE_PROTOCOL_VERSION } from '../../../packages/protocol/src/index.js';
 import type {
   NodeEnvelope,
-  RuntimeCredentialResolveResponse,
   RuntimeCredentialTicket
 } from '../../../packages/protocol/src/index.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';

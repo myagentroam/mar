@@ -6,7 +6,7 @@ import {
   consoleKeyboardShortcutService,
   createConsoleKeyboardShortcutService
 } from '../../src/service/console-keyboard-shortcut-service.js';
-import type { WorkspaceInspectorHandle } from '../../src/service/workbench-surface-state-service.js';
+import type { WorkspaceFileWorkbenchHandle } from '../../src/service/workbench-surface-state-service.js';
 import type { NodeSummary, WorkspaceTab } from '../../src/model/workbench.js';
 
 function dispatch(
@@ -54,20 +54,9 @@ function fixture() {
   const openAttachmentImage = vi.fn(async () => undefined);
   const openHtml = vi.fn();
   const openHtmlExternal = vi.fn();
-  const workspaceInspector = ref<WorkspaceInspectorHandle | null>({
-    openFile,
-    openWorkspaceFileTab: vi.fn(),
-    openWorkspaceFile: vi.fn(async () => undefined),
-    openWorkspaceFileComparison,
-    openWorkspaceFileExternal,
+  const workspaceFileWorkbench = ref<WorkspaceFileWorkbenchHandle | null>({
     openCurrentRenderedPreview: vi.fn(() => false),
-    revealAndOpenWorkspaceFile: vi.fn(async () => undefined),
-    openChanges: vi.fn(),
-    openSearch: vi.fn(),
-    refreshVisibleSection: vi.fn(),
-    snapshot: vi.fn(() => undefined),
-    restore: vi.fn(),
-    restoreWorkspace: vi.fn()
+    downloadFile: vi.fn(async () => undefined)
   });
   const notice = vi.fn();
   const quickOpenFileVisible = ref(false);
@@ -95,11 +84,14 @@ function fixture() {
     contentSearchReady: ref(true),
     terminalReady: ref(true),
     quickOpenFileVisible,
-    workspaceInspector,
-    showInspectorTool: (tool) => {
-      if (tool === 'search') workspaceInspector.value?.openSearch();
-      else workspaceInspector.value?.openChanges();
+    workspaceFileWorkbench,
+    openWorkspaceFileExternal,
+    fileWorkbench: {
+      openFile,
+      openComparison: openWorkspaceFileComparison,
+      openTab: vi.fn(async () => {})
     },
+    showAsideTool: vi.fn(),
     openAttachmentImage,
     openHtml,
     openHtmlExternal,
@@ -121,7 +113,7 @@ function fixture() {
     openNewSessionComposer,
     selectedWorkspaceId,
     nodeReady,
-    workspaceInspector,
+    workspaceFileWorkbench,
     notice,
     openFile,
     openWorkspaceFileComparison,
@@ -157,7 +149,7 @@ describe('Workbench page file interaction', () => {
     };
     state.service.openAgentWorkspaceFile(image.path, undefined, undefined, false, image);
     expect(state.openAttachmentImage).toHaveBeenCalledWith(image);
-    expect(state.workspaceInspector.value?.openWorkspaceFile).not.toHaveBeenCalled();
+    expect(state.openFile).not.toHaveBeenCalled();
     state.service.openAgentWorkspaceFile(image.path, undefined, undefined, true, image);
     expect(state.openWorkspaceFileExternal).toHaveBeenCalled();
     expect(state.openAttachmentImage).toHaveBeenCalledTimes(1);
@@ -895,13 +887,13 @@ describe('Workbench page file interaction', () => {
     expect(openWorkspaceFileComparison).not.toHaveBeenCalled();
   });
 
-  it('reports an unavailable Inspector instead of opening a file while its Vue ref is null', () => {
+  it('opens through the file owner even when its view ref is null', () => {
     const f = fixture();
-    f.workspaceInspector.value = null;
+    f.workspaceFileWorkbench.value = null;
 
     expect(() => f.service.openQuickWorkspaceFile('src/file.ts')).not.toThrow();
-    expect(f.openFile).not.toHaveBeenCalled();
-    expect(f.notice).toHaveBeenCalledWith(expect.any(String), 'error');
+    expect(f.openFile).toHaveBeenCalledWith('src/file.ts', undefined, undefined);
+    expect(f.notice).not.toHaveBeenCalled();
   });
 
   it('keeps external Agent targets out of the Git Changes path', () => {

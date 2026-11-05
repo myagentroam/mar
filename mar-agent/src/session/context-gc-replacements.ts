@@ -521,10 +521,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isNonemptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
-
 function isNonnegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }

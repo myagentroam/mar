@@ -23,6 +23,26 @@ function fixture() {
 const input = { nodeId: 'node-1', workspaceId: 'workspace / 1', query: 'thing', useRegex: false };
 
 describe('Workspace content search', () => {
+  it.each(['success', 'failure'] as const)(
+    'ignores a hidden pending search with late %s',
+    async (outcome) => {
+      const f = fixture();
+      f.request.mockResolvedValueOnce(result('accepted'));
+      await f.service.search(input);
+      const pending = deferred();
+      f.request.mockReturnValueOnce(pending.promise);
+      const searching = f.service.search({ ...input, query: 'new' });
+      f.service.cancelPending();
+      expect(f.service.loading.value).toBe(false);
+      if (outcome === 'success') pending.resolve(result('late'));
+      else pending.reject(new Error('late failure'));
+      await searching;
+      expect(f.onFailure).not.toHaveBeenCalled();
+      expect(f.service.appliedQuery.value).toBe('thing');
+      expect(f.service.matches.value[0]?.preview).toBe('accepted');
+      expect(f.service.error.value).toBeUndefined();
+    }
+  );
   it('retries the exact failed query and keeps accepted results while pending', async () => {
     const f = fixture();
     f.request.mockResolvedValueOnce(result('accepted')).mockRejectedValueOnce(new Error('offline'));

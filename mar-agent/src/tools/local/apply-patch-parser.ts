@@ -212,6 +212,8 @@ function commonPrefixLength(actual: string, expected: string) {
 
 function characterCount(value: string) {
   let count = 0;
-  for (const _character of value) count++;
+  for (let index = 0; index < value.length; index++, count++) {
+    if (value.codePointAt(index)! > 0xffff) index++;
+  }
   return count;
 }

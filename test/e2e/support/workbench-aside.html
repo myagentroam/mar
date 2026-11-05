@@ -14,10 +14,12 @@
       import 'element-plus/dist/index.css';
       import '/packages/web-core/src/styles.css';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
+      import WorkspaceHtmlBrowser from '/packages/web-core/src/view/workspace/WorkspaceHtmlBrowser.vue';
       import MarTab from '/packages/web-core/src/view/common/MarTab.vue';
       import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
       import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
+      import { chineseLongTitle, chineseToolLabels } from './workbench-aside-fixture-data.ts';
 
       const theme = new URLSearchParams(location.search).get('theme');
       const themes = themePreferenceService();
@@ -37,20 +39,10 @@
         themes.setTheme(custom.id);
       } else themes.setTheme(theme === 'dark' ? 'vscode-dark-2026' : 'daylight');
       const language = new URLSearchParams(location.search).get('lang');
-      const toolLabels = {
-        files: '文件',
-        search: '搜索',
-        changes: 'Git 变更',
-        history: 'Git 历史',
-        terminal: '终端'
-      };
       const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
       const longTitle = new URLSearchParams(location.search).get('long-title');
       const childTitle = longTitle
-        ? (longTitle === 'zh'
-            ? '需要保持可读的很长会话标题'
-            : 'A long readable session title '
-          ).repeat(8)
+        ? (longTitle === 'zh' ? chineseLongTitle : 'A long readable session title ').repeat(8)
         : 'Child';
       const aside = createWorkbenchAsideService();
       aside.ensure(workspace, ['files', 'search', 'changes', 'history', 'terminal']);
@@ -99,13 +91,27 @@
           const activations = ref(0);
           return () => [
             h(
+              'button',
+              {
+                id: 'open-browser',
+                onClick: () =>
+                  aside.openHtml(
+                    workspace,
+                    new URLSearchParams(location.search).get('html-file') ?? 'index.html'
+                  )
+              },
+              'Preview HTML'
+            ),
+            h(
               WorkbenchAside,
               {
                 workspace,
                 state: state.value,
+                browserLabel: 'Browser',
                 tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
                   id,
-                  label: language === 'zh' ? toolLabels[id] : id[0].toUpperCase() + id.slice(1)
+                  label:
+                    language === 'zh' ? chineseToolLabels[id] : id[0].toUpperCase() + id.slice(1)
                 })),
                 sessions: [{ sessionId: 'child', title: childTitle, active: true }],
                 tabLabel: 'Workbench Aside',
@@ -119,11 +125,23 @@
                 maxWidth: 800,
                 mode: 'content',
                 onSelectTool: (target) => aside.selectTool(target, target.id),
+                onSelectBrowser: (target) => aside.activateHtml(target),
+                onCloseBrowser: (target) => aside.clearHtmlWorkspace(target),
                 onSelectSession: (target) => aside.activateSession(target),
                 onCloseSession: (target) => aside.closeSession(target)
               },
               {
                 tool: ({ tool }) => h(Inspector, { tool }),
+                browser: () =>
+                  state.value.htmlPath !== undefined && state.value.active?.kind === 'browser'
+                    ? h(WorkspaceHtmlBrowser, {
+                        nodeId: workspace.nodeId,
+                        workspaceId: workspace.workspaceId,
+                        path: state.value.htmlPath,
+                        csrfToken: '',
+                        renewCsrfToken: async () => ''
+                      })
+                    : undefined,
                 terminal: ({ visible }) => h(Terminal, { visible }),
                 session: ({ target }) => h('div', { id: 'session' }, `Session ${target.sessionId}`)
               }

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import type { CodexAppServerClient } from '../../mar-node/src/codex-app-server.js';
@@ -40,6 +41,7 @@ test('A fake Runner completes approvals, terminal states, cancellation, and reco
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: process.version,
+        nodeAppVersion: nodePackage.version,
         codex: { available: true },
         claudeCode: { available: true }
       },
@@ -85,6 +87,7 @@ test('A fake Runner completes approvals, terminal states, cancellation, and reco
         nodeId,
         workspaceId,
         runner: 'codex',
+        modelId: 'gpt-5.6-sol',
         cwd: workspacePath,
         clientMessageId: 'approval-approved',
         content: 'approval-approved'

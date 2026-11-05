@@ -507,6 +507,33 @@ test('Fallback draft selection and Diff find remain scoped to the visible previe
   await expect(page.locator('.inline-find-bar')).toHaveCount(0);
 });
 
+test('Git Diff retry uses a neutral action in both themes and viewports', async ({ page }) => {
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const theme of ['light', 'dark']) {
+      await page.goto(
+        `${fixture.url}file-editor-layout.html?diff=HISTORY&load-failed=1&theme=${theme}`
+      );
+      const retry = page.locator('.diff-state-message').getByRole('button', { name: 'Retry' });
+      const color = await retry.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--el-text-color-regular)';
+        element.append(probe);
+        const action = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-text-secondary)';
+        const message = getComputedStyle(probe).color;
+        probe.remove();
+        return { action, message };
+      });
+      await expect(retry).toHaveCSS('color', color.action);
+      await expect(page.locator('.diff-state-message p')).toHaveCSS('color', color.message);
+      await retry.click();
+      await expect(page.locator('html')).toHaveAttribute('data-diff-retries', '1');
+      await expect(page.locator('.diff-state-message p')).toBeVisible();
+    }
+  }
+});
+
 test('Unified Diff fills its content surface without an inset frame', async ({
   page
 }, testInfo) => {

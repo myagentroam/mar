@@ -16,8 +16,7 @@ import {
 import {
   withMysqlTransaction,
   lockMysqlUsers,
-  lockMysqlWorkspace,
-  lockMysqlTemplate
+  lockMysqlWorkspace
 } from './mysql-reference-store.js';
 import { randomUUID } from 'node:crypto';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';

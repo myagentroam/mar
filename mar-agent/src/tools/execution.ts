@@ -10,8 +10,7 @@ import type {
   ClientToolDefinition,
   McpToolCallContext,
   ToolCaller,
-  ToolExecutionContext,
-  ToolExecutionResult
+  ToolExecutionContext
 } from './contracts.js';
 import {
   boundedModelToolOutput,

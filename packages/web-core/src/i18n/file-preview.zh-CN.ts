@@ -115,7 +115,6 @@ export const filePreviewZhCN = {
   htmlPreview: {
     browser: '浏览器',
     preview: '预览',
-    empty: '从会话或文件中打开 HTML 文件，即可在此预览。',
     reload: '重新加载',
     source: '打开源码',
     external: '在浏览器中打开',

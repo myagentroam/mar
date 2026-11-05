@@ -33,7 +33,7 @@ export function createImageGenerationExtensions(input: {
       {
         name: codex ? 'codex-imagegen' : 'byted_ark-imagegen',
         description: codex
-          ? 'Generate or edit raster images with codex_image_gen only when explicitly requested. Load before calling the image tool.'
+          ? 'Generate or edit PNG images and looping GIFs with codex_image_gen only when explicitly requested. Load before calling the image tool.'
           : 'Generate or edit one image with byted_ark_image_gen only when explicitly requested. Load before calling the image tool.',
         requiredTools: [tool.name],
         load: async () =>

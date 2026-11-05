@@ -537,11 +537,12 @@ export function structuredToolArtifacts(
       (artifact) =>
         !artifact ||
         artifact.kind !== 'image' ||
-        artifact.mimeType !== 'image/png' ||
+        (artifact.mimeType !== 'image/png' && artifact.mimeType !== 'image/gif') ||
         typeof artifact.name !== 'string' ||
         artifact.name.length === 0 ||
         typeof artifact.fileName !== 'string' ||
-        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.png$/u.test(artifact.fileName) ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(?:png|gif)$/u.test(artifact.fileName) ||
+        !artifact.fileName.endsWith(artifact.mimeType === 'image/gif' ? '.gif' : '.png') ||
         !isNonnegativeInteger(artifact.byteSize) ||
         typeof artifact.sha256 !== 'string' ||
         !/^[a-f0-9]{64}$/u.test(artifact.sha256)

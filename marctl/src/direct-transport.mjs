@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { DirectFallbackError, DirectUnsafeError, directControlError } from './direct-errors.mjs';
-import { cancelSession, withTimeout, rawToString, isRecord } from './direct-control.mjs';
+import { DirectFallbackError, directControlError } from './direct-errors.mjs';
+import { rawToString, isRecord } from './direct-control.mjs';
 
 export class DirectTerminalTransport extends EventEmitter {
   #channel;

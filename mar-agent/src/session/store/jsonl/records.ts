@@ -63,7 +63,6 @@ export async function* readRecordsFromHead(
       if (start < data.length) pending.push(data.subarray(start));
     }
     if (pending.length > 0) {
-      let record: SessionRecord;
       const tail = Buffer.concat(pending).toString('utf8');
       let value: unknown;
       try {
@@ -71,7 +70,7 @@ export async function* readRecordsFromHead(
       } catch {
         return; // Readers ignore only an interrupted final line.
       }
-      record = decodeJsonlValue(value, encoding);
+      const record = decodeJsonlValue(value, encoding);
       yield record;
     }
   } finally {

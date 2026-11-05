@@ -566,9 +566,11 @@ describe('codex_image_gen', () => {
           const tool = request.tools.find((candidate) => candidate.name === 'codex_image_gen');
           expect(tool).toBeDefined();
           expect(Object.keys(tool!.inputSchema.properties ?? {}).sort()).toEqual([
+            'gif',
             'num_last_images_to_include',
             'prompt',
-            'referenced_image_paths'
+            'referenced_image_paths',
+            'transparent_background'
           ]);
           yield {
             type: 'client_tool.call',
@@ -644,9 +646,8 @@ describe('codex_image_gen', () => {
     expect(requests[1]?.headers['x-codex-image-turn-id']).toEqual(expect.any(String));
     expect(requests[1]?.body).toEqual({
       prompt: 'A blue geometric landing-page background.',
-      background: 'auto',
+      background: 'opaque',
       model: 'gpt-image-2',
-      n: 1,
       quality: 'auto',
       size: 'auto'
     });
@@ -802,9 +803,8 @@ describe('codex_image_gen', () => {
         body: {
           images: [{ image_url: `data:image/png;base64,${PNG_BASE64}` }],
           prompt: 'Add a red border.',
-          background: 'auto',
+          background: 'opaque',
           model: 'gpt-image-2',
-          n: 1,
           quality: 'auto',
           size: 'auto'
         }
@@ -897,9 +897,8 @@ describe('codex_image_gen', () => {
         body: {
           images: [{ image_url: `data:image/png;base64,${PNG_BASE64}` }],
           prompt: 'Make the latest image warmer.',
-          background: 'auto',
+          background: 'opaque',
           model: 'gpt-image-2',
-          n: 1,
           quality: 'auto',
           size: 'auto'
         }
@@ -918,7 +917,9 @@ describe('codex_image_gen', () => {
     expect(Object.keys(codexImageGenToolDefinition.inputSchema.properties ?? {})).toEqual([
       'prompt',
       'referenced_image_paths',
-      'num_last_images_to_include'
+      'num_last_images_to_include',
+      'transparent_background',
+      'gif'
     ]);
     const provider = credentialProvider();
     const configuration = imageModelConfiguration(1, provider);

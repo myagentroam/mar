@@ -15,7 +15,10 @@ export interface WorkspaceUploadCandidate {
 
 export function createWorkspaceFileOperationService(input: {
   readonly http: ScopedHttpService;
-  readonly onWritten: (target: WorkspaceFileOperationTarget) => Promise<void>;
+  readonly onWritten: (
+    target: WorkspaceFileOperationTarget,
+    current?: () => boolean
+  ) => Promise<void>;
 }) {
   async function list(target: WorkspaceFileOperationTarget, path: string, cursor?: string) {
     const parameters = new URLSearchParams({ nodeId: target.nodeId, path, limit: '200' });
@@ -63,7 +66,8 @@ export function createWorkspaceFileOperationService(input: {
     target: WorkspaceFileOperationTarget,
     action: 'CREATE_FILE' | 'CREATE_DIRECTORY' | 'MOVE' | 'DELETE',
     path: string,
-    destination?: string
+    destination?: string,
+    current?: () => boolean
   ): Promise<string | undefined> {
     target = { ...target };
     const result = await input.http.request<{ readonly file?: { readonly path?: unknown } }>(
@@ -80,7 +84,10 @@ export function createWorkspaceFileOperationService(input: {
     );
     // Follow-up invalidation cannot undo a completed filesystem mutation.
     try {
-      await input.onWritten(target);
+      if (current?.() !== false) {
+        if (current === undefined) await input.onWritten(target);
+        else await input.onWritten(target, current);
+      }
     } catch {
       /* The refresh path owns its diagnostics. */
     }

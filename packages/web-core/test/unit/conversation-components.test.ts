@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import {
   createRenderer,
   createSSRApp,
-  defineComponent,
   h,
   nextTick,
   shallowRef,
@@ -1224,6 +1223,44 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     for (const key of keys) expect(i18n.global.te(key, locale), key).toBe(true);
   });
 
+  it('keeps task, plan, generated-image text and fallback content in the shared detail surface', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [
+        conversationTurn([
+          conversationItem('tasks', 'todo_list', {
+            items: [{ text: 'Preserve **task Markdown**', status: 'IN_PROGRESS' }]
+          }),
+          conversationItem('plan', 'plan', {
+            explanation: 'Preserve the plan explanation',
+            steps: [{ text: 'Preserve the plan step', status: 'PENDING' }]
+          }),
+          conversationItem('generated', 'tool_call', {
+            toolCategory: 'IMAGE_GENERATION',
+            toolName: 'generate',
+            inputSummary: 'Preserve the image prompt'
+          }),
+          conversationItem('fallback', 'turn_summary', {
+            text: 'Fallback heading',
+            reason: 'Preserve the fallback detail'
+          })
+        ])
+      ]
+    });
+    expect(html.match(/\bconversation-content-detail\b/gu)).toHaveLength(4);
+    expect(html).toMatch(/<details\b[^>]*class="task-list"[^>]*open/u);
+    for (const text of [
+      'Preserve **task Markdown**',
+      'Preserve the plan explanation',
+      'Preserve the plan step',
+      'Preserve the image prompt',
+      'Preserve the fallback detail'
+    ])
+      expect(html).toContain(text);
+    expect(html).toContain('task-list-status--in-progress');
+    expect(html).toContain('plan-step-list');
+  });
+
   it('keeps compacted-context and task-list heading details as muted as collapsible summaries', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
@@ -1239,7 +1276,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toMatch(
       /class="conversation-item-heading"[^>]*><strong[^>]*>[^<]+<\/strong><span[^>]*>/u
     );
-    expect(html).toContain('class="task-list-heading"');
+    expect(html).toMatch(/<summary\b[^>]*class="[^"]*\btask-list-heading\b[^"]*"/u);
   });
 
   it('renders background, waiting, and completed compaction states without exposing a summary', async () => {

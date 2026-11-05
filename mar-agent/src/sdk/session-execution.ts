@@ -177,7 +177,7 @@ export class SessionExecution {
       this.compact.assertNotReentrant()
     );
     this.#bindings = { compactRequests: this.compactRequests };
-    const owner = this;
+    const bindings = () => this.#bindings;
     this.context = Object.freeze({
       executionId,
       modelId: snapshot.modelId,
@@ -185,19 +185,19 @@ export class SessionExecution {
       models: snapshot.models,
       instruction: snapshot.instruction,
       get compactRequests() {
-        return owner.#bindings.compactRequests;
+        return bindings().compactRequests;
       },
       get steer() {
-        return owner.#bindings.steer;
+        return bindings().steer;
       },
       get requestMessages() {
-        return owner.#bindings.requestMessages;
+        return bindings().requestMessages;
       },
       get appendedMessages() {
-        return owner.#bindings.appendedMessages;
+        return bindings().appendedMessages;
       },
       get toolSources() {
-        return owner.#bindings.toolSources;
+        return bindings().toolSources;
       }
     });
     this.modelResources = createExecutionModelResources(activeAdapters);
@@ -242,11 +242,14 @@ export class SessionExecution {
       failed = true;
       throw error;
     } finally {
-      try {
+      if (failed) {
+        try {
+          await turn.close();
+        } catch {
+          // A cleanup failure cannot replace the generation failure.
+        }
+      } else {
         await turn.close();
-      } catch (error) {
-        // A cleanup failure cannot replace the generation failure.
-        if (!failed) throw error;
       }
     }
   }
@@ -552,10 +555,10 @@ export class SessionExecution {
   }
 
   handle(): InternalExecutionHandle {
-    const owner = this;
+    const persistedEvents = () => this.persistedTerminal;
     return {
       get persistedEvents() {
-        return owner.persistedTerminal;
+        return persistedEvents();
       },
       executionId: this.executionId,
       turnId: this.turnId,
@@ -564,7 +567,7 @@ export class SessionExecution {
         this.events.discardIfUnobserved();
         return this.resultPromise!;
       },
-      cancel: () => owner.cancel(new AgentError('MAR_AGENT_CANCELLED', 'Execution was cancelled.'))
+      cancel: () => this.cancel(new AgentError('MAR_AGENT_CANCELLED', 'Execution was cancelled.'))
     };
   }
 

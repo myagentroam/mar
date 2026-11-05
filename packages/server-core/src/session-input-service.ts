@@ -145,7 +145,7 @@ export class SessionInputService {
     message: SessionMessageInput,
     origin: SessionExecutionOrigin = {}
   ): Promise<unknown> {
-    const { nodeId, workspaceId, sessionId, user } = context;
+    const { nodeId, workspaceId, sessionId } = context;
     const { nodeControl } = this.options;
     let result: unknown;
     try {

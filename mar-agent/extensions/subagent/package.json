@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/agent-extension-subagent",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "license": "Apache-2.0",
   "private": false,
   "type": "module",
@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

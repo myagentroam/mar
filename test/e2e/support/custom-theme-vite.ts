@@ -16,6 +16,7 @@ export async function startCustomThemeFixture(
   ]);
   const server = await createServer({
     root: productRoot,
+    cacheDir: resolve(productRoot, `test/runs/theme-vite-${process.pid}`),
     configFile: false,
     plugins: [
       vue.default(),
@@ -23,18 +24,33 @@ export async function startCustomThemeFixture(
     ],
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
-      alias: {
+      alias: [
         ...(options?.protocolSource
-          ? { '@myagentroam/protocol': resolve(productRoot, 'packages/protocol/src/index.ts') }
-          : {}),
-        '@': resolve(productRoot, 'ee/web/src'),
-        vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
-        'element-plus': dirname(webRequire.resolve('element-plus/package.json')),
-        '@element-plus/icons-vue': resolve(
-          dirname(webRequire.resolve('@element-plus/icons-vue/package.json')),
-          'dist/index.js'
-        )
-      }
+          ? [
+              {
+                find: '@myagentroam/protocol',
+                replacement: resolve(productRoot, 'packages/protocol/src/index.ts')
+              }
+            ]
+          : []),
+        { find: '@', replacement: resolve(productRoot, 'ee/web/src') },
+        { find: 'vue', replacement: webRequire.resolve('vue/dist/vue.esm-bundler.js') },
+        {
+          find: /^element-plus\/(.*\/style\/css)$/,
+          replacement: `${dirname(webRequire.resolve('element-plus/package.json'))}/$1.mjs`
+        },
+        {
+          find: 'element-plus',
+          replacement: dirname(webRequire.resolve('element-plus/package.json'))
+        },
+        {
+          find: '@element-plus/icons-vue',
+          replacement: resolve(
+            dirname(webRequire.resolve('@element-plus/icons-vue/package.json')),
+            'dist/index.js'
+          )
+        }
+      ]
     },
     server: {
       host: '127.0.0.1',
@@ -50,5 +66,8 @@ export async function startCustomThemeFixture(
     await server.close();
     throw new Error('Theme fixture URL unavailable');
   }
-  return { url: `${url}test/e2e/support/`, close: () => server.close() };
+  return {
+    url: `${url}test/e2e/support/`,
+    close: () => server.close()
+  };
 }

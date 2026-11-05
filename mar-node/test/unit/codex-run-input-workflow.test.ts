@@ -180,7 +180,7 @@ describe('Codex input, commands, and event projection', () => {
     (
       internals.goalCoordinator as unknown as { nativeGoalBindings: Map<string, unknown> }
     ).nativeGoalBindings.set(original.id, { revision: original.revision, ...oldNative });
-    const revised = internals.goalRuntime.start(session.id, 'Revised objective');
+    internals.goalRuntime.start(session.id, 'Revised objective');
     vi.spyOn(internals.continuousRunCoordinator, 'pending').mockReturnValue({
       sessionId: session.id,
       goal: internals.goalCoordinator.reference(session.id)

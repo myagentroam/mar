@@ -59,9 +59,10 @@ function initialTurn(): ConversationTurn {
     items: [
       {
         id: 'reasoning-before',
-        kind: 'reasoning_summary',
+        kind: 'reasoning',
         status: 'IN_PROGRESS',
-        payload: { sections: [{ text: 'Reasoning before anchor' }] }
+        processGroup: { id: 'prefix', isStart: true },
+        payload: { representation: 'summary', sections: [{ text: 'Reasoning before anchor' }] }
       },
       {
         id: 'snapshot-anchor',
@@ -69,13 +70,14 @@ function initialTurn(): ConversationTurn {
         status: 'COMPLETED',
         payload: { text: 'Snapshot anchor', format: 'markdown', model: 'Fixture model' }
       },
+      compactItem('IN_PROGRESS', 'GENERATING'),
       {
         id: 'reasoning-after',
-        kind: 'reasoning_summary',
+        kind: 'reasoning',
         status: 'IN_PROGRESS',
-        payload: { sections: [{ text: 'Continuing after anchor' }] }
-      },
-      compactItem('IN_PROGRESS', 'GENERATING')
+        processGroup: { id: 'tail', isStart: true },
+        payload: { representation: 'summary', sections: [{ text: 'Continuing after anchor' }] }
+      }
     ]
   };
 }
@@ -93,14 +95,16 @@ const app = createApp({
         items: [
           {
             id: 'reasoning-before',
-            kind: 'reasoning_summary',
+            kind: 'reasoning',
             status: 'IN_PROGRESS',
-            payload: { sections: [{ text: 'Reasoning before anchor' }] }
+            processGroup: { id: 'prefix', isStart: true },
+            payload: { representation: 'summary', sections: [{ text: 'Reasoning before anchor' }] }
           },
           {
             id: 'snapshot-tool',
             kind: 'tool_call',
             status: 'COMPLETED',
+            processGroup: { id: 'prefix' },
             payload: {
               namespace: 'mar-agent',
               toolName: 'read',
@@ -110,13 +114,14 @@ const app = createApp({
               truncated: false
             }
           },
+          compactItem('IN_PROGRESS', 'GENERATING', activeAnchorItemId),
           {
             id: 'reasoning-after',
-            kind: 'reasoning_summary',
+            kind: 'reasoning',
             status: 'IN_PROGRESS',
-            payload: { sections: [{ text: 'Continuing after anchor' }] }
-          },
-          compactItem('IN_PROGRESS', 'GENERATING', activeAnchorItemId)
+            processGroup: { id: 'tail', isStart: true },
+            payload: { representation: 'summary', sections: [{ text: 'Continuing after anchor' }] }
+          }
         ]
       };
     };
@@ -127,16 +132,24 @@ const app = createApp({
           items: [
             {
               id: 'reasoning-before',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
               status: 'IN_PROGRESS',
-              payload: { sections: [{ text: 'Reasoning before anchor' }] }
+              processGroup: { id: 'prefix', isStart: true },
+              payload: {
+                representation: 'summary',
+                sections: [{ text: 'Reasoning before anchor' }]
+              }
             },
             compactItem('COMPLETED', undefined, 'not-on-this-page'),
             {
               id: 'reasoning-after',
-              kind: 'reasoning_summary',
+              kind: 'reasoning',
               status: 'IN_PROGRESS',
-              payload: { sections: [{ text: 'Continuing after anchor' }] }
+              processGroup: { id: 'tail', isStart: true },
+              payload: {
+                representation: 'summary',
+                sections: [{ text: 'Continuing after anchor' }]
+              }
             }
           ]
         };
@@ -190,6 +203,8 @@ const app = createApp({
     <main>
       <ConversationTimeline
         :turns="turns"
+        :runs="[{ id: 'run-1', status: 'RUNNING' }]"
+        :synchronized="true"
         :workspace-root="undefined"
         :loading="false"
         :initializing="false"

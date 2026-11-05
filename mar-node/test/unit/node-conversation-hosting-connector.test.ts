@@ -691,8 +691,7 @@ describe('Node conversation hosting connector integration', () => {
   it('waits for hosted cleanup drain before exiting for a supervised upgrade', async () => {
     const directory = await temporaryDirectory();
     const database = new NodeDatabase(join(directory, 'node-runtime.sqlite'), 'node-1');
-    let connector!: NodeConnector;
-    connector = new NodeConnector({
+    const connector: NodeConnector = new NodeConnector({
       reconnect: false,
       database,
       upgradeReady: () => {

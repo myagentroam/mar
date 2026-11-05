@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, shallowReactive } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue';
 import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
 import type { AgentRun, NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
 import { registerWorkspacePaneShortcuts } from '../../src/service/workspace-session-pane-state.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
+import { createWorkbenchPageController } from '../../src/service/workbench-page-controller.js';
+import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
+import type { WorkbenchView } from '../../src/util/workbench-route.js';
+import type { SettingsSection } from '../../src/model/settings.js';
 import type { PromptCompletionBinding } from '../../src/service/prompt-completion-client-service.js';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
@@ -13,7 +17,22 @@ import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
-import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
+import WorkbenchAside from '../../src/view/workbench/WorkbenchAside.vue';
+import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue';
+import WorkspaceContentSearch from '../../src/view/workspace/WorkspaceContentSearch.vue';
+import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
+import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
+import WorkspaceFileWorkbench from '../../src/view/workspace/WorkspaceFileWorkbench.vue';
+import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
+import type { WorkspaceFilePagePort } from '../../src/model/workspace-file-workbench.js';
+import type { ChangeEntry, HistoryCommit, HistoryFile } from '../../src/model/workspace-git.js';
+import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
+import { createWorkspaceFileOperationService } from '../../src/service/workspace-file-operation-service.js';
+import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
+import { createWorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
+import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
+import type { AsideTool } from '../../src/service/workbench-aside-service.js';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
@@ -69,6 +88,7 @@ const unreadFixture = new URL(location.href).searchParams.has('unread');
 const contentSearchFixture = new URL(location.href).searchParams.has('content-search');
 const overlappingWatchFixture = new URL(location.href).searchParams.has('overlapping-watch');
 const fileRootFixture = new URL(location.href).searchParams.has('file-root');
+const lateTreeFixture = new URL(location.href).searchParams.has('late-tree');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
@@ -78,10 +98,122 @@ const inspectorFixture =
   fileRootFixture ||
   overlappingWatchFixture ||
   contentSearchFixture ||
+  lateTreeFixture ||
   new URL(location.href).searchParams.has('git-previews');
+const toolTarget = { nodeId: 'node', workspaceId: 'workspace' };
+const selectedTool = ref<AsideTool>(lateTreeFixture ? 'search' : 'files');
+const toolState = computed(() => ({
+  tools: ['files', 'search', 'changes', 'history'] as AsideTool[],
+  sessions: [],
+  active: { kind: 'tool' as const, id: selectedTool.value }
+}));
+const toolLabels = computed(() => [
+  { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
+  { id: 'search' as const, label: translate('generated.workspaceInspector.search') },
+  { id: 'changes' as const, label: translate('generated.workspaceInspector.gitChanges') },
+  { id: 'history' as const, label: translate('generated.workspaceInspector.gitHistory') }
+]);
+const toolHttp = createScopedHttpService({
+  csrfToken: () => 'fixture',
+  renewCsrfToken: async () => 'fixture'
+});
+const toolOperations = createWorkspaceFileOperationService({
+  http: toolHttp,
+  onWritten: async () => {}
+});
+const toolFiles = createWorkspaceFilesController({
+  target: () => (inspectorFixture ? toolTarget : undefined),
+  workspaceName: () => fileRootPath.value.split('/').filter(Boolean).at(-1) || 'Workspace',
+  list: toolOperations.list,
+  mutate: toolOperations.mutate,
+  revealLocal: toolOperations.reveal,
+  preflight: toolOperations.preflight,
+  queue: () => {},
+  onFailure: () => {},
+  onListFailure: () => {},
+  onDeletedSelection: () => {},
+  onRevealSelection: async () => {},
+  onMutationFailure: (error) => {
+    fileFeedback.value = { message: String(error), type: 'error' };
+  },
+  onWorkspace: () => {}
+});
+if (lateTreeFixture) {
+  toolFiles.tree.applyRootPage({
+    entries: Array.from({ length: 500 }, (_, index) => ({
+      path: `file-${String(index).padStart(3, '0')}.ts`,
+      name: `file-${String(index).padStart(3, '0')}.ts`,
+      kind: 'FILE' as const,
+      size: 1
+    })),
+    nextCursor: null
+  });
+  toolFiles.tree.selectPath('file-450.ts');
+}
+const toolSearch = createWorkspaceContentSearchService({ http: toolHttp, onFailure: () => {} });
+const toolGit = createWorkspaceGitService({
+  http: toolHttp,
+  target: () => (inspectorFixture ? toolTarget : undefined),
+  gitEnabled: () => inspectorFixture,
+  historyEnabled: () => inspectorFixture,
+  onFailure: () => {},
+  onWorkspace: () => {},
+  onBranch: () => {}
+});
+const fixtureFilePage = shallowRef<WorkspaceFilePagePort>();
+const fixtureFileWorkbench = createWorkspaceFileWorkbenchController({
+  target: () => (inspectorFixture ? toolTarget : undefined),
+  externalTarget: () => toolTarget,
+  fileWriteEnabled: () => true,
+  page: () => fixtureFilePage.value,
+  prewarmEnabled: () => false,
+  resolveRepositoryPath: toolGit.resolveRepositoryPath,
+  comparison: toolGit.comparison,
+  reveal: async () => {},
+  onPopupBlocked: () => {},
+  onOpenFailure: () => {},
+  onRevealFailure: () => {},
+  preview: { http: toolHttp, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+  navigation: { http: toolHttp, onFileTarget: () => {}, onFailure: () => {} }
+});
+onBeforeUnmount(() => fixtureFileWorkbench.dispose());
+function openFixtureChange(entry: ChangeEntry): void {
+  const intent = toolGit.changeIntent(entry);
+  if (intent) void fixtureFileWorkbench.openTab(intent);
+}
+function openFixtureHistory(commit: HistoryCommit, file: HistoryFile): void {
+  const intent = toolGit.historyIntent(commit, file);
+  if (intent) void fixtureFileWorkbench.openTab(intent);
+}
+function registerFixtureFilePage(
+  page: WorkspaceFilePagePort | undefined,
+  previous?: WorkspaceFilePagePort
+): void {
+  if (page || fixtureFilePage.value === previous) fixtureFilePage.value = page;
+}
+watch(fileRootPath, (path) =>
+  toolFiles.tree.setRootName(path.split('/').filter(Boolean).at(-1) || 'Workspace')
+);
+function selectFixtureTool(target: { id: AsideTool }): void {
+  if (selectedTool.value === 'history') toolGit.cancelHistoryPending();
+  selectedTool.value = target.id;
+  if (target.id === 'changes') void toolGit.loadChanges(true);
+  if (target.id === 'history') void toolGit.openHistory();
+}
 const multipleTerminalProfiles = new URL(location.href).searchParams.has('multipleProfiles');
 const embeddedTerminal = new URL(location.href).searchParams.has('embedded-terminal');
-const node = { id: 'node', name: 'Node', connected: true, disabled: false } as NodeSummary;
+const node: NodeSummary = {
+  id: 'node',
+  displayName: 'Node',
+  registeredAddress: 'fixture.invalid',
+  platform: 'linux',
+  architecture: 'x64',
+  nodeAppVersion: 'fixture',
+  nodeVersion: 'fixture',
+  connected: true,
+  disabled: false,
+  capabilities: {}
+};
 const workspaces: Workspace[] = [
   { id: 'plain', path: '/plain', kind: 'DIRECTORY' },
   { id: 'grouped', path: '/grouped', kind: 'DIRECTORY', groupName: 'Team' }
@@ -241,7 +373,62 @@ const surfacePage = shallowReactive({
 });
 if (workspaceRecoveryFixture) surfacePage.workspaceHost = { connected: true };
 if (composerFixture) {
+  const originalFetch = window.fetch;
+  window.fetch = (input, init) => {
+    if (typeof input === 'string' && input.startsWith('/api/runner-profiles?')) {
+      return Promise.resolve(
+        Response.json({
+          profiles: [
+            {
+              runner: 'mar-agent',
+              models: [
+                { id: 'fixture-model', label: 'Fixture model', supportedEfforts: ['medium'] }
+              ],
+              accessOptions: [{ id: 'auto', label: 'Auto' }],
+              commands: [],
+              capabilities: ['turn.start']
+            }
+          ]
+        })
+      );
+    }
+    return originalFetch(input, init);
+  };
+  onBeforeUnmount(() => {
+    window.fetch = originalFetch;
+  });
+  const panePage = createWorkbenchPageController({
+    navigation: createWorkbenchNavigationService<WorkbenchView, SettingsSection, string>({
+      initialView: 'nodes',
+      initialSettingsSection: 'account',
+      initialManagementSection: 'system',
+      opensMobileSidebar: (view) => view === 'nodes'
+    }),
+    management: { items: () => [] },
+    systemManagementSection: 'system',
+    nodeManagementSection: 'system',
+    webVersion: 'fixture'
+  });
+  panePage.nodes.value = [node];
+  panePage.workspaceTarget.value = { nodeId: node.id, workspaceId: workspaces[0]!.id };
+  panePage.workspaces.value = workspaces;
+  panePage.nodeManifest.value = {
+    manifestVersion: 1,
+    observedAt: 1,
+    conversation: { available: true, reasonCode: null },
+    files: { available: true, reasonCode: null },
+    sessionAside: { apiVersion: 1 }
+  } as never;
+  panePage.draftSessionOpen.value = true;
+  panePage.mobileViewport.value = mobile;
+  void panePage.mainPaneController.composer.loadProfiles();
   Object.assign(surfacePage, {
+    mainPaneController: panePage.mainPaneController,
+    fileWorkbench: fixtureFileWorkbench,
+    setWorkspaceFilePage: registerFixtureFilePage,
+    adjacentWorkspaceDiff: toolGit.adjacentDiff,
+    loadWorkspaceDiff: toolGit.loadDiff,
+    openWorkspaceFileExternal: () => {},
     workspaceHost: { connected: true },
     selectedWorkspace: workspaces[0],
     activeWorkspaceTabId: 'node:plain',
@@ -465,24 +652,68 @@ if (composerFixture) {
       <button v-if="fileRootFixture" type="button" @click="fileRootPath = ''">
         Clear root path
       </button>
-      <WorkspaceInspector
-        :node-id="inspectorFixture ? 'node' : undefined"
-        :workspace-id="inspectorFixture ? 'workspace' : undefined"
-        workspace-name="Workspace"
-        :workspace-path="fileRootFixture ? fileRootPath : undefined"
-        workspace-kind="GIT_WORKSPACE"
-        csrf-token="fixture"
-        :renew-csrf-token="async () => 'fixture'"
+      <WorkbenchAside
+        :workspace="toolTarget"
+        :state="toolState"
+        :tools="toolLabels"
+        browser-label="Browser"
+        :sessions="[]"
+        tab-label="Workspace tools"
+        :close-label="(title) => title"
+        resize-label="Resize"
+        :width="360"
+        :min-width="200"
+        :max-width="600"
+        mode="compact"
+        :mobile="mobile"
+        @select-tool="selectFixtureTool"
+      >
+        <template #tool="{ tool, visible }">
+          <WorkspaceFilesPanel
+            v-if="inspectorFixture && tool === 'files'"
+            :service="toolFiles"
+            :visible="visible"
+            :workspace-path="fileRootFixture ? fileRootPath : undefined"
+            :mobile-viewport="mobile"
+            :watch-status="overlappingWatchFixture ? 'loading' : 'idle'"
+            @refresh="toolFiles.requestRefresh()"
+            @notice="(message, type) => (fileFeedback = { message, type })"
+          />
+          <WorkspaceContentSearch
+            v-else-if="inspectorFixture && tool === 'search'"
+            :service="toolSearch"
+            :enabled="true"
+            node-id="node"
+            workspace-id="workspace"
+          />
+          <WorkspaceGitChanges
+            v-else-if="inspectorFixture && tool === 'changes' && visible"
+            :service="toolGit"
+            :target="toolTarget"
+            @open="openFixtureChange"
+          />
+          <WorkspaceGitHistory
+            v-else-if="inspectorFixture && tool === 'history' && visible"
+            :service="toolGit"
+            @open="openFixtureHistory"
+          />
+          <p v-else-if="!inspectorFixture">
+            {{ translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot') }}
+          </p>
+        </template>
+      </WorkbenchAside>
+      <WorkspaceFileWorkbench
+        v-if="inspectorFixture"
+        node-id="node"
+        workspace-id="workspace"
+        :controller="fixtureFileWorkbench"
+        :register-page="registerFixtureFilePage"
+        :adjacent-diff="toolGit.adjacentDiff"
+        :load-diff="toolGit.loadDiff"
+        :open-external="() => {}"
         :enabled="true"
-        :mobile-viewport="mobile"
-        :content-search-enabled="true"
         :code-navigation-enabled="false"
-        :code-navigation-prewarm-enabled="false"
-        :files-watch-status="overlappingWatchFixture ? 'loading' : 'idle'"
-        changes-watch-status="idle"
-        :history-capability="true"
-        :file-write-enabled="false"
-        @notice="(message, type) => (fileFeedback = { message, type: type ?? 'info' })"
+        :file-write-enabled="true"
       />
       <output
         v-if="inspectorFixture"
@@ -543,6 +774,11 @@ main > section {
 }
 .surface-fixture :deep(.session-layout) {
   height: 260px;
+}
+section[aria-label='Inspector fixture'] :deep(.workbench-aside) {
+  width: 100% !important;
+  height: 100%;
+  min-height: 280px;
 }
 .gesture-fixture-controls {
   position: fixed;

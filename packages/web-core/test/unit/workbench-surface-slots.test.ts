@@ -24,6 +24,7 @@ describe('Workbench surface host slots', () => {
         managementSection: 'system',
         admin: { authenticated: true },
         workspaceRegistrationNodeId: 'node-a',
+        setAsideSurfaceVisible: vi.fn(),
         setComposerInputFocus: vi.fn(),
         setComposerRangeEditor: vi.fn(),
         hostedConversationWorkspace: {

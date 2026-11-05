@@ -148,8 +148,22 @@ describe('Node Agent Network owner integration', () => {
         const run = session.run({ prompt: 'wait for both' });
         const normalizer = new MarAgentConversationNormalizer();
         const targets = [
-          { agentId: 'a', sessionId: 'a', title: 'First task' },
-          { agentId: 'b', sessionId: 'b', title: 'Second task' }
+          expect.objectContaining({ agentId: 'a', sessionId: 'a', title: 'First task' }),
+          expect.objectContaining({ agentId: 'b', sessionId: 'b', title: 'Second task' })
+        ];
+        const completedTargets = [
+          expect.objectContaining({
+            agentId: 'a',
+            sessionId: 'a',
+            title: 'First task',
+            status: 'SUCCEEDED'
+          }),
+          expect.objectContaining({
+            agentId: 'b',
+            sessionId: 'b',
+            title: 'Second task',
+            status: 'RUNNING'
+          })
         ];
         let running = false;
         let finished = false;
@@ -201,7 +215,12 @@ describe('Node Agent Network owner integration', () => {
             finished = true;
             expect(items[0]).toMatchObject({
               status: 'COMPLETED',
-              payload: { agentOperation: { targets } }
+              payload: {
+                agentOperation: {
+                  targets: completedTargets,
+                  detail: { wait: { mode: 'any', waitFor: 'completion', waitMs: 30000 } }
+                }
+              }
             });
           }
         }
@@ -225,7 +244,7 @@ describe('Node Agent Network owner integration', () => {
           expect.objectContaining({
             status: 'COMPLETED',
             payload: expect.objectContaining({
-              agentOperation: expect.objectContaining({ targets })
+              agentOperation: expect.objectContaining({ targets: completedTargets })
             })
           })
         );
@@ -616,18 +635,23 @@ describe('Node Agent Network owner integration', () => {
           expect.objectContaining({
             type: 'tool.completed',
             toolName: `agent_${action}`,
-            data: {
-              agentOperation: {
+            data: expect.objectContaining({
+              agentOperation: expect.objectContaining({
                 action: action.toUpperCase(),
+                ...('title' in input && 'content' in input
+                  ? { detail: { title: input.title, message: input.content } }
+                  : 'content' in input
+                    ? { detail: { message: input.content } }
+                    : {}),
                 targets: [
-                  {
+                  expect.objectContaining({
                     agentId: 'child',
                     sessionId: 'child',
                     ...('title' in input ? { title: input.title } : {})
-                  }
+                  })
                 ]
-              }
-            },
+              })
+            }),
             summary: '{}'
           })
         );

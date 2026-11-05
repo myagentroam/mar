@@ -287,6 +287,7 @@ test('Admin creates a one-use token and Node registers, sends heartbeats, and ca
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: process.version,
+            nodeAppVersion: nodePackage.version,
             codex: { available: false },
             claudeCode: { available: false }
           }
@@ -326,6 +327,7 @@ test('Admin creates a one-use token and Node registers, sends heartbeats, and ca
             platform: 'linux',
             architecture: 'x64',
             nodeVersion: process.version,
+            nodeAppVersion: nodePackage.version,
             codex: { available: false },
             claudeCode: { available: false }
           }
@@ -491,8 +493,8 @@ test('Admin creates a one-use token and Node registers, sends heartbeats, and ca
 
 test('Node management sends the latest npm stable version not exceeding Server to Supervisor-capable Nodes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-upgrade-e2e-'));
-  const nodeUpgrades = new NodeUpgradeService('0.11.40', async (specifier) =>
-    specifier === '@myagentroam/node' ? ['0.11.41', '0.11.39', '0.11.38'] : undefined
+  const nodeUpgrades = new NodeUpgradeService('0.11.41', async (specifier) =>
+    specifier === '@myagentroam/node' ? ['0.11.42', '0.11.40', '0.11.39'] : undefined
   );
   const app = createServerApp({
     databasePath: join(directory, 'server.sqlite'),
@@ -500,6 +502,7 @@ test('Node management sends the latest npm stable version not exceeding Server t
     nodeUpgrades
   });
   let nodeProcess: ChildProcess | undefined;
+  let nodeStderr = '';
   try {
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const login = await app.inject({
@@ -541,7 +544,7 @@ test('Node management sends the latest npm stable version not exceeding Server t
       const connector = new NodeConnector({
         configPath,
         capabilities: {
-          platform: 'linux', architecture: 'x64', nodeAppVersion: '0.11.38',
+          platform: 'linux', architecture: 'x64', nodeAppVersion: '0.11.39',
           nodeVersion: process.version, codex: { available: false },
           claudeCode: { available: false }, openCode: { available: false }
         },
@@ -556,12 +559,16 @@ test('Node management sends the latest npm stable version not exceeding Server t
       ['--import', 'tsx', '--input-type=module', '--eval', nodeScript, configPath],
       {
         cwd: process.cwd(),
-        stdio: 'ignore',
+        stdio: ['ignore', 'ignore', 'pipe'],
         env: { ...process.env, MAR_NODE_SUPERVISED: '1' }
       }
     );
+    nodeProcess.stderr?.on('data', (chunk: Buffer) => {
+      nodeStderr = (nodeStderr + chunk.toString()).slice(-8_192);
+    });
     await expect
       .poll(async () => {
+        if (nodeProcess?.exitCode !== null) throw new Error(`NODE_PROCESS_EXITED: ${nodeStderr}`);
         const response = await app.inject({
           method: 'GET',
           url: '/api/nodes',
@@ -572,22 +579,23 @@ test('Node management sends the latest npm stable version not exceeding Server t
           .nodes.some((node) => node.connected);
       })
       .toBe(true);
+    expect(nodeProcess.exitCode, nodeStderr).toBeNull();
     const nodes = await app.inject({ method: 'GET', url: '/api/nodes', headers: { cookie } });
     const node = nodes.json<{
       nodes: { id: string; upgradeAvailability: { state: string; targetVersion: string } }[];
     }>().nodes[0]!;
     const nodeId = node.id;
-    expect(node.upgradeAvailability).toEqual({ state: 'AVAILABLE', targetVersion: '0.11.39' });
+    expect(node.upgradeAvailability).toEqual({ state: 'AVAILABLE', targetVersion: '0.11.40' });
     const response = await app.inject({
       method: 'POST',
       url: `/api/nodes/${nodeId}/upgrade`,
       headers: { cookie, 'x-csrf-token': csrf }
     });
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toMatchObject({ status: 'ACCEPTED', targetVersion: '0.11.39' });
+    expect(response.json()).toMatchObject({ status: 'ACCEPTED', targetVersion: '0.11.40' });
     await expect
       .poll(() => readFile(join(directory, 'upgrade-request.json'), 'utf8').catch(() => ''))
-      .toContain('"targetVersion":"0.11.39"');
+      .toContain('"targetVersion":"0.11.40"');
   } finally {
     if (nodeProcess?.exitCode === null) nodeProcess.kill('SIGTERM');
     await app.shutdown();
@@ -606,6 +614,7 @@ test('NodeConnector reconnects with credentials and restores online status', asy
     platform: 'linux' as const,
     architecture: 'x64',
     nodeVersion: process.version,
+    nodeAppVersion: nodePackage.version,
     codex: { available: false },
     claudeCode: { available: false }
   };

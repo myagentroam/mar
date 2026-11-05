@@ -5,6 +5,8 @@ import { createConversationScrollService } from '../../src/service/conversation-
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createRunService } from '../../src/service/run-service.js';
 import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service.js';
+import { createWorkspaceSessionPaneReader } from '../../src/service/workspace-session-pane-state.js';
+import { createWorkspaceSessionPaneLoader } from '../../src/service/workspace-session-pane-loader.js';
 import {
   createWorkbenchSessionSelectionService,
   type WorkbenchSessionSelectionOptions
@@ -147,7 +149,18 @@ const interruptionInput = new URL(location.href).searchParams.get('input');
 let revision = 0;
 let releaseWatch: (() => void) | undefined;
 const session: Session = { id: 'cached-session', workspaceId: 'workspace', runner: 'mar-agent' };
+const reader = createWorkspaceSessionPaneReader();
+const request = async <T,>() => ({ session }) as T;
+const sessionPathId = (id: string) => id;
 const options: WorkbenchSessionSelectionOptions = {
+  createPaneLoader: (projection) =>
+    createWorkspaceSessionPaneLoader({
+      ...projection,
+      runs: run.runs,
+      readSession: (nodeId, sessionId) => reader.read(nodeId, sessionId, request, sessionPathId),
+      readInitialHistory: (nodeId, sessionId) =>
+        reader.readInitialHistory(nodeId, sessionId, request, sessionPathId)
+    }),
   workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
   selectedSessionId,
   selectedRunId: ref(),
@@ -221,8 +234,6 @@ const options: WorkbenchSessionSelectionOptions = {
     return pending;
   },
   beginInitialRender: async () => undefined,
-  request: async <T,>() => ({ session }) as T,
-  sessionPathId: (id) => id,
   replaceSession: () => undefined,
   canWatch: () => true,
   hasInitialSnapshot: () => true,

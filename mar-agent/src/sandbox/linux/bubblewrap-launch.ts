@@ -114,7 +114,7 @@ export async function launchBubblewrap(spec: LaunchSpec): Promise<ChildProcessWi
     spec.signal?.throwIfAborted();
     if (childExited || childError || child.exitCode !== null || child.signalCode !== null)
       throw unavailable();
-  } catch (error) {
+  } catch {
     failed = true;
     failure = spec.signal?.aborted ? spec.signal.reason : unavailable();
   }

@@ -143,10 +143,21 @@ for (const [width, theme, locale] of [
       await page
         .getByRole('menuitem', { name: locale === 'zh-CN' ? '查看会话树' : 'View session tree' })
         .click();
+      await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
+      await expect(chats.locator('.session-link')).toBeFocused();
+      await chats.locator('.session-more-button').click();
+      await page
+        .getByRole('menuitem', { name: locale === 'zh-CN' ? '查看会话树' : 'View session tree' })
+        .click();
       await page.locator('.session-tree-node').click();
-      await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+      await expect(page.getByTestId('opened-tree-session')).toHaveText('child-detail');
       await page.locator('.activity-center-trigger').click();
-      await page.locator('.activity-tabs [data-page="recent-sessions"]:visible').click();
+      await page
+        .locator('.activity-tabs:visible')
+        .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
+        .click();
       const recent = page.locator('.recent-sessions-panel:visible');
       await expect(recent.locator('.session-state-badge')).toHaveCount(0);
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
@@ -187,7 +198,10 @@ for (const [width, theme, locale] of [
         `${fixture.url}session-groups.html?theme=${theme}&locale=${locale}&stop-statuses`
       );
       await page.locator('.activity-center-trigger').click();
-      await page.locator('.activity-tabs [data-page="recent-sessions"]:visible').click();
+      await page
+        .locator('.activity-tabs:visible')
+        .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
+        .click();
       const recent = page.locator('.recent-sessions-panel');
       const statuses = recent.locator('.recent-sessions-list .el-tag');
       await expect(statuses).toHaveText(

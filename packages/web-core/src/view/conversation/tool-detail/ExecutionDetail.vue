@@ -79,7 +79,8 @@ const visibleOutputs = computed(
       {{ translate('toolPresentation.detail.truncated') }}
     </p>
     <p v-if="executionSource?.cwd" class="tool-detail-meta">
-      {{ translate('toolPresentation.detail.cwd') }}: {{ executionSource.cwd }}
+      {{ translate('toolPresentation.detail.cwd') }}:
+      <span class="tool-cwd-value">{{ executionSource.cwd }}</span>
     </p>
     <p v-if="execution.error" class="conversation-detail-text tool-content-section">
       {{ translate('toolPresentation.detail.error') }}:
@@ -134,5 +135,8 @@ const visibleOutputs = computed(
   font-weight: 400;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.tool-cwd-value {
+  color: var(--mar-conversation-text);
 }
 </style>

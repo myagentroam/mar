@@ -122,7 +122,6 @@ export const filePreviewEnUS = {
     open: 'Run HTML preview',
     browser: 'Browser',
     preview: 'Preview',
-    empty: 'Open an HTML file from a conversation or Files to preview it here.',
     reload: 'Reload',
     source: 'Open source',
     external: 'Open in browser',

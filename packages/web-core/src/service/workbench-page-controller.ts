@@ -1,10 +1,8 @@
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import { clearMessages, showMessage } from './message-feedback-service.js';
-import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { ElMessageBox } from './message-box-service.js';
 import { createHostedConversationSelectionService } from '@myagentroam/web-core/hosted-selection';
 import { createAdminAuthService } from './admin-auth-service.js';
 import { createRunnerUsageService } from './runner-usage-service.js';
@@ -19,7 +17,6 @@ import {
   currentChangesBranch,
   effortPresentation as effortLabel,
   nodePresentation as nodeLabel,
-  runnerLabel,
   sessionActivityDateTime,
   tokenCountLabel as formatTokenCount,
   workspaceBranchLabel,
@@ -81,6 +78,29 @@ import {
 import { supportsSessionAside } from '../util/node-features.js';
 import { replaceSessionIdentity } from './workbench-session-identity.js';
 import { createWorkbenchSubmissionOwner } from './workbench-submission-service.js';
+import { createScopedHttpService } from './scoped-http-service.js';
+import { createWorkspaceGitService } from './workspace-git-service.js';
+import { createWorkspaceContentSearchService } from './workspace-content-search-service.js';
+import {
+  createWorkspaceFileOperationService,
+  filePageWorkspace,
+  isFilePage
+} from './workspace-file-operation-service.js';
+import {
+  createWorkspaceFilesController,
+  workspaceFileTreeRootName
+} from './workspace-files-controller.js';
+import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
+import type { ChangeEntry, HistoryCommit, HistoryFile } from '../model/workspace-git.js';
+import type { WorkspaceFileTab } from '../util/workspace-file-tab.js';
+import { loadToolChangeDiff } from './tool-change-review-service.js';
+import { createWorkspaceFileWorkbenchController } from './workspace-file-workbench-controller.js';
+import type { WorkspaceFilePagePort } from '../model/workspace-file-workbench.js';
+import { filePreviewErrorMessage } from '../util/error-presentation.js';
+import type {
+  WorkspaceFilesPanelHandle,
+  WorkspaceSearchPanelHandle
+} from './workbench-surface-state-service.js';
 import { createWorkbenchWorkspaceSelectionService } from './workbench-workspace-selection-service.js';
 import { createWorkbenchWorkspaceCacheController } from './workbench-workspace-cache-controller.js';
 import { createWorkbenchWorkspaceTreeController } from './workbench-workspace-tree-controller.js';
@@ -107,13 +127,11 @@ import { userInputQuestions } from '../util/conversation-presentation.js';
 import { createWorkspaceTabService } from './workspace-tab-service.js';
 import {
   STANDALONE_FILE_OPEN_EVENT,
-  createStandaloneFileWindowService,
   standaloneFileOpenIntent,
   type StandaloneFileOpenIntent
 } from './standalone-file-window-service.js';
 import { createWorkspaceTreeService } from './workspace-tree-service.js';
 import type {
-  ConversationItem,
   ConversationTurn,
   QuickPrompt,
   Session,
@@ -165,7 +183,7 @@ export function createWorkbenchPageController<
     navigation: options.navigation,
     sessionPageSize: WORKSPACE_SESSION_PAGE_SIZE,
     onUnauthenticated: () => returnToLogin(),
-    onWorkspaceRunCompleted: refreshCurrentWorkspaceInspector,
+    onWorkspaceRunCompleted: refreshCurrentVisibleTool,
     onNotificationClick: openWorkbenchNotification,
     visibleWorkspaceTargets: () => visibleWorkspaceNotificationTargets()
   });
@@ -215,6 +233,10 @@ export function createWorkbenchPageController<
   const workbenchHttpService = baseState.http;
 
   const { request, renewCsrfToken } = workbenchHttpService;
+  const workspaceToolsHttp = createScopedHttpService({
+    csrfToken: () => csrfToken.value,
+    renewCsrfToken
+  });
 
   const notice = showMessage;
   onBeforeUnmount(clearMessages);
@@ -323,21 +345,9 @@ export function createWorkbenchPageController<
   });
 
   const workbenchAsideService = createWorkbenchAsideService();
-  const htmlPreviewWindows = createStandaloneFileWindowService();
-
-  function openHtmlExternal(path: string): void {
-    const target = workspaceTarget.value;
-    if (target === undefined) return;
-    const params = new URLSearchParams({ standaloneFile: '1', ...target, path, htmlPreview: '1' });
-    if (htmlPreviewWindows.openNew(`/console?${params}`) === undefined)
-      notice(
-        translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'),
-        'error'
-      );
-  }
   function openHtmlAside(path: string): void {
     const target = workspaceTarget.value;
-    if (target === undefined || !workbenchAsideService.current(target).tools.includes('browser')) {
+    if (target === undefined || !workbenchAsideService.current(target).tools.includes('files')) {
       notice(
         translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
         'error'
@@ -374,9 +384,7 @@ export function createWorkbenchPageController<
     onConversationOverflow: () => reloadAsideSession()
   });
   const submissionService = mainPane.submission;
-  const { pending: submissionPending } = submissionService;
   const focusComposerInputAt = mainPane.focusInput;
-  const editComposerRange = mainPane.editRange;
 
   const {
     input: sessionInput,
@@ -400,7 +408,6 @@ export function createWorkbenchPageController<
     loadingInitial: loadingInitialConversation,
     initialLoadFailed: initialConversationLoadFailed,
     loadingOlder: loadingOlderConversation,
-    channelToken,
     contextUsage: sessionContextUsage,
     initialRenderVersion: conversationInitialRenderVersion,
     beginInitialRender: beginConversationInitialRender,
@@ -413,7 +420,7 @@ export function createWorkbenchPageController<
 
   const {
     quickOpenFileVisible,
-    workspaceInspector,
+    workspaceFileWorkbench,
     terminalDocks,
     draftSessionOpen,
     registrationToken,
@@ -739,11 +746,11 @@ export function createWorkbenchPageController<
         workspaceHost.value?.capabilities.promptCompletion?.automaticTriggers === true,
       attention: () =>
         workspaceHost.value?.capabilities.promptCompletion?.contextVersion === 3
-          ? (workspaceInspector.value?.predictionAttention?.() ?? [])
+          ? (workspaceFileWorkbench.value?.predictionAttention?.() ?? [])
           : []
     },
     files: {
-      openChange: (intent) => workspaceInspector.value?.openWorkspaceFileTab(intent),
+      openChange: (intent) => fileWorkbench.openTab(intent),
       openFile: (path, line, column, external) =>
         openAgentWorkspaceFile(path, line, column, external)
     },
@@ -1046,14 +1053,12 @@ export function createWorkbenchPageController<
     access: newSessionAccess,
     modelEffortSelection: composerModelEffortSelection,
     activeRunner: composerRunner,
-    profile: composerProfile,
     models: composerModels,
     efforts: composerEfforts,
     accessOptions: composerAccessOptions,
     modelEffortLabel: composerModelEffortLabel,
     runnerLabel: composerRunnerLabel,
     accessLabel: composerAccessLabel,
-    normalize: normalizeComposerConfiguration,
     apply: applyComposerDefaultConfiguration
   } = composerConfigurationService;
 
@@ -1061,7 +1066,6 @@ export function createWorkbenchPageController<
 
   const {
     selectedCommand: selectedRunnerCommand,
-    deferredDraftCommands,
     codexFastEnabled,
     commandPickerOpen,
     activeCommandIndex: activeRunnerCommandIndex,
@@ -1097,8 +1101,6 @@ export function createWorkbenchPageController<
     activeComposerRun,
     workspaceHost,
     nodeReady,
-    mustSteerCurrentTurn,
-    canStartTurn,
     composerDraftOpen,
     canUseComposer,
     composerSessionOpen,
@@ -1107,13 +1109,9 @@ export function createWorkbenchPageController<
     composerInputDisabled,
     composerAttachmentsPending,
     displayedConversationTurns,
-    composerSessionBusy,
-    sessionControlsBusy,
     rewindConversationEnabled,
     rollbackConversationEnabled,
-    canExecuteRunnerCommand,
     canDeleteSession,
-    compactCommand,
     canCompactContext,
     contextUsageLabel,
     composerWorking: authoritativeComposerWorking,
@@ -1424,18 +1422,349 @@ export function createWorkbenchPageController<
     await workbenchSessionSelectionService.selectSession(sessionId);
   }
 
+  const workspaceGit = createWorkspaceGitService({
+    http: workspaceToolsHttp,
+    target: () => (filesReady.value ? workspaceTarget.value : undefined),
+    gitEnabled: () => selectedWorkspace.value?.kind === 'GIT_WORKSPACE',
+    workspacePath: () => selectedWorkspace.value?.path,
+    historyEnabled: () =>
+      selectedWorkspace.value?.kind === 'GIT_WORKSPACE' &&
+      nodeManifest.value?.git?.supportsHistory === true,
+    onWorkspace: (workspace) =>
+      updateWorkspaceMetadata(workspaceTarget.value?.nodeId ?? '', workspace),
+    onBranch: (workspaceId, branch) =>
+      updateWorkspaceBranch(workspaceTarget.value?.nodeId ?? '', workspaceId, branch),
+    onFailure: (error, operation) => {
+      if (operation === 'RESTORE' || errorCode(error) === 'CAPABILITY_UNAVAILABLE')
+        notice(
+          translate('generated.workspaceInspector.unableToLoad', {
+            value0: translate('generated.workspaceInspector.revertingChanges'),
+            value1: message(error)
+          }),
+          'error',
+          error
+        );
+    }
+  });
+  onBeforeUnmount(() => workspaceGit.reset());
+
+  function openWorkspaceGitChange(entry: ChangeEntry, external = false): void {
+    const target = workspaceTarget.value;
+    if (!filesReady.value || target === undefined) return;
+    const location = workspaceGit.changeLocation(entry);
+    const intent = entry.diffAvailable ? workspaceGit.changeIntent(entry) : undefined;
+    if (external) {
+      if (intent !== undefined) openGitDiffExternal(intent);
+      else
+        openWorkspaceFileExternal(
+          location.path,
+          undefined,
+          undefined,
+          undefined,
+          location.worktreePath,
+          location.repositoryPath
+        );
+    } else if (intent !== undefined) void fileWorkbench.openTab(intent);
+    else
+      void fileWorkbench.openWorkspaceFile(
+        location.path,
+        undefined,
+        location.worktreePath,
+        false,
+        undefined,
+        location.repositoryPath
+      );
+  }
+  function openWorkspaceHistoryDiff(
+    commit: HistoryCommit,
+    file: HistoryFile,
+    external = false
+  ): void {
+    const target = workspaceTarget.value;
+    if (!filesReady.value || target === undefined) return;
+    const intent = workspaceGit.historyIntent(commit, file);
+    if (intent === undefined) return;
+    if (external) openGitDiffExternal(intent);
+    else void fileWorkbench.openTab(intent);
+  }
+
+  const resolveWorkspaceGitRepositoryPath = workspaceGit.resolveRepositoryPath;
+  const workspaceComparison = workspaceGit.comparison;
+  const adjacentWorkspaceDiff = workspaceGit.adjacentDiff;
+  function loadWorkspaceDiff(tab: WorkspaceFileTab, signal?: AbortSignal): Promise<unknown> {
+    return tab.kind === 'TOOL_CHANGE_DIFF'
+      ? loadToolChangeDiff(tab, (path) => workspaceToolsHttp.request(path), signal)
+      : workspaceGit.loadDiff(tab, signal);
+  }
+
+  const workspaceFileTreeName = computed(() => {
+    const workspace = selectedWorkspace.value;
+    return workspaceFileTreeRootName(
+      workspace?.path,
+      workspace === undefined ? '' : workspaceTabLabel(workspace)
+    );
+  });
+  function reportWorkspaceFileFailure(error: unknown, action: string): void {
+    notice(
+      translate('generated.workspaceInspector.unableToLoad', {
+        value0: action,
+        value1: message(error)
+      }),
+      'error',
+      error
+    );
+  }
+  const workspaceFileOperations = createWorkspaceFileOperationService({
+    http: workspaceToolsHttp,
+    onWritten: async (_target, current) => {
+      if (current?.() === false) return;
+      await workspaceFiles.refresh();
+      if (current?.() !== false && selectedWorkspace.value?.kind === 'GIT_WORKSPACE')
+        await workspaceGit.loadChanges();
+    }
+  });
+  const workspaceFilesPanel = shallowRef<WorkspaceFilesPanelHandle>();
+  const workspaceFiles = createWorkspaceFilesController({
+    target: () => (filesReady.value ? workspaceTarget.value : undefined),
+    workspaceName: () => workspaceFileTreeName.value,
+    list: (target, path, cursor) => workspaceFileOperations.list(target, path, cursor),
+    onListFailure: (error) => {
+      if (errorCode(error) === 'CAPABILITY_UNAVAILABLE') reportWorkspaceFileFailure(error, 'Files');
+    },
+    onWorkspace: (workspace) =>
+      updateWorkspaceMetadata(workspaceTarget.value?.nodeId ?? '', workspace),
+    onDeletedSelection: () => fileWorkbench.invalidateDeletedSelection(),
+    onRevealSelection: async (path, current) => {
+      await workspaceFilesPanel.value?.reveal(path, current);
+    },
+    onMutationFailure: (error, context, target, path) =>
+      reportWorkspaceFileFailure(
+        error,
+        `${translate(
+          context === 'move'
+            ? 'generated.workspaceInspector.movingFile'
+            : 'generated.workspaceInspector.fileOperation'
+        )} (${target.nodeId}/${target.workspaceId}: ${path})`
+      ),
+    mutate: (target, action, path, destination, current) =>
+      workspaceFileOperations.mutate(target, action, path, destination, current),
+    revealLocal: (target, path) => workspaceFileOperations.reveal(target, path),
+    preflight: (target, directory, names) =>
+      workspaceFileOperations.preflight(target, directory, names),
+    queue: (uploads) => queueWorkspaceUploads(uploads),
+    onFailure: (error) =>
+      reportWorkspaceFileFailure(error, translate('generated.workspaceInspector.uploadPreflight'))
+  });
+  const workspaceFilePage = shallowRef<WorkspaceFilePagePort>();
+  async function revealWorkspaceFileTree(
+    path: string,
+    current: () => boolean = () => true
+  ): Promise<void> {
+    const scope = workspaceFiles.captureTarget();
+    const needed = () => scope !== undefined && workspaceFiles.isCurrentTarget(scope) && current();
+    if (!needed()) return;
+    await workspaceFiles.tree.reveal(path, needed);
+    if (!needed()) return;
+    workspaceFiles.tree.selectPath(path);
+    await workspaceFilesPanel.value?.reveal(path, needed);
+  }
+  async function downloadWorkspaceFile(path: string): Promise<void> {
+    const target = workspaceTarget.value;
+    if (target === undefined) return;
+    try {
+      await fileWorkbench.downloadTarget({ ...target, path });
+    } catch (error) {
+      reportWorkspaceFileFailure(error, path);
+    }
+  }
+  const fileWorkbench = createWorkspaceFileWorkbenchController({
+    externalTarget: () => workspaceTarget.value,
+    fileWriteEnabled: () => fileWriteReady.value,
+    onPopupBlocked: () =>
+      notice(
+        translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'),
+        'error'
+      ),
+    page: () => workspaceFilePage.value,
+    target: () => (filesReady.value ? workspaceTarget.value : undefined),
+    prewarmEnabled: () => codeNavigationPrewarmReady.value,
+    resolveRepositoryPath: resolveWorkspaceGitRepositoryPath,
+    reveal: revealWorkspaceFileTree,
+    comparison: workspaceComparison,
+    onOpenFailure: (error, path) => notice(filePreviewErrorMessage(error, path), 'error', error),
+    onRevealFailure: (error) => notice(message(error), 'error', error),
+    preview: {
+      http: workspaceToolsHttp,
+      transfers: () => ({
+        directFileReadRange: directWorkspaceFileReadRange,
+        directFileObjectUrl: directWorkspaceFileObjectUrl,
+        directFileDownload: directWorkspaceFileDownload,
+        directGitFileReadRange,
+        directGitFileObjectUrl,
+        directGitFileDownload
+      }),
+      onFailure: (error, target) =>
+        notice(filePreviewErrorMessage(error, target.path), 'error', error),
+      onWritten: (target) => {
+        if (
+          workspaceTarget.value?.nodeId !== target.nodeId ||
+          workspaceTarget.value.workspaceId !== target.workspaceId
+        )
+          return;
+        void workspaceFiles.requestRefresh();
+        if (selectedWorkspace.value?.kind === 'GIT_WORKSPACE') void workspaceGit.loadChanges();
+      }
+    },
+    navigation: {
+      http: workspaceToolsHttp,
+      onFailure: (error) => reportWorkspaceFileFailure(error, translate('fileEditor.definitions')),
+      onFileTarget: (target, pageId) => fileWorkbench.openNavigationTarget(target, pageId)
+    }
+  });
+  const openWorkspaceFileExternal = fileWorkbench.openExternal;
+  const openGitDiffExternal = fileWorkbench.openDiffExternal;
+  const openHtmlExternal = fileWorkbench.openHtmlExternal;
+  function protectSuspendedFileDrafts(event: BeforeUnloadEvent): void {
+    if (!fileWorkbench.hasSuspendedDrafts() || options.pwaApplication?.isReloadingForUpdate())
+      return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', protectSuspendedFileDrafts);
+    onBeforeUnmount(() => window.removeEventListener('beforeunload', protectSuspendedFileDrafts));
+  }
+  onBeforeUnmount(() => fileWorkbench.dispose());
+  let appliedFilesWatchRevision = -1;
+  let pendingGitRestore: WorkspaceGitSnapshot | undefined;
+  function applyWorkspaceToolWatch(): void {
+    const snapshot = workspaceWatchSnapshot.value;
+    const target = workspaceTarget.value;
+    if (
+      snapshot === undefined ||
+      target === undefined ||
+      snapshot.nodeId !== target.nodeId ||
+      snapshot.workspaceId !== target.workspaceId
+    )
+      return;
+    const revision = snapshot.filesWatchRevision;
+    if (
+      isFilePage(snapshot.files) &&
+      (revision === undefined
+        ? appliedFilesWatchRevision < 0
+        : Number.isInteger(revision) && revision > appliedFilesWatchRevision)
+    ) {
+      workspaceFiles.tree.applyRootPage(snapshot.files.files);
+      const workspace = filePageWorkspace(snapshot.files.workspace);
+      if (workspace !== undefined) updateWorkspaceMetadata(target.nodeId, workspace);
+      appliedFilesWatchRevision =
+        revision === undefined || !Number.isInteger(revision) ? 0 : revision;
+    }
+    if (snapshot.changes !== undefined)
+      workspaceGit.applyWatch(snapshot.changes, snapshot.changesWatchRevision);
+  }
+  function restorePendingGit(): void {
+    if (pendingGitRestore === undefined || !filesReady.value) return;
+    if (selectedWorkspace.value?.kind !== 'GIT_WORKSPACE') return;
+    const snapshot = pendingGitRestore;
+    pendingGitRestore = undefined;
+    applyWorkspaceToolWatch();
+    workspaceGit.restore(snapshot);
+  }
+  watch(workspaceWatchSnapshot, applyWorkspaceToolWatch);
+  watch(workspaceFileTreeName, (name) => workspaceFiles.tree.setRootName(name));
+  watch(
+    () => [workspaceTarget.value?.nodeId, workspaceTarget.value?.workspaceId] as const,
+    ([nodeId, workspaceId], [previousNodeId, previousWorkspaceId]) => {
+      if (nodeId === previousNodeId && workspaceId === previousWorkspaceId) return;
+      pendingGitRestore = undefined;
+      appliedFilesWatchRevision = -1;
+      workspaceFilePage.value = undefined;
+      fileWorkbench.reset();
+      workspaceFiles.invalidate();
+      workspaceFiles.resetTree();
+      workspaceGit.reset();
+    },
+    { flush: 'sync' }
+  );
+  watch(
+    [filesReady, () => selectedWorkspace.value?.kind],
+    ([ready, kind], [wasReady, oldKind]) => {
+      if (oldKind === 'GIT_WORKSPACE' && kind !== undefined && kind !== 'GIT_WORKSPACE') {
+        pendingGitRestore = undefined;
+        workspaceGit.reset(true);
+        fileWorkbench.removeGitTabs();
+      }
+      if (wasReady && !ready) {
+        workspaceFiles.invalidate();
+        workspaceFiles.invalidateTree();
+      }
+      if (ready) {
+        fileWorkbench.resumeRestoration();
+        applyWorkspaceToolWatch();
+        restorePendingGit();
+      }
+    },
+    { flush: 'sync' }
+  );
+  onBeforeUnmount(() => {
+    workspaceFiles.invalidate();
+    workspaceFiles.resetTree();
+  });
+
+  const workspaceSearch = createWorkspaceContentSearchService({
+    http: workspaceToolsHttp,
+    onFailure: (error) => {
+      if (errorCode(error) === 'CAPABILITY_UNAVAILABLE')
+        notice(
+          translate('generated.workspaceInspector.unableToLoad', {
+            value0: translate('generated.workspaceInspector.contentSearch'),
+            value1: message(error)
+          }),
+          'error',
+          error
+        );
+    }
+  });
+  const workspaceSearchPanel = shallowRef<WorkspaceSearchPanelHandle>();
+  watch(
+    () => [workspaceTarget.value?.nodeId, workspaceTarget.value?.workspaceId] as const,
+    ([nodeId, workspaceId], [previousNodeId, previousWorkspaceId]) => {
+      if (nodeId === previousNodeId && workspaceId === previousWorkspaceId) return;
+      workspaceSearch.reset();
+      workspaceSearchPanel.value?.restore({});
+    },
+    { flush: 'sync' }
+  );
+  function setWorkspaceSearchPanel(panel: WorkspaceSearchPanelHandle | null): void {
+    const previous = workspaceSearchPanel.value;
+    if (previous === panel) return;
+    const target = workspaceTarget.value;
+    if (
+      previous !== undefined &&
+      target !== undefined &&
+      workspaceViewCacheService.isActive(target.nodeId, target.workspaceId)
+    )
+      workspaceViewCacheService.updateSearch(target.nodeId, target.workspaceId, {
+        ...workspaceSearch.snapshot(),
+        ...previous.snapshot()
+      });
+    workspaceSearchPanel.value = panel ?? undefined;
+    if (panel !== null && target !== undefined)
+      panel.restore(workspaceViewCacheService.view(target.nodeId, target.workspaceId).search ?? {});
+  }
+  onBeforeUnmount(() => workspaceSearch.reset());
+
   const {
     workspaceViewCache,
     discardWorkspaceViewCache,
     discardNodeViewCaches,
     saveCurrentWorkspaceView: saveMainWorkspaceView,
-    restoreWorkspaceInspector,
+    restoreWorkspaceView,
     restoreWorkspaceDraft,
     restoreCachedSessionDetail,
-    updateCachedContext,
     syncCachedRunStatus,
     cacheRunSnapshotFor,
-    cacheRunSnapshot,
     replaceConversationTurns
   } = createWorkbenchWorkspaceCacheController({
     cacheService: workspaceViewCacheService,
@@ -1452,7 +1781,44 @@ export function createWorkbenchPageController<
     access: newSessionAccess,
     workspaceTarget,
     selectedSessionId,
-    inspector: workspaceInspector,
+    fileWorkbench,
+    files: {
+      snapshot: () => workspaceFiles.tree.snapshot(),
+      restore: (snapshot) => {
+        if (snapshot === undefined) workspaceFiles.resetTree();
+        else workspaceFiles.restoreTree(snapshot);
+        workspaceFiles.tree.setRootName(workspaceFileTreeName.value);
+        appliedFilesWatchRevision = -1;
+        applyWorkspaceToolWatch();
+      }
+    },
+    git: {
+      snapshot: () => workspaceGit.snapshot(),
+      restore: (snapshot) => {
+        pendingGitRestore = snapshot;
+        if (snapshot !== undefined) restorePendingGit();
+      }
+    },
+    search: {
+      snapshot: (previous) => ({
+        ...workspaceSearch.snapshot(),
+        ...(workspaceSearchPanel.value?.snapshot() ??
+          (previous === undefined
+            ? {}
+            : {
+                ...(previous.contentQuery === undefined
+                  ? {}
+                  : { contentQuery: previous.contentQuery }),
+                ...(previous.contentUseRegex === undefined
+                  ? {}
+                  : { contentUseRegex: previous.contentUseRegex })
+              }))
+      }),
+      restore: (snapshot) => {
+        workspaceSearch.restore(snapshot ?? {});
+        workspaceSearchPanel.value?.restore(snapshot ?? {});
+      }
+    },
     restoreDraftConfiguration: applyComposerDefaultConfiguration,
     persistDraft: persistSessionDraft,
     flushConversation: conversationProjectionService.flushPendingTextDeltas,
@@ -1499,14 +1865,17 @@ export function createWorkbenchPageController<
   }
 
   const sessionPerformance = mainPaneController.performance;
-  function refreshCurrentWorkspaceInspector(nodeId: string, workspaceId: string): void {
+  function refreshCurrentVisibleTool(nodeId: string, workspaceId: string): void {
     if (
       view.value !== 'nodes' ||
       workspaceNodeId.value !== nodeId ||
       activeWorkspaceId.value !== workspaceId
     )
       return;
-    workspaceInspector.value?.refreshVisibleSection(nodeId, workspaceId);
+    const active = workbenchAsideService.current({ nodeId, workspaceId }).active;
+    if (!asideSurfaceVisible.value || active?.kind !== 'tool') return;
+    if (active.id === 'changes') void workspaceGit.loadChanges();
+    else if (active.id === 'files') void workspaceFiles.requestRefresh();
   }
 
   const { updateNodeConnection } = mainPaneController.events;
@@ -2232,14 +2601,15 @@ export function createWorkbenchPageController<
     contentSearchReady,
     terminalReady,
     quickOpenFileVisible,
-    workspaceInspector,
-    showInspectorTool: (tool) => {
+    workspaceFileWorkbench,
+    fileWorkbench,
+    openWorkspaceFileExternal,
+    showAsideTool: (tool) => {
       const target = workspaceTarget.value;
       if (target === undefined) return;
       selectAsideTool({ ...target, id: tool });
       void nextTick(() => {
-        if (tool === 'search') workspaceInspector.value?.openSearch();
-        else workspaceInspector.value?.openChanges();
+        if (tool === 'search') void workspaceSearchPanel.value?.focus();
       });
     },
     openAttachmentImage: conversationImageService.openFileAttachment,
@@ -2288,8 +2658,6 @@ export function createWorkbenchPageController<
     selectRunner: selectComposerRunner
   } = composerController;
 
-  const selectComposerEffort = mainPaneController.selectEffort;
-  const selectComposerModel = mainPaneController.selectModel;
   const selectComposerAccess = mainPaneController.selectAccess;
   const selectComposerModelEffort = mainPaneController.selectModelEffort;
 
@@ -2472,10 +2840,10 @@ export function createWorkbenchPageController<
       watchCoordinator.current?.startWorkspace(workspaceId) ?? Promise.resolve(),
     saveCurrent: saveCurrentWorkspaceView,
     activateCache: workspaceViewCacheService.activate,
-    restoreInspector: restoreWorkspaceInspector,
-    refreshInspector: (nodeId, workspaceId) => {
+    restoreWorkspaceView,
+    refreshVisibleTool: (nodeId, workspaceId) => {
       void nextTick(() => {
-        refreshCurrentWorkspaceInspector(nodeId, workspaceId);
+        refreshCurrentVisibleTool(nodeId, workspaceId);
       });
     },
     initializePaging: workspaceSessionPaging.initialize,
@@ -2563,15 +2931,14 @@ export function createWorkbenchPageController<
         standaloneFileError.value = true;
         return;
       }
-      if (workspaceInspector.value == null) return;
       if (pendingStandaloneFileIntent.value !== intent) return;
       pendingStandaloneFileIntent.value = undefined;
       consumedStandaloneFileIntent = true;
-      if (intent.tab !== undefined) workspaceInspector.value.openWorkspaceFileTab(intent.tab);
+      if (intent.tab !== undefined) await fileWorkbench.openTab(intent.tab);
       else if (intent.worktreePath === undefined && intent.repositoryPath === undefined)
-        await workspaceInspector.value.openFile(intent.path, intent.line, intent.column);
+        await fileWorkbench.openFile(intent.path, intent.line, intent.column);
       else
-        await workspaceInspector.value.openWorkspaceFile(
+        await fileWorkbench.openWorkspaceFile(
           intent.path,
           intent.line,
           intent.worktreePath,
@@ -2580,6 +2947,9 @@ export function createWorkbenchPageController<
           intent.repositoryPath
         );
       if (
+        pendingStandaloneFileIntent.value === undefined &&
+        workspaceNodeId.value === intent.nodeId &&
+        activeWorkspaceId.value === intent.workspaceId &&
         intentUrl !== undefined &&
         typeof location !== 'undefined' &&
         typeof history !== 'undefined'
@@ -2591,10 +2961,18 @@ export function createWorkbenchPageController<
         }
       }
     } catch {
-      if (pendingStandaloneFileIntent.value === intent)
+      if (pendingStandaloneFileIntent.value === intent) {
         pendingStandaloneFileIntent.value = undefined;
+        standaloneFileError.value = true;
+      } else if (
+        consumedStandaloneFileIntent &&
+        pendingStandaloneFileIntent.value === undefined &&
+        workspaceNodeId.value === intent.nodeId &&
+        activeWorkspaceId.value === intent.workspaceId
+      ) {
+        standaloneFileError.value = true;
+      }
       consumedStandaloneFileIntent = true;
-      standaloneFileError.value = true;
     } finally {
       if (consumedStandaloneFileIntent && pendingStandaloneFileIntent.value === undefined)
         standaloneFileLoading.value = false;
@@ -2620,8 +2998,7 @@ export function createWorkbenchPageController<
       workspaceNodeId,
       activeWorkspaceId,
       filesReady,
-      nodeManifestLoading,
-      workspaceInspector
+      nodeManifestLoading
     ],
     () => void openPendingStandaloneFileIntent(),
     { immediate: true, flush: 'post' }
@@ -3074,7 +3451,7 @@ export function createWorkbenchPageController<
     ([target, manifest, kind]) => {
       if (target === undefined || manifest === undefined) return;
       const tools: AsideTool[] = [];
-      if (manifest.files?.available === true) tools.push('files', 'search', 'browser');
+      if (manifest.files?.available === true) tools.push('files', 'search');
       if (kind === 'GIT_WORKSPACE') {
         tools.push('changes');
         if (manifest.git?.supportsHistory === true) tools.push('history');
@@ -3092,6 +3469,19 @@ export function createWorkbenchPageController<
     workbenchAsideService.selectTool(target, target.id);
     if (mobileViewport.value)
       openMobileWorkspaceSurface(target.id === 'terminal' ? 'terminal' : 'inspector');
+  }
+
+  function selectAsideBrowser(target: AsideWorkspace): void {
+    const current = workspaceTarget.value;
+    if (current?.nodeId !== target.nodeId || current.workspaceId !== target.workspaceId) return;
+    if (workbenchAsideService.current(target).active?.kind === 'session') saveAsideContext();
+    if (workbenchAsideService.activateHtml(target) && mobileViewport.value)
+      openMobileWorkspaceSurface('inspector');
+  }
+  function closeAsideBrowser(target: AsideWorkspace): void {
+    const current = workspaceTarget.value;
+    if (current?.nodeId !== target.nodeId || current.workspaceId !== target.workspaceId) return;
+    workbenchAsideService.clearHtmlWorkspace(target);
   }
 
   function toggleAsideTerminal(): void {
@@ -3238,18 +3628,10 @@ export function createWorkbenchPageController<
     composerInteractions.scrollConversationToLatest();
   }
 
-  function scrollConversationToLatestAfterLayout(): Promise<void> {
-    return composerInteractions.scrollConversationToLatestAfterLayout();
-  }
-
   const conversationRealtime = mainPaneController.realtime;
 
   function openRun(runId: string): void {
     conversationRealtime.openRun(runId);
-  }
-
-  function syncConversationTurnStatus(runId: string, status: string, sessionId?: string): void {
-    conversationRealtime.syncConversationTurnStatus(runId, status, sessionId);
   }
 
   // Realtime backfill covers only the event-log window. If the active session ended while offline,
@@ -3501,6 +3883,38 @@ export function createWorkbenchPageController<
     copyConversationMessage,
     createRegistrationToken,
     csrfToken,
+    workspaceToolsHttp,
+    fileWorkbench,
+    setWorkspaceFilePage: (
+      page: WorkspaceFilePagePort | undefined,
+      previous?: WorkspaceFilePagePort
+    ) => {
+      if (page !== undefined) {
+        workspaceFilePage.value = page;
+        fileWorkbench.pageReady();
+      } else if (workspaceFilePage.value === previous) workspaceFilePage.value = undefined;
+    },
+    resolveWorkspaceGitRepositoryPath,
+    workspaceComparison,
+    adjacentWorkspaceDiff,
+    loadWorkspaceDiff,
+    openWorkspaceFileExternal,
+    downloadWorkspaceFile,
+    workspaceGit,
+    openWorkspaceGitChange,
+    openWorkspaceHistoryDiff,
+    workspaceFiles,
+    setWorkspaceFilesPanel: (panel: WorkspaceFilesPanelHandle | null) => {
+      workspaceFilesPanel.value = panel ?? undefined;
+    },
+    revealWorkspaceFileTree,
+    refreshAfterFileWrite: () => {
+      void workspaceFiles.requestRefresh();
+      if (selectedWorkspace.value?.kind === 'GIT_WORKSPACE') void workspaceGit.loadChanges();
+    },
+    reportWorkspaceFileFailure,
+    workspaceSearch,
+    setWorkspaceSearchPanel,
     currentSessionQueue,
     decideApproval,
     deleteNode,
@@ -3745,7 +4159,7 @@ export function createWorkbenchPageController<
     workspaceDirectDescription,
     workspaceLocalFileManagerAvailable,
     workspaceFilesRevision,
-    workspaceInspector,
+    workspaceFileWorkbench,
     workspaceKindLabel,
     workspacePath,
     workspaceTabLabel,
@@ -3770,6 +4184,8 @@ export function createWorkbenchPageController<
       asideSurfaceVisible.value = visible;
     },
     selectAsideTool,
+    selectAsideBrowser,
+    closeAsideBrowser,
     reloadAsideSession,
     openAsideSession: workbenchSessionSelectionService.openAsideSession,
     closeAsideSession: workbenchSessionSelectionService.closeAsideSession,

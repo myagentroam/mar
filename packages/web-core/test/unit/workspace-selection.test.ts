@@ -41,10 +41,10 @@ function fixture() {
     events.push('activate');
     cache.activate(nodeId, workspaceId);
   });
-  const restoreInspector = vi.fn(() => {
-    events.push('inspector');
+  const restoreWorkspaceView = vi.fn(() => {
+    events.push('fileWorkbench');
   });
-  const refreshInspector = vi.fn();
+  const refreshVisibleTool = vi.fn();
   const restoreDraft = vi.fn(() => {
     events.push('draft');
   });
@@ -115,8 +115,8 @@ function fixture() {
     startWatch,
     saveCurrent,
     activateCache,
-    restoreInspector,
-    refreshInspector,
+    restoreWorkspaceView,
+    refreshVisibleTool,
     initializePaging: vi.fn(),
     tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
     viewCache: cache.view,
@@ -144,8 +144,8 @@ function fixture() {
     stopWatch,
     saveCurrent,
     activateCache,
-    restoreInspector,
-    refreshInspector,
+    restoreWorkspaceView,
+    refreshVisibleTool,
     restoreDraft,
     startWatch,
     openSession,
@@ -201,20 +201,41 @@ describe('Workspace-only foreground selection', () => {
       { id: 'saved', externalSessionId: 'saved', workspaceId: 'workspace-3' } as Session
     ];
     f.cache.activate('node-2', 'workspace-3');
-    f.cache.captureActive({ sessions, selectedSessionId: 'saved', inspector: {} }, 2);
+    f.cache.captureActive(
+      {
+        sessions,
+        selectedSessionId: 'saved',
+        fileWorkbench: { fileTabs: { tabs: [] }, dirtyTextDrafts: [] },
+        files: {
+          root: {
+            path: '.',
+            name: 'project',
+            kind: 'DIRECTORY',
+            size: null,
+            children: [],
+            expanded: true,
+            loaded: false,
+            loading: false,
+            nextCursor: null,
+            placeholder: false
+          }
+        }
+      },
+      2
+    );
     f.cache.deactivate();
     await f.service.select(target('node-2', 'workspace-3'));
     expect(f.events).toEqual([
       'save',
       'stop',
       'activate',
-      'inspector',
+      'fileWorkbench',
       'draft',
       'session',
       'watch'
     ]);
     expect(f.sessions.value).toEqual(sessions);
-    expect(f.refreshInspector).toHaveBeenCalledWith('node-2', 'workspace-3');
+    expect(f.refreshVisibleTool).toHaveBeenCalledWith('node-2', 'workspace-3');
     expect(f.openSession).toHaveBeenCalledWith('saved', { skipSaveCurrent: true });
   });
 

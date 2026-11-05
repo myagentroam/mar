@@ -817,57 +817,65 @@ describe('JSONL session store', () => {
     await catalog.close();
   });
 
-  it('copies only generated images referenced by retained fork history', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-agent-fork-images-home-'));
-    homes.push(home);
-    const store = await JsonlSessionStore.open(home);
-    const source = await store.createSession({ title: 'Original', workspace: home });
-    const generated = join(home, '.mar', 'agent', 'sessions', source.id, 'generated_images');
-    await mkdir(generated);
-    await writeFile(join(generated, 'image_retained.png'), 'retained');
-    await writeFile(join(generated, 'image_later.png'), 'later');
-    for (const [index, fileName] of ['image_retained.png', 'image_later.png'].entries()) {
-      const turnId = `turn-${index + 1}`;
-      const executionId = `execution-${index + 1}`;
-      await store.append(source.id, {
-        type: 'tool.completed',
-        payload: {
+  it.each(['png', 'gif'] as const)(
+    'copies only generated %s images referenced by retained fork history',
+    async (format) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-agent-fork-images-home-'));
+      homes.push(home);
+      const store = await JsonlSessionStore.open(home);
+      const source = await store.createSession({ title: 'Original', workspace: home });
+      const generated = join(home, '.mar', 'agent', 'sessions', source.id, 'generated_images');
+      await mkdir(generated);
+      await writeFile(join(generated, `image_retained.${format}`), 'retained');
+      await writeFile(join(generated, `image_later.${format}`), 'later');
+      for (const [index, fileName] of [
+        `image_retained.${format}`,
+        `image_later.${format}`
+      ].entries()) {
+        const turnId = `turn-${index + 1}`;
+        const executionId = `execution-${index + 1}`;
+        await store.append(source.id, {
           type: 'tool.completed',
-          eventId: `image-${index + 1}`,
-          sequence: index + 1,
-          timestamp: `2026-09-03T00:00:0${index}.000Z`,
-          sessionId: source.id,
+          payload: {
+            type: 'tool.completed',
+            eventId: `image-${index + 1}`,
+            sequence: index + 1,
+            timestamp: `2026-09-03T00:00:0${index}.000Z`,
+            sessionId: source.id,
+            executionId,
+            turnId,
+            toolName: 'codex_image_gen',
+            callId: `call-${index + 1}`,
+            summary: fileName,
+            artifacts: [
+              {
+                kind: 'image',
+                name: fileName,
+                mimeType: `image/${format}`,
+                byteSize: index + 1,
+                sha256: String(index + 1).repeat(64),
+                fileName
+              }
+            ]
+          },
           executionId,
-          turnId,
-          toolName: 'codex_image_gen',
-          callId: `call-${index + 1}`,
-          summary: fileName,
-          artifacts: [
-            {
-              kind: 'image',
-              name: fileName,
-              mimeType: 'image/png',
-              byteSize: index + 1,
-              sha256: String(index + 1).repeat(64),
-              fileName
-            }
-          ]
-        },
-        executionId,
-        turnId
+          turnId
+        });
+      }
+
+      const forked = await store.forkSession(source.id, {
+        boundaryTurnId: 'turn-1',
+        title: 'Original (Copy 1)'
       });
+
+      const copied = join(home, '.mar', 'agent', 'sessions', forked.id, 'generated_images');
+      await expect(readdir(copied)).resolves.toEqual([`image_retained.${format}`]);
+      await expect(readFile(join(copied, `image_retained.${format}`), 'utf8')).resolves.toBe(
+        'retained'
+      );
+      await store.close();
     }
-
-    const forked = await store.forkSession(source.id, {
-      boundaryTurnId: 'turn-1',
-      title: 'Original (Copy 1)'
-    });
-
-    const copied = join(home, '.mar', 'agent', 'sessions', forked.id, 'generated_images');
-    await expect(readdir(copied)).resolves.toEqual(['image_retained.png']);
-    await expect(readFile(join(copied, 'image_retained.png'), 'utf8')).resolves.toBe('retained');
-    await store.close();
-  });
+  );
 
   it('persists the optional model URL alongside restorable input image bytes', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-input-image-url-home-'));

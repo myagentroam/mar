@@ -167,4 +167,4 @@ export interface DomainCompactOperations {
     output: ExtensionCompactResult | undefined;
   };
 }
-export interface DomainCompactFacts {}
+export type DomainCompactFacts = Record<never, never>;

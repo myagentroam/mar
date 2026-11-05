@@ -23,7 +23,7 @@ export async function startPromptCompletionViteFixture(): Promise<{
       if (source.startsWith('element-plus/'))
         return resolve(
           dirname(webCoreRequire.resolve('element-plus/package.json')),
-          source.slice('element-plus/'.length)
+          `${source.slice('element-plus/'.length)}${source.endsWith('/style/css') ? '.mjs' : ''}`
         );
       return undefined;
     },
@@ -35,8 +35,10 @@ export async function startPromptCompletionViteFixture(): Promise<{
   };
   const server: ViteDevServer = await createServer({
     root: fixtureRoot,
+    cacheDir: resolve(productRoot, `test/runs/prompt-vite-${process.pid}`),
     configFile: false,
     plugins: [vuePlugin.default(), elementPlusMessageStub],
+    optimizeDeps: { entries: ['index.html', 'composer-reference-browser.html'] },
     resolve: {
       alias: {
         vue: webCoreRequire.resolve('vue/dist/vue.esm-bundler.js'),
@@ -60,5 +62,8 @@ export async function startPromptCompletionViteFixture(): Promise<{
     await server.close();
     throw new Error('Prompt completion Vite fixture did not expose a local URL.');
   }
-  return { url, close: () => server.close() };
+  return {
+    url,
+    close: () => server.close()
+  };
 }

@@ -8,10 +8,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ focus: []; close: [] }>();
 const dialog = ref<DialogInstance>();
+const closing = ref(false);
 let finishClose: ((closed: boolean) => void) | undefined;
 
 function focusContent(): void {
-  emit('focus');
+  if (dialog.value?.dialogContentRef?.$el === document.activeElement) emit('focus');
 }
 
 function requestClose(done: () => void): void {
@@ -24,8 +25,15 @@ function close(): Promise<boolean> {
   if (!dialog.value) return Promise.resolve(false);
   return new Promise((resolve) => {
     finishClose = resolve;
-    dialog.value!.handleClose();
+    closing.value = true;
   });
+}
+
+function cancelClose(): void {
+  const finish = finishClose;
+  finishClose = undefined;
+  closing.value = false;
+  finish?.(false);
 }
 
 function closed(): void {
@@ -34,14 +42,14 @@ function closed(): void {
 }
 
 onBeforeUnmount(() => finishClose?.(false));
-defineExpose({ close });
+defineExpose({ close, cancelClose });
 </script>
 
 <template>
   <el-dialog
     v-if="props.overlay"
     ref="dialog"
-    :model-value="props.overlay"
+    :model-value="props.overlay && !closing"
     :title="props.label"
     :aria-label="props.label"
     :show-close="false"
@@ -52,7 +60,7 @@ defineExpose({ close });
     align-center
     destroy-on-close
     class="file-preview-surface"
-    @open-auto-focus="focusContent"
+    @opened="focusContent"
     @closed="closed"
   >
     <template #header />

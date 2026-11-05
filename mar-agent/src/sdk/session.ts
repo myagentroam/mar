@@ -10,7 +10,6 @@ import { createSessionExtensionMessages } from './session-extension-messages.js'
 import { createSessionExtensionPrompt } from './session-extension-prompt.js';
 
 import { AgentError } from '../error.js';
-import type { ExtensionManager } from '../extensions/manager.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
 import {
   SessionInputCoordinator,
@@ -20,8 +19,6 @@ import {
   type ExtensionSessionRequest,
   type SessionInputEntry
 } from '../extensions/session-input.js';
-import type { HostDescription, AgentHost } from '../host/contracts.js';
-import type { AgentReasoningEffort } from '../model/configuration.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import type { EnvironmentContextState } from '../prompts/core.js';
 import { buildSystemPromptSections } from '../prompts/index.js';
@@ -31,9 +28,8 @@ import { restoreEnvironmentState } from '../runtime/context/environment.js';
 import { allowsDirectTool } from '../tools/callers.js';
 import { createExtensionSessionBackend } from './extension-session.js';
 import { createSessionOpen } from './session-open.js';
-import type { SessionRegistry } from './session-registry.js';
 import { SessionRuntime } from './session-runtime.js';
-import type { CreateAgentOptions, ExecutionMode, AgentSession } from './types.js';
+import type { ExecutionMode } from './types.js';
 
 /** SDK Session orchestration owns warm resources; Runtime owns only the model/tool loop. */
 export function createSessionOpener(services: SessionServices) {

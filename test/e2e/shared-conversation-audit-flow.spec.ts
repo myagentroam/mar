@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import {
   expect,
   request as playwrightRequest,
@@ -86,7 +87,7 @@ test('Shared organization Node conversations expose content only through audit d
       capabilities: {
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: '0.9.37',
+        nodeAppVersion: nodePackage.version,
         nodeVersion: process.version,
         codex: { available: true },
         claudeCode: { available: false }

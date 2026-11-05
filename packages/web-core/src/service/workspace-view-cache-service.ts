@@ -3,6 +3,10 @@ import {
   syncConversationRunStatus
 } from '../util/conversation-segments.js';
 import { shallowRef } from 'vue';
+import type { WorkspaceContentSearchSnapshot } from './workspace-content-search-service.js';
+import type { WorkspaceFileTreeSnapshot } from './workspace-file-tree-service.js';
+import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
+import type { WorkspaceFileWorkbenchSnapshot } from '../model/workspace-file-workbench.js';
 import type {
   AgentRun,
   CachedSessionDetail,
@@ -35,12 +39,18 @@ export interface WorkspaceCacheView {
   readonly sessions: readonly Session[];
   readonly selectedSessionId?: string;
   readonly draft?: WorkspaceCacheDraft;
-  readonly inspector?: unknown;
+  readonly fileWorkbench?: WorkspaceFileWorkbenchSnapshot | undefined;
+  readonly search?: WorkspaceContentSearchSnapshot;
+  readonly files?: WorkspaceFileTreeSnapshot;
+  readonly git?: WorkspaceGitSnapshot;
 }
 
 export interface WorkspaceCacheCapture {
   readonly sessions: readonly Session[];
-  readonly inspector?: unknown;
+  readonly fileWorkbench?: WorkspaceFileWorkbenchSnapshot | undefined;
+  readonly search?: WorkspaceContentSearchSnapshot;
+  readonly files?: WorkspaceFileTreeSnapshot;
+  readonly git?: WorkspaceGitSnapshot;
   readonly draft?: WorkspaceCacheDraft;
   readonly selectedSessionId?: string;
   readonly queue?: WorkspaceQueue;
@@ -56,8 +66,11 @@ interface WorkspaceViewCache {
   selectedSessionId?: string;
   /** Workspace draft Runner configuration; editable content belongs to the draft owner. */
   draft?: WorkspaceCacheDraft;
-  /** Only safely restorable Inspector views, excluding file bodies and incomplete uploads. */
-  inspector?: unknown;
+  /** Only safely restorable file workbench state, excluding file bodies and incomplete uploads. */
+  fileWorkbench?: WorkspaceFileWorkbenchSnapshot | undefined;
+  search?: WorkspaceContentSearchSnapshot;
+  files?: WorkspaceFileTreeSnapshot;
+  git?: WorkspaceGitSnapshot;
   readonly queues: Map<string, WorkspaceQueue>;
   readonly sessionDetails: Map<string, CachedSessionDetail>;
 }
@@ -149,7 +162,10 @@ export function createWorkspaceViewCacheService(
         ? {}
         : { selectedSessionId: cache.selectedSessionId }),
       ...(cache.draft === undefined ? {} : { draft: cache.draft }),
-      ...(cache.inspector === undefined ? {} : { inspector: cache.inspector })
+      ...(cache.fileWorkbench === undefined ? {} : { fileWorkbench: cache.fileWorkbench }),
+      ...(cache.search === undefined ? {} : { search: cache.search }),
+      ...(cache.files === undefined ? {} : { files: cache.files }),
+      ...(cache.git === undefined ? {} : { git: cache.git })
     };
   }
 
@@ -163,6 +179,15 @@ export function createWorkspaceViewCacheService(
 
   function has(nodeId: string, workspaceId: string): boolean {
     return caches.has(tabId(nodeId, workspaceId));
+  }
+
+  function updateSearch(
+    nodeId: string,
+    workspaceId: string,
+    snapshot: WorkspaceContentSearchSnapshot
+  ): void {
+    const cache = caches.get(tabId(nodeId, workspaceId));
+    if (cache !== undefined) cache.search = snapshot;
   }
 
   function captureCommandTarget(nodeId: string, workspaceId: string) {
@@ -235,7 +260,19 @@ export function createWorkspaceViewCacheService(
     cache.sessions = input.sessions.filter(
       (session) => session.workspaceId === cache.workspaceId && sessionHasNativeIdentity(session)
     );
-    cache.inspector = input.inspector;
+    cache.fileWorkbench = input.fileWorkbench;
+    if ('search' in input) {
+      if (input.search === undefined) delete cache.search;
+      else cache.search = input.search;
+    }
+    if ('files' in input) {
+      if (input.files === undefined) delete cache.files;
+      else cache.files = input.files;
+    }
+    if ('git' in input) {
+      if (input.git === undefined) delete cache.git;
+      else cache.git = input.git;
+    }
     if (input.draft === undefined) delete cache.draft;
     else cache.draft = input.draft;
     const selected = input.sessions.find((session) => session.id === input.selectedSessionId);
@@ -297,7 +334,10 @@ export function createWorkspaceViewCacheService(
     if (cache === undefined) return;
     capture(
       cache,
-      { ...input, inspector: 'inspector' in input ? input.inspector : cache.inspector },
+      {
+        ...input,
+        fileWorkbench: 'fileWorkbench' in input ? input.fileWorkbench : cache.fileWorkbench
+      },
       maximumDetails,
       otherVisibleSessionId
     );
@@ -421,6 +461,7 @@ export function createWorkspaceViewCacheService(
     isActive,
     hasActive,
     has,
+    updateSearch,
     captureCommandTarget,
     captureActive,
     captureSession,

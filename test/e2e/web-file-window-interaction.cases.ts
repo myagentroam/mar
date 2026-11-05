@@ -93,7 +93,12 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
     }
   });
   const first = page.locator('.agent-markdown').getByRole('link', { name: 'First HTML' });
+  const browserTab = page
+    .locator('.workbench-aside')
+    .getByRole('tab', { name: '浏览器', exact: true });
+  await expect(browserTab).toHaveCount(0);
   await first.click();
+  await expect(page.locator('.workbench-aside').getByRole('tab').last()).toHaveText('浏览器');
   await expect(
     page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
   ).toBeVisible();
@@ -154,6 +159,16 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
     page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
   ).toBeVisible();
   expect(grants).toEqual(['index.html', 'second.htm', 'index.html', 'index.html', 'index.html']);
+  await page
+    .locator('.workbench-aside')
+    .getByRole('button', { name: '关闭 浏览器', exact: true })
+    .click();
+  await expect(browserTab).toHaveCount(0);
+  await expect(page.locator('iframe')).toHaveCount(0);
+  await first.click();
+  await expect(
+    page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
 });
 
 test('Workspace HTML conversation preview opens on mobile', async ({ page }, testInfo) => {
@@ -291,8 +306,7 @@ test('Workspace HTML source drafts and previews stay isolated across real Worksp
     .locator('.workspace-tree')
     .getByRole('button', { name: 'other-project', exact: true })
     .click();
-  await page.getByRole('tab', { name: '浏览器', exact: true }).click();
-  await expect(browser.getByText('从会话或文件中打开 HTML 文件，即可在此预览。')).toBeVisible();
+  await expect(page.getByRole('tab', { name: '浏览器', exact: true })).toHaveCount(0);
   await expect(page.locator('iframe[title="index.html"]')).toHaveCount(0);
   await editAndPreview('workspace-2', 'workspace-two-draft');
 
@@ -311,6 +325,17 @@ test('Workspace HTML source drafts and previews stay isolated across real Worksp
     await expect(page.getByRole('tablist', { name: '文件预览标签' }).getByRole('tab')).toHaveCount(
       1
     );
+    await page.getByRole('button', { name: '运行 HTML 预览', exact: true }).click();
+    await page
+      .locator('.workbench-aside')
+      .getByRole('button', { name: '关闭 浏览器', exact: true })
+      .click();
+    await expect(page.getByRole('tab', { name: '浏览器', exact: true })).toHaveCount(0);
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+    await page.getByRole('tab', { name: '文件', exact: true }).click();
+    await page.locator('.file-tree-row[data-file-path="index.html"]').click();
+    await expect(editor).toContainText(draft);
+    await expect(editor).not.toContainText(otherDraft);
     await page.getByRole('button', { name: '运行 HTML 预览', exact: true }).click();
   }
   expect(grants).toContain('workspace-1');
@@ -503,6 +528,8 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
 }) => {
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
   const initialHistoryLength = await page.evaluate(() => history.length);
   const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
@@ -541,6 +568,8 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
 }) => {
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
   const initialHistoryLength = await page.evaluate(() => history.length);
   const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
@@ -554,7 +583,7 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
   });
   await expect(page.locator('.workspace-file-tab.is-active')).toContainText('second.ts');
   await expect(
-    page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-content')
+    page.getByRole('tabpanel', { name: 'second.ts', exact: true }).locator('.cm-content')
   ).toBeVisible();
   expect(await page.evaluate(() => history.length)).toBe(initialHistoryLength + 1);
   await page.goBack();

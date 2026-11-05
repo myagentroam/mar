@@ -188,6 +188,7 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
     const h = await fixture('Ｎｅｔｗｏｒｋ Task');
     try {
       expect(await h.command('list')).toEqual({
+        scope: 'active',
         currentAgentId: null,
         sessions: [],
         truncated: false
@@ -204,6 +205,7 @@ describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
         '1'
       );
       expect(listed).toEqual({
+        scope: 'active',
         currentAgentId: null,
         sessions: [
           {

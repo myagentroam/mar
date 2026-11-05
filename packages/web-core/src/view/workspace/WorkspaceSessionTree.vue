@@ -305,6 +305,9 @@ function openContext(event: MouseEvent): void {
   padding-inline-end: 0.25rem;
   border-radius: var(--mar-radius-control);
 }
+.session-tree-row > .session-tree-item {
+  min-inline-size: min(12rem, 100%);
+}
 .session-tree-item > .el-dropdown {
   flex: none;
 }

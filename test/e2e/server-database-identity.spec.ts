@@ -203,7 +203,7 @@ test('Core v19 removes the dense column, resumes after an interrupted DDL, and p
       responses_previous_response_id: oldPreviousResponseId,
       ...preserved
     } = before[0]!;
-    const upgraded = { ...preserved, conversation_model: 1 };
+    const upgraded = { ...preserved, conversation_model: 1, subagent_model: 0 };
     expect(removed).toBe(1);
     expect([
       oldFastMode,

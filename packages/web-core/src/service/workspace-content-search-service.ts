@@ -8,6 +8,15 @@ export interface WorkspaceContentMatch {
   readonly preview: string;
 }
 
+export interface WorkspaceContentSearchSnapshot {
+  readonly contentQuery?: string;
+  readonly contentUseRegex?: boolean;
+  readonly contentAppliedQuery: string;
+  readonly contentAppliedUseRegex: boolean;
+  readonly contentMatches: readonly WorkspaceContentMatch[];
+  readonly contentSearchTruncated: boolean;
+}
+
 function isContentSearch(value: unknown): value is {
   readonly matches: readonly WorkspaceContentMatch[];
   readonly truncated: boolean;
@@ -83,13 +92,17 @@ export function createWorkspaceContentSearchService(options: {
     }
   }
 
-  function reset(): void {
+  function cancelPending(): void {
     generation += 1;
+    loading.value = false;
+  }
+
+  function reset(): void {
+    cancelPending();
     matches.value = [];
     truncated.value = false;
     appliedQuery.value = '';
     appliedUseRegex.value = false;
-    loading.value = false;
     error.value = undefined;
     failedInput = undefined;
   }
@@ -120,6 +133,13 @@ export function createWorkspaceContentSearchService(options: {
     loading: readonly(loading),
     error: readonly(error),
     search,
+    cancelPending,
+    snapshot: (): WorkspaceContentSearchSnapshot => ({
+      contentAppliedQuery: appliedQuery.value,
+      contentAppliedUseRegex: appliedUseRegex.value,
+      contentMatches: [...matches.value],
+      contentSearchTruncated: truncated.value
+    }),
     retry: () =>
       failedInput === undefined || loading.value ? Promise.resolve() : search(failedInput, true),
     restore,

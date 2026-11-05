@@ -1,6 +1,102 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test.describe('HTML Browser content', () => {
+  test.use({ locale: 'en-US' });
+  for (const width of [1280, 390]) {
+    for (const theme of ['light', 'dark']) {
+      test(`Browser is closable content with a compact toolbar (${theme}, ${width}px)`, async ({
+        page
+      }, testInfo) => {
+        const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+        try {
+          await page.setViewportSize({ width, height: 900 });
+          const filename = `${'workspace-html-preview-'.repeat(7)}index.html`;
+          const grants: string[] = [];
+          await page.route('**/api/html-preview/grants', async (route) => {
+            grants.push(route.request().postDataJSON().path);
+            await route.fulfill({
+              contentType: 'application/json',
+              body: JSON.stringify({ url: new URL('/html-preview-test', fixture.url).href })
+            });
+          });
+          await page.route('**/html-preview-test', (route) =>
+            route.fulfill({
+              contentType: 'text/html',
+              body: '<h1>HTML content</h1>'
+            })
+          );
+          await page.goto(
+            `${fixture.url}workbench-aside.html?theme=${theme}&html-file=${encodeURIComponent(filename)}${width < 768 ? '&mobile' : ''}`
+          );
+          const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+          const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
+          const files = tabs.getByRole('tab', { name: 'Files', exact: true });
+          await expect(browser).toHaveCount(0);
+          await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+          await expect(browser).toHaveAttribute('aria-selected', 'true');
+          await expect(tabs.getByRole('tab').last()).toHaveText('Browser');
+          await expect(
+            tabs.getByRole('button', { name: 'Close Browser', exact: true })
+          ).toBeVisible();
+          await expect(
+            page.frameLocator('iframe').getByRole('heading', { name: 'HTML content' })
+          ).toBeVisible();
+          const panel = page.locator('.html-browser');
+          await expect(panel.locator('.warning')).toHaveCount(0);
+          await expect(panel.getByText(/Trusted code:|Isolated preview/)).toHaveCount(0);
+          const name = panel.locator('.html-browser-file-name');
+          await expect(name).toHaveText(filename);
+          expect(
+            await name.evaluate((element) => ({
+              overflow: element.scrollWidth > element.clientWidth,
+              ellipsis: getComputedStyle(element).textOverflow === 'ellipsis'
+            }))
+          ).toEqual({ overflow: false, ellipsis: false });
+          for (const label of ['Reload', 'Open source', 'Open in browser']) {
+            const button = panel.getByRole('button', { name: label, exact: true });
+            await expect(button).toHaveClass(/el-button--small/);
+            await expect(button.locator('svg')).toHaveCount(1);
+            await expect(button).toHaveText('');
+          }
+          await panel.getByRole('button', { name: 'Reload', exact: true }).focus();
+          await page.keyboard.press('Enter');
+          await expect.poll(() => grants.length).toBe(2);
+          await expect(
+            page.frameLocator('iframe').getByRole('heading', { name: 'HTML content' })
+          ).toBeVisible();
+          await panel.getByRole('button', { name: 'Open source', exact: true }).hover();
+          await expect(page.locator('.mar-tooltip:visible')).toHaveText('Open source');
+          await page.locator('.workbench-aside').screenshot({
+            path: testInfo.outputPath(`html-browser-${theme}-${width}.png`),
+            animations: 'disabled'
+          });
+          await files.click();
+          await expect(page.locator('.html-browser')).toHaveCount(0);
+          await expect(browser).toHaveCount(1);
+          await browser.click();
+          await expect.poll(() => grants.length).toBe(3);
+          await tabs.getByRole('button', { name: 'Close Browser', exact: true }).click();
+          await expect(browser).toHaveCount(0);
+          await expect(page.locator('iframe')).toHaveCount(0);
+          await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveAttribute(
+            'aria-selected',
+            'true'
+          );
+          await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+          await expect.poll(() => grants.length).toBe(4);
+          await files.click();
+          await tabs.getByRole('button', { name: 'Close Browser', exact: true }).click();
+          await expect(files).toHaveAttribute('aria-selected', 'true');
+          await expect(browser).toHaveCount(0);
+        } finally {
+          await fixture.close();
+        }
+      });
+    }
+  }
+});
+
 for (const [language, theme, width] of [
   ['en', 'light', 1280],
   ['en', 'dark', 1280],

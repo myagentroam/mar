@@ -13,6 +13,7 @@ import {
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { ModelSettingsStore } from '../../packages/server-core/src/model-settings.js';
 
 test('real Server and Node resume captured Auto calls after online approval and preserve immutable changes', async ({
   browserName
@@ -330,7 +331,7 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
     const id = `tool-diff-flow-${randomUUID()}`;
     const now = Date.now();
     await connection.execute(
-      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,hosted_web_search,responses_previous_response_id,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
+      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
       [
         id,
         `Tool diff flow ${id}`,
@@ -343,9 +344,8 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
         4_096,
         JSON.stringify(['TEXT']),
         JSON.stringify(['TEXT']),
-        JSON.stringify([]),
-        false,
-        false,
+        JSON.stringify(['medium']),
+        'medium',
         true,
         0,
         'PERSONAL',
@@ -355,6 +355,12 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
         now,
         now
       ]
+    );
+    await new ModelSettingsStore().write(
+      id,
+      'ANTHROPIC_MESSAGES',
+      { version: 1, gcEnabled: true },
+      connection
     );
     return id;
   } finally {

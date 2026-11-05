@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelMessage } from '../../src/model/contracts.js';
 import {
   contextGcMessageTokens,
-  contextGcReclaimedTokens,
-  contextGcPrefixTokens
+  contextGcReclaimedTokens
 } from '../../src/runtime/context/gc-tokens.js';
 import * as tokenBudget from '../../src/runtime/token-budget.js';
 import { openAiInput } from '../../src/model/openai-responses.js';

@@ -1633,8 +1633,7 @@ describe('Code Mode SDK and protocol integration', () => {
           }
         }
       };
-      let agent!: Awaited<ReturnType<typeof createMarAgent>>;
-      agent = await createMarAgent(
+      const agent: Awaited<ReturnType<typeof createMarAgent>> = await createMarAgent(
         {
           mode: 'normal',
           host: new LocalAgentHost({ homeDirectory: home, workspace }),

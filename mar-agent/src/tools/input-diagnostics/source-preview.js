@@ -57,7 +57,12 @@ function displayWidth(text) {
 
 function displayCharacter(character) {
   if (character === '\t') return '    ';
-  if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029\p{Bidi_Control}]/u.test(character)) {
+  const code = character.codePointAt(0);
+  if (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    /[\u2028\u2029\p{Bidi_Control}]/u.test(character)
+  ) {
     const escaped = JSON.stringify(character).slice(1, -1);
     return escaped === character ? `\\u{${character.codePointAt(0).toString(16)}}` : escaped;
   }

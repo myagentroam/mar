@@ -16,6 +16,7 @@ import {
 type Scope = 'PERSONAL' | 'ORGANIZATION' | 'ENTERPRISE';
 type Kind = 'source' | 'favorite';
 type BeforeExecute = (sql: string, connection: PoolConnection) => Promise<void>;
+type AfterSubmit = (sql: string, connection: PoolConnection) => void;
 
 function gate() {
   let open!: () => void;
@@ -45,7 +46,12 @@ async function withFixture(kind: Kind, run: (fixture: Fixture) => Promise<void>)
     const limit = kind === 'source' ? 20 : 500;
     const key = (scope: Scope, owner: number) =>
       scope === 'ENTERPRISE' ? 'ENTERPRISE::' : `${scope}:${owner === 0 ? '' : owner}:`;
-    const create = (scope: Scope, owner: number, before?: BeforeExecute) => {
+    const create = (
+      scope: Scope,
+      owner: number,
+      before?: BeforeExecute,
+      afterSubmit?: AfterSubmit
+    ) => {
       // Separate single-connection pools ensure the two service transactions cannot share a session.
       const client = mysql.createPool({ uri: target.databaseUrl, connectionLimit: 1 });
       clients.push(client);
@@ -62,7 +68,9 @@ async function withFixture(kind: Kind, run: (fixture: Fixture) => Promise<void>)
                       values?: Parameters<PoolConnection['execute']>[1]
                     ) => {
                       await before?.(sql, connection);
-                      return target.execute(sql, values);
+                      const result = target.execute(sql, values);
+                      afterSubmit?.(sql, connection);
+                      return result;
                     };
                   if (property === 'commit')
                     return async () => {
@@ -175,7 +183,8 @@ type Fixture = {
   create: (
     scope: Scope,
     owner: number,
-    before?: BeforeExecute
+    before?: BeforeExecute,
+    afterSubmit?: AfterSubmit
   ) => (name: string, actor?: number) => Promise<unknown>;
   seed: (scope: Scope, owner: number, count: number) => Promise<void>;
   count: (scope: Scope, owner: number) => Promise<number>;
@@ -192,7 +201,6 @@ for (const kind of ['source', 'favorite'] as const) {
         const inserting = gate();
         const resume = gate();
         const secondLock = gate();
-        let secondConnection = 0;
         let secondCounts = 0;
         const first = fixture.create(scope, owner, async (sql) => {
           if (sql.includes(`INSERT INTO ${fixture.table}`)) {
@@ -209,13 +217,21 @@ for (const kind of ['source', 'favorite'] as const) {
             })
           ]);
           second = fixture
-            .create(scope, owner, async (sql, connection) => {
-              if (sql.includes('COUNT(*)')) secondCounts++;
-              if (sql.includes(scope === 'PERSONAL' ? 'FROM users' : 'FROM organizations')) {
-                secondConnection = connection.threadId;
-                secondLock.open();
+            .create(
+              scope,
+              owner,
+              async (sql) => {
+                if (sql.includes('COUNT(*)')) secondCounts++;
+              },
+              (sql) => {
+                if (
+                  sql.includes(scope === 'PERSONAL' ? 'FROM users' : 'FROM organizations') &&
+                  sql.includes('FOR UPDATE')
+                ) {
+                  secondLock.open();
+                }
               }
-            })('second', scope === 'PERSONAL' ? 7 : 8)
+            )('second', scope === 'PERSONAL' ? 7 : 8)
             .catch((error: unknown) => error);
           await Promise.race([
             secondLock.promise,
@@ -223,19 +239,13 @@ for (const kind of ['source', 'favorite'] as const) {
               throw new Error('SECOND_WRITER_DID_NOT_REACH_OWNER_LOCK');
             })
           ]);
-          // Observe an actual InnoDB wait on the owner parent, not elapsed time or fake locks.
-          await expect
-            .poll(async () => {
-              const [rows] = await fixture.pool.execute<RowDataPacket[]>(
-                `SELECT requested.OBJECT_NAME FROM performance_schema.data_lock_waits waiting
-               JOIN performance_schema.threads thread ON thread.THREAD_ID=waiting.REQUESTING_THREAD_ID
-               JOIN performance_schema.data_locks requested ON requested.ENGINE_LOCK_ID=waiting.REQUESTING_ENGINE_LOCK_ID
-               WHERE thread.PROCESSLIST_ID=?`,
-                [secondConnection]
-              );
-              return rows.map((row) => row['OBJECT_NAME']);
-            })
-            .toContain(scope === 'PERSONAL' ? 'users' : 'organizations');
+          // A separate real connection verifies that the held owner row is locked, while
+          // the second transaction has submitted its own locking statement.
+          const table = scope === 'PERSONAL' ? 'users' : 'organizations';
+          const ownerId = scope === 'ENTERPRISE' ? 1 : owner;
+          await expect(
+            fixture.pool.execute(`SELECT id FROM ${table} WHERE id=? FOR UPDATE NOWAIT`, [ownerId])
+          ).rejects.toMatchObject({ code: 'ER_LOCK_NOWAIT' });
           expect(secondCounts).toBe(0);
           resume.open();
           await first;

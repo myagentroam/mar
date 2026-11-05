@@ -40,6 +40,17 @@ function requestUrl(path: string): URL {
 }
 
 describe('Workspace file operations service', () => {
+  it('does not refresh a replacement target when a previous mutation completes late', async () => {
+    const pending = deferred<unknown>();
+    const { service, refresh } = createHarness(async () => pending.promise);
+    let current = true;
+    const mutation = service.mutate(defaultTarget, 'DELETE', 'old.txt', undefined, () => current);
+    current = false;
+    pending.resolve({ file: { path: 'old.txt' } });
+    await expect(mutation).resolves.toBe('old.txt');
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('passes the file cursor and preserves valid workspace metadata when listing', async () => {
     const page = {
       files: {

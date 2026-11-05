@@ -292,4 +292,4 @@ export class ExtensionRequestBridge {
 export interface DomainModelRequestOperations {
   'model.request': { input: ExtensionModelRequest; output: ExtensionModelRequest };
 }
-export interface DomainModelRequestFacts {}
+export type DomainModelRequestFacts = Record<never, never>;

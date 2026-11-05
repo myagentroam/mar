@@ -90,7 +90,7 @@ for (const [width, theme] of [
     const stop = rows.filter({ has: page.locator('summary').filter({ hasText: /^stop\b/ }) });
     const wait = rows.filter({ has: page.locator('summary').filter({ hasText: /^wait\b/ }) });
     await expect(wait.locator('.agent-detail > .agent-detail-meta')).toHaveText(
-      'completion · any · 300000ms'
+      'completion · any · 5 min'
     );
     await expect(wait.locator('.agent-detail-entry')).toHaveCount(2);
     await expect(start.locator('.agent-detail-text')).toHaveText(
@@ -161,7 +161,9 @@ for (const [width, zero] of [
     await expect(row.locator('> summary')).not.toContainText('agent_wait');
     await row.locator('> summary').click();
     const title = row.locator('.agent-detail-meta > span').first();
-    await expect(title).toHaveText(`Review the boundary · completion · ${zero ? 0 : 300000}ms`);
+    await expect(title).toHaveText(
+      `Review the boundary · completion · ${zero ? '0 sec' : '5 min'}`
+    );
     await expect(title).toBeInViewport({ ratio: 1 });
     await expect(title).toHaveCSS('font-size', '12px');
     await expect(title).toHaveCSS('font-weight', '400');

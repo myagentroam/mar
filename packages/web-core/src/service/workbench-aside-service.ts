@@ -1,9 +1,10 @@
 import { shallowRef } from 'vue';
 
-export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'browser' | 'terminal';
+export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'terminal';
 export type AsideViewMode = 'compact' | 'content';
 export type AsideTarget =
   | { readonly kind: 'tool'; readonly id: AsideTool }
+  | { readonly kind: 'browser' }
   | { readonly kind: 'session'; readonly sessionId: string };
 export interface AsideWorkspace {
   readonly nodeId: string;
@@ -28,14 +29,14 @@ export const ASIDE_TOOLS: readonly AsideTool[] = [
   'search',
   'changes',
   'history',
-  'browser',
   'terminal'
 ];
 const empty: AsideState = { tools: [], sessions: [] };
 
 export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
   return target?.kind === 'session' ||
-    (target?.kind === 'tool' && (target.id === 'terminal' || target.id === 'browser'))
+    target?.kind === 'browser' ||
+    (target?.kind === 'tool' && target.id === 'terminal')
     ? 'content'
     : 'compact';
 }
@@ -61,10 +62,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
       );
       state = { ...state, sessions: state.sessions.filter((id) => !removed.has(id)) };
     }
-    if (
-      state.terminalReturn?.kind === 'session' &&
-      !state.sessions.includes(state.terminalReturn.sessionId)
-    )
+    if (state.terminalReturn !== undefined && !valid(state, state.terminalReturn))
       state = { ...state, terminalReturn: undefined };
     const nodes = new Map(workspaces.value);
     const entries = new Map(nodes.get(target.nodeId));
@@ -77,7 +75,9 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
       target !== undefined &&
       (target.kind === 'tool'
         ? state.tools.includes(target.id)
-        : state.sessions.includes(target.sessionId))
+        : target.kind === 'browser'
+          ? state.tools.includes('files') && state.htmlPath !== undefined
+          : state.sessions.includes(target.sessionId))
     );
   }
   function fallback(state: AsideState): AsideTarget | undefined {
@@ -129,9 +129,16 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
 
   function openHtml(target: AsideWorkspace, path: string): boolean {
     const state = current(target);
-    if (!state.tools.includes('browser')) return false;
-    put(target, { ...state, htmlPath: path });
-    return selectTool(target, 'browser');
+    if (!state.tools.includes('files')) return false;
+    put(target, { ...state, htmlPath: path, active: { kind: 'browser' } });
+    return true;
+  }
+
+  function activateHtml(target: AsideWorkspace): boolean {
+    const state = current(target);
+    if (!valid(state, { kind: 'browser' })) return false;
+    put(target, { ...state, active: { kind: 'browser' } });
+    return true;
   }
 
   function replaceSession(target: AsideSession, nextSessionId: string): boolean {
@@ -182,7 +189,12 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
         state.sessions.slice(index + 1).find((id) => !missing.has(id));
       put(target, {
         ...next,
-        active: neighbor === undefined ? fallback(next) : { kind: 'session', sessionId: neighbor }
+        active:
+          neighbor !== undefined
+            ? { kind: 'session', sessionId: neighbor }
+            : valid(next, { kind: 'browser' })
+              ? { kind: 'browser' }
+              : fallback(next)
       });
     } else put(target, next);
   }
@@ -221,7 +233,18 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
   }
   function clearHtmlWorkspace(target: AsideWorkspace): void {
     const state = workspaces.value.get(target.nodeId)?.get(target.workspaceId);
-    if (state?.htmlPath !== undefined) put(target, { ...state, htmlPath: undefined });
+    if (state?.htmlPath === undefined) return;
+    const next: AsideState = { ...state, htmlPath: undefined };
+    const sessionId = state.sessions.at(-1);
+    put(target, {
+      ...next,
+      active:
+        state.active?.kind !== 'browser'
+          ? state.active
+          : sessionId !== undefined
+            ? { kind: 'session', sessionId }
+            : fallback(next)
+    });
   }
   function clearHtmlNode(nodeId: string): void {
     for (const workspaceId of workspaces.value.get(nodeId)?.keys() ?? [])
@@ -243,6 +266,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     ensure,
     selectTool,
     openHtml,
+    activateHtml,
     openSession,
     replaceSession,
     activateSession,

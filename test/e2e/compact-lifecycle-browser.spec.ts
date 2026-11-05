@@ -26,11 +26,16 @@ test.afterAll(async () => {
 
 async function openTimeline(page: Page): Promise<void> {
   await page.goto(new URL('/compact-lifecycle.html', fixture.url).toString());
+  for (const group of ['prefix', 'tail']) {
+    const heading = page.locator(`[data-process-id="${group}"] .process-heading`);
+    if ((await heading.getAttribute('aria-expanded')) === 'true') await heading.click();
+    await heading.click();
+  }
 }
 
 async function itemOrder(page: Page): Promise<string[]> {
   return page
-    .locator('.conversation-turn > article.conversation-item')
+    .locator('article.conversation-item')
     .evaluateAll((items) =>
       items.map((item) =>
         item.classList.contains('context_compaction')
@@ -55,7 +60,7 @@ test('background Compact waits and installs in place without interrupting the re
   await expect(compact.locator('.conversation-item-heading span')).toHaveText(
     'Compacting context in the background'
   );
-  await expect(page.locator('.reasoning-preview')).toHaveText([
+  await expect(page.locator('.conversation-process .process-summary')).toHaveText([
     'Reasoning before anchor',
     'Continuing after anchor'
   ]);
@@ -63,8 +68,8 @@ test('background Compact waits and installs in place without interrupting the re
   expect(await page.evaluate(() => window.__compactLifecycleHarness.itemIds())).toEqual([
     'reasoning-before',
     'snapshot-anchor',
-    'reasoning-after',
-    'mar-agent-compact:compact-1'
+    'mar-agent-compact:compact-1',
+    'reasoning-after'
   ]);
 
   await compact.evaluate((element) => {
@@ -77,7 +82,7 @@ test('background Compact waits and installs in place without interrupting the re
   await expect(compact.locator('.conversation-item-heading span')).toHaveText(
     'Waiting for context compaction before continuing'
   );
-  await expect(page.locator('.reasoning-preview')).toHaveText([
+  await expect(page.locator('.conversation-process .process-summary')).toHaveText([
     'Reasoning before anchor',
     'Continuing after anchor'
   ]);
@@ -87,8 +92,17 @@ test('background Compact waits and installs in place without interrupting the re
   await expect(compact).toHaveCount(1);
   await expect(compact).toHaveAttribute('data-stable-card', 'compact-1');
   await expect(compact.locator('.conversation-item-heading span')).toHaveText('Compacted');
-  await expect(page.locator('.reasoning-preview')).toHaveText('Continuing after anchor');
-  await expect(page.locator('.reasoning-subtitle')).toHaveText('Thought completed');
+  await expect(page.locator('[data-process-id="prefix"] .process-summary')).toHaveCount(0);
+  await expect(page.locator('[data-process-id="prefix"] .process-activity-label')).toHaveText(
+    'Completed'
+  );
+  await expect(page.locator('[data-process-id="tail"] .process-summary')).toHaveText(
+    'Continuing after anchor'
+  );
+  await expect(page.locator('.reasoning-subtitle')).toHaveText([
+    'Reasoning before anchor',
+    'Continuing after anchor'
+  ]);
   expect(await itemOrder(page)).toEqual([
     'reasoning',
     'assistant',
@@ -99,11 +113,11 @@ test('background Compact waits and installs in place without interrupting the re
   expect(await page.evaluate(() => window.__compactLifecycleHarness.itemIds())).toEqual([
     'reasoning-before',
     'snapshot-anchor',
-    'reasoning-after',
     'mar-agent-compact:compact-1',
+    'reasoning-after',
     'tail-message'
   ]);
-  await expect(page.locator('.conversation-turn > article').nth(4)).toContainText(
+  await expect(page.locator('article.conversation-item').nth(4)).toContainText(
     'Tail after compaction'
   );
 });
@@ -120,17 +134,20 @@ for (const terminal of [
     await page.evaluate((state) => window.__compactLifecycleHarness.update(state), terminal.state);
     await expect(compact).toHaveCount(1);
     await expect(compact.locator('.conversation-item-heading span')).toHaveText(terminal.label);
-    await expect(page.locator('.reasoning-preview')).toHaveText([
+    await expect(page.locator('.conversation-process .process-summary')).toHaveText([
       'Reasoning before anchor',
       'Continuing after anchor'
     ]);
-    await expect(page.locator('.reasoning-subtitle')).toHaveCount(0);
+    await expect(page.locator('.reasoning-subtitle')).toHaveText([
+      'Reasoning before anchor',
+      'Continuing after anchor'
+    ]);
     expect(await itemOrder(page)).toEqual(['reasoning', 'assistant', 'compact', 'reasoning']);
     expect(await page.evaluate(() => window.__compactLifecycleHarness.itemIds())).toEqual([
       'reasoning-before',
       'snapshot-anchor',
-      'reasoning-after',
-      'mar-agent-compact:compact-1'
+      'mar-agent-compact:compact-1',
+      'reasoning-after'
     ]);
   });
 }
@@ -143,11 +160,14 @@ test('background Compact with a paginated-away anchor does not complete the tail
   const compact = page.locator('article.context_compaction');
   await expect(compact).toHaveCount(1);
   await expect(compact.locator('.conversation-item-heading span')).toHaveText('Compacted');
-  await expect(page.locator('.reasoning-preview')).toHaveText([
+  await expect(page.locator('.conversation-process .process-summary')).toHaveText([
     'Reasoning before anchor',
     'Continuing after anchor'
   ]);
-  await expect(page.locator('.reasoning-subtitle')).toHaveCount(0);
+  await expect(page.locator('.reasoning-subtitle')).toHaveText([
+    'Reasoning before anchor',
+    'Continuing after anchor'
+  ]);
   expect(await itemOrder(page)).toEqual(['reasoning', 'compact', 'reasoning']);
 });
 
@@ -163,6 +183,15 @@ test('background Compact follows a tool anchor and completes only the installed 
   await page.evaluate(() => window.__compactLifecycleHarness.update('COMPLETED'));
   await expect(compact.locator('.conversation-item-heading span')).toHaveText('Compacted');
   expect(await itemOrder(page)).toEqual(['reasoning', 'tool', 'compact', 'reasoning', 'assistant']);
-  await expect(page.locator('.reasoning-preview')).toHaveText('Continuing after anchor');
-  await expect(page.locator('.reasoning-subtitle')).toHaveText('Thought completed');
+  await expect(page.locator('[data-process-id="prefix"] .process-summary')).toHaveCount(0);
+  await expect(page.locator('[data-process-id="prefix"] .process-activity-label')).toHaveText(
+    'Completed'
+  );
+  await expect(page.locator('[data-process-id="tail"] .process-summary')).toHaveText(
+    'Continuing after anchor'
+  );
+  await expect(page.locator('.reasoning-subtitle')).toHaveText([
+    'Reasoning before anchor',
+    'Continuing after anchor'
+  ]);
 });

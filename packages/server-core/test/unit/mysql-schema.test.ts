@@ -44,13 +44,18 @@ function schemaConnection() {
 }
 
 describe('Core MySQL schema', () => {
+  const usageQueryIndexSchema = MODEL_USAGE_SQL.replace(
+    'KEY `model_usage_user_time` (`user_id`,`ended_at`,`source_key`)',
+    'KEY `model_usage_user_time` (`user_id`,`purpose`,`ended_at`,`source_key`,`started_at`,`received_at`)'
+  );
+
   it('upgrades the usage query index once without changing the released usage migration', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 31)!;
     let definition = MODEL_USAGE_SQL;
     const query = vi.fn(async (sql: string) => {
       if (sql.startsWith('SHOW CREATE TABLE')) return [[{ 'Create Table': definition }], []];
       expect(sql).toContain('ALTER TABLE');
-      definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+      definition = usageQueryIndexSchema;
       return [[], []];
     });
     await migration.up({ query } as never);
@@ -74,15 +79,15 @@ describe('Core MySQL schema', () => {
         if (sql.startsWith('SHOW CREATE TABLE')) return [[{ 'Create Table': definition }], []];
         if (fail) {
           fail = false;
-          if (failure === 'after') definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+          if (failure === 'after') definition = usageQueryIndexSchema;
           throw new Error('DDL_CONNECTION_LOST');
         }
-        definition = CORE_MYSQL_SCHEMA.model_usage_records!;
+        definition = usageQueryIndexSchema;
         return [[], []];
       });
       await expect(migration.up({ query } as never)).rejects.toThrow('DDL_CONNECTION_LOST');
       await migration.up({ query } as never);
-      expect(definition).toBe(CORE_MYSQL_SCHEMA.model_usage_records);
+      expect(definition).toBe(usageQueryIndexSchema);
       expect(query.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toHaveLength(
         failure === 'after' ? 1 : 2
       );
@@ -677,7 +682,7 @@ describe('Core MySQL schema', () => {
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33, 34, 35, 36
+      33, 34, 35, 36, 37
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');

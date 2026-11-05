@@ -21,7 +21,12 @@ describe('upgrade-only Node connection admission', () => {
       })!;
       const authorize = vi.fn(async () => true);
       const control = createTestNodeControl(database, authorize);
-      const sent: Array<{ version: number; id: string; type: string; payload: any }> = [];
+      const sent: Array<{
+        version: number;
+        id: string;
+        type: string;
+        payload: { operation?: string };
+      }> = [];
       const socket = {
         OPEN: 1,
         readyState: 1,

@@ -2,13 +2,16 @@
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import { runStatusLabel } from '../../../util/session-presentation.js';
+import { durationLabel } from '../../../util/tool-presentation.js';
 import type { agentOperationDetail } from '../../../util/agent-operation-presentation.js';
 const props = defineProps<{ agentDetail: NonNullable<ReturnType<typeof agentOperationDetail>> }>();
 const agentTargetStatus = (status: string) =>
   status === 'IDLE' ? translate('generated.sessionPresentation.ready') : runStatusLabel(status);
 const agentWaitText = computed(() => {
   const wait = props.agentDetail.wait;
-  return wait ? [wait.waitFor, wait.mode, `${wait.waitMs}ms`].filter(Boolean).join(' · ') : '';
+  return wait
+    ? [wait.waitFor, wait.mode, durationLabel(wait.waitMs)].filter(Boolean).join(' · ')
+    : '';
 });
 </script>
 

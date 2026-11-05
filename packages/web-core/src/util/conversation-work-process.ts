@@ -56,6 +56,60 @@ export function conversationWorkProcessVisibleBlocks(
   });
 }
 
+/** Only an installed snapshot with a received, preceding anchor ends prefix reasoning. */
+function installedReasoningPrefixes(
+  turns: readonly ConversationTurn[]
+): ReadonlySet<ConversationItem> {
+  const reasoning: { item: ConversationItem; group: string; position: number }[] = [];
+  const anchors = new Map<string, Map<string, { position: number; group: string | undefined }>>();
+  const installed = new Map<string, number>();
+  let position = 0;
+  let previous: { scope: string; group: string | undefined } | undefined;
+  for (const turn of turns) {
+    const scope = JSON.stringify([turn.sessionId, turn.runId ?? null, turn.id]);
+    const received =
+      anchors.get(scope) ?? new Map<string, { position: number; group: string | undefined }>();
+    anchors.set(scope, received);
+    for (const item of turn.items) {
+      const group = item.processGroup
+        ? JSON.stringify([turn.sessionId, turn.runId ?? null, item.processGroup.id])
+        : undefined;
+      if (item.kind === 'reasoning' && group !== undefined)
+        reasoning.push({ item, group, position });
+      if (item.kind === 'context_compaction' && item.status === 'COMPLETED') {
+        const payload = conversationPayload(item.payload);
+        if (
+          payload?.phase === 'COMPLETED' &&
+          (payload.mode === 'BACKGROUND' || payload.mode === 'BLOCKING') &&
+          typeof payload.anchorItemId === 'string'
+        ) {
+          const anchor = received.get(payload.anchorItemId);
+          if (anchor?.group !== undefined)
+            installed.set(
+              anchor.group,
+              Math.max(installed.get(anchor.group) ?? -1, anchor.position)
+            );
+        }
+      }
+      received.set(item.id, {
+        position,
+        group:
+          group ??
+          (item.kind === 'assistant_message' && previous?.scope === scope
+            ? previous.group
+            : undefined)
+      });
+      previous = { scope, group };
+      position++;
+    }
+  }
+  return new Set(
+    reasoning
+      .filter((entry) => entry.position <= (installed.get(entry.group) ?? -1))
+      .map((entry) => entry.item)
+  );
+}
+
 /** Keep process facts for the received window while materializing only mounted entries. */
 export function conversationWorkProcessProjection(
   turns: readonly ConversationTurn[],
@@ -71,6 +125,7 @@ export function conversationWorkProcessProjection(
     runs.filter((run) => !isTerminalRunStatus(run.status)).map((run) => run.id)
   );
   const activeMembers = new Set<string>();
+  const installedReasoning = installedReasoningPrefixes(turns);
   const visibleItems = new Set(renderedTurns.flatMap((turn) => turn.items));
   const visibleTurns = new Set(
     renderedTurns.map((turn) => JSON.stringify([turn.sessionId, turn.id]))
@@ -113,8 +168,9 @@ export function conversationWorkProcessProjection(
         state.executing ||= itemFacts.executing;
         if (turn.runId != null) group.runId = turn.runId;
         if (item.processGroup.isStart) group.partial = false;
-        if (['PENDING', 'IN_PROGRESS'].includes(item.status)) activeMembers.add(key);
-        if (itemFacts.preview !== undefined) {
+        if (['PENDING', 'IN_PROGRESS'].includes(item.status) && !installedReasoning.has(item))
+          activeMembers.add(key);
+        if (itemFacts.preview !== undefined && !installedReasoning.has(item)) {
           const preview = selectReasoningPreview(group.preview, itemFacts.preview);
           if (preview) group.preview = preview;
         }

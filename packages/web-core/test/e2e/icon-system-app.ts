@@ -115,8 +115,13 @@ const app = createApp({
         worktreesTruncated: ref(false),
         discoveryErrors: ref([]),
         changesRefreshing: ref(false),
+        changesFetchFailed: ref(false),
+        changesError: ref(false),
+        changesFailureCause: ref(undefined),
         restoringPath,
-        loadChanges: async () => undefined
+        loadChanges: async () => undefined,
+        retryChanges: async () => undefined,
+        restoreChange: async () => undefined
       };
       return () =>
         h('main', {}, [
@@ -295,6 +300,10 @@ const app = createApp({
                 submitting: pending.value,
                 attachmentsPending: false,
                 effortLabel: (effort: string) => effort,
+                onSend: () => {
+                  sends.value++;
+                  pending.value = true;
+                },
                 onStop: () => stops.value++
               })
             ]
@@ -315,31 +324,34 @@ const app = createApp({
       const mobileUtilityPanel = ref<'recent-sessions' | 'notifications'>();
       const count = Number(new URL(location.href).searchParams.get('count') ?? 6);
       let unread = new URL(location.href).searchParams.has('unread');
+      const unreadCount = Number(new URL(location.href).searchParams.get('unreadCount') ?? 1);
       const now = Date.now();
       const service = createWorkbenchNotificationService(ref('fixture'), {
         request: async <T>(path: string) => {
           if (path === '/api/notifications/read-all') unread = false;
           return {
             notifications: unread
-              ? [
-                  {
-                    id: 'navigation-unread',
-                    kind: 'run',
-                    title: 'Completed session',
-                    message: 'Run completed. Open the related session.',
-                    createdAt: now,
-                    updatedAt: now,
-                    expiresAt: now + 60_000,
-                    read: false,
-                    target: {
-                      targetType: 'WORKSPACE_SESSION',
-                      nodeId: 'host',
-                      workspaceId: 'project',
-                      sessionId: 'unread-session',
-                      sessionGroup: 'CHILD'
-                    }
-                  } satisfies ServerNotification
-                ]
+              ? Array.from(
+                  { length: unreadCount },
+                  (_, index) =>
+                    ({
+                      id: `navigation-unread-${index}`,
+                      kind: 'run',
+                      title: 'Completed session',
+                      message: 'Run completed. Open the related session.',
+                      createdAt: now,
+                      updatedAt: now,
+                      expiresAt: now + 60_000,
+                      read: false,
+                      target: {
+                        targetType: 'WORKSPACE_SESSION',
+                        nodeId: 'host',
+                        workspaceId: 'project',
+                        sessionId: 'unread-session',
+                        sessionGroup: 'CHILD'
+                      }
+                    }) satisfies ServerNotification
+                )
               : [],
             recentRuns: Array.from({ length: count }, (_, i) => ({
               nodeId: 'host',

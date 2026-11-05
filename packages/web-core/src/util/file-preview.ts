@@ -427,7 +427,11 @@ export function decodeFilePreviewContent(
 }
 
 function readablePreviewText(content: string): boolean {
-  return !/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/u.test(content);
+  for (let index = 0; index < content.length; index += 1) {
+    const code = content.charCodeAt(index);
+    if (code <= 8 || code === 11 || (code >= 14 && code <= 31) || code === 127) return false;
+  }
+  return true;
 }
 
 export function isLegacyOfficeFile(path: string): boolean {

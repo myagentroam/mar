@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import type { Agent, AgentSession, ExecutionResult } from '@myagentroam/agent';
+import type { Agent, ExecutionResult } from '@myagentroam/agent';
 import type { SessionExtensionContext } from '@myagentroam/agent/extensions';
 import { registerControlTools } from '../src/control.js';
 import { registerQueryTools } from '../src/query.js';

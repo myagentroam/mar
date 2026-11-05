@@ -53,7 +53,7 @@ export function buildContextGcProtection(
         const attempt = attempts.get(key);
         if (attempt?.matching) {
           if (payload.state === 'SUCCEEDED') successful.push(attempt.start);
-          for (const _identity of attempt.native) thinking.push(attempt.start);
+          for (let i = 0; i < attempt.native.size; i++) thinking.push(attempt.start);
         }
         attempts.delete(key);
       }
@@ -69,7 +69,8 @@ export function buildContextGcProtection(
     }
   }
   for (const attempt of attempts.values())
-    if (attempt.matching) for (const _identity of attempt.native) thinking.push(attempt.start);
+    if (attempt.matching)
+      for (let i = 0; i < attempt.native.size; i++) thinking.push(attempt.start);
   successful.sort((a, b) => a - b);
   thinking.sort((a, b) => a - b);
   return {

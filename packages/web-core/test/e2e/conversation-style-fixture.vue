@@ -32,6 +32,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
   }
 });
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
+const detailSurfaceFixture = new URL(location.href).searchParams.has('detail-surfaces');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
 const performanceFixture = new URL(location.href).searchParams.has('live-performance');
 const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?: number }>();
@@ -118,6 +119,26 @@ const items: ConversationItem[] = [
     payload: { subagentOperation: 'START', subagentId: 'child', prompt: 'Review the change' }
   }
 ];
+if (detailSurfaceFixture) {
+  items.push(
+    {
+      id: 'generated-detail',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolCategory: 'IMAGE_GENERATION',
+        toolName: 'generate',
+        inputSummary: 'Preserve the image prompt'
+      }
+    },
+    {
+      id: 'fallback-detail',
+      kind: 'turn_summary',
+      status: 'COMPLETED',
+      payload: { text: 'Fallback heading', reason: 'Preserve the fallback detail' }
+    }
+  );
+}
 const turns = ref<ConversationTurn[]>([
   {
     id: 'turn',
@@ -480,7 +501,19 @@ function finishPreview() {
       :initializing="initializing"
       :initial-render-version="renderVersion"
       :capture-render-anchor="captureRenderAnchor"
-      :image-attachments="() => []"
+      :image-attachments="
+        (_runId, payload) =>
+          detailSurfaceFixture &&
+          (payload as { toolCategory?: string }).toolCategory === 'IMAGE_GENERATION'
+            ? [
+                {
+                  name: 'generated.svg',
+                  previewUrl:
+                    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22green%22/%3E%3C/svg%3E'
+                }
+              ]
+            : []
+      "
       :user-input-questions="() => []"
       :user-input-answer="() => ''"
       :user-input-submitted="() => false"
@@ -559,7 +592,7 @@ function finishPreview() {
       </ConversationScroll>
     </section>
     <ConversationComposer
-      v-if="!readFilesFixture"
+      v-if="!readFilesFixture && !detailSurfaceFixture"
       v-model:input="input"
       placeholder="Message"
       :working="true"

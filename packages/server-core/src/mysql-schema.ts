@@ -205,7 +205,7 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
     .split('\n')
     .filter(
       (line) =>
-        !/^  `(fast_mode|service_tier|hosted_web_search|responses_transport|responses_previous_response_id)` /u.test(
+        !/^ {2}`(fast_mode|service_tier|hosted_web_search|responses_transport|responses_previous_response_id)` /u.test(
           line
         )
     )

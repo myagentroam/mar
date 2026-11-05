@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSSRApp, defineComponent, h } from 'vue';
+import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
-import Details from '../../src/view/settings/NodeDetailsDialogs.vue';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
@@ -218,56 +217,44 @@ describe('Public resource details', () => {
       vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
       i18n.global.locale.value = locale;
       const request = vi.fn(async () => ({}));
-      const app = createSSRApp({
-        render: () =>
-          h(Details, {
-            request: async <T>() => (await request()) as T,
-            nodeOpen: true,
-            workspaceOpen: true,
-            usageOpen: true,
-            node: {
-              id: 'node-1',
-              label: 'Public Node',
-              connected: true,
-              manageable: false,
-              nodeAppVersion: '0.9.63',
-              capabilities: { codex: { available: true, version: '1.0' } }
-            },
-            workspace: {
-              id: 'workspace-1',
-              label: 'Public Workspace',
-              path: '/workspace',
-              kind: 'DIRECTORY'
-            },
-            usage: {
-              runner: 'codex',
-              windows: [{ id: 'five_hour', label: '5 hours', usedPercentage: 25, resetsAt: null }],
-              fetchedAt: 1,
-              cached: false
-            },
-            usageDisabledReason: () => ''
-          })
+      const view = renderComponent(UnitDetails, {
+        request: async <T>() => (await request()) as T,
+        nodeOpen: true,
+        workspaceOpen: true,
+        usageOpen: true,
+        node: {
+          id: 'node-1',
+          label: 'Public Node',
+          connected: true,
+          manageable: false,
+          nodeAppVersion: '0.9.63',
+          capabilities: { codex: { available: true, version: '1.0' } }
+        },
+        workspace: {
+          id: 'workspace-1',
+          label: 'Public Workspace',
+          path: '/workspace',
+          kind: 'DIRECTORY'
+        },
+        usage: {
+          runner: 'codex',
+          windows: [{ id: 'five_hour', label: '5 hours', usedPercentage: 25, resetsAt: null }],
+          fetchedAt: 1,
+          cached: false
+        },
+        usageDisabledReason: () => ''
       });
-      app.directive('tooltip', {});
-      app.use(i18n).use(ElementPlus);
-      app.component(
-        'ElDialog',
-        defineComponent({
-          setup(_props, { slots }) {
-            return () => h('section', [slots.default?.(), slots.footer?.()]);
-          }
-        })
-      );
-      app.provide(ID_INJECTION_KEY, { prefix: 942, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
-      const context: { teleports?: Record<string, string> } = {};
-      const html =
-        (await renderToString(app, context)) + Object.values(context.teleports ?? {}).join('');
-      expect(html).toContain('Public Node');
-      expect(html).toContain('Public Workspace');
-      expect(html).toContain('25%');
-      expect(html).not.toMatch(/组织|企业|托管/iu);
-      expect(request).not.toHaveBeenCalled();
+      try {
+        const text = textContent(view.root);
+        expect(view.findAll('ElDialog')).toHaveLength(3);
+        expect(text).toContain('Public Node');
+        expect(text).toContain('Public Workspace');
+        expect(text).toContain('25%');
+        expect(text).not.toMatch(/组织|企业|托管/iu);
+        expect(request).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+      }
     }
   );
   it('shows only structurally valid runtime command rows', async () => {

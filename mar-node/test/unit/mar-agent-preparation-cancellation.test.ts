@@ -409,6 +409,7 @@ it('joins a failed event stream with the accepted result and cleanup before publ
     executionId: 'sdk-execution',
     async *[Symbol.asyncIterator]() {
       streamFailed.resolve();
+      yield* [];
       throw new Error('STREAM_FAILURE');
     },
     result: () => result.promise,

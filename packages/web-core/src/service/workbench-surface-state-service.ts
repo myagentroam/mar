@@ -1,28 +1,18 @@
 import { ref } from 'vue';
-import type { WorkspaceFileOpenIntent } from '../util/workspace-file-tab.js';
 
-export interface WorkspaceInspectorHandle {
+export interface WorkspaceSearchPanelHandle {
+  focus(): Promise<void>;
+  snapshot(): { readonly contentQuery: string; readonly contentUseRegex: boolean };
+  restore(value: { readonly contentQuery?: unknown; readonly contentUseRegex?: unknown }): void;
+}
+
+export interface WorkspaceFilesPanelHandle {
+  reveal(path: string, current?: () => boolean): Promise<void> | undefined;
+}
+export interface WorkspaceFileWorkbenchHandle {
   predictionAttention?(): readonly import('@myagentroam/protocol').PromptCompletionAttention[];
-  openFile(path: string, line?: number, column?: number): Promise<void>;
-  openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): void;
-  openWorkspaceFile(
-    path: string,
-    line?: number,
-    worktreePath?: string,
-    stacked?: boolean,
-    column?: number,
-    repositoryPath?: string
-  ): Promise<void>;
-  openWorkspaceFileComparison(path: string, line?: number, column?: number): Promise<void>;
-  openWorkspaceFileExternal(path: string, line?: number, column?: number): void;
   openCurrentRenderedPreview(): boolean;
-  revealAndOpenWorkspaceFile(path: string, line?: number): Promise<void>;
-  openChanges(): void;
-  openSearch(): void;
-  refreshVisibleSection(nodeId: string, workspaceId: string): void;
-  snapshot(): unknown;
-  restore(snapshot: unknown): void;
-  restoreWorkspace(nodeId: string, workspaceId: string, snapshot: unknown): void;
+  downloadFile(path: string): Promise<void>;
 }
 
 export interface TerminalDockHandle {
@@ -33,7 +23,7 @@ export interface TerminalDockHandle {
 export function createWorkbenchSurfaceStateService() {
   return {
     quickOpenFileVisible: ref(false),
-    workspaceInspector: ref<WorkspaceInspectorHandle | null>(),
+    workspaceFileWorkbench: ref<WorkspaceFileWorkbenchHandle | null>(),
     terminalDocks: new Map<string, TerminalDockHandle>(),
     draftSessionOpen: ref(false),
     registrationToken: ref<string>(),

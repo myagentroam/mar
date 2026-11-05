@@ -173,6 +173,7 @@ let resizeObserver: ResizeObserver | undefined;
 let unregisterMenuShortcut: (() => void) | undefined;
 onMounted(() => {
   updateViewport();
+  if (props.selectedPath !== undefined) void reveal(props.selectedPath);
   resizeObserver = new ResizeObserver(updateViewport);
   if (container.value !== undefined) resizeObserver.observe(container.value);
   unregisterMenuShortcut = consoleKeyboardShortcutService.register({

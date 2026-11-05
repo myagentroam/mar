@@ -135,19 +135,21 @@ export class MarAgentSessionRuntimeRegistry {
           }
           const request =
             nativeId === undefined ? input : { ...input, externalSessionId: nativeId };
-          let created: MarAgentSessionRuntime | undefined;
-          created = await createSessionRuntime(
+          const created: { runtime?: MarAgentSessionRuntime } = {};
+          created.runtime = await createSessionRuntime(
             request,
             nativeId ?? input.sessionId,
             fingerprint,
             configuration,
             this.resources,
             () =>
-              created !== undefined && entry.runtime === created && entry.release === undefined
+              created.runtime !== undefined &&
+              entry.runtime === created.runtime &&
+              entry.release === undefined
                 ? entry.current?.runId
                 : undefined
           );
-          uncommitted = created;
+          uncommitted = created.runtime;
           this.#addAlias(entry, uncommitted.session.id);
           nodeLog('runner.mar-agent.runtime.created', {
             runtimeId: uncommitted.runtimeId,

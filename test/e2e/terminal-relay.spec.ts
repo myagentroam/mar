@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
 // @ts-expect-error The production Server owns this runtime-only WebSocket client dependency.
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
@@ -485,6 +486,7 @@ test('Admin Terminal uses one-use tickets and a dual-WebSocket relay with replay
           capabilities: {
             platform: 'linux',
             architecture: 'x64',
+            nodeAppVersion: nodePackage.version,
             nodeVersion: process.version,
             codex: { available: false },
             claudeCode: { available: false }

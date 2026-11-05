@@ -2,7 +2,7 @@ import { AgentError } from '../error.js';
 import type { AgentEvent } from '../runtime/events.js';
 import { publicHostedToolEvents } from '../runtime/event-projection.js';
 import type { SessionStore } from './store/contracts.js';
-import type { SessionListInput, SessionSource } from './types.js';
+import type { SessionListInput } from './types.js';
 import type { AgentSessionRollbackInput } from './rollback.js';
 import { appliedInputRecord } from './deferred-input.js';
 import { isAgentEvent } from './record-projection.js';
@@ -355,10 +355,14 @@ export function createSessionCatalog(
         failed = true;
         throw error;
       } finally {
-        try {
+        if (failed) {
+          try {
+            await maintenance.release();
+          } catch {
+            // Preserve the failure from deleting the Sessions.
+          }
+        } else {
           await maintenance.release();
-        } catch (error) {
-          if (!failed) throw error;
         }
       }
     },

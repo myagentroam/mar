@@ -69,12 +69,12 @@ for (const width of [390, 1280]) {
       });
       const dot = (await indicator.boundingBox())!;
       await page.mouse.click(dot.x + dot.width / 2, dot.y + dot.height / 2);
-      await expect(page.getByTestId('selected')).toHaveText('child');
+      await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
     }
   });
 }
 
-test('tree dialog keeps one snapshot, orders active branches and closes by keyboard and backdrop', async ({
+test('tree uses the Watch snapshot order and closes on Escape and outside click', async ({
   page
 }) => {
   await page.setViewportSize({ width: 1280, height: 850 });
@@ -83,12 +83,10 @@ test('tree dialog keeps one snapshot, orders active branches and closes by keybo
   await trigger.click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
-  await expect(tree).toHaveAttribute('aria-modal', 'true');
-  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(tree).not.toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('.el-overlay')).toHaveCount(0);
   await expect(page.getByTestId('requests')).toHaveText('1');
-  await tree.hover({ position: { x: 2, y: 2 } });
   await expect(tree.locator('.session-tree-title')).toHaveText([
-    'Root',
     'Running branch',
     'Sleeping branch',
     'Idle branch',
@@ -96,21 +94,17 @@ test('tree dialog keeps one snapshot, orders active branches and closes by keybo
     'Idle leaf',
     'Idle leaf two'
   ]);
-  await expect(tree.locator('.session-tree-status')).toHaveCount(0);
-  await expect(tree.locator('.session-activity.managed_active')).toHaveCount(3);
-  await expect(tree.locator('.session-tree-time')).toHaveText(Array(7).fill('—'));
-  await expect(
-    tree.getByRole('button', { name: 'Running branch, Running', exact: true })
-  ).toBeVisible();
-  await expect(
-    tree.getByRole('button', { name: 'Sleeping branch, Sleeping', exact: true })
-  ).toBeVisible();
-  await expect(page.getByTestId('requests')).toHaveText('1');
+  await expect(tree.locator('.session-activity.managed_active')).toHaveCount(2);
+  await expect(tree.locator('.session-activity.tree-sleeping')).toHaveCount(1);
+  await expect(tree.locator('.session-tree-time')).toHaveText(Array(6).fill('—'));
+  await expect(tree.getByRole('button', { name: 'Running branch, Running' })).toBeVisible();
+  await expect(tree.getByRole('button', { name: 'Sleeping branch, Sleeping' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
-  await trigger.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByTestId('requests')).toHaveText('2');
+  await expect(trigger).toBeFocused();
+  await trigger.press('Enter');
+  await expect(tree).toBeVisible();
+  await expect(page.getByTestId('requests')).toHaveText('1');
   await page.mouse.click(900, 700);
   await expect(tree).toHaveCount(0);
 });
@@ -135,124 +129,43 @@ for (const width of [390, 1280]) {
     await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
   });
 
-  test(`session tree preserves its content through the native leave transition at ${width}px`, async ({
-    page
-  }) => {
+  test(`session tree closes cleanly and can reopen at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 850 });
-    for (const entry of ['title', 'list']) {
-      await page.goto(
-        `${fixture.url}${entry === 'title' ? 'session-tree' : 'session-groups'}.html?locale=en-US`
-      );
-      if (entry === 'title') {
-        await page.getByRole('button', { name: 'View session tree' }).click();
-      } else {
-        const chats = page.locator('.conversation-sidebar');
-        await chats.getByRole('tab').nth(1).click();
-        await chats.locator('.session-link').hover();
-        await chats.locator('.session-more-button').click();
-        await page.getByRole('menuitem', { name: 'View session tree', exact: true }).click();
-      }
-      const tree = page.getByRole('dialog', { name: 'View session tree' });
-      const overlay = page.locator('.el-overlay');
-      await expect(tree.locator('.session-tree-node').first()).toBeVisible();
-      await overlay.evaluate(async (element) => {
-        await Promise.allSettled(
-          element.getAnimations({ subtree: true }).map((animation) => animation.finished)
-        );
-      });
-      await expect(overlay).not.toHaveClass(/enter-active/);
-      await expect
-        .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
-        .toBe(true);
-      const leaving = await page.evaluate(async () => {
-        const panel = document.querySelector<HTMLElement>('.el-overlay')!;
-        const content = panel.textContent;
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        return {
-          connected: panel.isConnected,
-          active: panel.classList.contains('dialog-fade-leave-active'),
-          duration: Math.max(
-            Number.parseFloat(getComputedStyle(panel).transitionDuration),
-            Number.parseFloat(getComputedStyle(panel).animationDuration)
-          ),
-          contentUnchanged: panel.textContent === content,
-          inert: panel.querySelector('.session-tree-content')?.hasAttribute('inert')
-        };
-      });
-      expect(leaving.connected, entry).toBe(true);
-      expect(leaving.active, entry).toBe(true);
-      expect(leaving.duration, entry).toBeGreaterThan(0);
-      expect(leaving.contentUnchanged, entry).toBe(true);
-      expect(leaving.inert, entry).toBe(true);
-      await expect(overlay).toHaveCount(0);
-    }
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await trigger.click();
+    const tree = page.getByRole('dialog', { name: 'View session tree' });
+    await expect(tree.locator('.session-tree-node').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(tree).toHaveCount(0);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await trigger.click();
+    await expect(tree.locator('.session-tree-node').first()).toBeVisible();
+    await expect(page.getByTestId('requests')).toHaveText('1');
   });
 }
 
-test('reopening the dialog reads a fresh snapshot and stays open', async ({ page }) => {
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
-  const trigger = page.getByRole('button', { name: 'View session tree' });
-  await trigger.click();
-  const overlay = page.locator('.el-overlay');
-  await expect(page.getByTestId('requests')).toHaveText('1');
-  await page.keyboard.press('Escape');
-  await expect(overlay).toHaveCount(0);
-  await trigger.click();
-  await expect(page.getByTestId('requests')).toHaveText('2');
-  await expect(overlay).not.toHaveClass(/enter-active/);
-  await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-});
-
 for (const width of [390, 1280]) {
-  for (const action of ['select', 'failure']) {
-    test(`${action} uses the native tree dialog leave transition at ${width}px`, async ({
-      page
-    }) => {
+  for (const action of ['select', 'failure'] as const) {
+    test(`${action} closes the non-modal tree safely at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 850 });
       await page.goto(
-        `${fixture.url}session-tree.html?locale=en-US${action === 'failure' ? '&delayed=1' : ''}`
+        `${fixture.url}session-tree.html?locale=en-US${action === 'failure' ? '&failure=1' : ''}`
       );
       const trigger = page.getByRole('button', { name: 'View session tree' });
       await trigger.click();
-      const overlay = page.locator('.el-overlay');
-      await expect(page.getByTestId('requests')).toHaveText('1');
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await overlay.evaluate(async (element) => {
-        const surfaces = [element, element.querySelector('.el-dialog')!];
-        await Promise.allSettled(
-          surfaces
-            .flatMap((surface) => surface.getAnimations())
-            .map((animation) => animation.finished)
-        );
-      });
-      const control =
-        action === 'select'
-          ? page.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
-          : page.getByTestId('reject-snapshot');
-      const leaving = await control.evaluate(async (button: HTMLButtonElement) => {
-        const panel = document.querySelector<HTMLElement>('.el-overlay')!;
-        const dialog = panel.querySelector('.el-dialog')!;
-        const height = dialog.clientHeight;
-        button.click();
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        return {
-          connected: panel.isConnected,
-          active: panel.classList.contains('dialog-fade-leave-active'),
-          heightUnchanged: dialog.clientHeight === height,
-          inert: panel.querySelector('.session-tree-content')?.hasAttribute('inert')
-        };
-      });
-      expect(leaving).toEqual({
-        connected: true,
-        active: true,
-        heightUnchanged: true,
-        inert: true
-      });
-      if (action === 'select') await expect(page.getByTestId('selected')).toHaveText('grandchild');
-      else await expect(page.getByText('tree unavailable')).toBeVisible();
-      await expect(overlay).toHaveCount(0);
+      const tree = page.getByRole('dialog', { name: 'View session tree' });
+      if (action === 'select') {
+        await tree.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' }).click();
+        await expect(page.getByTestId('selected')).toHaveText('grandchild');
+        await expect(page.getByTestId('target')).toHaveText('aside');
+      } else {
+        await expect(tree.getByRole('status')).toBeVisible();
+        await expect(tree.getByRole('status').getByRole('button')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(trigger).toBeFocused();
+      }
+      await expect(tree).toHaveCount(0);
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
   }
@@ -262,21 +175,12 @@ test('session tree respects reduced motion when opening and closing', async ({ p
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
-  const duration = await trigger.evaluate(async (button) => {
-    if (!(button instanceof HTMLElement))
-      throw new Error('Session tree trigger is not an HTML element');
-    button.click();
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const style = getComputedStyle(document.querySelector('.el-overlay')!);
-    return Math.max(
-      Number.parseFloat(style.transitionDuration),
-      Number.parseFloat(style.animationDuration)
-    );
-  });
-  expect(duration).toBe(0);
-  await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
+  await trigger.click();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'View session tree' })).toHaveCount(0);
+  await expect(tree).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test('standard MessageBox respects reduced motion on desktop and mobile', async ({ page }) => {
@@ -306,63 +210,40 @@ test('standard MessageBox respects reduced motion on desktop and mobile', async 
 });
 
 for (const outcome of ['success', 'failure']) {
-  test(`closing cancels the snapshot before leave and ignores its late ${outcome}`, async ({
+  test(`closed popover does not interrupt Watch and shows its late ${outcome} on reopening`, async ({
     page
   }) => {
     await page.goto(`${fixture.url}session-tree.html?locale=en-US&delayed=1`);
     const trigger = page.getByRole('button', { name: 'View session tree' });
     await trigger.click();
+    const tree = page.getByRole('dialog', { name: 'View session tree' });
+    await expect(tree.locator('.session-tree')).toHaveAttribute('aria-busy', 'true');
+    await page.keyboard.press('Escape');
+    await expect(tree).toHaveCount(0);
+    await page.getByTestId(`${outcome === 'success' ? 'resolve' : 'reject'}-snapshot`).click();
+    await trigger.click();
     await expect(page.getByTestId('requests')).toHaveText('1');
-    const overlay = page.locator('.el-overlay');
-    await expect(overlay).not.toHaveClass(/enter-active/);
-    const closed = await page.evaluate(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      return {
-        aborted: document.querySelector('[data-testid="aborts"]')!.textContent,
-        connected: document.querySelector('.el-overlay') !== null
-      };
-    });
-    expect.soft(closed).toEqual({ aborted: '1', connected: true });
-    const retired = await page.evaluate(async (outcome) => {
-      const control = document.querySelector<HTMLButtonElement>(
-        `[data-testid="${outcome === 'success' ? 'resolve' : 'reject'}-snapshot"]`
-      )!;
-      control.click();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      return {
-        busy: document.querySelector('.session-tree')?.getAttribute('aria-busy'),
-        nodes: document.querySelectorAll('.session-tree-node').length,
-        errors: document.querySelectorAll('.el-message--error').length
-      };
-    }, outcome);
-    expect(retired).toEqual({ busy: 'true', nodes: 0, errors: 0 });
-    await expect(overlay).toHaveCount(0);
+    if (outcome === 'success')
+      await expect(
+        tree.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
+      ).toBeVisible();
+    else await expect(tree.getByRole('status')).toBeVisible();
   });
 }
 
-test('closing an in-flight snapshot aborts it and a failed snapshot can be reopened', async ({
-  page
-}) => {
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US&pending=1`);
-  const trigger = page.getByRole('button', { name: 'View session tree' });
-  await trigger.click();
-  await expect(page.getByTestId('requests')).toHaveText('1');
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('aborts')).toHaveText('1');
+test('failed Watch tree offers retry without closing the popover', async ({ page }) => {
   await page.goto(`${fixture.url}session-tree.html?locale=en-US&failure=1`);
-  await trigger.click();
-  await expect(page.getByText('tree unavailable')).toBeVisible();
-  await trigger.click();
+  await page.getByRole('button', { name: 'View session tree' }).click();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree.getByRole('status')).toBeVisible();
+  await tree.getByRole('status').getByRole('button').click();
   await expect(page.getByTestId('requests')).toHaveText('2');
   await expect(
-    page
-      .getByRole('dialog', { name: 'View session tree' })
-      .getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
+    tree.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' })
   ).toBeVisible();
 });
 
-test('keyboard-opened list actions open a modal tree without a preceding mouse click', async ({
+test('keyboard-opened list actions open a non-modal tree without a preceding mouse click', async ({
   page
 }) => {
   await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
@@ -378,21 +259,20 @@ test('keyboard-opened list actions open a modal tree without a preceding mouse c
   await action.press('Enter');
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
-  await expect(tree).toHaveAttribute('aria-modal', 'true');
-  await expect
-    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
-    .toBe(true);
+  await expect(tree).not.toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('.el-overlay')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
   await expect
     .poll(() => chats.evaluate((element) => element.contains(document.activeElement)))
     .toBe(true);
+  await expect(action).toBeHidden();
   await trigger.focus();
   await trigger.press('ArrowDown');
   await action.focus();
   await action.press('Enter');
-  await tree.getByRole('button', { name: 'Child collaboration, Idle' }).press('Enter');
-  await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+  await tree.getByRole('button', { name: 'Child detail, Idle' }).press('Enter');
+  await expect(page.getByTestId('opened-tree-session')).toHaveText('child-detail');
 });
 
 test('Escape returns keyboard focus from the tree to its title trigger', async ({ page }) => {
@@ -407,7 +287,7 @@ test('Escape returns keyboard focus from the tree to its title trigger', async (
   await expect(trigger).toBeFocused();
 });
 
-test('the standard dialog traps keyboard focus and its close button returns it', async ({
+test('the non-modal popover permits keyboard focus outside and Escape returns to its trigger', async ({
   page
 }) => {
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
@@ -416,16 +296,9 @@ test('the standard dialog traps keyboard focus and its close button returns it',
   await trigger.press('Enter');
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
-  await expect
-    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
-    .toBe(true);
-  await page.keyboard.press('Shift+Tab');
-  await expect
-    .poll(() => tree.evaluate((element) => element.contains(document.activeElement)))
-    .toBe(true);
-  const close = tree.getByRole('button', { name: 'Close this dialog' });
-  await expect(close.locator('[data-mar-icon="close"]')).toBeVisible();
-  await close.click();
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
@@ -446,42 +319,73 @@ for (const width of [390, 1280]) {
   });
 }
 
-test('a deep 100-node snapshot remains scrollable on a narrow viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 600 });
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US&long=1`);
-  await page.getByRole('button', { name: 'View session tree' }).click();
-  const tree = page.locator('.session-tree');
-  await expect(tree.locator('.session-tree-node')).toHaveCount(100);
-  const body = page.locator('.session-tree-dialog .el-dialog__body');
-  expect(
-    await body.evaluate(
-      (el) => el.scrollHeight > el.clientHeight && el.scrollWidth > el.clientWidth
-    )
-  ).toBe(true);
-  const last = tree.getByRole('button', { name: 'Node 99, Idle' });
-  await last.scrollIntoViewIfNeeded();
-  expect(
-    await last.locator('.session-tree-title').evaluate((el) => el.getBoundingClientRect().width)
-  ).toBeGreaterThan(20);
-  await expect(last).toBeVisible();
-  await expect(last.locator('.session-tree-status')).toHaveCount(0);
-  await expect(last.locator('.session-tree-time')).toHaveText('—');
-  await expect(last.locator('.session-tree-time')).not.toHaveAttribute('datetime');
-});
+for (const width of [320, 390]) {
+  test(`a deep 100-node snapshot remains scrollable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 600 });
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&long=1`);
+    await page.getByRole('button', { name: 'View session tree' }).click();
+    const tree = page.locator('.session-tree');
+    await expect(tree.locator('.session-tree-node')).toHaveCount(100);
+    const body = page.locator('.session-tree-scroll');
+    expect(
+      await body.evaluate(
+        (el) => el.scrollHeight > el.clientHeight && el.scrollWidth >= el.clientWidth
+      )
+    ).toBe(true);
+    const last = tree.getByRole('button', { name: 'Node 99, Idle' });
+    await last.scrollIntoViewIfNeeded();
+    await body.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    const overflow = await last.evaluate((element) => {
+      const scroll = element.closest('.session-tree-scroll')!;
+      return {
+        titleWidth: element.querySelector('.session-tree-title')!.getBoundingClientRect().width,
+        rowWidth: element.getBoundingClientRect().width,
+        scrollWidth: scroll.scrollWidth,
+        clientWidth: scroll.clientWidth,
+        scrollLeft: scroll.scrollLeft
+      };
+    });
+    expect(overflow.titleWidth, JSON.stringify(overflow)).toBeGreaterThan(20);
+    await expect(last).toBeVisible();
+    await expect(last.locator('.session-tree-status')).toHaveCount(0);
+    await expect(last.locator('.session-tree-time')).toHaveText('—');
+    await expect(last.locator('.session-tree-time')).not.toHaveAttribute('datetime');
+    const action = last.locator('..').locator('.session-tree-actions');
+    await last.hover();
+    await expect(action).toBeVisible();
+    const visible = await last.locator('..').evaluate((element) => {
+      const scroll = element.closest('.session-tree-scroll')!.getBoundingClientRect();
+      return [
+        ...element.querySelectorAll(
+          '.session-tree-title, .session-tree-time, .session-tree-actions'
+        )
+      ].every((part) => {
+        const rect = part.getBoundingClientRect();
+        return rect.width > 0 && rect.left >= scroll.left - 1 && rect.right <= scroll.right + 1;
+      });
+    });
+    expect(visible).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+  });
+}
 
 test.describe('touch interaction', () => {
   test.use({ hasTouch: true });
-  test('touch opens the standard dialog and mobile back closes it', async ({ page }) => {
+  test('touch opens the popover and mobile back closes it', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 850 });
     await page.goto(`${fixture.url}session-tree.html?locale=en-US&rootOnly=1`);
     const trigger = page.getByRole('button', { name: 'View session tree' });
     await trigger.tap();
     const tree = page.getByRole('dialog', { name: 'View session tree' });
     await expect(tree).toBeVisible();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(trigger).toHaveAccessibleName('View session tree');
     await page.goBack();
     await expect(tree).toHaveCount(0);
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(trigger).toHaveAccessibleName('View session tree');
   });
 });
 
@@ -532,17 +436,17 @@ for (const width of [390, 1280]) {
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
       await expect(rows.locator('.session-tree-status')).toHaveCount(0);
-      await expect(dialog.locator('.session-activity.managed_active')).toHaveCount(2);
-      await expect(rows.locator('.session-tree-time')).toHaveText(['>12m', '<1m', '>5m', '>2h']);
+      await expect(dialog.locator('.session-activity.managed_active')).toHaveCount(1);
+      await expect(rows.locator('.session-tree-time')).toHaveText(['>12m', '>5m', '<1m', '>2h']);
       await expect(rows.first().locator('.session-tree-time')).toHaveAttribute(
         'datetime',
         /^\d{4}-\d{2}-\d{2}T/
       );
       await expect(rows.nth(1)).toHaveAccessibleName(
-        `Review BMP compatibility changes and lifecycle edge cases, ${locale === 'en-US' ? 'Running' : '运行中'}`
+        `Verify image decoding and cleanup, ${locale === 'en-US' ? 'Sleeping' : '休眠中'}`
       );
       await expect(rows.nth(2)).toHaveAccessibleName(
-        `Verify image decoding and cleanup, ${locale === 'en-US' ? 'Sleeping' : '休眠中'}`
+        `Review child compatibility, ${locale === 'en-US' ? 'Running' : '运行中'}`
       );
       const longTitle = rows.last().locator('.session-tree-title');
       await expect(rows.last()).toHaveAccessibleName(
@@ -558,151 +462,52 @@ for (const width of [390, 1280]) {
       expect(titleSize.fullWidth).toBeGreaterThan(titleSize.width);
       await expect(rows.locator('[data-mar-icon="collection"]')).toHaveCount(0);
       const treeRows = dialog.locator('.session-tree-row');
-      const childBranch = treeRows.nth(1).locator('.session-tree-branch');
-      const ancestorBranch = treeRows.nth(2).locator('.session-tree-branch').first();
-      const lastBranch = treeRows.nth(3).locator('.session-tree-branch');
-      await expect(childBranch).toHaveCSS('border-inline-start-width', '1px');
-      await expect(ancestorBranch).toHaveCSS('border-inline-start-width', '1px');
-      await expect(lastBranch).toHaveCSS('border-inline-start-width', '0px');
-      // Read both edges in one frame while the dialog entrance transition may be active.
-      const [childLine, ancestorLine] = await treeRows.evaluateAll((elements) =>
-        [elements[1]!, elements[2]!].map((element) => {
-          const box = element.querySelector('.session-tree-branch')!.getBoundingClientRect();
-          return { x: box.x, y: box.y, height: box.height };
-        })
-      );
-      expect(ancestorLine!.x).toBe(childLine!.x);
-      expect(Math.abs(childLine!.y + childLine!.height - ancestorLine!.y)).toBeLessThan(1);
-      const connectorEdges = await treeRows.evaluateAll((elements) => {
-        const stem = elements[0]!.querySelector('.session-tree-origin-stem')!;
-        const child = elements[1]!.querySelector('.session-tree-branch')!;
-        const ancestor = elements[2]!.querySelector('.session-tree-branch')!;
-        const grandchild = elements[2]!.querySelectorAll('.session-tree-branch')[1]!;
-        const last = elements[3]!.querySelector('.session-tree-branch')!;
-        const branchX = (element: Element) => element.getBoundingClientRect().left;
-        const elbowX = (element: Element) =>
-          branchX(element) +
-          parseFloat(getComputedStyle(element).borderLeftWidth) +
-          parseFloat(getComputedStyle(element, '::before').left);
-        return {
-          root: branchX(stem),
-          continuing: branchX(child),
-          continuingElbow: elbowX(child),
-          ancestor: branchX(ancestor),
-          grandchild: branchX(grandchild),
-          grandchildElbow: elbowX(grandchild),
-          lastElbow: elbowX(last)
-        };
-      });
-      expect(connectorEdges.continuing).toBeCloseTo(connectorEdges.root, 1);
-      expect(connectorEdges.continuingElbow).toBeCloseTo(connectorEdges.continuing, 1);
-      expect(connectorEdges.ancestor).toBeCloseTo(connectorEdges.continuing, 1);
-      expect(connectorEdges.grandchildElbow).toBeCloseTo(connectorEdges.grandchild, 1);
-      expect(connectorEdges.lastElbow).toBeCloseTo(connectorEdges.continuing, 1);
-      const childStem = treeRows.nth(1).locator('.session-tree-child-stem');
-      await expect(childStem).toHaveCSS('border-inline-start-width', '1px');
-      await expect(treeRows.nth(2).locator('.session-tree-child-stem')).toHaveCount(0);
-      const nestedConnector = await treeRows.evaluateAll((elements) => {
-        const parent = elements[1]!.getBoundingClientRect();
-        const elbow = elements[1]!.querySelector('.session-tree-branch')!.getBoundingClientRect();
-        const stem = elements[1]!
-          .querySelector('.session-tree-child-stem')!
-          .getBoundingClientRect();
-        const child = elements[2]!
-          .querySelectorAll('.session-tree-branch')[1]!
-          .getBoundingClientRect();
-        return {
-          parentCenter: parent.top + parent.height / 2,
-          elbowLeft: elbow.left,
-          elbowRight: elbow.right,
-          stemLeft: stem.left,
-          stemTop: stem.top,
-          stemBottom: stem.bottom,
-          childLeft: child.left,
-          childTop: child.top
-        };
-      });
-      expect(Math.abs(nestedConnector.stemTop - nestedConnector.parentCenter)).toBeLessThan(1);
-      expect(nestedConnector.stemLeft).toBeGreaterThanOrEqual(nestedConnector.elbowLeft);
-      expect(nestedConnector.stemLeft).toBeLessThanOrEqual(nestedConnector.elbowRight);
-      expect(nestedConnector.stemLeft).toBeCloseTo(nestedConnector.childLeft, 1);
-      expect(Math.abs(nestedConnector.stemBottom - nestedConnector.childTop)).toBeLessThan(1);
-      const ending = await lastBranch.evaluate((element) => {
-        const style = getComputedStyle(element, '::before');
-        return {
-          height: parseFloat(style.height),
-          border: style.borderBottomWidth,
-          parentHeight: element.clientHeight
-        };
-      });
-      expect(ending.border).toBe('1px');
-      expect(Math.abs(ending.height - ending.parentHeight / 2)).toBeLessThan(1);
-      const branchStep = await lastBranch.evaluate((element) =>
-        parseFloat(getComputedStyle(element).width)
-      );
-      expect(branchStep).toBeCloseTo(
-        await page.evaluate(
-          () => parseFloat(getComputedStyle(document.documentElement).fontSize) * 1.25
-        ),
-        1
-      );
-      expect(
-        await lastBranch.evaluate((element) =>
-          parseFloat(getComputedStyle(element, '::before').borderEndStartRadius)
-        )
-      ).toBeGreaterThan(0);
-      const markers = dialog.locator('.session-tree-marker');
-      await expect(markers).toHaveCount(4);
-      await expect(markers.first()).toHaveAttribute('aria-hidden', 'true');
-      const markerGeometry = await treeRows.evaluateAll((elements) =>
-        elements.map((element) => {
-          const row = element.getBoundingClientRect();
-          const marker = element.querySelector('.session-tree-marker')!;
-          const dot = marker.getBoundingClientRect();
-          const style = getComputedStyle(marker);
+      await expect(treeRows).toHaveCount(3);
+      await expect(treeRows.nth(0).locator('.session-tree-origin')).toBeVisible();
+      await expect(treeRows.nth(1).locator('.session-tree-branch')).toHaveCount(1);
+      await expect(treeRows.nth(2).locator('.session-tree-origin')).toBeVisible();
+      const geometry = await treeRows.evaluateAll((elements) =>
+        elements.map((row) => {
+          const box = row.getBoundingClientRect();
+          const marker = row.querySelector('.session-tree-marker')!.getBoundingClientRect();
           return {
-            x: dot.left + dot.width / 2,
-            y: dot.top + dot.height / 2,
-            center: row.top + row.height / 2,
-            size: dot.width,
-            height: dot.height,
-            color: style.borderTopColor,
-            radius: style.borderRadius
+            rowCenter: box.top + box.height / 2,
+            x: marker.left + marker.width / 2,
+            center: marker.top + marker.height / 2,
+            width: marker.width,
+            height: marker.height
           };
         })
       );
-      for (const marker of markerGeometry) {
-        expect(Math.abs(marker.y - marker.center)).toBeLessThan(1);
-        expect(marker.size).toBeCloseTo(8, 1);
-        expect(marker.height).toBeCloseTo(marker.size, 1);
-        expect(marker.radius).toBe('50%');
+      for (const marker of geometry) {
+        expect(Math.abs(marker.center - marker.rowCenter)).toBeLessThan(1);
+        expect(marker.width).toBeCloseTo(8, 1);
+        expect(marker.height).toBeCloseTo(marker.width, 1);
       }
-      expect(markerGeometry[0]!.x).toBeCloseTo(connectorEdges.root, 1);
-      expect(markerGeometry[1]!.x).toBeCloseTo(nestedConnector.stemLeft, 1);
-      expect(markerGeometry[2]!.x - markerGeometry[1]!.x).toBeCloseTo(branchStep, 1);
-      expect(markerGeometry[3]!.x).toBeCloseTo(markerGeometry[1]!.x, 1);
-      expect(markerGeometry[1]!.color).toBe(markerGeometry[0]!.color);
+      expect(geometry[1]!.x).toBeGreaterThan(geometry[0]!.x);
+      expect(geometry[2]!.x).toBeCloseTo(geometry[0]!.x, 1);
       for (const row of await rows.all()) {
         await expect(row).not.toContainText(/mar-agent|codex/);
         await expect(row).toHaveCSS('border-top-width', '0px');
         expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
-      const rowBackground = await rows
+      const items = dialog.locator('.session-tree-item');
+      const rowBackground = await items
         .nth(1)
         .evaluate((el) => getComputedStyle(el).backgroundColor);
       expect(rowBackground).not.toBe('rgba(0, 0, 0, 0)');
-      await expect(rows.nth(2)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(rows.first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(items.nth(2)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(items.first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await rows.first().hover();
-      const hoverBackground = await rows
+      const hoverBackground = await items
         .first()
         .evaluate((el) => getComputedStyle(el).backgroundColor);
       expect(hoverBackground).not.toBe(rowBackground);
       const current = dialog.locator('.session-tree-node[aria-current="true"]');
       await current.focus();
       await expect(current).toHaveCSS('outline-width', '2px');
-      await expect(current).toContainText('Review BMP');
-      await expect(current).toHaveCSS('background-color', rowBackground);
+      await expect(current).toContainText('Verify image');
+      await expect(items.nth(1)).toHaveCSS('background-color', rowBackground);
       await expect(current.locator('.session-tree-title')).toHaveCSS('font-weight', '400');
       await expect(rows.locator('[data-mar-icon]')).toHaveCount(0);
       const box = (await dialog.boundingBox())!;
@@ -715,27 +520,25 @@ for (const width of [390, 1280]) {
         fullPage: true
       });
       await longTitle.hover();
-      await expect(page.getByRole('tooltip')).toHaveText(
+      await expect(page.locator('.mar-tooltip[role="tooltip"]:visible')).toHaveText(
         'Review upload boundary tests and verify image compatibility. '.repeat(6).trim()
       );
       await current.locator('.session-tree-time').hover();
-      await expect(page.getByRole('tooltip')).toHaveText(
+      await expect(page.locator('.mar-tooltip[role="tooltip"]:visible')).toHaveText(
         new RegExp(
           `^${locale === 'en-US' ? 'Last activity: ' : '最后活动：'}\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$`
         )
       );
-      await current.evaluate((element) => {
+      await items.nth(1).evaluate((element) => {
         (element as HTMLElement).style.setProperty('--mar-text-primary', '#d7dde5');
         (element as HTMLElement).style.setProperty('--mar-fill-selection', '#313f51');
         (element as HTMLElement).style.setProperty('--el-color-success', '#36805a');
       });
-      await current.hover();
+      await current.evaluate((element) => (element as HTMLElement).blur());
+      await page.mouse.move(0, 0);
       await expect(current.locator('.session-tree-title')).toHaveCSS('color', 'rgb(215, 221, 229)');
-      await expect(current).toHaveCSS('background-color', 'rgb(49, 63, 81)');
-      await expect(current.locator('.session-activity i')).toHaveCSS(
-        'background-color',
-        'rgb(54, 128, 90)'
-      );
+      await expect(items.nth(1)).toHaveCSS('background-color', 'rgb(49, 63, 81)');
+      await expect(current.locator('.session-activity')).toBeVisible();
       await rows.first().press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect(page.getByTestId('selected')).toHaveText('parent');
@@ -750,28 +553,16 @@ for (const theme of ['dark', 'daylight']) {
     await page.goto(`${fixture.url}session-tree.html?theme=${theme}&locale=zh-CN&rootOnly=1`);
     await page.getByRole('button', { name: '查看会话树' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.locator('.session-tree-node')).toHaveCount(1);
-    await expect(dialog.locator('.session-tree-origin')).toBeVisible();
-    await expect(dialog.locator('.session-tree-origin-stem')).toHaveCount(0);
-    await expect(dialog.locator('.session-tree-child-stem')).toHaveCount(0);
-    await expect(dialog.locator('.session-tree-branch')).toHaveCount(0);
-    await expect(dialog.locator('.session-tree')).toHaveCSS('min-height', '0px');
-    await expect(dialog.locator('.el-loading-mask')).toBeHidden();
-    const root = dialog.getByRole('button', { name: 'forge#maintainer, 空闲' });
-    await expect(root).toHaveAttribute('aria-current', 'true');
-    expect(await root.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
-      'rgba(0, 0, 0, 0)'
-    );
-    await page.mouse.move(0, 0);
-    await root.evaluate((element) => (element as HTMLElement).blur());
+    await expect(dialog.locator('.session-tree-node')).toHaveCount(0);
+    await expect(dialog.locator('.session-tree-row')).toHaveCount(0);
+    await expect(dialog.locator('.session-tree')).toContainText('暂无下级会话');
     await page.screenshot({
       path: testInfo.outputPath(`root-${theme}.png`),
       fullPage: true,
       animations: 'disabled'
     });
-    await root.click();
+    await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByTestId('selected')).toHaveText('parent');
   });
 }
 
@@ -793,7 +584,7 @@ for (const [width, theme] of [
     await treeItem.screenshot({ path: testInfo.outputPath('session-tree-menu.png') });
     await treeItem.click();
     await page.locator('.session-tree-node').click();
-    await expect(page.getByTestId('opened-tree-session')).toHaveText('child');
+    await expect(page.getByTestId('opened-tree-session')).toHaveText('child-detail');
     await expect(treeItem).not.toBeVisible();
   });
 }

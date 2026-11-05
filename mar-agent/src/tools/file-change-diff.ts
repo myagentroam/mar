@@ -120,8 +120,10 @@ function compare(a: string[], b: string[]): Edit[] | undefined {
             : k - 1;
         const previousX = previous.get(previousK) ?? 0;
         const previousY = previousX - previousK;
-        while (x > previousX && y > previousY)
-          (reversed.push({ kind: ' ', text: left[--x]! }), y--);
+        while (x > previousX && y > previousY) {
+          reversed.push({ kind: ' ', text: left[--x]! });
+          y--;
+        }
         if (d === 0) break;
         if (x === previousX) reversed.push({ kind: '+', text: right[--y]! });
         else reversed.push({ kind: '-', text: left[--x]! });

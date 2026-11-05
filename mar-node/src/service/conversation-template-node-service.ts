@@ -31,7 +31,6 @@ import {
 } from '@myagentroam/protocol';
 import type { NodeDatabase } from '../database.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
-import type { NodeMcpInstallation } from '../mcp/model.js';
 import { safeErrorCode } from '../util/safe-error.js';
 import {
   parseTemplateVersionManifest,

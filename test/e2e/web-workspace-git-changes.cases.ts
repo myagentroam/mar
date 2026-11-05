@@ -80,6 +80,9 @@ for (const language of [
       changesReads += 1;
       return json(route, summary());
     });
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/fetch$/, (route) =>
+      json(route, { fetchFailed: false, updated: false })
+    );
     await page.route(/\/api\/workspaces\/workspace-1\/watch$/, (route) =>
       fulfillMockWorkspaceWatch(
         page,
@@ -102,8 +105,9 @@ for (const language of [
     const heading = page.locator('.change-repository-heading').first();
     const sync = heading.locator('.repository-sync-tag');
     await expect(sync).toHaveText('↓ 3 ↑ 2');
-    await expect(sync).toHaveAttribute('title', new RegExp(language.incoming));
     await expect(sync).toHaveAttribute('aria-label', new RegExp(language.incoming));
+    await sync.hover();
+    await expect(page.getByRole('tooltip').filter({ hasText: language.incoming })).toBeVisible();
     await expect(page.locator('.repository-sync-tag')).toHaveText([
       '↓ 3 ↑ 2',
       '↓ 0 ↑ 4',
@@ -116,7 +120,7 @@ for (const language of [
       await expect.poll(() => changesReads).toBeGreaterThan(previousReads);
       await expect(refresh).toBeEnabled();
     };
-    const inspector = page.locator('.workspace-inspector');
+    const inspector = page.locator('.workspace-git-panel:visible');
     await inspector.evaluate((element) =>
       Object.assign((element as HTMLElement).style, {
         width: '260px',
@@ -620,6 +624,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   let linkedDiffWorktreePath: string | null = null;
   let linkedPreviewWorktreePath: string | null = null;
   let linkedContentWorktreePath: string | null = null;
+  const binaryDiffRequests: string[] = [];
   let holdFileRefresh = false;
   let releaseFileRefresh: (() => void) | undefined;
   let fileMutation: Record<string, unknown> | undefined;
@@ -839,6 +844,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await page.route(/\/api\/workspaces\/workspace-1\/changes\/diff(?:\?.*)?$/, (route) => {
     const url = new URL(route.request().url());
     const path = url.searchParams.get('path');
+    if (path === 'assets/logo.png' || path === 'assets/linked.png') binaryDiffRequests.push(path);
     if (path === 'src/child.ts') childDiffRepositoryPath = url.searchParams.get('repositoryPath');
     if (path === 'src/linked.ts') {
       linkedDiffWorktreePath = url.searchParams.get('worktreePath');
@@ -905,9 +911,9 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await expect(page.locator('.explorer-toolbar .workspace-upload-input')).toBeHidden();
+  await expect(page.locator('.file-explorer .workspace-upload-input')).toBeHidden();
   const toolbarItemRows = await page
-    .locator('.explorer-toolbar')
+    .locator('.file-explorer > .explorer-toolbar')
     .evaluate((toolbar) =>
       [...toolbar.children]
         .filter((element) => getComputedStyle(element).display !== 'none')
@@ -933,7 +939,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   expect(fileToolbarLayout.borderBottomWidth).toBe('1px');
   expect(
     await page
-      .locator('.explorer-toolbar button')
+      .locator('.file-explorer > .explorer-toolbar button')
       .evaluateAll((buttons) =>
         buttons.slice(0, 2).map((button) => button.getAttribute('aria-label'))
       )
@@ -953,15 +959,30 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   const fileMenu = page.getByRole('button', { name: /main\.ts 更多操作/ });
   await expect(fileMenu).toBeVisible();
   await fileMenu.click();
-  await expect(page.getByRole('menuitem', { name: '重命名' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: '删除' })).toBeVisible();
-  await expect(page.locator('.el-dropdown__popper:visible svg.mar-icon')).toHaveCount(6);
+  for (const name of [
+    '打开',
+    '在独立窗口打开',
+    '下载',
+    '复制相对路径',
+    '复制绝对路径',
+    '重命名',
+    '删除'
+  ]) {
+    const item = page.getByRole('menuitem', { name, exact: true });
+    await expect(item).toBeVisible();
+    await expect(item.locator('svg.mar-icon')).toHaveCount(1);
+  }
   await page.keyboard.press('Escape');
-  const rootDirectory = fileTree.getByRole('treeitem', { name: 'project', exact: true });
+  const rootDirectory = fileTree.getByRole('treeitem', { name: '/project', exact: true });
+  await expect(rootDirectory).toContainText('project');
   await rootDirectory.hover();
   const rootActions = page.getByRole('button', { name: 'project 更多操作' });
   await rootActions.click();
-  await expect(page.locator('.el-dropdown__popper:visible svg.mar-icon')).toHaveCount(4);
+  for (const name of ['新建文件', '新建文件夹', '上传文件', '复制相对路径', '复制绝对路径']) {
+    const item = page.getByRole('menuitem', { name, exact: true });
+    await expect(item).toBeVisible();
+    await expect(item.locator('svg.mar-icon')).toHaveCount(1);
+  }
   const [rootActionsBox, rootMenuBox] = await Promise.all([
     rootActions.boundingBox(),
     page.locator('.el-dropdown__popper:visible').boundingBox()
@@ -1022,7 +1043,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(page.locator('.git-worktrees')).toHaveCount(0);
   await expect(page.getByText('仅显示部分 Git 工作树', { exact: true })).toBeVisible();
 
-  const tabGap = await page.locator('.inspector-tabs').evaluate((element) => {
+  const tabGap = await page.locator('.workbench-aside-tabs').evaluate((element) => {
     const tabs = [...element.querySelectorAll<HTMLElement>('[role="tab"]')];
     return (
       (tabs[1]?.getBoundingClientRect().left ?? 0) - (tabs[0]?.getBoundingClientRect().right ?? 0)
@@ -1062,9 +1083,9 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveText(
     'feature/inspector'
   );
-  holdFileRefresh = true;
   await page.getByRole('tab', { name: '文件', exact: true }).click();
   await expect(refreshFilesButton).toBeEnabled();
+  holdFileRefresh = true;
   await refreshFilesButton.click();
   await expect.poll(() => releaseFileRefresh !== undefined).toBe(true);
   await expect(manuallyOpenedFile).toBeVisible();
@@ -1168,8 +1189,15 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await page.getByRole('button', { name: '查看 src/main.ts 的 Diff' }).click();
   const diff = page.getByRole('dialog');
   await expect(diff).toHaveAccessibleName('src/main.ts Git 差异');
-  await expect(page.locator('html')).toHaveCSS('overflow', 'hidden');
   await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight <= root.clientHeight;
+      })
+    )
+    .toBe(true);
   await expect(diff.locator('.file-preview-content')).toHaveCSS('overflow', 'hidden');
   await expect(diff.getByLabel('工作树文件全文')).toHaveCSS('scrollbar-width', /^(none|thin)$/);
   const expectedMinimapColor = await diff.evaluate((surface) => {
@@ -1196,7 +1224,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   const workingTree = diff.getByLabel('工作树文件全文');
   await expect(workingTree).toContainText('export const answer = 41;');
   await expect(workingTree).toContainText('export const answer = 42;');
-  await expect(diff).toBeFocused();
+  await expect(diff.locator('.workspace-file-page-frame.is-embedded')).toBeFocused();
   await workingTree.click();
   await page.keyboard.press('Control+f');
   const inlineFind = diff.getByRole('search', { name: '文件内查找' });
@@ -1233,13 +1261,13 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await page.locator('.workspace-file-tabs .workspace-file-tab-close').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
 
-  await page.getByRole('button', { name: '查看 assets/logo.png 的 Diff' }).click();
-  const binaryDiff = page.getByRole('dialog', { name: 'assets/logo.png Git 差异' });
-  await expect(binaryDiff.getByText('非文本文件不支持代码比较。')).toBeVisible();
-  await binaryDiff.getByRole('button', { name: '打开文件预览' }).click();
+  await page.getByRole('button', { name: '预览 assets/logo.png' }).click();
   const binaryFilePreview = page.getByRole('dialog', { name: 'assets/logo.png 文件预览' });
-  await expect(binaryFilePreview.locator('img')).toBeVisible();
-  await page.locator('.workspace-file-tab.is-active .workspace-file-tab-close').click();
+  const binaryImage = binaryFilePreview.locator('img');
+  await expect(binaryImage).toBeVisible();
+  await expect
+    .poll(() => binaryImage.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
   await page.locator('.workspace-file-tab.is-active .workspace-file-tab-close').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
 
@@ -1286,19 +1314,19 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
 
   await page
     .getByRole('button', {
-      name: '查看 /srv/worktrees/linked-review/assets/linked.png 的 Diff'
+      name: '预览 /srv/worktrees/linked-review/assets/linked.png'
     })
     .click();
-  const linkedBinaryDiff = page.getByRole('dialog', {
-    name: 'assets/linked.png Git 差异'
-  });
-  await linkedBinaryDiff.getByRole('button', { name: '打开文件预览' }).click();
   const linkedBinaryPreview = page.getByRole('dialog', {
     name: 'assets/linked.png 文件预览'
   });
-  await expect(linkedBinaryPreview.locator('img')).toBeVisible();
+  const linkedImage = linkedBinaryPreview.locator('img');
+  await expect(linkedImage).toBeVisible();
+  await expect
+    .poll(() => linkedImage.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
   expect(linkedContentWorktreePath).toBe('/srv/worktrees/linked-review');
-  await page.locator('.workspace-file-tab.is-active .workspace-file-tab-close').click();
+  expect(binaryDiffRequests).toEqual([]);
   await page.locator('.workspace-file-tab.is-active .workspace-file-tab-close').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
 

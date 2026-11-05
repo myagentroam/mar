@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # 配置和使用 MAR Agent
@@ -145,7 +145,7 @@ Node 原生 `agent_send` 使用 `delivery` 参数，取值为 `STEER` 或 `QUEUE
 
 原生 `agent_list` 只接受 `scope`、可选标题片段 `query` 和 `limit`。省略 `scope` 或选择 `tree` 时，返回当前会话所在的协作树，包括已登记且获授权的根、祖先、同级及后代；空闲及已结束执行的会话也保留。选择 `active` 时，返回当前 Workspace 内正在运行或睡眠的会话，不把最近聊过、Goal 已启用或队列非空当作活跃。已知会话应直接复用其 ID，不按标题自动选址或派发。
 
-`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
+`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `scope`、`currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
 
 ```js
 await tools.agent_list({});
@@ -188,6 +188,8 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 ### 请求生成或编辑图片
 
 系统管理员保存图片模型目录后，每个 Run 按顺序只选择首个已启用且当前用户可用的图片模型：Codex 要求用户位于凭据作用域且凭据无需重新登录，Ark 要求已配置 Key。不可用项会跳过；全部不可用时仍可进行文本任务。配置变化从下一 Run 生效，请求失败不会自动切换供应商。无论当前使用 Codex、OpenAI Responses、Anthropic Messages 或纯文本 coding 模型，只提供所选 Provider 对应的 `codex_image_gen` / `codex-imagegen` 或 `byted_ark_image_gen` / `byted_ark-imagegen` 工具与 Node 提供的 Skill，不并列启用两套，仅根 Agent 可用，Subagent 不获得这些工具。两者支持文生图和参考图编辑；Ark 固定单图、2K、PNG，不支持组图。你可以直接请求生成或编辑图片，无需安装 Skill 或指定其名称。Agent 的提示要求先加载该 Skill，再进行你请求或明确授权的图片操作；不应仅因任务可以配图就主动增加生图工作。Skill 最初只以名称和用途摘要进入上下文，完整指导按需加载，不会在 HOME 或 Workspace 创建技能文件，也不提供额外的 Python CLI 或 API Key 备用流程。
+
+Codex 可请求透明背景和简单循环 GIF：GIF 为 2–16 帧，每帧 20–2000 毫秒，默认 9 帧、200 毫秒；单次保存一个 PNG 或 GIF，实际支持取决于所配置的模型。你可以在请求中直接说明透明背景或动画需求。GIF 原件保留动画；静态缩略图不能用于判断完整动画。
 
 ## Code Mode 工具编排
 

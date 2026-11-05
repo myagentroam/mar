@@ -62,7 +62,6 @@ async function subagentFixture(
   adapter: ModelAdapter,
   getAdapter: () => ModelAdapter = () => adapter
 ) {
-  let agent!: Agent;
   const clients = new Map<string, NativeSubagentClient>();
   const consumer: AgentExtension = {
     id: 'execution-usage-consumer',
@@ -72,7 +71,7 @@ async function subagentFixture(
       clients.set(context.sessionId, context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open());
     }
   };
-  agent = await createMarAgent(
+  const agent: Agent = await createMarAgent(
     {
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
@@ -259,7 +258,6 @@ class SubagentBudgetAdapter implements ModelAdapter {
       (message) =>
         message.role === 'user' && ['delegate', 'continue child'].includes(message.content)
     );
-    const currentPrompt = request.messages[promptIndex]?.content;
     const toolResults = request.messages
       .slice(promptIndex + 1)
       .filter((message) => message.role === 'tool');

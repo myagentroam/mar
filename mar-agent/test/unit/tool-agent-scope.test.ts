@@ -77,8 +77,7 @@ describe('tool Agent scope', () => {
       ],
       callMcp: invokeHidden
     });
-    let agent!: Agent;
-    agent = await createMarAgent(
+    const agent: Agent = await createMarAgent(
       {
         mode: 'normal',
         host,

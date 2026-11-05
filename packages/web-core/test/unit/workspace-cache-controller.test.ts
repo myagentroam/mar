@@ -1,5 +1,5 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
-import { nextTick, ref } from 'vue';
+import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   AgentRun,
@@ -8,10 +8,7 @@ import type {
   Session,
   WorkspaceQueue
 } from '../../src/model/workbench.js';
-import {
-  createWorkbenchWorkspaceCacheController,
-  type WorkspaceInspectorHandle
-} from '../../src/service/workbench-workspace-cache-controller.js';
+import { createWorkbenchWorkspaceCacheController } from '../../src/service/workbench-workspace-cache-controller.js';
 import type { SessionContextUsage } from '../../src/service/conversation-state-service.js';
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
@@ -28,25 +25,17 @@ function nativeSession(id = 'session-1'): Session {
   };
 }
 
-function inspector(snapshot: unknown) {
-  return {
-    openFile: vi.fn(async () => undefined),
-    openWorkspaceFileTab: vi.fn(),
-    openWorkspaceFile: vi.fn(async () => undefined),
-    openWorkspaceFileComparison: vi.fn(async () => undefined),
-    openWorkspaceFileExternal: vi.fn(),
-    openCurrentRenderedPreview: vi.fn(() => false),
-    revealAndOpenWorkspaceFile: vi.fn(async () => undefined),
-    openChanges: vi.fn(),
-    openSearch: vi.fn(),
-    refreshVisibleSection: vi.fn(),
-    snapshot: vi.fn(() => snapshot),
-    restore: vi.fn(),
-    restoreWorkspace: vi.fn()
-  } satisfies WorkspaceInspectorHandle;
+const emptyFileSnapshot = () => ({ fileTabs: { tabs: [] }, dirtyTextDrafts: [] });
+function fileWorkbench(snapshot = emptyFileSnapshot()) {
+  return { snapshot: vi.fn(() => snapshot), restore: vi.fn() };
 }
 
-function fixture() {
+function fixture(
+  domains: Pick<
+    Parameters<typeof createWorkbenchWorkspaceCacheController>[0],
+    'files' | 'git' | 'search'
+  > = {}
+) {
   const cacheService = createWorkspaceViewCacheService(
     (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
   );
@@ -75,7 +64,7 @@ function fixture() {
     access: 'on-request'
   });
   const { runner, modelId, effort, access } = configuration;
-  const currentInspector = ref<WorkspaceInspectorHandle | null>();
+  const currentFileWorkbench = fileWorkbench();
   const normalizeDraft = vi.fn(configuration.apply);
   const persistDraft = vi.fn();
   const projection = createConversationProjectionService({
@@ -99,7 +88,8 @@ function fixture() {
     access,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
-    inspector: currentInspector,
+    fileWorkbench: currentFileWorkbench,
+    ...domains,
     restoreDraftConfiguration: normalizeDraft,
     persistDraft,
     flushConversation: projection.flushPendingTextDeltas,
@@ -126,7 +116,7 @@ function fixture() {
     modelId,
     effort,
     access,
-    currentInspector,
+    currentFileWorkbench,
     normalizeDraft,
     persistDraft,
     projection,
@@ -160,9 +150,9 @@ describe('Public Workspace Cache Controller', () => {
     expect(cached.turns[0]?.items[0]?.payload).toMatchObject({ text: 'pending tail' });
   });
 
-  it('Captures restorable sessions, selection, queues, details, inspector, and draft when saving the current view', () => {
+  it('Captures restorable sessions, selection, queues, details, fileWorkbench, and draft when saving the current view', () => {
     const f = fixture();
-    const savedInspector = inspector({ tab: 'files', path: 'src/main.ts' });
+    const savedFileWorkbench = fileWorkbench();
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
     f.selectedSessionId.value = 'session-1';
@@ -207,7 +197,7 @@ describe('Public Workspace Cache Controller', () => {
         available: true
       }
     ];
-    f.currentInspector.value = savedInspector;
+    f.currentFileWorkbench.snapshot.mockReturnValue(savedFileWorkbench.snapshot());
 
     f.controller.saveCurrentWorkspaceView();
 
@@ -230,7 +220,7 @@ describe('Public Workspace Cache Controller', () => {
     expect(f.cacheService.detail('node-1', 'workspace-1', 'session-1')?.turns).not.toBe(
       f.turns.value
     );
-    expect(cache.inspector).toEqual({ tab: 'files', path: 'src/main.ts' });
+    expect(cache.fileWorkbench).toEqual(savedFileWorkbench.snapshot());
     expect(cache.draft).toMatchObject({
       runner: 'codex',
       modelId: 'model-a',
@@ -242,27 +232,13 @@ describe('Public Workspace Cache Controller', () => {
     expect(cache.draft).not.toHaveProperty('references');
   });
 
-  it('Preserves the cached Inspector snapshot when saving while its Vue ref is unmounted', () => {
+  it('captures the file owner snapshot without a mounted view', () => {
     const f = fixture();
     f.cacheService.activate('node-1', 'workspace-1');
-    const snapshot = { tab: 'files', path: 'src/main.ts' };
-    f.cacheService.captureActive({ sessions: [], inspector: snapshot }, 2);
-    f.currentInspector.value = null;
-
+    const snapshot = emptyFileSnapshot();
+    f.currentFileWorkbench.snapshot.mockReturnValue(snapshot);
     f.controller.saveCurrentWorkspaceView();
-
-    expect(f.cacheService.view('node-1', 'workspace-1').inspector).toBe(snapshot);
-  });
-
-  it('clears the old Inspector snapshot when the mounted Inspector explicitly captures none', () => {
-    const f = fixture();
-    f.cacheService.activate('node-1', 'workspace-1');
-    f.cacheService.captureActive({ sessions: [], inspector: { tab: 'files' } }, 2);
-    f.currentInspector.value = inspector(undefined);
-
-    f.controller.saveCurrentWorkspaceView();
-
-    expect(f.cacheService.view('node-1', 'workspace-1').inspector).toBeUndefined();
+    expect(f.cacheService.view('node-1', 'workspace-1').fileWorkbench).toBe(snapshot);
   });
 
   it('returns a cached detail and refreshes its last-access time without writing active projections', () => {
@@ -352,72 +328,36 @@ describe('Public Workspace Cache Controller', () => {
     expect(f.input.value).toBe('old input');
   });
 
-  it('Queues Inspector restoration before the Workspace identity update renders an empty state', () => {
+  it('restores the file owner snapshot synchronously without a view port', () => {
     const f = fixture();
-    const savedSnapshot = { tab: 'search', query: 'TODO' };
-    const activeInspector = inspector(undefined);
-    f.currentInspector.value = activeInspector;
+    const savedSnapshot = {
+      fileTabs: { tabs: [] },
+      dirtyTextDrafts: [
+        { tabIdentity: 'a', path: 'a.ts', content: 'draft', expectedRevision: 'r1' }
+      ],
+      fileWindowSuspended: true
+    };
     f.cacheService.activate('node-1', 'workspace-1');
-    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
+    f.cacheService.captureActive({ sessions: [], fileWorkbench: savedSnapshot }, 2);
     f.selectedNodeId.value = 'node-1';
     f.selectedWorkspaceId.value = 'workspace-1';
-
-    f.controller.restoreWorkspaceInspector('node-1', 'workspace-1');
-    expect(activeInspector.restoreWorkspace).toHaveBeenCalledWith(
-      'node-1',
-      'workspace-1',
-      savedSnapshot
-    );
-    expect(activeInspector.restore).not.toHaveBeenCalled();
+    f.controller.restoreWorkspaceView('node-1', 'workspace-1');
+    expect(f.currentFileWorkbench.restore).toHaveBeenCalledWith(savedSnapshot);
   });
 
-  it('Falls back to a guarded next-tick restore when the Inspector is not mounted yet', async () => {
-    const f = fixture();
-    const savedSnapshot = { tab: 'search', query: 'TODO' };
-    const activeInspector = inspector(undefined);
+  it('does not restore any domain for a different target', () => {
+    const files = { snapshot: vi.fn(), restore: vi.fn() };
+    const git = { snapshot: vi.fn(), restore: vi.fn() };
+    const search = { snapshot: vi.fn(), restore: vi.fn() };
+    const f = fixture({ files, git, search });
     f.cacheService.activate('node-1', 'workspace-1');
-    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
+    f.cacheService.captureActive({ sessions: [], fileWorkbench: emptyFileSnapshot() }, 2);
     f.selectedNodeId.value = 'node-1';
-    f.selectedWorkspaceId.value = 'workspace-1';
-
-    f.controller.restoreWorkspaceInspector('node-1', 'workspace-1');
-    f.currentInspector.value = activeInspector;
-    await nextTick();
-
-    expect(activeInspector.restore).toHaveBeenCalledWith(savedSnapshot);
-  });
-
-  it('Restores a cached Inspector after its Vue ref is temporarily null during notification navigation', async () => {
-    const f = fixture();
-    const savedSnapshot = { tab: 'search', query: 'TODO' };
-    const activeInspector = inspector(undefined);
-    f.cacheService.activate('node-1', 'workspace-1');
-    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
-    f.selectedNodeId.value = 'node-1';
-    f.selectedWorkspaceId.value = 'workspace-1';
-    f.currentInspector.value = null;
-
-    expect(() => f.controller.restoreWorkspaceInspector('node-1', 'workspace-1')).not.toThrow();
-    f.currentInspector.value = activeInspector;
-    await nextTick();
-
-    expect(activeInspector.restore).toHaveBeenCalledWith(savedSnapshot);
-  });
-
-  it('Does not apply a fallback Inspector restore after the selected Workspace changes', async () => {
-    const f = fixture();
-    const savedSnapshot = { tab: 'search', query: 'TODO' };
-    const activeInspector = inspector(undefined);
-    f.cacheService.activate('node-1', 'workspace-1');
-    f.cacheService.captureActive({ sessions: [], inspector: savedSnapshot }, 2);
-    f.selectedNodeId.value = 'node-1';
-    f.selectedWorkspaceId.value = 'workspace-1';
-
-    f.controller.restoreWorkspaceInspector('node-1', 'workspace-1');
     f.selectedWorkspaceId.value = 'workspace-2';
-    f.currentInspector.value = activeInspector;
-    await nextTick();
-
-    expect(activeInspector.restore).not.toHaveBeenCalled();
+    f.controller.restoreWorkspaceView('node-1', 'workspace-1');
+    expect(f.currentFileWorkbench.restore).not.toHaveBeenCalled();
+    expect(files.restore).not.toHaveBeenCalled();
+    expect(git.restore).not.toHaveBeenCalled();
+    expect(search.restore).not.toHaveBeenCalled();
   });
 });

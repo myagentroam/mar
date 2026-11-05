@@ -11,6 +11,7 @@ import type { RunnerDiscoveryContext } from '../../src/runner/contracts.js';
 
 const catalog = vi.hoisted(() => ({
   list: vi.fn(),
+  listSnapshot: vi.fn(),
   executionConfiguration: vi.fn(),
   firstUserMessagePreview: vi.fn(),
   close: vi.fn(async () => {})
@@ -67,20 +68,20 @@ describe('Runner cleanup discovery', () => {
     ).resolves.toEqual([]);
   });
 
-  it('reads every MAR Agent catalog page without loading title previews or execution configurations', async () => {
-    catalog.list
-      .mockResolvedValueOnce({
-        sessions: Array.from({ length: 200 }, (_, index) => summary(index)),
-        nextCursor: 'older'
-      })
-      .mockResolvedValueOnce({ sessions: [summary(200), summary(201, '/other')] });
+  it('reads the complete MAR Agent catalog snapshot without loading title previews or execution configurations', async () => {
+    catalog.listSnapshot.mockResolvedValueOnce([
+      ...Array.from({ length: 200 }, (_, index) => summary(index)),
+      summary(200),
+      summary(201, '/other')
+    ]);
     const result = await new MarAgentRunner('/home/fixture').discoverSessions(context(), workspace);
     expect(result).toHaveLength(201);
     expect(result.at(-1)).toMatchObject({
       id: 'native-200',
       lastActivityAt: Date.parse('2026-01-01T00:00:00.000Z')
     });
-    expect(catalog.list).toHaveBeenNthCalledWith(2, { limit: 200, cursor: 'older' });
+    expect(catalog.listSnapshot).toHaveBeenCalledOnce();
+    expect(catalog.list).not.toHaveBeenCalled();
     expect(catalog.executionConfiguration).not.toHaveBeenCalled();
     expect(catalog.firstUserMessagePreview).not.toHaveBeenCalled();
     expect(catalog.close).toHaveBeenCalledOnce();
@@ -194,11 +195,9 @@ describe('Runner cleanup discovery', () => {
     expect(readThread).not.toHaveBeenCalled();
   });
 
-  it('does not turn a failed catalog page into a successful empty cleanup discovery', async () => {
+  it('does not turn a failed catalog snapshot into a successful empty cleanup discovery', async () => {
     const failure = new Error('CATALOG_READ_FAILED');
-    catalog.list
-      .mockResolvedValueOnce({ sessions: [summary(0)], nextCursor: 'older' })
-      .mockRejectedValueOnce(failure);
+    catalog.listSnapshot.mockRejectedValueOnce(failure);
     await expect(
       new MarAgentRunner('/home/fixture').discoverSessions(context(), workspace)
     ).rejects.toBe(failure);

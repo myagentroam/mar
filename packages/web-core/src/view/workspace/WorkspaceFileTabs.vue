@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarIcon from '../common/MarIcon.vue';
-import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { fileKeys } from '../../service/console-shortcut-keys.js';
 import MarTab from '../common/MarTab.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
@@ -40,6 +40,7 @@ const emit = defineEmits<{
   close: [id: number];
   closeAll: [ids: readonly number[]];
   closeLast: [];
+  pageReady: [id: number];
   move: [id: number, targetIndex: number];
   back: [];
   forward: [];
@@ -70,8 +71,12 @@ const windowInteraction = createFilePreviewWindowInteractionService({
 });
 
 function registerPageHandle(id: number, handle: unknown): void {
-  if (isPageHandle(handle)) pageHandles.set(id, handle);
-  else pageHandles.delete(id);
+  if (isPageHandle(handle)) {
+    pageHandles.set(id, handle);
+    void nextTick(() => {
+      if (pageHandles.get(id) === handle) emit('pageReady', id);
+    });
+  } else pageHandles.delete(id);
 }
 
 function isPageHandle(value: unknown): value is WorkspaceFilePageHandle {
@@ -97,27 +102,38 @@ async function requestCloseAll(): Promise<boolean> {
   );
 }
 
+watch(
+  () => props.tabs,
+  () => {
+    if (closing.value) surface.value?.cancelClose();
+  },
+  { flush: 'sync' }
+);
+
 async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<boolean> {
   if (closing.value || ids.length === 0) return false;
   const tabs = [...props.tabs];
   if (ids.some((id) => !tabs.some((tab) => tab.id === id))) return false;
   const handles = ids.map((id) => pageHandles.get(id));
+  const current = () =>
+    props.tabs.length === tabs.length &&
+    props.tabs.every((tab, index) => tab === tabs[index]) &&
+    ids.every((id, index) => pageHandles.get(id) === handles[index]);
   closing.value = true;
   try {
     for (const [index, handle] of handles.entries()) {
       const canClose = handle?.canClose() ?? props.canCloseUnmountedTab?.(ids[index]!) ?? true;
       if (!(await canClose)) return false;
     }
-    if (
-      props.tabs.length !== tabs.length ||
-      props.tabs.some((tab, index) => tab !== tabs[index]) ||
-      ids.some((id, index) => pageHandles.get(id) !== handles[index])
-    )
-      return false;
+    if (!current()) return false;
     const closesLastTab = ids.length === props.tabs.length;
     if (closesLastTab && props.presentation !== 'window' && surface.value) {
       leaving.value = true;
       if (!(await surface.value.close())) return false;
+      if (!current()) {
+        surface.value?.cancelClose();
+        return false;
+      }
     }
     for (const handle of handles) handle?.prepareForConfirmedClose?.();
     if (all) emit('closeAll', ids);
@@ -214,8 +230,11 @@ function navigateTo(id: number, line: number, column?: number): void {
   pageHandles.get(id)?.navigateTo?.(line, column);
 }
 
-function focusPage(id: number): void {
-  pageHandles.get(id)?.focus();
+function focusPage(id: number): boolean {
+  const handle = pageHandles.get(id);
+  if (handle === undefined) return false;
+  handle.focus();
+  return true;
 }
 
 function focusActivePage(): void {

@@ -103,8 +103,8 @@ describe('Core normalized model fact observation', () => {
             ? new OpenAiResponsesAdapter(config)
             : new AnthropicMessagesAdapter(config);
         for (const request of [sent, replay]) {
-          for await (const _event of adapter.start(request, new AbortController().signal)) {
-            /* consume */
+          for await (const event of adapter.start(request, new AbortController().signal)) {
+            expect(event).toBeDefined();
           }
         }
         expect(bodies).toHaveLength(2);

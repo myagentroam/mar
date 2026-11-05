@@ -84,7 +84,7 @@ export function createWorkbenchPageShortcuts(
           (event.target.isContentEditable || event.target.matches('input, textarea, select'))
         ),
       execute: () =>
-        options.workspaceInspector.value?.openCurrentRenderedPreview() === true
+        options.workspaceFileWorkbench.value?.openCurrentRenderedPreview() === true
           ? 'HANDLED'
           : 'IGNORED'
     },
@@ -106,9 +106,9 @@ export function createWorkbenchPageShortcuts(
       priority: 10,
       scope: 'workspace',
       keys: workspaceKeys.search,
-      when: () => options.contentSearchReady.value && options.workspaceInspector.value != null,
+      when: () => options.contentSearchReady.value && options.workspaceTarget.value !== undefined,
       execute: () => {
-        options.showInspectorTool('search');
+        options.showAsideTool('search');
         return 'HANDLED';
       }
     },
@@ -120,9 +120,9 @@ export function createWorkbenchPageShortcuts(
       when: () =>
         options.selectedWorkspace.value?.kind === 'GIT_WORKSPACE' &&
         options.filesReady.value &&
-        options.workspaceInspector.value != null,
+        options.workspaceTarget.value !== undefined,
       execute: () => {
-        options.showInspectorTool('changes');
+        options.showAsideTool('changes');
         return 'HANDLED';
       }
     },

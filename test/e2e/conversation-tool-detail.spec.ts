@@ -49,16 +49,16 @@ test('updates a conditional fallback slot and does not schedule copy feedback af
   await expect(detail).toHaveCount(0);
   await page.evaluate(() => {
     const original = window.setTimeout;
-    (window as Window & { feedbackTimers?: number }).feedbackTimers = 0;
+    const feedback = Object.assign(window, { feedbackTimers: 0 });
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-      if (timeout === 500) (window as Window & { feedbackTimers: number }).feedbackTimers++;
+      if (timeout === 500) feedback.feedbackTimers++;
       return original(handler, timeout, ...args);
     }) as typeof window.setTimeout;
   });
   await probe.getByTestId('resolve-copy').click();
   await expect(probe.getByTestId('copy-completed')).toHaveText('true');
   expect(
-    await page.evaluate(() => (window as Window & { feedbackTimers: number }).feedbackTimers)
+    await page.evaluate(() => (window as Window & { feedbackTimers?: number }).feedbackTimers)
   ).toBe(0);
 });
 
@@ -590,7 +590,7 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     const text = await read.locator('.conversation-detail-text').textContent();
     expect(text?.match(/\[Truncated\]/gu)).toHaveLength(1);
     if (truncation === 'HEAD') expect(text).toMatch(/^\[Truncated\][\s\S]+second line\s*$/u);
-    else expect(text).toMatch(/^  first file[\s\S]+\[Truncated\]$/u);
+    else expect(text).toMatch(/^ {2}first file[\s\S]+\[Truncated\]$/u);
   });
 }
 
@@ -899,12 +899,25 @@ for (const width of [1280, 390]) {
     });
     try {
       const page = await context.newPage();
-      await page.goto(`${fixture.url}conversation-tool-detail.html`);
+      await page.goto(
+        `${fixture.url}conversation-tool-detail.html?theme=${width === 390 ? 'dark' : 'daylight'}`
+      );
       const exec = page.getByTestId('exec');
       await exec.locator('summary').click();
       await expect(exec.locator('.tool-detail-heading')).toHaveText('exec');
       await expect(exec.locator('.tool-source-text')).toHaveText('Command: printf test');
       await expect(exec.locator('.execution-detail')).toContainText('Working directory: /fixture');
+      const cwd = exec.locator('.tool-cwd-value');
+      await expect(cwd).toHaveText('/fixture');
+      await expect(cwd).toHaveCSS(
+        'color',
+        await exec
+          .locator('.tool-source-text')
+          .evaluate((element) => getComputedStyle(element).color)
+      );
+      expect(await cwd.evaluate((element) => getComputedStyle(element).color)).not.toBe(
+        await cwd.locator('..').evaluate((element) => getComputedStyle(element).color)
+      );
       await expect(exec).toContainText('visible stdout');
       await expect(exec).toContainText('visible stderr');
       await expect(exec).not.toContainText('combined should not replace streams');

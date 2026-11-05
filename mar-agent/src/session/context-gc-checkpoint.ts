@@ -53,11 +53,7 @@ import type {
   ContextGcTarget,
   ContextGcReadItemReplacement,
   ContextGcReplacement,
-  ContextGcMetrics,
-  ContextGcCheckpointDraft,
-  ContextGcCheckpointPayload,
-  ContextGcWebToolName,
-  ContextGcSubagentToolName
+  ContextGcCheckpointPayload
 } from './context-gc-contract.js';
 export type {
   ContextGcPlatform,
@@ -1774,8 +1770,4 @@ function isNonnegativeInteger(value: unknown): value is number {
 
 function isNonnegativeFinite(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-function isValidBoundary(value: number): boolean {
-  return Number.isSafeInteger(value) && value > 0;
 }

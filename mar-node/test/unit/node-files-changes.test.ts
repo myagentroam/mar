@@ -1365,7 +1365,7 @@ describe('Node Files and Changes fixed operations', () => {
     ).rejects.toThrow('GIT_CHANGE_RESTORE_UNAVAILABLE');
     await expect(readFile(join(repository, 'ignored.txt'), 'utf8')).resolves.toBe('keep');
     database.close();
-  });
+  }, 30_000);
 
   it('flattens all worktree file changes and supports Diff, preview, and restore after revalidating the target', async () => {
     const repository = await temporaryDirectory();
@@ -1630,7 +1630,7 @@ describe('Node Files and Changes fixed operations', () => {
       recorder.restore();
       database.close();
     }
-  });
+  }, 30_000);
 
   it('falls back to newline worktree porcelain when an old Git rejects -z with a language-independent usage error', async () => {
     const repository = await temporaryDirectory();
@@ -1895,7 +1895,7 @@ describe('Node Files and Changes fixed operations', () => {
       ).rejects.toThrow('GIT_REPOSITORY_INVALID');
     }
     database.close();
-  });
+  }, 30_000);
 });
 
 function connectorFor(

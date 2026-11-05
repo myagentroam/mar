@@ -118,7 +118,7 @@ export * from './service/markdown-preview-preference-service.js';
 export * from './util/file-preview.js';
 export * from './util/markdown-preview.js';
 export * from './util/mobile-preview-pinch-zoom.js';
-export { default as WorkspaceInspector } from './view/workspace/WorkspaceInspector.vue';
+export { default as WorkspaceFileWorkbench } from './view/workspace/WorkspaceFileWorkbench.vue';
 export * from './util/file-presentation.js';
 export * from './util/trailing-task.js';
 export { default as ConversationHeader } from './view/conversation/ConversationHeader.vue';

@@ -49,7 +49,7 @@ export interface MarAgentNormalizedItem {
 
 export interface MarAgentGeneratedImageArtifact {
   readonly name: string;
-  readonly mime: 'image/png';
+  readonly mime: 'image/png' | 'image/gif';
   readonly byteSize: number;
   readonly fileName: string;
 }
@@ -905,7 +905,7 @@ export class MarAgentConversationNormalizer {
   }
 
   #startExecution(executionId: string): void {
-    for (const [callId, state] of this.#tools)
+    for (const state of this.#tools.values())
       if (state.executionId !== executionId) {
         state.active = false;
       }
@@ -2292,22 +2292,6 @@ function truncateCharacters(value: string, maximumCharacters: number): string {
     : characters.slice(0, maximumCharacters).join('');
 }
 
-function boundedToolSummary(value: string): string {
-  const maximumCodeUnits = 10_000;
-  if (value.length <= maximumCodeUnits) return value;
-  let end = maximumCodeUnits - 1;
-  const lastIncluded = value.charCodeAt(end - 1);
-  const firstExcluded = value.charCodeAt(end);
-  if (
-    lastIncluded >= 0xd800 &&
-    lastIncluded <= 0xdbff &&
-    firstExcluded >= 0xdc00 &&
-    firstExcluded <= 0xdfff
-  )
-    end--;
-  return `${value.slice(0, end)}…`;
-}
-
 function marAgentAgentId(value: unknown): string | undefined {
   const data = structuredRecord(value);
   if (data === undefined) return undefined;
@@ -2358,7 +2342,7 @@ function imageArtifacts(
     const byteSize = nonnegativeInteger(artifact?.byteSize);
     if (
       artifact?.kind !== 'image' ||
-      artifact.mimeType !== 'image/png' ||
+      (artifact.mimeType !== 'image/png' && artifact.mimeType !== 'image/gif') ||
       typeof artifact.sha256 !== 'string' ||
       !/^[a-f0-9]{64}$/iu.test(artifact.sha256) ||
       name.length === 0 ||
@@ -2370,9 +2354,9 @@ function imageArtifacts(
       fileName === '..' ||
       fileName.includes('/') ||
       fileName.includes('\\') ||
-      !fileName.toLocaleLowerCase().endsWith('.png')
+      !fileName.endsWith(artifact.mimeType === 'image/gif' ? '.gif' : '.png')
     )
       return [];
-    return [{ name, mime: 'image/png' as const, byteSize, fileName }];
+    return [{ name, mime: artifact.mimeType, byteSize, fileName }];
   });
 }

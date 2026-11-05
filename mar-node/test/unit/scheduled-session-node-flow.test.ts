@@ -868,7 +868,7 @@ describe('scheduled Node session flow', () => {
           expect(emitted.mock.calls.find((call) => call[1] === 'run.rejected')).toBeDefined();
         } else {
           const runId = submittedRunId!;
-          expect(occurrence).toMatchObject({ status: 'FAILED', run_id: expect.any(String) });
+          expect(occurrence).toMatchObject({ status: 'FAILED', run_id: runId });
           expect(startChannel).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ cwd: directory, resumeSessionId: session.id })
           );

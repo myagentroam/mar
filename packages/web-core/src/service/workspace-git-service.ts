@@ -14,11 +14,17 @@ import type {
 } from '../model/workspace-git.js';
 import type { WorkspaceFileTab } from '../util/workspace-file-tab.js';
 import {
+  adjacentChange,
+  changeDiffIntent,
+  changeFileLocation,
   changeEntries,
   changeRepositories,
   changeWorktrees,
   changeWorktreesTruncated,
-  hasExplicitChangeRepositoryGroups
+  comparisonChange,
+  gitFileRepositoryPath,
+  hasExplicitChangeRepositoryGroups,
+  historyDiffIntent
 } from '../util/workspace-git.js';
 import { currentChangesBranch } from '../util/file-presentation.js';
 import { createTrailingTask } from '../util/trailing-task.js';
@@ -49,6 +55,7 @@ export function createWorkspaceGitService(input: {
   readonly target: () => WorkspaceFileOperationTarget | undefined;
   readonly gitEnabled: () => boolean;
   readonly historyEnabled: () => boolean;
+  readonly workspacePath?: () => string | undefined;
   readonly onFailure: (error: unknown, operation: WorkspaceGitOperation) => void;
   readonly onWorkspace: (workspace: WorkspaceFileTreeWorkspace) => void;
   readonly onBranch: (workspaceId: string, branch: string | null) => void;
@@ -92,7 +99,7 @@ export function createWorkspaceGitService(input: {
   let historyGeneration = 0;
   let appliedWatchRevision = -1;
   let changesTarget: WorkspaceFileOperationTarget | undefined;
-  const fileRequests = new Map<string, Promise<boolean>>();
+  const fileRequests = new Map<string, { promise?: Promise<boolean> }>();
   const visibleChanges = computed(() => changeEntries(changes.value));
   const repositories = computed(() => changeRepositories(changes.value));
   const worktrees = computed(() =>
@@ -258,6 +265,12 @@ export function createWorkspaceGitService(input: {
     historyFilesFailureCauses.value = {};
     fileRequests.clear();
   }
+  function cancelHistoryPending(): void {
+    historyGeneration += 1;
+    historyLoading.value = false;
+    historyFilesLoading.value = [];
+    fileRequests.clear();
+  }
   async function loadHistory(resetPage = false, fetch = false): Promise<void> {
     const target = input.target();
     if (target === undefined || !input.historyEnabled() || (!resetPage && historyLoading.value))
@@ -353,10 +366,16 @@ export function createWorkspaceGitService(input: {
   async function openHistory(): Promise<void> {
     if (!matchesChangesTarget()) reset();
     const target = input.target(),
-      generation = epoch;
-    if (target === undefined) return;
+      generation = epoch,
+      historyRequest = historyGeneration;
+    if (target === undefined || !input.historyEnabled()) return;
     if (changes.value === undefined) await loadChanges();
-    if (!current(target, generation)) return;
+    if (
+      !current(target, generation) ||
+      historyRequest !== historyGeneration ||
+      !input.historyEnabled()
+    )
+      return;
     const available = repositories.value.filter((entry) => entry.source !== 'WORKTREE');
     if (!available.some((entry) => entry.repositoryPath === historyRepositoryPath.value))
       historyRepositoryPath.value = available[0]?.repositoryPath ?? '';
@@ -366,16 +385,23 @@ export function createWorkspaceGitService(input: {
   function loadHistoryFiles(commit: HistoryCommit): Promise<boolean> {
     const target = input.target(),
       generation = epoch;
-    if (target === undefined) return Promise.resolve(false);
+    if (target === undefined || !input.historyEnabled()) return Promise.resolve(false);
     if (historyFiles.value[commit.hash] !== undefined) return Promise.resolve(true);
     const active = fileRequests.get(commit.hash);
-    if (active !== undefined) return active;
+    if (active?.promise !== undefined) return active.promise;
+    const request: { promise?: Promise<boolean> } = {};
+    fileRequests.set(commit.hash, request);
     const source = historySource.value;
     const selection = { ...source, refs: [...source.refs] };
-    const valid = () => current(target, generation) && source === historySource.value;
+    const valid = () =>
+      current(target, generation) &&
+      fileRequests.get(commit.hash) === request &&
+      input.historyEnabled() &&
+      source === historySource.value;
     historyFilesLoading.value = [...historyFilesLoading.value, commit.hash];
     const pending = (async () => {
       try {
+        if (!valid()) return false;
         const result = await input.http.request<{ readonly files?: unknown }>(
           url(target, `/git/commits/${encodeURIComponent(commit.hash)}/files`, {}, selection)
         );
@@ -407,7 +433,7 @@ export function createWorkspaceGitService(input: {
         }
       }
     })();
-    fileRequests.set(commit.hash, pending);
+    request.promise = pending;
     return pending;
   }
   async function loadDiff(tab: WorkspaceFileTab, signal?: AbortSignal): Promise<unknown> {
@@ -460,7 +486,7 @@ export function createWorkspaceGitService(input: {
       await loadChanges();
       return true;
     } catch (error) {
-      if (current(target, generation)) input.onFailure(error, 'RESTORE');
+      input.onFailure(error, 'RESTORE');
       return false;
     } finally {
       if (current(target, generation)) restoringPath.value = undefined;
@@ -526,6 +552,48 @@ export function createWorkspaceGitService(input: {
       refs: [...selectedHistoryRefs.value]
     };
   }
+  function repositoryRoot(): unknown {
+    return (changes.value as { repositoryRoot?: unknown } | undefined)?.repositoryRoot;
+  }
+  function changeIntent(entry: ChangeEntry) {
+    const target = input.target();
+    return target === undefined
+      ? undefined
+      : changeDiffIntent(
+          entry,
+          visibleChanges.value.filter((change) => change.diffAvailable),
+          target,
+          repositoryRoot(),
+          input.workspacePath?.()
+        );
+  }
+  function changeLocation(entry: ChangeEntry) {
+    return changeFileLocation(entry, repositoryRoot(), input.workspacePath?.());
+  }
+  function historyIntent(commit: HistoryCommit, file: HistoryFile) {
+    const target = input.target();
+    return target === undefined
+      ? undefined
+      : historyDiffIntent(target, commit, file, historySource.value);
+  }
+  function resolveRepositoryPath(repositoryPath: string, worktreePath?: string) {
+    return gitFileRepositoryPath(
+      repositoryPath,
+      worktreePath,
+      repositoryRoot(),
+      input.workspacePath?.()
+    );
+  }
+  async function comparison(path: string) {
+    if (!input.gitEnabled()) return undefined;
+    await loadChanges();
+    const entry = comparisonChange(visibleChanges.value, path);
+    return entry === undefined ? undefined : changeIntent(entry);
+  }
+  function adjacentDiff(tab: WorkspaceFileTab, direction: -1 | 1) {
+    const entry = adjacentChange(visibleChanges.value, tab, direction);
+    return entry === undefined ? undefined : changeIntent(entry);
+  }
   return {
     changes: readonly(changes),
     changesRefreshing: readonly(changesRefreshing),
@@ -535,6 +603,12 @@ export function createWorkspaceGitService(input: {
     historyFetchFailed: readonly(historyFetchFailed),
     restoringPath: readonly(restoringPath),
     visibleChanges,
+    changeIntent,
+    changeLocation,
+    historyIntent,
+    resolveRepositoryPath,
+    comparison,
+    adjacentDiff,
     repositories,
     worktrees,
     worktreesTruncated,
@@ -558,6 +632,7 @@ export function createWorkspaceGitService(input: {
     loadHistory,
     selectHistory,
     openHistory,
+    cancelHistoryPending,
     loadHistoryFiles,
     loadDiff,
     restoreChange,

@@ -15,6 +15,7 @@ import {
   resolvePlaywrightTestDatabase
 } from '../support/playwright-test-database.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../../packages/server-core/src/password.js';
+import { ModelSettingsStore } from '../../../packages/server-core/src/model-settings.js';
 
 const executeFile = promisify(execFile);
 
@@ -53,6 +54,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
     await prepareAdminAuthentication(databaseUrl);
     const admin = await adminHeaders(app);
     const modelId = await provisionModel(databaseUrl, modelBaseUrl);
+    fakeAnthropic.modelId = modelId;
     const token = await app.inject({
       method: 'POST',
       url: '/api/node-registration-tokens',
@@ -95,7 +97,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
         cwd: workspacePath,
         clientMessageId: 'mar-agent-warm-start',
         content: 'start warm resources',
-        model: modelId,
+        modelId,
         effort: '',
         access: 'full-access'
       }
@@ -104,11 +106,11 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
     const sessionId = started.json<{ session: { id: string } }>().session.id;
     const firstRunId = started.json<{ run: { id: string } }>().run.id;
     await expectRunReleased(app, admin.headers.cookie, nodeId, firstRunId);
-    await fakeAnthropic.childStarted;
-
     const firstResources = fakeAnthropic.firstResources();
-    expect(firstResources.processId).toMatch(/^[0-9a-f-]+$/u);
+    expect(firstResources.processId).toMatch(/^p_[0-9a-f]{12}$/u);
     expect(firstResources.agentId).toMatch(/^[0-9a-f-]+$/u);
+    await fakeAnthropic.childStarted;
+    await expect.poll(() => fakeAnthropic.childTitleResponses).toBeGreaterThan(0);
     const pid = Number(await readFile(pidPath, 'utf8'));
     expect(Number.isSafeInteger(pid)).toBe(true);
     expect(processAlive(pid)).toBe(true);
@@ -122,7 +124,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
         workspaceId,
         clientMessageId: 'mar-agent-warm-resume',
         content: 'resume warm resources',
-        model: modelId
+        modelId
       }
     });
     expect(resumed.statusCode, resumed.body).toBe(202);
@@ -134,30 +136,80 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
       processId: firstResources.processId
     });
     expect(fakeAnthropic.resumedTask()).toMatchObject({
-      status: 'running',
+      status: 'RUNNING',
       agentId: firstResources.agentId
     });
 
-    const removed = await app.inject({
+    const activeRemoval = await app.inject({
       method: 'DELETE',
       url: `/api/agent-sessions/${sessionId}?nodeId=${encodeURIComponent(nodeId)}`,
       headers: admin.headers
     });
-    expect(removed.statusCode, removed.body).toBe(200);
-    expect(removed.json()).toEqual({ deleted: true });
-    await expect.poll(() => processAlive(pid), { timeout: 5_000 }).toBe(false);
+    expect(activeRemoval.statusCode, activeRemoval.body).toBe(400);
+    expect(activeRemoval.json<{ error: { code: string } }>().error.code).toBe('SESSION_ACTIVE');
+
+    const stopping = await app.inject({
+      method: 'POST',
+      url: `/api/agent-sessions/${sessionId}/messages`,
+      headers: admin.headers,
+      payload: {
+        nodeId,
+        workspaceId,
+        clientMessageId: 'mar-agent-stop-child',
+        content: 'stop warm child',
+        modelId
+      }
+    });
+    expect(stopping.statusCode, stopping.body).toBe(202);
+    await expectRunReleased(
+      app,
+      admin.headers.cookie,
+      nodeId,
+      stopping.json<{ run: { id: string } }>().run.id
+    );
+    expect(fakeAnthropic.stoppedTaskStatus()).toBe('INTERRUPTED');
+    const childRuns = await app.inject({
+      method: 'GET',
+      url: `/api/agent-sessions/${firstResources.agentId}/runs?nodeId=${nodeId}`,
+      headers: admin.headers
+    });
+    expect(childRuns.statusCode, childRuns.body).toBe(200);
+    expect(
+      childRuns.json<{ runs: { status: string; interruptionReason?: string }[] }>().runs
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'INTERRUPTED', interruptionReason: 'USER_STOP' })
+      ])
+    );
     await expect(
       Promise.race([
         fakeAnthropic.childAborted,
         new Promise<never>((_resolve, reject) => {
           const timer = setTimeout(
-            () => reject(new Error('Subagent request was not aborted after Session deletion.')),
+            () => reject(new Error('Child request was not aborted.')),
             5_000
           );
           timer.unref();
         })
       ])
     ).resolves.toBeUndefined();
+
+    await expect
+      .poll(async () => {
+        const removed = await app.inject({
+          method: 'DELETE',
+          url: `/api/agent-sessions/${sessionId}?nodeId=${encodeURIComponent(nodeId)}`,
+          headers: admin.headers
+        });
+        if (removed.statusCode === 200) {
+          expect(removed.json()).toEqual({ deleted: true });
+          return true;
+        }
+        expect(removed.json<{ error: { code: string } }>().error.code).toBe('SESSION_ACTIVE');
+        return false;
+      })
+      .toBe(true);
+    await expect.poll(() => processAlive(pid), { timeout: 5_000 }).toBe(false);
   } finally {
     connector?.stop();
     if (previousHome === undefined) delete process.env['HOME'];
@@ -248,7 +300,7 @@ test('MAR Agent Goal continues through the real Server and NodeConnector and com
         cwd: workspacePath,
         clientMessageId: 'mar-agent-goal-session',
         content: 'prepare goal session',
-        model: modelId,
+        modelId,
         effort: '',
         access: 'full-access'
       }
@@ -269,7 +321,7 @@ test('MAR Agent Goal continues through the real Server and NodeConnector and com
       payload: {
         nodeId,
         workspaceId,
-        model: modelId,
+        modelId,
         commandId: 'goal',
         input: '/goal 完成并验证跨轮任务'
       }
@@ -302,7 +354,7 @@ test('MAR Agent Goal continues through the real Server and NodeConnector and com
       payload: {
         nodeId,
         workspaceId,
-        model: modelId,
+        modelId,
         commandId: 'goal',
         input: '/goal 验证空转自动收口'
       }
@@ -342,6 +394,9 @@ test('MAR Agent Goal continues through the real Server and NodeConnector and com
 });
 
 class FakeAnthropicServer {
+  modelId = '';
+  childTitleResponses = 0;
+  #stoppedTask?: Record<string, unknown>;
   readonly childStarted: Promise<void>;
   readonly childAborted: Promise<void>;
   readonly #server = createServer((request, response) => {
@@ -388,8 +443,14 @@ class FakeAnthropicServer {
     const processId = this.#firstProcess?.['processId'];
     const agentId = this.#firstTask?.['agentId'];
     if (typeof processId !== 'string' || typeof agentId !== 'string')
-      throw new Error('WARM_RESOURCE_IDS_MISSING');
+      throw new Error(
+        `WARM_RESOURCE_IDS_MISSING: ${JSON.stringify({ process: this.#firstProcess, task: this.#firstTask })}`
+      );
     return { processId, agentId };
+  }
+
+  stoppedTaskStatus(): unknown {
+    return this.#stoppedTask?.['status'];
   }
 
   resumeSystem(): string {
@@ -419,7 +480,13 @@ class FakeAnthropicServer {
       }
       const body = JSON.parse(await readRequest(request)) as AnthropicRequest;
       const system = systemText(body.system);
-      if (system.includes('You are a non-recursive subagent.')) {
+      if (!Array.isArray(body.tools) || body.tools.length === 0) {
+        if (userTextIncludes(body.messages, 'Wait until the parent Session is deleted.'))
+          this.childTitleResponses++;
+        sendText(response, this.#nextResponseId(), 'Warm resources');
+        return;
+      }
+      if (userTextIncludes(body.messages, 'Wait until the parent Session is deleted.')) {
         response.writeHead(200, {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
@@ -442,11 +509,6 @@ class FakeAnthropicServer {
         });
         return;
       }
-      if (!Array.isArray(body.tools) || body.tools.length === 0) {
-        sendText(response, this.#nextResponseId(), 'Warm resources');
-        return;
-      }
-
       const toolResults = requestToolResults(body.messages);
       const prompt = latestUserText(body.messages);
       if (prompt?.includes('验证空转自动收口')) {
@@ -499,10 +561,9 @@ class FakeAnthropicServer {
             id: 'warm-task-start',
             name: 'agent_start',
             input: {
-              description: 'Hold a warm subagent',
-              prompt: 'Wait until the parent Session is deleted.',
-              role: 'explore',
-              background: true
+              title: 'Hold a warm subagent',
+              content: 'Wait until the parent Session is deleted.',
+              modelId: this.modelId
             }
           }
         ]);
@@ -520,13 +581,42 @@ class FakeAnthropicServer {
         sendTools(response, this.#nextResponseId(), [
           {
             id: 'warm-exec-poll',
-            name: 'exec',
+            name: 'exec_wait',
             input: { action: 'poll', processId: resources.processId, yieldMs: 0 }
           },
           {
             id: 'warm-task-output',
             name: 'agent_wait',
             input: { agentId: resources.agentId, waitMs: 0 }
+          }
+        ]);
+        return;
+      }
+      if (prompt === 'stop warm child') {
+        if (toolResults.has('warm-child-stopped')) {
+          this.#stoppedTask = parseJsonRecord(toolResults.get('warm-child-stopped'));
+          sendText(response, this.#nextResponseId(), 'Child stopped.');
+          return;
+        }
+        if (toolResults.has('warm-child-stop')) {
+          sendTools(response, this.#nextResponseId(), [
+            {
+              id: 'warm-child-stopped',
+              name: 'agent_wait',
+              input: {
+                agentId: this.firstResources().agentId,
+                waitFor: 'completion',
+                waitMs: 5_000
+              }
+            }
+          ]);
+          return;
+        }
+        sendTools(response, this.#nextResponseId(), [
+          {
+            id: 'warm-child-stop',
+            name: 'agent_stop',
+            input: { agentId: this.firstResources().agentId }
           }
         ]);
         return;
@@ -633,13 +723,40 @@ function latestUserText(messages: unknown): string | undefined {
   for (const message of [...messages].reverse()) {
     if (!isRecord(message) || message['role'] !== 'user') continue;
     const content = message['content'];
-    if (typeof content === 'string') return content;
+    if (typeof content === 'string') {
+      if (!content.startsWith('# Contextual instruction "')) return content;
+      continue;
+    }
     if (!Array.isArray(content)) continue;
     for (const block of [...content].reverse())
-      if (isRecord(block) && block['type'] === 'text' && typeof block['text'] === 'string')
+      if (
+        isRecord(block) &&
+        block['type'] === 'text' &&
+        typeof block['text'] === 'string' &&
+        !block['text'].startsWith('# Contextual instruction "')
+      )
         return block['text'];
   }
   return undefined;
+}
+
+function userTextIncludes(messages: unknown, text: string): boolean {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((message) => {
+    if (!isRecord(message) || message['role'] !== 'user') return false;
+    const content = message['content'];
+    if (typeof content === 'string') return content.includes(text);
+    return (
+      Array.isArray(content) &&
+      content.some(
+        (block) =>
+          isRecord(block) &&
+          block['type'] === 'text' &&
+          typeof block['text'] === 'string' &&
+          block['text'].includes(text)
+      )
+    );
+  });
 }
 
 function requestToolResults(messages: unknown): Map<string, string> {
@@ -682,7 +799,7 @@ async function provisionModel(databaseUrl: string, baseUrl: string): Promise<str
     const id = `warm-${randomUUID()}`;
     const now = Date.now();
     await connection.execute(
-      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,hosted_web_search,responses_previous_response_id,enabled,sort_order,last_test_status,owner_type,owner_user_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?)",
+      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,subagent_model,enabled,sort_order,last_test_status,owner_type,owner_user_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?)",
       [
         id,
         `Warm ${id}`,
@@ -695,10 +812,9 @@ async function provisionModel(databaseUrl: string, baseUrl: string): Promise<str
         4_096,
         JSON.stringify(['TEXT']),
         JSON.stringify(['TEXT']),
-        JSON.stringify([]),
+        JSON.stringify(['medium']),
         'medium',
-        false,
-        false,
+        true,
         true,
         0,
         'PERSONAL',
@@ -707,6 +823,12 @@ async function provisionModel(databaseUrl: string, baseUrl: string): Promise<str
         now,
         now
       ]
+    );
+    await new ModelSettingsStore().write(
+      id,
+      'ANTHROPIC_MESSAGES',
+      { version: 1, gcEnabled: true },
+      connection
     );
     return id;
   } finally {

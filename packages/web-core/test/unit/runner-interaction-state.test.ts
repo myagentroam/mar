@@ -272,7 +272,7 @@ describe('Web Runner Interaction Status', () => {
     'preserves Enter and Ctrl+Enter intent with Goal active=%s',
     (goalActive) => {
       type Options = Parameters<typeof createRunnerInteractionService>[0];
-      const state = createRunnerInteractionService({
+      createRunnerInteractionService({
         input: { value: 'Continue' } as Options['input'],
         draftSessionOpen: { value: false } as Options['draftSessionOpen'],
         selectedSession: {

@@ -54,7 +54,7 @@ export const codexImageGenToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Only when the user requests or explicitly authorizes image generation or editing, use the configured Codex Images API. First load and follow skill({name:"codex-imagegen"}); reload if its guidance is no longer in context. Do not generate unsolicited visuals. Omit both selectors for a new image without references. For image inputs, inspect unseen local images with view_image when available; TEXT-only models must not claim visual inspection. Use referenced_image_paths when every image has an absolute path; otherwise use num_last_images_to_include for the smallest sufficient number of currently available conversation images. Never provide both selectors. Include at most five images; if required inputs are missing, ask for them rather than silently omitting them. Recent images are in-memory in the current Execution, not a permanent history library. One PNG is saved in the current Session and its path is returned, not inspected pixels. Use view_image when available to check the result; otherwise report that visual acceptance was not performed. Full workflow guidance is in the codex-imagegen skill.',
+    'Generate or edit one PNG or simple looping GIF with the configured Codex Images API, only when requested or explicitly authorized. First load skill({name:"codex-imagegen"}); reuse it while in context. Omit selectors only for generation without references; otherwise use up to five absolute referenced_image_paths OR the smallest sufficient num_last_images_to_include from this Execution. Set transparent_background for transparency and gif for 2–16 animation frames. Returns a managed file path, not inspected pixels.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -72,6 +72,19 @@ export const codexImageGenToolDefinition: ClientToolDefinition = {
         minimum: 1,
         maximum: MAX_EDIT_IMAGES,
         description: 'Number of most recent in-memory conversation images to edit.'
+      },
+      transparent_background: {
+        type: 'boolean',
+        description: 'Request a transparent background; defaults to false.'
+      },
+      gif: {
+        type: 'object',
+        description: 'Request a simple looping GIF. Use {} for 9 frames at 200 ms per frame.',
+        properties: {
+          frame_count: { type: 'integer', minimum: 2, maximum: 16 },
+          frame_duration_ms: { type: 'integer', minimum: 20, maximum: 2000 }
+        },
+        additionalProperties: false
       }
     },
     required: ['prompt'],
@@ -82,6 +95,14 @@ export const codexImageGenToolDefinition: ClientToolDefinition = {
 export const bytedArkImageGenToolDefinition: ClientToolDefinition = {
   ...codexImageGenToolDefinition,
   name: 'byted_ark_image_gen',
+  inputSchema: {
+    ...codexImageGenToolDefinition.inputSchema,
+    properties: Object.fromEntries(
+      Object.entries(codexImageGenToolDefinition.inputSchema.properties ?? {}).filter(
+        ([key]) => key !== 'transparent_background' && key !== 'gif'
+      )
+    )
+  },
   description:
     'Generate or edit one PNG using the configured Ark Images API, only when explicitly requested. First load skill({name:"byted_ark-imagegen"}). Omit both selectors for text-to-image; use absolute referenced_image_paths or num_last_images_to_include for image-to-image, never both. Up to five references, exactly one output; no group generation. Returns a managed image path, not inspected pixels.'
 };
@@ -108,11 +129,11 @@ export async function executeCodexImageGen(
       'MAR_AGENT_MODEL_CONFIG_INVALID',
       'Image generation requires an independent credential provider.'
     );
-  const request = parseInput(arguments_);
-  const images = await selectedEditImages(request, input);
   const ark = capability.provider === 'BYTED_ARK';
   if (!ark && capability.provider !== 'CODEX')
     throw new AgentError('MAR_AGENT_MODEL_CONFIG_INVALID', 'Unsupported image provider.');
+  const request = parseInput(arguments_, ark);
+  const images = await selectedEditImages(request, input);
   const endpoint = images.length === 0 ? capability.generateEndpoint : capability.editEndpoint;
   const body = JSON.stringify(
     ark
@@ -145,11 +166,11 @@ export async function executeCodexImageGen(
                 }))
               }),
           prompt: request.prompt,
-          background: 'auto',
+          background: request.transparentBackground ? 'transparent' : 'opaque',
           model: capability.imageModelId,
-          n: 1,
           quality: 'auto',
-          size: 'auto'
+          size: 'auto',
+          ...(request.gif === undefined ? {} : { output_format: 'gif', ...request.gif })
         }
   );
   const turnId = randomUUID();
@@ -204,8 +225,13 @@ export async function executeCodexImageGen(
     const payload = await readJsonResponse(response, input.signal);
     if (!response.ok) throw imageGenerationResponseError(response.status, payload);
     const encoded = imageBase64(payload);
-    const data = decodePng(encoded);
-    const fileName = generatedFileName(input.callId);
+    const { data, format } = decodeImage(encoded);
+    if (ark && format !== 'png')
+      throw new AgentError(
+        'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
+        'Ark image response must be a PNG.'
+      );
+    const fileName = generatedFileName(input.callId, format);
     const directory = join(input.sessionDirectory, 'generated_images');
     const path = join(directory, fileName);
     const displayPath =
@@ -228,7 +254,7 @@ export async function executeCodexImageGen(
         {
           kind: 'image',
           name: fileName,
-          mimeType: 'image/png',
+          mimeType: format === 'gif' ? 'image/gif' : 'image/png',
           byteSize: data.byteLength,
           sha256,
           fileName
@@ -243,23 +269,30 @@ interface CodexImageGenInput {
   readonly prompt: string;
   readonly referencedImagePaths?: readonly string[];
   readonly numLastImagesToInclude?: number;
+  readonly transparentBackground: boolean;
+  readonly gif?: { readonly frame_count?: number; readonly frame_duration_ms?: number };
 }
 
-function parseInput(value: unknown): CodexImageGenInput {
+function parseInput(value: unknown, ark: boolean): CodexImageGenInput {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return invalidInput();
   const input = value as Record<string, unknown>;
   const referencedImagePaths =
     input.referenced_image_paths === null ? undefined : input.referenced_image_paths;
   const numLastImagesToInclude =
     input.num_last_images_to_include === null ? undefined : input.num_last_images_to_include;
+  const transparentBackground = input.transparent_background ?? false;
   if (
     Object.keys(input).some(
       (key) =>
-        key !== 'prompt' && key !== 'referenced_image_paths' && key !== 'num_last_images_to_include'
+        key !== 'prompt' &&
+        key !== 'referenced_image_paths' &&
+        key !== 'num_last_images_to_include' &&
+        (ark || (key !== 'gif' && key !== 'transparent_background'))
     ) ||
     typeof input.prompt !== 'string' ||
     input.prompt.trim().length === 0 ||
     input.prompt.length > 32_768 ||
+    typeof transparentBackground !== 'boolean' ||
     (referencedImagePaths !== undefined &&
       (!Array.isArray(referencedImagePaths) ||
         referencedImagePaths.length > MAX_EDIT_IMAGES ||
@@ -277,10 +310,32 @@ function parseInput(value: unknown): CodexImageGenInput {
   if (paths?.length && numLastImagesToInclude !== undefined) return invalidInput();
   return {
     prompt: input.prompt,
+    transparentBackground,
+    ...(input.gif === undefined || input.gif === null ? {} : { gif: parseGif(input.gif) }),
     ...(paths?.length ? { referencedImagePaths: [...paths] } : {}),
     ...(numLastImagesToInclude === undefined
       ? {}
       : { numLastImagesToInclude: numLastImagesToInclude as number })
+  };
+}
+
+function parseGif(value: unknown): NonNullable<CodexImageGenInput['gif']> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return invalidInput();
+  const options = value as Record<string, unknown>;
+  if (Object.keys(options).some((key) => key !== 'frame_count' && key !== 'frame_duration_ms'))
+    return invalidInput();
+  const count = options.frame_count ?? undefined;
+  const duration = options.frame_duration_ms ?? undefined;
+  if (
+    (count !== undefined &&
+      (!Number.isInteger(count) || (count as number) < 2 || (count as number) > 16)) ||
+    (duration !== undefined &&
+      (!Number.isInteger(duration) || (duration as number) < 20 || (duration as number) > 2000))
+  )
+    return invalidInput();
+  return {
+    ...(count === undefined ? {} : { frame_count: count as number }),
+    ...(duration === undefined ? {} : { frame_duration_ms: duration as number })
   };
 }
 
@@ -422,27 +477,32 @@ function imageBase64(value: unknown): string {
   return first;
 }
 
-function decodePng(encoded: string): Buffer {
+function decodeImage(encoded: string): { readonly data: Buffer; readonly format: 'png' | 'gif' } {
   if (encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded))
     throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
       'Image response is invalid.'
     );
   const data = Buffer.from(encoded, 'base64');
+  const signature = data.subarray(0, 6);
+  const format =
+    signature.equals(Buffer.from('GIF87a')) || signature.equals(Buffer.from('GIF89a'))
+      ? 'gif'
+      : 'png';
   if (
     data.byteLength === 0 ||
     data.byteLength > IMAGE_MAX_BYTES ||
     data.toString('base64') !== encoded ||
-    !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+    (format === 'png' && !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE))
   )
     throw new AgentError(
       'MAR_AGENT_IMAGE_GENERATION_RESPONSE_INVALID',
-      'Image response is not a supported PNG.'
+      'Image response is not a supported PNG or GIF.'
     );
-  return data;
+  return { data, format };
 }
 
-function generatedFileName(callId: string): string {
+function generatedFileName(callId: string, format: 'png' | 'gif'): string {
   const normalized = callId
     .normalize('NFKC')
     .replace(/[^a-zA-Z0-9._-]+/gu, '_')
@@ -450,15 +510,16 @@ function generatedFileName(callId: string): string {
     .slice(0, 96);
   const stem =
     normalized.length > 0 ? normalized : createHash('sha256').update(callId).digest('hex');
-  const fileName = `${stem.startsWith('image_') ? stem : `image_${stem}`}.png`;
+  const fileName = `${stem.startsWith('image_') ? stem : `image_${stem}`}.${format}`;
   return basename(fileName);
 }
 
 function imageGenerationResponseError(status: number, value: unknown): AgentError {
-  const error =
+  const payload =
     value !== null && typeof value === 'object' && !Array.isArray(value)
-      ? (value as { error?: unknown }).error
+      ? (value as { error?: unknown; detail?: unknown })
       : undefined;
+  const error = payload?.error;
   const record =
     error !== null && typeof error === 'object' && !Array.isArray(error)
       ? (error as { code?: unknown; message?: unknown })
@@ -468,7 +529,12 @@ function imageGenerationResponseError(status: number, value: unknown): AgentErro
   const code = /^[a-zA-Z0-9._-]{1,80}$/u.test(rawCode)
     ? rawCode
     : 'MAR_AGENT_IMAGE_GENERATION_FAILED';
-  const rawMessage = typeof record?.message === 'string' ? record.message.trim() : '';
+  const rawMessage =
+    typeof record?.message === 'string'
+      ? record.message.trim()
+      : typeof payload?.detail === 'string'
+        ? payload.detail.trim()
+        : '';
   const message =
     rawMessage.length > 0 &&
     rawMessage.length <= 1_000 &&

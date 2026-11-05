@@ -11,12 +11,6 @@ import type {
 } from '../tools/contracts.js';
 
 import { AgentError } from '../error.js';
-import type { ExtensionFilesBackend } from '../extensions/files.js';
-import type { ExtensionNetworkBackend } from '../extensions/network.js';
-import type { ExtensionProcessesBackend } from '../extensions/processes.js';
-import type { ExtensionEnvironmentBackend } from '../extensions/environment.js';
-import type { ExtensionOperationContext } from '../extensions/operation.js';
-import type { ExtensionToolRef } from '../extensions/tools.js';
 
 export const AGENT_HOST_API_VERSION = '1.0';
 

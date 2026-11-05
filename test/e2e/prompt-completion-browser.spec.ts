@@ -90,7 +90,7 @@ for (const mode of ['workspace'] as const) {
           };
           const colors = {
             normal: read('--mar-text-secondary'),
-            hover: read('--mar-color-brand-text'),
+            hover: read('--mar-text-primary'),
             outline: read('--mar-color-brand')
           };
           probe.remove();

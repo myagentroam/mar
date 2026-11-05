@@ -6,6 +6,7 @@ import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from '
 import SecretPage from '../../src/view/settings/SecretManagementPage.vue?unit-render';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import SecretManager from '../../src/view/settings/EnvironmentSecretManager.vue?unit-render';
+import ManagementPagination from '../../src/view/settings/ManagementPagination.vue?unit-render';
 import {
   flushComponent,
   renderComponent,
@@ -30,7 +31,7 @@ describe('Public environment secret management', () => {
     [new DOMException('Request aborted', 'AbortError'), 1],
     [new Error('Request failed'), 1]
   ] as const)(
-    'offers retry only for current pagination failures (%s)',
+    'reports current initial-read failures without an incremental retry (%s)',
     async (cause, expectedFailures) => {
       vi.stubGlobal('window', {
         location: { search: '', href: 'http://fixture/console' },
@@ -47,31 +48,38 @@ describe('Public environment secret management', () => {
       try {
         await flushComponent();
         expect(request).toHaveBeenCalledOnce();
-        expect(error).not.toHaveBeenCalled();
-        const retry = view
-          .findAll('button')
-          .filter((button) =>
-            textContent(button).includes(i18n.global.t('common.loadFailedRetry'))
-          );
-        expect(retry).toHaveLength(expectedFailures);
-        if (retry[0]) {
-          request.mockResolvedValueOnce({
-            secrets: [],
-            page: 1,
-            pageSize: 20,
-            total: 0,
-            hasMore: false
-          });
-          await trigger(retry[0], 'onClick');
-          await flushComponent();
-          expect(request).toHaveBeenCalledTimes(2);
-          expect(textContent(view.root)).not.toContain(i18n.global.t('common.loadFailedRetry'));
-        }
+        expect(error).toHaveBeenCalledTimes(expectedFailures);
+        expect(textContent(view.root)).not.toContain(i18n.global.t('common.loadFailedRetry'));
       } finally {
         view.unmount();
       }
     }
   );
+
+  it('exposes an explicit retry for a failed mobile incremental page', async () => {
+    const retry = vi.fn();
+    const view = renderComponent(ManagementPagination, {
+      mobile: true,
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      hasMore: true,
+      failed: true,
+      incrementalFailed: true,
+      error: new Error('Page unavailable'),
+      onRetry: retry
+    });
+    try {
+      const button = view
+        .findAll('ElButton')
+        .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')));
+      expect(button).toBeDefined();
+      await trigger(button!, 'onClick');
+      expect(retry).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
+  });
 
   it.each([undefined, false, true])(
     'reads only the permitted Workspace scope (permission=%s) and resets on target change',

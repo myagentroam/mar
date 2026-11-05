@@ -16,7 +16,6 @@ import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { restoreMessages } from '../../src/runtime/context/restore.js';
 import { CompactRequests } from '../../src/runtime/compaction/requests.js';
 import { compactSnapshotAnchor } from '../../src/runtime/compaction/retained-context.js';
-import { effectiveInstructions } from './support/model-context.js';
 import { captureExecutionContext } from './support/checkpoint-context.js';
 import * as worldState from '../../src/runtime/context/world-state.js';
 import { ContextGcRuntime } from '../../src/runtime/context/gc-runtime.js';
@@ -112,8 +111,7 @@ async function fixture(
       yield* script(request, index);
     }
   };
-  let agent!: Agent;
-  agent = await createAgentWithAdapter(
+  const agent: Agent = await createAgentWithAdapter(
     {
       mode: 'normal',
       host,
@@ -974,8 +972,7 @@ describe('asynchronous Compact', () => {
     let childRounds = 0;
     let parentContext!: Parameters<NonNullable<AgentExtension['attachSession']>>[0];
     const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
-    let agent!: Agent;
-    agent = await createAgentWithAdapter(
+    const agent: Agent = await createAgentWithAdapter(
       {
         mode: 'normal',
         host,
