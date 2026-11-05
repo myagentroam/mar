@@ -3,8 +3,8 @@ import {
   watchAcceptedSchema,
   type HostedConversationSnapshot
 } from '@myagentroam/protocol';
-import { ref, type Ref } from 'vue';
-import { errorCode } from '../util/api-error.js';
+import { ref, shallowRef, type Ref } from 'vue';
+import { apiErrorFromResponse, errorCode } from '../util/api-error.js';
 import { targetKey } from './hosted-conversation-directory-service.js';
 import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
 
@@ -37,6 +37,8 @@ export function createHostedConversationWatchService(options: {
   const { selectedNodeId, selectedConversationId } = options;
   const watchReady = ref(false);
   const watchFailureCode = ref<string>();
+  const watchFailure = shallowRef<unknown>();
+  const watchLoading = ref(false);
   let watchId: string | undefined;
   let acceptingWatchEvents = false;
   let watchedNodeId: string | undefined;
@@ -47,13 +49,16 @@ export function createHostedConversationWatchService(options: {
   let lastEventSequence = 0;
   let pendingInitial: PendingInitialSnapshot | undefined;
 
-  function cancelPendingInitial(code = 'HOSTED_CONVERSATION_WATCH_INITIAL_FAILED'): void {
+  function cancelPendingInitial(
+    code = 'HOSTED_CONVERSATION_WATCH_INITIAL_FAILED',
+    error = new Error(code)
+  ): void {
     const pending = pendingInitial;
     if (pending === undefined) return;
     pendingInitial = undefined;
     clearTimeout(pending.timer);
     pending.removeAbortListener();
-    pending.reject(new Error(code));
+    pending.reject(error);
   }
 
   function waitForInitialSnapshot(
@@ -110,6 +115,7 @@ export function createHostedConversationWatchService(options: {
       return;
     if (mode === 'initial') {
       watchReady.value = false;
+      watchLoading.value = true;
       acceptingWatchEvents = true;
       watchId = randomWatchId();
       watchedNodeId = nodeId;
@@ -163,6 +169,14 @@ export function createHostedConversationWatchService(options: {
     } catch (error) {
       if (pendingInitial?.watchId === currentWatchId) cancelPendingInitial();
       await initialSnapshot?.catch(() => undefined);
+      if (
+        watchId === currentWatchId &&
+        watchedConnectionId === connectionId &&
+        selectedTarget() === target &&
+        eligible(target) &&
+        (!signal.aborted || errorCode(signal.reason) !== undefined)
+      )
+        markRestartFailure(signal.aborted ? signal.reason : error);
       throw error;
     }
   }
@@ -197,10 +211,13 @@ export function createHostedConversationWatchService(options: {
       },
       onFailure: (error) => {
         acceptingWatchEvents = false;
+        watchLoading.value = true;
+        watchFailure.value = error;
         watchFailureCode.value = errorCode(error) ?? 'HOSTED_CONVERSATION_WATCH_EXPIRED';
       }
     },
     onExpired: () => {
+      watchLoading.value = false;
       watchFailureCode.value ??= 'HOSTED_CONVERSATION_WATCH_EXPIRED';
       options.onWatchExpired?.();
     }
@@ -225,6 +242,7 @@ export function createHostedConversationWatchService(options: {
 
   function stopSelectedConversationWatch(): void {
     watchReady.value = false;
+    watchLoading.value = false;
     cancelPendingInitial();
     watchLifecycle.stop();
     const nodeId = watchedNodeId;
@@ -267,6 +285,7 @@ export function createHostedConversationWatchService(options: {
 
   function pauseSelectedConversationWatch(): void {
     watchReady.value = false;
+    watchLoading.value = false;
     watchLifecycle.pause();
   }
 
@@ -297,7 +316,7 @@ export function createHostedConversationWatchService(options: {
         parsed.data.conversation.nodeId !== watchedNodeId
       ) {
         cancelPendingInitial('HOSTED_CONVERSATION_RESPONSE_INVALID');
-        watchFailureCode.value = 'HOSTED_CONVERSATION_RESPONSE_INVALID';
+        markRestartFailure(responseInvalid());
         return true;
       }
       lastSnapshotSequence = value.snapshotSequence as number;
@@ -306,6 +325,8 @@ export function createHostedConversationWatchService(options: {
       watchReady.value = true;
       if (!matchesWatchIdentity(value)) return true;
       watchFailureCode.value = undefined;
+      watchFailure.value = undefined;
+      watchLoading.value = false;
       if (!matchesWatchIdentity(value)) return true;
       const pending = pendingInitial;
       if (
@@ -362,22 +383,30 @@ export function createHostedConversationWatchService(options: {
       return false;
     nodeGeneration ??= event.nodeGeneration as string;
     watchFailureCode.value = event.code;
+    const failure = apiErrorFromResponse({ error: event }, 500);
+    watchFailure.value = failure;
+    watchLoading.value = false;
     acceptingWatchEvents = false;
-    cancelPendingInitial(event.code);
+    cancelPendingInitial(event.code, failure);
     watchLifecycle.pause();
     return true;
   }
 
   function markRestartFailure(error: unknown): void {
     watchReady.value = false;
+    watchLoading.value = false;
+    watchFailure.value = error;
     watchFailureCode.value = errorCode(error) ?? 'HOSTED_CONVERSATION_WATCH_EXPIRED';
   }
 
   return {
     watchReady: watchReady as Readonly<Ref<boolean>>,
     watchFailureCode: watchFailureCode as Readonly<Ref<string | undefined>>,
+    watchFailure: watchFailure as Readonly<Ref<unknown>>,
+    watchLoading: watchLoading as Readonly<Ref<boolean>>,
     clearFailure: () => {
       watchFailureCode.value = undefined;
+      watchFailure.value = undefined;
     },
     selectedWatchId: () => watchId,
     beginSelectedConversationWatch,

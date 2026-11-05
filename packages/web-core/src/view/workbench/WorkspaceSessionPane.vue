@@ -8,6 +8,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import { runnerLabel } from '../../util/workbench-presentation.js';
 import { userInputQuestions } from '../../util/conversation-presentation.js';
 import { sessionTitle } from '../../util/session-presentation.js';
+import { errorMessage } from '../../util/error-presentation.js';
 import WorkspaceSessionTreeButton from '../workspace/WorkspaceSessionTreeButton.vue';
 import ConversationHeader from '../conversation/ConversationHeader.vue';
 import ConversationScroll from '../conversation/ConversationScroll.vue';
@@ -139,6 +140,11 @@ onBeforeUnmount(() => {
         :loading-initial="controller.status.initialContentLoading()"
         :initial-sync-pending="state.conversation.loadingInitial.value"
         :initial-load-failed="state.conversation.initialLoadFailed.value"
+        :initial-error="
+          state.conversation.initialLoadFailed.value
+            ? errorMessage(state.conversation.initialFailureCause.value)
+            : undefined
+        "
         :loading-older="state.conversation.loadingOlder.value"
         :older-error="olderHistoryError"
         :has-turns="state.conversation.turns.value.length > 0"

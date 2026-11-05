@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-10-28
+lastUpdated: 2026-11-05
 ---
 
 # Start a Conversation from a Template
@@ -98,7 +98,7 @@ After a Run succeeds, fails, or ends because of an unexpected interruption, Noti
 
 The page shows an action message in these cases:
 
-- The hosting service is temporarily unreachable or realtime subscription fails: loaded content remains visible; reopen the conversation later.
+- The hosting service is temporarily unreachable or realtime subscription fails: loaded content remains visible. An established subscription retries recoverable failures a limited number of times, with a reload ring in the conversation and writes disabled until recovery. After an initial load fails or recovery stops, select **Failed to load. Retry** in the conversation. The same error does not also produce a popup; the retry control's supplementary hint retains the error code, details, and request identifiers.
 - Automatic template upgrade fails: the current send fails, but the old version, history, and writable state remain intact. The next send queries the latest available version at that time and attempts the upgrade again.
 - Related-file synchronization fails: message history remains available; reopen the conversation later and contact an administrator if the problem continues.
 

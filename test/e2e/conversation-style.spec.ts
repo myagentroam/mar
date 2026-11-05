@@ -610,6 +610,9 @@ test('Retrying initial history keeps focus and shows one ring without action tex
   await page.getByTestId('finish-initial').click();
   const retry = page.locator('button.conversation-reload');
   await expect(retry).toHaveText('Failed to load. Retry');
+  await expect(retry).toHaveAttribute('aria-description', /history-request-1/);
+  await retry.hover();
+  await expect(page.getByRole('tooltip')).toContainText('SESSION_HISTORY_INITIAL_FAILED');
   await retry.click();
   await expect(retry).toBeFocused();
   await expect(retry).toHaveText('');

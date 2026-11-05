@@ -76,6 +76,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
   readonly loading: Ref<boolean>;
   readonly loadingContent: Ref<boolean>;
   readonly failed: Ref<boolean>;
+  readonly failureCause: Ref<unknown>;
   readonly currentRequest: () => number;
   readonly loader: ReturnType<typeof createWorkspaceSessionPaneLoader>;
   readonly restore: (target: Extract<DraftTarget, { kind: 'session' }>) => boolean;
@@ -90,7 +91,6 @@ export function createWorkspaceSessionPaneLifecycle(options: {
     workspaceId: string,
     sessionId: string
   ) => Promise<void> | void;
-  readonly notice: (error: unknown) => void;
 }) {
   const scope = getCurrentScope();
   let reload: (() => Promise<void>) | undefined;
@@ -147,6 +147,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         const restored = options.restore(captured);
         options.loadingContent.value = !restored;
         options.failed.value = false;
+        options.failureCause.value = undefined;
         try {
           const result = await options.loader.load({
             ...captured,
@@ -172,7 +173,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         } catch (error) {
           if (current() && errorCode(error) !== 'WATCH_CANCELLED') {
             options.failed.value = true;
-            options.notice(error);
+            options.failureCause.value = error;
           }
         } finally {
           if (current()) {

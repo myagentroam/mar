@@ -169,6 +169,7 @@ const options: WorkbenchSessionSelectionOptions = {
   turns,
   loadingInitial: loading,
   initialLoadFailed: ref(false),
+  initialFailureCause: conversation.initialFailureCause,
   queue: ref({ version: 0, paused: false, items: [] }),
   positioning,
   draftOpen: ref(false),
@@ -239,9 +240,7 @@ const options: WorkbenchSessionSelectionOptions = {
   hasInitialSnapshot: () => true,
   beginWatch: () => new Promise<boolean>((resolve) => (releaseWatch = () => resolve(true))),
   applySnapshot: () => false,
-  mergeTurns: () => false,
-  notice: () => undefined,
-  errorMessage: String
+  mergeTurns: () => false
 };
 const selection = createWorkbenchSessionSelectionService(options);
 
@@ -369,6 +368,9 @@ onMounted(async () => {
         :has-older="!parameters.has('no-older') && nextCursor !== null"
         :loading-initial="initialPending"
         :initial-load-failed="initialFailed"
+        :initial-error="
+          initialFailed ? 'SESSION_HISTORY_INITIAL_FAILED: history-request-1' : undefined
+        "
         :loading-older="olderPending"
         :older-error="
           parameters.has('prepend-history') ? paging.olderHistoryError.value : olderError

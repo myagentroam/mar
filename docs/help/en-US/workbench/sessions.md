@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # Create and Manage Sessions
@@ -24,6 +24,8 @@ A regular work session must execute in the selected Workspace's valid root or a 
 Select **New Session** to prepare an Agent, model, reasoning level, and permission mode before the first message. On supported Nodes, the button and new-session shortcut switch the list to Main Sessions before opening Composer, so the main session created by the first message can be reopened there. Manually switching groups afterward does not change the Composer draft. A session is created only when that message is accepted.
 
 The session list initially loads up to 30 sessions. Scrolling near the bottom automatically loads up to 30 more; search results continue in the same way. New sessions remain visible in the current list. A small ring marks the pending page. A failure preserves the loaded sessions and pauses automatic loading; select **Failed to load. Retry** at the bottom to continue. Retrying shows only the ring.
+
+An initial or earlier-history load failure does not trigger repeated automatic requests. Select **Failed to load. Retry** in the conversation to read again; loading and retrying show only a ring. The same failure does not also produce a popup. The retry control's supplementary hint retains available error codes, details, and request identifiers. Established realtime subscriptions have bounded recovery, and reconnecting the page rebuilds subscriptions. These read or subscription recoveries never rerun an Agent task.
 
 A conversation turn can contain several collapsible **Work processes**. Public reasoning text, tool calls, and file operations appear in their actual order; Agent replies, approvals, and questions remain outside these groups. The active process opens by default and collapses when finished; your manual expansion or collapse takes precedence. Missing public reasoning does not create an empty card, and reasoning text is not an execution status. File details still open in the existing dialog.
 

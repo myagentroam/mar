@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, shallowRef } from 'vue';
 import { limitConversationHistory } from '../util/conversation-history.js';
 import { createConversationProjectionState } from './conversation-projection-service.js';
 
@@ -93,6 +93,7 @@ export function createConversationStateService(onRecentWindowOverflow: () => voi
     projection,
     loadingInitial: ref(false),
     initialLoadFailed: ref(false),
+    initialFailureCause: shallowRef<unknown>(),
     loadingOlder: ref(false),
     channelInput: ref(''),
     channelToken: ref<string>(),

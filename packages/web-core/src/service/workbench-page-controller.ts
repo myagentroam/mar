@@ -1888,10 +1888,7 @@ export function createWorkbenchPageController<
     selectedConversationId: baseState.hostedSelection.selectedConversationId,
     heartbeatMs: SESSION_WATCH_HEARTBEAT_MS,
     requestTimeoutMs: SESSION_WATCH_REQUEST_TIMEOUT_MS,
-    confirmationTimeoutMs: SESSION_WATCH_CONFIRMATION_TIMEOUT_MS,
-    onWatchExpired: () => {
-      notice(translate('hostedConversations.watchExpired'), 'warning');
-    }
+    confirmationTimeoutMs: SESSION_WATCH_CONFIRMATION_TIMEOUT_MS
   });
   const navigationWatchService = createWorkbenchNavigationWatchService({
     coordinator: () => watchCoordinator.current,
@@ -3026,6 +3023,7 @@ export function createWorkbenchPageController<
     turns: conversationTurns,
     loadingInitial: loadingInitialConversation,
     initialLoadFailed: initialConversationLoadFailed,
+    initialFailureCause: mainPane.conversation.initialFailureCause,
     queue: workspaceQueue,
     positioning: positioningInitialConversation,
     draftOpen: draftSessionOpen,
@@ -3087,9 +3085,7 @@ export function createWorkbenchPageController<
       return sessionWatchController.hasInitialSessionSnapshot(sessionId);
     },
     applySnapshot: applyConversationSnapshot,
-    mergeTurns: mergeLatestConversationTurns,
-    notice,
-    errorMessage: message
+    mergeTurns: mergeLatestConversationTurns
   });
 
   const workbenchRouteService = createWorkbenchRouteService({
@@ -3395,6 +3391,7 @@ export function createWorkbenchPageController<
     loading: asideLoading,
     loadingContent: asideInitialContentLoading,
     failed: asidePane.conversation.initialLoadFailed,
+    failureCause: asidePane.conversation.initialFailureCause,
     currentRequest: asidePane.conversation.currentDetailRequest,
     loader: asideLoader,
     restore: (target) => {
@@ -3425,8 +3422,7 @@ export function createWorkbenchPageController<
     beginInitialRender: asidePane.conversation.beginInitialRender,
     scrollElement: () => asidePane.scroll.element.value,
     scrollLatest: (isCurrent) => asidePane.scroll.scrollToLatestAfterLayout(isCurrent),
-    markRead: markVisibleSessionRead,
-    notice: (error) => notice(message(error), 'error', error)
+    markRead: markVisibleSessionRead
   });
   reloadAsideSession = () => {
     void asideLifecycle.reload();

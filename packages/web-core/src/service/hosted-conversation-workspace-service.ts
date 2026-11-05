@@ -145,6 +145,8 @@ export function createHostedConversationWorkspaceService(
   const {
     watchReady,
     watchFailureCode,
+    watchFailure,
+    watchLoading,
     selectedWatchId,
     beginSelectedConversationWatch,
     restartSelectedConversationWatch,
@@ -971,6 +973,8 @@ export function createHostedConversationWorkspaceService(
     watchReady,
     watchFailureCode,
     selectedWatchId,
+    watchFailure,
+    watchLoading,
     messageSubmitting: messageSubmission.pending,
     messageSubmissionContext: messageSubmission.context,
     templateChanging,

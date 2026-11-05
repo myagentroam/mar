@@ -72,6 +72,7 @@ function tabSessionFixture(sessionTabLimit = 1) {
     turns,
     loadingInitial: ref(false),
     initialLoadFailed: ref(false),
+    initialFailureCause: ref<unknown>(),
     queue: ref({ version: 0, paused: false, items: [] }),
     positioning: ref(false),
     draftOpen: ref(false),
@@ -107,9 +108,7 @@ function tabSessionFixture(sessionTabLimit = 1) {
     hasInitialSnapshot: () => true,
     beginWatch: vi.fn(async () => true),
     applySnapshot: vi.fn(() => false),
-    mergeTurns: vi.fn(() => false),
-    notice: vi.fn(),
-    errorMessage: String
+    mergeTurns: vi.fn(() => false)
   };
   return {
     session,
@@ -482,13 +481,7 @@ it.each([false, true])(
     else await expect(result).resolves.toBeUndefined();
     expect(f.options.initialLoadFailed.value).toBe(true);
     expect(f.options.loadingInitial.value).toBe(false);
-    if (throwOnFailure) expect(f.options.notice).not.toHaveBeenCalled();
-    else
-      expect(f.options.notice).toHaveBeenCalledWith(
-        expect.stringContaining('HISTORY_UNAVAILABLE'),
-        'error',
-        failure
-      );
+    expect(f.options.initialFailureCause.value).toBe(failure);
   }
 );
 
@@ -690,7 +683,7 @@ describe('Shared session selection', () => {
     expect(f.options.loadingInitial.value).toBe(false);
     expect(f.service.loadingInitialContent.value).toBe(false);
     expect(f.options.beginInitialRender).not.toHaveBeenCalled();
-    expect(f.options.notice).toHaveBeenCalledOnce();
+    expect(f.options.initialFailureCause.value).toEqual(new Error('HISTORY_UNAVAILABLE'));
   });
 
   it('waits for the snapshot before requesting the first layout and keeps loading until layout completes', async () => {
@@ -732,7 +725,7 @@ describe('Shared session selection', () => {
       else await expect(result).resolves.toBeUndefined();
       expect(f.options.initialLoadFailed.value).toBe(false);
       expect(f.options.loadingInitial.value).toBe(false);
-      expect(f.options.notice).not.toHaveBeenCalled();
+      expect(f.options.initialFailureCause.value).toBeUndefined();
     }
   );
 
@@ -742,7 +735,7 @@ describe('Shared session selection', () => {
     vi.mocked(f.options.beginWatch).mockRejectedValue(failure);
     await f.service.openSession(f.session.id);
     expect(f.options.initialLoadFailed.value).toBe(true);
-    expect(f.options.notice).toHaveBeenCalledWith(expect.any(String), 'error', failure);
+    expect(f.options.initialFailureCause.value).toBe(failure);
   });
 
   it.each(['read', 'render'] as const)(
@@ -806,7 +799,7 @@ describe('Shared session selection', () => {
       if (pendingStage === 'read') expect(readSignal?.aborted).toBe(true);
       await opening;
       expect(f.options.initialLoadFailed.value).toBe(false);
-      expect(f.options.notice).not.toHaveBeenCalled();
+      expect(f.options.initialFailureCause.value).toBeUndefined();
       expect(f.options.scrollLatest).not.toHaveBeenCalled();
       expect(f.options.markSessionRead).not.toHaveBeenCalled();
     }
@@ -870,7 +863,7 @@ describe('Shared session selection', () => {
           void f.controller.restartSelectedSessionWatch(f.session.id)?.catch(() => undefined);
         } else f.controller.stopSelectedSessionWatch();
         await opening;
-        expect(f.options.notice).not.toHaveBeenCalled();
+        expect(f.options.initialFailureCause.value).toBeUndefined();
         expect(f.options.initialLoadFailed.value).toBe(false);
         expect(f.controller.handleEvent(stale)).toBe(false);
         expect(f.controller.hasInitialSessionSnapshot(f.session.id)).toBe(false);
@@ -908,11 +901,7 @@ describe('Shared session selection', () => {
         await opening;
         expect(f.options.initialLoadFailed.value).toBe(true);
         expect(f.options.loadingInitial.value).toBe(false);
-        expect(f.options.notice).toHaveBeenCalledWith(
-          expect.any(String),
-          'error',
-          expect.objectContaining({ code, message })
-        );
+        expect(f.options.initialFailureCause.value).toMatchObject({ code, message });
         expect(f.readPosts).toEqual([]);
         expect(f.watchPosts()).toHaveLength(1);
 
@@ -922,7 +911,7 @@ describe('Shared session selection', () => {
         await retry;
         expect(f.options.initialLoadFailed.value).toBe(false);
         expect(f.readPosts).toEqual([f.session.id]);
-        expect(f.options.notice).toHaveBeenCalledTimes(1);
+        expect(f.options.initialFailureCause.value).toBeUndefined();
       } finally {
         f.dispose();
       }
@@ -1102,6 +1091,7 @@ describe('Shared session selection', () => {
       turns: ref([]),
       loadingInitial: ref(false),
       initialLoadFailed: ref(false),
+      initialFailureCause: ref<unknown>(),
       queue: ref({ version: 0, paused: false, items: [] }),
       positioning: ref(false),
       draftOpen: ref(false),
@@ -1131,9 +1121,7 @@ describe('Shared session selection', () => {
       hasInitialSnapshot: () => true,
       beginWatch: vi.fn(async () => true),
       applySnapshot: vi.fn(() => false),
-      mergeTurns: vi.fn(() => false),
-      notice: vi.fn(),
-      errorMessage: String
+      mergeTurns: vi.fn(() => false)
     };
     const service = createSelection(options);
     const pending = service.selectSession(session.id);
@@ -1211,6 +1199,7 @@ describe('Shared session selection', () => {
       turns: { value: [] },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
+      initialFailureCause: ref<unknown>(),
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1270,9 +1259,7 @@ describe('Shared session selection', () => {
       canWatch: () => false,
       beginWatch: async () => true,
       applySnapshot,
-      mergeTurns,
-      notice: vi.fn(),
-      errorMessage: String
+      mergeTurns
     } as never);
 
     const opening = service.openSession('session-1', { skipSaveCurrent: true });
@@ -1321,6 +1308,7 @@ describe('Shared session selection', () => {
       turns: { value: [] },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
+      initialFailureCause: ref<unknown>(),
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1366,9 +1354,7 @@ describe('Shared session selection', () => {
         return true;
       },
       applySnapshot,
-      mergeTurns: () => false,
-      notice: vi.fn(),
-      errorMessage: String
+      mergeTurns: () => false
     } as never);
 
     await service.selectSession('session-1');
@@ -1403,6 +1389,7 @@ describe('Shared session selection', () => {
       turns: { value: [] },
       loadingInitial: { value: false },
       initialLoadFailed: { value: false },
+      initialFailureCause: ref<unknown>(),
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1432,9 +1419,7 @@ describe('Shared session selection', () => {
       canWatch: () => false,
       beginWatch: async () => true,
       applySnapshot: vi.fn(),
-      mergeTurns: vi.fn(() => false),
-      notice: vi.fn(),
-      errorMessage: String
+      mergeTurns: vi.fn(() => false)
     } as never);
 
     await service.openSession('session-1');
@@ -1444,7 +1429,7 @@ describe('Shared session selection', () => {
   });
   it('preserves the initial-load failure state so the user can reload after Session Watch initial fails', async () => {
     const initialLoadFailed = { value: false };
-    const notice = vi.fn();
+    const initialFailureCause = ref<unknown>();
     const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
     const service = createSelection({
       aside: createWorkbenchAsideService(),
@@ -1460,6 +1445,7 @@ describe('Shared session selection', () => {
       turns: { value: [] },
       loadingInitial: { value: false },
       initialLoadFailed,
+      initialFailureCause,
       queue: { value: { version: 0, paused: false, items: [] } },
       positioning: { value: false },
       draftOpen: { value: false },
@@ -1498,18 +1484,12 @@ describe('Shared session selection', () => {
         throw failure;
       },
       applySnapshot: vi.fn(),
-      mergeTurns: vi.fn(),
-      notice,
-      errorMessage: (error: unknown) => (error as Error).message
+      mergeTurns: vi.fn()
     } as never);
 
     await service.openSession('session-1');
 
     expect(initialLoadFailed.value).toBe(true);
-    expect(notice).toHaveBeenCalledWith(
-      expect.stringContaining('SESSION_HISTORY_INITIAL_FAILED'),
-      'error',
-      failure
-    );
+    expect(initialFailureCause.value).toBe(failure);
   });
 });

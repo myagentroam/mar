@@ -1,4 +1,3 @@
-import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { AsideSession } from './workbench-aside-service.js';
 import type { createWorkspaceSessionPaneLoader } from './workspace-session-pane-loader.js';
@@ -12,7 +11,6 @@ import type {
   Session,
   WorkspaceQueue
 } from '../model/workbench.js';
-import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 import type { createWorkbenchAsideService } from './workbench-aside-service.js';
 
@@ -48,6 +46,7 @@ export interface WorkbenchSessionSelectionOptions {
   readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
   readonly loadingInitial: Ref<boolean>;
   readonly initialLoadFailed: Ref<boolean>;
+  readonly initialFailureCause: Ref<unknown>;
   readonly queue: Ref<WorkspaceQueue>;
   readonly positioning: Ref<boolean>;
   readonly draftOpen: Ref<boolean>;
@@ -89,8 +88,6 @@ export interface WorkbenchSessionSelectionOptions {
   readonly beginWatch: (sessionId: string) => Promise<boolean>;
   readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
   readonly mergeTurns: (page: ConversationTurnPage) => boolean;
-  readonly notice: MessageFeedback;
-  readonly errorMessage: (error: unknown) => string;
 }
 
 const EMPTY_QUEUE: WorkspaceQueue = { version: 0, paused: false, items: [] };
@@ -276,6 +273,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     options.positioning.value = false;
     options.loadingInitial.value = true;
     options.initialLoadFailed.value = false;
+    options.initialFailureCause.value = undefined;
     const { switching, restored, activeRunId } = prepare(sessionId, nodeId, openOptions);
     operation.preparing = false;
     if (opening !== operation) return;
@@ -339,14 +337,8 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         return;
       }
       options.initialLoadFailed.value = true;
+      options.initialFailureCause.value = error;
       if (openOptions.throwOnFailure) throw error;
-      options.notice(
-        translate('generated.workbenchSessionSelectionService.unableToLoadConversationHistory', {
-          value0: options.errorMessage(error)
-        }),
-        'error',
-        error
-      );
     } finally {
       if (opening === operation) opening = undefined;
       if (isCurrent()) {
