@@ -277,7 +277,6 @@ describe('Workbench surface composition behavior', () => {
           preflight: vi.fn(),
           queue: vi.fn(),
           onFailure: vi.fn(),
-          onListFailure: vi.fn(),
           onWorkspace: vi.fn(),
           onMutationFailure: vi.fn(),
           onDeletedSelection: vi.fn(),
@@ -629,7 +628,6 @@ describe('Workbench surface composition behavior', () => {
           entries: [],
           nextCursor: null
         }),
-        onListFailure: failure,
         onWorkspace: vi.fn(),
         mutate: async () => undefined,
         revealLocal: async () => {},

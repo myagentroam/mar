@@ -1,5 +1,7 @@
 export const filePreviewZhCN = {
+  filePreview: { loadFailed: '无法读取此文件，请重试。' },
   common: {
+    retry: '重试',
     save: '保存',
     cancel: '取消',
     gitDiff: 'Git 差异'
@@ -65,9 +67,8 @@ export const filePreviewZhCN = {
       onlyTheFirst512KiBIsShown:
         '当前仅显示文件的前 512 KiB；下载会读取节点允许范围内的完整文本文件。',
       filePreview2: '{value0} 文件预览',
-      thisFileTypeCannotBePreviewedIn:
-        '此文件类型暂不支持浏览器预览；你仍可使用右上角按钮下载文件。',
-      previewFailedDownloadInstead: '文件预览失败；你仍可使用右上角按钮下载文件。',
+      thisFileTypeCannotBePreviewedIn: '此文件类型不支持预览。',
+      previewFailedDownloadInstead: '无法预览此文件。',
       loadingPreview: '正在加载中…',
       filePreviewTabs: '文件预览标签'
     }

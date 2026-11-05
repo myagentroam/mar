@@ -99,7 +99,7 @@ const fileWorkbench = createWorkspaceFileWorkbenchController({
   onRevealFailure: () => {},
   comparison: async () => undefined,
   page: () => filePage,
-  preview: { http, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+  preview: { http, transfers: () => ({}), onWritten: () => {} },
   navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
 });
 function fileView(standaloneFileMode = false) {
@@ -124,6 +124,9 @@ function fileView(standaloneFileMode = false) {
     mobileViewport: window.innerWidth < 768,
     codeNavigationEnabled: false,
     fileWriteEnabled: true,
+    onNotice: (message: string) => {
+      document.documentElement.dataset['fileNotice'] = message;
+    },
     standaloneFileMode,
     onOpenHtmlPreview: (path: string) => {
       htmlPath.value = path;

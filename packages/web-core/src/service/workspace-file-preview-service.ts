@@ -24,7 +24,7 @@ import {
   TEXT_FILE_PREVIEW_LIMIT_BYTES,
   usesRawFilePreview
 } from '../util/file-preview.js';
-import { errorCode } from '../util/api-error.js';
+import { apiErrorFromResponse, errorCode } from '../util/api-error.js';
 
 interface FileRead {
   readonly encoding: 'utf-8' | 'base64';
@@ -54,7 +54,6 @@ export function workspaceFilePreviewUrl(
 export function createWorkspaceFilePreviewService(input: {
   readonly http: ScopedHttpService;
   readonly transfers: () => WorkspaceFilePreviewTransfers;
-  readonly onFailure: (error: unknown, target: WorkspaceFilePreviewTarget) => void;
   readonly onWritten: (target: WorkspaceFilePreviewTarget) => void | Promise<void>;
   readonly fetchContent?: typeof fetch;
 }) {
@@ -64,6 +63,7 @@ export function createWorkspaceFilePreviewService(input: {
       fileContent: shallowRef<WorkspaceFilePreviewContent>(),
       contentUrl: ref<string>(),
       loading: ref(false),
+      error: shallowRef<unknown>(),
       downloading: ref(false),
       readController: undefined as AbortController | undefined,
       operation: 0
@@ -85,6 +85,7 @@ export function createWorkspaceFilePreviewService(input: {
       fileContent: readonly(state.fileContent),
       contentUrl: readonly(state.contentUrl),
       loading: readonly(state.loading),
+      error: readonly(state.error),
       downloading: readonly(state.downloading)
     };
   }
@@ -142,21 +143,24 @@ export function createWorkspaceFilePreviewService(input: {
       truncated: false
     };
     state.loading.value = true;
+    state.error.value = undefined;
     try {
       if (fixedTarget.history !== undefined) {
         const history = fixedTarget.history;
         const fallback = workspaceFilePreviewUrl(fixedTarget);
         if (textPreview) {
-          const direct = await transfers.directGitFileReadRange?.(
-            history.commit,
-            target.path,
-            history.repositoryPath,
-            history.refs,
-            0,
-            TEXT_FILE_PREVIEW_LIMIT_BYTES,
-            undefined,
-            readController.signal
-          );
+          const direct = options.serverOnly
+            ? undefined
+            : await transfers.directGitFileReadRange?.(
+                history.commit,
+                target.path,
+                history.repositoryPath,
+                history.refs,
+                0,
+                TEXT_FILE_PREVIEW_LIMIT_BYTES,
+                undefined,
+                readController.signal
+              );
           if (!current()) return;
           let bytes: Uint8Array<ArrayBuffer>, size: number;
           if (direct !== undefined) {
@@ -168,7 +172,8 @@ export function createWorkspaceFilePreviewService(input: {
               signal: readController.signal,
               headers: { range: `bytes=0-${TEXT_FILE_PREVIEW_LIMIT_BYTES - 1}` }
             });
-            if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
+            if (!response.ok)
+              throw apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
             bytes = new Uint8Array(await response.arrayBuffer());
             const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
             size = total === undefined ? bytes.byteLength : Number(total);
@@ -186,9 +191,12 @@ export function createWorkspaceFilePreviewService(input: {
           return current() ? state.fileContent.value : undefined;
         }
         if (binaryFilePreviewKind(target.path) === 'unsupported') return state.fileContent.value;
-        const size = await historyFileSize(fixedTarget, transfers, readController.signal).catch(
-          () => undefined
-        );
+        const size = await historyFileSize(
+          fixedTarget,
+          transfers,
+          readController.signal,
+          options.serverOnly
+        ).catch(() => undefined);
         if (!current()) return;
         state.fileContent.value = {
           path: target.path,
@@ -197,15 +205,17 @@ export function createWorkspaceFilePreviewService(input: {
           content: '',
           truncated: false
         };
-        const direct = await readFilePreviewObject(target.path, async () =>
-          transfers.directGitFileObjectUrl?.(
-            history.commit,
-            target.path,
-            history.repositoryPath,
-            history.refs,
-            readController.signal
-          )
-        );
+        const direct = options.serverOnly
+          ? undefined
+          : await readFilePreviewObject(target.path, async () =>
+              transfers.directGitFileObjectUrl?.(
+                history.commit,
+                target.path,
+                history.repositoryPath,
+                history.refs,
+                readController.signal
+              )
+            );
         if (!current()) {
           if (direct?.startsWith('blob:')) revokeWorkspaceDirectObjectUrl(direct);
           return;
@@ -310,7 +320,7 @@ export function createWorkspaceFilePreviewService(input: {
           content: '',
           truncated: false
         };
-      else input.onFailure(error, fixedTarget);
+      else state.error.value = error;
     } finally {
       if (current()) {
         state.loading.value = false;
@@ -322,19 +332,22 @@ export function createWorkspaceFilePreviewService(input: {
   async function historyFileSize(
     target: WorkspaceFilePreviewTarget,
     transfers: WorkspaceFilePreviewTransfers,
-    signal: AbortSignal
+    signal: AbortSignal,
+    serverOnly = false
   ): Promise<number> {
     const history = target.history!;
-    const direct = await transfers.directGitFileReadRange?.(
-      history.commit,
-      target.path,
-      history.repositoryPath,
-      history.refs,
-      0,
-      1,
-      undefined,
-      signal
-    );
+    const direct = serverOnly
+      ? undefined
+      : await transfers.directGitFileReadRange?.(
+          history.commit,
+          target.path,
+          history.repositoryPath,
+          history.refs,
+          0,
+          1,
+          undefined,
+          signal
+        );
     if (direct !== undefined) return direct.size;
     signal.throwIfAborted();
     const response = await (input.fetchContent ?? fetch)(workspaceFilePreviewUrl(target), {
@@ -342,7 +355,8 @@ export function createWorkspaceFilePreviewService(input: {
       signal,
       headers: { range: 'bytes=0-0' }
     });
-    if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
+    if (!response.ok)
+      throw apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
     const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
     const size = Number(total ?? response.headers.get('content-length'));
     if (!Number.isSafeInteger(size) || size < 0) throw new Error('NODE_RESPONSE_INVALID');

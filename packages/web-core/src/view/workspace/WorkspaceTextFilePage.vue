@@ -79,6 +79,7 @@ const props = withDefaults(
     readonly file: FileContent;
     readonly kind: FilePreviewKind;
     readonly loading?: boolean;
+    readonly loadError?: string | undefined;
     readonly fullscreen?: boolean;
     readonly contained?: boolean;
     readonly downloading: boolean;
@@ -152,8 +153,12 @@ const appliedDirtyDrafts = new Set<string>();
 let confirmedClose = false;
 let activePath = editorStateKey(props.file.path);
 const editorTabStates = new Map<string, EditorTabState>();
-const codeEditorEnabled = computed(() => props.kind === 'text' && canUseCodeEditor(props.file));
-const fallbackTextEnabled = computed(() => props.kind === 'text' && !codeEditorEnabled.value);
+const codeEditorEnabled = computed(
+  () => !props.loadError && props.kind === 'text' && canUseCodeEditor(props.file)
+);
+const fallbackTextEnabled = computed(
+  () => !props.loadError && props.kind === 'text' && !codeEditorEnabled.value
+);
 const fallbackFindMatches = computed(() => {
   const query = fallbackFindQuery.value;
   if (query.length === 0) return [];
@@ -709,6 +714,8 @@ defineExpose({
     :file-name="file.path.split('/').at(-1) ?? file.path"
     :path="file.path"
     :loading="loading"
+    :load-error="loadError"
+    @retry="emit('reload')"
     :fullscreen="fullscreen"
     :contained="contained"
     :aria-hidden="active === false || undefined"

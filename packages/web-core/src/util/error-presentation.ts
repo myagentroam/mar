@@ -12,6 +12,20 @@ export function filePreviewErrorMessage(error: unknown, path: string): string {
   );
 }
 
+export function filePreviewErrorSummary(error: unknown, path: string): string {
+  const code = errorCode(error);
+  if (
+    code === 'FILE_NOT_FOUND' &&
+    (isComposerAttachmentResourcePath(path) || path.startsWith('.mar/temp-files/'))
+  )
+    return translate('errors.attachmentExpired');
+  if (code === 'HOSTED_CONVERSATION_FILE_NOT_FOUND')
+    return translate('hostedConversations.fileNotFound');
+  const key = `errors.${code}`;
+  const summary = translate(key, error instanceof ApiError ? error.parameters : undefined);
+  return summary === key ? translate('filePreview.loadFailed') : summary;
+}
+
 export function errorMessage(error: unknown, summaryOverride?: string): string {
   const code = errorCode(error);
   let summary = summaryOverride;

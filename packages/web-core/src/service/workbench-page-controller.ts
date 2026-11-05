@@ -1435,7 +1435,7 @@ export function createWorkbenchPageController<
     onBranch: (workspaceId, branch) =>
       updateWorkspaceBranch(workspaceTarget.value?.nodeId ?? '', workspaceId, branch),
     onFailure: (error, operation) => {
-      if (operation === 'RESTORE' || errorCode(error) === 'CAPABILITY_UNAVAILABLE')
+      if (operation === 'RESTORE')
         notice(
           translate('generated.workspaceInspector.unableToLoad', {
             value0: translate('generated.workspaceInspector.revertingChanges'),
@@ -1528,9 +1528,6 @@ export function createWorkbenchPageController<
     target: () => (filesReady.value ? workspaceTarget.value : undefined),
     workspaceName: () => workspaceFileTreeName.value,
     list: (target, path, cursor) => workspaceFileOperations.list(target, path, cursor),
-    onListFailure: (error) => {
-      if (errorCode(error) === 'CAPABILITY_UNAVAILABLE') reportWorkspaceFileFailure(error, 'Files');
-    },
     onWorkspace: (workspace) =>
       updateWorkspaceMetadata(workspaceTarget.value?.nodeId ?? '', workspace),
     onDeletedSelection: () => fileWorkbench.invalidateDeletedSelection(),
@@ -1603,8 +1600,6 @@ export function createWorkbenchPageController<
         directGitFileObjectUrl,
         directGitFileDownload
       }),
-      onFailure: (error, target) =>
-        notice(filePreviewErrorMessage(error, target.path), 'error', error),
       onWritten: (target) => {
         if (
           workspaceTarget.value?.nodeId !== target.nodeId ||

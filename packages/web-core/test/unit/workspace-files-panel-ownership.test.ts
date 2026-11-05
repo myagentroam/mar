@@ -50,7 +50,6 @@ it.each(['zh-CN', 'en-US'] as const)(
       preflight: vi.fn(),
       queue: vi.fn(),
       onFailure: vi.fn(),
-      onListFailure: vi.fn(),
       onWorkspace: vi.fn(),
       onMutationFailure: vi.fn(),
       onDeletedSelection: vi.fn(),
@@ -152,7 +151,7 @@ it.each([
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
       comparison: async () => undefined,
-      preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+      preview: { http, transfers: () => ({}), onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     await owner.openFile('old.ts');
@@ -173,7 +172,6 @@ it.each([
       preflight: async () => [],
       queue: vi.fn(),
       onFailure: vi.fn(),
-      onListFailure: vi.fn(),
       onWorkspace: vi.fn(),
       onDeletedSelection: deleted,
       onRevealSelection: async () => {},

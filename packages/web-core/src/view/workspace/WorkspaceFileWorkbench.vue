@@ -14,7 +14,11 @@ import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import WorkspaceGitDiffPage from './WorkspaceGitDiffPage.vue';
-import { errorMessage, filePreviewErrorMessage } from '../../util/error-presentation.js';
+import {
+  errorMessage,
+  filePreviewErrorMessage,
+  filePreviewErrorSummary
+} from '../../util/error-presentation.js';
 import {
   filePreviewKind,
   isHtmlFile,
@@ -225,10 +229,13 @@ const openWorkspaceFile = fileWorkbench.openWorkspaceFile;
 const openWorkspaceFileTab = fileWorkbench.openTab;
 
 async function reloadPreviewFile(preview: PreviewFrame): Promise<void> {
-  const path = preview.fileContent.value?.path;
-  if (path === undefined) return;
-  const position = workspaceFileTabsRef.value?.cursorPosition(preview.id);
-  await openWorkspaceFile(path, position?.line, preview.worktreePath.value, true, position?.column);
+  await fileWorkbench.reloadFile(preview.id);
+}
+
+function previewErrorFor(preview: PreviewFrame): string | undefined {
+  return preview.error.value === undefined
+    ? undefined
+    : filePreviewErrorSummary(preview.error.value, preview.target.value?.path ?? '');
 }
 
 async function openFile(path: string, line?: number, column?: number): Promise<void> {
@@ -446,6 +453,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
           :file="preview.fileContent.value"
           :kind="previewKindFor(preview)"
           :loading="preview.loading.value"
+          :load-error="previewErrorFor(preview)"
           :markdown="
             preview.repositoryPath === undefined &&
             preview.worktreePath.value === undefined &&
@@ -520,6 +528,8 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
           :file="preview.fileContent.value"
           :kind="previewKindFor(preview)"
           :loading="preview.loading.value"
+          :load-error="previewErrorFor(preview)"
+          @reload="reloadPreviewFile(preview)"
           @close="requestClose"
           @download="downloadPreviewFile(preview)"
         />
@@ -540,14 +550,6 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
         @close="requestClose"
         @download="downloadDiffContent($event, tab.path)"
         @edit="openDiffEditor(tab)"
-        @load-error="
-          markFailure(
-            $event,
-            tab.kind === 'HISTORY_DIFF'
-              ? translate('generated.workspaceInspector.historicalFileDiff')
-              : translate('generated.workspaceInspector.fileDiff')
-          )
-        "
         @move-file="moveDiffFile(tab, $event)"
         @preview="previewDiffFile(tab, $event)"
         @navigate-symbol="navigateDiffSymbol(tab, $event)"

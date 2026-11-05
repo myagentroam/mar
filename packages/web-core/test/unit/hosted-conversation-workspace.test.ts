@@ -746,7 +746,6 @@ describe('Web Hosted Conversation Workspace Service', () => {
         readFile,
         contentUrl
       },
-      onError: vi.fn(),
       triggerDownload
     });
 
@@ -806,16 +805,43 @@ describe('Web Hosted Conversation Workspace Service', () => {
         file: { ...file, updatedAt: 2 },
         content: btoa('after!')
       });
-    const onError = vi.fn();
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() },
-      onError
+      source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() }
     });
 
     await preview.openFile(file);
 
     expect(readFile).toHaveBeenCalledTimes(2);
-    expect(onError).toHaveBeenCalledExactlyOnceWith(new Error('FILE_PREVIEW_REVISION_CHANGED'));
+    expect(preview.error.value).toEqual(new Error('FILE_PREVIEW_REVISION_CHANGED'));
+    expect(preview.visible.value).toBe(true);
+    expect(preview.loading.value).toBe(false);
+    expect(preview.content.value?.content).toBe('');
+    readFile.mockResolvedValue({
+      ...probe,
+      file: { ...file, updatedAt: 2 },
+      content: btoa('recovered'),
+      eof: true,
+      nextOffset: null
+    });
+    await preview.retry();
+    expect(preview.error.value).toBeUndefined();
+    expect(preview.content.value?.content).toBe('recovered');
+    expect(preview.visible.value).toBe(true);
+
+    let rejectRead!: (error: Error) => void;
+    readFile.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject;
+        })
+    );
+    const reopening = preview.openFile(file);
+    expect(preview.loading.value).toBe(true);
+    preview.close();
+    rejectRead(new Error('late read failure'));
+    await reopening;
+    expect(preview.error.value).toBeUndefined();
+    expect(preview.loading.value).toBe(false);
     expect(preview.visible.value).toBe(false);
     expect(preview.content.value).toBeUndefined();
     preview.dispose();
@@ -847,8 +873,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
         selectedConversationId: ref('conversation-1'),
         readFile,
         contentUrl: vi.fn()
-      },
-      onError: vi.fn()
+      }
     });
 
     await preview.openFile(file, 23, 7);
@@ -890,8 +915,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
           eof: true
         }),
         contentUrl: vi.fn()
-      },
-      onError: vi.fn()
+      }
     });
     await preview.openFile(file);
     expect(preview.kind.value).toBe('text');
@@ -931,11 +955,9 @@ describe('Web Hosted Conversation Workspace Service', () => {
       nextOffset: null,
       eof: true
     }));
-    const onError = vi.fn();
     const contentUrl = vi.fn(() => '/controlled-content');
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref('conversation-1'), readFile, contentUrl },
-      onError
+      source: { selectedConversationId: ref('conversation-1'), readFile, contentUrl }
     });
 
     await preview.openFile(file);
@@ -945,7 +967,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(preview.kind.value).toBe(text ? 'text' : 'unsupported');
     expect(preview.content.value?.content).toBe(text ? new TextDecoder().decode(bytes) : '');
     expect(contentUrl).not.toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
+    expect(preview.error.value).toBeUndefined();
   });
 
   it('Consume only a single opaque cursor for Server aggregation and reject unknown response fields', async () => {

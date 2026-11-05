@@ -720,6 +720,23 @@ export function createWorkspaceFileWorkbenchController(options: {
       navigateInPage(pageId, target.line, target.column);
     else void openFile(target.path, target.line, target.column);
   }
+  async function reloadFile(id: number): Promise<void> {
+    const frame = frames.value.find((item) => item.id === id);
+    const target = frame?.target.value;
+    if (frame === undefined || target === undefined || frame.loading.value) return;
+    const position = page()?.cursorPosition(id);
+    if (position !== undefined) {
+      frame.targetLine.value = position.line;
+      frame.targetColumn.value = position.column;
+    }
+    navigation.clear(id);
+    const size = frame.fileContent.value?.size;
+    await previews.open(id, target, {
+      serverOnly: true,
+      ...(size === undefined ? {} : { size })
+    });
+  }
+
   function restore(value: unknown): void {
     if (typeof value !== 'object' || value === null) return;
     const snapshot = value as Partial<WorkspaceFileWorkbenchSnapshot>;
@@ -745,6 +762,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     activateTab,
     openNavigationTarget,
     saveFile: previews.save,
+    reloadFile,
     downloadFile: previews.download,
     downloadTarget: previews.downloadTarget,
     navigate: navigation.navigate,

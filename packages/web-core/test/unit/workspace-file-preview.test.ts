@@ -80,16 +80,14 @@ function createHarness(
           headers: { 'content-range': 'bytes 0-7/8' }
         })
     );
-  const onFailure = vi.fn();
   const onWritten = options.onWritten ?? vi.fn<(target: WorkspaceFilePreviewTarget) => void>();
   const preview = createWorkspaceFilePreviewService({
     http,
     transfers: () => options.transfers ?? {},
     fetchContent,
-    onFailure,
     onWritten
   });
-  return { preview, request, fetchContent, onFailure, onWritten };
+  return { preview, request, fetchContent, onWritten };
 }
 
 async function openServerText(
@@ -106,9 +104,34 @@ afterEach(() => {
 });
 
 describe('Workspace file preview service', () => {
+  it('keeps read failures on their file page and clears them when retrying', async () => {
+    const failure = new Error('File was not found.');
+    const retry = deferred<ReturnType<typeof textFile>>();
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(failure)
+      .mockImplementationOnce(() => retry.promise);
+    const { preview } = createHarness({ request });
+    const page = preview.page(1);
+
+    await openServerText(preview, 1);
+    expect(page.error.value).toBe(failure);
+    expect(page.loading.value).toBe(false);
+    expect(preview.page(2).error.value).toBeUndefined();
+
+    const opening = openServerText(preview, 1);
+    expect(page.error.value).toBeUndefined();
+    expect(page.loading.value).toBe(true);
+    retry.resolve(textFile('Recovered content'));
+    await opening;
+    expect(page.fileContent.value?.content).toBe('Recovered content');
+    expect(page.error.value).toBeUndefined();
+    expect(page.loading.value).toBe(false);
+  });
+
   it('cancels an in-flight server read when its tab closes', async () => {
     const pending = deferred<ReturnType<typeof textFile>>();
-    const { preview, request, onFailure } = createHarness({ request: () => pending.promise });
+    const { preview, request } = createHarness({ request: () => pending.promise });
     const opening = preview.open(1, defaultTarget, { serverOnly: true });
     const signal = request.mock.calls[0]?.[1]?.signal;
     expect(signal).toBeInstanceOf(AbortSignal);
@@ -116,7 +139,7 @@ describe('Workspace file preview service', () => {
     expect(signal?.aborted).toBe(true);
     pending.resolve(textFile('late'));
     await opening;
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(preview.page(1).error.value).toBeUndefined();
   });
 
   it('cancels the previous direct range when opening a new target in the tab', async () => {
@@ -530,7 +553,7 @@ describe('Workspace file preview service', () => {
     const readB = deferred<WorkspaceDirectFileRange | undefined>();
     let call = 0;
     const directFileReadRange = vi.fn(() => (call++ === 0 ? readA.promise : readB.promise));
-    const { preview, onFailure } = createHarness({ transfers: { directFileReadRange } });
+    const { preview } = createHarness({ transfers: { directFileReadRange } });
 
     const openingA = preview.open(1, fileTarget({ path: 'a.txt' }));
     const openingB = preview.open(1, fileTarget({ path: 'b.txt' }));
@@ -545,7 +568,7 @@ describe('Workspace file preview service', () => {
       content: 'content B'
     });
     expect(preview.page(1).loading.value).toBe(false);
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(preview.page(1).error.value).toBeUndefined();
   });
 
   it('isolates late successes and failures after reset and close', async () => {
@@ -563,7 +586,7 @@ describe('Workspace file preview service', () => {
       (path: string) =>
         pendingByPath.get(path)?.promise ?? Promise.resolve(directRange(`fresh:${path}`))
     );
-    const { preview, onFailure } = createHarness({ transfers: { directFileReadRange } });
+    const { preview } = createHarness({ transfers: { directFileReadRange } });
 
     const resetOldSuccess = preview.open(1, fileTarget({ path: 'reset-stale-success.txt' }));
     const resetOldFailure = preview.open(2, fileTarget({ path: 'reset-stale-failure.txt' }));
@@ -587,13 +610,14 @@ describe('Workspace file preview service', () => {
     for (const id of [1, 2, 3, 4]) {
       const content = preview.page(id).target.value?.path;
       expect(preview.page(id).fileContent.value?.content).toBe(`fresh:${content}`);
+      expect(preview.page(id).error.value).toBeUndefined();
     }
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(preview.page(1).error.value).toBeUndefined();
   });
 
   it('refuses writes while loading and settles loading when the page closes', async () => {
     const read = deferred<ReturnType<typeof textFile>>();
-    const { preview, request, onFailure } = createHarness({ request: async () => read.promise });
+    const { preview, request } = createHarness({ request: async () => read.promise });
     const page = preview.page(7);
     const opening = preview.open(7, fileTarget());
     expect(page.loading.value).toBe(true);
@@ -604,7 +628,7 @@ describe('Workspace file preview service', () => {
     await opening;
     expect(page.loading.value).toBe(false);
     expect(request).toHaveBeenCalledTimes(1);
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(page.error.value).toBeUndefined();
   });
 
   it.each([

@@ -18,6 +18,7 @@ import { createMobilePreviewPinchZoom } from '../../util/mobile-preview-pinch-zo
 import type { FileNavigationRequest } from './CodeFileEditor.vue';
 import InlineFindBar from './InlineFindBar.vue';
 import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
+import FilePreviewState from './FilePreviewState.vue';
 import WorkspacePreviewContextMenu from './WorkspacePreviewContextMenu.vue';
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const props = defineProps<{
   readonly paths: readonly string[];
   readonly loading: boolean;
   readonly loadFailed?: boolean;
+  readonly loadErrorMessage?: string | undefined;
   readonly source?: 'WORKING_TREE' | 'HISTORY' | 'TOOL_CHANGE';
   readonly previewEnabled: boolean;
   readonly active?: boolean;
@@ -878,36 +880,42 @@ defineExpose({
       @contextmenu="contextMenu?.open($event)"
     >
       <template v-if="!props.loading">
-        <section v-if="props.loadFailed" class="diff-state-message">
-          <p>{{ translate('generated.gitDiffViewer.gitDiffLoadFailed') }}</p>
-          <el-button @click="emit('retry')">
-            {{ translate('generated.gitDiffViewer.retry') }}
-          </el-button>
-        </section>
-        <section v-else-if="value?.binary === true" class="binary-diff-preview">
-          <p>{{ translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff') }}</p>
-          <span
-            v-tooltip="{
-              content: previewEnabled
-                ? undefined
-                : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode'),
-              disabled: previewEnabled
-            }"
-            class="mar-tooltip-control"
-            ><el-button
-              type="primary"
-              :disabled="!previewEnabled"
-              :aria-description="
-                previewEnabled
+        <FilePreviewState
+          v-if="props.loadFailed"
+          retryable
+          :message="
+            props.loadErrorMessage ?? translate('generated.gitDiffViewer.gitDiffLoadFailed')
+          "
+          @retry="emit('retry')"
+        />
+        <FilePreviewState
+          v-else-if="value?.binary === true"
+          :message="translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff')"
+        >
+          <template #actions>
+            <span
+              v-tooltip="{
+                content: previewEnabled
                   ? undefined
-                  : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
-              "
-              @click="emit('preview')"
+                  : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode'),
+                disabled: previewEnabled
+              }"
+              class="mar-tooltip-control"
+              ><el-button
+                size="small"
+                :disabled="!previewEnabled"
+                :aria-description="
+                  previewEnabled
+                    ? undefined
+                    : translate('generated.gitDiffViewer.filePreviewRequiresNewerNode')
+                "
+                @click="emit('preview')"
+              >
+                {{ translate('generated.gitDiffViewer.openFilePreview') }}
+              </el-button></span
             >
-              {{ translate('generated.gitDiffViewer.openFilePreview') }}
-            </el-button></span
-          >
-        </section>
+          </template>
+        </FilePreviewState>
         <section v-else-if="hasWorkingTreeFullText" class="unified-diff-pane">
           <small v-if="value?.afterTruncated === true" class="unified-diff-truncation">{{
             translate('generated.gitDiffViewer.showingTheFirst512KiB')
@@ -936,9 +944,16 @@ defineExpose({
             class="unified-history-diff"
           ><code><span v-for="(line, index) in diffText.split('\n')" :key="index" :class="historyDiffLineKinds[index]"><template v-if="findOpen && findQuery"><template v-for="(segment, segmentIndex) in findResult.lines[index]" :key="segmentIndex"><mark v-if="segment.matchIndex !== undefined" :class="{ 'is-current': segment.matchIndex === activeFindIndex }" :data-inline-find-index="segment.matchIndex">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template></template><template v-else>{{ line }}</template></span></code></pre>
         </template>
-        <p v-else class="diff-state-message">
-          {{ translate('generated.gitDiffViewer.gitDiffHasNoDisplayableTextContent') }}
-        </p>
+        <FilePreviewState
+          v-else
+          :message="translate('generated.gitDiffViewer.gitDiffHasNoDisplayableTextContent')"
+        >
+          <template v-if="previewEnabled" #actions
+            ><el-button size="small" @click="emit('preview')">{{
+              translate('generated.gitDiffViewer.openFilePreview')
+            }}</el-button></template
+          >
+        </FilePreviewState>
         <aside
           v-if="hasWorkingTreeFullText && minimapRows.length"
           ref="minimap"
@@ -985,24 +1000,6 @@ defineExpose({
 }
 .diff-preview-toolbar {
   align-items: center;
-}
-.binary-diff-preview {
-  place-self: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  color: var(--mar-text-secondary);
-  text-align: center;
-}
-.diff-state-message {
-  place-self: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--mar-text-secondary);
-  text-align: center;
 }
 .diff-fallback-message {
   margin: 0;

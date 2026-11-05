@@ -2,7 +2,7 @@ import type {
   ConversationFileProjection,
   HostedConversationFileReadResult
 } from '@myagentroam/protocol';
-import { computed, ref } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { readFilePreview } from './file-preview-read-service.js';
 import {
   decodeFilePreviewContent,
@@ -34,7 +34,6 @@ interface HostedConversationFilePreviewOptions {
     ) => Promise<HostedConversationFileReadResult>;
     readonly contentUrl: (file: ConversationFileProjection, download?: boolean) => string;
   };
-  readonly onError: (error: unknown) => void;
   readonly triggerDownload?: (url: string, name: string) => void;
 }
 
@@ -43,6 +42,8 @@ export function createHostedConversationFilePreviewService(
   options: HostedConversationFilePreviewOptions
 ) {
   const visible = ref(false);
+  const loading = ref(false);
+  const error = shallowRef<unknown>();
   const downloading = ref(false);
   const file = ref<ConversationFileProjection>();
   const content = ref<HostedConversationPreviewContent>();
@@ -69,16 +70,24 @@ export function createHostedConversationFilePreviewService(
     nextTargetColumn?: number
   ): Promise<void> {
     const sequence = ++previewSequence;
+    const path = projectedFilePath(nextFile);
+    const text = shouldReadTextFilePreview(path, nextFile.mimeType);
     downloading.value = false;
     file.value = nextFile;
-    visible.value = false;
-    content.value = undefined;
+    visible.value = true;
+    loading.value = true;
+    error.value = undefined;
+    content.value = {
+      path,
+      size: nextFile.size,
+      encoding: text ? 'utf-8' : 'base64',
+      content: '',
+      truncated: false
+    };
     targetLine.value = nextTargetLine;
     targetColumn.value = nextTargetColumn;
     contentUrl.value = undefined;
     try {
-      const path = projectedFilePath(nextFile);
-      const text = shouldReadTextFilePreview(path, nextFile.mimeType);
       if (text) {
         const result = await readFilePreview(
           async (
@@ -118,14 +127,27 @@ export function createHostedConversationFilePreviewService(
       if (content.value.encoding === 'base64' && filePreviewKind(path, 'base64') !== 'unsupported')
         contentUrl.value = options.source.contentUrl(nextFile);
       visible.value = true;
-    } catch (error) {
-      if (sequence === previewSequence) options.onError(error);
+    } catch (failure) {
+      if (matchesPreview(sequence, nextFile)) error.value = failure;
+    } finally {
+      if (matchesPreview(sequence, nextFile)) loading.value = false;
     }
+  }
+
+  async function retry(): Promise<void> {
+    if (
+      file.value !== undefined &&
+      file.value.conversationId === options.source.selectedConversationId.value &&
+      !loading.value
+    )
+      await openFile(file.value, targetLine.value, targetColumn.value);
   }
 
   function close(): void {
     previewSequence += 1;
     visible.value = false;
+    loading.value = false;
+    error.value = undefined;
     downloading.value = false;
     file.value = undefined;
     content.value = undefined;
@@ -157,6 +179,8 @@ export function createHostedConversationFilePreviewService(
 
   return {
     visible,
+    loading,
+    error,
     downloading,
     file,
     content,
@@ -165,6 +189,7 @@ export function createHostedConversationFilePreviewService(
     targetColumn,
     kind,
     openFile,
+    retry,
     close,
     download,
     dispose: close

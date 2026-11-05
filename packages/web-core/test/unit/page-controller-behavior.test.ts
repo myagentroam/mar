@@ -447,7 +447,111 @@ describe('Workbench controller composition behavior', () => {
         vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 404 }))
       );
       await page.fileWorkbench.openWorkspaceFile('missing/failure.md');
-      expect(show).toHaveBeenCalledTimes(code === 'PERMISSION_DENIED' ? 2 : 1);
+      const failed = page.fileWorkbench.frames.value.find(
+        (frame) => frame.target.value?.path === 'missing/failure.md'
+      )!;
+      expect(failed.error.value).toMatchObject({ code });
+      expect(failed.loading.value).toBe(false);
+      expect(page.fileWorkbench.frames.value[0]?.fileContent.value?.content).toBe('safe');
+      expect(show).toHaveBeenCalledTimes(code === 'PERMISSION_DENIED' ? 1 : 0);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                file: {
+                  encoding: 'utf-8',
+                  size: 9,
+                  content: 'recovered',
+                  nextOffset: null,
+                  revision: 'b'.repeat(64)
+                }
+              })
+            )
+        )
+      );
+      await page.fileWorkbench.reloadFile(failed.id);
+      expect(failed.error.value).toBeUndefined();
+      expect(failed.fileContent.value?.content).toBe('recovered');
+    }
+  );
+
+  it.each(['files', 'changes', 'history'] as const)(
+    'keeps a %s capability failure in its owner and recovers without a Message',
+    async (area) => {
+      const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
+      const { page } = controller();
+      const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+      page.nodes.value = [node];
+      page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+      await flushComponent();
+      page.workspaceTreeService.cacheWorkspaces(node.id, [workspace]);
+      page.workspaces.value = [workspace];
+      page.nodeManifest.value = {
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null },
+        git: { available: true, reasonCode: null, supportsHistory: true }
+      };
+      let fail = true;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (request: string | URL | Request) => {
+          const path = new URL(String(request), 'https://console.example.test').pathname;
+          if (path.endsWith('/git/refs')) return new Response(JSON.stringify({ refs: [] }));
+          if (fail)
+            return new Response(JSON.stringify({ error: 'CAPABILITY_UNAVAILABLE' }), {
+              status: 403
+            });
+          return new Response(
+            JSON.stringify(
+              area === 'files'
+                ? {
+                    workspace,
+                    files: {
+                      entries: [
+                        { path: 'recovered.ts', name: 'recovered.ts', kind: 'FILE', size: 1 }
+                      ],
+                      nextCursor: null
+                    }
+                  }
+                : area === 'changes'
+                  ? { workspace, changes: [] }
+                  : { commits: [], nextCursor: null }
+            )
+          );
+        })
+      );
+      const read = () =>
+        area === 'files'
+          ? page.workspaceFiles.refresh()
+          : area === 'changes'
+            ? page.workspaceGit.loadChanges()
+            : page.workspaceGit.loadHistory(true);
+      await read();
+      const failure =
+        area === 'files'
+          ? page.workspaceFiles.tree.refreshError.value?.cause
+          : area === 'changes'
+            ? page.workspaceGit.changesFailureCause.value
+            : page.workspaceGit.historyFailureCause.value;
+      expect(failure).toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' });
+      expect(show).not.toHaveBeenCalled();
+      fail = false;
+      await read();
+      if (area === 'files') {
+        expect(page.workspaceFiles.tree.refreshError.value).toBeUndefined();
+        expect(page.workspaceFiles.tree.root.value.children[0]?.path).toBe('recovered.ts');
+      } else if (area === 'changes') {
+        expect(page.workspaceGit.changesFailureCause.value).toBeUndefined();
+        expect(page.workspaceGit.changesError.value).toBe(false);
+      } else {
+        expect(page.workspaceGit.historyFailureCause.value).toBeUndefined();
+        expect(page.workspaceGit.historyError.value).toBeUndefined();
+      }
+      expect(show).not.toHaveBeenCalled();
     }
   );
 
@@ -478,7 +582,31 @@ describe('Workbench controller composition behavior', () => {
     );
     await page.fileWorkbench.openWorkspaceFile('missing.txt');
     expect(page.workspaceGit.snapshot().changes).toEqual(changes);
-    expect(show).toHaveBeenCalledOnce();
+    const failed = page.fileWorkbench.frames.value[0]!;
+    expect(failed.error.value).toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' });
+    expect(failed.loading.value).toBe(false);
+    expect(show).not.toHaveBeenCalled();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              file: {
+                encoding: 'utf-8',
+                size: 9,
+                content: 'recovered',
+                nextOffset: null,
+                revision: 'c'.repeat(64)
+              }
+            })
+          )
+      )
+    );
+    await page.fileWorkbench.reloadFile(failed.id);
+    expect(failed.error.value).toBeUndefined();
+    expect(failed.fileContent.value?.content).toBe('recovered');
+    expect(page.workspaceGit.snapshot().changes).toEqual(changes);
   });
 
   it('does not reapply stale Git Watch metadata after Files changes the Workspace kind', async () => {

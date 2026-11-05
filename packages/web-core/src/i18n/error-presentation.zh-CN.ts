@@ -14,6 +14,8 @@ export const errorPresentationZhCN = {
     MAR_AGENT_AUTO_UNSUPPORTED: '此 Node 不支持 MAR Agent Auto。请升级 Node，或明确选择完全访问。',
     attachmentExpired: '文件已过期',
     FILE_NOT_FOUND: '文件不存在。',
+    PERMISSION_DENIED: '没有访问此资源的权限。',
+    CAPABILITY_UNAVAILABLE: '当前 Node 暂不支持此功能。',
     IMAGE_PREVIEW_FAILED: '无法预览此图片，请重试或下载文件。',
     withDiagnostics: '{summary}\n{diagnostics}',
     diagnosticCode: '错误码：{value}',

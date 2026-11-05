@@ -7,7 +7,6 @@ import {
 const treeOptions = {
   workspaceName: () => 'workspace',
   list: async () => ({ entries: [], nextCursor: null }),
-  onListFailure: vi.fn(),
   onWorkspace: vi.fn(),
   onDeletedSelection: vi.fn(),
   onRevealSelection: vi.fn(async () => {}),

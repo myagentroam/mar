@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, useSlots } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
+import FilePreviewState from './FilePreviewState.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -11,6 +12,7 @@ const props = withDefaults(
     readonly path: string;
     readonly sourceLabel?: string | undefined;
     readonly loading?: boolean;
+    readonly loadError?: string | undefined;
     readonly fullscreen?: boolean;
     readonly contained?: boolean;
     readonly mobileActionsLabel?: string | undefined;
@@ -20,6 +22,7 @@ const props = withDefaults(
 );
 
 const pathLabel = computed(() => (props.path === props.fileName ? undefined : props.path));
+const emit = defineEmits<{ retry: [] }>();
 const root = ref<HTMLElement>();
 const mobileActionsExpanded = ref(true);
 const slots = useSlots();
@@ -61,7 +64,13 @@ defineExpose({ root });
     </header>
     <div class="workspace-file-page-frame-content">
       <FilePreviewLoading v-if="props.loading" overlay />
-      <slot />
+      <FilePreviewState
+        v-if="!props.loading && props.loadError"
+        :message="props.loadError"
+        retryable
+        @retry="emit('retry')"
+      />
+      <slot v-else-if="!props.loadError" />
     </div>
     <div
       v-if="slots['mobile-actions']"

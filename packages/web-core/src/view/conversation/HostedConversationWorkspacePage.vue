@@ -30,7 +30,7 @@ import type { ConversationItem, ConversationTurn } from '../../model/workbench.j
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
-import { errorMessage } from '../../util/error-presentation.js';
+import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
@@ -294,9 +294,13 @@ const conversationImages = createConversationImageService(props.workspace.select
 });
 const filePage = ref<{ focus(): void }>();
 const filePreview = createHostedConversationFilePreviewService({
-  source: props.workspace,
-  onError: (error) => showMessage(hostedErrorMessage(error), 'error', error)
+  source: props.workspace
 });
+const filePreviewError = computed(() =>
+  filePreview.error.value === undefined
+    ? undefined
+    : filePreviewErrorSummary(filePreview.error.value, filePreview.file.value?.relativePath ?? '')
+);
 
 function closeMobileHistory(): void {
   emit('closeMobileHistory');
@@ -1429,6 +1433,9 @@ onBeforeUnmount(() => {
           "
           :downloading="filePreview.downloading.value"
           :file="filePreview.content.value"
+          :loading="filePreview.loading.value"
+          :load-error="filePreviewError"
+          @reload="filePreview.retry"
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"
@@ -1453,6 +1460,9 @@ onBeforeUnmount(() => {
           :content-url="filePreview.contentUrl.value"
           :downloading="filePreview.downloading.value"
           :file="filePreview.content.value"
+          :loading="filePreview.loading.value"
+          :load-error="filePreviewError"
+          @reload="filePreview.retry"
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"

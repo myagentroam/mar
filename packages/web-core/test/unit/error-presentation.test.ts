@@ -1,9 +1,55 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
-import { errorMessage, filePreviewErrorMessage } from '../../src/util/error-presentation.js';
+import {
+  errorMessage,
+  filePreviewErrorMessage,
+  filePreviewErrorSummary
+} from '../../src/util/error-presentation.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 afterEach(() => localePreferenceService().setLocale('en-US'));
+
+it.each(['en-US', 'zh-CN'] as const)(
+  'uses code-mapped human summaries without diagnostics in file content (%s)',
+  (locale) => {
+    localePreferenceService().setLocale(locale);
+    for (const code of [
+      'FILE_NOT_FOUND',
+      'PERMISSION_DENIED',
+      'CAPABILITY_UNAVAILABLE',
+      'HOSTED_CONVERSATION_FILE_NOT_FOUND'
+    ]) {
+      const error = new ApiError(
+        code,
+        'Untrusted upstream summary',
+        {},
+        'diagnostic details',
+        'request-id',
+        'upstream-id'
+      );
+      const summary = filePreviewErrorSummary(error, 'src/missing.ts');
+      for (const diagnostic of [
+        code,
+        error.message,
+        error.details!,
+        error.requestId!,
+        error.upstreamRequestId!
+      ])
+        expect(summary).not.toContain(diagnostic);
+      expect(summary).not.toContain('errors.');
+      expect(summary.length).toBeGreaterThan(0);
+      if (code === 'FILE_NOT_FOUND')
+        expect(summary).toBe(locale === 'zh-CN' ? '文件不存在。' : 'File not found.');
+      expect(errorMessage(error)).toContain(code);
+    }
+    expect(filePreviewErrorSummary(new Error('INTERNAL_FAILURE'), 'src/unknown.ts')).toBe(
+      locale === 'zh-CN' ? '无法读取此文件，请重试。' : 'Unable to load the file.'
+    );
+    expect(
+      filePreviewErrorSummary(new ApiError('FILE_NOT_FOUND', 'raw'), '.mar/temp-files/image.png')
+    ).toBe(locale === 'zh-CN' ? '文件已过期' : 'File has expired');
+  }
+);
 
 describe('Public Error Presentation', () => {
   it.each(['en-US', 'zh-CN'] as const)(
