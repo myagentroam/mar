@@ -1,6 +1,6 @@
 import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import { filePreviewKind } from '../../src/util/file-preview.js';
 import { standaloneFileOpenIntent } from '../../src/service/standalone-file-window-service.js';
@@ -1164,6 +1164,145 @@ it('captures dirty drafts and cursor when suspending, but refuses while saving',
   owner.closeTabs([tab.id]);
   expect(owner.snapshot().dirtyTextDrafts).toEqual([]);
   expect(owner.hasSuspendedDrafts()).toBe(false);
+});
+
+it('keeps full reset semantics for target switches and explicit reset', async () => {
+  const target = ref({ nodeId: 'n', workspaceId: 'a' });
+  const http = createScopedHttpService();
+  let identity = '';
+  let path = 'a.ts';
+  const owner = createWorkspaceFileWorkbenchController({
+    externalTarget: () => target.value,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target.value,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison: async () => undefined,
+    page: () => ({
+      requestCloseAll: async () => true,
+      captureDirtyDrafts: () => [
+        { tabIdentity: identity, path, content: 'unsaved', expectedRevision: 'r1' }
+      ],
+      hasPendingSave: () => false,
+      cursorPosition: () => undefined,
+      navigateTo: vi.fn(),
+      focusPage: vi.fn(() => true)
+    }),
+    access: createFileAccessFixture({
+      http,
+      transfers: () => ({
+        directFileReadRange: async () => ({
+          bytes: new TextEncoder().encode('text'),
+          size: 4,
+          offset: 0,
+          nextOffset: null,
+          revision: 'r1'
+        })
+      })
+    }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() },
+    lifecycle: {
+      ready: () => true,
+      workspaceKind: () => 'GIT_WORKSPACE',
+      isReloadingForUpdate: () => false,
+      bootstrap: {
+        authenticated: () => true,
+        hasNodes: () => true,
+        manifestLoading: () => false,
+        selectWorkspace: async () => true,
+        captureRoute: vi.fn()
+      }
+    }
+  });
+
+  try {
+    await owner.openFile(path);
+    identity = owner.activeTab.value!.identity;
+    expect(owner.suspendForHtml()).toBe(true);
+    expect(owner.hasSuspendedDrafts()).toBe(true);
+
+    target.value = { nodeId: 'n', workspaceId: 'b' };
+    await nextTick();
+    expect(owner.tabList.value).toEqual([]);
+    expect(owner.frames.value).toEqual([]);
+    expect(owner.suspended.value).toBe(false);
+    expect(owner.hasDraft(identity)).toBe(false);
+
+    path = 'b.ts';
+    await owner.openFile(path);
+    identity = owner.activeTab.value!.identity;
+    expect(owner.suspendForHtml()).toBe(true);
+    expect(owner.hasSuspendedDrafts()).toBe(true);
+    owner.reset();
+    expect(owner.tabList.value).toEqual([]);
+    expect(owner.frames.value).toEqual([]);
+    expect(owner.suspended.value).toBe(false);
+    expect(owner.hasDraft(identity)).toBe(false);
+  } finally {
+    owner.dispose();
+  }
+});
+
+it('aborts a pending preview read on dispose and ignores its late result', async () => {
+  const target = { nodeId: 'n', workspaceId: 'w' };
+  let finishRead!: (value: WorkspaceDirectFileRange) => void;
+  let readSignal: AbortSignal | undefined;
+  const pendingRead = new Promise<WorkspaceDirectFileRange>((resolve) => {
+    finishRead = resolve;
+  });
+  const directFileReadRange = vi.fn(
+    (
+      ...args: [string, number, number, string?, unknown?, string?, AbortSignal?]
+    ): Promise<WorkspaceDirectFileRange> => {
+      readSignal = args[6];
+      return pendingRead;
+    }
+  );
+  const http = createScopedHttpService();
+  const owner = createWorkspaceFileWorkbenchController({
+    externalTarget: () => target,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison: async () => undefined,
+    page: () => undefined,
+    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange }) }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
+  });
+  let disposed = false;
+
+  try {
+    const opening = owner.openFile('pending.ts');
+    await vi.waitFor(() => expect(readSignal).toBeDefined());
+    const frame = owner.frames.value[0]!;
+    owner.dispose();
+    disposed = true;
+    expect(readSignal?.aborted).toBe(true);
+
+    finishRead({
+      bytes: new Uint8Array([108, 97, 116, 101]),
+      size: 4,
+      offset: 0,
+      nextOffset: null,
+      revision: 'r1'
+    });
+    await opening;
+    expect(frame.fileContent.value?.content).toBe('');
+    expect(frame.loading.value).toBe(false);
+  } finally {
+    if (!disposed) owner.dispose();
+  }
 });
 
 it('commits confirmed closure of an unmounted dirty tab without retaining its draft', () => {

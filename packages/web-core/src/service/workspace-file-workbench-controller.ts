@@ -746,7 +746,10 @@ export function createWorkspaceFileWorkbenchController(options: {
     tabs.clear();
   }
   function invalidateDeletedSelection(): void {
-    reset();
+    invalidateTarget();
+    setSuspended(false);
+    drafts.clear();
+    closeAllPreviews();
   }
   function removeGitTabs(): void {
     closeTabs(

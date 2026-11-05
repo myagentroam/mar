@@ -196,3 +196,100 @@ it('does not let a stale tree refresh clear a new target refresh', async () => {
   expect(controller.refreshing.value).toBe(false);
   expect(controller.tree.root.value.loaded).toBe(true);
 });
+
+it.each([
+  ['selected file', 'src/file.ts', 'src/file.ts', true],
+  ['ancestor directory', 'src/nested/file.ts', 'src', true],
+  ['unrelated file', 'src/file.ts', 'other.ts', false]
+] as const)(
+  'matches deleted-selection invalidation for %s',
+  async (_case, selectedPath, deletedPath, shouldInvalidate) => {
+    const onDeletedSelection = vi.fn();
+    const controller = createWorkspaceFilesController({
+      ...treeOptions,
+      target: () => ({ nodeId: 'n', workspaceId: 'a' }),
+      onDeletedSelection,
+      preflight: async () => [],
+      queue: vi.fn(),
+      onFailure: vi.fn()
+    });
+    controller.tree.applyRootPage({
+      entries: [
+        {
+          path: selectedPath,
+          name: selectedPath.split('/').at(-1)!,
+          kind: 'FILE',
+          size: 1
+        }
+      ],
+      nextCursor: null
+    });
+    controller.tree.selectPath(selectedPath);
+
+    await controller.mutate(controller.captureTarget()!, 'DELETE', deletedPath);
+
+    expect(onDeletedSelection).toHaveBeenCalledTimes(shouldInvalidate ? 1 : 0);
+  }
+);
+
+it('ignores a failed or stale deletion response for the selected file', async () => {
+  let target = { nodeId: 'n', workspaceId: 'a' };
+  let finish!: (value: string | undefined) => void;
+  const onDeletedSelection = vi.fn();
+  const onMutationFailure = vi.fn();
+  const mutate = vi.fn(() => new Promise<string | undefined>((resolve) => (finish = resolve)));
+  const controller = createWorkspaceFilesController({
+    ...treeOptions,
+    target: () => target,
+    onDeletedSelection,
+    onMutationFailure,
+    mutate,
+    preflight: async () => [],
+    queue: vi.fn(),
+    onFailure: vi.fn()
+  });
+
+  controller.tree.applyRootPage({
+    entries: [{ path: 'src/file.ts', name: 'file.ts', kind: 'FILE', size: 1 }],
+    nextCursor: null
+  });
+  controller.tree.selectPath('src/file.ts');
+  mutate.mockRejectedValueOnce(new Error('delete failed'));
+  await controller.mutate(controller.captureTarget()!, 'DELETE', 'src/file.ts');
+  expect(onDeletedSelection).not.toHaveBeenCalled();
+  expect(onMutationFailure).toHaveBeenCalledOnce();
+
+  const scope = controller.captureTarget()!;
+  const pending = controller.mutate(scope, 'DELETE', 'src');
+  target = { nodeId: 'n', workspaceId: 'b' };
+  finish(undefined);
+  await pending;
+  expect(onDeletedSelection).not.toHaveBeenCalled();
+  expect(onMutationFailure).toHaveBeenCalledOnce();
+});
+
+it('does not start a captured deletion after its file-tree operation is cancelled', async () => {
+  const mutate = vi.fn(async () => undefined);
+  const onDeletedSelection = vi.fn();
+  const controller = createWorkspaceFilesController({
+    ...treeOptions,
+    target: () => ({ nodeId: 'n', workspaceId: 'a' }),
+    mutate,
+    onDeletedSelection,
+    preflight: async () => [],
+    queue: vi.fn(),
+    onFailure: vi.fn()
+  });
+  controller.tree.applyRootPage({
+    entries: [{ path: 'src/file.ts', name: 'file.ts', kind: 'FILE', size: 1 }],
+    nextCursor: null
+  });
+  controller.tree.selectPath('src/file.ts');
+  const scope = controller.captureTarget()!;
+  controller.invalidateTree();
+
+  await controller.mutate(scope, 'DELETE', 'src/file.ts');
+
+  expect(mutate).not.toHaveBeenCalled();
+  expect(onDeletedSelection).not.toHaveBeenCalled();
+});
