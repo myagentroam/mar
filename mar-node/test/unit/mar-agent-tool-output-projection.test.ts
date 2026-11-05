@@ -1987,6 +1987,106 @@ function outputText(
     .join('\n');
 }
 
+describe('retained wait source updates', () => {
+  it.each([
+    { toolName: 'exec_wait', mode: 'snapshot', cancelled: false },
+    { toolName: 'exec_wait', mode: 'delta', cancelled: true },
+    { toolName: 'code_exec_wait', mode: 'delta', cancelled: false },
+    { toolName: 'code_exec_wait', mode: 'snapshot', cancelled: true }
+  ])(
+    'keeps $toolName sources through $mode output and terminal events (cancelled=$cancelled)',
+    ({ toolName, mode, cancelled }) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const source =
+        toolName === 'exec_wait'
+          ? { kind: 'SHELL', text: 'original command', cwd: '/workspace', truncated: false }
+          : { kind: 'CODE', text: 'await tools.read({reads:[]});', truncated: false };
+      const input =
+        toolName === 'exec_wait' ? { processId: 'p_123456789abc' } : { cellId: 'c_123456789abc' };
+      const callId = 'retained-wait';
+      const events = [
+        toolEvent({ type: 'tool.started', toolName, callId, input }),
+        toolEvent({ type: 'tool.updated', toolName, callId, data: { executionSource: source } }),
+        toolEvent({
+          type: 'tool.output',
+          toolName,
+          callId,
+          output: {
+            mode,
+            processId: 'p_123456789abc',
+            stdout: 'live output',
+            stderr: '',
+            truncated: false
+          }
+        }),
+        toolEvent(
+          cancelled
+            ? {
+                type: 'tool.failed',
+                toolName,
+                callId,
+                code: 'MAR_AGENT_EXECUTION_CANCELLED',
+                message: 'Stopped',
+                data: {}
+              }
+            : { type: 'tool.completed', toolName, callId, summary: 'Done', data: {} }
+        )
+      ];
+      normalizer.normalize(events[0]!);
+      const running = normalizer.normalize(events[1]!);
+      expect(running).toHaveLength(1);
+      expect(running[0]).toMatchObject({
+        status: 'IN_PROGRESS',
+        payload: {
+          toolPresentation: { execution: { kind: 'CONTROL', source } }
+        }
+      });
+      const output = normalizer.normalize(events[2]!);
+      expect(output[0]?.payload).toMatchObject({ toolPresentation: { execution: { source } } });
+      const terminal = normalizer.normalize(events[3]!);
+      expect(terminal[0]).toMatchObject({
+        status: cancelled ? 'CANCELLED' : 'COMPLETED',
+        payload: {
+          toolPresentation: { execution: { source } }
+        }
+      });
+      const history = projectMarAgentHistory(
+        { id: 'session-1' } as NodeAgentSession,
+        events.map((event) => ({ kind: 'event' as const, sequence: event.sequence, event }))
+      ).flatMap((turn) => turn.items);
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({
+        id: terminal[0]!.itemId,
+        status: terminal[0]!.status,
+        payload: terminal[0]!.payload
+      });
+      expectValidConversationItems([...running, ...output, ...terminal]);
+    }
+  );
+
+  it('ignores unknown, stale, malformed and late source updates', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const toolName = 'code_exec_wait';
+    const callId = 'source-identity';
+    const data = { executionSource: { kind: 'CODE', text: 'original code', truncated: false } };
+    const update = { type: 'tool.updated', toolName, callId, data };
+    expect(normalizer.normalize(toolEvent(update))).toEqual([]);
+    normalizer.normalize(
+      toolEvent({ type: 'tool.started', toolName, callId, input: { cellId: 'c_123456789abc' } })
+    );
+    for (const changes of [
+      { executionId: 'stale' },
+      { turnId: 'stale' },
+      { toolName: 'exec_wait' },
+      { data: { executionSource: { kind: 'OTHER', text: 'invalid' } } }
+    ])
+      expect(normalizer.normalize(toolEvent({ ...update, ...changes }))).toEqual([]);
+    expect(normalizer.normalize(toolEvent(update))).toHaveLength(1);
+    normalizer.normalize(toolEvent({ type: 'tool.completed', toolName, callId, summary: 'Done' }));
+    expect(normalizer.normalize(toolEvent(update))).toEqual([]);
+  });
+});
+
 function toolEvent(fields: Record<string, unknown>): AgentEvent {
   sequence += 1;
   return {

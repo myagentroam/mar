@@ -9,7 +9,7 @@ import {
   type LocalProcessSpawnRequest
 } from './local-process-executor.js';
 
-import type { ExecOutputSnapshot, ExecResult } from '../tools/contracts.js';
+import type { ExecOutputSnapshot, ExecResult, ExecutionSource } from '../tools/contracts.js';
 import { TOOL_EXECUTION_LIMITS } from '../tools/execution-limits.js';
 import { waitForToolCondition, waitMetadata, type ToolWaitInterrupt } from '../tools/wait.js';
 import { WorkspacePathResolver } from '../tools/shared/path-resolver.js';
@@ -74,6 +74,15 @@ interface CompletedProcess {
   timer: NodeJS.Timeout;
 }
 
+function processSource(process: Pick<ManagedProcess, 'command' | 'cwd'>): ExecutionSource {
+  return {
+    kind: 'SHELL',
+    text: process.command.slice(0, 10_000),
+    cwd: process.cwd.slice(0, 10_000),
+    truncated: process.command.length > 10_000 || process.cwd.length > 10_000
+  };
+}
+
 export class ExecTool {
   readonly #processes = new Map<string, ManagedProcess>();
   readonly #completed = new Map<string, CompletedProcess>();
@@ -95,7 +104,8 @@ export class ExecTool {
     signal?: AbortSignal,
     owner?: NonNullable<import('./local-process-executor.js').LocalProcessSpawnRequest['owner']>,
     waitInterrupt?: ToolWaitInterrupt,
-    onOutput?: (output: ExecOutputSnapshot) => Promise<void>
+    onOutput?: (output: ExecOutputSnapshot) => Promise<void>,
+    onExecutionSource?: (source: ExecutionSource) => Promise<void> | void
   ): Promise<ExecResult> {
     if (signal?.aborted) throw executionAbortReason(signal);
     const input = parseExecInput(arguments_);
@@ -106,6 +116,8 @@ export class ExecTool {
       if (completed) {
         if (owner !== undefined && completed.ownerSessionId !== owner.sessionId)
           throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
+        if (onExecutionSource) await onExecutionSource(processSource(completed));
+        if (signal?.aborted) throw executionAbortReason(signal);
         if (input.action === 'write')
           throw new AgentError(
             'MAR_AGENT_TOOL_INPUT_INVALID',
@@ -126,6 +138,8 @@ export class ExecTool {
         (owner !== undefined && process.ownerSessionId !== owner.sessionId)
       )
         throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
+      if (onExecutionSource) await onExecutionSource(processSource(process));
+      if (signal?.aborted) throw executionAbortReason(signal);
       let outcome: 'ready' | 'timeout' | 'interrupted' | undefined;
       if (input.action === 'poll' && input.yieldMs)
         outcome = await waitForProcessCompletion(
@@ -557,12 +571,7 @@ export class ExecTool {
         stdoutDroppedBytes: stdout.droppedBytes,
         stderrDroppedBytes: stderr.droppedBytes,
         displayOutput: displayOutput(process),
-        executionSource: {
-          kind: 'SHELL',
-          text: process.command.slice(0, 10_000),
-          cwd: process.cwd.slice(0, 10_000),
-          truncated: process.command.length > 10_000 || process.cwd.length > 10_000
-        }
+        executionSource: processSource(process)
       }
     });
     while (this.#completed.size > TOOL_EXECUTION_LIMITS.execMaxCompletedResults)
@@ -627,12 +636,7 @@ export class ExecTool {
       stdoutDroppedBytes: stdout.droppedBytes,
       stderrDroppedBytes: stderr.droppedBytes,
       displayOutput: displayOutput(process),
-      executionSource: {
-        kind: 'SHELL',
-        text: process.command.slice(0, 10_000),
-        cwd: process.cwd.slice(0, 10_000),
-        truncated: process.command.length > 10_000 || process.cwd.length > 10_000
-      }
+      executionSource: processSource(process)
     };
   }
   async dispose() {

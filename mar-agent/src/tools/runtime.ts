@@ -83,6 +83,14 @@ export async function executeCapturedTool(
     ...((name === 'exec' || name === 'exec_wait' || name === 'code_exec_wait') &&
     callId !== undefined
       ? {
+          onExecutionSource: (source: import('./contracts.js').ExecutionSource) =>
+            context.emit({
+              type: 'tool.updated',
+              toolName: name,
+              callId,
+              ...(context.parentCallId === undefined ? {} : { parentCallId: context.parentCallId }),
+              data: { executionSource: source }
+            }),
           onOutput: (output: import('./contracts.js').ExecOutputSnapshot) =>
             context.emit({
               type: 'tool.output',

@@ -336,15 +336,28 @@ export class MarAgentConversationNormalizer {
       if (
         !state?.active ||
         state.toolName !== event.toolName ||
-        !agentOperationAction(event.toolName)
+        state.executionId !== event.executionId ||
+        (state.turnId !== undefined && event.turnId !== undefined && state.turnId !== event.turnId)
       )
         return [];
-      const operation = agentOperationPresentationSchema.safeParse(
-        record(event.data)?.agentOperation
-      );
-      if (!operation.success || operation.data.action !== agentOperationAction(event.toolName))
-        return [];
-      this.#tools.set(event.callId, { ...state, presentationData: event.data });
+      let data: unknown;
+      if (
+        event.toolName === 'exec_wait' ||
+        event.toolName === 'code_exec_wait' ||
+        (event.toolName === 'exec' && state.commandOrigin === undefined)
+      ) {
+        const source = executionSource(record(event.data)?.executionSource).source;
+        if (!source) return [];
+        data = { executionSource: source };
+      } else {
+        const operation = agentOperationPresentationSchema.safeParse(
+          record(event.data)?.agentOperation
+        );
+        if (!operation.success || operation.data.action !== agentOperationAction(event.toolName))
+          return [];
+        data = event.data;
+      }
+      this.#tools.set(event.callId, { ...state, presentationData: data });
       return [
         genericToolItem(
           state.itemId,
@@ -354,7 +367,7 @@ export class MarAgentConversationNormalizer {
           null,
           null,
           false,
-          event.data,
+          data,
           state.subagentTitle,
           state.subagentDetails,
           undefined,
@@ -553,6 +566,7 @@ export class MarAgentConversationNormalizer {
           null,
           snapshot.truncated,
           {
+            ...record(state.presentationData),
             processId: output.processId,
             displayOutput: snapshot.displayOutput,
             outputHeadTruncated:
@@ -646,7 +660,7 @@ export class MarAgentConversationNormalizer {
           null,
           null,
           false,
-          undefined,
+          target.presentationData,
           undefined,
           undefined,
           undefined,
@@ -727,6 +741,7 @@ export class MarAgentConversationNormalizer {
         null,
         bounded.truncated,
         {
+          ...record(target.presentationData),
           outputHeadTruncated: entries.some(
             (entry) =>
               entry.displayOutput.stdoutDroppedBytes > 0 ||
@@ -1003,7 +1018,7 @@ export class MarAgentConversationNormalizer {
         : generatedImages.map((image) => image.name).join(', '),
       null,
       event.outputTruncation !== undefined,
-      mergeAgentOperationData(event.toolName, state?.presentationData, event.data),
+      mergeToolPresentationData(event.toolName, state?.presentationData, event.data),
       agentId === undefined ? state?.subagentTitle : this.#subagentTitles.get(agentId),
       details,
       state?.sleepStartedAt,
@@ -1054,11 +1069,11 @@ export class MarAgentConversationNormalizer {
         event.message ?? event.code,
         event.code,
         event.truncated === true,
-        agentOperationAction(event.toolName)
-          ? mergeAgentOperationData(event.toolName, state?.presentationData, event.data)
-          : event.data === undefined
-            ? state?.presentationData
-            : event.data,
+        mergeToolPresentationData(
+          event.toolName,
+          state?.presentationData,
+          event.data === undefined ? state?.presentationData : event.data
+        ),
         state?.subagentTitle,
         state?.subagentDetails,
         state?.sleepStartedAt,
@@ -1453,7 +1468,13 @@ function codeExecutionError(
   };
 }
 
-function mergeAgentOperationData(toolName: string, previous: unknown, current: unknown): unknown {
+function mergeToolPresentationData(toolName: string, previous: unknown, current: unknown): unknown {
+  if (toolName === 'exec_wait' || toolName === 'code_exec_wait' || toolName === 'exec') {
+    const source =
+      executionSource(record(current)?.executionSource).source ??
+      executionSource(record(previous)?.executionSource).source;
+    return source ? { ...record(current), executionSource: source } : current;
+  }
   if (!agentOperationAction(toolName)) return current;
   const before = agentOperationPresentationSchema.safeParse(record(previous)?.agentOperation);
   if (!before.success || before.data.action !== agentOperationAction(toolName)) return current;

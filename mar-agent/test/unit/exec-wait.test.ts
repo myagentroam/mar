@@ -60,6 +60,71 @@ async function fixture(processExecutor?: LocalProcessExecutor) {
 const command = (script: string) => `"${process.execPath}" -e ${JSON.stringify(script)}`;
 
 describe('exec_wait', () => {
+  it('publishes retained sources before waiting without exposing another session or consuming output', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null
+    });
+    const { call, host } = await fixture({
+      async spawn() {
+        return child as unknown as ChildProcessWithoutNullStreams;
+      }
+    });
+    const { processId } = await call('exec', { command: 'original command', yieldMs: 0 });
+    const onExecutionSource = vi.fn();
+    await expect(
+      call(
+        'exec_wait',
+        { processId, yieldMs: 0 },
+        {
+          ...context(),
+          sessionId: 'other',
+          onExecutionSource
+        }
+      )
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_PROCESS_NOT_FOUND' });
+    expect(onExecutionSource).not.toHaveBeenCalled();
+    const controller = new AbortController();
+    const waiting = call(
+      'exec_wait',
+      { processId, yieldMs: 300000 },
+      {
+        ...context(),
+        executionId: 'later',
+        signal: controller.signal,
+        onExecutionSource
+      }
+    );
+    await vi.waitFor(() =>
+      expect(onExecutionSource).toHaveBeenCalledWith({
+        kind: 'SHELL',
+        text: 'original command',
+        cwd: expect.any(String),
+        truncated: false
+      })
+    );
+    controller.abort(new Error('stop wait'));
+    await expect(waiting).rejects.toThrow('stop wait');
+    child.stdout.write('unconsumed');
+    child.exitCode = 0;
+    child.emit('close', 0, null);
+    const completed = await host.executeTool(
+      { name: 'exec_wait', arguments: { processId } },
+      context()
+    );
+    expect(completed.data).toMatchObject({ stdout: 'unconsumed' });
+    onExecutionSource.mockClear();
+    const cached = await call(
+      'exec_wait',
+      { processId, yieldMs: 0 },
+      { ...context(), onExecutionSource }
+    );
+    expect(cached.cached).toBe(true);
+    expect(onExecutionSource).toHaveBeenCalledWith(completed.eventData!.executionSource);
+  });
+
   it('reports cumulative display snapshots across successive polls', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),
