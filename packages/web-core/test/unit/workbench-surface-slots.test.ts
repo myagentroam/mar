@@ -20,18 +20,24 @@ describe('Workbench surface host slots', () => {
     'renders host contributions only in the active %s surface',
     (view) => {
       const page = {
-        view,
-        managementSection: 'system',
-        admin: { authenticated: true },
-        workspaceRegistrationNodeId: 'node-a',
-        setAsideSurfaceVisible: vi.fn(),
-        setComposerInputFocus: vi.fn(),
-        setComposerRangeEditor: vi.fn(),
-        hostedConversationWorkspace: {
-          snapshot: ref(),
-          conversations: ref([]),
-          selectedNodeId: ref(),
-          selectedConversationId: ref()
+        application: { view, managementSection: 'system' },
+        identity: { admin: { authenticated: true } },
+        registration: { workspaceRegistrationNodeId: 'node-a' },
+        aside: { setAsideSurfaceVisible: vi.fn(), asideViewMode: vi.fn(), asideWidth: vi.fn() },
+        layout: {},
+        selection: {},
+        resources: {},
+        files: { mountSurface: vi.fn(), unmountSurface: vi.fn() },
+        mainPaneController: {
+          state: { setComposerInputFocus: vi.fn(), setComposerRangeEditor: vi.fn() }
+        },
+        hosted: {
+          hostedConversationWorkspace: {
+            snapshot: ref(),
+            conversations: ref([]),
+            selectedNodeId: ref(),
+            selectedConversationId: ref()
+          }
         }
       };
       const composition = createManagementComposition([
@@ -62,7 +68,7 @@ describe('Workbench surface host slots', () => {
         })
       );
       try {
-        expect(page.setComposerRangeEditor).not.toHaveBeenCalled();
+        expect(page.mainPaneController.state.setComposerRangeEditor).not.toHaveBeenCalled();
         const text = textContent(rendered.root);
         expect(text).toContain('Host registration');
         expect(text.includes('Host settings')).toBe(view === 'settings');
@@ -71,7 +77,7 @@ describe('Workbench surface host slots', () => {
       } finally {
         rendered.unmount();
       }
-      expect(page.setComposerRangeEditor).not.toHaveBeenCalled();
+      expect(page.mainPaneController.state.setComposerRangeEditor).not.toHaveBeenCalled();
     }
   );
 });

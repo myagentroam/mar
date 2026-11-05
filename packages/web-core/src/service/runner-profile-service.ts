@@ -1,14 +1,11 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
-import { watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { localePreferenceService, translate } from './locale-preference-service.js';
 
 interface RunnerProfileServiceOptions {
   readonly workspaceTarget: Readonly<ValueRef<WorkspaceTarget | undefined>>;
-  readonly profiles: ValueRef<readonly RunnerProfile[]>;
-  readonly loading: ValueRef<boolean>;
-  readonly failed: ValueRef<boolean>;
   readonly request: (path: string, init?: RequestInit) => Promise<unknown>;
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
@@ -145,6 +142,9 @@ function runnerProfileDescription(
 }
 
 export function createRunnerProfileService(options: RunnerProfileServiceOptions) {
+  const profiles = ref<readonly RunnerProfile[]>([]);
+  const loading = ref(false);
+  const failed = ref(false);
   const profilesByNode = new Map<string, readonly RunnerProfile[]>();
   const defaultsByNode = new Map<
     string,
@@ -163,7 +163,7 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
   }
 
   function restore(nodeId: string): void {
-    options.profiles.value = cached(nodeId);
+    profiles.value = cached(nodeId);
   }
 
   async function load(nodeId: string): Promise<
@@ -180,8 +180,8 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
       options.workspaceTarget.value?.nodeId === nodeId &&
       options.workspaceTarget.value === target;
     const currentRequest = ++requestVersion;
-    options.loading.value = true;
-    options.failed.value = false;
+    loading.value = true;
+    failed.value = false;
     const defaultsVersion = defaultsVersionByNode.get(nodeId) ?? 0;
     let cached:
       | {
@@ -202,35 +202,35 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
         if (!current()) return undefined;
         if (!Array.isArray(result.profiles)) throw new Error('RUNNER_PROFILES_INVALID');
         profilesByNode.set(nodeId, result.profiles);
-        const profiles = preferredProfiles(result.profiles);
-        options.profiles.value = profiles;
+        const nextProfiles = preferredProfiles(result.profiles);
+        profiles.value = nextProfiles;
         const defaultsChanged = (defaultsVersionByNode.get(nodeId) ?? 0) === defaultsVersion;
         if (defaultsChanged)
-          defaultsByNode.set(nodeId, normalizeDefaults(result.defaults, profiles));
-        return { profiles, defaultsChanged };
+          defaultsByNode.set(nodeId, normalizeDefaults(result.defaults, nextProfiles));
+        return { profiles: nextProfiles, defaultsChanged };
       };
       cached = apply(cachedResult);
       return cached;
     } catch {
       if (current()) {
         restore(nodeId);
-        options.failed.value = true;
+        failed.value = true;
       }
       return undefined;
     } finally {
-      if (current()) options.loading.value = false;
+      if (current()) loading.value = false;
     }
   }
 
   function defaultFor(nodeId: string | undefined, runner: Session['runner']) {
     const saved = nodeId === undefined ? undefined : defaultsByNode.get(nodeId)?.get(runner);
-    return saved !== undefined && supports(saved, options.profiles.value)
+    return saved !== undefined && supports(saved, profiles.value)
       ? saved
-      : defaultConfiguration(runner, options.profiles.value);
+      : defaultConfiguration(runner, profiles.value);
   }
 
   function save(nodeId: string, configuration: RunnerDefaultConfiguration): void {
-    if (!supports(configuration, options.profiles.value)) return;
+    if (!supports(configuration, profiles.value)) return;
     const defaults = new Map(defaultsByNode.get(nodeId));
     defaults.set(configuration.runner, configuration);
     defaultsByNode.set(nodeId, defaults);
@@ -261,11 +261,11 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
       () => options.workspaceTarget.value,
       () => {
         requestVersion += 1;
-        options.loading.value = false;
-        options.failed.value = false;
+        loading.value = false;
+        failed.value = false;
         const nodeId = options.workspaceTarget.value?.nodeId;
         if (nodeId !== undefined) restore(nodeId);
-        else options.profiles.value = [];
+        else profiles.value = [];
       },
       { flush: 'sync' }
     );
@@ -276,7 +276,17 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
     if (nodeId !== undefined) restore(nodeId);
   });
 
-  return { has, cached, restore, load, defaultFor, save };
+  return {
+    profiles: computed(() => profiles.value),
+    loading: computed(() => loading.value),
+    failed: computed(() => failed.value),
+    has,
+    cached,
+    restore,
+    load,
+    defaultFor,
+    save
+  };
 }
 
 function defaultConfiguration(

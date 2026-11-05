@@ -6,11 +6,11 @@ import { createConversationStateService } from '../../src/service/conversation-s
 import { createRunService } from '../../src/service/run-service.js';
 import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service.js';
 import { createWorkspaceSessionPaneReader } from '../../src/service/workspace-session-pane-state.js';
-import { createWorkspaceSessionPaneLoader } from '../../src/service/workspace-session-pane-loader.js';
 import {
-  createWorkbenchSessionSelectionService,
-  type WorkbenchSessionSelectionOptions
-} from '../../src/service/workbench-session-selection-service.js';
+  createWorkspaceSessionPaneLoader,
+  createWorkspaceSessionPaneRenderLifecycle
+} from '../../src/service/workspace-session-pane-loader.js';
+import { createWorkspaceSessionPaneOpening } from '../../src/service/workspace-session-pane-controller.js';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
@@ -152,97 +152,82 @@ const session: Session = { id: 'cached-session', workspaceId: 'workspace', runne
 const reader = createWorkspaceSessionPaneReader();
 const request = async <T,>() => ({ session }) as T;
 const sessionPathId = (id: string) => id;
-const options: WorkbenchSessionSelectionOptions = {
-  createPaneLoader: (projection) =>
-    createWorkspaceSessionPaneLoader({
-      ...projection,
-      runs: run.runs,
-      readSession: (nodeId, sessionId) => reader.read(nodeId, sessionId, request, sessionPathId),
-      readInitialHistory: (nodeId, sessionId) =>
-        reader.readInitialHistory(nodeId, sessionId, request, sessionPathId)
-    }),
-  workspaceTarget: ref({ nodeId: 'node', workspaceId: 'workspace' }),
-  selectedSessionId,
-  selectedRunId: ref(),
-  sessions: ref([session]),
+const workspaceTarget = ref({ nodeId: 'node', workspaceId: 'workspace' });
+const draftOpen = ref(false);
+const failed = ref(false);
+const cachedTurns: ConversationTurn[] = [
+  {
+    id: 'cached-turn',
+    sessionId: session.id,
+    runId: null,
+    status: 'COMPLETED',
+    items: [
+      { id: 'reply', kind: 'assistant_message', status: 'COMPLETED', payload: { text: 'Reply' } }
+    ]
+  }
+];
+const loader = createWorkspaceSessionPaneLoader({
   runs: run.runs,
-  turns,
-  loadingInitial: loading,
-  initialLoadFailed: ref(false),
-  initialFailureCause: conversation.initialFailureCause,
-  queue: ref({ version: 0, paused: false, items: [] }),
-  positioning,
-  draftOpen: ref(false),
-  composerMode: ref('message'),
-  selectedCommand: ref(),
-  commandPickerOpen: ref(false),
-  nextRequest: () => ++revision,
-  currentRequest: () => revision,
-  closeMobileSurface: () => undefined,
-  workspaceTabId: () => 'tab',
-  ensureSessionVisible: () => undefined,
-  markSessionRead: () => undefined,
-  saveCurrent: () => undefined,
-  selectWorkspace: async () => true,
+  readSession: (nodeId, sessionId) => reader.read(nodeId, sessionId, request, sessionPathId),
+  readInitialHistory: (nodeId, sessionId) =>
+    reader.readInitialHistory(nodeId, sessionId, request, sessionPathId),
+  replaceSession: () => undefined,
   applyComposerConfiguration: () => undefined,
-  restoreCachedDetail: () => {
-    const cachedTurns: ConversationTurn[] = [
-      {
-        id: 'cached-turn',
-        sessionId: session.id,
-        runId: null,
-        status: 'COMPLETED',
-        items: [
-          {
-            id: 'reply',
-            kind: 'assistant_message',
-            status: 'COMPLETED',
-            payload: { text: 'Reply' }
-          }
-        ]
-      }
-    ];
-    historyHeight.value = 2800;
-    return {
-      sessionId: session.id,
-      runs: [],
-      turns: cachedTurns,
-      nextCursor: null,
-      contextUsage: null,
-      lastAccessedAt: 1
-    };
-  },
-  cachedQueue: () => ({ version: 0, paused: false, items: [] }),
-  installCachedDetail: (detail) => {
-    run.replaceRuns(detail.runs);
-    conversation.projection.restoreWindow(detail.turns, detail.nextCursor);
-  },
-  clearActiveContent: () => {
-    run.replaceRuns([]);
-    conversation.projection.restoreWindow([], null);
-  },
+  markActive: () => undefined,
   openRun: () => undefined,
+  canWatch: () => true,
+  beginWatch: () => new Promise<boolean>((resolve) => (releaseWatch = () => resolve(true))),
+  applySnapshot: () => false,
+  mergeTurns: () => false,
+  saveCurrent: () => undefined
+});
+const renderer = createWorkspaceSessionPaneRenderLifecycle({
+  loading,
+  failed,
+  failureCause: conversation.initialFailureCause,
+  positioning,
+  content: { hasContent: () => turns.value.length > 0, openRun: () => undefined },
+  beginInitialRender: async () => undefined,
   scrollLatest: () => {
-    const request = revision;
-    const pending = scroll.scrollToLatestAfterLayout(() => revision === request);
+    const currentRevision = revision;
+    const pending = scroll.scrollToLatestAfterLayout(() => revision === currentRevision);
     const element = scroll.element.value!;
-    // Deliver the layout-induced scroll notification before the pending frame calibration.
     history.value!.style.height = '1200px';
     void element.scrollTop;
     history.value!.style.height = '2800px';
     element.dispatchEvent(new Event('scroll'));
     if (interruptionPhase === 'during') interruptPositioning();
     return pending;
-  },
-  beginInitialRender: async () => undefined,
-  replaceSession: () => undefined,
-  canWatch: () => true,
+  }
+});
+const pane = createWorkspaceSessionPaneOpening({
+  workspaceTarget,
+  sessionId: selectedSessionId,
+  currentRequest: () => revision,
+  nextRequest: () => ++revision,
+  loading,
+  failed,
   hasInitialSnapshot: () => true,
-  beginWatch: () => new Promise<boolean>((resolve) => (releaseWatch = () => resolve(true))),
-  applySnapshot: () => false,
-  mergeTurns: () => false
-};
-const selection = createWorkbenchSessionSelectionService(options);
+  loader,
+  renderer,
+  resetInteraction: () => undefined,
+  prepareSession: () => {
+    historyHeight.value = 2800;
+    run.replaceRuns([]);
+    conversation.projection.restoreWindow(cachedTurns, null);
+    return { restored: true, activeRunId: undefined };
+  },
+  ports: {
+    navigate: (id) => ({ switching: selectedSessionId.value !== id, session }),
+    setSession: (id) => {
+      selectedSessionId.value = id;
+    },
+    draftOpen,
+    sessions: ref([session]),
+    closeMobile: () => undefined,
+    markRead: () => undefined
+  }
+});
 
 function interruptPositioning(): void {
   const element = scroll.element.value!;
@@ -304,7 +289,7 @@ function interruptPositioning(): void {
 }
 
 async function restore(): Promise<void> {
-  const opening = selection.openSession(session.id);
+  const opening = pane.open(session.id);
   if (interruptionPhase === 'before') interruptPositioning();
   await opening;
   opened.value = true;

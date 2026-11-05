@@ -132,6 +132,19 @@ export interface WorkbenchNotificationService {
   dispose(): void;
 }
 
+export type WorkbenchNotificationView = Pick<
+  WorkbenchNotificationService,
+  | 'notifications'
+  | 'unreadCount'
+  | 'previewNotificationId'
+  | 'notificationRevision'
+  | 'recentRuns'
+  | 'hasUnreadSession'
+  | 'load'
+  | 'markAllRead'
+  | 'remove'
+>;
+
 const TTL_MS = 24 * 60 * 60_000;
 const SWEEP_MS = 5 * 60_000;
 
@@ -1053,4 +1066,177 @@ function isNotificationTarget(value: unknown): value is LocalWorkspaceNotificati
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Owns the application-update subscription and its notification actions. */
+export function createWorkbenchWebUpdateService(options: {
+  readonly application: import('./pwa-application-service.js').PwaApplicationService | undefined;
+  readonly notifications: Pick<
+    ReturnType<typeof createWorkbenchNotificationService>,
+    'notifications' | 'notify' | 'clearWebUpdate'
+  >;
+  readonly message: import('../model/message-feedback.js').MessageFeedback;
+}) {
+  const state = options.application?.state ?? ref({ offline: 'online' as const, checked: false });
+  const checking = ref(false);
+  let unsubscribe: (() => void) | undefined;
+  function start(): void {
+    if (unsubscribe !== undefined || options.application === undefined) return;
+    unsubscribe = options.application.subscribe((value) => {
+      if (!value.checked) return;
+      const hasNotice = options.notifications.notifications.value.some(
+        (item) => item.kind === 'web-update'
+      );
+      const update = value.update ?? (hasNotice ? value.reload : undefined);
+      if (update === undefined) {
+        if (value.reload === undefined) options.notifications.clearWebUpdate();
+      } else {
+        options.notifications.notify({
+          id: `web-update:${update.version}:${update.buildId}`,
+          kind: 'web-update',
+          source: 'local',
+          title: translate('webUpdate.title'),
+          message: translate('webUpdate.message', { value0: update.version }),
+          action: 'RELOAD_PAGE'
+        });
+      }
+    });
+  }
+  function stop(): void {
+    unsubscribe?.();
+    unsubscribe = undefined;
+  }
+  async function check(): Promise<void> {
+    if (checking.value || options.application === undefined) return;
+    checking.value = true;
+    try {
+      await options.application.checkForUpdate();
+      const current = options.application.state.value;
+      options.message(
+        translate(
+          current.update
+            ? 'webUpdate.available'
+            : current.reload
+              ? 'webUpdate.reloadAvailable'
+              : 'webUpdate.upToDate'
+        ),
+        'info'
+      );
+    } catch (error) {
+      options.message(translate('webUpdate.checkFailed'), 'error', error);
+    } finally {
+      checking.value = false;
+    }
+  }
+  async function apply(): Promise<void> {
+    if ((await options.application?.applyUpdate()) !== 'APPLIED')
+      options.message(translate('webUpdate.unavailable'), 'warning');
+  }
+  return { state, checking, start, stop, check, apply };
+}
+
+export interface WorkbenchNotificationsView {
+  notifications: Ref<WorkbenchNotification[], WorkbenchNotification[]>;
+  unreadCount: Readonly<Ref<number, number>>;
+  previewNotificationId: Readonly<Ref<string | undefined, string | undefined>>;
+  notificationRevision: Readonly<Ref<number, number>>;
+  recentRuns: Readonly<Ref<RecentRun[], RecentRun[]>>;
+  load: () => Promise<void>;
+  markAllRead: () => void;
+  remove: (id: string) => void;
+  systemNotifications: ReturnType<typeof createWorkbenchNotificationService>['systemNotifications'];
+  hasActiveWorkspaceRun: (nodeId: string, workspaceId: string) => boolean;
+  hasUnreadWorkspace: (nodeId: string, workspaceId: string) => boolean;
+  hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
+  hasUnreadConversation: (nodeId: string, conversationId: string) => boolean;
+}
+
+export function createWorkbenchVisibleSessions(input: {
+  readonly workspaceTarget: Readonly<
+    Ref<import('../model/workbench.js').WorkspaceTarget | undefined>
+  >;
+  readonly selectedWorkspace: Readonly<Ref<import('../model/workbench.js').Workspace | undefined>>;
+  readonly workspaceHost: Readonly<Ref<import('../model/workbench.js').NodeSummary | undefined>>;
+  readonly view: Readonly<Ref<string>>;
+  readonly mainSurfaceVisible: Readonly<Ref<boolean>>;
+  readonly draftSessionOpen: Readonly<Ref<boolean>>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly mainLoading: Readonly<Ref<boolean>>;
+  readonly asideVisible: Readonly<Ref<boolean>>;
+  readonly asideTarget: Readonly<
+    Ref<
+      | { readonly nodeId: string; readonly workspaceId: string; readonly sessionId: string }
+      | undefined
+    >
+  >;
+  readonly asideLoading: Readonly<Ref<boolean>>;
+  readonly markSessionRead: (
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string
+  ) => void | Promise<void>;
+}) {
+  const {
+    workspaceTarget,
+    selectedWorkspace,
+    workspaceHost,
+    view,
+    mainSurfaceVisible,
+    draftSessionOpen,
+    selectedSessionId,
+    asideVisible,
+    asideTarget,
+    asideLoading
+  } = input;
+  function visibleWorkspaceNotificationTargets(includeLoading = false): readonly {
+    nodeId: string;
+    workspaceId: string;
+    sessionId: string;
+  }[] {
+    const workspace = workspaceTarget.value;
+    if (
+      view.value !== 'nodes' ||
+      workspace === undefined ||
+      selectedWorkspace.value === undefined ||
+      workspaceHost.value?.connected === false
+    )
+      return [];
+    const targets: { nodeId: string; workspaceId: string; sessionId: string }[] = [];
+    if (
+      mainSurfaceVisible.value &&
+      !draftSessionOpen.value &&
+      selectedSessionId.value !== undefined &&
+      (includeLoading || !input.mainLoading.value)
+    )
+      targets.push({ ...workspace, sessionId: selectedSessionId.value });
+    if (
+      asideVisible.value &&
+      asideTarget.value !== undefined &&
+      (includeLoading || !asideLoading.value) &&
+      !targets.some((target) => target.sessionId === asideTarget.value?.sessionId)
+    )
+      targets.push({
+        nodeId: asideTarget.value.nodeId,
+        workspaceId: asideTarget.value.workspaceId,
+        sessionId: asideTarget.value.sessionId
+      });
+    return targets;
+  }
+  function markVisibleSessionRead(
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string
+  ): void | Promise<void> {
+    if (
+      visibleWorkspaceNotificationTargets(true).some(
+        (target) =>
+          target.nodeId === nodeId &&
+          target.workspaceId === workspaceId &&
+          target.sessionId === sessionId
+      )
+    )
+      return input.markSessionRead(nodeId, workspaceId, sessionId);
+  }
+
+  return { targets: visibleWorkspaceNotificationTargets, markRead: markVisibleSessionRead };
 }

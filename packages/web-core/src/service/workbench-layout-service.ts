@@ -1,3 +1,4 @@
+import type { MobileWorkspaceSurface } from '../util/mobile-workbench.js';
 import { ref, type Ref } from 'vue';
 import type { WorkspaceTab } from '../model/workbench.js';
 import { restoreWorkspaceTabs } from './workspace-tab-service.js';
@@ -157,4 +158,19 @@ function isWorkspaceTab(value: unknown): value is WorkspaceTab {
     (tab.selectedSessionId === undefined ||
       (typeof tab.selectedSessionId === 'string' && tab.selectedSessionId.length > 0))
   );
+}
+
+export interface WorkbenchLayoutView {
+  mobileViewport: boolean;
+  mobileSidebarOpen: boolean;
+  mobileUtilityPanel: 'activity' | undefined;
+  mobileWorkspaceSurface: MobileWorkspaceSurface;
+  closeMobileSidebar: () => void;
+  closeMobileWorkspaceSurface: () => void;
+  openMobileWorkspaceSurface: (surface: Exclude<MobileWorkspaceSurface, 'conversation'>) => void;
+  selectMobileUtilityPanel: (panel: 'activity' | undefined) => void;
+  sidebarCollapsed: boolean;
+  sidebarContentVisible: boolean;
+  panelWidths: { sidebar?: number; compact?: number; content?: number };
+  setPanelWidth: (panel: WorkbenchPanel, value: number) => void;
 }

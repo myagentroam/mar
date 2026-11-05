@@ -1,6 +1,21 @@
 import type { AgentRun, WorkspaceQueue } from '../model/workbench.js';
+import { computed, ref, type Ref } from 'vue';
 
 export type WorkspaceQueueSnapshotSource = 'event' | 'initial';
+
+export function createWorkspaceQueueProjection(runs: Readonly<Ref<readonly AgentRun[]>>) {
+  const queue = ref<WorkspaceQueue>({ version: 0, paused: false, items: [] });
+  function merge(next: WorkspaceQueue, source: WorkspaceQueueSnapshotSource = 'event'): void {
+    queue.value = projectSessionQueue(queue.value, next, runs.value, source);
+  }
+  function reset(): void {
+    queue.value = { version: 0, paused: false, items: [] };
+  }
+  function restore(snapshot: WorkspaceQueue): void {
+    queue.value = snapshot;
+  }
+  return { queue: computed(() => queue.value), merge, reset, restore };
+}
 
 export function newestWorkspaceQueueSnapshot(
   current: WorkspaceQueue | undefined,

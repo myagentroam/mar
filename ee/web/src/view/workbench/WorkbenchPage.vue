@@ -14,7 +14,7 @@ const { t } = useI18n();
 const oauthError = new URLSearchParams(window.location.search).get('oauthError');
 let oauthErrorHandled = false;
 watch(
-  () => page.adminLoaded,
+  () => page.identity.adminLoaded,
   (loaded) => {
     if (!loaded || oauthErrorHandled) return;
     if (oauthError === null) return;
@@ -28,8 +28,10 @@ watch(
 );
 </script>
 <template>
-  <CorePage :page="page">
-    <template #identity-extension><EnterpriseLoginExtension :request="page.request" /></template>
+  <CorePage :page="page" :surface="page">
+    <template #identity-extension
+      ><EnterpriseLoginExtension :request="page.identity.request"
+    /></template>
     <template #surface><WorkbenchSurface :page="page" /></template>
   </CorePage>
 </template>

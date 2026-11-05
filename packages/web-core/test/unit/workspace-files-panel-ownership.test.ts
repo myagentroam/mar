@@ -1,3 +1,4 @@
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
@@ -151,7 +152,8 @@ it.each([
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
       comparison: async () => undefined,
-      preview: { http, transfers: () => ({}), onWritten: vi.fn() },
+      access: createFileAccessFixture({ http, transfers: () => ({}) }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     await owner.openFile('old.ts');

@@ -25,7 +25,6 @@ import {
   isMarkdownFile,
   type FilePreviewKind
 } from '../../util/file-preview.js';
-import { workspaceFilePreviewUrl } from '../../service/workspace-file-preview-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-service.js';
 import type { WorkspaceFileOpenIntent, WorkspaceFileTab } from '../../util/workspace-file-tab.js';
@@ -158,26 +157,6 @@ function markFailure(error: unknown, action: string, summary?: string): void {
     }),
     'error',
     error
-  );
-}
-
-function workspaceFileContentUrl(
-  path: string,
-  worktreePath = previewWorktreePath.value,
-  download = false,
-  repositoryPath?: string
-): string {
-  if (props.nodeId === undefined || props.workspaceId === undefined)
-    throw new Error('NODE_RESPONSE_INVALID');
-  return workspaceFilePreviewUrl(
-    {
-      nodeId: props.nodeId,
-      workspaceId: props.workspaceId,
-      path,
-      ...(worktreePath === undefined ? {} : { worktreePath }),
-      ...(repositoryPath === undefined ? {} : { repositoryPath })
-    },
-    download
   );
 }
 

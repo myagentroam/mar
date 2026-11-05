@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { effectScope, ref, watch } from 'vue';
-import { createWorkspaceSessionPaneLifecycle } from '../../src/service/workspace-session-pane-loader.js';
+import {
+  createWorkspaceSessionPaneLifecycle,
+  createWorkspaceSessionPaneRead
+} from '../../src/service/workspace-session-pane-loader.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import type { DraftTarget } from '../../src/service/session-draft-service.js';
+
+function fakeLoader(load: Parameters<typeof createWorkspaceSessionPaneRead>[0]) {
+  return { load, read: createWorkspaceSessionPaneRead(load) };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -38,7 +45,7 @@ describe('secondary session Pane lifecycle', () => {
           failed,
           failureCause,
           currentRequest: () => 0,
-          loader: { load },
+          loader: fakeLoader(load),
           restore: () => cached,
           save: vi.fn(),
           cancel: vi.fn(),
@@ -99,12 +106,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => 0,
-        loader: {
-          load: vi.fn().mockResolvedValue({
+        loader: fakeLoader(
+          vi.fn().mockResolvedValue({
             session: { id: 'a', workspaceId: 'w', runner: 'codex' },
             changed: true
           })
-        },
+        ),
         restore: () => cached,
         save: () => {
           cached = true;
@@ -195,12 +202,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => revision,
-        loader: {
-          load: vi.fn((input) => {
+        loader: fakeLoader(
+          vi.fn((input) => {
             current = input.isCurrent;
             return first.promise;
           })
-        },
+        ),
         restore: () => false,
         save: vi.fn(),
         cancel: vi.fn(),
@@ -246,12 +253,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => 0,
-        loader: {
-          load: vi.fn().mockResolvedValue({
+        loader: fakeLoader(
+          vi.fn().mockResolvedValue({
             session: { id: 's', workspaceId: 'w', runner: 'codex' },
             changed: true
           })
-        },
+        ),
         restore: () => false,
         save: vi.fn(),
         cancel,
@@ -294,12 +301,12 @@ describe('secondary session Pane lifecycle', () => {
           loadingContent: ref(false),
           failed: ref(false),
           currentRequest: () => 0,
-          loader: {
-            load: vi.fn().mockResolvedValue({
+          loader: fakeLoader(
+            vi.fn().mockResolvedValue({
               session: { id: 'a', workspaceId: 'w', runner: 'codex' },
               changed: true
             })
-          },
+          ),
           restore: () => false,
           save: vi.fn(),
           cancel: vi.fn(),

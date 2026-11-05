@@ -1,60 +1,51 @@
-import type { WorkspaceTarget } from '../model/workbench.js';
-import type { AsideSession } from './workbench-aside-service.js';
-import type { createWorkspaceSessionPaneLoader } from './workspace-session-pane-loader.js';
-import { computed, getCurrentScope, nextTick, ref, type Ref } from 'vue';
-import type {
-  AgentRun,
-  CachedSessionDetail,
-  ConversationTurn,
-  ConversationTurnPage,
-  RunnerCommand,
-  Session,
-  WorkspaceQueue
-} from '../model/workbench.js';
-import { errorCode } from '../util/api-error.js';
-import type { createWorkbenchAsideService } from './workbench-aside-service.js';
+import type { WorkspaceTab, Workspace, WorkspaceTarget, Session } from '../model/workbench.js';
+import type { AsideSession, createWorkbenchAsideService } from './workbench-aside-service.js';
+import type { WorkspacePaneOpenOptions } from './workspace-session-pane-controller.js';
+import { computed, ref, type Ref } from 'vue';
 
-export interface OpenSessionOptions {
-  readonly throwOnFailure?: boolean;
-  readonly preserveMobileWorkspaceSurface?: boolean;
-  readonly deferInitialScroll?: boolean;
-  readonly skipSaveCurrent?: boolean;
-  readonly markReadAfterOpen?: boolean;
-  readonly onSessionResolved?: (session: Session) => void;
-}
-
-interface OpeningSession {
-  requestId: number;
-  preparing: boolean;
-  readonly nodeId: string;
-  readonly workspaceId: string | undefined;
-  readonly sessionId: string;
-  session?: Session;
-  onSessionResolved?: (session: Session) => void;
-  markRead: boolean;
+export function createWorkbenchSessionSelectionState(
+  workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>
+) {
+  const sessionId = ref<string>();
+  const draftOpen = ref(false);
+  const draftTarget = computed(() => {
+    const workspace = workspaceTarget.value;
+    if (workspace === undefined) return undefined;
+    const id = sessionId.value;
+    return draftOpen.value || id === undefined || id.startsWith('draft:')
+      ? { kind: 'workspace' as const, ...workspace }
+      : { kind: 'session' as const, ...workspace, sessionId: id };
+  });
+  return {
+    sessionId: computed(() => sessionId.value),
+    draftOpen: computed(() => draftOpen.value),
+    draftTarget,
+    setSession: (id: string | undefined) => {
+      sessionId.value = id;
+    },
+    setDraftOpen: (open: boolean) => {
+      draftOpen.value = open;
+    }
+  };
 }
 
 export interface WorkbenchSessionSelectionOptions {
-  readonly aside: ReturnType<typeof createWorkbenchAsideService>;
+  readonly secondaryPane: {
+    readonly target: Readonly<Ref<AsideSession | undefined>>;
+    readonly reloadChecked: () => Promise<void>;
+  };
+  readonly aside: Pick<
+    ReturnType<typeof createWorkbenchAsideService>,
+    'current' | 'openSession' | 'closeSession' | 'removeMissing' | 'replaceSession'
+  >;
   readonly canOpenAside: () => boolean;
   readonly saveAside: () => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
-  readonly selectedRunId: Ref<string | undefined>;
-  readonly sessions: Ref<Session[]>;
-  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
-  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
-  readonly loadingInitial: Ref<boolean>;
-  readonly initialLoadFailed: Ref<boolean>;
-  readonly initialFailureCause: Ref<unknown>;
-  readonly queue: Ref<WorkspaceQueue>;
-  readonly positioning: Ref<boolean>;
-  readonly draftOpen: Ref<boolean>;
-  readonly composerMode: Ref<'message' | 'steer'>;
-  readonly selectedCommand: Ref<RunnerCommand | undefined>;
-  readonly commandPickerOpen: Ref<boolean>;
-  readonly nextRequest: () => number;
-  readonly currentRequest: () => number;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly draftOpen: Readonly<Ref<boolean>>;
+  readonly setDraftOpen: (open: boolean) => void;
   readonly closeMobileSurface: () => void;
   readonly workspaceTabId: (nodeId: string, workspaceId: string) => string;
   readonly ensureSessionVisible: (tabId: string, index: number) => void;
@@ -65,58 +56,23 @@ export interface WorkbenchSessionSelectionOptions {
   ) => void | Promise<void>;
   readonly saveCurrent: () => void;
   readonly selectWorkspace: (target: WorkspaceTarget, openDraft?: boolean) => Promise<boolean>;
-  readonly applyComposerConfiguration: (
-    session: Session | undefined,
-    authoritative?: boolean
-  ) => void;
-  readonly restoreCachedDetail: (sessionId: string) => Readonly<CachedSessionDetail> | undefined;
-  readonly cachedQueue: (nodeId: string, workspaceId: string, sessionId: string) => WorkspaceQueue;
-  readonly installCachedDetail: (detail: Readonly<CachedSessionDetail>) => void;
-  readonly clearActiveContent: () => void;
-  readonly openRun: (runId: string) => void;
-  readonly scrollLatest: () => Promise<void>;
-  readonly beginInitialRender: () => Promise<void>;
-  readonly createPaneLoader: (
-    projection: Omit<
-      Parameters<typeof createWorkspaceSessionPaneLoader>[0],
-      'runs' | 'readSession' | 'readInitialHistory'
-    >
-  ) => ReturnType<typeof createWorkspaceSessionPaneLoader>;
-  readonly replaceSession: (previousId: string, next: Session) => void;
-  readonly canWatch: (session: Session) => boolean;
-  readonly hasInitialSnapshot: (sessionId: string) => boolean;
-  readonly beginWatch: (sessionId: string) => Promise<boolean>;
-  readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
-  readonly mergeTurns: (page: ConversationTurnPage) => boolean;
+  readonly pane: {
+    readonly open: (sessionId: string, options?: WorkspacePaneOpenOptions) => Promise<void>;
+    readonly openTab: (
+      sessionId: string,
+      onSessionResolved?: (session: Session) => void
+    ) => Promise<void>;
+    readonly loadingContent: Readonly<Ref<boolean>>;
+  };
 }
 
-const EMPTY_QUEUE: WorkspaceQueue = { version: 0, paused: false, items: [] };
 export function createWorkbenchSessionSelectionService(options: WorkbenchSessionSelectionOptions) {
-  const scope = getCurrentScope();
-  const paneLoader = options.createPaneLoader({
-    replaceSession: (id, session) => options.replaceSession(id, session),
-    applyComposerConfiguration: (session, authoritative) =>
-      options.applyComposerConfiguration(session, authoritative),
-    markActive: (session) => {
-      options.sessions.value = options.sessions.value.map((candidate) =>
-        candidate.id === session.id && candidate.workspaceId === session.workspaceId
-          ? { ...candidate, activity: 'MANAGED_ACTIVE' }
-          : candidate
-      );
-    },
-    openRun: (id) => options.openRun(id),
-    canWatch: (session) => options.canWatch(session),
-    beginWatch: (id) => options.beginWatch(id),
-    applySnapshot: (id, page) => options.applySnapshot(id, page),
-    mergeTurns: (page) => options.mergeTurns(page),
-    saveCurrent: () => options.saveCurrent()
-  });
-  let opening: OpeningSession | undefined;
-  const restoredContent = ref(false);
-  let positioningRequest: number | undefined;
-  const loadingInitialContent = computed(
-    () => options.loadingInitial.value && !restoredContent.value
-  );
+  async function openAsideTarget(sessionId: string): Promise<void> {
+    const target = options.secondaryPane.target.value;
+    if (target === undefined) return;
+    if (target.sessionId !== sessionId && !openAsideSession({ ...target, sessionId })) return;
+    await options.secondaryPane.reloadChecked();
+  }
   function openAsideSession(target: AsideSession): boolean {
     const workspace = options.workspaceTarget.value;
     if (workspace?.nodeId !== target.nodeId || workspace.workspaceId !== target.workspaceId)
@@ -166,25 +122,13 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       options.saveAside();
     options.aside.removeMissing(workspace, sessionIds);
   }
-  function current(
-    requestId: number,
-    nodeId: string,
+  function prepareTarget(
     sessionId: string,
-    workspaceId?: string
-  ): boolean {
-    return (
-      (scope === undefined || scope.active) &&
-      requestId === options.currentRequest() &&
-      options.workspaceTarget.value?.nodeId === nodeId &&
-      (workspaceId === undefined || options.workspaceTarget.value.workspaceId === workspaceId) &&
-      options.selectedSessionId.value === sessionId
-    );
-  }
-
-  function prepare(sessionId: string, nodeId: string, openOptions: OpenSessionOptions) {
+    nodeId: string,
+    openOptions: WorkspacePaneOpenOptions
+  ): { switching: boolean; session: Session | undefined } {
     if (!openOptions.preserveMobileWorkspaceSurface) options.closeMobileSurface();
     const switching = options.selectedSessionId.value !== sessionId;
-    let restored = false;
     const session = options.sessions.value.find(
       (item) =>
         item.id === sessionId &&
@@ -203,213 +147,85 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     if (!openOptions.skipSaveCurrent) options.saveCurrent();
     if (session !== undefined && options.workspaceTarget.value?.workspaceId !== session.workspaceId)
       void options.selectWorkspace({ nodeId, workspaceId: session.workspaceId }, false);
-    options.draftOpen.value = false;
-    if (switching) {
-      options.composerMode.value = 'message';
-      options.selectedCommand.value = undefined;
-      options.commandPickerOpen.value = false;
-    }
-    let activeRunId: string | undefined;
-    if (switching) {
-      // Detach the old identity before replacing its projection. Synchronous observers must not
-      // associate the previous window with the new Session during this handoff.
-      options.selectedSessionId.value = undefined;
-      options.queue.value =
-        options.workspaceTarget.value?.workspaceId === undefined
-          ? EMPTY_QUEUE
-          : options.cachedQueue(nodeId, options.workspaceTarget.value?.workspaceId, sessionId);
-      options.applyComposerConfiguration(session, false);
-      const cached = options.restoreCachedDetail(sessionId);
-      options.selectedRunId.value = undefined;
-      if (cached !== undefined) {
-        restored = true;
-        options.installCachedDetail(cached);
-        const active = activeRun(options.runs.value, sessionId);
-        activeRunId = active?.id;
-      } else {
-        options.clearActiveContent();
-      }
-    }
-    options.selectedSessionId.value = sessionId;
-    return { switching, restored, activeRunId };
-  }
-
-  async function positionRestoredContent(
-    requestId: number,
-    isCurrent: () => boolean
-  ): Promise<void> {
-    positioningRequest = requestId;
-    options.positioning.value = true;
-    try {
-      // The shared scroll element may still contain the previous conversation.
-      await nextTick();
-      if (isCurrent() && options.positioning.value) await options.scrollLatest();
-    } finally {
-      if (positioningRequest === requestId) {
-        positioningRequest = undefined;
-        if (scope?.active !== false) options.positioning.value = false;
-      }
-    }
-  }
-
-  async function openSession(
-    sessionId: string,
-    openOptions: OpenSessionOptions = {}
-  ): Promise<void> {
-    const nodeId = options.workspaceTarget.value?.nodeId;
-    const workspaceId = options.workspaceTarget.value?.workspaceId;
-    if (nodeId === undefined) return;
-    const initialRequestId = options.nextRequest();
-    const operation: OpeningSession = {
-      requestId: initialRequestId,
-      preparing: true,
-      nodeId,
-      workspaceId,
-      sessionId,
-      markRead: false
-    };
-    opening = operation;
-    positioningRequest = undefined;
-    options.positioning.value = false;
-    options.loadingInitial.value = true;
-    options.initialLoadFailed.value = false;
-    options.initialFailureCause.value = undefined;
-    const { switching, restored, activeRunId } = prepare(sessionId, nodeId, openOptions);
-    operation.preparing = false;
-    if (opening !== operation) return;
-    if (
-      options.workspaceTarget.value?.nodeId !== nodeId ||
-      options.selectedSessionId.value !== sessionId
-    ) {
-      opening = undefined;
-      return;
-    }
-    const requestId = options.currentRequest();
-    operation.requestId = requestId;
-    const readWorkspaceId = options.workspaceTarget.value?.workspaceId;
-    if (activeRunId !== undefined) options.openRun(activeRunId);
-    const hasContent = options.turns.value.some((turn) => turn.items.length > 0);
-    // Cached content stays readable; Watch synchronization has its own status.
-    restoredContent.value = hasContent;
-    const isCurrent = () => current(requestId, nodeId, sessionId, readWorkspaceId);
-    const cachedPositioning =
-      restored && hasContent && !openOptions.deferInitialScroll
-        ? positionRestoredContent(requestId, isCurrent)
-        : undefined;
-    try {
-      const loaded = await paneLoader.load({
-        nodeId,
-        workspaceId: readWorkspaceId,
-        sessionId,
-        isCurrent,
-        onResolved: (session) => {
-          openOptions.onSessionResolved?.(session);
-          if (!isCurrent()) return;
-          operation.session = session;
-          operation.onSessionResolved?.(session);
-        }
-      });
-      if (loaded === undefined || !isCurrent()) return;
-      if (!hasContent) await options.beginInitialRender();
-      if (!isCurrent()) return;
-      // Restored content was already positioned; synchronization must not interrupt reading.
-      if (!hasContent && (switching || loaded.changed || !openOptions.deferInitialScroll)) {
-        options.positioning.value = true;
-        await options.scrollLatest();
-      }
-      await cachedPositioning;
-      if (!isCurrent()) return;
-      options.positioning.value = false;
-      if (
-        (openOptions.markReadAfterOpen || operation.markRead) &&
-        loaded.session.workspaceId === workspaceId &&
-        current(requestId, nodeId, sessionId, workspaceId)
-      )
-        void Promise.resolve(
-          options.markSessionRead(nodeId, workspaceId!, loaded.session.id)
-        ).catch(() => undefined);
-    } catch (error) {
-      await cachedPositioning;
-      if (!isCurrent()) return;
-      options.positioning.value = false;
-      if (errorCode(error) === 'WATCH_CANCELLED') {
-        if (openOptions.throwOnFailure) throw error;
-        return;
-      }
-      options.initialLoadFailed.value = true;
-      options.initialFailureCause.value = error;
-      if (openOptions.throwOnFailure) throw error;
-    } finally {
-      if (opening === operation) opening = undefined;
-      if (isCurrent()) {
-        options.loadingInitial.value = false;
-      }
-    }
-  }
-
-  async function selectSession(sessionId: string): Promise<void> {
-    await openWorkspaceTabSession(sessionId);
-  }
-
-  async function openWorkspaceTabSession(
-    sessionId: string,
-    onSessionResolved?: (session: Session) => void
-  ): Promise<void> {
-    const target = options.workspaceTarget.value;
-    if (target === undefined) return;
-    if (options.selectedSessionId.value === sessionId && !options.draftOpen.value) {
-      options.closeMobileSurface();
-      if (options.loadingInitial.value) {
-        if (
-          (opening?.preparing === true || opening?.requestId === options.currentRequest()) &&
-          opening.nodeId === target.nodeId &&
-          opening.workspaceId === target.workspaceId &&
-          opening.sessionId === sessionId
-        ) {
-          if (onSessionResolved !== undefined) {
-            if (opening.session !== undefined) onSessionResolved(opening.session);
-            else opening.onSessionResolved = onSessionResolved;
-          }
-          opening.markRead = true;
-        }
-        return;
-      }
-      if (!options.initialLoadFailed.value && options.hasInitialSnapshot(sessionId)) {
-        const session = options.sessions.value.find(
-          (item) => item.id === sessionId && item.workspaceId === target.workspaceId
-        );
-        if (session === undefined && onSessionResolved !== undefined) {
-          await openSession(sessionId, { markReadAfterOpen: true, onSessionResolved });
-          return;
-        }
-        if (session !== undefined) onSessionResolved?.(session);
-        void Promise.resolve(
-          options.markSessionRead(target.nodeId, target.workspaceId, sessionId)
-        ).catch(() => undefined);
-        return;
-      }
-    }
-    await openSession(sessionId, {
-      markReadAfterOpen: true,
-      ...(onSessionResolved === undefined ? {} : { onSessionResolved })
-    });
+    options.setDraftOpen(false);
+    return { switching, session };
   }
 
   return {
-    openSession,
-    selectSession,
-    openWorkspaceTabSession,
+    restoreDraftSelection: () => {
+      options.setDraftOpen(true);
+      options.setSelectedSessionId(undefined);
+    },
+    prepareTarget,
+    openSession: options.pane.open,
+    selectSession: options.pane.openTab,
+    openWorkspaceTabSession: options.pane.openTab,
     openAsideSession,
+    openAsideTarget,
     closeAsideSession,
     replaceAsideSession,
     removeMissingAside,
-    loadingInitialContent
+    loadingInitialContent: options.pane.loadingContent
   };
 }
 
-function activeRun(runs: readonly AgentRun[], sessionId: string): AgentRun | undefined {
-  return runs.find(
-    (run) =>
-      run.sessionId === sessionId && ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
-  );
+/** The session selection owns its target and connects navigation after Pane assembly. */
+export function createWorkbenchSessionSelection(
+  workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>
+) {
+  const state = createWorkbenchSessionSelectionState(workspaceTarget);
+  return {
+    ...state,
+    connect(
+      options: Omit<
+        WorkbenchSessionSelectionOptions,
+        | 'workspaceTarget'
+        | 'selectedSessionId'
+        | 'setSelectedSessionId'
+        | 'draftOpen'
+        | 'setDraftOpen'
+      >
+    ) {
+      return createWorkbenchSessionSelectionService({
+        ...options,
+        workspaceTarget,
+        selectedSessionId: state.sessionId,
+        setSelectedSessionId: state.setSession,
+        draftOpen: state.draftOpen,
+        setDraftOpen: state.setDraftOpen
+      });
+    }
+  };
+}
+
+export interface WorkbenchSelectionView {
+  activateWorkspaceTab: (tab: WorkspaceTab) => Promise<void>;
+  activeWorkspaceTabId: string | undefined;
+  closeWorkspaceTab: (tab: WorkspaceTab, force?: boolean) => void;
+  workspaceTarget: WorkspaceTarget | undefined;
+  workspaceTabs: {
+    readonly id: string;
+    readonly nodeId: string;
+    readonly nodeLabel?: string;
+    readonly workspaceId: string;
+    readonly label: string;
+    readonly lastActiveAt: number;
+    readonly selectedSessionId?: string;
+    readonly pinned?: boolean;
+  }[];
+  workspaceTabLabel: (workspace: Workspace) => string;
+  workspaceTabNodeLabel: (tab: WorkspaceTab) => string;
+  moveWorkspaceTab: (tabId: string, targetIndex: number) => void;
+  pinWorkspaceTab: (tabId: string, pinned: boolean) => void;
+  workspaceSelectionLoading: boolean;
+  retryWorkspaceSelection: () => void;
+  selectedSessionId: string | undefined;
+  openSessionFromList: (sessionId: string) => Promise<void>;
+  openSessionGroupTarget: (target: {
+    nodeId: string;
+    workspaceId: string;
+    sessionId: string;
+  }) => Promise<void>;
+  openNewSessionComposer: () => void;
+  draftSessionOpen: boolean;
 }

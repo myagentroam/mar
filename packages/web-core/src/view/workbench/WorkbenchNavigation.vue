@@ -10,7 +10,7 @@ import {
   localePreferenceService
 } from '../../service/locale-preference-service.js';
 import type {
-  WorkbenchNotificationService,
+  WorkbenchNotificationView,
   WorkbenchNotification
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
@@ -56,7 +56,7 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly mobileUtilityPanel?: MobileUtilityPanel | undefined;
   readonly mobileHistoryOpen?: boolean;
-  readonly notificationService: WorkbenchNotificationService;
+  readonly notificationService: WorkbenchNotificationView;
   readonly performanceDiagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;
   readonly uploads: readonly WorkspaceUploadTask[];
   readonly uploadStatusLabel: (task: WorkspaceUploadTask) => string;

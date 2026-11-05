@@ -3,6 +3,9 @@ import type { Workspace } from '../../src/model/workbench.js';
 import { createWorkbenchBaseStateService } from '../../src/service/workbench-base-state-service.js';
 import { createWorkspaceSessionPaneState } from '../../src/service/workspace-session-pane-state.js';
 import { createWorkbenchSubmissionOwner } from '../../src/service/workbench-submission-service.js';
+import { createWorkbenchWorkspaceSelectionState } from '../../src/service/workbench-workspace-selection-service.js';
+import { createWorkbenchSessionSelectionState } from '../../src/service/workbench-session-selection-service.js';
+import { createWorkbenchCapabilityService } from '../../src/service/workbench-capability-service.js';
 import { computed, effectScope, ref } from 'vue';
 import { serializeComposerTag } from '@myagentroam/protocol';
 import {
@@ -30,40 +33,41 @@ const options = () => ({
 
 describe('shared Workbench state composition', () => {
   it('retains the Main input across existing sessions and new-session targets', () => {
-    const state = createWorkbenchBaseStateService(options());
-    state.selection.workspaceTarget.value = { nodeId: 'n', workspaceId: 'w' };
-    state.surface.draftSessionOpen.value = true;
-    state.draft.input.value = 'new';
-    state.surface.draftSessionOpen.value = false;
-    state.selection.selectedSessionId.value = 'a';
-    expect(state.draft.input.value).toBe('new');
-    state.draft.input.value = 'a';
-    state.selection.selectedSessionId.value = 'b';
-    expect(state.draft.input.value).toBe('a');
-    state.draft.input.value = 'b';
-    state.selection.selectedSessionId.value = 'a';
-    expect(state.draft.input.value).toBe('b');
-    state.surface.draftSessionOpen.value = true;
-    expect(state.draft.input.value).toBe('b');
-    state.surface.draftSessionOpen.value = false;
-    state.selection.selectedSessionId.value = 'draft:pending';
-    expect(state.draft.input.value).toBe('b');
+    const workspace = createWorkbenchWorkspaceSelectionState();
+    const session = createWorkbenchSessionSelectionState(workspace.target);
+    const draft = createSessionDraftService({ target: session.draftTarget });
+    workspace.setTarget({ nodeId: 'n', workspaceId: 'w' });
+    session.setDraftOpen(true);
+    draft.input.value = 'new';
+    session.setDraftOpen(false);
+    session.setSession('a');
+    expect(draft.input.value).toBe('new');
+    draft.input.value = 'a';
+    session.setSession('b');
+    expect(draft.input.value).toBe('a');
+    draft.input.value = 'b';
+    session.setSession('a');
+    expect(draft.input.value).toBe('b');
+    session.setDraftOpen(true);
+    expect(draft.input.value).toBe('b');
+    session.setDraftOpen(false);
+    session.setSession('draft:pending');
+    expect(draft.input.value).toBe('b');
   });
   it('creates isolated ordinary state without product navigation or enterprise targets', () => {
     const a = createWorkbenchBaseStateService(options());
     const b = createWorkbenchBaseStateService(options());
+    const firstWorkspace = createWorkbenchWorkspaceSelectionState();
+    const secondWorkspace = createWorkbenchWorkspaceSelectionState();
     expect(a).not.toHaveProperty('hostedSelection');
     expect(a).not.toHaveProperty('navigation');
     expect(a).not.toHaveProperty('notifications');
     expect(a.admin.admin.value.authenticated).toBe(false);
-    a.selection.workspaceTarget.value = { nodeId: 'node-1', workspaceId: 'workspace-1' };
-    a.surface.quickOpenFileVisible.value = true;
+    firstWorkspace.setTarget({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     a.paging.initialize('node-1:workspace-1');
     expect(a.paging.visibleLimits.value.get('node-1:workspace-1')).toBe(10);
-    expect(b.selection.workspaceTarget.value).toBeUndefined();
-    expect(b.surface.quickOpenFileVisible.value).toBe(false);
+    expect(secondWorkspace.target.value).toBeUndefined();
     expect(b.paging.visibleLimits.value.size).toBe(0);
-    expect(a.surface.terminalDocks).not.toBe(b.surface.terminalDocks);
   });
 
   it('isolates per-pane reading and queue interaction state using the same factory', async () => {
@@ -1743,24 +1747,30 @@ describe('shared Workbench state composition', () => {
     attachments.clearAll();
   });
 
-  it('keeps extensible Workspace typing and connects drafts to the same selection refs', () => {
+  it('keeps extensible Workspace typing and connects drafts to the selected Workspace', () => {
     interface Resource extends Workspace {
       readonly label: string;
     }
-    const state = createWorkbenchBaseStateService<Resource>(options());
-    state.selection.workspaces.value = [
-      { id: 'w1', path: '/w1', kind: 'DIRECTORY', label: 'custom' }
-    ];
-    expect(state.selection.workspaces.value[0]?.label).toBe('custom');
-    state.selection.workspaceTarget.value = { nodeId: 'n1', workspaceId: 'w1' };
-    state.draft.input.value = 'first draft';
-    state.draft.persist();
-    state.selection.workspaceTarget.value = { nodeId: 'n1', workspaceId: 'w2' };
-    state.draft.restore();
-    expect(state.draft.input.value).toBe('');
-    state.selection.workspaceTarget.value = { nodeId: 'n1', workspaceId: 'w1' };
-    state.draft.restore();
-    expect(state.draft.input.value).toBe('first draft');
+    const workspace = createWorkbenchWorkspaceSelectionState();
+    const session = createWorkbenchSessionSelectionState(workspace.target);
+    const draft = createSessionDraftService({ target: session.draftTarget });
+    const capability = createWorkbenchCapabilityService<Resource>({
+      workspaceTarget: workspace.target,
+      request: vi.fn(),
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    capability.replaceWorkspaces([{ id: 'w1', path: '/w1', kind: 'DIRECTORY', label: 'custom' }]);
+    expect(capability.workspaces.value[0]?.label).toBe('custom');
+    workspace.setTarget({ nodeId: 'n1', workspaceId: 'w1' });
+    draft.input.value = 'first draft';
+    draft.persist();
+    workspace.setTarget({ nodeId: 'n1', workspaceId: 'w2' });
+    draft.restore();
+    expect(draft.input.value).toBe('');
+    workspace.setTarget({ nodeId: 'n1', workspaceId: 'w1' });
+    draft.restore();
+    expect(draft.input.value).toBe('first draft');
   });
 
   it('shares the auth CSRF ref with HTTP and routes unauthenticated failure to its owner', async () => {

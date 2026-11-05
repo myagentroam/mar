@@ -56,7 +56,7 @@ function fixture() {
     discover,
     sendDirect: () => true,
     sendTerminalDirect: () => true,
-    onChange: changed
+    selectedNode: () => undefined
   });
   return { coordinator, nodes, discover, changed };
 }

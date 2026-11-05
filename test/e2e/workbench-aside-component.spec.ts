@@ -387,8 +387,10 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
       ).toBe(true);
     }
     await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#tool')).toHaveText('Tool files');
-    await page.getByLabel('Inspector draft').fill('unsaved edit');
+    const files = page.getByTestId('tool-files');
+    const search = page.getByTestId('tool-search');
+    await expect(files).toContainText('Tool files');
+    await files.getByLabel('Inspector draft').fill('unsaved edit');
     const childIds = await tabs.getByRole('tab', { name: 'Child' }).evaluate((el) => ({
       id: el.id,
       controls: el.getAttribute('aria-controls')
@@ -399,9 +401,11 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
     await expect(page.locator('#terminal')).toBeVisible();
     await expect(page.locator('#terminal')).toHaveAttribute('data-mounts', '1');
     await tabs.getByRole('tab', { name: 'Search' }).click();
-    await expect(page.getByLabel('Inspector draft')).toHaveValue('unsaved edit');
-    await expect(page.locator('#tool')).toHaveAttribute('data-mounts', '1');
+    await expect(search).toHaveAttribute('data-mounts', '1');
     await expect(page.locator('#terminal')).toBeHidden();
+    await tabs.getByRole('tab', { name: 'Files' }).click();
+    await expect(files.getByLabel('Inspector draft')).toHaveValue('unsaved edit');
+    await expect(files).toHaveAttribute('data-mounts', '1');
     expect(
       await tabs.getByRole('tab', { name: 'Child' }).evaluate((el) => ({
         id: el.id,

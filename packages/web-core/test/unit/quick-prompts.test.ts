@@ -1,7 +1,5 @@
-import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createQuickPromptService } from '../../src/service/quick-prompt-service.js';
-import type { QuickPrompt } from '../../src/model/workbench.js';
 
 describe('Public Account Quick Tip Read', () => {
   it('Coalesce concurrent refreshes, keep the old list after failure, and allow a later retry', async () => {
@@ -12,10 +10,8 @@ describe('Public Account Quick Tip Read', () => {
           reject = fail;
         })
     );
-    const prompts = ref<readonly QuickPrompt[]>([]);
-    const loading = ref(false);
-    const failed = ref(false);
-    const service = createQuickPromptService({ prompts, loading, failed, request });
+    const service = createQuickPromptService({ request });
+    const { loading, failed } = service;
     const first = service.refresh();
     const second = service.refresh();
     expect(request).toHaveBeenCalledOnce();
@@ -32,14 +28,10 @@ describe('Public Account Quick Tip Read', () => {
   });
 
   it('Do not replace the current list with a non-array response', async () => {
-    const prompts = ref<readonly QuickPrompt[]>([]);
     const service = createQuickPromptService({
-      prompts,
-      loading: ref(false),
-      failed: ref(false),
       request: vi.fn().mockResolvedValue({ prompts: null })
     });
     await service.refresh();
-    expect(prompts.value).toEqual([]);
+    expect(service.prompts.value).toEqual([]);
   });
 });

@@ -1,3 +1,5 @@
+import { computed, ref, watch } from 'vue';
+import { translate } from './locale-preference-service.js';
 import type { NodeWorkbenchManifest } from '../model/workbench.js';
 import type { DirectBrowserMessage, TerminalDirectBrowserMessage } from '@myagentroam/protocol';
 import { createActiveNodeTransportService } from './active-node-transport-service.js';
@@ -8,17 +10,22 @@ interface TransportNode {
   readonly id: string;
   readonly connected: boolean;
   readonly disabled: boolean;
+  readonly nodeAppVersion?: string;
 }
 interface Options {
   readonly nodes: () => readonly TransportNode[];
   readonly discover: (nodeId: string) => Promise<NodeWorkbenchManifest | undefined>;
   readonly sendDirect: (message: DirectBrowserMessage) => boolean;
   readonly sendTerminalDirect: (message: TerminalDirectBrowserMessage) => boolean;
-  readonly onChange: () => void;
+  readonly selectedNode: () => string | undefined;
 }
 
 /** Owns page-local direct transport discovery and lifecycle, not the control connection. */
 export function createWorkbenchDirectTransportCoordinator(options: Options) {
+  const workspaceDirectProbeRevision = ref(0);
+  const onChange = () => {
+    workspaceDirectProbeRevision.value += 1;
+  };
   const capabilities = new Map<string, { generation: string; terminalDirect: boolean }>();
   // Promise identity fences stale replies and cleanup, including across reset/re-login.
   const requests = new Map<string, Promise<void>>();
@@ -26,7 +33,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   let disposed = false;
   const workspace = createWorkspaceDirectTransferService({
     send: (message) => connectionId !== undefined && !disposed && options.sendDirect(message),
-    onProbeResultChange: options.onChange,
+    onProbeResultChange: onChange,
     shouldRetryProbe: (nodeId, generation) =>
       eligible(nodeId) && capabilities.get(nodeId)?.generation === generation
   });
@@ -48,7 +55,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
       requests.delete(nodeId);
       capabilities.delete(nodeId);
       workspace.releaseTransport(nodeId);
-      options.onChange();
+      onChange();
     }
   });
 
@@ -65,7 +72,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
     requests.delete(nodeId);
     capabilities.delete(nodeId);
     workspace.invalidateNode(nodeId);
-    options.onChange();
+    onChange();
   }
 
   function refresh(nodeId: string, force = false): Promise<void> {
@@ -101,7 +108,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
           terminalDirect: manifest.terminalDirect?.apiVersion === 1
         });
         void workspace.ensureTransport(nodeId, manifest.nodeGeneration);
-        options.onChange();
+        onChange();
       })
       .finally(() => {
         if (requests.get(nodeId) === task) requests.delete(nodeId);
@@ -140,7 +147,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
     capabilities.clear();
     terminal.invalidate();
     workspace.invalidateControlConnection();
-    options.onChange();
+    onChange();
   }
 
   function connectionReady(id: string, resumed: boolean): void {
@@ -154,7 +161,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
       capabilities.clear();
       terminal.invalidate();
       workspace.invalidateNetwork();
-      options.onChange();
+      onChange();
     }
     void reconcileNodes();
   }
@@ -168,6 +175,8 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    stopNodeWatch();
+    stopSelectionWatch();
     reset();
   }
 
@@ -180,6 +189,79 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
       workspace.isConnected(nodeId, capability.generation)
     );
   }
+
+  function networkInfo(nodeId: string) {
+    const capability = capabilities.get(nodeId);
+    return capability === undefined || !isConnected(nodeId)
+      ? undefined
+      : workspace.networkInfo(nodeId, capability.generation);
+  }
+  const directTransportEligibilityKey = computed(() =>
+    options
+      .nodes()
+      .map(
+        (node) =>
+          `${node.id}\0${node.connected ? '1' : '0'}\0${node.disabled ? '1' : '0'}\0${node.nodeAppVersion}`
+      )
+      .join('\n')
+  );
+  const stopNodeWatch = watch(directTransportEligibilityKey, () => void reconcileNodes());
+  const stopSelectionWatch = watch(
+    options.selectedNode,
+    (nodeId) => {
+      activeNodes.select(nodeId);
+    },
+    { immediate: true, flush: 'sync' }
+  );
+
+  const workspaceDirectAvailable = (nodeId: string): boolean => {
+    void workspaceDirectProbeRevision.value;
+    return isConnected(nodeId);
+  };
+
+  const workspaceDirectDescription = (nodeId: string): string | undefined => {
+    if (!workspaceDirectAvailable(nodeId)) return undefined;
+    const info = networkInfo(nodeId);
+    if (info === undefined) return translate('workspaceTabs.directAvailable');
+    const scope = translate(
+      `workspaceTabs.networkScope.${info.scope.toLowerCase()}` as
+        | 'workspaceTabs.networkScope.loopback'
+        | 'workspaceTabs.networkScope.private'
+        | 'workspaceTabs.networkScope.public'
+        | 'workspaceTabs.networkScope.vpn_tun'
+        | 'workspaceTabs.networkScope.unknown'
+    );
+    const ipVersion =
+      info.ipVersion === 'UNKNOWN'
+        ? ''
+        : translate(
+            `workspaceTabs.ipVersion.${info.ipVersion.toLowerCase()}` as
+              'workspaceTabs.ipVersion.ipv4' | 'workspaceTabs.ipVersion.ipv6'
+          );
+    const protocol = info.protocol === 'UNKNOWN' ? '' : info.protocol;
+    const interfaceType =
+      info.interfaceType === 'UNKNOWN' ||
+      (info.scope === 'VPN_TUN' && info.interfaceType === 'VPN') ||
+      (info.scope === 'LOOPBACK' && info.interfaceType === 'LOOPBACK')
+        ? ''
+        : translate(
+            `workspaceTabs.interfaceType.${info.interfaceType.toLowerCase()}` as
+              | 'workspaceTabs.interfaceType.ethernet'
+              | 'workspaceTabs.interfaceType.wifi'
+              | 'workspaceTabs.interfaceType.cellular'
+              | 'workspaceTabs.interfaceType.vpn'
+              | 'workspaceTabs.interfaceType.loopback'
+          );
+    return translate('workspaceTabs.directAvailableWithNetwork', {
+      network: [scope, ipVersion, protocol, interfaceType].filter(Boolean).join(' ')
+    });
+  };
+
+  const workspaceLocalFileManagerAvailable = computed(() => {
+    void workspaceDirectProbeRevision.value;
+    const nodeId = options.selectedNode();
+    return nodeId !== undefined && networkInfo(nodeId)?.scope === 'LOOPBACK';
+  });
 
   return {
     workspace: { upload: workspace.upload, download: workspace.download },
@@ -197,11 +279,9 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
     reset,
     dispose,
     isConnected,
-    networkInfo: (nodeId: string) => {
-      const capability = capabilities.get(nodeId);
-      return capability === undefined || !isConnected(nodeId)
-        ? undefined
-        : workspace.networkInfo(nodeId, capability.generation);
-    }
+    networkInfo,
+    workspaceDirectAvailable,
+    workspaceDirectDescription,
+    workspaceLocalFileManagerAvailable
   };
 }

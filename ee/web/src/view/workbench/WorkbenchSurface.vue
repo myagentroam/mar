@@ -2,9 +2,10 @@
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 
-import { defineAsyncComponent, h, type ShallowUnwrapRef } from 'vue';
-import type { createWorkbenchPageController } from '@/service/workbench-page-controller';
+import { defineAsyncComponent, h } from 'vue';
 import CoreSurface from '@myagentroam/web-core/WorkbenchSurface.vue';
+import type { ManagementSection } from '@/model/workbench';
+import type { WorkspaceRegistrationOwnership } from '@/service/workspace-registration-service';
 import WorkspaceRegistrationPicker from '@/view/workspace/WorkspaceRegistrationPicker.vue';
 import { translate } from '@/service/locale-preference-service';
 
@@ -18,70 +19,75 @@ const SettingsContent = defineAsyncComponent({
   loadingComponent,
   delay: 0
 });
-defineProps<{ page: ShallowUnwrapRef<ReturnType<typeof createWorkbenchPageController>> }>();
+type NodeOwnership = Extract<WorkspaceRegistrationOwnership, { ownerType: 'ORGANIZATION' }>;
+type CoreSurfaceProps = Parameters<
+  typeof CoreSurface<ManagementSection, WorkspaceRegistrationOwnership, NodeOwnership>
+>[0];
+defineProps<{ page: CoreSurfaceProps['page'] }>();
 </script>
 <template>
   <CoreSurface :page="page">
     <template #workspace-registration>
       <WorkspaceRegistrationPicker
-        v-model="page.openWorkspaceTools"
-        v-model:preserve-git-config="page.workspacePreserveGitConfig"
-        :git-policy-supported="page.workspaceGitPolicySupported"
-        :directory="page.workspaceDirectory"
-        :selected-path="page.workspacePath"
-        :pending-directory-name="page.pendingWorkspaceDirectoryName"
-        :loading-directory="page.loadingWorkspaceDirectory"
-        :loading="page.loading"
-        :node-ready="page.workspaceRegistrationReady"
-        :selected-path-valid="page.selectedWorkspaceDirectorySelectable"
-        :enterprise="page.admin.edition === 'ENTERPRISE'"
-        :role="page.admin.role"
-        :node-ownership="page.workspaceRegistrationNode?.ownership"
-        :node-manageable="page.workspaceRegistrationNode?.manageable"
-        :workspace-creatable="page.workspaceRegistrationNode?.workspaceCreatable"
-        :request="page.request"
-        @navigate="page.loadWorkspaceDirectories"
-        @select="page.selectWorkspaceDirectory"
-        @select-pending="page.selectPendingWorkspaceDirectory"
-        @discard-pending="page.discardPendingWorkspaceDirectory"
-        @register="page.registerWorkspace"
+        v-model="page.registration.openWorkspaceTools"
+        v-model:preserve-git-config="page.registration.workspacePreserveGitConfig"
+        :git-policy-supported="page.registration.workspaceGitPolicySupported"
+        :directory="page.registration.workspaceDirectory"
+        :selected-path="page.resources.workspacePath"
+        :pending-directory-name="page.registration.pendingWorkspaceDirectoryName"
+        :loading-directory="page.registration.loadingWorkspaceDirectory"
+        :loading="page.identity.loading"
+        :node-ready="page.registration.workspaceRegistrationReady"
+        :selected-path-valid="page.registration.selectedWorkspaceDirectorySelectable"
+        :enterprise="page.identity.admin.edition === 'ENTERPRISE'"
+        :role="page.identity.admin.role"
+        :node-ownership="page.registration.workspaceRegistrationNode?.ownership"
+        :node-manageable="page.registration.workspaceRegistrationNode?.manageable"
+        :workspace-creatable="page.registration.workspaceRegistrationNode?.workspaceCreatable"
+        :request="page.identity.request"
+        @navigate="page.registration.loadWorkspaceDirectories"
+        @select="page.registration.selectWorkspaceDirectory"
+        @select-pending="page.registration.selectPendingWorkspaceDirectory"
+        @discard-pending="page.registration.discardPendingWorkspaceDirectory"
+        @register="page.registration.registerWorkspace"
       />
     </template>
     <template #settings>
       <SettingsContent
-        v-model:new-password="page.newPassword"
-        :section="page.settingsSection"
-        :sessions="page.adminSessions"
-        :password-validation-error="page.passwordValidationError"
-        :registration-token="page.registrationToken"
-        :loading="page.loading"
-        :format-session-time="page.formatSessionTime"
-        :request="page.request"
-        :edition="page.admin.edition ?? 'COMMUNITY'"
-        :role="page.admin.role ?? null"
-        :management-writable="page.admin.managementWritable ?? true"
-        :quick-prompts="page.quickPrompts"
-        :quick-prompts-loading="page.quickPromptsLoading"
-        :quick-prompts-failed="page.quickPromptsFailed"
-        :refresh-quick-prompts="page.refreshQuickPrompts"
-        :system-notifications="page.workbenchNotificationService.systemNotifications"
-        @clear-password-error="page.passwordValidationError = ''"
-        @refresh-sessions="page.refreshAdminSessions"
-        @logout-session="page.logoutAdminSession"
-        :change-password="page.changePassword"
-        @logout="page.logout"
-        @create-registration-token="page.createRegistrationToken"
+        v-model:new-password="page.identity.newPassword"
+        :section="page.application.settingsSection"
+        :sessions="page.identity.adminSessions"
+        :password-validation-error="page.identity.passwordValidationError"
+        :registration-token="page.settings.registrationToken"
+        :registration-loading="page.settings.registrationLoading"
+        :loading="page.identity.loading"
+        :format-session-time="page.identity.formatSessionTime"
+        :request="page.identity.request"
+        :edition="page.identity.admin.edition ?? 'COMMUNITY'"
+        :role="page.identity.admin.role ?? null"
+        :management-writable="page.identity.admin.managementWritable ?? true"
+        :quick-prompts="page.settings.quickPrompts"
+        :quick-prompts-loading="page.settings.quickPromptsLoading"
+        :quick-prompts-failed="page.settings.quickPromptsFailed"
+        :refresh-quick-prompts="page.settings.refreshQuickPrompts"
+        :system-notifications="page.notifications.systemNotifications"
+        @clear-password-error="page.identity.passwordValidationError = ''"
+        @refresh-sessions="page.identity.refreshAdminSessions"
+        @logout-session="page.identity.logoutAdminSession"
+        :change-password="page.identity.changePassword"
+        @logout="page.identity.logout"
+        @create-registration-token="page.settings.createRegistrationToken"
       />
     </template>
     <template #management-notice>
       <el-alert
-        v-if="page.admin.licenseState === 'ENTERPRISE_FROZEN'"
+        v-if="page.identity.admin.licenseState === 'ENTERPRISE_FROZEN'"
         class="enterprise-frozen-banner"
         type="warning"
         :closable="false"
         show-icon
         :title="
-          page.admin.role === 'ADMIN'
+          page.identity.admin.role === 'ADMIN'
             ? translate(
                 'generated.workbenchSurface.theEnterpriseLicenseIsFrozenConfiguredResources'
               )

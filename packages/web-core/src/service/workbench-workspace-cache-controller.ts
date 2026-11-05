@@ -9,11 +9,10 @@ import type {
   WorkspaceQueue
 } from '../model/workbench.js';
 import type { createWorkspaceSessionPagingService } from './workspace-session-paging-service.js';
-import type {
+import {
   createWorkspaceViewCacheService,
-  WorkspaceCacheView
+  type WorkspaceCacheView
 } from './workspace-view-cache-service.js';
-import type { SessionContextUsage } from './conversation-state-service.js';
 import type { WorkspaceContentSearchSnapshot } from './workspace-content-search-service.js';
 import type { WorkspaceFileTreeSnapshot } from './workspace-file-tree-service.js';
 import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
@@ -22,12 +21,9 @@ import type { WorkspaceFileWorkbenchSnapshot } from '../model/workspace-file-wor
 interface WorkbenchWorkspaceCacheControllerOptions {
   readonly cacheService: ReturnType<typeof createWorkspaceViewCacheService>;
   readonly paging: ReturnType<typeof createWorkspaceSessionPagingService>;
-  readonly sessions: Ref<Session[]>;
-  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
-  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
-  readonly nextCursor: Readonly<Ref<string | null>>;
-  readonly contextUsage: Readonly<Ref<SessionContextUsage | null | undefined>>;
-  readonly queue: Ref<WorkspaceQueue>;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly captureDetail: (sessionId: string) => CachedSessionDetail;
+  readonly queue: Readonly<Ref<WorkspaceQueue>>;
   readonly runner: Readonly<Ref<Session['runner']>>;
   readonly modelId: Readonly<Ref<string>>;
   readonly effort: Readonly<Ref<RunnerDefaultConfiguration['effort']>>;
@@ -59,9 +55,7 @@ interface WorkbenchWorkspaceCacheControllerOptions {
 }
 
 /** Owns capture and restoration of the Node + Workspace scoped view cache. */
-export function createWorkbenchWorkspaceCacheController(
-  options: WorkbenchWorkspaceCacheControllerOptions
-) {
+function connectWorkspaceCache(options: WorkbenchWorkspaceCacheControllerOptions) {
   const workspaceViewCache = (nodeId: string, workspaceId: string) =>
     options.cacheService.view(nodeId, workspaceId);
 
@@ -78,7 +72,8 @@ export function createWorkbenchWorkspaceCacheController(
   function saveCurrentWorkspaceView(): void {
     options.persistDraft();
     if (!options.cacheService.hasActive()) return;
-    options.flushConversation();
+    const sessionId = options.selectedSessionId.value;
+    if (sessionId === undefined) options.flushConversation();
     options.cacheService.captureActive(
       {
         sessions: options.sessions.value,
@@ -103,21 +98,12 @@ export function createWorkbenchWorkspaceCacheController(
           effort: options.effort.value,
           access: options.access.value
         },
-        ...(options.selectedSessionId.value === undefined
+        ...(sessionId === undefined
           ? {}
           : {
-              selectedSessionId: options.selectedSessionId.value,
+              selectedSessionId: sessionId,
               queue: options.queue.value,
-              detail: {
-                sessionId: options.selectedSessionId.value,
-                runs: options.runs.value,
-                // Conversation projection already owns the bounded immutable window. Re-running
-                // its JSON-size limiter here blocks Workspace switches during a long active Run.
-                turns: options.turns.value,
-                nextCursor: options.nextCursor.value,
-                contextUsage: options.contextUsage.value ?? null,
-                lastAccessedAt: Date.now()
-              } as CachedSessionDetail,
+              detail: options.captureDetail(sessionId),
               detailHistoryAlreadyBounded: true
             })
       },
@@ -143,16 +129,6 @@ export function createWorkbenchWorkspaceCacheController(
   function restoreWorkspaceDraft(cache: WorkspaceCacheView | undefined): void {
     const draft = cache?.draft;
     if (draft !== undefined) options.restoreDraftConfiguration(draft);
-  }
-
-  function restoreCachedSessionDetail(
-    sessionId: string
-  ): Readonly<CachedSessionDetail> | undefined {
-    const nodeId = options.workspaceTarget.value?.nodeId;
-    const workspaceId = options.workspaceTarget.value?.workspaceId;
-    if (nodeId === undefined || workspaceId === undefined) return undefined;
-    const detail = options.cacheService.touchDetail(nodeId, workspaceId, sessionId);
-    return detail;
   }
 
   function cacheTarget(sessionId: string): { nodeId: string; workspaceId: string } | undefined {
@@ -224,12 +200,23 @@ export function createWorkbenchWorkspaceCacheController(
     saveCurrentWorkspaceView,
     restoreWorkspaceView,
     restoreWorkspaceDraft,
-    restoreCachedSessionDetail,
     updateCachedContext,
     syncCachedRunStatus,
     cacheRunSnapshotFor,
     cacheRunSnapshot,
     cacheConversationTurn,
     replaceConversationTurns
+  };
+}
+
+/** Owns the cache storage and connects its capture and restore ports once available. */
+export function createWorkbenchWorkspaceCache(
+  tabId: (nodeId: string, workspaceId: string) => string
+) {
+  const cache = createWorkspaceViewCacheService(tabId);
+  return {
+    cache,
+    connect: (options: Omit<WorkbenchWorkspaceCacheControllerOptions, 'cacheService' | 'tabId'>) =>
+      connectWorkspaceCache({ ...options, cacheService: cache, tabId })
   };
 }

@@ -1,21 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkbenchSelectionStateService } from '../../src/service/workbench-selection-state-service.js';
+import { createWorkbenchWorkspaceSelectionState } from '../../src/service/workbench-workspace-selection-service.js';
+import { createWorkbenchSessionSelectionState } from '../../src/service/workbench-session-selection-service.js';
 
-describe('Public Workbench Selection State', () => {
-  it('Keeps selection state independent per composition', () => {
-    const first = createWorkbenchSelectionStateService();
-    const second = createWorkbenchSelectionStateService();
-    first.workspaceTarget.value = { nodeId: 'node', workspaceId: 'workspace' };
+describe('Workbench selection owners', () => {
+  it('keeps Workspace and Session selection independent between compositions', () => {
+    const first = createWorkbenchWorkspaceSelectionState();
+    const second = createWorkbenchWorkspaceSelectionState();
+    const firstSession = createWorkbenchSessionSelectionState(first.target);
+    const secondSession = createWorkbenchSessionSelectionState(second.target);
+    first.setTarget({ nodeId: 'node', workspaceId: 'workspace' });
     expect(first).not.toHaveProperty('selectedNodeId');
     expect(first).not.toHaveProperty('selectedWorkspaceId');
-    expect(first.workspaceTarget.value).toEqual({ nodeId: 'node', workspaceId: 'workspace' });
+    expect(first.target.value).toEqual({ nodeId: 'node', workspaceId: 'workspace' });
     expect(first).not.toHaveProperty('workspaceNodeId');
-    first.workspaceTarget.value = undefined;
-    expect(first.workspaceTarget.value).toBeUndefined();
-    first.loading.value = true;
-    expect(second.workspaceTarget.value).toBeUndefined();
-    expect(second.loading.value).toBe(false);
-    expect(second.workspaces.value).toEqual([]);
-    expect(second.sessions.value).toEqual([]);
+    firstSession.setSession('session');
+    expect(firstSession.draftTarget.value).toEqual({
+      kind: 'session',
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      sessionId: 'session'
+    });
+    firstSession.setDraftOpen(true);
+    expect(firstSession.draftTarget.value).toEqual({
+      kind: 'workspace',
+      nodeId: 'node',
+      workspaceId: 'workspace'
+    });
+    expect(second.target.value).toBeUndefined();
+    expect(secondSession.sessionId.value).toBeUndefined();
+    first.setTarget(undefined);
+    expect(first.target.value).toBeUndefined();
+    expect(firstSession.draftTarget.value).toBeUndefined();
   });
 });

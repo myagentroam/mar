@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, proxyRefs, ref } from 'vue';
 import type { ComposerAttachment, WorkspaceQueueItem } from '../../model/workbench.js';
 import type { NavigationSummary } from '../../service/session-navigation-projection.js';
-import type { createWorkspaceSessionPaneController } from '../../service/workspace-session-pane-controller.js';
+import type { WorkspaceSessionPaneView } from '../../service/workspace-session-pane-controller.js';
 import { runnerBrandIcon } from '../../util/runner-brand-icon.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { runnerLabel } from '../../util/workbench-presentation.js';
@@ -22,7 +22,7 @@ import ComposerReferencePicker from '../composer/ComposerReferencePicker.vue';
 import ConversationComposer from '../composer/ConversationComposer.vue';
 
 const props = defineProps<{
-  controller: ReturnType<typeof createWorkspaceSessionPaneController>;
+  controller: WorkspaceSessionPaneView;
   treeSupported?: boolean;
   asideReady?: boolean;
   treeOpenSessionId?: string | undefined;

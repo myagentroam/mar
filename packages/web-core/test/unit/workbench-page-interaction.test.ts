@@ -6,7 +6,7 @@ import {
   consoleKeyboardShortcutService,
   createConsoleKeyboardShortcutService
 } from '../../src/service/console-keyboard-shortcut-service.js';
-import type { WorkspaceFileWorkbenchHandle } from '../../src/service/workbench-surface-state-service.js';
+import type { WorkspaceFileWorkbenchHandle } from '../../src/model/workspace-file-workbench.js';
 import type { NodeSummary, WorkspaceTab } from '../../src/model/workbench.js';
 
 function dispatch(
@@ -59,7 +59,6 @@ function fixture() {
     downloadFile: vi.fn(async () => undefined)
   });
   const notice = vi.fn();
-  const quickOpenFileVisible = ref(false);
   const selectedWorkspaceId = ref<string | undefined>('workspace-1');
   const nodeReady = ref(true);
   const nodes = ref([{ id: 'node-1', connected: true, disabled: false }]) as unknown as Ref<
@@ -83,7 +82,6 @@ function fixture() {
     filesReady: ref(true),
     contentSearchReady: ref(true),
     terminalReady: ref(true),
-    quickOpenFileVisible,
     workspaceFileWorkbench,
     openWorkspaceFileExternal,
     fileWorkbench: {
@@ -103,7 +101,7 @@ function fixture() {
   return {
     service,
     nodes,
-    quickOpenFileVisible,
+    quickOpenFileVisible: service.quickOpenFileVisible,
     view,
     workspaceTabs,
     activeWorkspaceTabId,
@@ -422,9 +420,9 @@ describe('Workbench page file interaction', () => {
         } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
     }
-    f.quickOpenFileVisible.value = true;
+    f.service.openQuickOpenFile();
     expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
-    f.quickOpenFileVisible.value = false;
+    f.service.closeQuickOpenFile();
     f.activeWorkspaceTabId.value = undefined;
     expect(dispatch(f.service, { key: 'Tab', ctrlKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.activeWorkspaceTabId.value = 'node-1:workspace-1';
@@ -626,7 +624,7 @@ describe('Workbench page file interaction', () => {
     f.view.value = 'settings';
     expect(dispatch(f.service, event)).toBe('IGNORED');
     f.view.value = 'nodes';
-    f.quickOpenFileVisible.value = true;
+    f.service.openQuickOpenFile();
     expect(dispatch(f.service, event)).toBe('IGNORED');
     expect(f.openNewSessionComposer).not.toHaveBeenCalled();
   });
@@ -738,9 +736,9 @@ describe('Workbench page file interaction', () => {
         dispatch(f.service, { key: 'w', altKey: true, ...extra } as unknown as KeyboardEvent)
       ).toBe('IGNORED');
     }
-    f.quickOpenFileVisible.value = true;
+    f.service.openQuickOpenFile();
     expect(dispatch(f.service, { key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
-    f.quickOpenFileVisible.value = false;
+    f.service.closeQuickOpenFile();
     f.view.value = 'settings';
     expect(dispatch(f.service, { key: 'w', altKey: true } as KeyboardEvent)).toBe('IGNORED');
     f.view.value = 'nodes';
@@ -792,6 +790,14 @@ describe('Workbench page file interaction', () => {
     } as KeyboardEvent;
     expect(dispatch(f.service, event)).toBe('HANDLED');
     expect(f.quickOpenFileVisible.value).toBe(true);
+  });
+
+  it('keeps Quick Open state isolated between workbench instances', () => {
+    const first = fixture();
+    const second = fixture();
+    first.service.openQuickOpenFile();
+    expect(first.quickOpenFileVisible.value).toBe(true);
+    expect(second.quickOpenFileVisible.value).toBe(false);
   });
 
   it('does not open Quick Open outside Work mode or without an available Node', () => {

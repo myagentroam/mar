@@ -61,22 +61,32 @@ describe('Workbench default resource details wiring', () => {
     });
     const refreshNodes = vi.fn(async () => {
       await pending;
-      page.nodes = [{ id: 'node', label: 'New capability snapshot', connected: true }];
+      page.resources.nodes = [{ id: 'node', label: 'New capability snapshot', connected: true }];
     });
     const page = reactive({
-      adminLoaded: true,
-      admin: { authenticated: true },
-      locked: false,
-      loading: false,
-      panelWidths: {},
-      workspaceTreeService: {},
-      nodes: [{ id: 'node', label: 'Initial snapshot', connected: true }],
-      sessions: [],
-      workspaceTabs: [],
-      nodeDetails: { id: 'node', label: 'Cached details' },
-      nodeDetailsDialogOpen: true,
-      nodeLabel: (node: { label: string }) => node.label,
-      refreshNodes
+      identity: {
+        adminLoaded: true,
+        admin: { authenticated: true },
+        locked: false,
+        loading: false
+      },
+      application: { view: 'nodes' },
+      layout: { panelWidths: {} },
+      tree: { orderedNodes: [], expandedNodeIds: [] },
+      selection: { workspaceTabs: [] },
+      sessionList: { sessions: [] },
+      files: {},
+      hosted: {},
+      uploads: {},
+      interactions: {},
+      resources: {
+        workspaceTreeService: {},
+        nodes: [{ id: 'node', label: 'Initial snapshot', connected: true }],
+        nodeDetails: { id: 'node', label: 'Cached details' },
+        nodeDetailsDialogOpen: true,
+        nodeLabel: (node: { label: string }) => node.label,
+        refreshNodes
+      }
     });
     const opened = vi.fn();
     const view = renderComponent(Page, { page, onOpenWorkspaceDetails: opened });

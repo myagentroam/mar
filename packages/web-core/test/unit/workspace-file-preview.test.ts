@@ -1,9 +1,8 @@
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
+import type { WorkspaceFilePreviewTransfers } from '../support/file-access-fixture.js';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  WorkspaceFilePreviewTransfers,
-  WorkspaceFilePreviewTarget
-} from '../../src/model/workspace-file-preview.js';
+import type { WorkspaceFilePreviewTarget } from '../../src/model/workspace-file-preview.js';
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import type { WorkspaceDirectFileRange } from '../../src/model/workspace-direct-file.js';
 import { createWorkspaceFilePreviewService } from '../../src/service/workspace-file-preview-service.js';
@@ -82,9 +81,11 @@ function createHarness(
     );
   const onWritten = options.onWritten ?? vi.fn<(target: WorkspaceFilePreviewTarget) => void>();
   const preview = createWorkspaceFilePreviewService({
-    http,
-    transfers: () => options.transfers ?? {},
-    fetchContent,
+    access: createFileAccessFixture({
+      http,
+      transfers: () => options.transfers ?? {},
+      fetchContent
+    }),
     onWritten
   });
   return { preview, request, fetchContent, onWritten };
@@ -678,6 +679,7 @@ describe('Workspace file preview service', () => {
           nextOffset: null
         }),
         directGitFileReadRange: async () => ({
+          offset: 0,
           bytes,
           revision: 'history-revision',
           size: bytes.length,

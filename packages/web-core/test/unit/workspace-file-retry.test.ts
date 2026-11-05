@@ -1,3 +1,4 @@
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { expect, it, vi } from 'vitest';
 import type { WorkspaceFileOpenIntent } from '../../src/util/workspace-file-tab.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
@@ -17,10 +18,12 @@ it.each(['text', 'image'] as const)(
         })
     );
     const previews = createWorkspaceFilePreviewService({
-      http: { request: vi.fn() } as ScopedHttpService,
-      transfers: () => ({ directGitFileReadRange, directGitFileObjectUrl }),
-      onWritten: vi.fn(),
-      fetchContent
+      access: createFileAccessFixture({
+        http: { request: vi.fn() } as ScopedHttpService,
+        transfers: () => ({ directGitFileReadRange, directGitFileObjectUrl }),
+        fetchContent
+      }),
+      onWritten: vi.fn()
     });
     const target = {
       nodeId: 'node',
@@ -96,7 +99,8 @@ it.each(['repository', 'worktree', 'history'] as const)(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: { http, fetchContent, transfers: () => ({}), onWritten: vi.fn() },
+      access: createFileAccessFixture({ http, fetchContent, transfers: () => ({}) }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFailure: vi.fn(), onFileTarget: vi.fn() }
     });
     const base = {

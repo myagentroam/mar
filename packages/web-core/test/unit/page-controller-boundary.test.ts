@@ -24,25 +24,36 @@ vi.mock('../../src/view/settings/NodeDetailsDialogs.vue', () => ({
   default: { render: () => h('p', 'Default resource details') }
 }));
 
+function pageFixture(
+  authenticated: boolean,
+  state: 'loading' | 'error' | 'ready' | undefined = undefined
+) {
+  return {
+    identity: { adminLoaded: true, admin: { authenticated }, locked: false, loading: false },
+    layout: { panelWidths: {} },
+    files: {
+      standaloneFileMode: state !== undefined,
+      standaloneFileLoading: state === 'loading',
+      standaloneFileError: state === 'error' ? 'FILE_UNAVAILABLE' : undefined
+    },
+    application: {},
+    tree: {},
+    selection: {},
+    notifications: {},
+    uploads: {},
+    hosted: {},
+    resources: { nodes: [], nodeLabel: () => '' },
+    interactions: {},
+    sessionList: { sessions: [] }
+  };
+}
+
 describe('public Workbench page controller', () => {
   it.each(['loading', 'error', 'ready'] as const)(
     'renders standalone file bootstrap state without exposing background controls (%s)',
     async (state) => {
-      const page = {
-        adminLoaded: true,
-        admin: { authenticated: true },
-        locked: false,
-        loading: false,
-        panelWidths: {},
-        workspaceTreeService: {},
-        nodes: [],
-        sessions: [],
-        workspaceTabs: [],
-        standaloneFileMode: true,
-        standaloneFileLoading: state === 'loading',
-        standaloneFileError: state === 'error' ? 'FILE_UNAVAILABLE' : undefined
-      };
-      const app = createSSRApp({ render: () => h(WorkbenchPage, { page }) });
+      const page = pageFixture(true, state);
+      const app = createSSRApp({ render: () => h(WorkbenchPage, { page, surface: page }) });
       app.use(i18n).use(ElementPlus);
       app.provide(ID_INJECTION_KEY, { prefix: 2048, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
@@ -80,23 +91,13 @@ describe('public Workbench page controller', () => {
   ])(
     'renders page extensions or public defaults (authenticated=%s, hostSlots=%s)',
     async (authenticated, hostSlots) => {
-      const page = {
-        adminLoaded: true,
-        admin: { authenticated },
-        locked: false,
-        loading: false,
-        panelWidths: {},
-        workspaceTreeService: {},
-        nodes: [],
-        sessions: [],
-        workspaceTabs: []
-      };
+      const page = pageFixture(authenticated);
       const app = createSSRApp({
         render: () =>
           h(
             WorkbenchPage,
             // Supply the state consumed by this page; child domain fixtures are isolated above.
-            { page },
+            { page, surface: page },
             hostSlots
               ? {
                   'identity-extension': () => h('p', 'Host identity entry'),

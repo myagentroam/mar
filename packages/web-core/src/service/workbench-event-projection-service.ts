@@ -7,7 +7,6 @@ import type {
   AgentRun,
   ConversationTurn,
   ConversationTurnPage,
-  NodeSummary,
   Session,
   WorkspaceQueue
 } from '../model/workbench.js';
@@ -20,8 +19,8 @@ import {
 } from '../util/conversation-segments.js';
 
 export function createWorkbenchEventProjectionService(options: {
-  readonly nodes: Ref<NodeSummary[]>;
-  readonly sessions: Ref<Session[]>;
+  readonly setNodeConnection?: (nodeId: string, connected: boolean) => boolean;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedSession?: Readonly<Ref<Session | undefined>>;
@@ -67,11 +66,8 @@ export function createWorkbenchEventProjectionService(options: {
   readonly receivePerformance?: (sessionId: string, payload: unknown) => void;
 }) {
   function updateNodeConnection(nodeId: string, connected: boolean): void {
-    const wasConnected = options.nodes.value.some((node) => node.id === nodeId && node.connected);
-    options.nodes.value = options.nodes.value.map((node) =>
-      node.id === nodeId ? { ...node, connected } : node
-    );
-    if (connected && !wasConnected) options.onNodeConnected(nodeId);
+    const wasConnected = options.setNodeConnection?.(nodeId, connected);
+    if (connected && wasConnected === false) options.onNodeConnected(nodeId);
   }
 
   function apply(event: WorkbenchLiveEvent, source: WorkspaceQueueSnapshotSource = 'event'): void {

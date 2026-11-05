@@ -159,16 +159,15 @@ function fixture() {
       selectedWorkspace: computed(() => workspace),
       selectedSession: computed(() => sessions.value.find((s) => s.id === selectedSessionId.value)),
       sessions,
+      removeSessionExact: (session) => {
+        sessions.value = sessions.value.filter((item) => item !== session);
+      },
       captureDraft: () => ({ input, skillTokens: ref([]), persist: () => {} }),
       attachments: ref([]),
       attachmentsPending: computed(() => false),
       composerOpen: computed(() => true),
       composerBusy: computed(() => false),
       draftOpen,
-      restoreDraft: () => {
-        draftOpen.value = true;
-        selectedSessionId.value = undefined;
-      },
       selectedCommand: ref(),
       commandPickerOpen: ref(false),
       deferredCommands: ref([]),
@@ -176,9 +175,15 @@ function fixture() {
       notice,
       request,
       stageDraftCommand: vi.fn(),
-      createDraftSession: async () => {
-        draftOpen.value = false;
-        return draft;
+      draft: {
+        restore: () => {
+          draftOpen.value = true;
+          selectedSessionId.value = undefined;
+        },
+        create: async () => {
+          draftOpen.value = false;
+          return draft;
+        }
       },
       executeCommand: async () => ({}),
       replaceSession: (previousId, next) => {

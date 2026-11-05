@@ -25,7 +25,11 @@ import type {
   WorkspaceFileTabsSnapshot
 } from '../util/workspace-file-tab.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
-import { createStandaloneFileWindowService } from './standalone-file-window-service.js';
+import {
+  createStandaloneFileWindowService,
+  type StandaloneFileOpenIntent
+} from './standalone-file-window-service.js';
+import { createStandaloneFileBootstrapController } from './standalone-file-bootstrap-controller.js';
 
 export interface WorkspaceFilePreviewFrame extends ReturnType<
   ReturnType<typeof createWorkspaceFilePreviewService>['page']
@@ -44,7 +48,8 @@ export interface WorkspaceFilePreviewFrame extends ReturnType<
 
 export function createWorkspaceFileWorkbenchController(options: {
   readonly page: () => WorkspaceFilePagePort | undefined;
-  readonly preview: Parameters<typeof createWorkspaceFilePreviewService>[0];
+  readonly access: Parameters<typeof createWorkspaceFilePreviewService>[0]['access'];
+  readonly preview: Omit<Parameters<typeof createWorkspaceFilePreviewService>[0], 'access'>;
   readonly navigation: Parameters<typeof createWorkspaceCodeNavigationService>[0];
   readonly target: () => WorkspaceFileOperationTarget | undefined;
   readonly prewarmEnabled: () => boolean;
@@ -54,16 +59,30 @@ export function createWorkspaceFileWorkbenchController(options: {
   ) => string | undefined;
   readonly reveal: (path: string, current: () => boolean) => Promise<void>;
   readonly onOpenFailure: (error: unknown, path: string) => void;
+  readonly onDownloadFailure?: (error: unknown, path: string) => void;
   readonly onRevealFailure: (error: unknown) => void;
   readonly comparison: (path: string) => Promise<WorkspaceFileOpenIntent | undefined>;
   readonly fileWriteEnabled: () => boolean;
   readonly externalTarget: () => WorkspaceFileOperationTarget | undefined;
   readonly onPopupBlocked: () => void;
+  readonly lifecycle?: {
+    readonly ready: () => boolean;
+    readonly workspaceKind: () => string | undefined;
+    readonly isReloadingForUpdate: () => boolean;
+    readonly bootstrap: Omit<
+      Parameters<typeof createStandaloneFileBootstrapController>[0],
+      'nodeId' | 'workspaceId' | 'filesReady' | 'open'
+    >;
+  };
 }) {
-  const page = options.page;
+  const pageHandle = shallowRef<WorkspaceFilePagePort>();
+  const page = () => pageHandle.value ?? options.page();
   const tabs = createWorkspaceFileTabService();
   const history = createWorkspaceFileNavigationHistoryService();
-  const previews = createWorkspaceFilePreviewService(options.preview);
+  const previews = createWorkspaceFilePreviewService({
+    ...options.preview,
+    access: options.access
+  });
   const navigation = createWorkspaceCodeNavigationService(options.navigation);
   const fileWindow = createStandaloneFileWindowService();
   const htmlWindows = createStandaloneFileWindowService();
@@ -112,6 +131,33 @@ export function createWorkspaceFileWorkbenchController(options: {
     for (const refName of intent.refs ?? []) parameters.append('refs', refName);
     for (const path of intent.paths ?? [intent.path]) parameters.append('paths', path);
     if (fileWindow.open(`/console?${parameters}`) === undefined) options.onPopupBlocked();
+  }
+  function openLocation(
+    location: {
+      readonly path: string;
+      readonly worktreePath?: string;
+      readonly repositoryPath?: string;
+    },
+    external: boolean
+  ): void {
+    if (external)
+      openExternal(
+        location.path,
+        undefined,
+        undefined,
+        undefined,
+        location.worktreePath,
+        location.repositoryPath
+      );
+    else
+      void openWorkspaceFile(
+        location.path,
+        undefined,
+        location.worktreePath,
+        false,
+        undefined,
+        location.repositoryPath
+      );
   }
   function openHtmlExternal(path: string): void {
     const target = options.externalTarget();
@@ -584,6 +630,26 @@ export function createWorkspaceFileWorkbenchController(options: {
     if (intent !== undefined) await openTab(intent);
     else await openFile(path, line, column);
   }
+  async function openStandalone(intent: StandaloneFileOpenIntent): Promise<void> {
+    if (intent.tab !== undefined) return openTab(intent.tab);
+    if (intent.worktreePath === undefined && intent.repositoryPath === undefined)
+      return openFile(intent.path, intent.line, intent.column);
+    return openWorkspaceFile(
+      intent.path,
+      intent.line,
+      intent.worktreePath,
+      false,
+      intent.column,
+      intent.repositoryPath
+    );
+  }
+  function openToolIntent(intent: StandaloneFileOpenIntent, external: boolean): void {
+    const target = options.target();
+    if (target?.nodeId !== intent.nodeId || target.workspaceId !== intent.workspaceId) return;
+    if (intent.tab === undefined) openLocation(intent, external);
+    else if (external) openDiffExternal(intent.tab);
+    else void openStandalone(intent);
+  }
   const revision = ref(0);
   const canGoBack = computed(() => {
     void revision.value;
@@ -736,6 +802,15 @@ export function createWorkspaceFileWorkbenchController(options: {
       ...(size === undefined ? {} : { size })
     });
   }
+  async function downloadPath(path: string): Promise<void> {
+    const target = options.externalTarget();
+    if (target === undefined) return;
+    try {
+      await previews.downloadTarget({ ...target, path });
+    } catch (error) {
+      (options.onDownloadFailure ?? options.onOpenFailure)(error, path);
+    }
+  }
 
   function restore(value: unknown): void {
     if (typeof value !== 'object' || value === null) return;
@@ -750,12 +825,70 @@ export function createWorkspaceFileWorkbenchController(options: {
     else restoreDrafts(snapshot.dirtyTextDrafts ?? []);
   }
   function dispose(): void {
+    standalone?.dispose();
+    if (options.lifecycle !== undefined && typeof window !== 'undefined')
+      window.removeEventListener('beforeunload', protectSuspendedFileDrafts);
+    for (const stop of lifecycleStops) stop();
     stopActiveTabWatch();
     invalidateTarget();
     previews.reset();
     navigation.reset();
   }
+  function setPage(
+    value: WorkspaceFilePagePort | undefined,
+    previous?: WorkspaceFilePagePort
+  ): void {
+    if (value !== undefined) {
+      pageHandle.value = value;
+      pageReady();
+    } else if (pageHandle.value === previous) pageHandle.value = undefined;
+  }
+  function protectSuspendedFileDrafts(event: BeforeUnloadEvent): void {
+    if (!suspended.value || drafts.size === 0 || options.lifecycle?.isReloadingForUpdate()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+  const lifecycleStops: (() => void)[] = [];
+  const lifecycle = options.lifecycle;
+  const standalone =
+    lifecycle === undefined
+      ? undefined
+      : createStandaloneFileBootstrapController({
+          ...lifecycle.bootstrap,
+          nodeId: () => options.externalTarget()?.nodeId,
+          workspaceId: () => options.externalTarget()?.workspaceId,
+          filesReady: lifecycle.ready,
+          open: openStandalone
+        });
+  if (lifecycle !== undefined) {
+    lifecycleStops.push(
+      watch(
+        () => [options.externalTarget()?.nodeId, options.externalTarget()?.workspaceId] as const,
+        ([nodeId, workspaceId], [oldNodeId, oldWorkspaceId]) => {
+          if (nodeId === oldNodeId && workspaceId === oldWorkspaceId) return;
+          pageHandle.value = undefined;
+          reset();
+        },
+        { flush: 'sync' }
+      )
+    );
+    lifecycleStops.push(
+      watch(
+        [lifecycle.ready, lifecycle.workspaceKind],
+        ([ready, kind], [, oldKind]) => {
+          if (oldKind === 'GIT_WORKSPACE' && kind !== undefined && kind !== 'GIT_WORKSPACE')
+            removeGitTabs();
+          if (ready) resumeRestoration();
+        },
+        { flush: 'sync' }
+      )
+    );
+    if (typeof window !== 'undefined')
+      window.addEventListener('beforeunload', protectSuspendedFileDrafts);
+  }
   return {
+    standalone,
+    setPage,
     tabList: tabs.tabs,
     activeTabId: tabs.activeTabId,
     activeTab: tabs.activeTab,
@@ -765,6 +898,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     reloadFile,
     downloadFile: previews.download,
     downloadTarget: previews.downloadTarget,
+    downloadPath,
     navigate: navigation.navigate,
     clearNavigationResult: navigation.clear,
     restore,
@@ -785,8 +919,11 @@ export function createWorkspaceFileWorkbenchController(options: {
     openFile,
     openExternal,
     openDiffExternal,
+    openLocation,
     openHtmlExternal,
     openComparison,
+    openStandalone,
+    openToolIntent,
     canGoBack,
     canGoForward,
     travel,

@@ -51,6 +51,12 @@ describe('Session identity handoff', () => {
       {
         sessions,
         selectedSessionId,
+        setSelectedSessionId: (id) => {
+          selectedSessionId.value = id;
+        },
+        removeSessionExact: (item) => {
+          sessions.value = sessions.value.filter((value) => value !== item);
+        },
         currentSelectionRevision: () => 0,
         preserveManagedActive: (_current, value) => value,
         mergeSessions: (values) => {
@@ -88,6 +94,12 @@ describe('Session identity handoff', () => {
         {
           sessions,
           selectedSessionId,
+          setSelectedSessionId: (id) => {
+            selectedSessionId.value = id;
+          },
+          removeSessionExact: (item) => {
+            sessions.value = sessions.value.filter((value) => value !== item);
+          },
           currentSelectionRevision: () => 0,
           preserveManagedActive: (_current, next) => next,
           mergeSessions: (values) => {
@@ -132,6 +144,12 @@ describe('Session identity handoff', () => {
         {
           sessions,
           selectedSessionId,
+          setSelectedSessionId: (id) => {
+            selectedSessionId.value = id;
+          },
+          removeSessionExact: (item) => {
+            sessions.value = sessions.value.filter((value) => value !== item);
+          },
           currentSelectionRevision: () => revision,
           preserveManagedActive: (_current, next) => next,
           mergeSessions: (values) => {
@@ -162,6 +180,12 @@ describe('Session identity handoff', () => {
       {
         sessions,
         selectedSessionId,
+        setSelectedSessionId: (id) => {
+          selectedSessionId.value = id;
+        },
+        removeSessionExact: (item) => {
+          sessions.value = sessions.value.filter((value) => value !== item);
+        },
         currentSelectionRevision: () => revision,
         preserveManagedActive: (_current, next) => next,
         mergeSessions: (values) => {
@@ -179,12 +203,13 @@ describe('Session identity handoff', () => {
   it('transfers submission when session discovery synchronously migrates the same native identity', () => {
     const draft = { ...session, id: 'draft:one', externalSessionId: 'native-one' };
     const saved = { ...session, id: 'saved', externalSessionId: 'native-one' };
-    const sessions = ref<Session[]>([draft]);
     const selectedSessionId = ref<string | undefined>(draft.id);
     const discovery = createWorkspaceSessionService({
-      sessions,
       runs: ref([]),
       selectedSessionId,
+      setSelectedSessionId: (id) => {
+        selectedSessionId.value = id;
+      },
       workspaceTarget: workspaceTargetRef(ref('node-1')),
       paging: createWorkspaceSessionPagingService(30),
       pageSize: 30,
@@ -193,6 +218,8 @@ describe('Session identity handoff', () => {
       notice: vi.fn(),
       errorMessage: String
     });
+    discovery.projection.replaceAll([draft]);
+    const sessions = discovery.projection.sessions;
     const submission = createWorkbenchSubmissionService();
     const finish = submission.begin(sessionSubmissionContext(draft.id))!;
     try {
@@ -200,6 +227,10 @@ describe('Session identity handoff', () => {
         {
           sessions,
           selectedSessionId,
+          setSelectedSessionId: (id) => {
+            selectedSessionId.value = id;
+          },
+          removeSessionExact: discovery.projection.removeExact,
           currentSelectionRevision: () => 0,
           preserveManagedActive: discovery.preserveManagedActive,
           mergeSessions: discovery.merge,
@@ -219,13 +250,14 @@ describe('Session identity handoff', () => {
     (selected) => {
       const draft: Session = { ...session, id: 'draft:one' };
       const saved: Session = { ...session, id: 'saved' };
-      const sessions = ref<Session[]>([draft]);
       const selectedSessionId = ref<string | undefined>(selected ? draft.id : 'other');
       const discovery = createWorkspaceSessionService({
-        sessions,
         runs: ref([]),
         workspaceTarget: workspaceTargetRef(ref('node-1')),
         selectedSessionId,
+        setSelectedSessionId: (id) => {
+          selectedSessionId.value = id;
+        },
         paging: createWorkspaceSessionPagingService(10),
         pageSize: 10,
         tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
@@ -233,12 +265,18 @@ describe('Session identity handoff', () => {
         notice: vi.fn(),
         errorMessage: String
       });
+      discovery.projection.replaceAll([draft]);
+      const sessions = discovery.projection.sessions;
       const submission = createWorkbenchSubmissionService();
       const finish = submission.begin(sessionSubmissionContext(draft.id))!;
       replaceSessionIdentity(
         {
           sessions,
           selectedSessionId,
+          setSelectedSessionId: (id) => {
+            selectedSessionId.value = id;
+          },
+          removeSessionExact: discovery.projection.removeExact,
           currentSelectionRevision: () => 0,
           preserveManagedActive: discovery.preserveManagedActive,
           mergeSessions: discovery.merge,
@@ -433,14 +471,26 @@ function pendingRequestHarness(
     },
     selectedRunId: { value: undefined },
     sessions,
+    removeSessionExact: (target: Session) => {
+      sessions.value = sessions.value.filter((candidate) => candidate !== target);
+    },
     attachments,
     attachmentsPending: { value: input.attachmentsPending === true },
     composerOpen: { value: true },
     composerBusy: { value: input.busy === true },
     draftOpen,
-    restoreDraft: () => {
-      draftOpen.value = true;
-      selectedSessionId.value = undefined;
+    draft: {
+      restore: () => {
+        draftOpen.value = true;
+        selectedSessionId.value = undefined;
+      },
+      create: async (title: string) => {
+        draftSession.runnerTitle = title;
+        draftOpen.value = false;
+        selectedSessionId.value = draftSession.id;
+        sessions.value = [draftSession];
+        return draftSession;
+      }
     },
     selectedCommand,
     commandAvailable,
@@ -455,13 +505,6 @@ function pendingRequestHarness(
     notice,
     request,
     stageDraftCommand,
-    createDraftSession: async (title: string) => {
-      draftSession.runnerTitle = title;
-      draftOpen.value = false;
-      selectedSessionId.value = draftSession.id;
-      sessions.value = [draftSession];
-      return draftSession;
-    },
     executeCommand,
     replaceSession,
     sessionPathId: (value: string) => value,

@@ -19,8 +19,9 @@ interface RunnerProfileDomain {
 export function createWorkbenchComposerController(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSession: Ref<Session | undefined>;
-  readonly sessions: Ref<Session[]>;
-  readonly profiles: Ref<readonly RunnerProfile[]>;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly replaceSessionProjection: (session: Session) => void;
+  readonly profiles: Readonly<Ref<readonly RunnerProfile[]>>;
   readonly draftOpen: Ref<boolean>;
   readonly loading: Ref<boolean>;
   readonly configurationAvailable?: () => boolean;
@@ -231,9 +232,7 @@ export function createWorkbenchComposerController(options: {
         options.selectedSession.value?.id !== session.id
       )
         return;
-      options.sessions.value = options.sessions.value.map((session) =>
-        session.id === result.session.id ? result.session : session
-      );
+      options.replaceSessionProjection(result.session);
     } catch (error) {
       if (
         sequence !== updateSequence ||

@@ -1,8 +1,163 @@
-import { getCurrentScope, watch, type Ref } from 'vue';
+import { computed, getCurrentScope, nextTick, ref, watch, type Ref } from 'vue';
 import type { AgentRun, ConversationTurnPage, Session } from '../model/workbench.js';
 import { ApiError } from '../util/api-error.js';
+
+export function createWorkspaceSessionPaneWatchGate<
+  T extends { readonly sessionId?: string }
+>(options: {
+  readonly target: () => T | undefined;
+  readonly revision: () => number;
+  readonly visible: () => boolean;
+  readonly waitReady: () => Promise<boolean>;
+  readonly begin: (sessionId: string) => Promise<boolean>;
+}) {
+  return async (sessionId: string): Promise<boolean> => {
+    const target = options.target();
+    const revision = options.revision();
+    if (
+      !(await options.waitReady()) ||
+      target === undefined ||
+      target !== options.target() ||
+      target.sessionId !== sessionId ||
+      revision !== options.revision() ||
+      !options.visible()
+    )
+      throw new ApiError('WATCH_CANCELLED', 'The session selection was stopped or replaced.');
+    return options.begin(sessionId);
+  };
+}
 import { errorCode } from '../util/api-error.js';
 import type { DraftTarget } from './session-draft-service.js';
+
+/** Owns the initial-content and positioning state for one Pane. */
+export function createWorkspaceSessionPaneRenderLifecycle(options: {
+  readonly loading: Ref<boolean>;
+  readonly failed: Ref<boolean>;
+  readonly failureCause: Ref<unknown>;
+  readonly positioning?: Ref<boolean>;
+  readonly content?: { readonly hasContent: () => boolean; readonly openRun: (id: string) => void };
+  readonly beginInitialRender: () => Promise<void>;
+  readonly scrollLatest: (isCurrent: () => boolean) => Promise<void>;
+}) {
+  const scope = getCurrentScope();
+  const positioning = options.positioning ?? ref(false);
+  const restoredContent = ref(false);
+  let positioningRequest: number | undefined;
+  function begin(): void {
+    positioningRequest = undefined;
+    positioning.value = false;
+    options.loading.value = true;
+    options.failed.value = false;
+    options.failureCause.value = undefined;
+  }
+  async function positionRestored(requestId: number, isCurrent: () => boolean): Promise<void> {
+    positioningRequest = requestId;
+    positioning.value = true;
+    try {
+      await nextTick();
+      if (isCurrent() && positioning.value) await options.scrollLatest(isCurrent);
+    } finally {
+      if (positioningRequest === requestId) {
+        positioningRequest = undefined;
+        if (scope?.active !== false) positioning.value = false;
+      }
+    }
+  }
+  async function finish(input: {
+    readonly isCurrent: () => boolean;
+    readonly initialRender: boolean;
+    readonly shouldScroll: () => boolean;
+    readonly cachedPositioning?: Promise<void> | undefined;
+  }): Promise<void> {
+    if (input.initialRender) await options.beginInitialRender();
+    if (!input.isCurrent()) return;
+    if (input.shouldScroll()) {
+      positioning.value = true;
+      await options.scrollLatest(input.isCurrent);
+    }
+    await input.cachedPositioning;
+    if (input.isCurrent()) positioning.value = false;
+  }
+  async function openRestored(input: {
+    readonly loader: ReturnType<typeof createWorkspaceSessionPaneLoader>;
+    readonly nodeId: string;
+    readonly workspaceId: string | undefined;
+    readonly sessionId: string;
+    readonly requestId: number;
+    readonly isCurrent: () => boolean;
+    readonly restored: boolean;
+    readonly switching: boolean;
+    readonly deferInitialScroll: boolean;
+    readonly activeRunId: string | undefined;
+    readonly onResolved: (session: Session) => void;
+    readonly onLoaded: (session: Session) => void;
+    readonly onSettle: () => void;
+    readonly throwOnFailure: boolean;
+  }): Promise<void> {
+    if (options.content === undefined) throw new Error('Pane content is not configured.');
+    if (input.activeRunId !== undefined) options.content.openRun(input.activeRunId);
+    const hasContent = options.content.hasContent();
+    restoredContent.value = hasContent;
+    const cachedPositioning =
+      input.restored && hasContent && !input.deferInitialScroll
+        ? positionRestored(input.requestId, input.isCurrent)
+        : undefined;
+    await input.loader.read({
+      nodeId: input.nodeId,
+      workspaceId: input.workspaceId,
+      sessionId: input.sessionId,
+      isCurrent: input.isCurrent,
+      onResolved: input.onResolved,
+      loading: options.loading,
+      failed: options.failed,
+      failureCause: options.failureCause,
+      throwOnFailure: input.throwOnFailure,
+      beforeFailure: async () => {
+        await cachedPositioning;
+      },
+      onFailure: () => {
+        positioning.value = false;
+      },
+      onSettle: input.onSettle,
+      afterLoad: async (loaded) => {
+        await finish({
+          isCurrent: input.isCurrent,
+          initialRender: !hasContent,
+          shouldScroll: () =>
+            !hasContent && (input.switching || loaded.changed || !input.deferInitialScroll),
+          cachedPositioning
+        });
+        if (input.isCurrent()) input.onLoaded(loaded.session);
+      }
+    });
+  }
+  return {
+    begin,
+    setRestoredContent: (present: boolean) => {
+      restoredContent.value = present;
+    },
+    loadingContent: computed(() => options.loading.value && !restoredContent.value),
+    positionRestored,
+    finish,
+    openRestored,
+    read: (
+      loader: ReturnType<typeof createWorkspaceSessionPaneLoader>,
+      input: Omit<
+        Parameters<ReturnType<typeof createWorkspaceSessionPaneLoader>['read']>[0],
+        'loading' | 'failed' | 'failureCause'
+      >
+    ) =>
+      loader.read({
+        ...input,
+        loading: options.loading,
+        failed: options.failed,
+        failureCause: options.failureCause
+      }),
+    clearPosition: () => {
+      positioning.value = false;
+    }
+  };
+}
 
 /** Loads one Pane's session and initial conversation through its existing reader and Watch. */
 export function createWorkspaceSessionPaneLoader(options: {
@@ -66,7 +221,48 @@ export function createWorkspaceSessionPaneLoader(options: {
     options.saveCurrent();
     return { session: result.session, changed };
   }
-  return { load };
+  const read = createWorkspaceSessionPaneRead(load);
+  return { load, read };
+}
+
+export function createWorkspaceSessionPaneRead(
+  load: (input: {
+    readonly nodeId: string;
+    readonly workspaceId: string | undefined;
+    readonly sessionId: string;
+    readonly isCurrent: () => boolean;
+    readonly onResolved: (session: Session) => void;
+  }) => Promise<{ readonly session: Session; readonly changed: boolean } | undefined>
+) {
+  return async function read(
+    input: Parameters<typeof load>[0] & {
+      readonly loading: Ref<boolean>;
+      readonly failed: Ref<boolean>;
+      readonly failureCause: Ref<unknown>;
+      readonly afterLoad: (result: NonNullable<Awaited<ReturnType<typeof load>>>) => Promise<void>;
+      readonly beforeFailure?: () => Promise<void>;
+      readonly onFailure?: () => void;
+      readonly onSettle?: () => void;
+      readonly throwOnFailure?: boolean;
+    }
+  ): Promise<void> {
+    try {
+      const result = await load(input);
+      if (result !== undefined && input.isCurrent()) await input.afterLoad(result);
+    } catch (error) {
+      await input.beforeFailure?.();
+      if (!input.isCurrent()) return;
+      input.onFailure?.();
+      if (errorCode(error) !== 'WATCH_CANCELLED') {
+        input.failed.value = true;
+        input.failureCause.value = error;
+      }
+      if (input.throwOnFailure) throw error;
+    } finally {
+      input.onSettle?.();
+      if (input.isCurrent()) input.loading.value = false;
+    }
+  };
 }
 
 /** Coordinates one visible secondary Pane using its existing reader, Watch and target lifecycle. */
@@ -96,6 +292,13 @@ export function createWorkspaceSessionPaneLifecycle(options: {
   let reload: (() => Promise<void>) | undefined;
   let renderedTarget: Extract<DraftTarget, { kind: 'session' }> | undefined;
   let renderedElement: HTMLElement | undefined;
+  const renderer = createWorkspaceSessionPaneRenderLifecycle({
+    loading: options.loading,
+    failed: options.failed,
+    failureCause: options.failureCause,
+    beginInitialRender: options.beginInitialRender,
+    scrollLatest: options.scrollLatest
+  });
   const stop = watch(
     [
       () => options.target.value?.kind,
@@ -143,44 +346,39 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         reload = undefined;
       });
       const run = async () => {
-        options.loading.value = true;
+        renderer.begin();
         const restored = options.restore(captured);
         options.loadingContent.value = !restored;
-        options.failed.value = false;
-        options.failureCause.value = undefined;
-        try {
-          const result = await options.loader.load({
-            ...captured,
-            isCurrent: current,
-            onResolved: () => {}
-          });
-          if (!current() || result === undefined) return;
-          await options.beginInitialRender();
-          if (!current()) return;
-          const element = options.scrollElement();
-          const preservePosition =
-            restored &&
-            element !== undefined &&
-            element === renderedElement &&
-            renderedTarget?.nodeId === captured.nodeId &&
-            renderedTarget.workspaceId === captured.workspaceId &&
-            renderedTarget.sessionId === captured.sessionId;
-          if (!preservePosition) await options.scrollLatest(current);
-          if (!current()) return;
-          renderedTarget = captured;
-          renderedElement = element;
-          await options.markRead(captured.nodeId, captured.workspaceId, captured.sessionId);
-        } catch (error) {
-          if (current() && errorCode(error) !== 'WATCH_CANCELLED') {
-            options.failed.value = true;
-            options.failureCause.value = error;
+        await renderer.read(options.loader, {
+          ...captured,
+          isCurrent: current,
+          onResolved: () => {},
+          afterLoad: async () => {
+            let element: HTMLElement | undefined;
+            await renderer.finish({
+              isCurrent: current,
+              initialRender: true,
+              shouldScroll: () => {
+                element = options.scrollElement();
+                return !(
+                  restored &&
+                  element !== undefined &&
+                  element === renderedElement &&
+                  renderedTarget?.nodeId === captured.nodeId &&
+                  renderedTarget.workspaceId === captured.workspaceId &&
+                  renderedTarget.sessionId === captured.sessionId
+                );
+              }
+            });
+            if (!current()) return;
+            renderedTarget = captured;
+            renderedElement = element;
+            await options.markRead(captured.nodeId, captured.workspaceId, captured.sessionId);
+          },
+          onSettle: () => {
+            if (current()) options.loadingContent.value = false;
           }
-        } finally {
-          if (current()) {
-            options.loading.value = false;
-            options.loadingContent.value = false;
-          }
-        }
+        });
       };
       let pending: Promise<void> | undefined;
       reload = () => {
@@ -197,5 +395,13 @@ export function createWorkspaceSessionPaneLifecycle(options: {
     },
     { immediate: true, flush: 'sync' }
   );
-  return { reload: () => reload?.() ?? Promise.resolve(), stop };
+  async function reloadChecked(): Promise<void> {
+    await (reload?.() ?? Promise.resolve());
+    if (options.failed.value)
+      throw new ApiError(
+        'SESSION_HISTORY_INITIAL_FAILED',
+        'The initial session snapshot has not been applied.'
+      );
+  }
+  return { reload: () => reload?.() ?? Promise.resolve(), reloadChecked, stop };
 }

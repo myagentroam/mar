@@ -1,11 +1,10 @@
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { readonly, ref, shallowRef } from 'vue';
-import type { ScopedHttpService } from './scoped-http-service.js';
+import type { createWorkspaceFileAccessService } from './workspace-file-access-service.js';
 import type {
   WorkspaceFilePreviewContent,
-  WorkspaceFilePreviewTarget,
-  WorkspaceFilePreviewTransfers
+  WorkspaceFilePreviewTarget
 } from '../model/workspace-file-preview.js';
 import { directFileContentRevision } from './workspace-direct-file-read-service.js';
 import {
@@ -26,6 +25,10 @@ import {
 } from '../util/file-preview.js';
 import { apiErrorFromResponse, errorCode } from '../util/api-error.js';
 
+type WorkspaceFileAccess = ReturnType<
+  ReturnType<typeof createWorkspaceFileAccessService>['forWorkspace']
+>;
+
 interface FileRead {
   readonly encoding: 'utf-8' | 'base64';
   readonly previewEncoding?: string;
@@ -35,27 +38,9 @@ interface FileRead {
   readonly revision?: string;
 }
 
-export function workspaceFilePreviewUrl(
-  target: WorkspaceFilePreviewTarget,
-  download = false
-): string {
-  const parameters = new URLSearchParams({ nodeId: target.nodeId, path: target.path });
-  const history = target.history;
-  const repositoryPath = history?.repositoryPath ?? target.repositoryPath;
-  if (repositoryPath !== undefined && (history === undefined || repositoryPath !== ''))
-    parameters.set('repositoryPath', repositoryPath);
-  if (target.worktreePath !== undefined) parameters.set('worktreePath', target.worktreePath);
-  for (const name of history?.refs ?? []) parameters.append('refs', name);
-  if (download) parameters.set('download', '1');
-  const base = `/api/workspaces/${encodeURIComponent(target.workspaceId)}`;
-  return `${base}${history === undefined ? '/files/content' : `/git/commits/${encodeURIComponent(history.commit)}/files/content`}?${parameters}`;
-}
-
 export function createWorkspaceFilePreviewService(input: {
-  readonly http: ScopedHttpService;
-  readonly transfers: () => WorkspaceFilePreviewTransfers;
+  readonly access: (target: WorkspaceFilePreviewTarget) => WorkspaceFileAccess;
   readonly onWritten: (target: WorkspaceFilePreviewTarget) => void | Promise<void>;
-  readonly fetchContent?: typeof fetch;
 }) {
   function createPage() {
     return {
@@ -130,7 +115,7 @@ export function createWorkspaceFilePreviewService(input: {
         : { history: { ...target.history, refs: [...target.history.refs] } })
     };
     target = fixedTarget;
-    const transfers = { ...input.transfers() };
+    const transfers = { ...input.access(target) };
     state.target.value = fixedTarget;
     state.downloading.value = false;
     releaseUrl(state);
@@ -147,7 +132,7 @@ export function createWorkspaceFilePreviewService(input: {
     try {
       if (fixedTarget.history !== undefined) {
         const history = fixedTarget.history;
-        const fallback = workspaceFilePreviewUrl(fixedTarget);
+        const fallback = transfers.contentUrl(fixedTarget);
         if (textPreview) {
           const direct = options.serverOnly
             ? undefined
@@ -167,8 +152,7 @@ export function createWorkspaceFilePreviewService(input: {
             bytes = direct.bytes;
             size = direct.size;
           } else {
-            const response = await (input.fetchContent ?? fetch)(fallback, {
-              credentials: 'same-origin',
+            const response = await transfers.fetchFile(fixedTarget, {
               signal: readController.signal,
               headers: { range: `bytes=0-${TEXT_FILE_PREVIEW_LIMIT_BYTES - 1}` }
             });
@@ -238,7 +222,7 @@ export function createWorkspaceFilePreviewService(input: {
           if (direct?.startsWith('blob:')) revokeWorkspaceDirectObjectUrl(direct);
           return;
         }
-        state.contentUrl.value = direct ?? workspaceFilePreviewUrl(fixedTarget);
+        state.contentUrl.value = direct ?? transfers.contentUrl(fixedTarget);
         return state.fileContent.value;
       }
       let directStarted = false;
@@ -273,19 +257,7 @@ export function createWorkspaceFilePreviewService(input: {
           };
         }
         if (allowDirect && directStarted) throw new Error('DIRECT_FILE_READ_FAILED');
-        const parameters = new URLSearchParams({
-          nodeId: target.nodeId,
-          path: target.path,
-          offset: '0',
-          limit: String(limit)
-        });
-        if (target.repositoryPath !== undefined)
-          parameters.set('repositoryPath', target.repositoryPath);
-        if (target.worktreePath !== undefined) parameters.set('worktreePath', target.worktreePath);
-        const result = await input.http.request(
-          `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`,
-          { signal: readController.signal }
-        );
+        const result = await transfers.read(target, limit, readController.signal);
         if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
         return decodeFilePreviewRead(result.file, target.path);
       }
@@ -331,7 +303,7 @@ export function createWorkspaceFilePreviewService(input: {
 
   async function historyFileSize(
     target: WorkspaceFilePreviewTarget,
-    transfers: WorkspaceFilePreviewTransfers,
+    transfers: WorkspaceFileAccess,
     signal: AbortSignal,
     serverOnly = false
   ): Promise<number> {
@@ -350,8 +322,7 @@ export function createWorkspaceFilePreviewService(input: {
         );
     if (direct !== undefined) return direct.size;
     signal.throwIfAborted();
-    const response = await (input.fetchContent ?? fetch)(workspaceFilePreviewUrl(target), {
-      credentials: 'same-origin',
+    const response = await transfers.fetchFile(target, {
       signal,
       headers: { range: 'bytes=0-0' }
     });
@@ -383,12 +354,7 @@ export function createWorkspaceFilePreviewService(input: {
     )
       throw new Error('FILE_WRITE_INVALID');
     const operation = state.operation;
-    const result = await input.http.request<{
-      readonly file?: { readonly revision?: unknown; readonly size?: unknown };
-    }>(`/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/write`, {
-      method: 'PUT',
-      body: JSON.stringify({ nodeId: target.nodeId, path: target.path, content, expectedRevision })
-    });
+    const result = await input.access(target).write(target.path, content, expectedRevision);
     const revision = result.file?.revision,
       size = result.file?.size;
     if (
@@ -414,15 +380,7 @@ export function createWorkspaceFilePreviewService(input: {
   }
 
   async function checkReadable(target: WorkspaceFilePreviewTarget): Promise<void> {
-    const parameters = new URLSearchParams({
-      nodeId: target.nodeId,
-      path: target.path,
-      offset: '0',
-      limit: '1'
-    });
-    const result = await input.http.request(
-      `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`
-    );
+    const result = await input.access(target).read(target, 1);
     if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
   }
 
@@ -430,7 +388,7 @@ export function createWorkspaceFilePreviewService(input: {
     const state = pages.get(id),
       target = state?.target.value;
     if (state === undefined || target === undefined) return;
-    const transfers = input.transfers(),
+    const transfers = input.access(target),
       url = state.contentUrl.value,
       operation = state.operation;
     state.downloading.value = true;
@@ -446,7 +404,7 @@ export function createWorkspaceFilePreviewService(input: {
   }
   async function downloadTarget(
     target: WorkspaceFilePreviewTarget,
-    transfers = input.transfers()
+    transfers = input.access(target)
   ): Promise<void> {
     target = {
       ...target,
@@ -471,7 +429,7 @@ export function createWorkspaceFilePreviewService(input: {
           );
     if (direct !== undefined && direct !== 'UNAVAILABLE') return;
     triggerBrowserFileDownload(
-      workspaceFilePreviewUrl(target, true),
+      transfers.contentUrl(target, true),
       target.path.split('/').at(-1) ?? 'download'
     );
   }

@@ -71,9 +71,7 @@ describe('Runner Profile Domain Service', () => {
       const profiles = shallowRef<readonly RunnerProfile[]>([]);
       const service = createRunnerProfileService({
         workspaceTarget: shallowRef({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
-        profiles,
-        loading: shallowRef(false),
-        failed: shallowRef(false),
+
         request: async () => ({
           profiles: [
             {
@@ -90,7 +88,9 @@ describe('Runner Profile Domain Service', () => {
         errorMessage: String
       });
       await service.load('node-1');
-      expect(profiles.value[0]?.accessOptions.some((option) => option.id === 'auto')).toBe(hasAuto);
+      expect(service.profiles.value[0]?.accessOptions.some((option) => option.id === 'auto')).toBe(
+        hasAuto
+      );
     }
   });
   it('uses Workspace context for reads while preserving the shared Node cache', async () => {
@@ -103,9 +103,7 @@ describe('Runner Profile Domain Service', () => {
       .mockResolvedValueOnce({ profiles: [openCodeProfile] });
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
-      profiles,
-      loading: vueRef(false),
-      failed: vueRef(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
@@ -115,16 +113,16 @@ describe('Runner Profile Domain Service', () => {
       '/api/runner-profiles?nodeId=node-a&workspaceId=workspace%2Fa&cacheOnly=true'
     );
     selectedWorkspaceId.value = 'workspace-b';
-    expect(profiles.value[0]?.runner).toBe('codex');
+    expect(service.profiles.value[0]?.runner).toBe('codex');
     expect(service.has('node-a')).toBe(true);
     expect(service.cached('node-a')[0]?.runner).toBe('codex');
     await service.load('node-a');
-    expect(profiles.value[0]?.runner).toBe('opencode');
+    expect(service.profiles.value[0]?.runner).toBe('opencode');
     selectedWorkspaceId.value = 'workspace/a';
     expect(service.has('node-a')).toBe(true);
-    expect(profiles.value[0]?.runner).toBe('opencode');
+    expect(service.profiles.value[0]?.runner).toBe('opencode');
     selectedWorkspaceId.value = undefined;
-    expect(profiles.value).toEqual([]);
+    expect(service.profiles.value).toEqual([]);
   });
 
   it('discards an in-flight profile response after switching Workspaces on the same Node', async () => {
@@ -140,19 +138,17 @@ describe('Runner Profile Domain Service', () => {
     );
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(vueRef('node-a'), selectedWorkspaceId),
-      profiles,
-      loading,
-      failed: vueRef(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
     });
     const pending = service.load('node-a');
     selectedWorkspaceId.value = 'workspace-b';
-    expect(loading.value).toBe(false);
+    expect(service.loading.value).toBe(false);
     resolveRequest({ profiles: [codexProfile] });
     await expect(pending).resolves.toBeUndefined();
-    expect(profiles.value).toEqual([]);
+    expect(service.profiles.value).toEqual([]);
     expect(service.has('node-a')).toBe(false);
   });
   it('Localizes MAR Agent commands and permission options according to the current locale', async () => {
@@ -160,9 +156,7 @@ describe('Runner Profile Domain Service', () => {
     const profiles = ref<readonly RunnerProfile[]>([]);
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(ref<string>('node-a')),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request: vi.fn(() =>
         Promise.resolve({
           profiles: [
@@ -227,14 +221,16 @@ describe('Runner Profile Domain Service', () => {
     });
 
     expect(
-      profiles.value[0]?.accessOptions.map(({ label, description }) => [label, description])
+      service.profiles.value[0]?.accessOptions.map(({ label, description }) => [label, description])
     ).toEqual([
       [
         translate('runnerProfiles.marAgentAccessFullLabel'),
         translate('runnerProfiles.marAgentAccessFull')
       ]
     ]);
-    expect(profiles.value[0]?.commands.map(({ id, description }) => [id, description])).toEqual([
+    expect(
+      service.profiles.value[0]?.commands.map(({ id, description }) => [id, description])
+    ).toEqual([
       ['compact', translate('runnerProfiles.marAgentCompact')],
       ['plan', translate('runnerProfiles.marAgentPlan')],
       ['clear', translate('runnerProfiles.marAgentClear')]
@@ -244,14 +240,16 @@ describe('Runner Profile Domain Service', () => {
     await nextTick();
 
     expect(
-      profiles.value[0]?.accessOptions.map(({ label, description }) => [label, description])
+      service.profiles.value[0]?.accessOptions.map(({ label, description }) => [label, description])
     ).toEqual([
       [
         'Full access',
         'Run tools without per-call Agent approval. Host validation remains active, and no Agent sandbox is provided.'
       ]
     ]);
-    expect(profiles.value[0]?.commands.map(({ id, description }) => [id, description])).toEqual([
+    expect(
+      service.profiles.value[0]?.commands.map(({ id, description }) => [id, description])
+    ).toEqual([
       ['compact', 'Compact the current session context immediately.'],
       ['plan', 'Turn collaborative Plan Mode on or off.'],
       ['clear', 'Permanently clear this session history while keeping the session.']
@@ -277,9 +275,7 @@ describe('Runner Profile Domain Service', () => {
     const profiles = ref<readonly RunnerProfile[]>([]);
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(ref<string>('node-a')),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request: vi.fn(() =>
         Promise.resolve({
           profiles: (['mar-agent', 'codex', 'claude-code', 'opencode'] as const).map((runner) => ({
@@ -313,7 +309,7 @@ describe('Runner Profile Domain Service', () => {
     await service.load('node-a');
 
     expect(
-      profiles.value.map((profile) =>
+      service.profiles.value.map((profile) =>
         profile.commands.map(({ id, description }) => [id, description])
       )
     ).toEqual([
@@ -363,9 +359,7 @@ describe('Runner Profile Domain Service', () => {
     });
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(ref<string>('node-a')),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request: vi.fn(() =>
         Promise.resolve({
           profiles: [
@@ -386,7 +380,7 @@ describe('Runner Profile Domain Service', () => {
     });
 
     await service.load('node-a');
-    expect(profiles.value[0]?.commands.map((item) => item.id)).toEqual(['compact']);
+    expect(service.profiles.value[0]?.commands.map((item) => item.id)).toEqual(['compact']);
     expect(service.cached('node-a')[0]?.commands.map((item) => item.id)).toEqual(['compact']);
   });
 
@@ -394,9 +388,7 @@ describe('Runner Profile Domain Service', () => {
     const profiles = ref<readonly RunnerProfile[]>([]);
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(ref<string>('node-a')),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request: vi.fn(() =>
         Promise.resolve({
           profiles: [openCodeProfile, codexProfile, marAgentProfile, claudeCodeProfile],
@@ -409,7 +401,7 @@ describe('Runner Profile Domain Service', () => {
 
     await service.load('node-a');
 
-    expect(profiles.value.map((profile) => profile.runner)).toEqual([
+    expect(service.profiles.value.map((profile) => profile.runner)).toEqual([
       'mar-agent',
       'codex',
       'claude-code',
@@ -440,9 +432,7 @@ describe('Runner Profile Domain Service', () => {
     });
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
@@ -456,7 +446,7 @@ describe('Runner Profile Domain Service', () => {
 
     expect(service.cached('node-a')).toEqual([]);
     expect(service.has('node-b')).toBe(true);
-    expect(profiles.value).toEqual([]);
+    expect(service.profiles.value).toEqual([]);
   });
 
   it('Restores the Web cache and reads the Node cache without waiting for Runner refreshes', async () => {
@@ -468,9 +458,7 @@ describe('Runner Profile Domain Service', () => {
       .mockResolvedValueOnce({ profiles: [openCodeProfile], defaults: [] });
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
@@ -478,19 +466,19 @@ describe('Runner Profile Domain Service', () => {
 
     await service.load('node-a');
     selectedNodeId.value = 'node-b';
-    profiles.value = [];
+    service.restore('node-b');
     selectedNodeId.value = 'node-a';
     service.restore('node-a');
-    expect(profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
+    expect(service.profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
 
     const refreshing = service.load('node-a');
-    expect(profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
+    expect(service.profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
     await refreshing;
     expect(request).toHaveBeenLastCalledWith(
       '/api/runner-profiles?nodeId=node-a&workspaceId=workspace&cacheOnly=true'
     );
     expect(request).toHaveBeenCalledTimes(2);
-    expect(profiles.value).toEqual([expect.objectContaining({ runner: 'opencode' })]);
+    expect(service.profiles.value).toEqual([expect.objectContaining({ runner: 'opencode' })]);
   });
 
   it('Keeps the Web cache when the Node cache read fails', async () => {
@@ -503,9 +491,7 @@ describe('Runner Profile Domain Service', () => {
       .mockRejectedValueOnce(new Error('NODE_REQUEST_TIMEOUT'));
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId),
-      profiles,
-      loading: ref(false),
-      failed,
+
       request,
       notice: vi.fn(),
       errorMessage: String
@@ -515,8 +501,8 @@ describe('Runner Profile Domain Service', () => {
     await expect(service.load('node-a')).resolves.toBeUndefined();
 
     expect(request).toHaveBeenCalledTimes(2);
-    expect(profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
-    expect(failed.value).toBe(true);
+    expect(service.profiles.value).toEqual([expect.objectContaining({ runner: 'codex' })]);
+    expect(service.failed.value).toBe(true);
   });
 
   it('Does not apply a Node cache response after the selected Node changes', async () => {
@@ -526,9 +512,7 @@ describe('Runner Profile Domain Service', () => {
     const request = vi.fn(() => new Promise((resolve) => (resolveRequest = resolve)));
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
@@ -540,7 +524,7 @@ describe('Runner Profile Domain Service', () => {
     resolveRequest({ profiles: [codexProfile], defaults: [] });
 
     await expect(loading).resolves.toBeUndefined();
-    expect(profiles.value).toEqual([]);
+    expect(service.profiles.value).toEqual([]);
   });
 
   it('Locally saved defaults are not overwritten by an older in-flight load', async () => {
@@ -555,17 +539,18 @@ describe('Runner Profile Domain Service', () => {
     );
     const service = createRunnerProfileService({
       workspaceTarget: workspaceTargetRef(selectedNodeId),
-      profiles,
-      loading: ref(false),
-      failed: ref(false),
+
       request,
       notice: vi.fn(),
       errorMessage: String
     });
 
-    const loading = service.load('node-a');
+    const seed = service.load('node-a');
     await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
-    profiles.value = [codexProfile];
+    resolveRequest({ profiles: [codexProfile], defaults: [] });
+    await seed;
+    const loading = service.load('node-a');
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     service.save('node-a', {
       runner: 'codex',
       modelId: 'gpt-5.6-sol',

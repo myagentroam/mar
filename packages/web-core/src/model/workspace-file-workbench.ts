@@ -1,5 +1,11 @@
 import type { WorkspaceFileTabsSnapshot } from '../util/workspace-file-tab.js';
 
+export interface WorkspaceFileWorkbenchHandle {
+  predictionAttention?(): readonly import('@myagentroam/protocol').PromptCompletionAttention[];
+  openCurrentRenderedPreview(): boolean;
+  downloadFile(path: string): Promise<void>;
+}
+
 export interface DirtyTextDraft {
   readonly tabIdentity: string;
   readonly path: string;

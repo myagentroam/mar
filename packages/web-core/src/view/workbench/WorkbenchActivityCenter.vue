@@ -8,7 +8,7 @@ import WorkbenchActivityPanel from './WorkbenchActivityPanel.vue';
 import WorkbenchNotificationList from './WorkbenchNotificationList.vue';
 import type {
   WorkbenchNotification,
-  WorkbenchNotificationService,
+  WorkbenchNotificationView,
   RecentRun
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
@@ -19,7 +19,7 @@ import { activityToggleKeys, shortcutKeyLabel } from '../../service/console-shor
 
 const props = withDefaults(
   defineProps<{
-    service: WorkbenchNotificationService;
+    service: WorkbenchNotificationView;
     uploads: readonly WorkspaceUploadTask[];
     statusLabel: (task: WorkspaceUploadTask) => string;
     mobileMode: boolean;

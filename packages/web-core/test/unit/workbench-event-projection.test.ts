@@ -109,6 +109,13 @@ describe('Workbench Event Projection', () => {
     const onNodeConnected = vi.fn();
     const service = createWorkbenchEventProjectionService({
       nodes,
+      setNodeConnection: (nodeId: string, connected: boolean) => {
+        const node = nodes.value.find((item) => item.id === nodeId);
+        if (node === undefined) return undefined;
+        const previous = node.connected;
+        node.connected = connected;
+        return previous;
+      },
       sessions: { value: [] },
       runs: { value: [] },
       workspaceTarget: workspaceTargetRef({ value: 'node-1' }),

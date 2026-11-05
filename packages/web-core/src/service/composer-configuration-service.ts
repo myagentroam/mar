@@ -8,7 +8,7 @@ import { defaultEffortForModel } from './runner-profile-service.js';
 
 export function createComposerConfigurationService(options: {
   readonly selectedSession: Readonly<Ref<Session | undefined>>;
-  readonly profiles: Ref<readonly RunnerProfile[]>;
+  readonly profiles: Readonly<Ref<readonly RunnerProfile[]>>;
   readonly effortLabel: (effort: string) => string;
 }) {
   const runner = ref<Session['runner']>('mar-agent');

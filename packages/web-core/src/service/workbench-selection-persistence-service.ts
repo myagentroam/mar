@@ -14,7 +14,8 @@ export interface WorkbenchSelectionPersistenceOptions {
   readonly nodes: Ref<readonly NodeSummary[]>;
   readonly sessions: Ref<readonly Session[]>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
   readonly activateWorkspace: (target: WorkspaceTarget) => Promise<boolean>;
   readonly synchronizeSessions: (workspaceId: string) => Promise<readonly Session[] | undefined>;
   readonly openSession: (sessionId: string) => Promise<void>;
@@ -105,7 +106,7 @@ export function createWorkbenchSelectionPersistenceService(
     } catch (error) {
       if (current()) {
         // Retain the target through transient failures, including subsequent route syncs.
-        if (preferredId !== undefined) options.selectedSessionId.value = preferredId;
+        if (preferredId !== undefined) options.setSelectedSessionId(preferredId);
         options.notice(error);
       }
     } finally {

@@ -6,7 +6,7 @@ import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 
 export function createWorkspaceQueueService(options: {
-  readonly queue: Ref<WorkspaceQueue>;
+  readonly queue: Readonly<Ref<WorkspaceQueue>>;
   readonly currentSessionQueue: ComputedRef<WorkspaceQueue>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;

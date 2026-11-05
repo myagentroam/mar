@@ -9,16 +9,18 @@ function state(
   request: ReturnType<typeof vi.fn> = vi.fn(),
   groupingSupported?: () => boolean
 ) {
-  const sessions = ref<Record<string, unknown>[]>([]);
+  const selectedSessionId = ref<string | undefined>('session-1');
   const selectedNodeId = ref('node-1');
   const selectedWorkspaceId = ref('workspace-1');
   const paging = createWorkspaceSessionPagingService(10);
   const notice = vi.fn();
   const controller = createWorkspaceSessionService({
-    sessions: sessions as never,
     runs: { value: runs } as never,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
-    selectedSessionId: { value: 'session-1' } as never,
+    selectedSessionId,
+    setSelectedSessionId: (id) => {
+      selectedSessionId.value = id;
+    },
     paging,
     pageSize: 10,
     ...(groupingSupported === undefined ? {} : { groupingSupported }),
@@ -28,7 +30,7 @@ function state(
     errorMessage: String
   });
   return {
-    sessions: sessions as { value: Record<string, unknown>[] },
+    sessions: controller.projection.sessions as { value: Record<string, unknown>[] },
     selectedNodeId,
     selectedWorkspaceId,
     paging,
@@ -42,10 +44,10 @@ describe('Web Workspace Session Discovery', () => {
     'Keeps the list reference when an equivalent %s update arrives',
     (source) => {
       const { sessions, controller, paging } = state();
-      sessions.value = [
+      controller.projection.replaceAll([
         { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', activity: 'IDLE' },
         { id: 'session-2', workspaceId: 'workspace-1', runner: 'codex', activity: 'IDLE' }
-      ];
+      ] as never);
       const current = sessions.value;
       const listChanged = vi.fn();
       const stop = watch(() => sessions.value, listChanged, { flush: 'sync' });
@@ -401,7 +403,7 @@ describe('Web Workspace Session Discovery', () => {
       .mockImplementationOnce(() => retryPage);
     const { controller, notice, paging, sessions } = state([], request);
     const existing = { id: 'existing', workspaceId: 'workspace-1', runner: 'codex' };
-    sessions.value = [existing];
+    controller.projection.replaceAll([existing] as never);
     paging.nextCursors.value.set('node-1:workspace-1', 'cursor-one');
 
     await controller.loadMore();
@@ -436,7 +438,7 @@ describe('Web Workspace Session Discovery', () => {
         nextCursor: 'cursor-one'
       })
     );
-    sessions.value = [existing];
+    controller.projection.replaceAll([existing] as never);
     paging.nextCursors.value.set('node-1:workspace-1', 'cursor-one');
 
     await controller.loadMore();
@@ -463,9 +465,9 @@ describe('Web Workspace Session Discovery', () => {
         nextCursor: null
       });
     const { controller, paging, sessions } = state([], request);
-    sessions.value = [
+    controller.projection.replaceAll([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', title: 'old' }
-    ];
+    ] as never);
     paging.nextCursors.value.set('node-1:workspace-1', 'old-cursor');
 
     await controller.loadMore();
@@ -547,13 +549,15 @@ describe('Web Workspace Session Discovery', () => {
       nextCursor: 'next-page'
     });
     const { sessions, controller } = state([], request);
-    sessions.value = [
+    controller.projection.replaceAll([
       { id: 'draft:local', workspaceId: 'workspace-1', runner: 'mar-agent' },
       ...older
-    ];
+    ] as never);
 
     controller.merge([created]);
-    sessions.value = sessions.value.filter((session) => session.id !== 'draft:local');
+    controller.projection.replaceAll(
+      sessions.value.filter((session) => session.id !== 'draft:local') as never
+    );
     expect(sessions.value.slice(0, 10).map((session) => session.id)).not.toContain('native-new');
     await controller.synchronize('workspace-1');
 
@@ -572,7 +576,7 @@ describe('Web Workspace Session Discovery', () => {
       [],
       vi.fn().mockResolvedValue({ sessions: [pinned, previous], nextCursor: null })
     );
-    sessions.value = [previous, { ...pinned, pinOrder: null }];
+    controller.projection.replaceAll([previous, { ...pinned, pinOrder: null }] as never);
     await controller.refresh();
     expect(sessions.value.map((session) => session.id)).toEqual(['pinned', 'previous']);
   });
@@ -583,7 +587,7 @@ describe('Web Workspace Session Discovery', () => {
       nextCursor: null
     };
     const { sessions, controller } = state([], vi.fn().mockResolvedValue(firstPage));
-    sessions.value = [{ id: 'old-cached', workspaceId: 'workspace-1' }];
+    controller.projection.replaceAll([{ id: 'old-cached', workspaceId: 'workspace-1' }] as never);
     await expect(controller.synchronize('workspace-1', true)).resolves.toEqual(firstPage);
     expect(sessions.value.map((session) => session.id)).toEqual(['new-first', 'old-cached']);
   });
@@ -592,7 +596,7 @@ describe('Web Workspace Session Discovery', () => {
     const error = new TypeError('Network unavailable');
     const { sessions, controller } = state([], vi.fn().mockRejectedValue(error));
     const existing = { id: 'session-1', workspaceId: 'workspace-1' };
-    sessions.value = [existing];
+    controller.projection.replaceAll([existing] as never);
     await expect(controller.synchronize('workspace-1', true)).rejects.toBe(error);
     expect(sessions.value).toEqual([existing]);
     await expect(controller.synchronize('workspace-1')).resolves.toBeUndefined();
@@ -605,7 +609,9 @@ describe('Web Workspace Session Discovery', () => {
       nextCursor: 'next-search-page'
     });
     const { sessions, controller } = state([], request);
-    sessions.value = [{ id: 'loaded-only', workspaceId: 'workspace-1', runner: 'codex' }];
+    controller.projection.replaceAll([
+      { id: 'loaded-only', workspaceId: 'workspace-1', runner: 'codex' }
+    ] as never);
 
     await controller.search(' release ');
 
@@ -766,7 +772,10 @@ describe('Web Workspace Session Discovery', () => {
       workspaceId: 'workspace-1',
       runner: 'codex' as const
     };
-    sessions.value = [currentBodySession, { ...currentBodySession, id: 'cached-only' }];
+    controller.projection.replaceAll([
+      currentBodySession,
+      { ...currentBodySession, id: 'cached-only' }
+    ] as never);
 
     controller.applySnapshot('node-1', 'workspace-1', {
       sessions: [{ id: 'snapshot', workspaceId: 'workspace-1', runner: 'codex' }],
@@ -811,7 +820,9 @@ describe('Web Workspace Session Discovery', () => {
       throw new Error(`Unexpected request: ${path}`);
     });
     const { controller, paging, sessions } = state([], request, () => true);
-    sessions.value = [{ id: 'main-loaded', workspaceId: 'workspace-1', runner: 'codex' }];
+    controller.projection.replaceAll([
+      { id: 'main-loaded', workspaceId: 'workspace-1', runner: 'codex' }
+    ] as never);
     paging.nextCursors.value.set('node-1:workspace-1', 'main-cursor');
     paging.loadMoreErrors.value.set('node-1:workspace-1', new Error('old page failure'));
 
@@ -1037,7 +1048,7 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Preserves current command state when a weaker snapshot omits it', () => {
     const { sessions, controller } = state();
-    sessions.value = [
+    controller.projection.replaceAll([
       {
         id: 'session-1',
         workspaceId: 'workspace-1',
@@ -1045,7 +1056,7 @@ describe('Web Workspace Session Discovery', () => {
         activity: 'IDLE',
         commandStates: [{ commandId: 'plan', active: true }]
       }
-    ];
+    ] as never);
     controller.merge([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', activity: 'IDLE' } as never
     ]);
@@ -1054,7 +1065,7 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Preserves current Rewind capability when a partial update omits runtime capabilities', () => {
     const { sessions, controller } = state();
-    sessions.value = [
+    controller.projection.replaceAll([
       {
         id: 'session-1',
         workspaceId: 'workspace-1',
@@ -1062,7 +1073,7 @@ describe('Web Workspace Session Discovery', () => {
         activity: 'IDLE',
         runtime: { capabilities: ['history.read', 'session.rewind'] }
       }
-    ];
+    ] as never);
 
     controller.merge([
       {
@@ -1083,7 +1094,7 @@ describe('Web Workspace Session Discovery', () => {
     const { sessions, controller } = state([
       { id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }
     ]);
-    sessions.value = [
+    controller.projection.replaceAll([
       {
         id: 'session-1',
         workspaceId: 'workspace-1',
@@ -1091,7 +1102,7 @@ describe('Web Workspace Session Discovery', () => {
         activity: 'MANAGED_ACTIVE',
         control: { level: 'MANAGED' }
       }
-    ];
+    ] as never);
     controller.merge([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', activity: 'IDLE' } as never
     ]);
@@ -1102,7 +1113,7 @@ describe('Web Workspace Session Discovery', () => {
     const { sessions, controller } = state([
       { id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }
     ]);
-    sessions.value = [
+    controller.projection.replaceAll([
       {
         id: 'session-1',
         workspaceId: 'workspace-1',
@@ -1112,7 +1123,7 @@ describe('Web Workspace Session Discovery', () => {
         control: { level: 'MANAGED' },
         runtime: { capabilities: ['history.read'] }
       }
-    ];
+    ] as never);
 
     controller.merge(
       [
@@ -1135,7 +1146,7 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Replaces an externally discovered snapshot with a managed session sharing the same native identity', () => {
     const { sessions, controller } = state();
-    sessions.value = [
+    controller.projection.replaceAll([
       {
         id: 'managed',
         workspaceId: 'workspace-1',
@@ -1143,7 +1154,7 @@ describe('Web Workspace Session Discovery', () => {
         externalSessionId: 'native-1',
         nativeControl: 'MAR_MANAGED'
       }
-    ];
+    ] as never);
     controller.merge([
       {
         id: 'external',
@@ -1158,11 +1169,11 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Preserves the existing list position when partially updating a session', () => {
     const { sessions, controller } = state();
-    sessions.value = [
+    controller.projection.replaceAll([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' },
       { id: 'session-2', workspaceId: 'workspace-1', runner: 'codex' },
       { id: 'session-3', workspaceId: 'workspace-1', runner: 'codex' }
-    ] as never;
+    ] as never as never);
     const current = sessions.value;
 
     controller.merge([
@@ -1187,11 +1198,13 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Keeps a session added in real time at its current position until the authoritative Watch snapshot orders it', () => {
     const { sessions, controller } = state();
-    sessions.value = Array.from({ length: 21 }, (_, index) => ({
-      id: `session-${index + 1}`,
-      workspaceId: 'workspace-1',
-      runner: 'codex'
-    }));
+    controller.projection.replaceAll(
+      Array.from({ length: 21 }, (_, index) => ({
+        id: `session-${index + 1}`,
+        workspaceId: 'workspace-1',
+        runner: 'codex'
+      })) as never
+    );
 
     controller.merge([{ id: 'session-new', workspaceId: 'workspace-1', runner: 'codex' }] as never);
 
@@ -1218,7 +1231,9 @@ describe('Web Workspace Session Discovery', () => {
 
   it('Updates order from the newest first page across consecutive authoritative snapshots', () => {
     const { sessions, controller } = state();
-    sessions.value = [{ id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }] as never;
+    controller.projection.replaceAll([
+      { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }
+    ] as never as never);
 
     controller.merge([{ id: 'session-new', workspaceId: 'workspace-1', runner: 'codex' }] as never);
     controller.merge(
@@ -1242,12 +1257,11 @@ describe('Web Workspace Session Discovery', () => {
   it('Uses one-time session.list only to add unloaded sessions, not to impersonate an authoritative Watch snapshot', async () => {
     let resolvePage!: (value: unknown) => void;
     const page = new Promise((resolve) => (resolvePage = resolve));
-    const sessions = { value: [] } as never;
     const controller = createWorkspaceSessionService({
-      sessions,
       runs: { value: [{ id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }] } as never,
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
-      selectedSessionId: { value: undefined } as never,
+      selectedSessionId: ref(),
+      setSelectedSessionId: vi.fn(),
       paging: {
         nextCursors: { value: new Map() } as never,
         loadMoreErrors: ref(new Map()),
@@ -1262,14 +1276,15 @@ describe('Web Workspace Session Discovery', () => {
       notice: vi.fn(),
       errorMessage: String
     });
-    (sessions as { value: Record<string, unknown>[] }).value = [
+    const sessions = controller.projection.sessions;
+    controller.projection.replaceAll([
       {
         id: 'session-1',
         workspaceId: 'workspace-1',
         runner: 'codex',
         activity: 'MANAGED_ACTIVE'
       }
-    ];
+    ]);
     const synchronizing = controller.synchronize('workspace-1');
     await Promise.resolve();
     await Promise.resolve();
@@ -1286,27 +1301,20 @@ describe('Web Workspace Session Discovery', () => {
       nextCursor: null
     });
     await synchronizing;
-    expect((sessions as { value: { runnerTitle?: string }[] }).value[0]?.runnerTitle).toBe(
-      'Old home-page title'
-    );
-    expect((sessions as { value: { activity?: string }[] }).value[0]?.activity).toBe(
-      'MANAGED_ACTIVE'
-    );
+    expect(sessions.value[0]?.runnerTitle).toBe('Old home-page title');
+    expect(sessions.value[0]?.activity).toBe('MANAGED_ACTIVE');
   });
 
   it('Preserves the current page cursor when a manual refresh fails', async () => {
-    const sessions = {
-      value: [{ id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }]
-    };
     const paging = createWorkspaceSessionPagingService(10);
     paging.initialize('node-1:workspace-1');
     paging.nextCursors.value.set('node-1:workspace-1', 'existing-cursor');
     const reset = vi.spyOn(paging, 'reset');
     const controller = createWorkspaceSessionService({
-      sessions: sessions as never,
       runs: { value: [] } as never,
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
-      selectedSessionId: { value: undefined } as never,
+      selectedSessionId: ref(),
+      setSelectedSessionId: vi.fn(),
       paging,
       pageSize: 10,
       tabId: () => 'node-1:workspace-1',
@@ -1314,6 +1322,10 @@ describe('Web Workspace Session Discovery', () => {
       notice: vi.fn(),
       errorMessage: String
     });
+    controller.projection.replaceAll([
+      { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex' }
+    ]);
+    const sessions = controller.projection.sessions;
 
     await controller.refresh();
 
@@ -1333,13 +1345,12 @@ describe('Web Workspace Session Discovery', () => {
       new Promise((resolve) => (resolveSecond = resolve))
     ];
     let pageIndex = 0;
-    const sessions = { value: [] } as never;
     const nextCursors = { value: new Map<string, string | null>() };
     const controller = createWorkspaceSessionService({
-      sessions,
       runs: { value: [] } as never,
       workspaceTarget: workspaceTargetRef(ref('node-1'), ref('workspace-1')),
-      selectedSessionId: { value: undefined } as never,
+      selectedSessionId: ref(),
+      setSelectedSessionId: vi.fn(),
       paging: {
         nextCursors: nextCursors as never,
         loadMoreErrors: ref(new Map()),
@@ -1354,6 +1365,7 @@ describe('Web Workspace Session Discovery', () => {
       notice: vi.fn(),
       errorMessage: String
     });
+    const sessions = controller.projection.sessions;
 
     const first = controller.synchronize('workspace-1');
     const second = controller.synchronize('workspace-1');
@@ -1382,9 +1394,7 @@ describe('Web Workspace Session Discovery', () => {
     });
     await first;
 
-    expect((sessions as { value: { runnerTitle?: string }[] }).value[0]?.runnerTitle).toBe(
-      'Newer title'
-    );
+    expect(sessions.value[0]?.runnerTitle).toBe('Newer title');
     expect(nextCursors.value.get('node-1:workspace-1')).toBe('new-cursor');
   });
 });

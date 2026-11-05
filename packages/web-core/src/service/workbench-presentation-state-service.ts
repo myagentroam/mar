@@ -53,13 +53,13 @@ interface WorkbenchPresentationStateOptions {
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedRunId: Ref<string | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
-  readonly sessions: Ref<Session[]>;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
   readonly runs: Readonly<Ref<readonly AgentRun[]>>;
   readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
   readonly attachments: Readonly<Ref<readonly ComposerAttachment[]>>;
   readonly draftOpen: Ref<boolean>;
-  readonly runnerProfilesLoading: Ref<boolean>;
-  readonly runnerProfilesFailed: Ref<boolean>;
+  readonly runnerProfilesLoading: Readonly<Ref<boolean>>;
+  readonly runnerProfilesFailed: Readonly<Ref<boolean>>;
   readonly composerProfile: ReturnType<typeof createComposerConfigurationService>['profile'];
   readonly composerModels: ReturnType<typeof createComposerConfigurationService>['models'];
   readonly composerAccessOptions: ReturnType<
@@ -70,8 +70,8 @@ interface WorkbenchPresentationStateOptions {
   readonly channelToken: Ref<string | undefined>;
   readonly loading: Ref<boolean>;
   readonly submissionPending: Ref<boolean>;
-  readonly nodes: Ref<NodeSummary[]>;
-  readonly workspaces: Ref<Workspace[]>;
+  readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
+  readonly workspaces: Readonly<Ref<readonly Workspace[]>>;
   readonly nodeManifest: Ref<NodeWorkbenchManifest | undefined>;
   readonly visibleLimits: Ref<Map<string, number>>;
   readonly nextCursors: Ref<Map<string, string | null>>;

@@ -17,10 +17,8 @@ import {
 } from '../../src/service/locale-preference-service.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
-import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
-import { createWorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
-import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
+import { createWorkspaceFileToolsController } from '../../src/service/workspace-file-tools-controller.js';
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -145,76 +143,151 @@ function pageFixture() {
     label: id,
     lastActiveAt: 1
   }));
-  // Preserve nested service refs: the production controller unwraps only its outer state.
-  return shallowReactive({
-    view: 'nodes',
-    setAsideSurfaceVisible: vi.fn(),
-    asideViewMode: () => 'compact' as const,
-    asideWidth: () => 320,
-    asideState: { tools: ['terminal'], sessions: [], active: { kind: 'tool', id: 'terminal' } },
-    mobileViewport: false,
-    sidebarCollapsed: false,
-    settingsSection: 'account',
-    settingsItems: [],
-    loading: false,
-    managementSection: 'overview',
-    managementItems: [],
-    hostedConversationWorkspace: {
-      snapshot: ref(undefined),
-      conversations: ref([]),
-      selectedNodeId: ref(undefined),
-      selectedConversationId: ref(undefined)
+  const mainPane = {
+    registerShortcuts: () => () => undefined,
+    conversation: createConversationStateService(vi.fn()),
+    scroll: createConversationScrollService(),
+    draft: { input: ref(''), skillTokens: ref([]), references: ref([]) },
+    attachments: { attachments: ref([]) },
+    draggingAttachments: ref(false),
+    queue: {
+      startEditing: vi.fn(),
+      finishEditing: vi.fn(),
+      editingQueueItemId: ref(),
+      editingContent: ref(''),
+      draggingQueueItemId: ref()
     },
-    mainPane: {
-      registerShortcuts: () => () => undefined,
-      conversation: createConversationStateService(vi.fn()),
-      scroll: createConversationScrollService(),
-      draft: { input: ref(''), skillTokens: ref([]), references: ref([]) },
-      attachments: { attachments: ref([]) },
-      draggingAttachments: ref(false),
-      queue: {
-        startEditing: vi.fn(),
-        finishEditing: vi.fn(),
-        editingQueueItemId: ref(),
-        editingContent: ref(''),
-        draggingQueueItemId: ref()
-      },
-      setInputFocus: vi.fn(),
-      setRangeEditor: vi.fn()
+    setInputFocus: vi.fn(),
+    setRangeEditor: vi.fn()
+  };
+  const page = {
+    application: shallowReactive({
+      view: 'nodes',
+      managementSection: 'overview',
+      workPromptCompletion: { enabled: false },
+      workspaceWatchTopicStatus: {}
+    }),
+    aside: shallowReactive({
+      setAsideSurfaceVisible: vi.fn(),
+      asideViewMode: () => 'compact' as const,
+      asideWidth: () => 320,
+      asideState: { tools: ['terminal'], sessions: [], active: { kind: 'tool', id: 'terminal' } },
+      asideSessionMetadata: []
+    }),
+    layout: shallowReactive({
+      mobileViewport: false,
+      sidebarCollapsed: false,
+      mobileWorkspaceSurface: 'conversation'
+    }),
+    settings: shallowReactive({
+      settingsSection: 'account',
+      settingsItems: [],
+      managementItems: []
+    }),
+    identity: shallowReactive({ loading: false, admin: {}, refreshAdmin: vi.fn() }),
+    hosted: {
+      hostedConversationWorkspace: {
+        snapshot: ref(undefined),
+        conversations: ref([]),
+        selectedNodeId: ref(undefined),
+        selectedConversationId: ref(undefined)
+      }
     },
-    refreshAdmin: vi.fn(),
-    workspaceHost: { connected: false },
-    workspaceTarget: { nodeId: 'node', workspaceId: 'one' },
-    selectedWorkspace: undefined as { kind: string } | undefined,
-    workspaceTabs: tabs,
-    activeWorkspaceTabId: 'one',
-    nodeLabel: () => 'Node',
-    workspaceTabNodeLabel: () => 'Node',
-    workspaceDirectAvailable: () => false,
-    workspaceDirectDescription: () => undefined,
-    workspaceTabService: { move: vi.fn(), setPinned: vi.fn() },
-    workbenchNotificationService: {
-      hasActiveWorkspaceRun: () => false,
-      hasUnreadWorkspace: () => false
-    },
-    terminalReady: true,
-    terminalDocks: new Map(),
-    nodes: [],
-    workspaceRegistrationNodeId: undefined as string | undefined,
-    workspaceRegistrationReady: false,
-    mobileWorkspaceSurface: 'conversation',
-    notice: vi.fn()
+    selection: shallowReactive({
+      workspaceTarget: { nodeId: 'node', workspaceId: 'one' },
+      workspaceTabs: tabs,
+      activeWorkspaceTabId: 'one',
+      workspaceSelectionLoading: false,
+      workspaceTabNodeLabel: () => 'Node',
+      moveWorkspaceTab: vi.fn(),
+      pinWorkspaceTab: vi.fn()
+    }),
+    resources: shallowReactive({
+      workspaceHost: { connected: false },
+      selectedWorkspace: undefined as { kind: string } | undefined,
+      nodeManifest: undefined as object | undefined,
+      nodeManifestLoading: false,
+      nodeLabel: () => 'Node',
+      workspaceDirectAvailable: () => false,
+      workspaceDirectDescription: () => undefined,
+      nodes: []
+    }),
+    notifications: { hasActiveWorkspaceRun: () => false, hasUnreadWorkspace: () => false },
+    terminal: shallowReactive({ terminalReady: true, terminalDocks: new Map() }),
+    registration: shallowReactive({
+      workspaceRegistrationNodeId: undefined as string | undefined,
+      workspaceRegistrationReady: false
+    }),
+    files: shallowReactive({}) as Record<string, any>,
+    interactions: { notice: vi.fn() },
+    sessionList: { sessions: [] },
+    _test: shallowReactive({
+      mainPane,
+      tools: undefined as ReturnType<typeof createWorkspaceFileToolsController> | undefined,
+      historyReady: false,
+      composerSessionOpen: false,
+      composerRunner: '',
+      composerInputDisabled: false,
+      composerWorking: false,
+      conversationTurns: [],
+      onBranch: vi.fn(),
+      http: { request: () => new Promise(() => {}) } as ScopedHttpService
+    }),
+    mainPaneController: undefined as any
+  };
+  const tools = createWorkspaceFileToolsController({
+    target: computed(() => page.selection.workspaceTarget),
+    http: { request: (...args) => page._test.http.request(...args) },
+    workspacePath: () => '/workspace',
+    workspaceKind: () => page.resources.selectedWorkspace?.kind,
+    workbench: { invalidateDeletedSelection: vi.fn(), openToolIntent: vi.fn() },
+    updateBranch: (...args) => page._test.onBranch(...args),
+    queueUploads: vi.fn(),
+    notice: vi.fn(),
+    errorMessage: String,
+    cache: () => ({ isActive: () => true, updateSearch: vi.fn(), view: () => ({}) }) as never,
+    visible: () => page.application.view === 'nodes' && page.aside.asideState !== undefined,
+    activeTool: () =>
+      page.aside.asideState?.active?.kind === 'tool' ? page.aside.asideState.active.id : undefined,
+    ready: () => page.files.filesReady === true,
+    searchReady: () => page.files.contentSearchReady === true,
+    isGit: () => page.resources.selectedWorkspace?.kind === 'GIT_WORKSPACE',
+    historySupported: () =>
+      page._test.historyReady === true &&
+      (page.resources.nodeManifest as any)?.git?.supportsHistory !== false,
+    workspace: () =>
+      page.resources.selectedWorkspace === undefined
+        ? undefined
+        : ({ path: '/workspace', ...page.resources.selectedWorkspace } as never),
+    updateWorkspace: vi.fn()
   });
+  Object.assign(page._test, { tools, historyReady: false });
+  Object.assign(page.files, {
+    workspaceFiles: tools.files,
+    workspaceGit: tools.git,
+    workspaceSearch: tools.search,
+    mountSurface: tools.mountSurface,
+    unmountSurface: tools.unmountSurface,
+    setWorkspaceFilesPanel: tools.setFilesPanel,
+    setWorkspaceSearchPanel: tools.setSearchPanel
+  });
+  return page;
 }
 
-function installMainPane(
-  page: Pick<ReturnType<typeof pageFixture>, 'mainPane' | 'workspaceTarget'>
-): void {
+function extendPage(
+  page: ReturnType<typeof pageFixture>,
+  groups: Record<string, Record<string, unknown>>
+) {
+  for (const [name, values] of Object.entries(groups)) Object.assign((page as any)[name], values);
+  return page;
+}
+
+function installMainPane(page: ReturnType<typeof pageFixture>): void {
   Object.assign(page, {
     mainPaneController: {
       state: {
-        ...page.mainPane,
-        workspaceTarget: ref(page.workspaceTarget),
+        ...page._test.mainPane,
+        workspaceTarget: ref(page.selection.workspaceTarget),
         skillTokens: { remove: vi.fn() }
       },
       presentation: { composerSessionOpen: ref(false) },
@@ -248,41 +321,23 @@ describe('Workbench surface composition behavior', () => {
       const previousLocale = preference.locale.value;
       preference.setLocale(locale);
       const list = vi.fn();
-      const page = Object.assign(pageFixture(), {
-        workspaceHost: { connected: false },
-        selectedWorkspace: { kind: 'DIRECTORY' },
-        filesReady: false,
-        contentSearchReady: false,
-        asideState: { tools: ['files'], sessions: [], active: { kind: 'tool', id: 'files' } },
-        workspaceKindLabel: () => '',
-        workspaceBranchLabel: () => '',
-        nodeManifest: undefined as object | undefined,
-        nodeManifestLoading: false,
-        selectedWorkspaceBranch: undefined,
-        workPromptCompletion: { enabled: false },
-        workspaceFileWorkbench: {},
-        workspaceWatchTopicStatus: {},
-        setWorkspaceFilesPanel: vi.fn(),
-        setWorkspaceSearchPanel: vi.fn(),
-        workspaceSearch: createWorkspaceContentSearchService({
-          http: { request: vi.fn() } as unknown as ScopedHttpService,
-          onFailure: vi.fn()
-        }),
-        workspaceFiles: createWorkspaceFilesController({
-          target: () => undefined,
-          workspaceName: () => 'workspace',
-          list,
-          mutate: vi.fn(),
-          revealLocal: vi.fn(),
-          preflight: vi.fn(),
-          queue: vi.fn(),
-          onFailure: vi.fn(),
-          onWorkspace: vi.fn(),
-          onMutationFailure: vi.fn(),
-          onDeletedSelection: vi.fn(),
-          onRevealSelection: vi.fn()
-        })
+      const page = extendPage(pageFixture(), {
+        resources: {
+          workspaceHost: { connected: false },
+          selectedWorkspace: { kind: 'DIRECTORY' },
+          workspaceKindLabel: () => '',
+          workspaceBranchLabel: () => '',
+          nodeManifest: undefined as object | undefined,
+          nodeManifestLoading: false,
+          selectedWorkspaceBranch: undefined
+        },
+        files: { filesReady: false, contentSearchReady: false, workspaceFileWorkbench: {} },
+        aside: {
+          asideState: { tools: ['files'], sessions: [], active: { kind: 'tool', id: 'files' } }
+        },
+        application: { workPromptCompletion: { enabled: false }, workspaceWatchTopicStatus: {} }
       });
+      page._test.http = { request: list } as unknown as ScopedHttpService;
       installMainPane(page);
       const savedWindow = globalThis.window;
       vi.stubGlobal('window', undefined);
@@ -299,10 +354,14 @@ describe('Workbench surface composition behavior', () => {
           translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
         );
         expect(offline).not.toContain('role="tree"');
-        page.workspaceHost = { connected: true };
-        page.nodeManifestLoading = true;
+        page.resources.workspaceHost = { connected: true };
+        page.resources.nodeManifestLoading = true;
         for (const tool of ['files', 'search', 'changes', 'history']) {
-          page.asideState = { tools: [tool], sessions: [], active: { kind: 'tool', id: tool } };
+          page.aside.asideState = {
+            tools: [tool],
+            sessions: [],
+            active: { kind: 'tool', id: tool }
+          };
           const loading = await renderUnavailable();
           expect(loading).toContain(translate('generated.workspaceInspector.loading'));
           expect(loading).toMatch(
@@ -310,15 +369,19 @@ describe('Workbench surface composition behavior', () => {
           );
           expect(loading).not.toContain('role="tree"');
         }
-        page.asideState = { tools: ['files'], sessions: [], active: { kind: 'tool', id: 'files' } };
-        page.nodeManifestLoading = false;
-        page.nodeManifest = {};
+        page.aside.asideState = {
+          tools: ['files'],
+          sessions: [],
+          active: { kind: 'tool', id: 'files' }
+        };
+        page.resources.nodeManifestLoading = false;
+        page.resources.nodeManifest = {};
         const unsupported = await renderUnavailable();
         expect(unsupported).toContain(
           translate('generated.workspaceInspector.capabilityUnavailable')
         );
-        page.workspaceHost = { connected: false };
-        page.nodeManifest = undefined;
+        page.resources.workspaceHost = { connected: false };
+        page.resources.nodeManifest = undefined;
         expect(list).not.toHaveBeenCalled();
       } finally {
         vi.stubGlobal('window', savedWindow);
@@ -328,12 +391,12 @@ describe('Workbench surface composition behavior', () => {
         expect(textContent(view.root)).toContain(
           translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
         );
-        page.workspaceHost = { connected: true };
-        page.nodeManifestLoading = true;
+        page.resources.workspaceHost = { connected: true };
+        page.resources.nodeManifestLoading = true;
         await nextTick();
         expect(textContent(view.root)).toContain(translate('generated.workspaceInspector.loading'));
-        page.nodeManifestLoading = false;
-        page.nodeManifest = {};
+        page.resources.nodeManifestLoading = false;
+        page.resources.nodeManifest = {};
         await nextTick();
         expect(textContent(view.root)).toContain(
           translate('generated.workspaceInspector.capabilityUnavailable')
@@ -347,22 +410,21 @@ describe('Workbench surface composition behavior', () => {
     }
   );
   it('applies Changes Watch data without rereading and refreshes Run invalidations', async () => {
-    const page = Object.assign(pageFixture(), {
-      workspaceHost: { connected: true },
-      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
-      filesReady: true,
-      historyReady: true,
-      asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } },
-      workspaceKindLabel: () => '',
-      workspaceBranchLabel: () => '',
-      nodeManifest: {},
-      nodeManifestLoading: false,
-      selectedWorkspaceBranch: undefined,
-      workPromptCompletion: { enabled: false },
-      workspaceFileWorkbench: {},
-      workspaceWatchTopicStatus: {},
-      workspaceChangesRevision: 0,
-      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+    const page = extendPage(pageFixture(), {
+      resources: {
+        workspaceHost: { connected: true },
+        selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        nodeManifest: {},
+        nodeManifestLoading: false,
+        selectedWorkspaceBranch: undefined
+      },
+      files: { filesReady: true, workspaceFileWorkbench: {} },
+      aside: {
+        asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } }
+      },
+      application: { workPromptCompletion: { enabled: false }, workspaceWatchTopicStatus: {} }
     });
     installMainPane(page);
     let reads = 0;
@@ -374,37 +436,31 @@ describe('Workbench surface composition behavior', () => {
       })
     } as unknown as ScopedHttpService;
     const onBranch = vi.fn(() => {
-      if (reads < 5) page.selectedWorkspace = { ...page.selectedWorkspace! };
+      if (reads < 5) page.resources.selectedWorkspace = { ...page.resources.selectedWorkspace! };
     });
-    page.workspaceGit = createWorkspaceGitService({
-      http,
-      target: () => page.workspaceTarget,
-      gitEnabled: () => true,
-      historyEnabled: () => true,
-      onWorkspace: vi.fn(),
-      onBranch,
-      onFailure: vi.fn()
-    });
+    page._test.http = http;
+    page._test.historyReady = true;
+    page._test.onBranch = onBranch;
     const view = renderComponent(Surface, { page });
     try {
       await vi.waitFor(() => expect(reads).toBeGreaterThan(0));
       await flushComponent();
       expect(reads).toBe(1);
       expect(onBranch).toHaveBeenCalledOnce();
-      expect(page.workspaceGit.changesRefreshing.value).toBe(false);
-      page.workspaceGit.applyWatch({ branch: 'watch/main', changes: [] }, 1);
+      expect(page.files.workspaceGit.changesRefreshing.value).toBe(false);
+      page.files.workspaceGit.applyWatch({ branch: 'watch/main', changes: [] }, 1);
       await flushComponent();
       expect(reads).toBe(1);
-      expect(page.workspaceGit.changes.value).toEqual({ branch: 'watch/main', changes: [] });
-      page.workspaceChangesRevision = 1;
+      expect(page.files.workspaceGit.changes.value).toEqual({ branch: 'watch/main', changes: [] });
+      page._test.tools!.invalidate('changes');
       await flushComponent();
       expect(reads).toBe(2);
     } finally {
       view.unmount();
-      page.workspaceGit.reset();
+      page.files.workspaceGit.reset();
     }
   });
-  it('releases a pending Changes batch timer when switching Workspace without resetting the Git owner', async () => {
+  it('releases a pending Changes batch timer when switching Workspace without replacing the Git owner', async () => {
     vi.useFakeTimers();
     const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
     const setTimer = vi.spyOn(globalThis, 'setTimeout');
@@ -420,34 +476,28 @@ describe('Workbench surface composition behavior', () => {
         disconnect = disconnect;
       }
     );
-    const page = Object.assign(pageFixture(), {
-      workspaceHost: { connected: true },
-      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
-      filesReady: true,
-      historyReady: true,
-      asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } },
-      workspaceKindLabel: () => '',
-      workspaceBranchLabel: () => '',
-      nodeManifest: {},
-      nodeManifestLoading: false,
-      selectedWorkspaceBranch: undefined,
-      workPromptCompletion: { enabled: false },
-      workspaceFileWorkbench: {},
-      workspaceWatchTopicStatus: {},
-      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+    const page = extendPage(pageFixture(), {
+      resources: {
+        workspaceHost: { connected: true },
+        selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        nodeManifest: {},
+        nodeManifestLoading: false,
+        selectedWorkspaceBranch: undefined
+      },
+      files: { filesReady: true, workspaceFileWorkbench: {} },
+      aside: {
+        asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } }
+      },
+      application: { workPromptCompletion: { enabled: false }, workspaceWatchTopicStatus: {} }
     });
     installMainPane(page);
     const http = { request: () => new Promise(() => {}) } as ScopedHttpService;
-    page.workspaceGit = createWorkspaceGitService({
-      http,
-      target: () => page.workspaceTarget,
-      gitEnabled: () => true,
-      historyEnabled: () => true,
-      onWorkspace: vi.fn(),
-      onBranch: vi.fn(),
-      onFailure: vi.fn()
-    });
-    page.workspaceGit.applyWatch(
+    page._test.http = http;
+    page._test.historyReady = true;
+
+    page.files.workspaceGit.applyWatch(
       {
         repositories: [
           {
@@ -465,7 +515,8 @@ describe('Workbench surface composition behavior', () => {
       },
       1
     );
-    const reset = vi.spyOn(page.workspaceGit, 'reset');
+    const git = page.files.workspaceGit;
+    const reset = vi.spyOn(git, 'reset');
     const view = renderComponent(Surface, { page });
     const rows = () => view.findAll('li').filter((node) => node.props.class === 'change-entry');
     try {
@@ -480,52 +531,47 @@ describe('Workbench surface composition behavior', () => {
       expect(timerIndex).toBeGreaterThanOrEqual(0);
       const batchTimer = setTimer.mock.results[timerIndex]!.value;
       await nextTick();
-      page.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
+      page.selection.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
       await nextTick();
       await vi.advanceTimersByTimeAsync(500);
       expect(rows()).toHaveLength(0);
       expect(disconnect).toHaveBeenCalled();
       expect(clearTimer).toHaveBeenCalledWith(batchTimer);
-      expect(page.workspaceGit.changesRefreshing.value).toBe(true);
-      expect(reset).not.toHaveBeenCalled();
+      expect(page.files.workspaceGit.changesRefreshing.value).toBe(true);
+      expect(page.files.workspaceGit).toBe(git);
+      expect(reset).toHaveBeenCalledTimes(1);
     } finally {
       view.unmount();
-      page.workspaceGit.reset();
+      page.files.workspaceGit.reset();
       clearTimer.mockRestore();
       setTimer.mockRestore();
       vi.useRealTimers();
       vi.stubGlobal('IntersectionObserver', undefined);
     }
   });
-  it('releases the old History menu and listeners on a same-tool Workspace switch without resetting Git', async () => {
-    const page = Object.assign(pageFixture(), {
-      workspaceHost: { connected: true },
-      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
-      filesReady: true,
-      historyReady: true,
-      asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } },
-      workspaceKindLabel: () => '',
-      workspaceBranchLabel: () => '',
-      nodeManifest: {},
-      nodeManifestLoading: false,
-      selectedWorkspaceBranch: undefined,
-      workPromptCompletion: { enabled: false },
-      workspaceFileWorkbench: {},
-      workspaceWatchTopicStatus: {},
-      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+  it('releases the old History menu and listeners on a same-tool Workspace switch without replacing Git', async () => {
+    const page = extendPage(pageFixture(), {
+      resources: {
+        workspaceHost: { connected: true },
+        selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        nodeManifest: {},
+        nodeManifestLoading: false,
+        selectedWorkspaceBranch: undefined
+      },
+      files: { filesReady: true, workspaceFileWorkbench: {} },
+      aside: {
+        asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } }
+      },
+      application: { workPromptCompletion: { enabled: false }, workspaceWatchTopicStatus: {} }
     });
     installMainPane(page);
     const http = { request: () => new Promise(() => {}) } as ScopedHttpService;
-    page.workspaceGit = createWorkspaceGitService({
-      http,
-      target: () => page.workspaceTarget,
-      gitEnabled: () => true,
-      historyEnabled: () => true,
-      onWorkspace: vi.fn(),
-      onBranch: vi.fn(),
-      onFailure: vi.fn()
-    });
-    page.workspaceGit.restore({
+    page._test.http = http;
+    page._test.historyReady = true;
+
+    page.files.workspaceGit.restore({
       changes: { repositories: [] },
       historyCommits: [
         {
@@ -539,7 +585,8 @@ describe('Workbench surface composition behavior', () => {
         }
       ]
     });
-    const reset = vi.spyOn(page.workspaceGit, 'reset');
+    const git = page.files.workspaceGit;
+    const reset = vi.spyOn(git, 'reset');
     const removeListener = vi.spyOn(window, 'removeEventListener');
     const view = renderComponent(Surface, { page });
     try {
@@ -558,17 +605,18 @@ describe('Workbench surface composition behavior', () => {
       expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
         true
       );
-      page.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
+      page.selection.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
       await nextTick();
       expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
         false
       );
       expect(removeListener).toHaveBeenCalledWith('pointerdown', expect.any(Function));
-      expect(reset).not.toHaveBeenCalled();
+      expect(page.files.workspaceGit).toBe(git);
+      expect(reset).toHaveBeenCalledTimes(1);
     } finally {
       view.unmount();
       removeListener.mockRestore();
-      page.workspaceGit.reset();
+      page.files.workspaceGit.reset();
     }
   });
   it.each([
@@ -592,74 +640,60 @@ describe('Workbench surface composition behavior', () => {
         reject = fail;
       });
       const failure = vi.fn();
-      const page = shallowReactive({
-        ...pageFixture(),
-        workspaceHost: { connected: true },
-        filesReady: true,
-        contentSearchReady: true,
-        selectedWorkspace: { id: 'one', kind: 'DIRECTORY' },
-        workspaceWatchTopicStatus: { files: 'ready' },
-        workspaceKindLabel: () => '',
-        workspaceBranchLabel: () => '',
-        workspaceTabLabel: () => 'Workspace',
-        workPromptCompletion: { enabled: false },
-        asideState: { tools: [tool], sessions: [], active: { kind: 'tool', id: tool as string } },
-        setWorkspaceFilesPanel: vi.fn(),
-        setWorkspaceSearchPanel: vi.fn(),
-        reportWorkspaceFileFailure: failure,
-        workspaceSearch: undefined as unknown as ReturnType<
-          typeof createWorkspaceContentSearchService
-        >,
-        workspaceFiles: undefined as unknown as ReturnType<typeof createWorkspaceFilesController>
+      const page = extendPage(pageFixture(), {
+        resources: {
+          workspaceHost: { connected: true },
+          selectedWorkspace: { id: 'one', kind: 'DIRECTORY' },
+          workspaceKindLabel: () => '',
+          workspaceBranchLabel: () => ''
+        },
+        files: {
+          filesReady: true,
+          contentSearchReady: true,
+          setWorkspaceFilesPanel: vi.fn(),
+          setWorkspaceSearchPanel: vi.fn(),
+          reportWorkspaceFileFailure: failure
+        },
+        application: {
+          workspaceWatchTopicStatus: { files: 'ready' },
+          workPromptCompletion: { enabled: false }
+        },
+        selection: { workspaceTabLabel: () => 'Workspace' },
+        aside: {
+          asideState: { tools: [tool], sessions: [], active: { kind: 'tool', id: tool as string } }
+        }
       });
       installMainPane(page);
-      page.workspaceSearch = createWorkspaceContentSearchService({
-        http: { request: () => response } as ScopedHttpService,
-        onFailure: failure
-      });
-      page.workspaceFiles = createWorkspaceFilesController({
-        target: () => (page.filesReady ? page.workspaceTarget : undefined),
-        preflight: () => response,
-        queue: vi.fn(),
-        onFailure: failure,
-        workspaceName: () => 'Workspace',
-        list: async () => ({
-          workspace: { id: 'one', kind: 'DIRECTORY', path: '/workspace' },
-          entries: [],
-          nextCursor: null
-        }),
-        onWorkspace: vi.fn(),
-        mutate: async () => undefined,
-        revealLocal: async () => {},
-        onDeletedSelection: vi.fn(),
-        onRevealSelection: vi.fn(async () => {}),
-        onMutationFailure: vi.fn()
-      });
+      page._test.http = { request: () => response } as ScopedHttpService;
+
       const view = renderComponent(Surface, { page });
       try {
         await flushComponent();
         const pending =
           tool === 'search'
-            ? page.workspaceSearch.search({
-                ...page.workspaceTarget,
+            ? page.files.workspaceSearch.search({
+                ...page.selection.workspaceTarget,
                 query: 'old',
                 useRegex: false
               })
-            : page.workspaceFiles.preflight([{ name: 'old.txt' } as File], '.');
+            : page.files.workspaceFiles.preflight([{ name: 'old.txt' } as File], '.');
         expect(
           tool === 'search'
-            ? page.workspaceSearch.loading.value
-            : page.workspaceFiles.preparing.value
+            ? page.files.workspaceSearch.loading.value
+            : page.files.workspaceFiles.preparing.value
         ).toBe(true);
         if (cause === 'aside')
-          page.asideState = { ...page.asideState, active: { kind: 'tool', id: 'terminal' } };
-        else if (cause === 'enabled') page.filesReady = false;
-        else page.contentSearchReady = false;
+          page.aside.asideState = {
+            ...page.aside.asideState,
+            active: { kind: 'tool', id: 'terminal' }
+          };
+        else if (cause === 'enabled') page.files.filesReady = false;
+        else page.files.contentSearchReady = false;
         await nextTick();
         expect(
           tool === 'search'
-            ? page.workspaceSearch.loading.value
-            : page.workspaceFiles.preparing.value
+            ? page.files.workspaceSearch.loading.value
+            : page.files.workspaceFiles.preparing.value
         ).toBe(false);
         if (outcome === 'failure') reject(new Error('late failure'));
         else
@@ -674,8 +708,8 @@ describe('Workbench surface composition behavior', () => {
               : [{ status: 'READY', path: 'old.txt' }]) as never
           );
         await pending;
-        expect(page.workspaceSearch.matches.value).toEqual([]);
-        expect(page.workspaceSearch.error.value).toBeUndefined();
+        expect(page.files.workspaceSearch.matches.value).toEqual([]);
+        expect(page.files.workspaceSearch.error.value).toBeUndefined();
         expect(failure).not.toHaveBeenCalled();
       } finally {
         view.unmount();
@@ -695,38 +729,36 @@ describe('Workbench surface composition behavior', () => {
         return pending;
       });
       const failure = vi.fn();
-      const page = shallowReactive({
-        ...pageFixture(),
-        workspaceHost: { connected: true },
-        filesReady: true,
-        selectedWorkspace: { kind: 'GIT_WORKSPACE' } as { kind: string } | undefined,
-        nodeManifest: { git: { supportsHistory: true } } as { git: { supportsHistory: boolean } },
-        workspaceWatchTopicStatus: {},
-        workspaceKindLabel: () => '',
-        workspaceBranchLabel: () => '',
-        workspaceTabLabel: () => 'Workspace',
-        workPromptCompletion: { enabled: false },
-        asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } },
-        workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+      const page = extendPage(pageFixture(), {
+        resources: {
+          workspaceHost: { connected: true },
+          selectedWorkspace: { kind: 'GIT_WORKSPACE' } as { kind: string } | undefined,
+          nodeManifest: { git: { supportsHistory: true } } as { git: { supportsHistory: boolean } },
+          workspaceKindLabel: () => '',
+          workspaceBranchLabel: () => ''
+        },
+        files: { filesReady: true },
+        application: { workspaceWatchTopicStatus: {}, workPromptCompletion: { enabled: false } },
+        selection: { workspaceTabLabel: () => 'Workspace' },
+        aside: {
+          asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } }
+        }
       });
       installMainPane(page);
-      page.workspaceGit = createWorkspaceGitService({
-        http: { request } as ScopedHttpService,
-        target: () => page.workspaceTarget,
-        gitEnabled: () => page.selectedWorkspace?.kind === 'GIT_WORKSPACE',
-        historyEnabled: () => page.nodeManifest.git.supportsHistory,
-        onFailure: failure,
-        onWorkspace: vi.fn(),
-        onBranch: vi.fn()
-      });
+      page._test.http = { request } as ScopedHttpService;
+      page._test.historyReady = true;
+
       const view = renderComponent(Surface, { page });
       try {
         await flushComponent();
         expect(requests).toHaveLength(1);
         expect(requests[0]).toContain('/workspaces/one/changes');
         if (reason === 'hidden')
-          page.asideState = { ...page.asideState, active: { kind: 'tool', id: 'terminal' } };
-        else page.nodeManifest = { git: { supportsHistory: false } };
+          page.aside.asideState = {
+            ...page.aside.asideState,
+            active: { kind: 'tool', id: 'terminal' }
+          };
+        else page.resources.nodeManifest = { git: { supportsHistory: false } };
         finish({
           changes: {
             workspace: { id: 'one', kind: 'GIT_WORKSPACE' },
@@ -736,12 +768,12 @@ describe('Workbench surface composition behavior', () => {
         });
         await flushComponent();
         expect(requests).toHaveLength(1);
-        expect(page.workspaceGit.historyLoading.value).toBe(false);
-        expect(page.workspaceGit.historyError.value).toBeUndefined();
+        expect(page.files.workspaceGit.historyLoading.value).toBe(false);
+        expect(page.files.workspaceGit.historyError.value).toBeUndefined();
         expect(failure).not.toHaveBeenCalled();
       } finally {
         view.unmount();
-        page.workspaceGit.reset();
+        page.files.workspaceGit.reset();
       }
     }
   );
@@ -752,13 +784,11 @@ describe('Workbench surface composition behavior', () => {
       const previousLocale = preference.locale.value;
       preference.setLocale(locale);
       const retry = vi.fn(() => {
-        page.workspaceSelectionLoading = true;
+        page.selection.workspaceSelectionLoading = true;
       });
-      const page = shallowReactive({
-        ...pageFixture(),
-        workspaceHost: { connected: true },
-        workspaceSelectionLoading: false,
-        retryWorkspaceSelection: retry
+      const page = extendPage(pageFixture(), {
+        resources: { workspaceHost: { connected: true } },
+        selection: { workspaceSelectionLoading: false, retryWorkspaceSelection: retry }
       });
       const view = renderComponent(Surface, { page });
       try {
@@ -776,10 +806,10 @@ describe('Workbench surface composition behavior', () => {
         expect(textContent(view.root)).not.toContain(
           translate('generated.workbenchSurface.workspaceMetadataUnavailable')
         );
-        page.workspaceSelectionLoading = false;
+        page.selection.workspaceSelectionLoading = false;
         await flushComponent();
         expect(textContent(view.root)).toContain(translate('common.loadFailedRetry'));
-        page.workspaceHost = { connected: false };
+        page.resources.workspaceHost = { connected: false };
         await flushComponent();
         expect(textContent(view.root)).not.toContain(translate('common.loadFailedRetry'));
       } finally {
@@ -795,36 +825,38 @@ describe('Workbench surface composition behavior', () => {
       const preference = localePreferenceService();
       const previousLocale = preference.locale.value;
       preference.setLocale(locale);
-      const page = shallowReactive({
-        ...pageFixture(),
-        selectedWorkspace: { id: 'one', kind: 'DIRECTORY', path: '/workspace' },
-        workspaceHost: { connected: true, disabled: false },
-        workspaceWatchTopicStatus: {},
-        workspaceKindLabel: () => '',
-        workspaceBranchLabel: () => '',
-        workspaceTabLabel: () => 'Workspace',
-        composerSessionOpen: true,
-        composerRunner: 'codex',
-        composerInputDisabled: true,
-        composerWorking: false,
-        nodeManifest: { manifestVersion: 1 } as object | undefined,
-        nodeManifestLoading: false,
-        conversationTurns: [],
-        workPromptCompletion: { enabled: false }
+      const page = extendPage(pageFixture(), {
+        resources: {
+          selectedWorkspace: { id: 'one', kind: 'DIRECTORY', path: '/workspace' },
+          workspaceHost: { connected: true, disabled: false },
+          workspaceKindLabel: () => '',
+          workspaceBranchLabel: () => '',
+          nodeManifest: { manifestVersion: 1 } as object | undefined,
+          nodeManifestLoading: false
+        },
+        application: { workspaceWatchTopicStatus: {}, workPromptCompletion: { enabled: false } },
+        selection: { workspaceTabLabel: () => 'Workspace' },
+        _test: {
+          composerSessionOpen: true,
+          composerRunner: 'codex',
+          composerInputDisabled: true,
+          composerWorking: false,
+          conversationTurns: []
+        }
       });
       const paneController = {
         state: {
-          ...page.mainPane,
-          workspaceTarget: ref(page.workspaceTarget),
+          ...page._test.mainPane,
+          workspaceTarget: ref(page.selection.workspaceTarget),
           skillTokens: { remove: vi.fn() }
         },
         presentation: {
-          composerSessionOpen: computed(() => page.composerSessionOpen),
-          workspaceHost: computed(() => page.workspaceHost),
-          composerWorking: computed(() => page.composerWorking),
-          composerInputDisabled: computed(() => page.composerInputDisabled)
+          composerSessionOpen: computed(() => page._test.composerSessionOpen),
+          workspaceHost: computed(() => page.resources.workspaceHost),
+          composerWorking: computed(() => page._test.composerWorking),
+          composerInputDisabled: computed(() => page._test.composerInputDisabled)
         },
-        configuration: { activeRunner: computed(() => page.composerRunner) },
+        configuration: { activeRunner: computed(() => page._test.composerRunner) },
         runner: {},
         references: {},
         interactions: { registerShortcuts: () => () => undefined },
@@ -837,9 +869,9 @@ describe('Workbench surface composition behavior', () => {
         conversationWindow: { paging: { olderHistoryError: ref(undefined) } },
         selectedSessionId: ref(undefined),
         draftOpen: ref(false),
-        nodeManifest: computed(() => page.nodeManifest),
+        nodeManifest: computed(() => page.resources.nodeManifest),
         status: {
-          manifestLoading: computed(() => page.nodeManifestLoading),
+          manifestLoading: computed(() => page.resources.nodeManifestLoading),
           connected: () => true,
           initialContentLoading: () => false
         },
@@ -852,28 +884,28 @@ describe('Workbench surface composition behavior', () => {
       const view = renderComponent(SessionPane, { controller: paneController });
       try {
         const composer = () => view.findAll('composer-fixture')[0]!.props;
-        expect(page.mainPane.setInputFocus).toHaveBeenCalledOnce();
-        expect(page.mainPane.setRangeEditor).toHaveBeenCalledOnce();
+        expect(page._test.mainPane.setInputFocus).toHaveBeenCalledOnce();
+        expect(page._test.mainPane.setRangeEditor).toHaveBeenCalledOnce();
         const guidance = translate(
           'generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles',
           { value0: 'Codex' }
         );
         expect(composer()).toMatchObject({ placeholder: guidance, readonly: true, working: false });
-        page.composerWorking = true;
+        page._test.composerWorking = true;
         await flushComponent();
         expect(composer()).toMatchObject({ placeholder: guidance, readonly: true, working: true });
-        page.composerInputDisabled = false;
+        page._test.composerInputDisabled = false;
         await flushComponent();
         expect(composer()).toMatchObject({ placeholder: guidance, readonly: false, working: true });
-        page.composerInputDisabled = true;
-        page.nodeManifest = undefined;
-        page.nodeManifestLoading = true;
+        page._test.composerInputDisabled = true;
+        page.resources.nodeManifest = undefined;
+        page.resources.nodeManifestLoading = true;
         await flushComponent();
         expect(composer()).toMatchObject({
           placeholder: translate('generated.workspaceInspector.loading'),
           readonly: true
         });
-        page.nodeManifestLoading = false;
+        page.resources.nodeManifestLoading = false;
         await flushComponent();
         expect(composer()).toMatchObject({
           placeholder: translate(
@@ -883,8 +915,8 @@ describe('Workbench surface composition behavior', () => {
         });
       } finally {
         view.unmount();
-        expect(page.mainPane.setInputFocus).toHaveBeenCalledTimes(2);
-        expect(page.mainPane.setRangeEditor).toHaveBeenCalledTimes(2);
+        expect(page._test.mainPane.setInputFocus).toHaveBeenCalledTimes(2);
+        expect(page._test.mainPane.setRangeEditor).toHaveBeenCalledTimes(2);
         preference.setLocale(previousLocale);
       }
     }
@@ -892,25 +924,25 @@ describe('Workbench surface composition behavior', () => {
 
   it('refreshes the host after the active management extension changes', async () => {
     const page = pageFixture();
-    page.view = 'management';
+    page.application.view = 'management';
     const view = renderComponent(Surface, { page });
     try {
       await trigger(
         view.findAll('button').find((node) => node.props['data-testid'] === 'extension')!,
         'onClick'
       );
-      expect(page.refreshAdmin).toHaveBeenCalledTimes(1);
+      expect(page.identity.refreshAdmin).toHaveBeenCalledTimes(1);
     } finally {
       view.unmount();
     }
   });
   it('passes live registration readiness to the picker', async () => {
     const page = pageFixture();
-    page.workspaceRegistrationNodeId = 'node';
+    page.registration.workspaceRegistrationNodeId = 'node';
     const view = renderComponent(Surface, { page });
     try {
       for (const allowed of [false, true]) {
-        page.workspaceRegistrationReady = allowed;
+        page.registration.workspaceRegistrationReady = allowed;
         await flushComponent();
         expect(view.findAll('registration-picker')[0]?.props).toMatchObject({ nodeReady: allowed });
       }
@@ -929,17 +961,17 @@ describe('Workbench surface composition behavior', () => {
       const formatError = docks()[0]!.props.errorMessage as (error: unknown) => string;
       expect(formatError(new Error('Fixture diagnostic'))).toContain('Fixture diagnostic');
       expect(docks().map((node) => node.props.enabled)).toEqual([true, false]);
-      page.activeWorkspaceTabId = 'two';
+      page.selection.activeWorkspaceTabId = 'two';
       await flushComponent();
       expect(docks().map((node) => node.props.visible)).toEqual([false, true]);
-      page.terminalReady = false;
+      page.terminal.terminalReady = false;
       await flushComponent();
       expect(
         docks().every((node) => node.props.enabled === false && node.props.visible === false)
       ).toBe(true);
       expect(docks().every((node) => node.parent?.style.display === 'none')).toBe(true);
       expect(lifetime).toEqual({ mounted: 2, unmounted: 0 });
-      page.workspaceTabs = page.workspaceTabs.slice(1);
+      page.selection.workspaceTabs = page.selection.workspaceTabs.slice(1);
       await flushComponent();
       expect(lifetime.unmounted).toBe(1);
     } finally {
@@ -954,13 +986,13 @@ describe('Workbench surface composition behavior', () => {
     const page = pageFixture();
     const view = renderComponent(Surface, { page });
     try {
-      const instances = [...page.terminalDocks.values()];
+      const instances = [...page.terminal.terminalDocks.values()];
       expect(instances).toHaveLength(2);
       for (const target of ['settings', 'conversations', 'management']) {
-        page.view = target;
+        page.application.view = target;
         await flushComponent();
         expect(lifetime).toEqual({ mounted: 2, unmounted: 0 });
-        expect([...page.terminalDocks.values()][0]).toBe(instances[0]);
+        expect([...page.terminal.terminalDocks.values()][0]).toBe(instances[0]);
         expect(view.findAll('terminal-fixture')).toHaveLength(2);
         expect(
           view
@@ -972,13 +1004,13 @@ describe('Workbench surface composition behavior', () => {
                 node.props.visible === false
             )
         ).toBe(true);
-        page.view = 'nodes';
+        page.application.view = 'nodes';
         await flushComponent();
         expect(lifetime).toEqual({ mounted: 2, unmounted: 0 });
         expect(view.findAll('terminal-fixture')[0]?.props.visible).toBe(true);
       }
-      page.view = 'settings';
-      page.workspaceTabs = page.workspaceTabs.slice(1);
+      page.application.view = 'settings';
+      page.selection.workspaceTabs = page.selection.workspaceTabs.slice(1);
       await flushComponent();
       expect(lifetime).toEqual({ mounted: 2, unmounted: 1 });
     } finally {
@@ -992,10 +1024,10 @@ describe('Workbench surface composition behavior', () => {
     const view = renderComponent(Surface, { page });
     try {
       expect(view.findAll('tab-strip').map((node) => node.props.placement)).toEqual(['header']);
-      page.mobileViewport = true;
+      page.layout.mobileViewport = true;
       await flushComponent();
       expect(view.findAll('tab-strip').map((node) => node.props.placement)).toEqual(['body']);
-      page.mobileViewport = false;
+      page.layout.mobileViewport = false;
       await flushComponent();
       expect(view.findAll('tab-strip').map((node) => node.props.placement)).toEqual(['header']);
     } finally {

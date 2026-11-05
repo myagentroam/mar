@@ -49,6 +49,7 @@ describe('Shared workbench routes', () => {
       sessions: ref([]),
       workspaceTarget: ref(),
       selectedSessionId: ref(),
+      setSelectedSessionId: vi.fn(),
       view,
       managementSection: ref('custom-section'),
       selectedHostedNodeId,

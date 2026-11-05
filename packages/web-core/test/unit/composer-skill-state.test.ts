@@ -31,15 +31,9 @@ function createSkillServiceHarness(options?: {
 }) {
   const selectedNodeId = ref<string | undefined>('node-1');
   const selectedWorkspaceId = ref<string | undefined>('workspace-1');
-  const skills = ref<readonly EffectiveWorkspaceSkill[]>([]);
-  const loading = ref(false);
-  const failed = ref(false);
   const requested: string[] = [];
   const service = createComposerSkillService({
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
-    skills,
-    loading,
-    failed,
     request: <T>(path: string): Promise<T> => {
       requested.push(path);
       return (options?.respond?.(path) ??
@@ -47,7 +41,15 @@ function createSkillServiceHarness(options?: {
     },
     ...(options?.now === undefined ? {} : { now: options.now })
   });
-  return { service, selectedNodeId, selectedWorkspaceId, skills, loading, failed, requested };
+  return {
+    service,
+    selectedNodeId,
+    selectedWorkspaceId,
+    skills: service.skills,
+    loading: service.loading,
+    failed: service.failed,
+    requested
+  };
 }
 
 async function flush(): Promise<void> {

@@ -133,3 +133,109 @@ export function createWorkbenchWatchCoordinator(options: WorkbenchWatchCoordinat
     }
   };
 }
+
+/** Reconcile Watch gaps and reconnects through domain commands, never writable page state. */
+export function createWorkbenchWatchRecovery(input: {
+  readonly view: Readonly<import('vue').Ref<string>>;
+  readonly workspaceTarget: Readonly<
+    import('vue').Ref<import('../model/workbench.js').WorkspaceTarget | undefined>
+  >;
+  readonly selectedWorkspace: Readonly<
+    import('vue').Ref<import('../model/workbench.js').Workspace | undefined>
+  >;
+  readonly selectedSessionId: Readonly<import('vue').Ref<string | undefined>>;
+  readonly hostedNodeId: Readonly<import('vue').Ref<string | undefined>>;
+  readonly coordinator: () =>
+    | Pick<
+        ReturnType<
+          typeof import('./hosted-conversation-watch-coordinator.js').createHostedConversationWatchCoordinator
+        >,
+        'restartHostedConversation' | 'restartWorkspace' | 'handleVisibility'
+      >
+    | undefined;
+  readonly invalidateManifest: (nodeId: string) => void;
+  readonly refreshManifest: (nodeId: string) => Promise<unknown>;
+  readonly reactivate: (nodeId: string) => boolean;
+  readonly discardNodeCache: (nodeId: string) => void;
+  readonly resetSession: () => void;
+  readonly refreshSession: () => void;
+  readonly direct: { connectionLost(): void };
+  readonly live: { reconnect(): void };
+}) {
+  const view = input.view;
+  const selectedWorkspace = input.selectedWorkspace;
+  const selectedSessionId = input.selectedSessionId;
+  const workspaceNodeId = {
+    get value() {
+      return input.workspaceTarget.value?.nodeId;
+    }
+  };
+  const activeWorkspaceId = {
+    get value() {
+      return input.workspaceTarget.value?.workspaceId;
+    }
+  };
+  const hostedConversationWorkspace = { selectedNodeId: input.hostedNodeId };
+  const watchCoordinator = {
+    get current() {
+      return input.coordinator();
+    }
+  };
+  const invalidateNodeManifest = input.invalidateManifest;
+  const refreshNodeManifest = input.refreshManifest;
+  const reactivateConnectedWorkspace = input.reactivate;
+  const discardNodeViewCaches = input.discardNodeCache;
+  const refreshSelectedSessionSnapshot = input.refreshSession;
+  function handleNodeConnected(nodeId: string, restartWatch = true): void {
+    invalidateNodeManifest(nodeId);
+    if (
+      view.value === 'conversations' &&
+      hostedConversationWorkspace.selectedNodeId.value === nodeId
+    ) {
+      if (restartWatch)
+        void watchCoordinator.current?.restartHostedConversation().catch(() => undefined);
+      return;
+    }
+    if (view.value !== 'nodes' || workspaceNodeId.value !== nodeId) return;
+    if (
+      activeWorkspaceId.value !== undefined &&
+      selectedWorkspace.value === undefined &&
+      reactivateConnectedWorkspace(nodeId)
+    )
+      return;
+    void refreshNodeManifest(nodeId);
+    if (!restartWatch) return;
+    if (activeWorkspaceId.value !== undefined)
+      void watchCoordinator.current?.restartWorkspace(activeWorkspaceId.value);
+    if (selectedSessionId.value !== undefined) refreshSelectedSessionSnapshot();
+  }
+
+  function handleWorkbenchResync(nodeId: string): void {
+    invalidateNodeManifest(nodeId);
+    if (
+      view.value === 'conversations' &&
+      hostedConversationWorkspace.selectedNodeId.value === nodeId
+    ) {
+      void watchCoordinator.current?.restartHostedConversation().catch(() => undefined);
+      return;
+    }
+    if (view.value !== 'nodes') return;
+    discardNodeViewCaches(nodeId);
+    if (workspaceNodeId.value === nodeId) void refreshNodeManifest(nodeId);
+    if (workspaceNodeId.value === nodeId) {
+      input.resetSession();
+    }
+    if (workspaceNodeId.value === nodeId && activeWorkspaceId.value !== undefined)
+      void watchCoordinator.current?.restartWorkspace(activeWorkspaceId.value);
+    if (workspaceNodeId.value === nodeId && selectedSessionId.value !== undefined)
+      refreshSelectedSessionSnapshot();
+  }
+
+  function handleVisibility(): void {
+    if (document.visibilityState === 'visible') {
+      input.direct.connectionLost();
+      input.live.reconnect();
+    } else input.coordinator()?.handleVisibility();
+  }
+  return { connected: handleNodeConnected, resync: handleWorkbenchResync, handleVisibility };
+}

@@ -50,16 +50,17 @@
       if (!new URLSearchParams(location.search).has('active-child'))
         aside.selectTool(workspace, 'files');
       const terminalMounts = ref(0);
-      const inspectorMounts = ref(0);
       const Inspector = defineComponent({
         props: { tool: String },
         setup(props) {
+          const inspectorMounts = ref(0);
           onMounted(() => inspectorMounts.value++);
           return () =>
-            h('div', { id: 'tool', 'data-mounts': inspectorMounts.value }, [
-              `Tool ${props.tool}`,
-              h('input', { 'aria-label': 'Inspector draft' })
-            ]);
+            h(
+              'div',
+              { 'data-testid': `tool-${props.tool}`, 'data-mounts': inspectorMounts.value },
+              [`Tool ${props.tool}`, h('input', { 'aria-label': 'Inspector draft' })]
+            );
         }
       });
       const Terminal = defineComponent({

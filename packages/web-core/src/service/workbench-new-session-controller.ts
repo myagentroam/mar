@@ -1,21 +1,18 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, type Ref } from 'vue';
 import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
-import type { SessionContextUsage } from '../service/conversation-state-service.js';
 
 interface WorkbenchNewSessionControllerOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
-  readonly selectedRunId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
   readonly selectedWorkspace: Readonly<Ref<Workspace | undefined>>;
-  readonly sessions: Ref<Session[]>;
-  readonly clearActiveContent: () => void;
-  readonly loadingOlderConversation: Ref<boolean>;
-  readonly loadingInitialConversation: Ref<boolean>;
-  readonly initialLoadFailed: Ref<boolean>;
-  readonly sessionContextUsage: Ref<SessionContextUsage | null | undefined>;
-  readonly sessionInput: Ref<string>;
-  readonly draftSessionOpen: Ref<boolean>;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly prependSession: (session: Session) => void;
+  readonly prepareDraft: () => void;
+  readonly focusDraft: () => void;
+  readonly draftSessionOpen: Readonly<Ref<boolean>>;
+  readonly setDraftOpen: (open: boolean) => void;
   readonly newSessionRunner: Readonly<Ref<Session['runner']>>;
   readonly newSessionModel: Readonly<Ref<string | undefined>>;
   readonly newSessionEffort: Readonly<Ref<string | undefined>>;
@@ -25,10 +22,7 @@ interface WorkbenchNewSessionControllerOptions {
   readonly closeMobileWorkspaceSurface: () => void;
   readonly saveCurrent: () => void;
   readonly stopSelectedSessionWatch: () => void;
-  readonly nextDetailRequest: () => void;
   readonly applyRunnerDefaults: (runner: Session['runner']) => void;
-  readonly resetRunnerInteraction: () => void;
-  readonly focusInputAt: (cursor: number) => void;
 }
 
 export function createWorkbenchNewSessionController(options: WorkbenchNewSessionControllerOptions) {
@@ -62,9 +56,9 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
       access: options.newSessionAccess.value ?? null,
       activity: 'IDLE'
     };
-    options.sessions.value = [draft, ...options.sessions.value];
-    options.draftSessionOpen.value = false;
-    options.selectedSessionId.value = draft.id;
+    options.prependSession(draft);
+    options.setDraftOpen(false);
+    options.setSelectedSessionId(draft.id);
     return draft;
   }
 
@@ -73,20 +67,13 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
     if (!options.draftSessionOpen.value) {
       options.saveCurrent();
       options.stopSelectedSessionWatch();
-      options.nextDetailRequest();
       ensureDraftRunnerSupported();
       options.applyRunnerDefaults(options.newSessionRunner.value);
-      options.draftSessionOpen.value = true;
-      options.selectedSessionId.value = undefined;
-      options.selectedRunId.value = undefined;
-      options.clearActiveContent();
-      options.sessionContextUsage.value = undefined;
-      options.loadingOlderConversation.value = false;
-      options.loadingInitialConversation.value = false;
-      options.initialLoadFailed.value = false;
-      options.resetRunnerInteraction();
+      options.setDraftOpen(true);
+      options.setSelectedSessionId(undefined);
+      options.prepareDraft();
     }
-    void nextTick(() => options.focusInputAt(options.sessionInput.value.length));
+    void nextTick(options.focusDraft);
   }
 
   return {

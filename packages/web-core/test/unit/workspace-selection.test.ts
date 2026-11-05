@@ -84,14 +84,26 @@ function fixture() {
   });
   const service = createWorkbenchWorkspaceSelectionService({
     workspaceTarget,
+    setWorkspaceTarget: (target) => {
+      workspaceTarget.value = target;
+    },
     selectedSessionId,
-    selectedRunId,
+    setSelectedSessionId: (id) => {
+      selectedSessionId.value = id;
+    },
     workspaces,
+    replaceWorkspaces: (values) => {
+      workspaces.value = [...values];
+    },
     sessions,
+    replaceSessions: (values) => {
+      sessions.value = [...values];
+    },
     draftOpen,
+    setDraftOpen: (value) => {
+      draftOpen.value = value;
+    },
     profilesLoading,
-    manifest: ref(),
-    manifestLoading: ref(false),
     isCacheActive: cache.isActive,
     hasNode,
     isHostAvailable,
@@ -105,7 +117,7 @@ function fixture() {
     showWorkbench: vi.fn(),
     closeSidebar: vi.fn(),
     restoreProfiles: vi.fn(),
-    restoreManifest,
+    selectManifestNode: vi.fn(),
     refreshManifest,
     refreshTransport,
     request: request as never,

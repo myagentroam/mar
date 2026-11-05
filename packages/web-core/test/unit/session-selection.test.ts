@@ -6,11 +6,24 @@ import {
   createWorkspaceSessionPaneReader,
   createWorkspaceSessionPaneState
 } from '../../src/service/workspace-session-pane-state.js';
-import { createWorkspaceSessionPaneLoader } from '../../src/service/workspace-session-pane-loader.js';
+import {
+  createWorkspaceSessionPaneRenderLifecycle,
+  createWorkspaceSessionPaneLoader
+} from '../../src/service/workspace-session-pane-loader.js';
 import { createWorkbenchSubmissionOwner } from '../../src/service/workbench-submission-service.js';
 import { createSessionDraftService } from '../../src/service/session-draft-service.js';
 import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
-import type { WorkbenchSessionSelectionOptions } from '../../src/service/workbench-session-selection-service.js';
+import { createWorkspaceSessionPaneOpening } from '../../src/service/workspace-session-pane-controller.js';
+import type { Ref } from 'vue';
+import type {
+  WorkspaceTarget,
+  AgentRun,
+  CachedSessionDetail,
+  ConversationTurn,
+  ConversationTurnPage,
+  RunnerCommand,
+  WorkspaceQueue
+} from '../../src/model/workbench.js';
 import type { Session } from '../../src/model/workbench.js';
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
@@ -19,26 +32,163 @@ import { createRunService } from '../../src/service/run-service.js';
 import { createWorkbenchAsideService } from '../../src/service/workbench-aside-service.js';
 import { conversationProjectionFixture } from './support/conversation-paging-fixture.js';
 const paneSubmissions = createWorkbenchSubmissionOwner();
-type SelectionFixtureOptions = Omit<WorkbenchSessionSelectionOptions, 'createPaneLoader'> & {
+interface LegacySelectionFixtureOptions {
+  readonly aside: ReturnType<typeof createWorkbenchAsideService>;
+  readonly canOpenAside: () => boolean;
+  readonly saveAside: () => void;
+  readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
+  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedRunId: Ref<string | undefined>;
+  readonly sessions: Ref<Session[]>;
+  readonly runs: Readonly<Ref<readonly AgentRun[]>>;
+  readonly turns: Readonly<Ref<readonly ConversationTurn[]>>;
+  readonly loadingInitial: Ref<boolean>;
+  readonly initialLoadFailed: Ref<boolean>;
+  readonly initialFailureCause: Ref<unknown>;
+  readonly queue: Ref<WorkspaceQueue>;
+  readonly positioning: Ref<boolean>;
+  readonly draftOpen: Ref<boolean>;
+  readonly composerMode: Ref<'message' | 'steer'>;
+  readonly selectedCommand: Ref<RunnerCommand | undefined>;
+  readonly commandPickerOpen: Ref<boolean>;
+  readonly nextRequest: () => number;
+  readonly currentRequest: () => number;
+  readonly closeMobileSurface: () => void;
+  readonly workspaceTabId: (nodeId: string, workspaceId: string) => string;
+  readonly ensureSessionVisible: (tabId: string, index: number) => void;
+  readonly markSessionRead: (
+    nodeId: string,
+    workspaceId: string,
+    sessionId: string
+  ) => void | Promise<void>;
+  readonly saveCurrent: () => void;
+  readonly selectWorkspace: (target: WorkspaceTarget, openDraft?: boolean) => Promise<boolean>;
+  readonly applyComposerConfiguration: (
+    session: Session | undefined,
+    authoritative?: boolean
+  ) => void;
+  readonly restoreCachedDetail: (sessionId: string) => Readonly<CachedSessionDetail> | undefined;
+  readonly cachedQueue: (nodeId: string, workspaceId: string, sessionId: string) => WorkspaceQueue;
+  readonly installCachedDetail: (detail: Readonly<CachedSessionDetail>) => void;
+  readonly clearActiveContent: () => void;
+  readonly openRun: (runId: string) => void;
+  readonly scrollLatest: () => Promise<void>;
+  readonly beginInitialRender: () => Promise<void>;
+  readonly createPaneLoader: (
+    projection: Omit<
+      Parameters<typeof createWorkspaceSessionPaneLoader>[0],
+      'runs' | 'readSession' | 'readInitialHistory'
+    >
+  ) => ReturnType<typeof createWorkspaceSessionPaneLoader>;
+  readonly replaceSession: (previousId: string, next: Session) => void;
+  readonly canWatch: (session: Session) => boolean;
+  readonly hasInitialSnapshot: (sessionId: string) => boolean;
+  readonly beginWatch: (sessionId: string) => Promise<boolean>;
+  readonly applySnapshot: (sessionId: string, page: ConversationTurnPage) => boolean;
+  readonly mergeTurns: (page: ConversationTurnPage) => boolean;
+}
+
+type SelectionFixtureOptions = Omit<LegacySelectionFixtureOptions, 'createPaneLoader'> & {
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   sessionPathId: (sessionId: string) => string;
 };
-function createSelection(options: SelectionFixtureOptions) {
-  const reader = createWorkspaceSessionPaneReader();
-  return createWorkbenchSessionSelectionService(
-    Object.assign(options, {
-      createPaneLoader: (projection) =>
-        createWorkspaceSessionPaneLoader({
-          ...projection,
-          runs: options.runs,
-          readSession: (nodeId, sessionId) =>
-            reader.read(nodeId, sessionId, options.request, options.sessionPathId),
-          readInitialHistory: (nodeId, sessionId) =>
-            reader.readInitialHistory(nodeId, sessionId, options.request, options.sessionPathId)
-        })
-    } satisfies Pick<WorkbenchSessionSelectionOptions, 'createPaneLoader'>)
-  );
+function createSelection(
+  options: SelectionFixtureOptions,
+  reader = createWorkspaceSessionPaneReader()
+) {
+  const loader = createWorkspaceSessionPaneLoader({
+    runs: options.runs,
+    readSession: (nodeId, sessionId) =>
+      reader.read(nodeId, sessionId, options.request, options.sessionPathId),
+    readInitialHistory: (nodeId, sessionId) =>
+      reader.readInitialHistory(nodeId, sessionId, options.request, options.sessionPathId),
+    replaceSession: (id, value) => options.replaceSession(id, value),
+    applyComposerConfiguration: (session, authoritative) =>
+      options.applyComposerConfiguration(session, authoritative),
+    markActive: (session) => {
+      options.sessions.value = options.sessions.value.map((candidate) =>
+        candidate.id === session.id && candidate.workspaceId === session.workspaceId
+          ? { ...candidate, activity: 'MANAGED_ACTIVE' }
+          : candidate
+      );
+    },
+    openRun: (id) => options.openRun(id),
+    canWatch: (session) => options.canWatch(session),
+    beginWatch: (id) => options.beginWatch(id),
+    applySnapshot: (id, page) => options.applySnapshot(id, page),
+    mergeTurns: (page) => options.mergeTurns(page),
+    saveCurrent: () => options.saveCurrent()
+  });
+  const renderer = createWorkspaceSessionPaneRenderLifecycle({
+    loading: options.loadingInitial,
+    failed: options.initialLoadFailed,
+    failureCause: options.initialFailureCause,
+    positioning: options.positioning,
+    beginInitialRender: () => options.beginInitialRender(),
+    scrollLatest: () => options.scrollLatest(),
+    content: {
+      hasContent: () => options.turns.value.length > 0,
+      openRun: (id) => options.openRun(id)
+    }
+  });
+  let selection!: ReturnType<typeof createWorkbenchSessionSelectionService>;
+  const pane = createWorkspaceSessionPaneOpening({
+    workspaceTarget: options.workspaceTarget,
+    sessionId: options.selectedSessionId,
+    currentRequest: () => options.currentRequest(),
+    nextRequest: () => options.nextRequest(),
+    loading: options.loadingInitial,
+    failed: options.initialLoadFailed,
+    hasInitialSnapshot: (id) => options.hasInitialSnapshot(id),
+    loader,
+    renderer,
+    resetInteraction: () => {
+      options.composerMode.value = 'message';
+      options.selectedCommand.value = undefined;
+      options.commandPickerOpen.value = false;
+    },
+    prepareSession: (nodeId, workspaceId, sessionId, session) => {
+      options.queue.value =
+        nodeId && workspaceId
+          ? options.cachedQueue(nodeId, workspaceId, sessionId)
+          : { version: 0, paused: false, items: [] };
+      options.applyComposerConfiguration(session, false);
+      options.selectedRunId.value = undefined;
+      const detail = options.restoreCachedDetail(sessionId);
+      if (detail) options.installCachedDetail(detail);
+      else options.clearActiveContent();
+      const active = detail?.runs.find(
+        (run) =>
+          run.sessionId === sessionId && ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+      );
+      return { restored: detail !== undefined, activeRunId: active?.id };
+    },
+    ports: {
+      navigate: (id, node, open) => selection.prepareTarget(id, node, open),
+      setSession: (id) => {
+        options.selectedSessionId.value = id;
+      },
+      draftOpen: options.draftOpen,
+      sessions: options.sessions,
+      closeMobile: () => options.closeMobileSurface(),
+      markRead: (node, workspace, id) => options.markSessionRead(node, workspace, id)
+    }
+  });
+  selection = createWorkbenchSessionSelectionService({
+    ...options,
+    pane,
+    canOpenAside: () => options.canOpenAside(),
+    secondaryPane: { target: ref(undefined), reloadChecked: async () => {} },
+    setSelectedSessionId: (id) => {
+      options.selectedSessionId.value = id;
+    },
+    setDraftOpen: (open) => {
+      options.draftOpen.value = open;
+    }
+  });
+  return selection;
 }
+
 function turn(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -437,7 +587,7 @@ async function watchedTabFixture() {
       await coordinator.restartSession(id);
       return controller.hasInitialSessionSnapshot(id);
     }
-  } satisfies Partial<WorkbenchSessionSelectionOptions>);
+  } satisfies Partial<LegacySelectionFixtureOptions>);
   function frame(override: Record<string, unknown> = {}) {
     const initial = watchRequest.mock.calls.filter(([, init]) => init?.method === 'POST').at(-1)!;
     const request = JSON.parse(String(initial[1]?.body)) as { watchId: string };
@@ -781,12 +931,14 @@ describe('Shared session selection', () => {
           onConversationOverflow: vi.fn()
         });
         const beginRender = vi.fn(pane.conversation.beginInitialRender);
-        const service = createWorkbenchSessionSelectionService({
-          ...f.options,
-          createPaneLoader: (projection) =>
-            pane.createLoader({ ...projection, request: f.options.request, sessionPathId: String }),
-          beginInitialRender: beginRender
-        });
+        const service = createSelection(
+          { ...f.options, beginInitialRender: beginRender },
+          {
+            read: pane.readSession,
+            readInitialHistory: pane.readInitialHistory,
+            cancel: pane.cancelRead
+          }
+        );
         return { service, beginRender };
       })!;
       const opening = service.openSession(f.session.id, { markReadAfterOpen: true });

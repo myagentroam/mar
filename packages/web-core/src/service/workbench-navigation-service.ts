@@ -1,4 +1,9 @@
-import { ref, type Ref } from 'vue';
+import type { WorkbenchView as ApplicationView } from '../util/workbench-route.js';
+import type { SettingsSection as ApplicationSettings } from '../model/settings.js';
+import type { AdminState } from './admin-auth-service.js';
+import type { ManagementComposition } from './management-composition.js';
+import { translate } from './locale-preference-service.js';
+import { computed, proxyRefs, ref, watch, type Ref } from 'vue';
 import {
   MOBILE_WORKBENCH_VIEWPORT_QUERY,
   transitionMobileWorkbenchLayout,
@@ -22,7 +27,7 @@ export interface WorkbenchNavigationService<
   readonly mobileUtilityPanel: Ref<MobileUtilityPanel | undefined>;
   start(): void;
   dispose(): void;
-  selectView(view: WorkbenchView): void;
+  selectView(view: WorkbenchView, mode?: 'preserve-layout'): void;
   closeMobileSidebar(): void;
   selectSettings(section: SettingsSection): void;
   selectManagement(section: ManagementSection): void;
@@ -95,7 +100,11 @@ export function createWorkbenchNavigationService<
     if (mobileViewport.value) mobileSidebarOpen.value = false;
   }
 
-  function selectView(nextView: WorkbenchView): void {
+  function selectView(nextView: WorkbenchView, mode?: 'preserve-layout'): void {
+    if (mode === 'preserve-layout') {
+      view.value = nextView;
+      return;
+    }
     mobileUtilityPanel.value = undefined;
     view.value = nextView;
     if (mobileViewport.value) {
@@ -155,5 +164,168 @@ export function createWorkbenchNavigationService<
     openMobileWorkspaceSurface,
     closeMobileWorkspaceSurface,
     selectMobileUtilityPanel
+  };
+}
+
+export function createWorkbenchNavigationPresentation<ManagementSection extends string>(input: {
+  readonly navigation: WorkbenchNavigationService<
+    ApplicationView,
+    ApplicationSettings,
+    ManagementSection
+  >;
+  readonly management: Pick<ManagementComposition<ManagementSection>, 'items'>;
+  readonly admin: Readonly<Ref<AdminState>>;
+  readonly defaultManagement: ManagementSection;
+  readonly transition: (previous: ApplicationView, next: ApplicationView) => void;
+  readonly recoverNotifications: () => Promise<unknown>;
+  readonly layout: Pick<
+    ReturnType<typeof import('./workbench-layout-service.js').createWorkbenchLayoutService>,
+    'panelWidths' | 'setPanelWidth'
+  >;
+}) {
+  type WorkbenchView = ApplicationView;
+  type SettingsSection = ApplicationSettings;
+  const navigationService = input.navigation;
+  const {
+    view,
+    managementSection,
+    mobileViewport,
+    mobileSidebarOpen,
+    mobileUtilityPanel,
+    mobileWorkspaceSurface,
+    sidebarCollapsed,
+    closeMobileSidebar,
+    closeMobileWorkspaceSurface,
+    openMobileWorkspaceSurface,
+    selectView: selectWorkbenchView
+  } = navigationService;
+  const managementComposition = input.management;
+  const admin = input.admin;
+  const hostedConversationMobileHistoryOpen = ref(false);
+  const hostedConversationMobileFilesOpen = ref(false);
+
+  watch(mobileViewport, (mobile) => {
+    if (!mobile) {
+      hostedConversationMobileHistoryOpen.value = false;
+      hostedConversationMobileFilesOpen.value = false;
+    }
+  });
+
+  const navigationItems = computed<
+    readonly {
+      readonly id: WorkbenchView;
+      readonly label: string;
+      readonly icon: string;
+    }[]
+  >(() => [
+    { id: 'nodes', label: translate('navigation.nodes'), icon: '◫' },
+    { id: 'conversations', label: translate('navigation.conversations'), icon: '◉' },
+    { id: 'management' as const, label: translate('navigation.management'), icon: '☷' },
+    { id: 'settings', label: translate('navigation.settings'), icon: '⚙' }
+  ]);
+
+  const sidebarContentVisible = computed(() => !sidebarCollapsed.value || mobileSidebarOpen.value);
+
+  const settingsItems = computed<
+    readonly { readonly id: SettingsSection; readonly label: string }[]
+  >(() => [
+    { id: 'account', label: translate('navigation.account') },
+    { id: 'usage', label: translate('usageStatistics.title') },
+    { id: 'appearance', label: translate('settings.appearance') },
+    { id: 'custom-themes', label: translate('customThemes.title') },
+    {
+      id: 'notifications',
+      label: translate('workbenchNotificationCenter.systemNotifications.title')
+    },
+    { id: 'quick-prompts', label: translate('quickPrompts.title') },
+    { id: 'personal-instructions', label: translate('navigation.personalInstructions') },
+    { id: 'git', label: translate('personalGit.title') },
+    { id: 'shortcuts', label: translate('navigation.shortcuts') },
+    { id: 'about', label: translate('navigation.about') }
+  ]);
+
+  const managementItems = computed(() =>
+    managementComposition.items(admin.value).map(({ id, labelKey }) => ({
+      id,
+      label: translate(labelKey)
+    }))
+  );
+
+  function selectNavigation(nextView: WorkbenchView): void {
+    const previousView = view.value;
+    hostedConversationMobileFilesOpen.value = false;
+    const collapseSidebar =
+      mobileViewport.value &&
+      previousView === nextView &&
+      mobileSidebarOpen.value &&
+      mobileUtilityPanel.value === undefined;
+    if (mobileViewport.value && nextView === 'conversations') {
+      const historyWasOpen = hostedConversationMobileHistoryOpen.value;
+      hostedConversationMobileHistoryOpen.value = previousView === nextView && !historyWasOpen;
+      if (previousView === nextView) {
+        navigationService.selectMobileUtilityPanel(undefined);
+        closeMobileSidebar();
+        closeMobileWorkspaceSurface();
+        return;
+      }
+    } else hostedConversationMobileHistoryOpen.value = false;
+    if (
+      nextView === 'management' &&
+      !managementItems.value.some((item) => item.id === managementSection.value)
+    )
+      managementSection.value = managementItems.value[0]?.id ?? input.defaultManagement;
+    selectWorkbenchView(nextView);
+    if (
+      collapseSidebar ||
+      (mobileViewport.value &&
+        previousView !== nextView &&
+        (nextView === 'nodes' || nextView === 'conversations'))
+    )
+      closeMobileSidebar();
+    if (previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations'))
+      void input.recoverNotifications().catch(() => undefined);
+    input.transition(previousView, nextView);
+  }
+
+  function closeHostedConversationMobileHistory(): void {
+    hostedConversationMobileHistoryOpen.value = false;
+  }
+  function closeHostedConversationMobileFiles(): void {
+    hostedConversationMobileFilesOpen.value = false;
+  }
+
+  function selectMobileUtilityPanel(panel: typeof mobileUtilityPanel.value): void {
+    if (!mobileViewport.value) return;
+    if (panel !== undefined) {
+      closeHostedConversationMobileHistory();
+      closeHostedConversationMobileFiles();
+    }
+    navigationService.selectMobileUtilityPanel(panel);
+  }
+
+  return {
+    navigationItems,
+    settingsItems,
+    managementItems,
+    selectNavigation,
+    selectMobileUtilityPanel,
+    hostedConversationMobileFilesOpen,
+    hostedConversationMobileHistoryOpen,
+    closeHostedConversationMobileHistory,
+    closeHostedConversationMobileFiles,
+    layoutView: proxyRefs({
+      mobileViewport,
+      mobileSidebarOpen,
+      mobileUtilityPanel,
+      mobileWorkspaceSurface,
+      closeMobileSidebar,
+      closeMobileWorkspaceSurface,
+      openMobileWorkspaceSurface,
+      selectMobileUtilityPanel,
+      sidebarCollapsed,
+      sidebarContentVisible,
+      panelWidths: input.layout.panelWidths,
+      setPanelWidth: input.layout.setPanelWidth
+    })
   };
 }

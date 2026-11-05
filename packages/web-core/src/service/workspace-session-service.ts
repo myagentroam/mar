@@ -1,8 +1,12 @@
+import type { Workspace, WorkspaceTarget, AgentRun, Session } from '../model/workbench.js';
+import type {
+  WorkspaceSessionCleanupResult,
+  SessionGroup,
+  SessionRunningCounts
+} from '@myagentroam/protocol';
+import type { NavigationSnapshot } from './session-navigation-projection.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
-import type { WorkspaceTarget } from '../model/workbench.js';
 import { computed, ref, watch, type Ref } from 'vue';
-import type { SessionGroup, SessionRunningCounts } from '@myagentroam/protocol';
-import type { AgentRun, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
 
 interface SessionPage {
@@ -20,11 +24,51 @@ interface SessionPaging {
   append(tabId: string, receivedCount: number, nextCursor: string | null): void;
 }
 
+/** Owns the discovery projection shared by navigation and session consumers. */
+function createWorkspaceSessionProjection() {
+  const sessions = ref<Session[]>([]);
+  return {
+    sessions: computed(() => sessions.value),
+    replaceAll: (values: readonly Session[]) => {
+      sessions.value = [...values];
+    },
+    prepend: (session: Session) => {
+      sessions.value = [session, ...sessions.value];
+    },
+    replaceExisting: (session: Session) => {
+      sessions.value = sessions.value.map((current) =>
+        current.id === session.id ? session : current
+      );
+    },
+    removeId: (sessionId: string) => {
+      sessions.value = sessions.value.filter((session) => session.id !== sessionId);
+    },
+    removeExact: (session: Session) => {
+      sessions.value = sessions.value.filter((current) => current !== session);
+    },
+    removeWorkspace: (workspaceId: string) => {
+      sessions.value = sessions.value.filter((session) => session.workspaceId !== workspaceId);
+    },
+    retainSelectedInWorkspace: (workspaceId: string, selectedId?: string) => {
+      sessions.value = sessions.value.filter(
+        (session) => session.workspaceId !== workspaceId || session.id === selectedId
+      );
+    },
+    markManagedActive: (session: Session) => {
+      sessions.value = sessions.value.map((current) =>
+        current.id === session.id && current.workspaceId === session.workspaceId
+          ? { ...current, activity: 'MANAGED_ACTIVE' }
+          : current
+      );
+    }
+  };
+}
+
 export function createWorkspaceSessionService(options: {
-  readonly sessions: Ref<Session[]>;
   readonly runs: Readonly<Ref<readonly AgentRun[]>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
   readonly paging: SessionPaging;
   readonly pageSize: number;
   readonly groupingSupported?: () => boolean;
@@ -33,6 +77,7 @@ export function createWorkspaceSessionService(options: {
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
+  const projection = createWorkspaceSessionProjection();
   const refreshing = ref(false);
   const groups = ref(new Map<string, SessionGroup>());
   let groupSelectionRevision = 0;
@@ -90,11 +135,7 @@ export function createWorkspaceSessionService(options: {
       options.paging.loadingMore.value = false;
       options.paging.reset(id);
       options.paging.nextCursors.value.set(id, null);
-      options.sessions.value = options.sessions.value.filter(
-        (session) =>
-          session.workspaceId !== target.workspaceId ||
-          session.id === options.selectedSessionId.value
-      );
+      projection.retainSelectedInWorkspace(target.workspaceId, options.selectedSessionId.value);
       listedSessionIds.value = new Set();
       const query = searchQuery.value;
       clearSearch();
@@ -111,6 +152,9 @@ export function createWorkspaceSessionService(options: {
       merged = { ...merged, runtime: current.runtime };
     return merged;
   }
+
+  const markManagedActive = projection.markManagedActive;
+  const replaceSessions = projection.replaceAll;
 
   function preserveManagedActive(current: Session | undefined, next: Session): Session {
     const withStablePresentation = preserveStablePresentation(current, next);
@@ -167,7 +211,7 @@ export function createWorkspaceSessionService(options: {
       readonly authoritativeActivity?: boolean;
     } = {}
   ): void {
-    const currentSessions = options.sessions.value;
+    const currentSessions = projection.sessions.value;
     const byId = new Map(currentSessions.map((session) => [session.id, session]));
     const order = currentSessions.map((session) => session.id);
     for (const session of next) {
@@ -194,7 +238,7 @@ export function createWorkspaceSessionService(options: {
       );
       if (!order.includes(session.id)) order.push(session.id);
       if (sameNative.some((candidate) => candidate.id === options.selectedSessionId.value))
-        options.selectedSessionId.value = session.id;
+        options.setSelectedSessionId(session.id);
     }
     let mergedSessions: Session[];
     if (mergeOptions.authoritativeOrder === true) {
@@ -221,7 +265,7 @@ export function createWorkspaceSessionService(options: {
       mergedSessions.every((session, index) => session === currentSessions[index])
     )
       return;
-    options.sessions.value = mergedSessions;
+    projection.replaceAll(mergedSessions);
   }
 
   function applySnapshot(nodeId: string, workspaceId: string, page: SessionPage): void {
@@ -269,13 +313,15 @@ export function createWorkspaceSessionService(options: {
     try {
       // Rebuild only the already-loaded range, keeping the old rows until it is ready.
       while (restoredIds.size < snapshot.visibleCount && cursor !== null) {
-        const beforeRead = new Map(options.sessions.value.map((session) => [session.id, session]));
+        const beforeRead = new Map(
+          projection.sessions.value.map((session) => [session.id, session])
+        );
         const page = await options.request<SessionPage>(
           `/api/agent-sessions?nodeId=${encodeURIComponent(snapshot.workspace.nodeId)}&workspaceId=${encodeURIComponent(snapshot.workspace.workspaceId)}&limit=${Math.min(options.pageSize, snapshot.visibleCount - restoredIds.size)}${groupQuery()}&cursor=${encodeURIComponent(cursor)}`
         );
         if (!isCurrent()) return;
         if (page.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
-        const current = new Map(options.sessions.value.map((session) => [session.id, session]));
+        const current = new Map(projection.sessions.value.map((session) => [session.id, session]));
         merge(
           page.sessions.filter((session) => current.get(session.id) === beforeRead.get(session.id))
         );
@@ -283,7 +329,9 @@ export function createWorkspaceSessionService(options: {
         cursor = page.nextCursor;
       }
       if (!isCurrent()) return;
-      const currentById = new Map(options.sessions.value.map((session) => [session.id, session]));
+      const currentById = new Map(
+        projection.sessions.value.map((session) => [session.id, session])
+      );
       listedSessionIds.value = restoredIds;
       merge(
         [...restoredIds].flatMap((id) => {
@@ -522,8 +570,46 @@ export function createWorkspaceSessionService(options: {
     }
   }
 
+  function createVisibleList(input: {
+    readonly unfiltered: Readonly<Ref<readonly Session[]>>;
+    readonly canLoadMore: Readonly<Ref<boolean>>;
+  }) {
+    const visible = computed(() =>
+      (searchQuery.value.length > 0 ? searchResults.value : input.unfiltered.value).filter(
+        (session) =>
+          currentGroup.value === undefined ||
+          ((session.sessionGroup ?? 'MAIN') === currentGroup.value &&
+            (searchQuery.value.length > 0 || listedSessionIds.value.has(session.id)))
+      )
+    );
+    const canLoadMore = computed(() =>
+      searchQuery.value.length > 0 ? searchNextCursor.value !== null : input.canLoadMore.value
+    );
+    const loadingMore = computed(() =>
+      searchQuery.value.length > 0
+        ? loadingMoreSearchResults.value
+        : options.paging.loadingMore.value
+    );
+    const loadMoreError = computed(() => {
+      if (searchQuery.value.length > 0) return loadMoreSearchResultsError.value;
+      const target = options.workspaceTarget.value;
+      return target === undefined
+        ? undefined
+        : options.paging.loadMoreErrors.value.get(options.tabId(target.nodeId, target.workspaceId));
+    });
+    return {
+      visible,
+      canLoadMore,
+      loadingMore,
+      loadMoreError,
+      loadMore: () => (searchQuery.value.length > 0 ? loadMoreSearchResults() : loadMore())
+    };
+  }
+
   return {
+    projection,
     currentGroup,
+    createVisibleList,
     selectGroup,
     groupSelectionRevision: () => groupSelectionRevision,
     runningCounts,
@@ -536,6 +622,8 @@ export function createWorkspaceSessionService(options: {
     loadingMoreSearchResults,
     loadMoreSearchResultsError,
     preserveManagedActive,
+    markManagedActive,
+    replaceSessions,
     merge,
     applySnapshot,
     loadMore,
@@ -545,4 +633,47 @@ export function createWorkspaceSessionService(options: {
     synchronize,
     refresh
   };
+}
+
+export interface WorkbenchSessionListView {
+  mutationLoading: boolean;
+  sessions: Session[];
+  visibleWorkspaceSessions: Session[];
+  canLoadMoreWorkspaceSessions: boolean;
+  loadMoreWorkspaceSessionsError: unknown;
+  loadMoreWorkspaceSessions: () => Promise<void>;
+  loadingMoreWorkspaceSessions: boolean;
+  refreshWorkspaceSessions: () => Promise<void>;
+  refreshingWorkspaceSessions: boolean;
+  searchingWorkspaceSessions: boolean;
+  searchWorkspaceSessions: (query: string) => Promise<void>;
+  workspaceSessionSearchEnabled: boolean;
+  workspaceSessionSearchQuery: string;
+  workspaceSessionGroup: 'MAIN' | 'CHILD' | undefined;
+  selectWorkspaceSessionGroup: (group: SessionGroup, deferUntilSupported?: boolean) => void;
+  deleteSession: (session: Session) => Promise<void>;
+  canDeleteSession: (session: Session) => boolean;
+  cleanupWorkspaceSessions: (
+    nodeId: string,
+    workspace: Workspace,
+    inactiveDays: number
+  ) => Promise<WorkspaceSessionCleanupResult | undefined>;
+  cleanupSessionsEnabled: boolean;
+  renameSession: (session: Session) => Promise<void>;
+  movePinnedSession: (session: Session, direction: 'up' | 'down') => Promise<void>;
+  movePinnedSessionTo: (
+    session: Session,
+    target: Session,
+    position: 'before' | 'after'
+  ) => Promise<void>;
+  setSessionPinned: (session: Session, pinned: boolean) => Promise<void>;
+  setSessionTreeAnchor: (sessionId: string | undefined) => void;
+  sessionNavigationSnapshot: NavigationSnapshot | undefined;
+  sessionActivity: (session: Session) => NonNullable<Session['activity']>;
+  sessionActivityDateTime: (session: Session) => string | undefined;
+  sessionActivityLabel: (session: Session) => string;
+  sessionActivityTitle: (session: Session) => string | undefined;
+  sessionRelativeActivity: (session: Session) => string;
+  sessionTitle: (session: Session) => string;
+  reloadSelectedSession: () => void;
 }

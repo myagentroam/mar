@@ -2,14 +2,13 @@ import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ElMessageBox } from './message-box-service.js';
-import type { Ref } from 'vue';
+import { ref, readonly, type Ref } from 'vue';
 import type { NodeSummary, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
 import { runnerLabel } from '../util/workbench-presentation.js';
 import { errorCode } from '../util/api-error.js';
 
 export function createWorkbenchEntityService(options: {
-  readonly loading: Ref<boolean>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly renewCsrfToken: () => Promise<string>;
@@ -21,6 +20,7 @@ export function createWorkbenchEntityService(options: {
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }) {
+  const loading = ref(false);
   async function renameNode(node: NodeSummary): Promise<NodeSummary | undefined> {
     let value: string;
     try {
@@ -44,7 +44,7 @@ export function createWorkbenchEntityService(options: {
     } catch {
       return;
     }
-    options.loading.value = true;
+    loading.value = true;
     try {
       const update = () =>
         options.request<{ node: NodeSummary }>(`/api/nodes/${encodeURIComponent(node.id)}`, {
@@ -69,7 +69,7 @@ export function createWorkbenchEntityService(options: {
         error
       );
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -105,7 +105,7 @@ export function createWorkbenchEntityService(options: {
     } catch {
       return;
     }
-    options.loading.value = true;
+    loading.value = true;
     try {
       const result = await options.request<{ session: Session }>(
         `/api/agent-sessions/${options.sessionPathId(session.id)}/metadata`,
@@ -124,7 +124,7 @@ export function createWorkbenchEntityService(options: {
         error
       );
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -149,7 +149,7 @@ export function createWorkbenchEntityService(options: {
         return;
       }
       if (options.workspaceTarget.value !== target) return;
-      options.loading.value = true;
+      loading.value = true;
       const result = await options.request<{ session: Session }>(
         `/api/agent-sessions/${options.sessionPathId(session.id)}/metadata`,
         {
@@ -168,14 +168,14 @@ export function createWorkbenchEntityService(options: {
       );
     } finally {
       movingSessions.delete(session.id);
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
   async function setSessionPinned(session: Session, pinned: boolean): Promise<boolean> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (nodeId === undefined) return false;
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(`/api/agent-sessions/${options.sessionPathId(session.id)}/metadata`, {
         method: 'PATCH',
@@ -192,7 +192,7 @@ export function createWorkbenchEntityService(options: {
       );
       return false;
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -203,7 +203,7 @@ export function createWorkbenchEntityService(options: {
   ): Promise<boolean> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (nodeId === undefined) return false;
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(`/api/agent-sessions/${options.sessionPathId(session.id)}/pin-order`, {
         method: 'PATCH',
@@ -226,7 +226,7 @@ export function createWorkbenchEntityService(options: {
       );
       return false;
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -259,7 +259,7 @@ export function createWorkbenchEntityService(options: {
       return false;
     const finishSubmission = options.beginSubmission?.(`session:${session.id}`);
     if (options.beginSubmission !== undefined && finishSubmission === undefined) return false;
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(
         `/api/agent-sessions/${options.sessionPathId(session.id)}?nodeId=${encodeURIComponent(nodeId)}`,
@@ -281,7 +281,7 @@ export function createWorkbenchEntityService(options: {
       return false;
     } finally {
       finishSubmission?.();
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -304,7 +304,7 @@ export function createWorkbenchEntityService(options: {
     } catch {
       return false;
     }
-    options.loading.value = true;
+    loading.value = true;
     try {
       const remove = () =>
         options.request(`/api/nodes/${encodeURIComponent(node.id)}`, { method: 'DELETE' });
@@ -330,11 +330,12 @@ export function createWorkbenchEntityService(options: {
       );
       return false;
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
   return {
+    loading: readonly(loading),
     renameNode,
     renameSession,
     moveSessionToMain,

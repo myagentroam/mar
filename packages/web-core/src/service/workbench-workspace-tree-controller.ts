@@ -1,24 +1,29 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
-import type { WorkspaceTarget } from '../model/workbench.js';
+import type {
+  WorkspaceTarget,
+  NodeSummary,
+  Session,
+  Workspace,
+  WorkspaceTab
+} from '../model/workbench.js';
 import { ElMessageBox } from './message-box-service.js';
-import type { Ref } from 'vue';
-import type { NodeSummary, Session, Workspace, WorkspaceTab } from '../model/workbench.js';
+import { ref, readonly, type Ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import type { createWorkspaceTabService } from './workspace-tab-service.js';
 import type { createWorkspaceTreeService } from './workspace-tree-service.js';
 import { translate } from './locale-preference-service.js';
 
 export interface WorkbenchWorkspaceTreeControllerOptions {
-  readonly nodes: Ref<NodeSummary[]>;
-  readonly workspaces: Ref<Workspace[]>;
-  readonly sessions: Ref<Session[]>;
+  readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
+  readonly workspaces: Readonly<Ref<readonly Workspace[]>>;
+  readonly replaceWorkspaces: (workspaces: readonly Workspace[]) => void;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly removeWorkspaceSessions: (workspaceId: string) => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Ref<string | undefined>;
-  readonly selectedRunId: Ref<string | undefined>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly activeTabId: Ref<string | undefined>;
   readonly showWorkbench: () => void;
-  readonly loading: Ref<boolean>;
   readonly notice: MessageFeedback;
   readonly workspacesByNode: Ref<Record<string, readonly Workspace[]>>;
   readonly tabs: ReturnType<typeof createWorkspaceTabService>;
@@ -49,6 +54,7 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
 export function createWorkbenchWorkspaceTreeController(
   options: WorkbenchWorkspaceTreeControllerOptions
 ) {
+  const loading = ref(false);
   const workspaceRequestIds = new Map<string, number>();
   let fallbackRevision = 0;
   let pendingFallbackTabId: string | undefined;
@@ -64,7 +70,7 @@ export function createWorkbenchWorkspaceTreeController(
         ? { ...workspace, gitSummary: { ...(workspace.gitSummary ?? {}), branch } }
         : workspace
     );
-    if (nodeId === options.workspaceTarget.value?.nodeId) options.workspaces.value = [...updated];
+    if (nodeId === options.workspaceTarget.value?.nodeId) options.replaceWorkspaces([...updated]);
     cacheNodeWorkspaces(nodeId, updated);
   }
 
@@ -80,7 +86,7 @@ export function createWorkbenchWorkspaceTreeController(
         ...(value.gitSummary === undefined ? {} : { gitSummary: value.gitSummary })
       };
     });
-    if (nodeId === options.workspaceTarget.value?.nodeId) options.workspaces.value = [...updated];
+    if (nodeId === options.workspaceTarget.value?.nodeId) options.replaceWorkspaces([...updated]);
     cacheNodeWorkspaces(nodeId, updated);
   }
 
@@ -215,7 +221,7 @@ export function createWorkbenchWorkspaceTreeController(
       if (workspaceRequestIds.get(nodeId) !== requestId) return;
       cacheNodeWorkspaces(nodeId, result.workspaces);
       if (currentSelection() && options.workspaceTarget.value?.nodeId === nodeId)
-        options.workspaces.value = result.workspaces;
+        options.replaceWorkspaces(result.workspaces);
     } catch (error) {
       if (workspaceRequestIds.get(nodeId) !== requestId || !currentSelection()) return;
       options.notice(
@@ -263,7 +269,7 @@ export function createWorkbenchWorkspaceTreeController(
     groupName: string | null
   ): Promise<void> {
     if (!canOrganizeWorkspaceGroups(nodeId) || workspace.groupName === groupName) return;
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(
         `/api/workspaces/${encodeURIComponent(workspace.id)}?nodeId=${encodeURIComponent(nodeId)}`,
@@ -274,11 +280,11 @@ export function createWorkbenchWorkspaceTreeController(
         candidate.id === workspace.id ? updatedWorkspace : candidate
       );
       cacheNodeWorkspaces(nodeId, updated);
-      if (options.workspaceTarget.value?.nodeId === nodeId) options.workspaces.value = [...updated];
+      if (options.workspaceTarget.value?.nodeId === nodeId) options.replaceWorkspaces([...updated]);
     } catch (error) {
       options.notice(options.errorMessage(error), 'error', error);
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -349,7 +355,7 @@ export function createWorkbenchWorkspaceTreeController(
     } catch {
       return;
     }
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(
         `/api/workspaces/${encodeURIComponent(workspace.id)}?nodeId=${encodeURIComponent(nodeId)}`,
@@ -360,12 +366,12 @@ export function createWorkbenchWorkspaceTreeController(
         candidate.id === workspace.id ? updatedWorkspace : candidate
       );
       cacheNodeWorkspaces(nodeId, updated);
-      if (options.workspaceTarget.value?.nodeId === nodeId) options.workspaces.value = [...updated];
+      if (options.workspaceTarget.value?.nodeId === nodeId) options.replaceWorkspaces([...updated]);
       options.tabs.updateLabel(nodeId, workspace.id, options.tabLabel(updatedWorkspace));
     } catch (error) {
       options.notice(options.errorMessage(error), 'error', error);
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -389,7 +395,7 @@ export function createWorkbenchWorkspaceTreeController(
     } catch {
       return;
     }
-    options.loading.value = true;
+    loading.value = true;
     try {
       await options.request(
         `/api/workspaces/${encodeURIComponent(workspace.id)}?nodeId=${encodeURIComponent(nodeId)}`,
@@ -398,14 +404,10 @@ export function createWorkbenchWorkspaceTreeController(
       const remaining = workspacesForNode(nodeId).filter((item) => item.id !== workspace.id);
       cacheNodeWorkspaces(nodeId, remaining);
       if (options.workspaceTarget.value?.nodeId === nodeId) {
-        options.workspaces.value = remaining;
-        options.sessions.value = options.sessions.value.filter(
-          (session) => session.workspaceId !== workspace.id
-        );
+        options.replaceWorkspaces(remaining);
+        options.removeWorkspaceSessions(workspace.id);
         if (options.workspaceTarget.value?.workspaceId === workspace.id) {
           options.clearWorkspace();
-          options.selectedSessionId.value = undefined;
-          options.selectedRunId.value = undefined;
         }
       }
       options.tabs.removeWhere((tab) => tab.nodeId === nodeId && tab.workspaceId === workspace.id);
@@ -424,7 +426,7 @@ export function createWorkbenchWorkspaceTreeController(
         error
       );
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
@@ -434,7 +436,7 @@ export function createWorkbenchWorkspaceTreeController(
     inactiveDays: number
   ): Promise<WorkspaceSessionCleanupResult | undefined> {
     if (workspace.manageable === false || !options.cleanupSessionsEnabled(nodeId)) return undefined;
-    options.loading.value = true;
+    loading.value = true;
     try {
       const result = await options.request<WorkspaceSessionCleanupResult>(
         `/api/workspaces/${encodeURIComponent(workspace.id)}/sessions/cleanup`,
@@ -452,11 +454,12 @@ export function createWorkbenchWorkspaceTreeController(
     } catch (error) {
       throw new Error(options.errorMessage(error));
     } finally {
-      options.loading.value = false;
+      loading.value = false;
     }
   }
 
   return {
+    loading: readonly(loading),
     updateWorkspaceBranch,
     updateWorkspaceMetadata,
     rememberWorkspace,
@@ -479,4 +482,30 @@ export function createWorkbenchWorkspaceTreeController(
     cleanupWorkspaceSessions,
     removeWorkspace
   };
+}
+
+export interface WorkbenchTreeView {
+  draggingWorkspace: { readonly nodeId: string; readonly workspaceId: string } | undefined;
+  expandedNodeIds: string[];
+  workspaceTreeRevealTarget: WorkspaceTarget | undefined;
+  moveTreeWorkspace: (nodeId: string, workspaceId: string, direction: -1 | 1) => void;
+  endWorkspaceDrag: () => void;
+  orderedNodes: readonly NodeSummary[];
+  moveNode: (nodeId: string, targetIndex: number) => void;
+  refreshNodeWorkspaces: (nodeId: string) => Promise<void>;
+  refreshWorkspaceTree: () => Promise<void>;
+  orderedWorkspaces: (nodeId: string) => readonly Workspace[];
+  toggleNodeExpansion: (nodeId: string) => Promise<void>;
+  addWorkspaceForNode: (nodeId: string) => Promise<void>;
+  openWorkspaceFromTree: (nodeId: string, workspaceId: string) => Promise<void>;
+  reorderWorkspace: (nodeId: string, target: Workspace, position?: 'before' | 'after') => void;
+  moveWorkspaceToGroup: (nodeId: string, groupName: string | null) => void;
+  moveWorkspaceGroup: (
+    nodeId: string,
+    workspace: Workspace,
+    groupName: string | null
+  ) => Promise<void>;
+  renameWorkspace: (nodeId: string, workspace: Workspace) => Promise<void>;
+  removeWorkspace: (nodeId: string, workspace: Workspace) => Promise<void>;
+  startWorkspaceDrag: (event: DragEvent, nodeId: string, workspaceId: string) => void;
 }

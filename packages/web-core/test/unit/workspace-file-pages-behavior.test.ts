@@ -124,12 +124,10 @@ describe('Workspace file page behavior', () => {
       (_tab: WorkspaceFileTab, _signal?: AbortSignal) =>
         new Promise((resolve, reject) => pending.push({ resolve, reject }))
     );
-    const loadError = vi.fn();
     const props = reactive({
       tab: { ...tab(1), kind: 'WORKTREE_DIFF' as const },
       active: false,
-      load,
-      onLoadError: loadError
+      load
     });
     const view = renderComponent(DiffPage, props);
     try {
@@ -143,7 +141,6 @@ describe('Workspace file page behavior', () => {
       const failure = new Error('Diff unavailable');
       pending[1]!.reject(failure);
       await flushComponent();
-      expect(loadError).toHaveBeenCalledWith(failure);
       expect(view.findAll('diff-viewer')[0]!.props.loadFailed).toBe(true);
       await trigger(view.findAll('button')[0]!, 'onClick');
       expect(view.findAll('diff-viewer')[0]!.props.loadFailed).toBe(false);
@@ -158,7 +155,7 @@ describe('Workspace file page behavior', () => {
     expect(load.mock.calls.at(-1)![1]!.aborted).toBe(true);
     pending.at(-1)!.resolve({ late: true });
     await flushComponent();
-    expect(loadError).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(4);
   });
 
   it('forwards the public Diff page editing and navigation handles to its viewer', async () => {

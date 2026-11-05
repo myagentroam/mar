@@ -1,6 +1,6 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
 import type { Ref } from 'vue';
-import type { NodeWorkbenchManifest, NodeSummary, Session, Workspace } from '../model/workbench.js';
+import type { NodeSummary, Session, Workspace } from '../model/workbench.js';
 import type { createWorkbenchEntityService } from './workbench-entity-service.js';
 import type { createWorkspaceTabService } from './workspace-tab-service.js';
 import type { createWorkspaceTreeService } from './workspace-tree-service.js';
@@ -9,16 +9,19 @@ import type { createWorkspaceViewCacheService } from './workspace-view-cache-ser
 /** Applies successful entity mutations to every affected tab-local projection. */
 export function createWorkbenchEntityController(options: {
   readonly actions: ReturnType<typeof createWorkbenchEntityService>;
-  readonly nodes: Ref<NodeSummary[]>;
-  readonly sessions: Ref<Session[]>;
-  readonly clearActiveContent: () => void;
+  readonly replaceNode: (node: NodeSummary) => void;
+  readonly removeNode: (nodeId: string) => void;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly removeSessionId: (sessionId: string) => void;
+  readonly clearSessions: () => void;
+  readonly clearActiveSelection: () => void;
   readonly clearRuns: () => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly clearWorkspace: () => void;
-  readonly selectedSessionId: Ref<string | undefined>;
-  readonly selectedRunId: Ref<string | undefined>;
-  readonly nodeManifest: Ref<NodeWorkbenchManifest | undefined>;
-  readonly workspaces: Ref<Workspace[]>;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
+  readonly workspaces: Readonly<Ref<readonly Workspace[]>>;
+  readonly replaceWorkspaces: (workspaces: readonly Workspace[]) => void;
   readonly caches: ReturnType<typeof createWorkspaceViewCacheService>;
   readonly tabs: ReturnType<typeof createWorkspaceTabService>;
   readonly tree: ReturnType<typeof createWorkspaceTreeService>;
@@ -31,10 +34,7 @@ export function createWorkbenchEntityController(options: {
 }) {
   async function renameNode(node: NodeSummary): Promise<void> {
     const updated = await options.actions.renameNode(node);
-    if (updated !== undefined)
-      options.nodes.value = options.nodes.value.map((item) =>
-        item.id === node.id ? updated : item
-      );
+    if (updated !== undefined) options.replaceNode(updated);
   }
 
   async function renameSession(session: Session): Promise<void> {
@@ -76,11 +76,10 @@ export function createWorkbenchEntityController(options: {
     if (nodeId !== undefined) options.caches.removeSession(nodeId, session.workspaceId, session.id);
     if (options.workspaceTarget.value?.nodeId !== nodeId) return;
     const wasSelected = options.selectedSessionId.value === session.id;
-    options.sessions.value = options.sessions.value.filter((item) => item.id !== session.id);
+    options.removeSessionId(session.id);
     if (wasSelected) {
-      options.selectedSessionId.value = undefined;
-      options.selectedRunId.value = undefined;
-      options.clearActiveContent();
+      options.setSelectedSessionId(undefined);
+      options.clearActiveSelection();
       options.openDraft();
     }
     options.replaceUrl();
@@ -88,17 +87,15 @@ export function createWorkbenchEntityController(options: {
 
   async function deleteNode(node: NodeSummary): Promise<void> {
     if (!(await options.actions.deleteNode(node))) return;
-    options.nodes.value = options.nodes.value.filter((item) => item.id !== node.id);
+    options.removeNode(node.id);
     options.tabs.removeWhere((tab) => tab.nodeId === node.id);
     options.discardNodeCaches(node.id);
     options.tree.removeNode(node.id);
     if (options.workspaceTarget.value?.nodeId === node.id) {
       options.clearWorkspace();
-      options.selectedSessionId.value = undefined;
-      options.selectedRunId.value = undefined;
-      options.nodeManifest.value = undefined;
-      options.workspaces.value = [];
-      options.sessions.value = [];
+      options.setSelectedSessionId(undefined);
+      options.replaceWorkspaces([]);
+      options.clearSessions();
       options.clearRuns();
     }
     options.clearNodeDetails();

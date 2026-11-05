@@ -1,4 +1,6 @@
-import { shallowRef } from 'vue';
+import type { WorkspaceSessionPaneView } from './workspace-session-pane-controller.js';
+import type { NavigationSession } from './session-navigation-projection.js';
+import { shallowRef, watch, type Ref } from 'vue';
 
 export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'terminal';
 export type AsideViewMode = 'compact' | 'content';
@@ -43,6 +45,36 @@ export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
 
 export function createWorkbenchAsideService(sessionTabLimit = 1) {
   const workspaces = shallowRef<ReadonlyMap<string, ReadonlyMap<string, AsideState>>>(new Map());
+
+  function observeCapabilities(input: {
+    readonly workspace: Readonly<Ref<AsideWorkspace | undefined>>;
+    readonly manifest: Readonly<
+      Ref<import('../model/workbench.js').NodeWorkbenchManifest | undefined>
+    >;
+    readonly selectedWorkspace: Readonly<
+      Ref<import('../model/workbench.js').Workspace | undefined>
+    >;
+  }): void {
+    const workspaceTarget = input.workspace;
+    const nodeManifest = input.manifest;
+    const selectedWorkspace = input.selectedWorkspace;
+    watch(
+      [workspaceTarget, nodeManifest, () => selectedWorkspace.value?.kind],
+      ([target, manifest, kind]) => {
+        if (target === undefined || manifest === undefined) return;
+        const tools: AsideTool[] = [];
+        if (manifest.files?.available === true) tools.push('files', 'search');
+        if (kind === 'GIT_WORKSPACE') {
+          tools.push('changes');
+          if (manifest.git?.supportsHistory === true) tools.push('history');
+        }
+        if (manifest.terminal?.available === true && manifest.terminal.supportsReplay === true)
+          tools.push('terminal');
+        ensure(target, tools);
+      },
+      { immediate: true }
+    );
+  }
 
   function current(target: AsideWorkspace): AsideState {
     return workspaces.value.get(target.nodeId)?.get(target.workspaceId) ?? empty;
@@ -261,7 +293,61 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     else nodes.set(target.nodeId, entries);
     workspaces.value = nodes;
   }
+
+  function createInteraction(options: {
+    readonly workspace: Readonly<Ref<AsideWorkspace | undefined>>;
+    readonly mobile: Readonly<Ref<boolean>>;
+    readonly mobileSurface: Readonly<Ref<string>>;
+    readonly saveSession: () => void;
+    readonly openMobile: (surface: 'terminal' | 'inspector') => void;
+  }) {
+    function owns(target: AsideWorkspace): boolean {
+      const workspace = options.workspace.value;
+      return workspace?.nodeId === target.nodeId && workspace.workspaceId === target.workspaceId;
+    }
+    function saveActive(target: AsideWorkspace): void {
+      if (current(target).active?.kind === 'session') options.saveSession();
+    }
+    function select(target: AsideWorkspace & { readonly id: AsideTool }): void {
+      if (!owns(target)) return;
+      saveActive(target);
+      selectTool(target, target.id);
+      if (options.mobile.value)
+        options.openMobile(target.id === 'terminal' ? 'terminal' : 'inspector');
+    }
+    function openBrowser(target: AsideWorkspace): void {
+      if (!owns(target)) return;
+      saveActive(target);
+      if (activateHtml(target) && options.mobile.value) options.openMobile('inspector');
+    }
+    function closeBrowser(target: AsideWorkspace): void {
+      if (owns(target)) clearHtmlWorkspace(target);
+    }
+    function toggleTerminalSurface(): void {
+      const target = options.workspace.value;
+      if (target === undefined) return;
+      saveActive(target);
+      if (
+        options.mobile.value &&
+        options.mobileSurface.value !== 'inspector' &&
+        options.mobileSurface.value !== 'terminal'
+      ) {
+        if (selectTool(target, 'terminal')) options.openMobile('terminal');
+        return;
+      }
+      if (!toggleTerminal(target)) return;
+      if (options.mobile.value) {
+        const active = current(target).active;
+        options.openMobile(
+          active?.kind === 'tool' && active.id === 'terminal' ? 'terminal' : 'inspector'
+        );
+      }
+    }
+    return { select, openBrowser, closeBrowser, toggleTerminal: toggleTerminalSurface };
+  }
   return {
+    observeCapabilities,
+    createInteraction,
     current,
     ensure,
     selectTool,
@@ -280,4 +366,26 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     clearHtmlNode,
     clearHtml
   };
+}
+
+export interface WorkbenchAsideView {
+  asidePaneController: WorkspaceSessionPaneView;
+  asideSessionMetadata: NavigationSession[];
+  asideState: AsideState | undefined;
+  asideSupported: boolean;
+  asideViewMode: (target: AsideTarget | undefined) => AsideViewMode;
+  asideWidth: (
+    mode: AsideViewMode,
+    availableWidth: number,
+    mainMinWidth: number
+  ) => number | undefined;
+  closeAsideBrowser: (target: AsideWorkspace) => void;
+  closeAsideSession: (target: AsideSession) => void;
+  openAsideSession: (target: AsideSession) => boolean;
+  openHtmlAside: (path: string) => void;
+  reloadAsideSession: () => void;
+  selectAsideBrowser: (target: AsideWorkspace) => void;
+  selectAsideTool: (target: AsideWorkspace & { readonly id: AsideTool }) => void;
+  setAsideSurfaceVisible: (visible: boolean) => void;
+  toggleAsideTerminal: () => void;
 }

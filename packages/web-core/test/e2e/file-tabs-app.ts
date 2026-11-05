@@ -1,3 +1,4 @@
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { h, nextTick, ref } from 'vue';
 import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
@@ -99,7 +100,8 @@ const fileWorkbench = createWorkspaceFileWorkbenchController({
   onRevealFailure: () => {},
   comparison: async () => undefined,
   page: () => filePage,
-  preview: { http, transfers: () => ({}), onWritten: () => {} },
+  access: createFileAccessFixture({ http, transfers: () => ({}) }),
+  preview: { onWritten: () => {} },
   navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
 });
 function fileView(standaloneFileMode = false) {
