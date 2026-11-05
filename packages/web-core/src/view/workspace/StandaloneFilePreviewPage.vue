@@ -14,6 +14,7 @@ import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import HtmlPreviewFrame from './HtmlPreviewFrame.vue';
 import { createHtmlPreviewService } from '../../service/html-preview-service.js';
+import { filePreviewErrorMessage } from '../../util/error-presentation.js';
 import MarkdownFilePreview from './MarkdownFilePreview.vue';
 import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -108,7 +109,6 @@ const dirtyDrafts = ref<readonly DirtyTextDraft[]>(restoreDirtyDrafts());
 const file = ref<FileRead>();
 const standaloneRoot = ref<HTMLElement>();
 const errorKey = ref('');
-const error = computed(() => (errorKey.value === '' ? '' : translate(errorKey.value)));
 const contentUrl = ref<string>();
 const objectUrl = ref<string>();
 const loading = ref(true);
@@ -126,6 +126,13 @@ const http =
   });
 const htmlPreview = createHtmlPreviewService(http);
 const htmlState = htmlPreview.state;
+const error = computed(() =>
+  htmlState.value.error !== undefined
+    ? filePreviewErrorMessage(htmlState.value.error, query.get('path') ?? '')
+    : errorKey.value === ''
+      ? ''
+      : translate(errorKey.value)
+);
 const htmlTrusted = computed(
   () =>
     htmlState.value.url !== undefined && new URL(htmlState.value.url).hostname === location.hostname
@@ -336,7 +343,6 @@ onMounted(async () => {
     loading.value = true;
     if (!hostedMode && isHtmlFile(path) && Object.keys(fileTarget).length === 0) {
       await htmlPreview.open({ nodeId, workspaceId, path });
-      if (htmlState.value.error) errorKey.value = 'htmlPreview.unavailable';
     } else {
       errorKey.value = 'htmlPreview.unavailable';
     }
@@ -874,6 +880,8 @@ function rawContentUrl(
   padding: 24px;
   color: var(--mar-color-danger-text);
   font-size: var(--mar-font-size-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .standalone-preview-body {

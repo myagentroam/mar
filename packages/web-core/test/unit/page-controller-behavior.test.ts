@@ -7,6 +7,7 @@ import * as directRead from '../../src/service/workspace-direct-file-read-servic
 import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
 import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
+import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
@@ -193,6 +194,44 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('protects suspended drafts on unload but permits PWA updates and removes its listener on unmount', () => {
+    const isReloadingForUpdate = vi.fn(() => false);
+    const { page } = controller({
+      state: ref<PwaApplicationState>({ offline: 'ready', checked: true }),
+      isReloadingForUpdate
+    } as unknown as PwaApplicationService);
+    const unload = () => window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
+    expect(unload()).toBe(true);
+    const tabs = createWorkspaceFileTabService();
+    const tab = tabs.open({
+      kind: 'WORKTREE_TEXT',
+      nodeId: node.id,
+      workspaceId: 'workspace-a',
+      path: 'index.html',
+      repositoryPath: '',
+      worktreePath: ''
+    });
+    page.fileWorkbench.restore({
+      fileTabs: tabs.snapshot(),
+      dirtyTextDrafts: [
+        {
+          tabIdentity: tab.identity,
+          path: tab.path,
+          content: 'unsaved HTML',
+          expectedRevision: 'r1'
+        }
+      ],
+      fileWindowSuspended: true
+    });
+    expect(page.fileWorkbench.hasSuspendedDrafts()).toBe(true);
+    expect(unload()).toBe(false);
+    isReloadingForUpdate.mockReturnValue(true);
+    expect(unload()).toBe(true);
+    isReloadingForUpdate.mockReturnValue(false);
+    mounted.pop()!.unmount();
+    expect(unload()).toBe(true);
+  });
+
   it('leaves Changes loading to the visible tool lifecycle when selected by shortcut', async () => {
     const { page } = controller();
     const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };

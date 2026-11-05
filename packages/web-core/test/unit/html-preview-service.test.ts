@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHtmlPreviewService } from '../../src/service/html-preview-service.js';
+import { ApiError } from '../../src/util/api-error.js';
 
 describe('HTML preview grants', () => {
   it('ignores replaced and released requests, and supports retry after failure', async () => {
@@ -26,10 +27,19 @@ describe('HTML preview grants', () => {
     expect(service.state.value.url).toBe('https://example.test/b');
     const failure = service.open(target);
     expect(service.state.value.url).toBeUndefined();
-    pending[2]!.reject(new Error('denied'));
+    const missing = new ApiError(
+      'FILE_NOT_FOUND',
+      'File not found.',
+      {},
+      'Missing HTML document.',
+      'preview-request',
+      'node-request'
+    );
+    pending[2]!.reject(missing);
     await failure;
-    expect(service.state.value.error).toBe(true);
+    expect(service.state.value.error).toBe(missing);
     const retry = service.open(target);
+    expect(service.state.value.error).toBeUndefined();
     pending[3]!.resolve({ url: 'https://example.test/retry' });
     await retry;
     expect(service.state.value.url).toBe('https://example.test/retry');
@@ -39,5 +49,6 @@ describe('HTML preview grants', () => {
     pending[4]!.resolve({ url: 'https://example.test/late' });
     await late;
     expect(service.state.value.url).toBeUndefined();
+    expect(service.state.value.error).toBeUndefined();
   });
 });

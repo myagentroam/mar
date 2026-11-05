@@ -15,6 +15,7 @@ test('HTML preview waits for a pending save without handing off the editor', asy
   const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
   let finishSave: (() => void) | undefined;
   try {
+    await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
     await page.route('**/api/workspaces/workspace/files/read?*', (route) =>
       route.fulfill({
         json: {
@@ -38,7 +39,18 @@ test('HTML preview waits for a pending save without handing off the editor', asy
     await page.route('**/api/html-preview/grants', (route) => {
       grants += 1;
       return grants === 1
-        ? route.fulfill({ status: 403, json: {} })
+        ? route.fulfill({
+            status: 404,
+            json: {
+              error: {
+                code: 'FILE_NOT_FOUND',
+                message: 'File not found.',
+                details: 'Missing index.html.',
+                requestId: 'preview-request',
+                upstreamRequestId: 'node-request'
+              }
+            }
+          })
         : route.fulfill({ json: { url: `${fixture.url}rendered-html` } });
     });
     await page.route('**/rendered-html', (route) =>
@@ -61,27 +73,41 @@ test('HTML preview waits for a pending save without handing off the editor', asy
     await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
     await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
     await expect.poll(() => grants).toBe(1);
-    await expect(page.locator('.error')).toBeVisible();
-    for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
-      await page
-        .locator('html')
-        .evaluate((element, value) => element.setAttribute('data-theme', value), theme);
-      expect(
-        await page.locator('.error').evaluate((element) => {
-          const probe = document.createElement('span');
-          probe.style.color = 'var(--mar-color-danger-text)';
-          element.appendChild(probe);
-          const matches = getComputedStyle(element).color === getComputedStyle(probe).color;
-          probe.remove();
-          return matches;
-        })
-      ).toBe(true);
+    const failure = page.locator('.html-browser-error');
+    await expect(failure).toContainText('File not found.');
+    for (const fact of ['FILE_NOT_FOUND', 'Missing index.html.', 'preview-request', 'node-request'])
+      await expect(failure).toContainText(fact);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+        await page
+          .locator('html')
+          .evaluate((element, value) => element.setAttribute('data-theme', value), theme);
+        expect(
+          await failure.evaluate((element) => {
+            const probe = document.createElement('span');
+            probe.style.color = 'var(--mar-color-warning-text)';
+            element.appendChild(probe);
+            const matches = getComputedStyle(element).color === getComputedStyle(probe).color;
+            probe.remove();
+            return matches;
+          })
+        ).toBe(true);
+        await expect(failure).toHaveCSS('border-top-width', '0px');
+        await expect(failure).toHaveCSS('white-space', 'pre-wrap');
+        expect(
+          await failure.evaluate((element) => element.scrollWidth <= element.clientWidth)
+        ).toBe(true);
+      }
+      await page.screenshot({
+        path: test.info().outputPath(`html-preview-dark-error-${width}.png`)
+      });
     }
-    await page.screenshot({ path: test.info().outputPath('html-preview-dark-error.png') });
     await page.getByRole('button', { name: 'Reload' }).click();
     await expect(
       page.frameLocator('iframe[title="index.html"]').getByText('Recovered')
     ).toBeVisible();
+    await expect(failure).toHaveCount(0);
     expect(grants).toBe(2);
   } finally {
     finishSave?.();
@@ -91,7 +117,7 @@ test('HTML preview waits for a pending save without handing off the editor', asy
 
 test('restored unmounted drafts reject close until the user confirms', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
-  let releaseRead: (() => void) | undefined;
+  let releaseRead!: () => void;
   let holdReads = false;
   const pendingRead = new Promise<void>((resolve) => {
     releaseRead = resolve;
@@ -134,7 +160,7 @@ test('restored unmounted drafts reject close until the user confirms', async ({ 
     releaseRead();
     await expect(editor).toContainText('unsaved draft');
   } finally {
-    releaseRead?.();
+    releaseRead();
     await fixture.close();
   }
 });
@@ -177,12 +203,7 @@ for (const width of [1280, 390]) {
       await expect(editor).toContainText('draft');
       await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
       await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-      expect(
-        await page.evaluate(() => {
-          const event = new Event('beforeunload', { cancelable: true });
-          return !window.dispatchEvent(event);
-        })
-      ).toBe(true);
+      // Unload protection belongs to the page controller and is covered by its composition tests.
       await expect(
         page.frameLocator('iframe[title="index.html"]').getByText('saved disk')
       ).toBeVisible();

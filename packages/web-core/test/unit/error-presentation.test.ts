@@ -7,6 +7,20 @@ afterEach(() => localePreferenceService().setLocale('en-US'));
 
 describe('Public Error Presentation', () => {
   it.each(['en-US', 'zh-CN'] as const)(
+    'localizes a missing workspace file while retaining its diagnostics (%s)',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      const message = filePreviewErrorMessage(
+        new ApiError('FILE_NOT_FOUND', 'Upstream summary.', {}, 'missing document', 'req', 'node'),
+        'pages/missing.html'
+      );
+      expect(message).toContain(locale === 'zh-CN' ? '文件不存在。' : 'File not found.');
+      expect(message).not.toContain('Upstream summary.');
+      for (const fact of ['FILE_NOT_FOUND', 'missing document', 'req', 'node'])
+        expect(message).toContain(fact);
+    }
+  );
+  it.each(['en-US', 'zh-CN'] as const)(
     'localizes share admission failures without losing diagnostics (%s)',
     (locale) => {
       localePreferenceService().setLocale(locale);

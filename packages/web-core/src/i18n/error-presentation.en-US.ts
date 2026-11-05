@@ -19,6 +19,7 @@ export const errorPresentationEnUS = {
     MAR_AGENT_AUTO_UNSUPPORTED:
       'This Node does not support MAR Agent Auto. Upgrade the Node or explicitly choose Full access.',
     attachmentExpired: 'File has expired',
+    FILE_NOT_FOUND: 'File not found.',
     IMAGE_PREVIEW_FAILED: 'Unable to preview this image. Try again or download the file.',
     withDiagnostics: '{summary}\n{diagnostics}',
     diagnosticCode: 'Code: {value}',

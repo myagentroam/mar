@@ -13,6 +13,7 @@ export const errorPresentationZhCN = {
     SESSION_PROMPT_INVALID: '会话提示词须为不超过 20000 个字符的文本；留空可清除。',
     MAR_AGENT_AUTO_UNSUPPORTED: '此 Node 不支持 MAR Agent Auto。请升级 Node，或明确选择完全访问。',
     attachmentExpired: '文件已过期',
+    FILE_NOT_FOUND: '文件不存在。',
     IMAGE_PREVIEW_FAILED: '无法预览此图片，请重试或下载文件。',
     withDiagnostics: '{summary}\n{diagnostics}',
     diagnosticCode: '错误码：{value}',
