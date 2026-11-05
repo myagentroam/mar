@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { access, mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
+import { access, copyFile, mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ESLint } from 'eslint';
 import { readReleaseVersions, validateVersionGroups } from '../../scripts/product-versions.mjs';
 import { productCheckCommands } from '../../scripts/product-ci.mjs';
 import { cleanBuildOutput } from '../../scripts/clean-build-output.mjs';
@@ -69,6 +71,23 @@ test('public product build and version checks remain separate from release orche
   assert.equal(Object.hasOwn(scripts, 'test:release'), false);
   assert.equal(scripts['check:versions'], 'node scripts/product-versions.mjs');
   assert.equal(scripts['test:build'], 'node --test test/unit/*.test.mjs');
+});
+
+test('product build and unit gates include the independent subagent and marctl packages', async () => {
+  const { scripts } = JSON.parse(await readFile(join(ossRoot, 'package.json'), 'utf8'));
+  assert.match(scripts.build, /--filter @myagentroam\/agent-extension-subagent(?:\.\.\.)?\s/u);
+  assert.match(scripts['test:unit'], /--filter @myagentroam\/marctl test:unit(?:\s|$)/u);
+  assert.match(
+    scripts['test:unit'],
+    /--filter @myagentroam\/agent-extension-subagent test(?:\s|$)/u
+  );
+});
+
+test('ESLint ignores staged Web distribution but keeps Server source and tests', async () => {
+  const eslint = new ESLint({ cwd: ossRoot });
+  assert.equal(await eslint.isPathIgnored('mar-server/web/assets/vendor.js'), true);
+  assert.equal(await eslint.isPathIgnored('mar-server/src/main.ts'), false);
+  assert.equal(await eslint.isPathIgnored('test/unit/product-build.test.mjs'), false);
 });
 
 test('public CI helper lists only product checks and excludes private release commands', () => {
@@ -198,6 +217,30 @@ test('build output cleanup removes stale artifacts without accepting parent path
     await assert.rejects(access(join(directory, 'dist')), { code: 'ENOENT' });
     await assert.rejects(cleanBuildOutput('../outside', directory), /BUILD_OUTPUT_PATH_INVALID/u);
     await assert.rejects(cleanBuildOutput(directory, directory), /BUILD_OUTPUT_PATH_INVALID/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('subagent build cleans stale output before compiling', async () => {
+  const extension = JSON.parse(
+    await readFile(join(ossRoot, 'mar-agent/extensions/subagent/package.json'), 'utf8')
+  );
+  const [cleanup, compile] = extension.scripts.build.split(' && ');
+  assert.equal(cleanup, 'node ../../../scripts/clean-build-output.mjs dist');
+  assert.equal(compile, 'tsc -p tsconfig.json');
+  const directory = await mkdtemp(join(tmpdir(), 'mar-subagent-build-'));
+  try {
+    const extensionRoot = join(directory, 'mar-agent/extensions/subagent');
+    await mkdir(join(extensionRoot, 'dist'), { recursive: true });
+    await mkdir(join(directory, 'scripts'));
+    await copyFile(
+      join(ossRoot, 'scripts/clean-build-output.mjs'),
+      join(directory, 'scripts/clean-build-output.mjs')
+    );
+    await writeFile(join(extensionRoot, 'dist/stale.js'), 'stale');
+    execFileSync(process.execPath, cleanup.split(' ').slice(1), { cwd: extensionRoot });
+    await assert.rejects(access(join(extensionRoot, 'dist/stale.js')), { code: 'ENOENT' });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

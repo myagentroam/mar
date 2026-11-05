@@ -8,8 +8,7 @@ import type {
   NativeTranscriptMessage,
   NativeTranscriptToolCall,
   NativeTranscriptImageAttachment,
-  NativeTranscriptUnknown,
-  NativeTranscriptReasoningSummary
+  NativeTranscriptUnknown
 } from '../../native-transcript-model.js';
 import { compactRunnerValue as compactValue } from '../normalization.js';
 import { isPlainRecord } from '../../util/records.js';

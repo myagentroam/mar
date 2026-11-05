@@ -83,7 +83,7 @@ describe('Conversation History Window and Render State', () => {
     expect(value).toMatchObject({
       output: { blocks: [{ text: 'done' }, { text: 'e' }] }
     });
-    expect((value as any).output.truncation).toBeUndefined();
+    expect((value as { output: { truncation?: unknown } }).output.truncation).toBeUndefined();
   });
   it('applies generic output deltas and authoritative snapshots without retaining old truncation', () => {
     let value: unknown = { inputSummary: 'input', truncated: true };

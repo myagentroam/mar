@@ -25,7 +25,9 @@ export interface SessionInputImageMetadata {
   readonly urlExpiresAt?: number;
 }
 
-export interface RestoredSessionInputImage extends ModelImage {}
+export interface RestoredSessionInputImage extends ModelImage {
+  readonly mimeType: ModelImage['mimeType'];
+}
 
 export interface SessionInputImageData extends SessionInputImageMetadata {
   readonly dataBase64: string;

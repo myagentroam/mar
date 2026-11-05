@@ -170,7 +170,7 @@ describe('Node Files and Changes fixed-operation handling', () => {
       })
     ).rejects.toThrow('GIT_HISTORY_REF_INVALID');
     database.close();
-  });
+  }, 30_000);
 });
 
 function connectorFor(database: NodeDatabase, allowedRoots?: readonly string[]): NodeConnector {

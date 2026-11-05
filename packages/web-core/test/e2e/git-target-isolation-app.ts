@@ -1,8 +1,10 @@
-import { h, nextTick, ref } from 'vue';
+import { h, nextTick, ref, watch } from 'vue';
 import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
-import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
-import type { WorkspaceInspectorHandle } from '../../src/service/workbench-surface-state-service.js';
+import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
+import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
+import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import type { Workspace, WorkspaceTarget } from '../../src/model/workbench.js';
 import { createWorkbenchWorkspaceSelectionService } from '../../src/service/workbench-workspace-selection-service.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
@@ -16,7 +18,6 @@ import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
 const targets: readonly WorkspaceTarget[] = await (await fetch('/fixture/targets')).json();
-const inspector = ref<WorkspaceInspectorHandle>();
 const target = ref<WorkspaceTarget>();
 const subscription = ref<WorkspaceWatchSnapshot>();
 const cache = createWorkspaceViewCacheService((nodeId, workspaceId) => `${nodeId}:${workspaceId}`);
@@ -25,7 +26,34 @@ const workspaces: Workspace[] = targets.map(({ workspaceId }, index) => ({
   path: `/fixture/${index}`,
   kind: 'GIT_WORKSPACE'
 }));
+const git = createWorkspaceGitService({
+  http: createScopedHttpService({
+    csrfToken: () => 'fixture-csrf',
+    renewCsrfToken: async () => 'fixture-csrf'
+  }),
+  target: () => target.value,
+  gitEnabled: () => true,
+  historyEnabled: () => true,
+  onFailure: () => {},
+  onWorkspace: () => {},
+  onBranch: () => {}
+});
+watch(target, () => git.reset(), { flush: 'sync' });
+watch(
+  subscription,
+  (snapshot) => {
+    if (
+      snapshot !== undefined &&
+      snapshot.nodeId === target.value?.nodeId &&
+      snapshot.workspaceId === target.value?.workspaceId &&
+      snapshot.changes !== undefined
+    )
+      git.applyWatch(snapshot.changes, snapshot.changesWatchRevision);
+  },
+  { flush: 'sync' }
+);
 const status = ref('ready');
+const activeTool = ref<'files' | 'changes' | 'history'>('files');
 const noop = () => {};
 const selection = createWorkbenchWorkspaceSelectionService({
   workspaceTarget: target,
@@ -54,8 +82,8 @@ const selection = createWorkbenchWorkspaceSelectionService({
   restoreManifest: () => undefined,
   refreshManifest: async () => {},
   refreshTransport: noop,
-  // Session/manifest loading and Watch transport are controlled boundaries. Selection,
-  // view caches, Inspector lifecycle, Git service and confirmation UI are real.
+  // Session/manifest loading and Watch transport are controlled boundaries.
+  // Selection, view caches, Git service and confirmation UI are real.
   request: async <T>() => ({ workspaces }) as T,
   notice: noop,
   errorMessage: String,
@@ -63,18 +91,19 @@ const selection = createWorkbenchWorkspaceSelectionService({
   startWatch: async () => {},
   saveCurrent: () => {
     const current = target.value;
-    if (current && cache.isActive(current.nodeId, current.workspaceId) && inspector.value) {
-      const view = cache.view(current.nodeId, current.workspaceId);
-      cache.captureActive({ ...view, inspector: inspector.value.snapshot() }, 2);
-    }
+    if (current && cache.isActive(current.nodeId, current.workspaceId))
+      cache.captureActive(
+        { ...cache.view(current.nodeId, current.workspaceId), git: git.snapshot() },
+        2
+      );
   },
   activateCache: cache.activate,
-  restoreInspector: (nodeId, workspaceId) => {
-    const snapshot = cache.view(nodeId, workspaceId).inspector;
-    if (snapshot !== undefined) inspector.value?.restoreWorkspace(nodeId, workspaceId, snapshot);
+  restoreWorkspaceView: (nodeId, workspaceId) => {
+    const snapshot = cache.view(nodeId, workspaceId).git;
+    if (snapshot !== undefined) git.restore(snapshot);
   },
-  refreshInspector: (nodeId, workspaceId) => {
-    void nextTick(() => inspector.value?.refreshVisibleSection(nodeId, workspaceId));
+  refreshVisibleTool: () => {
+    void git.loadChanges();
   },
   initializePaging: noop,
   tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
@@ -132,29 +161,30 @@ createTooltipApp({
       h('button', { onClick: () => publish(0, 99) }, 'Old A Watch'),
       h('button', { onClick: () => publish(1, 0) }, 'Low B Watch'),
       h('output', { 'data-testid': 'status' }, status.value),
-      h(Inspector, {
-        ref: inspector,
-        nodeId: target.value?.nodeId,
-        workspaceId: target.value?.workspaceId,
-        workspaceName:
-          target.value?.nodeId === targets[0]!.nodeId &&
-          target.value?.workspaceId === targets[0]!.workspaceId
-            ? 'A'
-            : 'B',
-        workspaceKind: 'GIT_WORKSPACE',
-        csrfToken: 'fixture-csrf',
-        renewCsrfToken: async () => 'fixture-csrf',
-        enabled: true,
-        mobileViewport: false,
-        contentSearchEnabled: false,
-        codeNavigationEnabled: false,
-        codeNavigationPrewarmEnabled: false,
-        filesWatchStatus: 'idle',
-        changesWatchStatus: 'ready',
-        historyCapability: true,
-        fileWriteEnabled: false,
-        subscriptionSnapshot: subscription.value
-      })
+      h(
+        'div',
+        { role: 'tablist' },
+        (['files', 'changes', 'history'] as const).map((tool) =>
+          h(
+            'button',
+            {
+              role: 'tab',
+              'aria-selected': activeTool.value === tool,
+              onClick: () => {
+                if (activeTool.value === 'history' && tool !== 'history')
+                  git.cancelHistoryPending();
+                activeTool.value = tool;
+                if (tool === 'changes') void git.loadChanges(true);
+                if (tool === 'history') void git.openHistory();
+              }
+            },
+            tool === 'changes' ? 'Git Changes' : tool === 'history' ? 'Git History' : 'Files'
+          )
+        )
+      ),
+      activeTool.value === 'changes' &&
+        h(WorkspaceGitChanges, { service: git, target: target.value }),
+      activeTool.value === 'history' && h(WorkspaceGitHistory, { service: git })
     ])
 })
   .use(i18n)

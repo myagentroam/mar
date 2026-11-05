@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { computed, shallowReactive, ref } from 'vue';
+import { computed, createSSRApp, h, nextTick, shallowReactive, ref } from 'vue';
+import { renderToString } from 'vue/server-renderer';
+import ElementPlus from 'element-plus';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
 import SessionPane from '../../src/view/workbench/WorkspaceSessionPane.vue?unit-render';
 import {
@@ -8,19 +10,29 @@ import {
   textContent,
   trigger
 } from './support/component-renderer.js';
-import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
+import {
+  i18n,
+  localePreferenceService,
+  translate
+} from '../../src/service/locale-preference-service.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
+import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
+import { createWorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
+import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
 
-beforeAll(() =>
+beforeAll(() => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
       observe() {}
       disconnect() {}
     }
-  )
-);
+  );
+  vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
+  vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '28px' }));
+});
 afterAll(() => vi.unstubAllGlobals());
 
 vi.mock('../../src/service/mobile-surface-focus-service.js', () => ({
@@ -103,7 +115,10 @@ vi.mock('../../src/view/terminal/TerminalDock.vue?unit-render', async () => {
 vi.mock('../../src/view/workspace/WorkspaceSessionList.vue?unit-render', () => ({
   default: { render: () => null }
 }));
-vi.mock('../../src/view/workspace/WorkspaceInspector.vue?unit-render', () => ({
+vi.mock('../../src/view/workspace/FileTypeIcon.vue?unit-render', () => ({
+  default: { render: () => null }
+}));
+vi.mock('../../src/view/workspace/WorkspaceFileWorkbench.vue?unit-render', () => ({
   default: { render: () => null }
 }));
 vi.mock('../../src/view/conversation/ConversationHeader.vue?unit-render', () => ({
@@ -170,7 +185,7 @@ function pageFixture() {
     refreshAdmin: vi.fn(),
     workspaceHost: { connected: false },
     workspaceTarget: { nodeId: 'node', workspaceId: 'one' },
-    selectedWorkspace: undefined,
+    selectedWorkspace: undefined as { kind: string } | undefined,
     workspaceTabs: tabs,
     activeWorkspaceTabId: 'one',
     nodeLabel: () => 'Node',
@@ -192,7 +207,534 @@ function pageFixture() {
   });
 }
 
+function installMainPane(
+  page: Pick<ReturnType<typeof pageFixture>, 'mainPane' | 'workspaceTarget'>
+): void {
+  Object.assign(page, {
+    mainPaneController: {
+      state: {
+        ...page.mainPane,
+        workspaceTarget: ref(page.workspaceTarget),
+        skillTokens: { remove: vi.fn() }
+      },
+      presentation: { composerSessionOpen: ref(false) },
+      configuration: {},
+      runner: {},
+      references: {},
+      interactions: { registerShortcuts: () => () => undefined },
+      currentSessionQueue: { items: [], paused: false },
+      submitting: ref(false),
+      canInterrupt: ref(false),
+      performance: { current: ref(undefined) },
+      conversationWindow: { paging: { olderHistoryError: ref(undefined) } },
+      selectedSessionId: ref(undefined),
+      draftOpen: ref(false),
+      nodeManifest: ref(undefined),
+      status: { manifestLoading: ref(false) },
+      conversationSyncPending: ref(false),
+      loading: ref(false),
+      mobileViewport: ref(false),
+      completion: ref(undefined),
+      attachmentInput: {}
+    }
+  });
+}
+
 describe('Workbench surface composition behavior', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'shows the correct unavailable Files reason without requests in %s',
+    async (locale) => {
+      const preference = localePreferenceService();
+      const previousLocale = preference.locale.value;
+      preference.setLocale(locale);
+      const list = vi.fn();
+      const page = Object.assign(pageFixture(), {
+        workspaceHost: { connected: false },
+        selectedWorkspace: { kind: 'DIRECTORY' },
+        filesReady: false,
+        contentSearchReady: false,
+        asideState: { tools: ['files'], sessions: [], active: { kind: 'tool', id: 'files' } },
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        nodeManifest: undefined as object | undefined,
+        nodeManifestLoading: false,
+        selectedWorkspaceBranch: undefined,
+        workPromptCompletion: { enabled: false },
+        workspaceFileWorkbench: {},
+        workspaceWatchTopicStatus: {},
+        setWorkspaceFilesPanel: vi.fn(),
+        workspaceFiles: createWorkspaceFilesController({
+          target: () => undefined,
+          workspaceName: () => 'workspace',
+          list,
+          mutate: vi.fn(),
+          revealLocal: vi.fn(),
+          preflight: vi.fn(),
+          queue: vi.fn(),
+          onFailure: vi.fn(),
+          onListFailure: vi.fn(),
+          onWorkspace: vi.fn(),
+          onMutationFailure: vi.fn(),
+          onDeletedSelection: vi.fn(),
+          onRevealSelection: vi.fn()
+        })
+      });
+      installMainPane(page);
+      const savedWindow = globalThis.window;
+      vi.stubGlobal('window', undefined);
+      try {
+        async function renderUnavailable() {
+          const app = createSSRApp({ render: () => h(Surface, { page } as never) });
+          app.use(i18n);
+          app.use(ElementPlus);
+          app.directive('tooltip', {});
+          return renderToString(app);
+        }
+        const offline = await renderUnavailable();
+        expect(offline).toContain(
+          translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+        );
+        expect(offline).not.toContain('role="tree"');
+        page.workspaceHost = { connected: true };
+        page.nodeManifestLoading = true;
+        const loading = await renderUnavailable();
+        expect(loading).toContain(translate('generated.workspaceInspector.loading'));
+        expect(loading).not.toContain('role="tree"');
+        page.nodeManifestLoading = false;
+        page.nodeManifest = {};
+        const unsupported = await renderUnavailable();
+        expect(unsupported).toContain(
+          translate('generated.workspaceInspector.capabilityUnavailable')
+        );
+        page.workspaceHost = { connected: false };
+        page.nodeManifest = undefined;
+        expect(list).not.toHaveBeenCalled();
+      } finally {
+        vi.stubGlobal('window', savedWindow);
+      }
+      const view = renderComponent(Surface, { page });
+      try {
+        expect(textContent(view.root)).toContain(
+          translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+        );
+        page.workspaceHost = { connected: true };
+        page.nodeManifestLoading = true;
+        await nextTick();
+        expect(textContent(view.root)).toContain(translate('generated.workspaceInspector.loading'));
+        page.nodeManifestLoading = false;
+        page.nodeManifest = {};
+        await nextTick();
+        expect(textContent(view.root)).toContain(
+          translate('generated.workspaceInspector.capabilityUnavailable')
+        );
+        expect(view.findAll('tree')).toHaveLength(0);
+        expect(list).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        preference.setLocale(previousLocale);
+      }
+    }
+  );
+  it('applies Changes Watch data without rereading and refreshes Run invalidations', async () => {
+    const page = Object.assign(pageFixture(), {
+      workspaceHost: { connected: true },
+      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+      filesReady: true,
+      historyReady: true,
+      asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } },
+      workspaceKindLabel: () => '',
+      workspaceBranchLabel: () => '',
+      nodeManifest: {},
+      nodeManifestLoading: false,
+      selectedWorkspaceBranch: undefined,
+      workPromptCompletion: { enabled: false },
+      workspaceFileWorkbench: {},
+      workspaceWatchTopicStatus: {},
+      workspaceChangesRevision: 0,
+      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+    });
+    installMainPane(page);
+    let reads = 0;
+    const http = {
+      request: vi.fn(async (url: string) => {
+        if (url.includes('/git/fetch')) return { fetchFailed: false, updated: false };
+        reads += 1;
+        return { branch: 'main', changes: [] };
+      })
+    } as unknown as ScopedHttpService;
+    const onBranch = vi.fn(() => {
+      if (reads < 5) page.selectedWorkspace = { ...page.selectedWorkspace! };
+    });
+    page.workspaceGit = createWorkspaceGitService({
+      http,
+      target: () => page.workspaceTarget,
+      gitEnabled: () => true,
+      historyEnabled: () => true,
+      onWorkspace: vi.fn(),
+      onBranch,
+      onFailure: vi.fn()
+    });
+    const view = renderComponent(Surface, { page });
+    try {
+      await vi.waitFor(() => expect(reads).toBeGreaterThan(0));
+      await flushComponent();
+      expect(reads).toBe(1);
+      expect(onBranch).toHaveBeenCalledOnce();
+      expect(page.workspaceGit.changesRefreshing.value).toBe(false);
+      page.workspaceGit.applyWatch({ branch: 'watch/main', changes: [] }, 1);
+      await flushComponent();
+      expect(reads).toBe(1);
+      expect(page.workspaceGit.changes.value).toEqual({ branch: 'watch/main', changes: [] });
+      page.workspaceChangesRevision = 1;
+      await flushComponent();
+      expect(reads).toBe(2);
+    } finally {
+      view.unmount();
+      page.workspaceGit.reset();
+    }
+  });
+  it('releases a pending Changes batch timer when switching Workspace without resetting the Git owner', async () => {
+    vi.useFakeTimers();
+    const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+    const setTimer = vi.spyOn(globalThis, 'setTimeout');
+    let intersection: IntersectionObserverCallback | undefined;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          intersection = callback;
+        }
+        observe = vi.fn();
+        disconnect = disconnect;
+      }
+    );
+    const page = Object.assign(pageFixture(), {
+      workspaceHost: { connected: true },
+      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+      filesReady: true,
+      historyReady: true,
+      asideState: { tools: ['changes'], sessions: [], active: { kind: 'tool', id: 'changes' } },
+      workspaceKindLabel: () => '',
+      workspaceBranchLabel: () => '',
+      nodeManifest: {},
+      nodeManifestLoading: false,
+      selectedWorkspaceBranch: undefined,
+      workPromptCompletion: { enabled: false },
+      workspaceFileWorkbench: {},
+      workspaceWatchTopicStatus: {},
+      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+    });
+    installMainPane(page);
+    const http = { request: () => new Promise(() => {}) } as ScopedHttpService;
+    page.workspaceGit = createWorkspaceGitService({
+      http,
+      target: () => page.workspaceTarget,
+      gitEnabled: () => true,
+      historyEnabled: () => true,
+      onWorkspace: vi.fn(),
+      onBranch: vi.fn(),
+      onFailure: vi.fn()
+    });
+    page.workspaceGit.applyWatch(
+      {
+        repositories: [
+          {
+            repositoryPath: '',
+            source: 'ROOT',
+            repositoryName: 'root',
+            changes: Array.from({ length: 201 }, (_, i) => ({
+              path: `f${i}.ts`,
+              state: 'UNSTAGED',
+              change: 'MODIFIED',
+              diffAvailable: true
+            }))
+          }
+        ]
+      },
+      1
+    );
+    const reset = vi.spyOn(page.workspaceGit, 'reset');
+    const view = renderComponent(Surface, { page });
+    const rows = () => view.findAll('li').filter((node) => node.props.class === 'change-entry');
+    try {
+      await nextTick();
+      expect(rows()).toHaveLength(200);
+      expect(intersection).toBeDefined();
+      intersection!(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      );
+      const timerIndex = setTimer.mock.calls.findIndex((call) => call[1] === 100);
+      expect(timerIndex).toBeGreaterThanOrEqual(0);
+      const batchTimer = setTimer.mock.results[timerIndex]!.value;
+      await nextTick();
+      page.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(rows()).toHaveLength(0);
+      expect(disconnect).toHaveBeenCalled();
+      expect(clearTimer).toHaveBeenCalledWith(batchTimer);
+      expect(page.workspaceGit.changesRefreshing.value).toBe(true);
+      expect(reset).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      page.workspaceGit.reset();
+      clearTimer.mockRestore();
+      setTimer.mockRestore();
+      vi.useRealTimers();
+      vi.stubGlobal('IntersectionObserver', undefined);
+    }
+  });
+  it('releases the old History menu and listeners on a same-tool Workspace switch without resetting Git', async () => {
+    const page = Object.assign(pageFixture(), {
+      workspaceHost: { connected: true },
+      selectedWorkspace: { kind: 'GIT_WORKSPACE' },
+      filesReady: true,
+      historyReady: true,
+      asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } },
+      workspaceKindLabel: () => '',
+      workspaceBranchLabel: () => '',
+      nodeManifest: {},
+      nodeManifestLoading: false,
+      selectedWorkspaceBranch: undefined,
+      workPromptCompletion: { enabled: false },
+      workspaceFileWorkbench: {},
+      workspaceWatchTopicStatus: {},
+      workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+    });
+    installMainPane(page);
+    const http = { request: () => new Promise(() => {}) } as ScopedHttpService;
+    page.workspaceGit = createWorkspaceGitService({
+      http,
+      target: () => page.workspaceTarget,
+      gitEnabled: () => true,
+      historyEnabled: () => true,
+      onWorkspace: vi.fn(),
+      onBranch: vi.fn(),
+      onFailure: vi.fn()
+    });
+    page.workspaceGit.restore({
+      changes: { repositories: [] },
+      historyCommits: [
+        {
+          hash: 'a'.repeat(40),
+          parents: [],
+          subject: 'A',
+          authorName: 'A',
+          authorEmail: 'a@example.test',
+          committedAt: 1,
+          refs: []
+        }
+      ]
+    });
+    const reset = vi.spyOn(page.workspaceGit, 'reset');
+    const removeListener = vi.spyOn(window, 'removeEventListener');
+    const view = renderComponent(Surface, { page });
+    try {
+      await nextTick();
+      const row = view
+        .findAll('button')
+        .find((node) => String(node.props.class).includes('history-commit-row'))!;
+      (
+        row.props.onContextmenu as (event: {
+          preventDefault(): void;
+          clientX: number;
+          clientY: number;
+        }) => void
+      )({ preventDefault() {}, clientX: 40, clientY: 50 });
+      await nextTick();
+      expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
+        true
+      );
+      page.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
+      await nextTick();
+      expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
+        false
+      );
+      expect(removeListener).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+      expect(reset).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      removeListener.mockRestore();
+      page.workspaceGit.reset();
+    }
+  });
+  it.each([
+    ['search', 'aside', 'success'],
+    ['search', 'aside', 'failure'],
+    ['search', 'capability', 'success'],
+    ['search', 'capability', 'failure'],
+    ['search', 'enabled', 'success'],
+    ['search', 'enabled', 'failure'],
+    ['files', 'aside', 'success'],
+    ['files', 'aside', 'failure'],
+    ['files', 'enabled', 'success'],
+    ['files', 'enabled', 'failure']
+  ] as const)(
+    'invalidates pending %s through the real Surface when %s changes before late %s',
+    async (tool, cause, outcome) => {
+      let resolve!: (value: never) => void;
+      let reject!: (error: unknown) => void;
+      const response = new Promise<never>((accept, fail) => {
+        resolve = accept;
+        reject = fail;
+      });
+      const failure = vi.fn();
+      const page = shallowReactive({
+        ...pageFixture(),
+        workspaceHost: { connected: true },
+        filesReady: true,
+        contentSearchReady: true,
+        selectedWorkspace: { id: 'one', kind: 'DIRECTORY' },
+        workspaceWatchTopicStatus: { files: 'ready' },
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        workspaceTabLabel: () => 'Workspace',
+        workPromptCompletion: { enabled: false },
+        asideState: { tools: [tool], sessions: [], active: { kind: 'tool', id: tool as string } },
+        setWorkspaceFilesPanel: vi.fn(),
+        setWorkspaceSearchPanel: vi.fn(),
+        reportWorkspaceFileFailure: failure,
+        workspaceSearch: undefined as unknown as ReturnType<
+          typeof createWorkspaceContentSearchService
+        >,
+        workspaceFiles: undefined as unknown as ReturnType<typeof createWorkspaceFilesController>
+      });
+      installMainPane(page);
+      page.workspaceSearch = createWorkspaceContentSearchService({
+        http: { request: () => response } as ScopedHttpService,
+        onFailure: failure
+      });
+      page.workspaceFiles = createWorkspaceFilesController({
+        target: () => (page.filesReady ? page.workspaceTarget : undefined),
+        preflight: () => response,
+        queue: vi.fn(),
+        onFailure: failure,
+        workspaceName: () => 'Workspace',
+        list: async () => ({
+          workspace: { id: 'one', kind: 'DIRECTORY', path: '/workspace' },
+          entries: [],
+          nextCursor: null
+        }),
+        onListFailure: failure,
+        onWorkspace: vi.fn(),
+        mutate: async () => undefined,
+        revealLocal: async () => {},
+        onDeletedSelection: vi.fn(),
+        onRevealSelection: vi.fn(async () => {}),
+        onMutationFailure: vi.fn()
+      });
+      const view = renderComponent(Surface, { page });
+      try {
+        await flushComponent();
+        const pending =
+          tool === 'search'
+            ? page.workspaceSearch.search({
+                ...page.workspaceTarget,
+                query: 'old',
+                useRegex: false
+              })
+            : page.workspaceFiles.preflight([{ name: 'old.txt' } as File], '.');
+        expect(
+          tool === 'search'
+            ? page.workspaceSearch.loading.value
+            : page.workspaceFiles.preparing.value
+        ).toBe(true);
+        if (cause === 'aside')
+          page.asideState = { ...page.asideState, active: { kind: 'tool', id: 'terminal' } };
+        else if (cause === 'enabled') page.filesReady = false;
+        else page.contentSearchReady = false;
+        await nextTick();
+        expect(
+          tool === 'search'
+            ? page.workspaceSearch.loading.value
+            : page.workspaceFiles.preparing.value
+        ).toBe(false);
+        if (outcome === 'failure') reject(new Error('late failure'));
+        else
+          resolve(
+            (tool === 'search'
+              ? {
+                  search: {
+                    matches: [{ path: 'old.txt', line: 1, column: 1, preview: 'old' }],
+                    truncated: false
+                  }
+                }
+              : [{ status: 'READY', path: 'old.txt' }]) as never
+          );
+        await pending;
+        expect(page.workspaceSearch.matches.value).toEqual([]);
+        expect(page.workspaceSearch.error.value).toBeUndefined();
+        expect(failure).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+  it.each(['hidden', 'capability'] as const)(
+    'invalidates the initial History bootstrap when %s while Changes is pending',
+    async (reason) => {
+      let finish!: (value: unknown) => void;
+      const pending = new Promise<unknown>((resolve) => {
+        finish = resolve;
+      });
+      const requests: string[] = [];
+      const request = vi.fn((path: string) => {
+        requests.push(path);
+        return pending;
+      });
+      const failure = vi.fn();
+      const page = shallowReactive({
+        ...pageFixture(),
+        workspaceHost: { connected: true },
+        filesReady: true,
+        selectedWorkspace: { kind: 'GIT_WORKSPACE' } as { kind: string } | undefined,
+        nodeManifest: { git: { supportsHistory: true } } as { git: { supportsHistory: boolean } },
+        workspaceWatchTopicStatus: {},
+        workspaceKindLabel: () => '',
+        workspaceBranchLabel: () => '',
+        workspaceTabLabel: () => 'Workspace',
+        workPromptCompletion: { enabled: false },
+        asideState: { tools: ['history'], sessions: [], active: { kind: 'tool', id: 'history' } },
+        workspaceGit: undefined as unknown as ReturnType<typeof createWorkspaceGitService>
+      });
+      installMainPane(page);
+      page.workspaceGit = createWorkspaceGitService({
+        http: { request } as ScopedHttpService,
+        target: () => page.workspaceTarget,
+        gitEnabled: () => page.selectedWorkspace?.kind === 'GIT_WORKSPACE',
+        historyEnabled: () => page.nodeManifest.git.supportsHistory,
+        onFailure: failure,
+        onWorkspace: vi.fn(),
+        onBranch: vi.fn()
+      });
+      const view = renderComponent(Surface, { page });
+      try {
+        await flushComponent();
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toContain('/workspaces/one/changes');
+        if (reason === 'hidden')
+          page.asideState = { ...page.asideState, active: { kind: 'tool', id: 'terminal' } };
+        else page.nodeManifest = { git: { supportsHistory: false } };
+        finish({
+          changes: {
+            workspace: { id: 'one', kind: 'GIT_WORKSPACE' },
+            changes: [],
+            repositories: []
+          }
+        });
+        await flushComponent();
+        expect(requests).toHaveLength(1);
+        expect(page.workspaceGit.historyLoading.value).toBe(false);
+        expect(page.workspaceGit.historyError.value).toBeUndefined();
+        expect(failure).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        page.workspaceGit.reset();
+      }
+    }
+  );
   it.each(['zh-CN', 'en-US'] as const)(
     'renders Workspace recovery without an empty illustration and retries in %s',
     async (locale) => {

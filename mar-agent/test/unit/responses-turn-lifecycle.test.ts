@@ -49,8 +49,8 @@ const completed = (id: string) => [
 ];
 const tick = () => new Promise<'waiting'>((resolve) => setTimeout(() => resolve('waiting'), 30));
 async function collect(events: AsyncIterable<ModelEvent>) {
-  for await (const _ of events) {
-    /* consume */
+  for await (const event of events) {
+    expect(event).toBeDefined();
   }
 }
 
@@ -59,12 +59,15 @@ describe('Responses Turn lifecycle', () => {
     const adapter = new OpenAiResponsesAdapter(config());
     const failure = new Error('cleanup failed');
     const release = Promise.withResolvers<void>();
+    const failCleanup = async () => {
+      await release.promise;
+      throw failure;
+    };
     vi.spyOn(adapter, 'startTurn').mockImplementation(async function* () {
       try {
         yield { type: 'response.started', responseId: 'response' };
       } finally {
-        await release.promise;
-        throw failure;
+        await failCleanup();
       }
     });
     const turn = adapter.createTurnSession();
@@ -91,21 +94,20 @@ describe('Responses Turn lifecycle', () => {
     const controller = new AbortController();
     const diagnosticError = new Error('diagnostic failed');
     const states: string[] = [];
-    const iterator = turn
-      .start(
-        {
-          ...request,
-          onAttemptDiagnostic: async (diagnostic) => {
-            states.push(diagnostic.state);
-            if (diagnostic.state === 'STARTED') {
-              controller.abort();
-              throw diagnosticError;
-            }
+    const stream = turn.start(
+      {
+        ...request,
+        onAttemptDiagnostic: async (diagnostic) => {
+          states.push(diagnostic.state);
+          if (diagnostic.state === 'STARTED') {
+            controller.abort();
+            throw diagnosticError;
           }
-        },
-        controller.signal
-      )
-      [Symbol.asyncIterator]();
+        }
+      },
+      controller.signal
+    );
+    const iterator = stream[Symbol.asyncIterator]();
     try {
       const outcome = await iterator.next().then(
         () => ({ error: undefined }),
@@ -146,6 +148,7 @@ describe('Responses Turn lifecycle', () => {
             { once: true }
           );
         });
+        yield* [];
       } finally {
         await release.promise;
         finalized = true;

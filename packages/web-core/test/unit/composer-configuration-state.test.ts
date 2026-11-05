@@ -96,14 +96,16 @@ describe('Web Composer Configuration State', () => {
 
     expect(state.runner.value).toBe('mar-agent');
     expect(state.runnerLabel.value).toBe('MAR Agent');
-    if (false) {
+    // Keep these ownership checks type-only; executing them would mutate the fixture.
+    const assertReadonly = () => {
       // @ts-expect-error Configuration values are writable only through their owner.
       state.runner.value = 'codex';
       // @ts-expect-error Model selection is installed through its owner command.
       state.modelId.value = 'other';
       // @ts-expect-error The owner controls the transient selection.
       state.modelEffortSelection.value = undefined;
-    }
+    };
+    expect(assertReadonly).toBeTypeOf('function');
   });
 
   it('Falls back to the model default reasoning effort when the runner configuration is incompatible', () => {

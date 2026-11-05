@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import {
   createRenderer,
   createSSRApp,
-  defineComponent,
   h,
   nextTick,
   shallowRef,

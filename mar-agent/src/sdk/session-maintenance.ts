@@ -89,10 +89,14 @@ export class SessionMaintenanceCoordinator {
         failed = true;
         throw error;
       } finally {
-        try {
+        if (failed) {
+          try {
+            await maintenance.release();
+          } catch {
+            // Preserve the failure from clearing the Session.
+          }
+        } else {
           await maintenance.release();
-        } catch (error) {
-          if (!failed) throw error;
         }
       }
     });
@@ -181,9 +185,15 @@ export class SessionMaintenanceCoordinator {
           throw error;
         } finally {
           try {
-            await maintenance.release();
-          } catch (error) {
-            if (!failed) throw error;
+            if (failed) {
+              try {
+                await maintenance.release();
+              } catch {
+                // Preserve the failure from deleting the Sessions.
+              }
+            } else {
+              await maintenance.release();
+            }
           } finally {
             for (const sessionId of ids) {
               const count = this.#treeAdmissions.get(sessionId)!;

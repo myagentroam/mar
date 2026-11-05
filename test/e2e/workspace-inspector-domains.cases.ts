@@ -10,10 +10,9 @@ async function openInspector(page: Page, mobile: boolean): Promise<void> {
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  if (mobile) await work.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   if (mobile) await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
-  await expect(page.locator('.workspace-inspector')).toBeVisible();
+  await expect(page.locator('.workbench-aside')).toBeVisible();
 }
 
 for (const mobile of [false, true]) {
@@ -149,13 +148,28 @@ for (const mobile of [false, true]) {
       await editor.press('Control+s');
       await failedRefresh;
       await expect.poll(() => writes.length).toBe(3);
-      await expect(page.getByText(/FILES_REFRESH_FAILED/)).toBeVisible();
       await expect(save).toBeDisabled();
       await expect(editor).toHaveText('new edits made during save');
       expect(writes[2]!.expectedRevision).toBe('b'.repeat(64));
       await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
       await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
       await expect(page.locator('.el-message-box')).toHaveCount(0);
+      const refreshFailure = page
+        .locator('.workbench-aside')
+        .getByRole('button', { name: '加载失败，点击重试', exact: true });
+      await expect(refreshFailure).toBeVisible();
+      await expect(refreshFailure).toHaveAttribute('aria-description', /FILES_REFRESH_FAILED/);
+      await expect(refreshFailure).toHaveAttribute('aria-description', /refresh-request/);
+      failRefresh = false;
+      const recoveredRefresh = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/workspaces/workspace-1/files' &&
+          response.status() === 200
+      );
+      await refreshFailure.click();
+      await recoveredRefresh;
+      await expect(refreshFailure).toHaveCount(0);
+      expect(writes).toHaveLength(3);
     });
 
     test('keeps the Git history menu in the viewport and releases it on section changes', async ({

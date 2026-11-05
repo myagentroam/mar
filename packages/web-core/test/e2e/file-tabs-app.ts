@@ -3,14 +3,21 @@ import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
-import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
+import WorkspaceFileWorkbench from '../../src/view/workspace/WorkspaceFileWorkbench.vue';
+import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
+import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import { adjacentChange, changeDiffIntent } from '../../src/util/workspace-git.js';
+import type { ChangeEntry } from '../../src/model/workspace-git.js';
+import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
+import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
+import type {
+  WorkspaceFilePagePort,
+  WorkspaceFileWorkbenchSnapshot
+} from '../../src/model/workspace-file-workbench.js';
 import TextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import WorkspaceHtmlBrowser from '../../src/view/workspace/WorkspaceHtmlBrowser.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
-import type {
-  WorkspaceFileOpenIntent,
-  WorkspaceFileTab
-} from '../../src/util/workspace-file-tab.js';
+import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
@@ -64,16 +71,68 @@ function createTabs(): WorkspaceFileTab[] {
 const tabs = ref<WorkspaceFileTab[]>(createTabs());
 const active = ref(1);
 const loading = ref(true);
-const inspector = ref<{
-  openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void>;
-  openWorkspaceFile(path: string): Promise<void>;
-  openFile(path: string): Promise<void>;
-  snapshot(): unknown;
-  restore(value: unknown): void;
-}>();
+let filePage: WorkspaceFilePagePort | undefined;
+const http = createScopedHttpService({
+  csrfToken: () => 'fixture-csrf',
+  renewCsrfToken: async () => 'fixture-csrf'
+});
+const workspaceTarget = { nodeId: 'node', workspaceId: 'workspace' };
+const git = createWorkspaceGitService({
+  http,
+  target: () => workspaceTarget,
+  gitEnabled: () => true,
+  historyEnabled: () => false,
+  onFailure: () => {},
+  onWorkspace: () => {},
+  onBranch: () => {}
+});
+const changesOpen = ref(false);
+const fileWorkbench = createWorkspaceFileWorkbenchController({
+  externalTarget: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
+  fileWriteEnabled: () => false,
+  onPopupBlocked: () => {},
+  target: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
+  prewarmEnabled: () => false,
+  resolveRepositoryPath: () => undefined,
+  reveal: async () => {},
+  onOpenFailure: () => {},
+  onRevealFailure: () => {},
+  comparison: async () => undefined,
+  page: () => filePage,
+  preview: { http, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+  navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
+});
+function fileView(standaloneFileMode = false) {
+  return h(WorkspaceFileWorkbench, {
+    controller: fileWorkbench,
+    registerPage: (page: WorkspaceFilePagePort | undefined) => {
+      filePage = page;
+      if (page) fileWorkbench.pageReady();
+    },
+    adjacentDiff: (tab: WorkspaceFileTab, direction: -1 | 1) => {
+      const entries = git.visibleChanges.value.filter((entry) => entry.diffAvailable);
+      const entry = adjacentChange(entries, tab, direction);
+      return entry === undefined
+        ? undefined
+        : changeDiffIntent(entry, entries, workspaceTarget, undefined, '/workspace');
+    },
+    loadDiff: git.loadDiff,
+    openExternal: () => {},
+    nodeId: 'node',
+    workspaceId: 'workspace',
+    enabled: true,
+    mobileViewport: window.innerWidth < 768,
+    codeNavigationEnabled: false,
+    fileWriteEnabled: true,
+    standaloneFileMode,
+    onOpenHtmlPreview: (path: string) => {
+      htmlPath.value = path;
+    }
+  });
+}
 const htmlPath = ref<string>();
 const showInspector = ref(true);
-let savedInspectorSnapshot: unknown;
+let savedInspectorSnapshot: WorkspaceFileWorkbenchSnapshot | undefined;
 const completedOpens = ref(0);
 const formatOpens = ref(0);
 createTooltipApp({
@@ -82,7 +141,7 @@ createTooltipApp({
       return h('div', [
         h(
           'button',
-          { id: 'open-html-source', onClick: () => void inspector.value?.openFile('index.html') },
+          { id: 'open-html-source', onClick: () => void fileWorkbench.openFile('index.html') },
           'Open HTML source'
         ),
         h(
@@ -90,7 +149,7 @@ createTooltipApp({
           {
             id: 'snapshot-html-source',
             onClick: () => {
-              savedInspectorSnapshot = inspector.value?.snapshot();
+              savedInspectorSnapshot = fileWorkbench.snapshot();
             }
           },
           'Snapshot source'
@@ -99,7 +158,7 @@ createTooltipApp({
           'button',
           {
             id: 'restore-html-source',
-            onClick: () => inspector.value?.restore(savedInspectorSnapshot)
+            onClick: () => savedInspectorSnapshot && fileWorkbench.restore(savedInspectorSnapshot)
           },
           'Restore source snapshot'
         ),
@@ -112,7 +171,7 @@ createTooltipApp({
               await nextTick();
               showInspector.value = true;
               await nextTick();
-              inspector.value?.restore(savedInspectorSnapshot);
+              if (savedInspectorSnapshot) fileWorkbench.restore(savedInspectorSnapshot);
             }
           },
           'Remount source snapshot'
@@ -121,37 +180,11 @@ createTooltipApp({
           'button',
           {
             id: 'resume-html-source',
-            onClick: () => void inspector.value?.openWorkspaceFile('index.html')
+            onClick: () => void fileWorkbench.openWorkspaceFile('index.html')
           },
           'Resume source directly'
         ),
-        showInspector.value &&
-          h(Inspector, {
-            ref: inspector,
-            nodeId: 'node',
-            workspaceId: 'workspace',
-            workspaceName: 'project',
-            workspaceKind: 'GIT_WORKSPACE',
-            csrfToken: 'fixture-csrf',
-            renewCsrfToken: async () => 'fixture-csrf',
-            enabled: true,
-            mobileViewport: window.innerWidth < 768,
-            contentSearchEnabled: false,
-            codeNavigationEnabled: false,
-            codeNavigationPrewarmEnabled: false,
-            filesWatchStatus: 'ready',
-            changesWatchStatus: 'ready',
-            historyCapability: false,
-            fileWriteEnabled: true,
-            subscriptionSnapshot: {
-              nodeId: 'node',
-              workspaceId: 'workspace',
-              files: { files: { entries: [], nextCursor: null, truncated: false } }
-            },
-            onOpenHtmlPreview: (path: string) => {
-              htmlPath.value = path;
-            }
-          }),
+        showInspector.value && fileView(),
         htmlPath.value &&
           h(WorkspaceHtmlBrowser, {
             nodeId: 'node',
@@ -159,7 +192,7 @@ createTooltipApp({
             path: htmlPath.value,
             csrfToken: 'fixture-csrf',
             renewCsrfToken: async () => 'fixture-csrf',
-            onSource: (path: string) => void inspector.value?.openFile(path)
+            onSource: (path: string) => void fileWorkbench.openFile(path)
           })
       ]);
     if (query.has('text-shortcuts'))
@@ -184,31 +217,35 @@ createTooltipApp({
         })
       ]);
     if (query.has('diff-navigation') || query.has('format-focus')) {
-      const view = h(Inspector, {
-        ref: inspector,
-        standaloneFileMode: query.has('format-focus'),
-        nodeId: 'node',
-        workspaceId: 'workspace',
-        workspaceName: 'project',
-        workspaceKind: 'GIT_WORKSPACE',
-        csrfToken: 'fixture-csrf',
-        renewCsrfToken: async () => 'fixture-csrf',
-        enabled: true,
-        mobileViewport: window.innerWidth < 768,
-        contentSearchEnabled: false,
-        codeNavigationEnabled: false,
-        codeNavigationPrewarmEnabled: false,
-        filesWatchStatus: 'ready',
-        changesWatchStatus: 'ready',
-        historyCapability: false,
-        fileWriteEnabled: false,
-        subscriptionSnapshot: {
-          nodeId: 'node',
-          workspaceId: 'workspace',
-          files: { files: { entries: [], nextCursor: null, truncated: false } }
-        }
-      });
-      if (!query.has('format-focus')) return view;
+      const view = fileView(query.has('format-focus'));
+      if (!query.has('format-focus'))
+        return h('div', [
+          h(
+            'button',
+            {
+              role: 'tab',
+              onClick: () => {
+                changesOpen.value = true;
+                void git.loadChanges(true);
+              }
+            },
+            'Git Changes'
+          ),
+          changesOpen.value &&
+            h(WorkspaceGitChanges, {
+              service: git,
+              target: workspaceTarget,
+              onOpen: (entry: ChangeEntry) => {
+                const entries = git.visibleChanges.value.filter(
+                  (candidate) => candidate.diffAvailable
+                );
+                void fileWorkbench.openTab(
+                  changeDiffIntent(entry, entries, workspaceTarget, undefined, '/workspace')
+                );
+              }
+            }),
+          view
+        ]);
       return h('div', [
         h(
           'button',
@@ -217,7 +254,7 @@ createTooltipApp({
             style: { position: 'fixed', top: '8px', right: '8px', zIndex: 3000 },
             'data-completed-opens': completedOpens.value,
             onClick: async () => {
-              await inspector.value?.openWorkspaceFileTab({
+              await fileWorkbench.openTab({
                 kind: query.get('format-focus') === 'history' ? 'HISTORY_TEXT' : 'WORKTREE_DIFF',
                 nodeId: 'node',
                 workspaceId: 'workspace',

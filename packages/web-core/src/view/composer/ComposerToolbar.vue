@@ -835,6 +835,10 @@ function selectFiles(event: Event): void {
 :global(
   .composer-model-effort-popper
     .el-select-dropdown__item.composer-model-effort-option-selected:not(.is-disabled)
+),
+:global(
+  .composer-model-effort-popper
+    .el-select-dropdown__item.composer-model-effort-option-selected.is-hovering:not(.is-disabled)
 ) {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);

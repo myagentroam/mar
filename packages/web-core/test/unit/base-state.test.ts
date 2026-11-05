@@ -105,7 +105,8 @@ describe('shared Workbench state composition', () => {
       attachments,
       onConversationOverflow: vi.fn()
     });
-    if (false) {
+    // Keep these ownership checks type-only; executing them would mutate the fixture.
+    const assertReadonly = () => {
       // @ts-expect-error Run collections can only be installed by their owner.
       main.run.runs.value = [];
       // @ts-expect-error Run arrays exposed to consumers are immutable.
@@ -116,7 +117,8 @@ describe('shared Workbench state composition', () => {
       main.conversation.turns.value.push(main.conversation.turns.value[0]!);
       // @ts-expect-error Cursor changes belong to the projection owner.
       main.conversation.nextCursor.value = null;
-    }
+    };
+    expect(assertReadonly).toBeTypeOf('function');
     main.draft.input.value = 'main draft';
     aside.draft.input.value = 'aside draft';
     expect(drafts.forTarget(mainTarget.value).input.value).toBe('main draft');
@@ -969,10 +971,10 @@ describe('shared Workbench state composition', () => {
         runner: 'codex' as const
       }));
       const send = vi.fn(async () => undefined);
-      let finishClose!: (value: {}) => void;
+      let finishClose!: (value: object) => void;
       const execute = vi.fn(
         () =>
-          new Promise<{}>((resolve) => {
+          new Promise<object>((resolve) => {
             finishClose = resolve;
           })
       );

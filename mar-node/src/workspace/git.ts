@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, open, readFile, realpath, stat, unlink } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { basename, isAbsolute, relative, resolve, sep, win32 } from 'node:path';
+import { lstat, readFile, realpath, stat, unlink } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { GitSummary, WorkspaceGitTracking, WorkspaceKind } from '@myagentroam/protocol';
 import { logNodeCommandFailure } from '../operational.js';

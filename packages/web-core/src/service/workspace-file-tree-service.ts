@@ -1,5 +1,6 @@
 import { ref, toRaw } from 'vue';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
+import { errorCode } from '../util/api-error.js';
 
 export interface WorkspaceFileTreeEntry {
   readonly path: string;
@@ -174,12 +175,15 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
     if (normalized === undefined || !needed()) return;
     root.value.expanded = true;
     const currentRoot = root.value;
-    if (
-      !currentRoot.loaded &&
-      (await load(currentRoot)) === undefined &&
-      (currentRoot !== root.value || !currentRoot.loaded)
-    )
-      return;
+    if (!currentRoot.loaded && (await load(currentRoot)) === undefined) {
+      if (
+        currentRoot === root.value &&
+        needed() &&
+        errorCode(currentRoot.failure) === 'PERMISSION_DENIED'
+      )
+        throw currentRoot.failure;
+      if (currentRoot !== root.value || !currentRoot.loaded) return;
+    }
     if (!needed()) return;
     const segments = normalized.split('/');
     let parent = root.value;
@@ -191,7 +195,15 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
       const directory = findChild(parent, current);
       if (directory === undefined) throw new Error('FILE_TREE_NODE_INVALID');
       directory.expanded = true;
-      if (!directory.loaded && (await load(directory)) === undefined) return;
+      if (!directory.loaded && (await load(directory)) === undefined) {
+        if (
+          currentRoot === root.value &&
+          needed() &&
+          errorCode(directory.failure) === 'PERMISSION_DENIED'
+        )
+          throw directory.failure;
+        return;
+      }
       if (!needed()) return;
       parent = directory;
     }

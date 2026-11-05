@@ -99,8 +99,17 @@ for (const language of [
         ]
       })
     );
-    await page.route(/\/api\/workspaces\/workspace-1\/git\/history(?:\?.*)?$/, (route) => {
+    let releaseNextPage!: () => void;
+    let nextPageRequested = false;
+    const nextPageGate = new Promise<void>((resolve) => {
+      releaseNextPage = resolve;
+    });
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/history(?:\?.*)?$/, async (route) => {
       const nextPage = new URL(route.request().url()).searchParams.get('cursor') === 'graph-page-2';
+      if (nextPage) {
+        nextPageRequested = true;
+        await nextPageGate;
+      }
       return json(route, {
         commits: nextPage ? commits.slice(2) : commits.slice(0, 2),
         nextCursor: nextPage ? null : 'graph-page-2'
@@ -197,7 +206,9 @@ for (const language of [
       return layout;
     };
     const prefix = await verify('first-page');
-    await page.getByRole('button', { name: language.more, exact: true }).click();
+    await page.locator('.history-boundary').scrollIntoViewIfNeeded();
+    await expect.poll(() => nextPageRequested).toBe(true);
+    releaseNextPage();
     await expect(page.locator('.history-commit')).toHaveCount(commits.length);
     const appended = await verify('appended');
     expect(appended.rows.slice(0, 2).map((row) => row.svg)).toEqual(
@@ -205,7 +216,7 @@ for (const language of [
     );
     await expect(page.locator('.history-ref')).toHaveCount(6);
 
-    const inspector = page.locator('.workspace-inspector');
+    const inspector = page.locator('.workspace-git-panel:visible');
     await inspector.evaluate((element) =>
       Object.assign((element as HTMLElement).style, {
         width: '260px',
@@ -233,7 +244,8 @@ for (const language of [
     });
     for (const width of [320, 390, 767, 768]) {
       await page.setViewportSize({ width, height: 844 });
-      if (width === 320) await page.getByRole('button', { name: /打开文件|Open files/ }).click();
+      if (width === 320)
+        await page.getByRole('button', { name: /打开辅助工作面|Open auxiliary workspace/ }).click();
       await page.getByRole('tab', { name: language.history, exact: true }).click();
       const toolbar = page.locator('.history-toolbar');
       await expect(toolbar).toBeVisible();
@@ -472,7 +484,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   const historyPopup = await historyPopupPromise;
   await expect(historyPopup).toHaveURL(/standaloneFile=1.*fileTabKind=HISTORY_DIFF.*commit=/);
   expect(new URL(historyPopup.url()).searchParams.getAll('refs')).toContain('refs/heads/main');
-  await expect(historyPopup.getByRole('dialog', { name: 'src/history.ts Git 差异' })).toBeVisible();
+  await expect(historyPopup.getByRole('region', { name: 'src/history.ts Git 差异' })).toBeVisible();
   await expect(historyPopup.getByText('+history-popup')).toBeVisible();
   await historyPopup.locator('.unified-history-diff').click({ button: 'right' });
   await expect(historyPopup.getByRole('menuitem', { name: '复制' })).toBeVisible();
@@ -484,7 +496,6 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(
     historyPopup.getByRole('tablist', { name: '文件预览标签' }).getByRole('tab')
   ).toHaveCount(2);
-  await historyPopup.getByRole('button', { name: '打开文件预览' }).click();
   const photo = historyPopup.getByRole('img', { name: 'src/photo.png' });
   await expect(photo).toBeVisible();
   await expect(photo).toHaveJSProperty('naturalWidth', 1);
@@ -493,7 +504,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   ).toContain('refs/heads/main');
   await historyPopup.reload();
   await expect(historyPopup).toHaveURL(/standaloneFile=1.*path=src%2Fphoto\.png/);
-  await expect(historyPopup.getByRole('dialog', { name: 'src/photo.png Git 差异' })).toBeVisible();
+  await expect(historyPopup.getByRole('img', { name: 'src/photo.png' })).toBeVisible();
   await historyPopup.close();
   const errorPopupPromise = page.waitForEvent('popup');
   await page.getByRole('button', { name: /deeper\.ts/ }).click({ modifiers: ['Control'] });
@@ -679,7 +690,7 @@ test('Long-diff minimaps aggregate all changes while content line spacing stays 
     .getByRole('button', { name: '查看 src/long.ts 的 Diff' })
     .click({ modifiers: ['Control'] });
   await expect(popupTabs).toHaveCount(3);
-  await expect(changesPopup.getByRole('dialog', { name: 'src/long.ts Git 差异' })).toBeVisible();
+  await expect(changesPopup.getByRole('region', { name: 'src/long.ts Git 差异' })).toBeVisible();
   await expect(changesPopup.getByText('+changes-popup')).toBeVisible();
   await changesPopup.close();
   await page.getByRole('button', { name: '查看 src/long.ts 的 Diff' }).click();

@@ -112,8 +112,7 @@ it('uses the selected child model for generic Host policies and tool execution',
     }
   });
   const rounds = new Map<string, number>();
-  let agent!: Agent;
-  agent = await createMarAgent(
+  const agent: Agent = await createMarAgent(
     {
       mode: 'normal',
       host,

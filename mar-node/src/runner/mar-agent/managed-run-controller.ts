@@ -48,7 +48,6 @@ import {
   closeImageCredentialProviders,
   type MarAgentRuntimeModel
 } from './runtime-model-factory.js';
-import type { RunnerExecutionContext } from '../execution-context.js';
 import { createImageGenerationExtensions } from './image-generation-extensions.js';
 import { createWebToolsExtensions } from './web-tools-extensions.js';
 import { combineExecutionExtensions } from './execution-extensions.js';

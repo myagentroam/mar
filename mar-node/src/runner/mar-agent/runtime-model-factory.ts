@@ -10,7 +10,6 @@ import {
   marAgentRuntimeModelConfigurationSchema,
   resolveMarAgentDefaultReasoningEffort,
   type MarAgentRuntimeModelConfiguration,
-  type RuntimeCredentialResolveResponse,
   type RuntimeCredentialTicket
 } from '@myagentroam/protocol';
 import type { RuntimeCredentialControlService } from '../../service/runtime-credential-control-service.js';

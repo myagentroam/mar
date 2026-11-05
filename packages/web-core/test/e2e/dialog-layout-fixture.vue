@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref } from 'vue';
+import { h, onMounted, ref } from 'vue';
 import type { NodeSummary } from '../../src/model/node.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceSessionCleanupDialog from '../../src/view/workspace/WorkspaceSessionCleanupDialog.vue';
@@ -11,11 +11,40 @@ import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue'
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
-import WorkspaceInspector from '../../src/view/workspace/WorkspaceInspector.vue';
+import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue';
+import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
+import { createWorkspaceFileOperationService } from '../../src/service/workspace-file-operation-service.js';
+import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { ElMessageBox } from '../../src/service/message-box-service.js';
 
 const kind = new URLSearchParams(location.search).get('kind') ?? 'workspace';
 const open = ref(false);
+const fileTarget = { nodeId: 'node', workspaceId: 'workspace' };
+const fileOperations = createWorkspaceFileOperationService({
+  http: createScopedHttpService({
+    csrfToken: () => 'fixture',
+    renewCsrfToken: async () => 'fixture'
+  }),
+  onWritten: async () => {}
+});
+const files = createWorkspaceFilesController({
+  target: () => fileTarget,
+  workspaceName: () => 'Workspace',
+  list: fileOperations.list,
+  mutate: fileOperations.mutate,
+  revealLocal: fileOperations.reveal,
+  preflight: fileOperations.preflight,
+  queue: () => {},
+  onFailure: () => {},
+  onListFailure: () => {},
+  onDeletedSelection: () => {},
+  onRevealSelection: async () => {},
+  onMutationFailure: () => {},
+  onWorkspace: () => {}
+});
+onMounted(() => {
+  if (kind === 'upload') void files.requestRefresh();
+});
 const value = ref('');
 const resourceName = new URLSearchParams(location.search).has('long-name')
   ? (kind === 'details' ? 'w' : 'W').repeat(128)
@@ -125,23 +154,12 @@ function showMessageBox(): void {
   <WorkspaceSessionList v-if="kind === 'workspace'" v-bind="sidebarProps" />
   <ThemeTokenHelp v-else-if="kind === 'tokens'" :colors="{}" />
   <MailTemplateManagement v-else-if="kind === 'mail'" :request="request" :writable="true" />
-  <WorkspaceInspector
+  <WorkspaceFilesPanel
     v-else-if="kind === 'upload'"
-    node-id="node"
-    workspace-id="workspace"
-    workspace-name="Workspace"
-    workspace-kind="DIRECTORY"
-    csrf-token="fixture"
-    :renew-csrf-token="async () => 'fixture'"
-    :enabled="true"
+    :service="files"
+    :visible="true"
     :mobile-viewport="false"
-    :content-search-enabled="false"
-    :code-navigation-enabled="false"
-    :code-navigation-prewarm-enabled="false"
-    files-watch-status="idle"
-    changes-watch-status="idle"
-    :history-capability="false"
-    :file-write-enabled="true"
+    @refresh="files.requestRefresh()"
   />
   <button v-else-if="kind === 'message'" @click="showMessageBox">Open content</button>
   <button v-else @click="open = true">Open content</button>

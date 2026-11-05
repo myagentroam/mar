@@ -25,6 +25,7 @@ describe('Node capability version reporting', () => {
         responsesOptionalParameters: true,
         responsesHttpContinuation: true,
         conversationModels: true,
+        contextGcControl: true,
         resourceInput: true,
         serviceTiers: ['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']
       });

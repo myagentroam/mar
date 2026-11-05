@@ -99,7 +99,7 @@ describe('inline media protocol budget', () => {
           ? new OpenAiResponsesAdapter(configuration)
           : new AnthropicMessagesAdapter(configuration);
       const run = async () => {
-        for await (const _ of adapter.start(
+        for await (const event of adapter.start(
           request([
             {
               role: 'tool',
@@ -110,7 +110,7 @@ describe('inline media protocol budget', () => {
           ]),
           new AbortController().signal
         )) {
-          /* consume */
+          expect(event).toBeDefined();
         }
       };
       await expect(run()).rejects.toMatchObject({ code: 'MAR_AGENT_INLINE_MEDIA_LIMIT' });
@@ -181,7 +181,7 @@ describe('inline media protocol budget', () => {
           : new AnthropicMessagesAdapter(configuration);
       const run = async (url: string) => {
         const imagePart = { type: 'image' as const, image: { ...image, url } };
-        for await (const _ of adapter.start(
+        for await (const event of adapter.start(
           request([
             {
               role: 'tool',
@@ -192,7 +192,7 @@ describe('inline media protocol budget', () => {
           ]),
           new AbortController().signal
         )) {
-          /* consume */
+          expect(event).toBeDefined();
         }
       };
       try {

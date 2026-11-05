@@ -272,6 +272,179 @@ describe('Latest work process labels', () => {
   });
 });
 
+describe('Installed Compact reasoning prefixes', () => {
+  function snapshot(
+    kind: 'assistant_message' | 'tool_call',
+    state = 'COMPLETED',
+    mode = 'BACKGROUND'
+  ) {
+    const before = item('before', 'reasoning', {
+      status: 'IN_PROGRESS',
+      processGroup: { id: 'prefix', isStart: true },
+      payload: { representation: 'summary', sections: [{ text: 'Prefix reasoning' }] }
+    });
+    const anchor = item('anchor', kind, {
+      ...(kind === 'tool_call' ? { processGroup: { id: 'prefix' } } : {}),
+      payload: kind === 'tool_call' ? { toolName: 'read' } : { text: 'Snapshot anchor' }
+    });
+    const compact = item('compact', 'context_compaction', {
+      status: state === 'WAITING' ? 'IN_PROGRESS' : state,
+      payload: {
+        mode,
+        phase: state === 'COMPLETED' ? 'COMPLETED' : 'STARTED',
+        ...(state === 'WAITING' ? { stage: 'WAITING' } : {}),
+        anchorItemId: anchor.id
+      }
+    });
+    const after = item('after', 'reasoning', {
+      status: 'IN_PROGRESS',
+      processGroup: { id: 'tail', isStart: true },
+      payload: { representation: 'summary', sections: [{ text: 'Tail reasoning' }] }
+    });
+    return { before, anchor, compact, after, items: [before, anchor, compact, after] };
+  }
+
+  for (const kind of ['assistant_message', 'tool_call'] as const) {
+    for (const mode of ['BACKGROUND', 'BLOCKING']) {
+      it.each(['IN_PROGRESS', 'WAITING', 'COMPLETED', 'FAILED', 'CANCELLED'])(
+        `projects only installed reasoning before a ${mode} ${kind} anchor: %s`,
+        (state) => {
+          const source = snapshot(kind, state, mode);
+          const blocks = conversationWorkProcessBlocks(
+            [turn(source.items)],
+            [{ id: runId, status: 'RUNNING' }]
+          );
+          const prefix = processBlock(blocks, 'prefix');
+          expect(prefix).toMatchObject({
+            sealed: true,
+            active: state !== 'COMPLETED',
+            status: state === 'COMPLETED' ? 'completed' : 'running'
+          });
+          expect(prefix.preview?.text).toBe(state === 'COMPLETED' ? undefined : 'Prefix reasoning');
+          expect(processBlock(blocks, 'tail')).toMatchObject({
+            active: true,
+            preview: { text: 'Tail reasoning' }
+          });
+          expect(prefix.entries[0]?.displayItem).toMatchObject({
+            type: 'reasoning_group',
+            preview: { text: 'Prefix reasoning' },
+            items: [{ status: 'IN_PROGRESS' }]
+          });
+          expect(
+            blocks.flatMap((block) => block.entries.map((entry) => entry.displayItem.id))
+          ).toEqual(source.items.map((entry) => entry.id));
+          expect(source.before.status).toBe('IN_PROGRESS');
+        }
+      );
+    }
+  }
+
+  it('keeps a pending tool active when its earlier reasoning prefix is installed', () => {
+    const source = snapshot('tool_call');
+    const anchor = { ...source.anchor, status: 'IN_PROGRESS' };
+    const prefix = processBlock(
+      conversationWorkProcessBlocks(
+        [turn([source.before, anchor, source.compact, source.after])],
+        [{ id: runId, status: 'RUNNING' }]
+      ),
+      'prefix'
+    );
+    expect(prefix).toMatchObject({ active: true, status: 'executing' });
+    expect(prefix.preview).toBeUndefined();
+    expect(anchor.status).toBe('IN_PROGRESS');
+  });
+
+  it.each(['missing', 'later', 'other-run', 'other-session'])(
+    'does not infer installation from an anchor that is %s',
+    (invalid) => {
+      const source = snapshot('assistant_message');
+      const turns =
+        invalid === 'other-run' || invalid === 'other-session'
+          ? [
+              turn([source.before, source.anchor], {
+                ...(invalid === 'other-run'
+                  ? { runId: 'other-run' }
+                  : { sessionId: 'other-session' })
+              }),
+              turn([source.compact, source.after], { id: 'segment-2' })
+            ]
+          : [
+              turn(
+                invalid === 'later'
+                  ? [source.before, source.compact, source.anchor, source.after]
+                  : [source.before, source.compact, source.after]
+              )
+            ];
+      const prefix = processBlock(
+        conversationWorkProcessBlocks(turns, [
+          { id: runId, status: 'RUNNING' },
+          { id: 'other-run', status: 'RUNNING' }
+        ]),
+        'prefix'
+      );
+      expect(prefix).toMatchObject({ active: true, preview: { text: 'Prefix reasoning' } });
+    }
+  );
+
+  it('does not complete an unrelated earlier process in the same run', () => {
+    const source = snapshot('assistant_message');
+    const earlier = item('earlier', 'reasoning', {
+      status: 'IN_PROGRESS',
+      processGroup: { id: 'earlier-process', isStart: true },
+      payload: { representation: 'summary', sections: [{ text: 'Earlier process reasoning' }] }
+    });
+    const boundary = item('earlier-anchor', 'assistant_message', {
+      payload: { text: 'Earlier reply' }
+    });
+    const blocks = conversationWorkProcessBlocks(
+      [turn([earlier, boundary, ...source.items])],
+      [{ id: runId, status: 'RUNNING' }]
+    );
+    expect(processBlock(blocks, 'earlier-process')).toMatchObject({
+      active: true,
+      preview: { text: 'Earlier process reasoning' }
+    });
+    expect(processBlock(blocks, 'prefix').active).toBe(false);
+  });
+
+  it('does not use another turn as the installed anchor scope in the same run', () => {
+    const source = snapshot('tool_call');
+    const blocks = conversationWorkProcessBlocks(
+      [
+        turn([source.before, source.anchor], { id: 'first-turn' }),
+        turn([source.compact, source.after], { id: 'second-turn' })
+      ],
+      [{ id: runId, status: 'RUNNING' }]
+    );
+    expect(processBlock(blocks, 'prefix')).toMatchObject({
+      active: true,
+      preview: { text: 'Prefix reasoning' }
+    });
+  });
+
+  it('uses received anchors even before they mount, and re-evaluates a newly received prefix', () => {
+    const source = snapshot('assistant_message');
+    const runs = [{ id: runId, status: 'RUNNING' }];
+    const missing = conversationWorkProcessProjection(
+      [turn([source.before, source.compact, source.after])],
+      [turn([source.after])],
+      runs
+    );
+    expect(processBlock(missing.metadataBlocks, 'prefix').active).toBe(true);
+    const received = conversationWorkProcessProjection(
+      [turn(source.items)],
+      [turn([source.after])],
+      runs
+    );
+    expect(processBlock(received.metadataBlocks, 'prefix')).toMatchObject({
+      active: false,
+      status: 'completed'
+    });
+    expect(processBlock(received.metadataBlocks, 'prefix').preview).toBeUndefined();
+    expect(processBlock(received.blocks, 'tail').active).toBe(true);
+  });
+});
+
 function item(
   id: string,
   kind: string,

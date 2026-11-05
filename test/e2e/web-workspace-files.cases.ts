@@ -292,6 +292,7 @@ test('Stacking the Aside preserves the dirty file window and its owner', async (
     })
   );
   await page.goto('/console');
+  await page.getByLabel('密码').fill('test-password');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '工作', exact: true }).click();
   await page
@@ -537,20 +538,21 @@ test('File navigation uses rounded selection and the editor fills its surface wi
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  const file = page.getByRole('treeitem', { name: 'main.ts', exact: true });
+  const file = page.getByRole('treeitem', { name: 'src/main.ts', exact: true });
+  await expect(file).toContainText('main.ts');
   await expect(page.locator('.workspace-tree .tree-node').first()).toHaveCSS('font-weight', '400');
   const workspaceName = page.locator('.workspace-tree .workspace-branch-button').first();
   await expect(workspaceName).toHaveCSS('font-weight', '400');
   await expect(workspaceName).toHaveCSS('font-size', '13px');
-  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+  await expect(page.locator('.workbench-aside-tabs').getByRole('tab').first()).toHaveCSS(
     'font-size',
     '12px'
   );
-  await expect(page.locator('.inspector-tabs').getByRole('tab').first()).toHaveCSS(
+  await expect(page.locator('.workbench-aside-tabs').getByRole('tab').first()).toHaveCSS(
     'font-weight',
     '500'
   );
-  await expect(page.locator('.workspace-inspector h2')).toHaveCSS('font-size', '14px');
+  await expect(page.locator('.file-explorer .file-display-filter')).toBeVisible();
   await expect(page.locator('.workspace-tab-content > span').first()).toHaveCSS(
     'font-weight',
     '400'
@@ -573,7 +575,7 @@ test('File navigation uses rounded selection and the editor fills its surface wi
     'border-radius',
     '6px'
   );
-  const preview = page.getByRole('dialog', { name: 'main.ts 文件预览' });
+  const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   const editor = preview.locator('.cm-content');
   await expect(editor).toBeVisible();
   await expect(editor).toContainText('export const answer = 42;');
@@ -636,7 +638,10 @@ test('File navigation uses rounded selection and the editor fills its surface wi
       const controls = preview.locator('.file-preview-desktop-actions .el-button.is-circle');
       expect(await controls.count()).toBeGreaterThan(0);
       for (const button of await controls.all()) {
-        await expect(button).toHaveAttribute('title', (await button.getAttribute('aria-label'))!);
+        const label = await button.getAttribute('aria-label');
+        expect(label).toBeTruthy();
+        await button.hover();
+        await expect(page.getByRole('tooltip').filter({ hasText: label! })).toBeVisible();
         await expect(button).toHaveCSS('height', '26px');
         await expect(button).toHaveCSS('width', '26px');
       }
@@ -1312,7 +1317,7 @@ test('File preview history navigates read-only code and file tabs without revisi
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('treeitem', { name: 'main.ts', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
   const source = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await source
     .locator('.cm-line')
@@ -1643,7 +1648,7 @@ test('Large text previews disable expensive syntax trees and symbol scans', asyn
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await page.getByRole('treeitem', { name: 'main.ts', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await expect
@@ -2108,10 +2113,14 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
   await page.unroute(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/);
   await page.unroute(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/);
   const initialWatchTopics: Record<string, unknown>[] = [];
-  let workspaceKind: 'DIRECTORY' | 'GIT_WORKSPACE' = 'DIRECTORY';
+  let workspaceKind: 'DIRECTORY' | 'GIT_WORKSPACE' = 'GIT_WORKSPACE';
+  let gitBranch = 'stale/branch';
   let changesReads = 0;
   let releaseOldChanges: (() => void) | undefined;
   let releaseFreshChanges: (() => void) | undefined;
+  await page.route(/\/api\/workspaces\/workspace-1\/git\/fetch(?:\?.*)?$/, (route) =>
+    json(route, { fetchFailed: false, updated: false })
+  );
   await page.route(/\/api\/workspaces\/workspace-1\/watch$/, async (route) => {
     const request = JSON.parse(route.request().postData() ?? '{}') as {
       readonly mode?: string;
@@ -2119,15 +2128,6 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
       readonly watchId?: string;
     };
     if (request.mode === 'initial') initialWatchTopics.push(request.topics ?? {});
-    if (request.mode === 'initial' && initialWatchTopics.length === 3) {
-      await json(route, {
-        accepted: true,
-        watchId: request.watchId ?? 'held-git-upgrade-watch',
-        nodeGeneration: 'mock-node-generation',
-        expiresAt: 1_900_000_030_000
-      });
-      return;
-    }
     await fulfillMockWorkspaceWatch(
       page,
       route,
@@ -2135,14 +2135,14 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
         id: 'session-1',
         workspaceId: 'workspace-1'
       },
-      request.topics?.changes === true ? 'GIT_WORKSPACE' : 'DIRECTORY',
+      workspaceKind,
       undefined,
       request.topics?.changes === true
         ? {
-            branch: workspaceKind === 'GIT_WORKSPACE' ? 'fresh/main' : 'stale/branch',
+            branch: gitBranch,
             changes: [
               {
-                path: workspaceKind === 'GIT_WORKSPACE' ? 'fresh.txt' : 'stale.txt',
+                path: gitBranch === 'fresh/main' ? 'fresh.txt' : 'stale.txt',
                 state: 'UNTRACKED',
                 change: 'ADDED',
                 diffAvailable: false
@@ -2153,10 +2153,10 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
                 repositoryPath: '',
                 repositoryName: '根仓库',
                 source: 'ROOT',
-                branch: workspaceKind === 'GIT_WORKSPACE' ? 'fresh/main' : 'stale/branch',
+                branch: gitBranch,
                 changes: [
                   {
-                    path: workspaceKind === 'GIT_WORKSPACE' ? 'fresh.txt' : 'stale.txt',
+                    path: gitBranch === 'fresh/main' ? 'fresh.txt' : 'stale.txt',
                     state: 'UNTRACKED',
                     change: 'ADDED',
                     diffAvailable: false
@@ -2184,7 +2184,7 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
             ? {
                 commonDir: '.git',
                 head: '',
-                branch: 'fresh/main',
+                branch: gitBranch,
                 dirty: true,
                 snapshot: 'README.md'
               }
@@ -2248,6 +2248,7 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
   await page.getByRole('button', { name: '刷新 Git 变更', exact: true }).click();
   await expect.poll(() => releaseOldChanges !== undefined).toBe(true);
   await page.getByRole('tab', { name: '文件', exact: true }).click();
+  workspaceKind = 'DIRECTORY';
   await page.getByRole('button', { name: '刷新文件', exact: true }).click();
 
   await expect(page.getByRole('tab', { name: 'Git 变更' })).toHaveCount(0);
@@ -2267,6 +2268,7 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
   await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveCount(0);
 
   workspaceKind = 'GIT_WORKSPACE';
+  gitBranch = 'fresh/main';
   await page.getByRole('button', { name: '刷新文件', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Git 变更' })).toBeVisible();
   await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveText(

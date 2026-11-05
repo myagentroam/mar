@@ -407,7 +407,7 @@ function gcFixture(
       callId: 'patch',
       content: JSON.stringify({ error: 'MAR_AGENT_PATCH_PARTIAL', data: partialData })
     });
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
     context({
       role: 'provider',
@@ -627,20 +627,20 @@ describe('partial patch stale-read GC', () => {
     (codeMode) => {
       expect(plan(gcFixture(codeMode, 'added').values)).toBeUndefined();
       for (const mutate of [
-        (payload: any) => {
-          payload.code = 'MAR_AGENT_PATCH_CONFLICT';
+        (payload: unknown) => {
+          (payload as Record<string, unknown>).code = 'MAR_AGENT_PATCH_CONFLICT';
         },
-        (payload: any) => {
-          payload.data.totals.files = 2;
+        (payload: unknown) => {
+          (payload as { data: { totals: { files: number } } }).data.totals.files = 2;
         },
-        (payload: any) => {
-          payload.data.pendingFiles = 'pending.txt';
+        (payload: unknown) => {
+          (payload as { data: { pendingFiles: unknown } }).data.pendingFiles = 'pending.txt';
         },
-        (payload: any) => {
-          delete payload.data;
+        (payload: unknown) => {
+          delete (payload as Record<string, unknown>).data;
         },
-        (payload: any) => {
-          payload.callId = 'other';
+        (payload: unknown) => {
+          (payload as Record<string, unknown>).callId = 'other';
         }
       ]) {
         const fixture = gcFixture(codeMode);

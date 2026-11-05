@@ -18,6 +18,7 @@ import {
   h,
   nextTick,
   onBeforeUnmount,
+  onMounted,
   ref,
   watch,
   type ShallowUnwrapRef
@@ -25,7 +26,11 @@ import {
 import type { Workspace } from '../../model/workbench.js';
 import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
 import { errorMessage, hostedConversationTitle } from '../../util/workbench-presentation.js';
-import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
+import WorkspaceFileWorkbench from '../workspace/WorkspaceFileWorkbench.vue';
+import WorkspaceGitChanges from '../workspace/WorkspaceGitChanges.vue';
+import WorkspaceGitHistory from '../workspace/WorkspaceGitHistory.vue';
+import WorkspaceContentSearch from '../workspace/WorkspaceContentSearch.vue';
+import WorkspaceFilesPanel from '../workspace/WorkspaceFilesPanel.vue';
 import WorkspaceHtmlBrowser from '../workspace/WorkspaceHtmlBrowser.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
@@ -149,12 +154,102 @@ const asideSessions = computed(() =>
     };
   })
 );
-function inspectorTool(tool: AsideTool | undefined): Exclude<AsideTool, 'terminal'> | null {
+function activeTool(tool: AsideTool | undefined): AsideTool | null {
   const active = props.page.asideState?.active;
   return !asideVisible.value || active?.kind !== 'tool' || active.id !== tool || tool === 'terminal'
     ? null
     : tool;
 }
+const filesVisible = computed(
+  () => asideVisible.value && props.page.filesReady && activeTool('files') === 'files'
+);
+watch(
+  [
+    filesVisible,
+    () => props.page.workspaceTarget?.nodeId,
+    () => props.page.workspaceTarget?.workspaceId
+  ],
+  ([visible, nodeId, workspaceId], [wasVisible, oldNodeId, oldWorkspaceId]) => {
+    if (wasVisible && !visible && nodeId === oldNodeId && workspaceId === oldWorkspaceId)
+      props.page.workspaceFiles.invalidate();
+    if (visible && (!wasVisible || nodeId !== oldNodeId || workspaceId !== oldWorkspaceId))
+      void props.page.workspaceFiles.requestRefresh();
+  },
+  { flush: 'sync' }
+);
+watch(
+  () => props.page.workspaceFilesRevision,
+  () => {
+    if (filesVisible.value) void props.page.workspaceFiles.requestRefresh();
+  }
+);
+const searchVisible = computed(() => {
+  const active = props.page.asideState?.active;
+  return (
+    asideVisible.value &&
+    props.page.filesReady &&
+    props.page.contentSearchReady &&
+    active?.kind === 'tool' &&
+    active.id === 'search'
+  );
+});
+watch(
+  searchVisible,
+  (visible, previous) => {
+    if (previous && !visible) props.page.workspaceSearch.cancelPending();
+  },
+  { flush: 'sync' }
+);
+const historyVisible = computed(
+  () =>
+    asideVisible.value &&
+    props.page.filesReady &&
+    props.page.selectedWorkspace?.kind === 'GIT_WORKSPACE' &&
+    props.page.nodeManifest?.git?.supportsHistory === true &&
+    activeTool('history') === 'history'
+);
+watch(
+  historyVisible,
+  (visible, previous) => {
+    if (previous && !visible) props.page.workspaceGit.cancelHistoryPending();
+  },
+  { flush: 'sync' }
+);
+function loadVisibleGitTool(): void {
+  if (!asideVisible.value || !props.page.filesReady) return;
+  const active = props.page.asideState?.active;
+  if (active?.kind !== 'tool') return;
+  if (active.id === 'changes') void props.page.workspaceGit.loadChanges(true);
+  else if (active.id === 'history' && historyVisible.value)
+    void props.page.workspaceGit.openHistory();
+}
+watch(
+  [
+    () => asideVisible.value,
+    () => props.page.filesReady,
+    () => props.page.workspaceTarget?.nodeId,
+    () => props.page.workspaceTarget?.workspaceId,
+    () => props.page.selectedWorkspace?.kind,
+    () => props.page.nodeManifest?.git?.supportsHistory,
+    () => props.page.asideState?.active?.kind,
+    () =>
+      props.page.asideState?.active?.kind === 'tool' ? props.page.asideState.active.id : undefined
+  ],
+  loadVisibleGitTool,
+  { flush: 'post' }
+);
+watch(
+  () => props.page.workspaceChangesRevision,
+  () => {
+    const active = props.page.asideState?.active;
+    if (asideVisible.value && active?.kind === 'tool' && active.id === 'changes')
+      void props.page.workspaceGit.loadChanges();
+  }
+);
+onMounted(loadVisibleGitTool);
+onMounted(() => {
+  if (filesVisible.value) void props.page.workspaceFiles.requestRefresh();
+});
 const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
 const treePopup = ref<{
   nodeId: string;
@@ -534,6 +629,24 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             @preview-attachment="page.openAttachmentPreview"
             @reload="page.reloadSelectedSession"
           />
+          <WorkspaceFileWorkbench
+            :key="`${page.workspaceTarget?.nodeId}:${page.workspaceTarget?.workspaceId}`"
+            :ref="(instance) => (page.workspaceFileWorkbench = instance as never)"
+            :node-id="page.workspaceTarget?.nodeId"
+            :workspace-id="page.workspaceTarget?.workspaceId"
+            :controller="page.fileWorkbench"
+            :register-page="page.setWorkspaceFilePage"
+            :adjacent-diff="page.adjacentWorkspaceDiff"
+            :load-diff="page.loadWorkspaceDiff"
+            :open-external="page.openWorkspaceFileExternal"
+            :enabled="page.filesReady"
+            :prediction-enabled="page.workPromptCompletion.enabled"
+            :code-navigation-enabled="page.codeNavigationReady"
+            :file-write-enabled="page.fileWriteReady"
+            :standalone-file-mode="page.standaloneFileMode"
+            @open-html-preview="page.openHtmlAside"
+            @notice="page.notice"
+          />
           <Transition
             name="workspace-aside"
             :css="
@@ -597,69 +710,129 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :path="page.asideState.htmlPath"
                     :csrf-token="page.csrfToken"
                     :renew-csrf-token="page.renewCsrfToken"
-                    @source="page.workspaceInspector?.openFile($event)"
+                    @source="page.fileWorkbench.openFile($event)"
                     @external="page.openHtmlExternal($event)"
                   />
                 </template>
                 <template #tool="{ tool }">
-                  <WorkspaceInspector
-                    :aside-tool="inspectorTool(tool)"
-                    :ref="(instance) => (page.workspaceInspector = instance as never)"
+                  <WorkspaceFilesPanel
+                    v-if="tool === 'files' && page.workspaceTarget !== undefined"
+                    v-show="filesVisible"
+                    :key="`${page.workspaceTarget.nodeId}:${page.workspaceTarget.workspaceId}`"
+                    :ref="(instance) => page.setWorkspaceFilesPanel(instance as never)"
+                    :service="page.workspaceFiles"
+                    :visible="filesVisible"
+                    :watch-status="page.workspaceWatchTopicStatus.files"
+                    :workspace-path="page.selectedWorkspace?.path"
+                    :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
+                    :mobile-viewport="page.mobileViewport"
+                    @refresh="page.workspaceFiles.requestRefresh()"
+                    @open="
+                      (path, external) =>
+                        external
+                          ? page.openWorkspaceFileExternal(path)
+                          : page.fileWorkbench.openFile(path)
+                    "
+                    @html="page.openHtmlAside"
+                    @download="page.downloadWorkspaceFile($event)"
+                    @failure="(error, action) => page.reportWorkspaceFileFailure(error, action)"
+                    @notice="(message, type) => page.notice(message, type)"
+                    @retry-watch="page.retryWorkspaceWatch"
+                  />
+                  <WorkspaceContentSearch
+                    v-if="tool === 'search' && page.workspaceTarget !== undefined"
+                    :key="`${page.workspaceTarget.nodeId}:${page.workspaceTarget.workspaceId}`"
+                    :ref="(instance) => page.setWorkspaceSearchPanel(instance as never)"
+                    v-show="searchVisible"
+                    :service="page.workspaceSearch"
+                    :enabled="page.contentSearchReady"
                     :node-id="page.workspaceTarget?.nodeId"
                     :workspace-id="page.workspaceTarget?.workspaceId"
-                    :workspace-name="
-                      page.selectedWorkspace === undefined
-                        ? translate('generated.workbenchSurface.workspace')
-                        : page.workspaceTabLabel(page.selectedWorkspace)
+                    @open="
+                      (path, line, column, external) =>
+                        external
+                          ? page.openWorkspaceFileExternal(path, line, column)
+                          : page.fileWorkbench.openFile(path, line, column)
                     "
-                    :workspace-kind="page.selectedWorkspace?.kind"
-                    :workspace-path="page.selectedWorkspace?.path"
-                    :history-capability="page.nodeManifest?.git?.supportsHistory"
-                    :csrf-token="page.csrfToken"
-                    :renew-csrf-token="page.renewCsrfToken"
-                    :enabled="page.filesReady"
-                    :prediction-enabled="page.workPromptCompletion.enabled"
-                    :capability-loading="
-                      page.nodeManifestLoading && page.nodeManifest === undefined
-                    "
-                    :node-online="
-                      page.workspaceHost?.connected === true && page.workspaceHost.disabled !== true
-                    "
-                    :mobile-viewport="page.mobileViewport"
-                    :content-search-enabled="page.contentSearchReady"
-                    :code-navigation-enabled="page.codeNavigationReady"
-                    :code-navigation-prewarm-enabled="page.codeNavigationPrewarmReady"
-                    :file-write-enabled="page.fileWriteReady"
-                    :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
-                    :files-revision="page.workspaceFilesRevision"
-                    :changes-revision="page.workspaceChangesRevision"
-                    :subscription-snapshot="page.workspaceWatchSnapshot"
-                    :files-watch-status="page.workspaceWatchTopicStatus.files"
-                    :changes-watch-status="page.workspaceWatchTopicStatus.changes"
-                    :direct-file-download="page.directWorkspaceFileDownload"
-                    :direct-file-object-url="page.directWorkspaceFileObjectUrl"
-                    :direct-file-read-range="page.directWorkspaceFileReadRange"
-                    :direct-git-file-download="page.directGitFileDownload"
-                    :direct-git-file-object-url="page.directGitFileObjectUrl"
-                    :direct-git-file-read-range="page.directGitFileReadRange"
-                    :standalone-file-mode="page.standaloneFileMode"
-                    @directory="page.changeWorkspaceWatchDirectory"
-                    @open-html-preview="page.openHtmlAside"
-                    @retry-watch="page.retryWorkspaceWatch"
-                    @branch="
-                      (workspaceId, branch) =>
-                        page.updateWorkspaceBranch(
-                          page.workspaceTarget?.nodeId ?? '',
-                          workspaceId,
-                          branch
-                        )
-                    "
-                    @workspace="
-                      page.updateWorkspaceMetadata(page.workspaceTarget?.nodeId ?? '', $event)
-                    "
-                    @notice="page.notice"
-                    @uploads="page.queueWorkspaceUploads"
                   />
+                  <p
+                    v-if="
+                      (activeTool(tool) === 'files' || activeTool(tool) === 'search') &&
+                      !page.filesReady
+                    "
+                    class="workspace-tool-unavailable"
+                  >
+                    {{
+                      page.nodeManifestLoading && page.nodeManifest === undefined
+                        ? translate('generated.workspaceInspector.loading')
+                        : page.workspaceHost?.connected === true &&
+                            page.workspaceHost.disabled !== true
+                          ? translate('generated.workspaceInspector.capabilityUnavailable')
+                          : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+                    }}
+                  </p>
+                  <section
+                    v-if="activeTool(tool) === 'changes' || activeTool(tool) === 'history'"
+                    :key="
+                      JSON.stringify([
+                        page.workspaceTarget?.nodeId,
+                        page.workspaceTarget?.workspaceId
+                      ])
+                    "
+                    class="workspace-git-panel"
+                  >
+                    <p v-if="!page.filesReady" class="empty">
+                      {{
+                        page.nodeManifestLoading && page.nodeManifest === undefined
+                          ? translate('generated.workspaceInspector.loading')
+                          : page.workspaceHost?.connected === true &&
+                              page.workspaceHost.disabled !== true
+                            ? translate('generated.workspaceInspector.capabilityUnavailable')
+                            : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+                      }}
+                    </p>
+                    <template v-else>
+                      <el-button
+                        v-if="
+                          activeTool(tool) === 'changes' &&
+                          (page.workspaceWatchTopicStatus.changes === 'loading' ||
+                            page.workspaceWatchTopicStatus.changes === 'failed') &&
+                          !page.workspaceGit.changesRefreshing.value &&
+                          !page.workspaceGit.changesError.value
+                        "
+                        class="workspace-git-watch-status"
+                        link
+                        :class="{ failed: page.workspaceWatchTopicStatus.changes === 'failed' }"
+                        :aria-disabled="page.workspaceWatchTopicStatus.changes === 'loading'"
+                        :aria-busy="
+                          page.workspaceWatchTopicStatus.changes === 'loading' || undefined
+                        "
+                        @click="
+                          page.workspaceWatchTopicStatus.changes === 'failed' &&
+                          page.retryWorkspaceWatch()
+                        "
+                      >
+                        <template v-if="page.workspaceWatchTopicStatus.changes === 'loading'">
+                          <MarIcon name="loading-action" />
+                          {{ translate('generated.workspaceInspector.loading') }}
+                        </template>
+                        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+                      </el-button>
+                      <WorkspaceGitChanges
+                        v-if="activeTool(tool) === 'changes'"
+                        :service="page.workspaceGit"
+                        :target="page.workspaceTarget"
+                        @open="page.openWorkspaceGitChange"
+                        @notice="page.notice"
+                      />
+                      <WorkspaceGitHistory
+                        v-else
+                        :service="page.workspaceGit"
+                        @open="page.openWorkspaceHistoryDiff"
+                        @notice="page.notice"
+                      />
+                    </template>
+                  </section>
                 </template>
                 <template #session>
                   <WorkspaceSessionPane
@@ -983,12 +1156,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   flex-direction: column;
 }
 
-.inspector-column > :deep(.workspace-inspector) {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
 .inspector-resize {
   left: -4px;
 }
@@ -1106,6 +1273,21 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 </style>
 
 <style scoped>
+.workspace-git-panel {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 0 0.7rem 0.7rem;
+}
+
+.workspace-git-watch-status {
+  align-self: flex-start;
+  margin: 0.2rem 0.55rem;
+  font-size: var(--mar-font-size-meta);
+}
+
 .workbench {
   display: flex;
   height: 100vh;

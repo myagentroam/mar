@@ -194,8 +194,7 @@ describe('scheduled session coordinator', () => {
       vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
       const { database, store, task } = fixture(Date.now, true);
       const emit = vi.fn();
-      let coordinator!: ScheduledSessionCoordinator;
-      coordinator = new ScheduledSessionCoordinator({
+      const coordinator: ScheduledSessionCoordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
         authorize: async () => ({

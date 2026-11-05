@@ -12,7 +12,6 @@ import PanelResizeHandle from '../../src/view/workbench/PanelResizeHandle.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
-import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -503,7 +502,7 @@ describe('Shared workbench shell', () => {
       expect(html).toContain('Visible workspace');
       expect(html).toContain('class="selected"');
       expect(html).toContain('tree-node-icon');
-      expect(html).toContain('state-dot ready');
+      expect(html).toMatch(/class="state-dot\s+[^"\n]*\bready\b[^"\n]*"/u);
       expect(html.match(/tree-type-icon/g)).toHaveLength(2);
       expect(html).not.toMatch(/workspace-branch-content[^>]*>\s*<i/);
       expect(html).toContain('aria-expanded="false"');

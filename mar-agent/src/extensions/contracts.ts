@@ -1,66 +1,17 @@
 import type { ExtensionCommandSpec } from './commands.js';
 import type { ExtensionPromptSection } from './prompt-composition.js';
 import type { ExtensionCapabilitySnapshot } from './capabilities.js';
-import type { ExtensionModelRequest } from './model-request.js';
-import type { ExtensionCompactContext, ExtensionCompactResult } from './compaction.js';
-import type { ExtensionPromptInput, ExtensionPromptResult } from './prompt-input.js';
-import type { ExtensionModelEvent } from './model-stream.js';
-import type {
-  ExtensionPromptComposition,
-  ExtensionPromptSectionInput
-} from './prompt-composition.js';
+import type { ExtensionPromptComposition } from './prompt-composition.js';
 import type { ExtensionModelsApi } from './models.js';
 import type { ExtensionDataApi } from './data.js';
-import type {
-  ExtensionMcpApi,
-  ExtensionMcpConnectInput,
-  ExtensionMcpConnectionInput,
-  ExtensionMcpConnectionRef,
-  ExtensionMcpCatalog,
-  ExtensionMcpCompletion
-} from './mcp.js';
-import type {
-  ExtensionFilesApi,
-  ExtensionFileOperations,
-  ExtensionFileCompletion
-} from './files.js';
-import type {
-  ExtensionEnvironmentApi,
-  ExtensionEnvironmentKey,
-  ExtensionEnvironmentSet,
-  ExtensionEnvironmentChange,
-  ExtensionEnvironmentCompletion
-} from './environment.js';
-import type {
-  ExtensionSettingsApi,
-  ExtensionSettingsReadInput,
-  ExtensionSettingsUpdate,
-  ExtensionSettingsDescription,
-  ExtensionSettingsSnapshot,
-  ExtensionSettingsResult,
-  ExtensionSettingsCompletion
-} from './settings.js';
-import type {
-  ExtensionProcessesApi,
-  ExtensionProcessInput,
-  ExtensionProcessRunInput,
-  ExtensionProcessHandle,
-  ExtensionProcessResult,
-  ExtensionProcessCompletion
-} from './processes.js';
-import type {
-  ExtensionNetworkApi,
-  ExtensionHttpRequest,
-  ExtensionHttpResponse,
-  ExtensionHttpCompletion
-} from './network.js';
-import type {
-  ExtensionSessionApi,
-  ExtensionAppendInput,
-  ExtensionCompactInput,
-  ExtensionSessionActionResult
-} from './session-input.js';
-import type { ToolCall, ToolExecutionResult } from '../tools/contracts.js';
+import type { ExtensionMcpApi } from './mcp.js';
+import type { ExtensionFilesApi } from './files.js';
+import type { ExtensionEnvironmentApi } from './environment.js';
+import type { ExtensionSettingsApi } from './settings.js';
+import type { ExtensionProcessesApi } from './processes.js';
+import type { ExtensionNetworkApi } from './network.js';
+import type { ExtensionSessionApi } from './session-input.js';
+import type { ToolExecutionResult } from '../tools/contracts.js';
 import type { ExtensionHookOptions, ExtensionInterceptor } from './hooks.js';
 import type { ExtensionOperationContext } from './operation.js';
 import type {
@@ -73,9 +24,7 @@ import type {
   ExtensionToolRef,
   ExtensionToolInvocation,
   ExtensionToolCheck,
-  ExtensionToolSpec,
-  ExtensionToolCompletion,
-  ExtensionToolFailure
+  ExtensionToolSpec
 } from './tools.js';
 
 import type { DomainCompactOperations, DomainCompactFacts } from './compaction.js';

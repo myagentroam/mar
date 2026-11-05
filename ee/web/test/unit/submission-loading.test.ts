@@ -146,14 +146,14 @@ describe('submission and authoritative reread loading', () => {
         ).toBe(false);
       }
       expect(vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')).toHaveLength(
-        outcome === 'success' || (scope === 'PERSONAL' && outcome === 'read-failure') ? 0 : 1
+        outcome === 'success' ? 0 : 1
       );
       if (scope === 'PERSONAL' && outcome === 'read-failure') {
         expect(
           view
             .findAll('button')
             .some((node) => textContent(node).includes(translate('common.loadFailedRetry')))
-        ).toBe(true);
+        ).toBe(false);
       }
     } finally {
       view.unmount();

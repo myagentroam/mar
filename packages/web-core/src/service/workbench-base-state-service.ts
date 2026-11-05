@@ -60,7 +60,7 @@ export function createWorkbenchPageStateService<
 }) {
   const navigation = options.navigation;
   const core = createWorkbenchBaseStateService<WorkspaceType>(options);
-  const { admin, http, selection } = core;
+  const { admin, http } = core;
   const hostedSelection = {
     selectedNodeId: ref<string>(),
     selectedConversationId: ref<string>()

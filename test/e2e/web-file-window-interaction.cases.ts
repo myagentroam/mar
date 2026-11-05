@@ -528,6 +528,8 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
 }) => {
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开辅助工作面' }).click();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
   const initialHistoryLength = await page.evaluate(() => history.length);
   const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
@@ -566,6 +568,8 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
 }) => {
   await prepareFiles(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
   const initialHistoryLength = await page.evaluate(() => history.length);
   const initialState = await page.evaluate(() => history.state);
   await openFile(page, 'first.ts');
@@ -579,7 +583,7 @@ test('Reopening a mobile file window ignores stale Back cleanup from its predece
   });
   await expect(page.locator('.workspace-file-tab.is-active')).toContainText('second.ts');
   await expect(
-    page.getByRole('dialog', { name: 'second.ts 文件预览' }).locator('.cm-content')
+    page.getByRole('tabpanel', { name: 'second.ts', exact: true }).locator('.cm-content')
   ).toBeVisible();
   expect(await page.evaluate(() => history.length)).toBe(initialHistoryLength + 1);
   await page.goBack();

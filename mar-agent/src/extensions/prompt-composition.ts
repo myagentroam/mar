@@ -130,7 +130,7 @@ export interface DomainPromptCompositionOperations {
   'prompt.sections': { input: ExtensionPromptComposition; output: ExtensionPromptComposition };
   'prompt.section': { input: ExtensionPromptSectionInput; output: string | null };
 }
-export interface DomainPromptCompositionFacts {}
+export type DomainPromptCompositionFacts = Record<never, never>;
 
 export interface ExtensionPromptSection {
   readonly id: string;

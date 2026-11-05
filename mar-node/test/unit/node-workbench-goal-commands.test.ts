@@ -1605,10 +1605,7 @@ describe('Node Workbench Manifest and command control', () => {
       effort: 'high',
       access: 'full-access'
     });
-    const goal = internals.goalRuntime.start(
-      session.id,
-      'Complete and verify the long-running task'
-    );
+    internals.goalRuntime.start(session.id, 'Complete and verify the long-running task');
     const accepted = internals.continuousRunCoordinator.accept({
       runId: 'goal-run-retry-context',
       sessionId: session.id,
@@ -1728,7 +1725,7 @@ describe('Node Workbench Manifest and command control', () => {
       cwd: workspace.path,
       nativeControl: 'MAR_MANAGED'
     });
-    const goal = internals.goalRuntime.start(session.id, 'Keep executing after Session promotion');
+    internals.goalRuntime.start(session.id, 'Keep executing after Session promotion');
     const accepted = internals.continuousRunCoordinator.accept({
       runId: 'goal-promotion-run',
       sessionId: session.id,

@@ -111,6 +111,7 @@ describe('model transport smoke test', () => {
   it('closes its adapter on request failure without closing the caller credential provider', async () => {
     const failure = new Error('upstream failed');
     vi.spyOn(OpenAiResponsesAdapter.prototype, 'start').mockImplementation(async function* () {
+      yield* [];
       throw failure;
     });
     const close = vi.spyOn(OpenAiResponsesAdapter.prototype, 'close').mockResolvedValue(undefined);

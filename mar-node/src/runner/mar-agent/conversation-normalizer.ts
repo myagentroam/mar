@@ -905,7 +905,7 @@ export class MarAgentConversationNormalizer {
   }
 
   #startExecution(executionId: string): void {
-    for (const [callId, state] of this.#tools)
+    for (const state of this.#tools.values())
       if (state.executionId !== executionId) {
         state.active = false;
       }
@@ -2290,22 +2290,6 @@ function truncateCharacters(value: string, maximumCharacters: number): string {
   return characters.length <= maximumCharacters
     ? value
     : characters.slice(0, maximumCharacters).join('');
-}
-
-function boundedToolSummary(value: string): string {
-  const maximumCodeUnits = 10_000;
-  if (value.length <= maximumCodeUnits) return value;
-  let end = maximumCodeUnits - 1;
-  const lastIncluded = value.charCodeAt(end - 1);
-  const firstExcluded = value.charCodeAt(end);
-  if (
-    lastIncluded >= 0xd800 &&
-    lastIncluded <= 0xdbff &&
-    firstExcluded >= 0xdc00 &&
-    firstExcluded <= 0xdfff
-  )
-    end--;
-  return `${value.slice(0, end)}…`;
 }
 
 function marAgentAgentId(value: unknown): string | undefined {

@@ -90,4 +90,4 @@ export async function invokeCorePromptSubmission(
 export interface DomainPromptInputOperations {
   'prompt.submit': { input: ExtensionPromptInput; output: ExtensionPromptResult };
 }
-export interface DomainPromptInputFacts {}
+export type DomainPromptInputFacts = Record<never, never>;

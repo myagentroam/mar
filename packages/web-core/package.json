@@ -140,7 +140,6 @@
     "./mobile-preview-pinch-zoom": "./src/util/mobile-preview-pinch-zoom.ts",
     "./file-preview-messages": "./src/i18n/file-preview.ts",
     "./markdown-it-task-lists": "./src/types/markdown-it-task-lists.d.ts",
-    "./WorkspaceInspector.vue": "./src/view/workspace/WorkspaceInspector.vue",
     "./file-presentation": "./src/util/file-presentation.ts",
     "./trailing-task": "./src/util/trailing-task.ts",
     "./workspace-inspector-messages": "./src/i18n/workspace-inspector.ts",

@@ -310,8 +310,8 @@ export async function openDirectTerminal(options) {
       signal
     );
     return transport;
-  } catch (error) {
-    error = preparationError ?? error;
+  } catch (caughtError) {
+    const error = preparationError ?? caughtError;
     transportControlCleanup?.();
     transportControlCleanup = undefined;
     unsafeFallback = transport?.openSent === true;

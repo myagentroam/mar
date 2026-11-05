@@ -44,7 +44,7 @@ import {
   workspaceFileTabName,
   type WorkspaceFileTab
 } from '../../util/workspace-file-tab.js';
-import type { DirtyTextDraft } from './WorkspaceTextFilePage.vue';
+import type { DirtyTextDraft } from '../../model/workspace-file-workbench.js';
 
 const pwaApplication = usePwaApplicationService();
 

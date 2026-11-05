@@ -186,7 +186,7 @@ describe('single shared Web implementation', () => {
       expect(manifest.exports[`./${entry}`]).toBe(`./src/${file}.ts`);
     }
     for (const [file, prefix] of [
-      ['packages/web-core/src/view/workbench/WorkbenchSurface.vue', '../../view/conversation/'],
+      ['packages/web-core/src/view/workbench/WorkspaceSessionPane.vue', '../conversation/'],
       [`${root}/src/view/conversation/HostedConversationWorkspacePage.vue`, './']
     ]) {
       expect(read(file!)).toContain(`${prefix}ConversationTimeline.vue`);
@@ -198,20 +198,23 @@ describe('single shared Web implementation', () => {
     expect(existsSync('ee/web/src/util/workbench-presentation.ts')).toBe(false);
   });
 
-  it('composes one public Workspace Inspector with the existing page-owned subscriptions', () => {
+  it('assembles independent Workspace tools with page-owned subscriptions', () => {
     const manifest = JSON.parse(read(`${root}/package.json`));
-    expect(existsSync('ee/web/src/view/workspace/WorkspaceInspector.vue')).toBe(false);
-    expect(manifest.exports['./WorkspaceInspector.vue']).toBe(
-      './src/view/workspace/WorkspaceInspector.vue'
-    );
-    expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
-      '../../view/workspace/WorkspaceInspector.vue'
-    );
-    const inspector = read(`${root}/src/view/workspace/WorkspaceInspector.vue`);
-    expect(inspector).toContain('readonly subscriptionSnapshot?');
-    expect(inspector).not.toMatch(
-      /from ['"]@\/|@myagentroam-enterprise|HostedConversation|new WebSocket|createWorkspaceWatchService|createSessionWatchService/u
-    );
+    expect(existsSync(`${root}/src/view/workspace/WorkspaceInspector.vue`)).toBe(false);
+    expect(manifest.exports['./WorkspaceInspector.vue']).toBeUndefined();
+    const surface = read(`${root}/src/view/workbench/WorkbenchSurface.vue`);
+    for (const name of [
+      'WorkspaceFilesPanel',
+      'WorkspaceContentSearch',
+      'WorkspaceGitChanges',
+      'WorkspaceGitHistory',
+      'WorkspaceFileWorkbench'
+    ]) {
+      expect(surface).toContain(name);
+      expect(read(`${root}/src/view/workspace/${name}.vue`)).not.toMatch(
+        /from ['"]@\/|@myagentroam-enterprise|HostedConversation|new WebSocket|createWorkspaceWatchService|createSessionWatchService/u
+      );
+    }
     expectSharedEntry('ee/web/src/util/trailing-task.ts', 'trailing-task');
     const presentation = read(`${root}/src/util/workbench-presentation.ts`);
     expect(presentation).toContain('./file-presentation.js');
@@ -239,7 +242,7 @@ describe('single shared Web implementation', () => {
     );
     for (const [file, componentImport] of [
       [
-        `${root}/src/view/workspace/WorkspaceInspector.vue`,
+        `${root}/src/view/workspace/WorkspaceFileWorkbench.vue`,
         "import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';"
       ],
       [
@@ -278,7 +281,7 @@ describe('single shared Web implementation', () => {
       'icon-theme-preference'
     );
     expectSharedEntry('ee/web/src/service/workspace-file-tree-service.ts', 'workspace-file-tree');
-    expect(read(`${root}/src/view/workspace/WorkspaceInspector.vue`)).toContain(
+    expect(read(`${root}/src/view/workspace/WorkspaceFilesPanel.vue`)).toContain(
       './WorkspaceFileTree.vue'
     );
     expect(read('packages/web-core/src/view/workspace/WorkspaceRegistrationPicker.vue')).toContain(
@@ -287,8 +290,8 @@ describe('single shared Web implementation', () => {
     expect(read('packages/web-core/src/view/workbench/WorkbenchPage.vue')).toContain(
       '../../view/workspace/QuickOpenDialog.vue'
     );
-    expect(read('packages/web-core/src/view/workbench/WorkbenchSurface.vue')).toContain(
-      '../../view/composer/ComposerReferencePicker.vue'
+    expect(read('packages/web-core/src/view/workbench/WorkspaceSessionPane.vue')).toContain(
+      '../composer/ComposerReferencePicker.vue'
     );
     expect(read('mar-web-console/vite.config.ts')).toContain(
       '@myagentroam/web-core/build/third-party-notices'
@@ -310,10 +313,12 @@ describe('single shared Web implementation', () => {
     ];
     const manifest = JSON.parse(read(`${root}/package.json`));
     const surface = read('packages/web-core/src/view/workbench/WorkbenchSurface.vue');
+    const pane = read('packages/web-core/src/view/workbench/WorkspaceSessionPane.vue');
+    expect(surface).toContain('./WorkspaceSessionPane.vue');
     for (const name of components) {
       expect(existsSync(`ee/web/src/view/composer/${name}.vue`)).toBe(false);
       expect(manifest.exports[`./${name}.vue`]).toBe(`./src/view/composer/${name}.vue`);
-      expect(surface).toContain(`../../view/composer/${name}.vue`);
+      expect(pane).toContain(`../composer/${name}.vue`);
       const source = read(`${root}/src/view/composer/${name}.vue`);
       expect(source).not.toMatch(/PageController|fetch\(|new WebSocket|from ['"]@\//u);
     }

@@ -1414,8 +1414,6 @@ describe('Server Node/Workspace ownership and grants', () => {
 
   it('ADMIN visibility of all Nodes does not extend to Workspace lists', async () => {
     const fixture = resourceFixture();
-    const directory = new ResourceManagementDirectory(fixture.database, fixture.authorization);
-
     await new ResourceManagementDirectory(
       fixture.database,
       fixture.authorization

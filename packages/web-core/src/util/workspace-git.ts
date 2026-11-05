@@ -1,5 +1,120 @@
 import { publicErrorSchema, workspaceGitTrackingSchema } from '@myagentroam/protocol';
-import type { ChangeEntry, ChangeRepository, GitWorktreeSummary } from '../model/workspace-git.js';
+import type {
+  ChangeEntry,
+  ChangeRepository,
+  GitWorktreeSummary,
+  HistoryCommit,
+  HistoryFile
+} from '../model/workspace-git.js';
+import type { WorkspaceFileOpenIntent, WorkspaceFileTab } from './workspace-file-tab.js';
+
+export function gitFileRepositoryPath(
+  repositoryPath: string,
+  worktreePath: string | undefined,
+  repositoryRoot: unknown,
+  workspacePath: string | undefined
+): string | undefined {
+  if (worktreePath !== undefined) return undefined;
+  return typeof repositoryRoot === 'string' &&
+    (repositoryPath !== '' || repositoryRoot !== workspacePath)
+    ? repositoryPath
+    : undefined;
+}
+
+export function changeDiffIntent(
+  entry: ChangeEntry,
+  diffFiles: readonly ChangeEntry[],
+  target: { readonly nodeId: string; readonly workspaceId: string },
+  repositoryRoot: unknown,
+  workspacePath: string | undefined
+): WorkspaceFileOpenIntent {
+  const paths = diffFiles
+    .filter(
+      (candidate) =>
+        candidate.repositoryPath === entry.repositoryPath &&
+        (candidate.worktreePath ?? '') === (entry.worktreePath ?? '')
+    )
+    .map((candidate) => candidate.path);
+  return {
+    kind: 'WORKTREE_DIFF',
+    ...(gitFileRepositoryPath(
+      entry.repositoryPath,
+      entry.worktreePath,
+      repositoryRoot,
+      workspacePath
+    ) === undefined
+      ? {}
+      : { gitFile: true }),
+    ...target,
+    path: entry.path,
+    repositoryPath: entry.repositoryPath,
+    worktreePath: entry.worktreePath ?? '',
+    paths
+  };
+}
+
+export function changeFileLocation(
+  entry: ChangeEntry,
+  repositoryRoot: unknown,
+  workspacePath: string | undefined
+): { path: string; worktreePath?: string; repositoryPath?: string } {
+  const repositoryPath = gitFileRepositoryPath(
+    entry.repositoryPath,
+    entry.worktreePath,
+    repositoryRoot,
+    workspacePath
+  );
+  return {
+    path:
+      repositoryPath === undefined && entry.worktreePath === undefined
+        ? workspaceChangePath(entry)
+        : entry.path,
+    ...(entry.worktreePath === undefined ? {} : { worktreePath: entry.worktreePath }),
+    ...(repositoryPath === undefined ? {} : { repositoryPath })
+  };
+}
+
+export function historyDiffIntent(
+  target: { readonly nodeId: string; readonly workspaceId: string },
+  commit: HistoryCommit,
+  file: HistoryFile,
+  source: { readonly repositoryPath: string; readonly refs: readonly string[] }
+): WorkspaceFileOpenIntent {
+  return {
+    kind: 'HISTORY_DIFF',
+    ...target,
+    path: file.path,
+    repositoryPath: source.repositoryPath,
+    worktreePath: '',
+    commit: commit.hash,
+    ...(file.previousPath === undefined ? {} : { previousPath: file.previousPath }),
+    refs: [...source.refs],
+    paths: [file.path]
+  };
+}
+
+export function comparisonChange(
+  entries: readonly ChangeEntry[],
+  path: string
+): ChangeEntry | undefined {
+  return entries.find((entry) => entry.diffAvailable && workspaceChangePath(entry) === path);
+}
+
+export function adjacentChange(
+  entries: readonly ChangeEntry[],
+  tab: WorkspaceFileTab,
+  direction: -1 | 1
+): ChangeEntry | undefined {
+  const files = entries.filter(
+    (entry) =>
+      entry.diffAvailable &&
+      entry.repositoryPath === tab.repositoryPath &&
+      (entry.worktreePath ?? '') === tab.worktreePath
+  );
+  if (files.length === 0) return undefined;
+  const current = files.findIndex((entry) => entry.path === tab.path);
+  return files[(Math.max(current, 0) + direction + files.length) % files.length];
+}
 
 export function parseChangeEntries(
   value: unknown,

@@ -5,7 +5,8 @@ import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import { nextTick, type Ref } from 'vue';
 import { runnerBrandIcon } from '../util/runner-brand-icon.js';
 import type { NodeSummary, Session, Workspace, WorkspaceTab } from '../model/workbench.js';
-import type { WorkspaceInspectorHandle } from '../service/workbench-workspace-cache-controller.js';
+import type { WorkspaceFileWorkbenchHandle } from './workbench-surface-state-service.js';
+import type { WorkspaceFileOpenIntent } from '../util/workspace-file-tab.js';
 import type { WorkbenchView } from '../util/workbench-route.js';
 import { nodePresentation, sessionActivityTitle } from '../util/workbench-presentation.js';
 import { formatRelativeSessionActivity } from '../util/session-list.js';
@@ -32,8 +33,14 @@ export interface WorkbenchPageInteractionOptions {
   readonly contentSearchReady: Readonly<Ref<boolean>>;
   readonly terminalReady: Readonly<Ref<boolean>>;
   readonly quickOpenFileVisible: Ref<boolean>;
-  readonly workspaceInspector: Ref<WorkspaceInspectorHandle | null | undefined>;
-  readonly showInspectorTool: (tool: 'search' | 'changes') => void;
+  readonly workspaceFileWorkbench: Ref<WorkspaceFileWorkbenchHandle | null | undefined>;
+  readonly openWorkspaceFileExternal: (path: string, line?: number, column?: number) => void;
+  readonly fileWorkbench: {
+    openTab(intent: WorkspaceFileOpenIntent): Promise<void>;
+    openFile(path: string, line?: number, column?: number): Promise<void>;
+    openComparison(path: string, line?: number, column?: number): Promise<void>;
+  };
+  readonly showAsideTool: (tool: 'search' | 'changes') => void;
   readonly openAttachmentImage?: (attachment: ComposerAttachmentFile) => Promise<void>;
   readonly openHtml: (path: string) => void;
   readonly openHtmlExternal: (path: string) => void;
@@ -49,7 +56,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     const sessionId = options.selectedSessionId?.value;
     if (!target || !sessionId || !options.nodeReady.value) return;
     const intent = toolChangeOpenIntent(entry, { ...target, sessionId, scope: 'SESSION' });
-    if (intent) options.workspaceInspector.value?.openWorkspaceFileTab(intent);
+    if (intent) void options.fileWorkbench.openTab(intent);
   }
   let quickOpenOrigin: HTMLElement | undefined;
 
@@ -128,7 +135,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       else options.openHtml(workspacePath);
       return;
     }
-    if (options.workspaceInspector.value == null) {
+    if (!options.filesReady.value) {
       options.notice(
         translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
         'error'
@@ -136,12 +143,12 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       return;
     }
     if (external) {
-      options.workspaceInspector.value.openWorkspaceFileExternal(workspacePath, line, column);
+      options.openWorkspaceFileExternal(workspacePath, line, column);
       return;
     }
     void (preferGitChanges
-      ? options.workspaceInspector.value.openWorkspaceFileComparison(workspacePath, line, column)
-      : options.workspaceInspector.value.openFile(workspacePath, line, column));
+      ? options.fileWorkbench.openComparison(workspacePath, line, column)
+      : options.fileWorkbench.openFile(workspacePath, line, column));
   }
 
   function openQuickOpenFile(): void {

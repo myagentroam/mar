@@ -2509,6 +2509,7 @@ export class JsonlSessionStore implements SessionStore {
     if (!transaction) return;
     const releases: Array<() => Promise<void>> = [];
     let failure: unknown;
+    let failed = false;
     try {
       for (const member of [...transaction.members].sort((a, b) => a.id.localeCompare(b.id))) {
         if (await sessionDirectoryExists(join(root, member.id)))
@@ -2536,19 +2537,19 @@ export class JsonlSessionStore implements SessionStore {
       for (const member of transaction.members) this.#shared.migrationFailures.delete(member.id);
       await this.#refreshIndex();
     } catch (error) {
+      failed = true;
       failure = error;
-      throw error;
-    } finally {
-      let releaseFailure: unknown;
-      for (const release of releases.reverse()) {
-        try {
-          await release();
-        } catch (error) {
-          releaseFailure ??= error;
-        }
-      }
-      if (failure === undefined && releaseFailure !== undefined) throw releaseFailure;
     }
+    let releaseFailure: unknown;
+    for (const release of releases.reverse()) {
+      try {
+        await release();
+      } catch (error) {
+        releaseFailure ??= error;
+      }
+    }
+    if (failure === undefined && releaseFailure !== undefined) throw releaseFailure;
+    if (failed) throw failure;
   }
   async delete(
     sessionId: string,

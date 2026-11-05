@@ -11,7 +11,7 @@ import type {
   WorkspaceNavigationTarget
 } from '../model/workspace-navigation.js';
 
-interface NavigationSource {
+export interface NavigationSource {
   readonly pageId: number;
   readonly nodeId: string;
   readonly workspaceId: string;

@@ -19,6 +19,7 @@
       import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
       import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
+      import { chineseLongTitle, chineseToolLabels } from './workbench-aside-fixture-data.ts';
 
       const theme = new URLSearchParams(location.search).get('theme');
       const themes = themePreferenceService();
@@ -38,20 +39,10 @@
         themes.setTheme(custom.id);
       } else themes.setTheme(theme === 'dark' ? 'vscode-dark-2026' : 'daylight');
       const language = new URLSearchParams(location.search).get('lang');
-      const toolLabels = {
-        files: '文件',
-        search: '搜索',
-        changes: 'Git 变更',
-        history: 'Git 历史',
-        terminal: '终端'
-      };
       const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
       const longTitle = new URLSearchParams(location.search).get('long-title');
       const childTitle = longTitle
-        ? (longTitle === 'zh'
-            ? '需要保持可读的很长会话标题'
-            : 'A long readable session title '
-          ).repeat(8)
+        ? (longTitle === 'zh' ? chineseLongTitle : 'A long readable session title ').repeat(8)
         : 'Child';
       const aside = createWorkbenchAsideService();
       aside.ensure(workspace, ['files', 'search', 'changes', 'history', 'terminal']);
@@ -119,7 +110,8 @@
                 browserLabel: 'Browser',
                 tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
                   id,
-                  label: language === 'zh' ? toolLabels[id] : id[0].toUpperCase() + id.slice(1)
+                  label:
+                    language === 'zh' ? chineseToolLabels[id] : id[0].toUpperCase() + id.slice(1)
                 })),
                 sessions: [{ sessionId: 'child', title: childTitle, active: true }],
                 tabLabel: 'Workbench Aside',

@@ -396,8 +396,7 @@ describe('Responses retry boundaries', () => {
           yield { type: 'completed', reason: 'completed' };
         }
       };
-      let agent!: Agent;
-      agent = await createMarAgent(
+      const agent: Agent = await createMarAgent(
         {
           mode: 'normal',
           host,
@@ -431,7 +430,7 @@ describe('Responses retry boundaries', () => {
   for (const encoding of ['STANDARD'] as const) {
     it.each(internalPrefixes)(
       `${encoding} retries overload after $name without exposing a failed attempt`,
-      async ({ name, events: prefix }) => {
+      async ({ events: prefix }) => {
         const server = await startResponsesWebSocketServer([], {
           responsesByRequest: [
             [

@@ -43,8 +43,8 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly saveCurrent: () => void;
   readonly activateCache: (nodeId: string, workspaceId: string) => void;
   readonly isCacheActive: (nodeId: string, workspaceId: string) => boolean;
-  readonly restoreInspector: (nodeId: string, workspaceId: string) => void;
-  readonly refreshInspector: (nodeId: string, workspaceId: string) => void;
+  readonly restoreWorkspaceView: (nodeId: string, workspaceId: string) => void;
+  readonly refreshVisibleTool: (nodeId: string, workspaceId: string) => void;
   readonly initializePaging: (tabId: string) => void;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
   readonly rememberWorkspace: (nodeId: string, workspace: Workspace) => void;
@@ -142,9 +142,9 @@ export function createWorkbenchWorkspaceSelectionService(
     const restoreView = switching || !options.isCacheActive(target.nodeId, target.workspaceId);
     if (restoreView) {
       options.activateCache(target.nodeId, target.workspaceId);
-      options.restoreInspector(target.nodeId, target.workspaceId);
-      if (cache.inspector !== undefined)
-        options.refreshInspector(target.nodeId, target.workspaceId);
+      options.restoreWorkspaceView(target.nodeId, target.workspaceId);
+      if (cache.files !== undefined || cache.git !== undefined)
+        options.refreshVisibleTool(target.nodeId, target.workspaceId);
       options.sessions.value = [...cache.sessions];
       options.restoreDraft(cache);
     }

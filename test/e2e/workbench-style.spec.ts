@@ -8,6 +8,29 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('late-mounted Files reveals the selected virtual row without taking focus', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${fixture.url}workbench-style.html?late-tree=1`);
+  const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+  const files = inspector.getByRole('tab', { name: 'Files', exact: true });
+  await files.click();
+  const selected = inspector.getByRole('treeitem', { name: /file-450\.ts/ });
+  await expect(selected).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(() =>
+      selected.evaluate((row) => {
+        const tree = row.closest('.workspace-file-tree')!;
+        const visible = tree.getBoundingClientRect();
+        const bounds = row.getBoundingClientRect();
+        return bounds.top >= visible.top && bounds.bottom <= visible.bottom;
+      })
+    )
+    .toBe(true);
+  await expect(files).toBeFocused();
+});
+
 for (const width of [1280, 390]) {
   test(`Closing the last embedded terminal preserves the new-terminal action at ${width}px`, async ({
     page
@@ -657,7 +680,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       await inspector
-        .locator('.inspector-tabs button')
+        .locator('.workbench-aside-tabs button')
         .filter({ hasText: /^Search$/ })
         .click();
       const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
@@ -710,7 +733,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const strip = inspector.getByRole('tablist');
         const tabs = strip.getByRole('tab');
         await expect(tabs).toHaveCount(4);
-        await expect(tabs.first()).toHaveCSS('font-size', '12px');
+        // Aside uses the shared compact Tab token, including its mobile size.
+        await expect(tabs.first()).toHaveCSS('font-size', viewportWidth >= 768 ? '12px' : '11px');
         for (const width of viewportWidth >= 768 ? [341, 275] : [366, 320]) {
           await inspector.evaluate((element, width) => {
             (element as HTMLElement).style.width = `${width}px`;
@@ -925,7 +949,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(bounds.height).toBeGreaterThanOrEqual(28);
         await expect(button.locator('svg')).toHaveCount(1);
       }
-      const strip = page.locator('.inspector-tabs');
+      const strip = page.locator('.workbench-aside-tabs');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(
         true
@@ -1062,7 +1086,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize({ width, height: 844 });
       const [statusBox, inspectorBox] = await Promise.all([
         watchStatus.boundingBox(),
-        inspector.locator('.workspace-inspector').boundingBox()
+        inspector.locator('.workbench-aside').boundingBox()
       ]);
       expect(statusBox!.width).toBeLessThan(inspectorBox!.width / 2);
     }
@@ -1208,7 +1232,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
     expect(fileReads).toBe(2);
     await inspector
-      .locator('.inspector-tabs button')
+      .locator('.workbench-aside-tabs button')
       .filter({ hasText: /^Search$/ })
       .click();
     await page.waitForTimeout(150);
@@ -1310,7 +1334,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     await inspector
-      .locator('.inspector-tabs button')
+      .locator('.workbench-aside-tabs button')
       .filter({ hasText: /^Search$/ })
       .click();
     const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });

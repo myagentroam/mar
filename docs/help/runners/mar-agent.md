@@ -145,7 +145,7 @@ Node 原生 `agent_send` 使用 `delivery` 参数，取值为 `STEER` 或 `QUEUE
 
 原生 `agent_list` 只接受 `scope`、可选标题片段 `query` 和 `limit`。省略 `scope` 或选择 `tree` 时，返回当前会话所在的协作树，包括已登记且获授权的根、祖先、同级及后代；空闲及已结束执行的会话也保留。选择 `active` 时，返回当前 Workspace 内正在运行或睡眠的会话，不把最近聊过、Goal 已启用或队列非空当作活跃。已知会话应直接复用其 ID，不按标题自动选址或派发。
 
-`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
+`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `scope`、`currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
 
 ```js
 await tools.agent_list({});

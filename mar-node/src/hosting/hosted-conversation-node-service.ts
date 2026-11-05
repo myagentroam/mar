@@ -736,7 +736,10 @@ export class HostedConversationNodeService {
     steerPrompt?: string
   ): Promise<unknown> {
     if (this.disablePrepared) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
-    let conversation = this.options.store.requireConversation(payload.userId, input.conversationId);
+    const conversation = this.options.store.requireConversation(
+      payload.userId,
+      input.conversationId
+    );
     this.assertTemplateContext(payload, conversation);
     if (this.cleanupLocks.has(conversation.id))
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');

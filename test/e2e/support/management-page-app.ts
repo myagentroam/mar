@@ -1,12 +1,15 @@
 import { defineAsyncComponent, h, nextTick } from 'vue';
-import { createTooltipApp } from './tooltip-app.js';
-import ResourceManagementPanel from '../../src/view/settings/ResourceManagementPanel.vue';
-import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
-import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import '../../src/styles.css';
+import { createTooltipApp } from '../../../packages/web-core/test/e2e/tooltip-app.js';
+import ResourceManagementPanel from '../../../packages/web-core/src/view/settings/ResourceManagementPanel.vue';
+import UsageStatisticsSettings from '../../../packages/web-core/src/view/settings/UsageStatisticsSettings.vue';
+import {
+  i18n,
+  localePreferenceService
+} from '../../../packages/web-core/src/service/locale-preference-service.js';
+import '../../../packages/web-core/src/styles.css';
 
 const AuditManagementPage = defineAsyncComponent(
-  () => import('../../../../ee/web/src/view/settings/AuditManagementPage.vue')
+  () => import('../../../ee/web/src/view/settings/AuditManagementPage.vue')
 );
 
 const audit = new URLSearchParams(location.search).get('area') === 'audit';

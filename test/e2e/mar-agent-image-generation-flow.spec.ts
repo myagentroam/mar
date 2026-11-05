@@ -15,6 +15,7 @@ import {
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { ModelSettingsStore } from '../../packages/server-core/src/model-settings.js';
 
 const executeFile = promisify(execFile);
 const PNG_BASE64 =
@@ -422,6 +423,11 @@ async function readRequest(request: IncomingMessage): Promise<string> {
 async function saveCredentialDocument(databaseUrl: string, credentialId: string): Promise<void> {
   const connection = await mysql.createConnection(databaseUrl);
   try {
+    const [users] = await connection.query<mysql.RowDataPacket[]>(
+      "SELECT id FROM users WHERE username='admin' LIMIT 1"
+    );
+    const userId = Number(users[0]?.['id']);
+    if (!Number.isSafeInteger(userId)) throw new Error('ADMIN_USER_MISSING');
     const now = Date.now();
     await connection.execute(
       `INSERT INTO system_settings (setting_key,setting_value,updated_at)
@@ -434,7 +440,7 @@ async function saveCredentialDocument(databaseUrl: string, credentialId: string)
               id: credentialId,
               name: 'Image generation credential',
               type: 'CODEX_OAUTH',
-              ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 },
+              ownership: { ownerType: 'PERSONAL', ownerUserId: userId },
               status: 'ACTIVE',
               accessToken: 'image-access-token',
               refreshToken: 'image-refresh-token',
@@ -468,7 +474,7 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
     const id = `image-flow-${randomUUID()}`;
     const now = Date.now();
     await connection.execute(
-      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,hosted_web_search,responses_previous_response_id,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
+      "INSERT INTO mar_agent_models (id,name,normalized_name,protocol,base_url,credential,model_id,context_window_tokens,max_output_tokens,input_capabilities,output_capabilities,reasoning_efforts,default_reasoning_effort,enabled,sort_order,last_test_status,owner_type,owner_user_id,owner_organization_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED',?,?,?,?,?,?)",
       [
         id,
         `Image flow ${id}`,
@@ -481,9 +487,8 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
         4_096,
         JSON.stringify(['TEXT']),
         JSON.stringify(['TEXT']),
-        JSON.stringify([]),
-        false,
-        false,
+        JSON.stringify(['medium']),
+        'medium',
         true,
         0,
         'PERSONAL',
@@ -493,6 +498,12 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
         now,
         now
       ]
+    );
+    await new ModelSettingsStore().write(
+      id,
+      'ANTHROPIC_MESSAGES',
+      { version: 1, gcEnabled: true },
+      connection
     );
     return id;
   } finally {

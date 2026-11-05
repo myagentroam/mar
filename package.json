@@ -5,10 +5,10 @@
   "version": "0.12.2",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
-    "build": "pnpm --filter @myagentroam/server... --filter @myagentroam/web-console... --filter @myagentroam/node... build",
+    "build": "pnpm --filter @myagentroam/server... --filter @myagentroam/web-console... --filter @myagentroam/node... --filter @myagentroam/agent-extension-subagent... build",
     "lint": "prettier --check . && eslint .",
     "typecheck": "pnpm --filter @myagentroam/protocol build && pnpm --filter @myagentroam/code-navigation build && pnpm --filter @myagentroam/agent build && pnpm --filter @myagentroam/server-core build && pnpm -r typecheck && tsc -p tsconfig.tests.json",
-    "test:unit": "pnpm --filter @myagentroam/protocol test:unit && pnpm --filter @myagentroam/code-navigation test:unit && pnpm --filter @myagentroam/node test:unit && pnpm --filter @myagentroam/server-core test:unit && pnpm --filter @myagentroam/web-core test:unit && pnpm --filter @myagentroam/agent test:unit && pnpm test:product",
+    "test:unit": "pnpm --filter @myagentroam/protocol test:unit && pnpm --filter @myagentroam/code-navigation test:unit && pnpm --filter @myagentroam/node test:unit && pnpm --filter @myagentroam/marctl test:unit && pnpm --filter @myagentroam/server-core test:unit && pnpm --filter @myagentroam/web-core test:unit && pnpm --filter @myagentroam/agent test:unit && pnpm --filter @myagentroam/agent-extension-subagent test && pnpm test:product",
     "start": "pnpm --filter @myagentroam/server start",
     "dev:web": "pnpm --filter @myagentroam/web-console dev",
     "test:e2e": "node --import tsx scripts/test-e2e.mjs",

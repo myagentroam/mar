@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { conversationItemSchema } from '@myagentroam/protocol';
 import type { AgentEvent } from '@myagentroam/agent';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
+import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
 import {
   publicOutputTruncation,
@@ -577,17 +578,34 @@ describe('MAR Agent live tool output projection', () => {
         input: {}
       });
       const text = `${'x'.repeat(10_100)}\nlast line\n`;
+      const read = formatReadEventOutput([
+        {
+          path: 'sample.txt',
+          text,
+          content: text,
+          encoding: 'utf-8',
+          newline: 'lf',
+          startLine: 1,
+          endLine: 2,
+          eof: true,
+          truncated: false
+        }
+      ]);
       const completed = toolEvent({
         type: 'tool.completed',
         toolName,
         callId: 'public-output',
-        summary: 'bounded summary',
-        data: text
+        summary: toolName === 'read' ? read.summary : 'bounded summary',
+        ...(toolName === 'read' ? { summaryTruncated: read.truncated } : {}),
+        data: toolName === 'read' ? structuredToolEventData('read', { ...read.data }) : text
       });
       expect(normalizer.normalize(started)[0]?.payload).not.toHaveProperty('output');
       const items = normalizer.normalize(completed);
       expect(items[0]?.payload).toMatchObject({
-        output: { blocks: [{ channel: 'TEXT', text: text.slice(-10_000) }], truncation: 'HEAD' }
+        output:
+          toolName === 'read'
+            ? { blocks: [{ channel: 'TEXT', text: read.summary }], truncation: 'SOURCE' }
+            : { blocks: [{ channel: 'TEXT', text: text.slice(-10_000) }], truncation: 'HEAD' }
       });
       expectValidConversationItems(items);
       const replay = new MarAgentConversationNormalizer();
@@ -599,7 +617,10 @@ describe('MAR Agent live tool output projection', () => {
           toolName,
           callId: 'public-output',
           summary: '',
-          data: ''
+          data:
+            toolName === 'read'
+              ? structuredToolEventData('read', { ...formatReadEventOutput([]).data })
+              : ''
         })
       );
       expect(empty[0]?.payload).toMatchObject({ output: { blocks: [] } });

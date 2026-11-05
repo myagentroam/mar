@@ -113,7 +113,7 @@ export function bindCoreFiles(
   };
 }
 
-export interface DomainFileOperations extends ExtensionFileOperations {}
+export type DomainFileOperations = ExtensionFileOperations;
 export interface DomainFileFacts {
   'files.completed': ExtensionFileCompletion;
 }

@@ -6,7 +6,6 @@ import {
   type ConversationHistoryService
 } from '../../src/service/conversation-history-service.js';
 import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
-import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { RunEventService } from '../../src/service/run-event-service.js';

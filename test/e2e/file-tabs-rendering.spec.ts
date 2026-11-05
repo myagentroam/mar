@@ -375,6 +375,7 @@ for (const width of [1280, 390]) {
       await page.getByRole('button', { name: 'View diff for src/first.ts', exact: true }).click();
       const frame = page.locator('.workspace-file-page-frame:visible');
       await expect(frame.locator('.unified-history-diff')).toContainText('src/first.ts');
+      await expect(frame).toBeFocused();
       await captureScreenshot(page, `file-preview-diff-${width}.png`);
       const content = frame.locator('.unified-diff-content');
       for (const panel of ['#171e28', '#ffffff', '#263b32']) {
@@ -434,6 +435,46 @@ for (const width of [1280, 390]) {
     }
   });
 }
+
+test('opening a file preview does not reclaim focus the user moved during the transition', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  try {
+    await page.route('**/api/workspaces/workspace/changes?*', (route) =>
+      route.fulfill({
+        json: {
+          repositories: [
+            {
+              repositoryPath: '',
+              repositoryName: 'project',
+              source: 'ROOT',
+              changes: [
+                { path: 'src/first.ts', state: 'UNSTAGED', change: 'MODIFIED', diffAvailable: true }
+              ]
+            }
+          ]
+        }
+      })
+    );
+    await page.route('**/api/workspaces/workspace/changes/diff?*', (route) =>
+      route.fulfill({ json: { diff: { binary: false, text: '@@ -1 +1 @@\n-before\n+after' } } })
+    );
+    await page.goto(`${fixture.url}file-tabs.html?diff-navigation=1`);
+    await page.addStyleTag({ content: ':root { --el-transition-duration: 2s !important; }' });
+    await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+    await page.getByRole('button', { name: 'View diff for src/first.ts', exact: true }).click();
+    const dialog = page.locator('.file-preview-surface');
+    await expect(dialog).toBeFocused();
+    const tab = dialog.getByRole('tab', { name: /first\.ts/ });
+    await tab.focus();
+    await expect(tab).toBeFocused();
+    await expect(page.locator('.dialog-fade-enter-active')).toHaveCount(0);
+    await expect(tab).toBeFocused();
+  } finally {
+    await fixture.close();
+  }
+});
 
 for (const kind of ['worktree', 'history']) {
   test(`Git format preview restores actual focus when reopening ${kind}`, async ({ page }) => {

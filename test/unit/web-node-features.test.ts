@@ -4,12 +4,17 @@ import {
   isNodeVersionInFeatureRange,
   supportsNodeFeature
 } from '@myagentroam/web-core/node-features';
-import { FEATURE_DEMO } from '../../packages/web-core/src/util/node-features.js';
+import {
+  FEATURE_DEMO,
+  SESSION_ASIDE,
+  supportsSessionAside
+} from '../../packages/web-core/src/util/node-features.js';
 
 describe('Web Node feature version gates', () => {
-  it('Preserves only the reserved example', () => {
+  it('registers the reserved example and Session Aside feature', () => {
     expect(NODE_FEATURES).toEqual({
-      [FEATURE_DEMO]: { introducedIn: '0.9.119' }
+      [FEATURE_DEMO]: { introducedIn: '0.9.119' },
+      [SESSION_ASIDE]: { introducedIn: '0.11.69' }
     });
     expect(supportsNodeFeature('0.9.118', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.119', FEATURE_DEMO)).toBe(true);
@@ -17,6 +22,10 @@ describe('Web Node feature version gates', () => {
     expect(supportsNodeFeature('unknown', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.119-beta.1', FEATURE_DEMO)).toBe(false);
     expect(supportsNodeFeature('0.9.120', 'future.feature')).toBe(false);
+    expect(supportsSessionAside('0.11.68', { apiVersion: 1 })).toBe(false);
+    expect(supportsSessionAside('0.11.69', { apiVersion: 1 })).toBe(true);
+    expect(supportsSessionAside('0.11.70', { apiVersion: 1 })).toBe(true);
+    expect(supportsSessionAside('0.11.69', { apiVersion: 2 })).toBe(false);
   });
 
   it('Permanent features activate at and after their declared introduction version', () => {

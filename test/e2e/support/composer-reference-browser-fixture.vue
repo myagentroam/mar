@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import ConversationComposer from '../../../packages/web-core/src/view/composer/ConversationComposer.vue';
 import ComposerReferencePicker from '../../../packages/web-core/src/view/composer/ComposerReferencePicker.vue';
 import ComposerCommandPicker from '../../../packages/web-core/src/view/composer/ComposerCommandPicker.vue';
@@ -7,6 +7,7 @@ import { createComposerReferenceService } from '../../../packages/web-core/src/s
 import { createRunnerInteractionService } from '../../../packages/web-core/src/service/runner-interaction-service.js';
 import { createWorkbenchComposerInteractionController } from '../../../packages/web-core/src/service/workbench-composer-interaction-controller.js';
 import { serializeComposerMessage } from '../../../packages/web-core/src/service/composer-skill-token-service.js';
+import { consoleKeyboardShortcutService } from '../../../packages/web-core/src/service/console-keyboard-shortcut-service.js';
 
 const input = ref('');
 const mobile = ref(new URLSearchParams(location.search).get('mobile') === '1');
@@ -109,6 +110,17 @@ const interactions = createWorkbenchComposerInteractionController({
   scrollToLatest: () => {},
   scrollToLatestAfterLayout: async () => {},
   editRange: (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
+});
+let releaseShortcuts: (() => void) | undefined;
+onMounted(() => {
+  releaseShortcuts = interactions.registerShortcuts(
+    () => composer.value?.$el.querySelector('textarea') ?? undefined
+  );
+  document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
+});
+onBeforeUnmount(() => {
+  releaseShortcuts?.();
+  document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 function updateInput(value: string) {
   input.value = value;

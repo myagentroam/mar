@@ -4,6 +4,7 @@ import { SecretValue } from '../../src/index.js';
 import { createModelTurnSession } from '../../src/sdk/model-runtime.js';
 import { recoverModelStream } from '../../src/model/recovery.js';
 import { AgentError } from '../../src/error.js';
+import { observeModelProgress } from '../../src/runtime/model-progress.js';
 
 const controllers: AbortController[] = [];
 afterEach(() => {
@@ -82,9 +83,33 @@ function collect(stream: AsyncIterable<ModelEvent>) {
   return { events, done, failure: () => failure };
 }
 
+it.each(['complete', 'fail'] as const)(
+  'reports the correct failure when model progress cleanup fails after %s',
+  async (outcome) => {
+    const primary = new Error('model failed');
+    const cleanup = new Error('cleanup failed');
+    const start = (): AsyncIterable<ModelEvent> => ({
+      [Symbol.asyncIterator]: () => ({
+        next: async () => {
+          if (outcome === 'fail') throw primary;
+          return { done: true, value: undefined };
+        },
+        return: async () => {
+          throw cleanup;
+        }
+      })
+    });
+    const events = observeModelProgress(start, new AbortController().signal);
+    await expect(async () => {
+      for await (const event of events) expect(event).toBeDefined();
+    }).rejects.toBe(outcome === 'fail' ? primary : cleanup);
+  }
+);
+
 it('times out a completely silent model at 180 seconds and only aborts that request', async () => {
   const f = fixture(async function* (signal) {
     await pause(900_000, signal);
+    yield* [];
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
   await vi.advanceTimersByTimeAsync(179_999);
@@ -184,6 +209,7 @@ it('does not refresh progress for duplicate hosted-tool states', async () => {
 it('preserves caller cancellation rather than classifying it as a retryable timeout', async () => {
   const f = fixture(async function* (signal) {
     await pause(900_000, signal);
+    yield* [];
   });
   const run = collect(f.turn.start(f.request, f.parent.signal));
   await vi.advanceTimersByTimeAsync(179_999);

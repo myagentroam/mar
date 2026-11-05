@@ -3345,8 +3345,7 @@ describe('agent runtime', () => {
     await writeFile(join(workspace, 'AGENTS.md'), 'SUBAGENT_SCOPED_RULE\n');
     await writeFile(join(workspace, 'src', 'AGENTS.md'), 'SUBAGENT_NESTED_RULE_NOT_AUTOLOADED\n');
     const requests: ModelRequest[] = [];
-    let agent!: Agent;
-    agent = await createMarAgent(
+    const agent: Agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
@@ -3457,8 +3456,7 @@ describe('agent runtime', () => {
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     await writeFile(join(workspace, 'input.txt'), 'subagent content\n');
     const adapter = new EmptyFinalSubagentAdapter();
-    let agent!: Agent;
-    agent = await createMarAgent(
+    const agent: Agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),
@@ -5208,8 +5206,7 @@ describe('agent runtime', () => {
       reasoningEfforts: ['low', 'high'],
       defaultReasoningEffort: 'low'
     };
-    let agent!: Agent;
-    agent = await createMarAgent(
+    const agent: Agent = await createMarAgent(
       {
         mode: 'normal',
         host: new LocalAgentHost({ homeDirectory: home, workspace }),

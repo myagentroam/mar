@@ -248,6 +248,16 @@ describe('Web unified file preview classification', () => {
     }
   );
 
+  it('rejects binary control characters while retaining text whitespace in UTF-16 previews', () => {
+    for (const code of [...Array.from({ length: 32 }, (_, index) => index), 127]) {
+      const bytes = Uint8Array.from([0xff, 0xfe, 65, 0, code, 0, 66, 0]);
+      const readable = code === 9 || code === 10 || code === 12 || code === 13;
+      expect(decodeFilePreviewContent(bytes, 'source.c').encoding, `character ${code}`).toBe(
+        readable ? 'utf-8' : 'base64'
+      );
+    }
+  });
+
   it('keeps damaged text readable but does not recover binary or unknown data as text', () => {
     expect(decodeFilePreviewContent(Uint8Array.from([65, 0xff, 66]), 'source.c')).toEqual({
       encoding: 'utf-8',

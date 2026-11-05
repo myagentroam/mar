@@ -57,10 +57,14 @@ export async function* observeModelProgress(
     throw error;
   } finally {
     controller.abort();
-    try {
+    if (failed) {
+      try {
+        await iterator.return?.();
+      } catch {
+        // Keep the generation failure rather than replacing it with a cleanup failure.
+      }
+    } else {
       await iterator.return?.();
-    } catch (error) {
-      if (!failed) throw error;
     }
   }
 }

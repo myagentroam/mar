@@ -10,7 +10,102 @@ import type { ScopedHttpService } from '../../src/service/scoped-http-service.js
 import { changeKey, createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
 import type { WorkspaceFileOperationTarget } from '../../src/service/workspace-file-operation-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
-import { limitChangeRepositories } from '../../src/util/workspace-git.js';
+import {
+  changeDiffIntent,
+  gitFileRepositoryPath,
+  limitChangeRepositories
+} from '../../src/util/workspace-git.js';
+
+it('derives file intents and locations from the live Git owner and workspace metadata', () => {
+  let workspacePath = '/root';
+  const entry: ChangeEntry = {
+    repositoryPath: 'nested',
+    repositoryName: 'nested',
+    source: 'SUBMODULE',
+    path: 'a.ts',
+    state: 'UNSTAGED',
+    change: 'MODIFIED',
+    diffAvailable: true
+  };
+  const linked = { ...entry, source: 'WORKTREE' as const, worktreePath: '/linked', path: 'b.ts' };
+  const service = createWorkspaceGitService({
+    http: { request: vi.fn() } as unknown as ScopedHttpService,
+    target: () => ({ nodeId: 'n', workspaceId: 'w' }),
+    gitEnabled: () => true,
+    historyEnabled: () => true,
+    workspacePath: () => workspacePath,
+    onFailure: vi.fn(),
+    onWorkspace: vi.fn(),
+    onBranch: vi.fn()
+  });
+  service.applyWatch(
+    {
+      repositoryRoot: '/root',
+      repositories: [
+        {
+          repositoryPath: 'nested',
+          repositoryName: 'nested',
+          source: 'SUBMODULE',
+          changes: [entry]
+        },
+        {
+          repositoryPath: 'nested',
+          repositoryName: 'linked',
+          source: 'WORKTREE',
+          worktreePath: '/linked',
+          changes: [linked]
+        }
+      ]
+    },
+    1
+  );
+  expect(service.changeIntent(entry)).toMatchObject({
+    kind: 'WORKTREE_DIFF',
+    gitFile: true,
+    paths: ['a.ts']
+  });
+  expect(service.changeLocation(linked)).toMatchObject({ path: 'b.ts', worktreePath: '/linked' });
+  expect(service.resolveRepositoryPath('', undefined)).toBeUndefined();
+  workspacePath = '/another-root';
+  expect(service.resolveRepositoryPath('', undefined)).toBe('');
+  service.reset();
+});
+
+it('preserves repository and worktree identity in change intents', () => {
+  const entry: ChangeEntry = {
+    repositoryPath: 'nested',
+    repositoryName: 'nested',
+    source: 'SUBMODULE',
+    path: 'a.ts',
+    state: 'UNSTAGED',
+    change: 'MODIFIED',
+    diffAvailable: true
+  };
+  const linked = { ...entry, source: 'WORKTREE' as const, worktreePath: '/linked', path: 'b.ts' };
+  expect(gitFileRepositoryPath('', undefined, '/root', '/root')).toBeUndefined();
+  expect(gitFileRepositoryPath('nested', undefined, '/root', '/root')).toBe('nested');
+  expect(gitFileRepositoryPath('nested', '/linked', '/root', '/root')).toBeUndefined();
+  expect(
+    changeDiffIntent(entry, [entry, linked], { nodeId: 'n', workspaceId: 'w' }, '/root', '/root')
+  ).toMatchObject({
+    kind: 'WORKTREE_DIFF',
+    gitFile: true,
+    repositoryPath: 'nested',
+    worktreePath: '',
+    paths: ['a.ts']
+  });
+  expect(
+    changeDiffIntent(linked, [entry, linked], { nodeId: 'n', workspaceId: 'w' }, '/root', '/root')
+  ).toEqual({
+    kind: 'WORKTREE_DIFF',
+    nodeId: 'n',
+    workspaceId: 'w',
+    path: 'b.ts',
+    repositoryPath: 'nested',
+    worktreePath: '/linked',
+    paths: ['b.ts']
+  });
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -1043,15 +1138,25 @@ describe('Workspace Git service', () => {
         diffAvailable: true
       };
       const oldRestore = service.restoreChange(entry);
+      const [oldPath, oldInit] = request.mock.calls[0]!;
+      expect(requestUrl(oldPath).searchParams.get('nodeId')).toBe('node-1');
+      expect(JSON.parse(oldInit!.body as string)).toMatchObject({
+        nodeId: 'node-1',
+        path: 'same.txt',
+        repositoryPath: 'sub',
+        worktreePath: '/temporary/a'
+      });
       const b = { nodeId: 'node-2', workspaceId: 'workspace-1' };
       setTarget(b);
       service.restore({ changes: { changes: [] } });
       const bEntry = { ...entry, repositoryPath: '', worktreePath: '/temporary/b' };
       const newRestore = service.restoreChange(bEntry);
+      const oldError = new Error('OLD_RESTORE_FAILED');
       if (outcome === 'success') old.resolve({ restored: true });
-      else old.reject(new Error('OLD_RESTORE_FAILED'));
+      else old.reject(oldError);
       await expect(oldRestore).resolves.toBe(outcome === 'success');
-      expect(onFailure).not.toHaveBeenCalled();
+      if (outcome === 'success') expect(onFailure).not.toHaveBeenCalled();
+      else expect(onFailure).toHaveBeenCalledExactlyOnceWith(oldError, 'RESTORE');
       expect(service.restoringPath.value).toBe(changeKey(bEntry));
       expect(request).toHaveBeenCalledTimes(2);
       const [path, init] = request.mock.calls[1]!;
@@ -1066,6 +1171,7 @@ describe('Workspace Git service', () => {
       next.resolve({ restored: true });
       await expect(newRestore).resolves.toBe(true);
       expect(service.restoringPath.value).toBeUndefined();
+      expect(onFailure).toHaveBeenCalledTimes(outcome === 'failure' ? 1 : 0);
     }
   );
 

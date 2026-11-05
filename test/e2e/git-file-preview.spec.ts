@@ -197,7 +197,7 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}workbench-style.html?git-previews=1`);
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       await inspector
-        .locator('.inspector-tabs')
+        .locator('.workbench-aside-tabs')
         .getByRole('tab', { name: 'Git Changes', exact: true })
         .click();
       const changedFile = inspector.locator('.change-path').filter({ hasText: 'art.svg' });
@@ -213,7 +213,7 @@ for (const width of [1280, 390]) {
       await page.getByRole('button', { name: 'Close file window', exact: true }).click();
 
       await inspector
-        .locator('.inspector-tabs')
+        .locator('.workbench-aside-tabs')
         .getByRole('tab', { name: 'Git History', exact: true })
         .click();
       await inspector.locator('.history-commit-row').filter({ hasText: 'Add artwork' }).click();

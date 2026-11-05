@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { createSSRApp, h, type Component, type Ref, type SetupContext } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, {

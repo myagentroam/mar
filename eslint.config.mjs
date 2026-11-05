@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      'mar-server/web/**',
       '**/node_modules/**',
       '**/.vitepress/cache/**',
       'data/**',

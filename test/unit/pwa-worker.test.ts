@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
@@ -62,7 +61,7 @@ async function workerFixture(
       }
     ]
   });
-  const listeners = new Map<string, (event: any) => void>();
+  const listeners = new Map<string, (event: unknown) => void>();
   const clientMessage = vi.fn();
   const source = { id: 'window-1', url: `${origin}/console`, postMessage: clientMessage };
   const navigateOtherWindow = vi.fn(async () => null);
@@ -96,7 +95,7 @@ async function workerFixture(
       claim
     },
     skipWaiting,
-    addEventListener: (type: string, listener: (event: any) => void) =>
+    addEventListener: (type: string, listener: (event: unknown) => void) =>
       listeners.set(type, listener)
   };
   runInNewContext(bundle.outputFiles[0]!.text, {

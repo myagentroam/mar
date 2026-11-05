@@ -461,7 +461,7 @@ export async function locateNativeSessionPath(
 ): Promise<string | undefined> {
   const wanted = canonical(workspacePath);
   const key = indexKey(runner, wanted, externalSessionId);
-  let path = getTranscriptIndex(key);
+  const path = getTranscriptIndex(key);
   if (path !== undefined) return path;
   const candidates = await nativeTranscriptAdapter(runner)?.locateCandidates?.(externalSessionId);
   if (candidates !== undefined) {

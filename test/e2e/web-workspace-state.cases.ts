@@ -332,11 +332,7 @@ test('tree and node icon badges retain surface isolation on desktop and mobile',
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
       await page.mouse.move(width - 10, 850);
       const colors: string[] = [];
-      for (const [button, dot] of [
-        [treeButton, treeDot],
-        [nodeButton, nodeDot],
-        [activityButton, activityDot]
-      ] as const) {
+      for (const button of [treeButton, nodeButton, activityButton]) {
         if (width < 768 && button === nodeButton)
           await page.getByRole('button', { name: '工作', exact: true }).click();
         const geometry = await button.evaluate(
@@ -4670,10 +4666,12 @@ test('Three Workspace Tabs use the same activation flow to restore their session
   markNextWorkspace1Snapshot = true;
   await page.getByRole('tab', { name: /project-1/ }).click();
   await expect(page.getByText('会话 1 回切快照', { exact: true })).toBeVisible();
-  await expect(page.locator('.workspace-inspector')).not.toContainText(
+  await expect(page.locator('.workbench-aside-panel:visible')).toBeVisible();
+  await expect(page.locator('.workbench-aside-panel:visible')).not.toContainText(
     '节点离线或未声明只读 Files 能力'
   );
-  await expect(page.locator('.workspace-inspector')).not.toContainText('加载中');
+  await expect(page.locator('.workbench-aside-panel:visible')).toBeVisible();
+  await expect(page.locator('.workbench-aside-panel:visible')).not.toContainText('加载中');
   releaseNode1Manifest?.();
   await expect(page.getByRole('treeitem', { name: 'src/main.ts', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: /project-3/ }).click();

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { createWorkbenchPageController } from '../../src/service/workbench-page-controller.js';
+import { mergeWorkspaceWatchSnapshot } from '../../src/service/workspace-runtime-state-service.js';
+import * as directCoordinator from '../../src/service/workbench-direct-transport-coordinator.js';
+import * as directRead from '../../src/service/workspace-direct-file-read-service.js';
+import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
+import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
@@ -188,6 +193,339 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('leaves Changes loading to the visible tool lifecycle when selected by shortcut', async () => {
+    const { page } = controller();
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+    const target = { nodeId: node.id, workspaceId: workspace.id };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = target;
+    await nextTick();
+    page.workspaces.value = [workspace];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null }
+    };
+    await nextTick();
+    page.selectAsideTool({ ...target, id: 'files' });
+    const loadChanges = vi.spyOn(page.workspaceGit, 'loadChanges').mockResolvedValue();
+    const shortcut = captured.lifecycle!.workspaceShortcuts.find(
+      (binding) => binding.command === 'workspace.changes'
+    );
+    expect(shortcut).toBeDefined();
+    expect(shortcut!.execute({} as KeyboardEvent)).toBe('HANDLED');
+    await nextTick();
+    expect(page.asideState.value?.active).toEqual({ kind: 'tool', id: 'changes' });
+    expect(loadChanges).not.toHaveBeenCalled();
+  });
+
+  it('uses the current CSRF token and renews it for a Files mutation', async () => {
+    Object.assign(window, { sessionStorage });
+    const { page } = controller();
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'DIRECTORY' as const };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+    await nextTick();
+    page.workspaces.value = [workspace];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    };
+    page.csrfToken.value = 'updated-after-owner-creation';
+    const writes: (string | undefined)[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith('/files/mutate')) {
+        writes.push((init?.headers as Record<string, string>)['x-csrf-token']);
+        return writes.length === 1
+          ? new Response(JSON.stringify({ error: { code: 'CSRF_INVALID' } }), { status: 403 })
+          : new Response(JSON.stringify({}));
+      }
+      if (path === '/api/auth/csrf') return new Response(JSON.stringify({ csrfToken: 'renewed' }));
+      return new Response(JSON.stringify({ files: { entries: [], nextCursor: null } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const scope = page.workspaceFiles.captureTarget();
+    expect(scope).toBeDefined();
+    await page.workspaceFiles.mutate(scope!, 'DELETE', 'obsolete.txt');
+    expect(writes).toEqual(['updated-after-owner-creation', 'renewed']);
+    expect(page.csrfToken.value).toBe('renewed');
+  });
+  it('routes live file and Git transport capabilities through the root-owned file workbench', async () => {
+    const createCoordinator = directCoordinator.createWorkbenchDirectTransportCoordinator;
+    const coordinator = vi
+      .spyOn(directCoordinator, 'createWorkbenchDirectTransportCoordinator')
+      .mockImplementation((input) => ({ ...createCoordinator(input), isConnected: () => true }));
+    const bytes = new TextEncoder().encode('direct text');
+    const range = vi.spyOn(directRead, 'readWorkspaceDirectFileRange').mockResolvedValue({
+      bytes,
+      size: bytes.length,
+      offset: 0,
+      nextOffset: null,
+      revision: 'a'.repeat(64)
+    });
+    const object = vi.spyOn(directObject, 'readWorkspaceDirectObjectUrl').mockResolvedValue({
+      url: 'blob:fixture',
+      size: 10,
+      revision: 'a'.repeat(64)
+    });
+    const download = vi
+      .spyOn(directDownload, 'downloadWorkspaceDirectFile')
+      .mockResolvedValue('COMPLETED');
+    const pwa = {
+      state: ref({ offline: 'online', checked: false }),
+      subscribe: () => () => {},
+      activeWorker: () => undefined
+    } as unknown as PwaApplicationService;
+    const { page } = controller(pwa);
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+    await nextTick();
+    page.workspaces.value = [workspace];
+    page.workspaceTreeService.cacheWorkspaces(node.id, [workspace]);
+    const manifest = {
+      manifestVersion: 1,
+      observedAt: 1,
+      nodeGeneration: 'generation-a',
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 },
+      directTransfer: { range: true, download: true, gitCommitBlob: true }
+    } as unknown as NonNullable<typeof page.nodeManifest.value>;
+    page.nodeManifest.value = manifest;
+    expect(coordinator).toHaveBeenCalledTimes(1);
+    await page.fileWorkbench.openFile('direct.txt');
+    await page.fileWorkbench.openTab({
+      kind: 'HISTORY_TEXT',
+      nodeId: node.id,
+      workspaceId: workspace.id,
+      path: 'history.txt',
+      repositoryPath: '',
+      worktreePath: '',
+      commit: 'b'.repeat(40),
+      refs: ['main']
+    });
+    expect(range.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+      'WORKSPACE_FILE',
+      'GIT_COMMIT_BLOB'
+    ]);
+    await page.fileWorkbench.openFile('photo.png');
+    await page.fileWorkbench.openTab({
+      kind: 'HISTORY_TEXT',
+      nodeId: node.id,
+      workspaceId: workspace.id,
+      path: 'history.png',
+      repositoryPath: '',
+      worktreePath: '',
+      commit: 'b'.repeat(40),
+      refs: ['main']
+    });
+    expect(object.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+      'WORKSPACE_FILE',
+      'GIT_COMMIT_BLOB'
+    ]);
+    await page.fileWorkbench.downloadTarget({
+      ...page.workspaceTarget.value!,
+      path: 'download.txt'
+    });
+    await page.fileWorkbench.downloadTarget({
+      ...page.workspaceTarget.value!,
+      path: 'history.txt',
+      history: { commit: 'b'.repeat(40), repositoryPath: '', refs: ['main'] }
+    });
+    expect(download.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+      'WORKSPACE_FILE',
+      'GIT_COMMIT_BLOB'
+    ]);
+    const directReadsBeforeCapabilityChange = range.mock.calls.length;
+    page.nodeManifest.value = {
+      ...manifest,
+      directTransfer: {
+        ...manifest.directTransfer!,
+        range: false,
+        download: false,
+        gitCommitBlob: false
+      }
+    };
+    await page.fileWorkbench.openFile('fallback.txt');
+    expect(range).toHaveBeenCalledTimes(directReadsBeforeCapabilityChange);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/files/read?'))).toBe(
+      true
+    );
+  });
+  it.each(['FILE_NOT_FOUND', 'PERMISSION_DENIED'])(
+    'keeps a successful preview independent of a directory %s failure',
+    async (code) => {
+      const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
+      const { page } = controller();
+      const workspace = { id: 'workspace-a', path: '/project', kind: 'DIRECTORY' as const };
+      page.nodes.value = [node];
+      page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+      await flushComponent();
+      page.workspaceTreeService.cacheWorkspaces(node.id, [workspace]);
+      page.workspaces.value = [workspace];
+      page.nodeManifest.value = {
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null },
+        sessionAside: { apiVersion: 1 }
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (request: string | URL | Request) => {
+          const url = new URL(String(request), 'https://console.example.test');
+          return url.pathname.endsWith('/files/read')
+            ? new Response(
+                JSON.stringify({
+                  file: {
+                    path: 'missing/result.md',
+                    content: 'safe',
+                    encoding: 'utf-8',
+                    size: 4,
+                    nextOffset: null,
+                    revision: 'a'.repeat(64)
+                  }
+                })
+              )
+            : new Response(JSON.stringify({ error: code }), { status: 404 });
+        })
+      );
+      await page.fileWorkbench.openFile('missing/result.md');
+      await flushComponent();
+      expect(page.fileWorkbench.frames.value[0]?.fileContent.value).toMatchObject({
+        path: 'missing/result.md',
+        content: 'safe'
+      });
+      expect(show).toHaveBeenCalledTimes(code === 'PERMISSION_DENIED' ? 1 : 0);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 404 }))
+      );
+      await page.fileWorkbench.openWorkspaceFile('missing/failure.md');
+      expect(show).toHaveBeenCalledTimes(code === 'PERMISSION_DENIED' ? 2 : 1);
+    }
+  );
+
+  it('keeps Git changes when a file read reports an unavailable capability', async () => {
+    const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
+    const { page } = controller();
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+    await flushComponent();
+    page.workspaceTreeService.cacheWorkspaces(node.id, [workspace]);
+    page.workspaces.value = [workspace];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    };
+    const changes = { changes: [{ path: 'kept.txt' }] };
+    page.workspaceGit.restore({ changes });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'CAPABILITY_UNAVAILABLE' }), { status: 403 })
+      )
+    );
+    await page.fileWorkbench.openWorkspaceFile('missing.txt');
+    expect(page.workspaceGit.snapshot().changes).toEqual(changes);
+    expect(show).toHaveBeenCalledOnce();
+  });
+
+  it('does not reapply stale Git Watch metadata after Files changes the Workspace kind', async () => {
+    const { page } = controller();
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+    page.nodes.value = [node];
+    page.workspaces.value = [workspace];
+    page.workspaceTarget.value = { nodeId: node.id, workspaceId: workspace.id };
+    await flushComponent();
+    page.workspaceTreeService.cacheWorkspaces(node.id, [workspace]);
+    page.workspaces.value = [workspace];
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    };
+    const update = (
+      data: { files?: unknown; changes?: unknown },
+      topic: 'files' | 'changes' | 'sessions'
+    ) => {
+      page.workspaceWatchSnapshot.value = mergeWorkspaceWatchSnapshot(
+        page.workspaceWatchSnapshot.value,
+        node.id,
+        workspace.id,
+        data,
+        { topic, revision: 1 }
+      );
+    };
+    update({ changes: { workspace, changes: [], repositories: [] } }, 'changes');
+    await nextTick();
+    update(
+      {
+        files: {
+          files: { entries: [], nextCursor: null },
+          workspace: { ...workspace, kind: 'DIRECTORY' }
+        }
+      },
+      'files'
+    );
+    await nextTick();
+    expect(page.selectedWorkspace.value?.kind).toBe('DIRECTORY');
+    update({}, 'sessions');
+    await nextTick();
+    expect(page.selectedWorkspace.value?.kind).toBe('DIRECTORY');
+    update({ changes: { workspace, changes: [], repositories: [] } }, 'changes');
+    await nextTick();
+    expect(page.selectedWorkspace.value?.kind).toBe('GIT_WORKSPACE');
+  });
+
+  it('restores hidden Search drafts per Workspace and distinguishes an absent panel from clearing', async () => {
+    const { page } = controller();
+    page.nodes.value = [node];
+    page.workspaces.value = [
+      { id: 'a', path: '/a', kind: 'DIRECTORY' },
+      { id: 'b', path: '/b', kind: 'DIRECTORY' }
+    ];
+    let draft = { contentQuery: '', contentUseRegex: false };
+    const panel = {
+      focus: async () => {},
+      snapshot: () => ({ ...draft }),
+      restore: (value: { contentQuery?: unknown; contentUseRegex?: unknown }) => {
+        draft = {
+          contentQuery: typeof value.contentQuery === 'string' ? value.contentQuery : '',
+          contentUseRegex: value.contentUseRegex === true
+        };
+      }
+    };
+    expect(await page.openQuickWorkspace(node.id, 'a')).toBe(true);
+    page.setWorkspaceSearchPanel(panel);
+    draft = { contentQuery: 'needle', contentUseRegex: true };
+    expect(await page.openQuickWorkspace(node.id, 'b')).toBe(true);
+    expect(draft).toEqual({ contentQuery: '', contentUseRegex: false });
+    page.setWorkspaceSearchPanel(null);
+    expect(await page.openQuickWorkspace(node.id, 'a')).toBe(true);
+    expect(await page.openQuickWorkspace(node.id, 'b')).toBe(true);
+    expect(await page.openQuickWorkspace(node.id, 'a')).toBe(true);
+    page.setWorkspaceSearchPanel(panel);
+    expect(draft).toEqual({ contentQuery: 'needle', contentUseRegex: true });
+    draft = { contentQuery: '', contentUseRegex: false };
+    expect(await page.openQuickWorkspace(node.id, 'b')).toBe(true);
+    expect(await page.openQuickWorkspace(node.id, 'a')).toBe(true);
+    expect(draft).toEqual({ contentQuery: '', contentUseRegex: false });
+  });
+
   it('retains browser targets across Workspace switches but clears them on actual tab close and LRU eviction', async () => {
     const { page } = controller();
     const a = { nodeId: node.id, workspaceId: 'a' };
@@ -445,10 +783,9 @@ describe('Workbench controller composition behavior', () => {
 
   it('opens a tool change with the pane’s full workspace and session identity', () => {
     const { page } = controller();
-    const openWorkspaceFileTab = vi.fn();
-    page.workspaceInspector.value = { openWorkspaceFileTab } as unknown as NonNullable<
-      typeof page.workspaceInspector.value
-    >;
+    const openWorkspaceFileTab = vi
+      .spyOn(page.fileWorkbench, 'openTab')
+      .mockResolvedValue(undefined);
     page.nodes.value = [node];
     page.workspaceTarget.value = { nodeId: 'node-a', workspaceId: 'workspace-a' };
     page.nodeManifest.value = {
@@ -1298,13 +1635,15 @@ describe('Workbench controller composition behavior', () => {
         finish = resolve;
         reject = fail;
       });
+      let finishSecond!: () => void;
+      const second = new Promise<void>((resolve) => {
+        finishSecond = resolve;
+      });
       const openFile = vi
         .fn()
         .mockImplementationOnce(() => first)
-        .mockResolvedValue(undefined);
-      page.workspaceInspector.value = { openFile } as unknown as NonNullable<
-        typeof page.workspaceInspector.value
-      >;
+        .mockImplementationOnce(() => second);
+      vi.spyOn(page.fileWorkbench, 'openFile').mockImplementation(openFile);
       const open = (path: string) =>
         window.dispatchEvent(
           new CustomEvent(STANDALONE_FILE_OPEN_EVENT, {
@@ -1316,6 +1655,7 @@ describe('Workbench controller composition behavior', () => {
       open('first.ts');
       await flushComponent();
       expect(openFile).toHaveBeenCalledTimes(1);
+      vi.mocked(history.replaceState).mockClear();
       page.workspaceTarget.value = { nodeId: node.id, workspaceId: 'workspace-b' };
       open('second.ts');
       await flushComponent();
@@ -1325,6 +1665,11 @@ describe('Workbench controller composition behavior', () => {
       else finish();
       await flushComponent();
       expect(openFile).toHaveBeenNthCalledWith(2, 'second.ts', undefined, undefined);
+      expect(history.replaceState).not.toHaveBeenCalled();
+      expect(page.standaloneFileError.value).toBe(false);
+      expect(page.standaloneFileLoading.value).toBe(true);
+      finishSecond();
+      await flushComponent();
       expect(page.standaloneFileLoading.value).toBe(false);
       expect(page.standaloneFileError.value).toBe(false);
       expect(String(vi.mocked(history.replaceState).mock.lastCall?.[2])).toContain(
@@ -1345,9 +1690,7 @@ describe('Workbench controller composition behavior', () => {
     page.workspaceTarget.value = { nodeId: node.id, workspaceId: 'workspace-a' };
     page.nodeManifestLoading.value = true;
     const openFile = vi.fn(async () => undefined);
-    page.workspaceInspector.value = { openFile } as unknown as NonNullable<
-      typeof page.workspaceInspector.value
-    >;
+    vi.spyOn(page.fileWorkbench, 'openFile').mockImplementation(openFile);
     const open = () =>
       window.dispatchEvent(
         new CustomEvent(STANDALONE_FILE_OPEN_EVENT, {

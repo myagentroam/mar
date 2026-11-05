@@ -1,6 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { startPromptCompletionViteFixture } from './support/prompt-completion-vite.js';
 
+type ReferenceHarnessWindow = Window & {
+  __referenceHarness: {
+    calls: string[];
+    updates: number;
+    sends: number;
+    messages: string[];
+    aborted: number;
+    pending: boolean;
+  };
+};
+
 let fixture: Awaited<ReturnType<typeof startPromptCompletionViteFixture>>;
 test.beforeAll(async () => {
   fixture = await startPromptCompletionViteFixture();
@@ -35,13 +46,19 @@ test('mixed results render once and session selection removes the trigger in one
   await expect(options.nth(0)).toContainText('Alpha session');
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await expect(options.nth(1)).toContainText('alpha.ts');
-  const before = await page.evaluate(() => (window as any).__referenceHarness.updates);
+  const before = await page.evaluate(
+    () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.updates
+  );
   await options.nth(0).click();
   await expect(editor).toHaveValue('before  after');
   await expect(
     page.getByRole('button', { name: 'Remove Session reference Alpha session' })
   ).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__referenceHarness.updates)).toBe(before + 1);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.updates
+    )
+  ).toBe(before + 1);
   await editor.press('Control+z');
   await expect(editor).toHaveValue('before @alphaSuffix after');
 });
@@ -87,12 +104,18 @@ test('session-only queries need no tabs and desktop empty picker does not send',
   await editor.press('End');
   await page.keyboard.type('p');
   await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(1);
-  const calls = await page.evaluate(() => (window as any).__referenceHarness.calls as string[]);
+  const calls = await page.evaluate(
+    () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.calls as string[]
+  );
   expect(calls.at(-1)).toContain('/api/agent-sessions?');
   expect(calls.at(-1)).toContain('query=alp');
   await editor.fill('@session nonexistent');
   await editor.press('Enter');
-  expect(await page.evaluate(() => (window as any).__referenceHarness.sends)).toBe(0);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.sends
+    )
+  ).toBe(0);
 });
 
 test('mobile Enter remains a newline while the picker is open', async ({ page }) => {
@@ -103,7 +126,11 @@ test('mobile Enter remains a newline while the picker is open', async ({ page })
   await expect(page.locator('.file-reference-picker [role=option]')).toHaveCount(2);
   await editor.press('Enter');
   await expect(editor).toHaveValue('@alpha\n');
-  expect(await page.evaluate(() => (window as any).__referenceHarness.sends)).toBe(0);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.sends
+    )
+  ).toBe(0);
 });
 
 test('an insertion cancels the old prediction and composition cannot select', async ({ page }) => {
@@ -114,7 +141,9 @@ test('an insertion cancels the old prediction and composition cannot select', as
   await expect(options).toHaveCount(2);
   await page.locator('[data-completion-action]').click();
   await expect
-    .poll(() => page.evaluate(() => (window as any).__referenceHarness.pending))
+    .poll(() =>
+      page.evaluate(() => (window as unknown as ReferenceHarnessWindow).__referenceHarness.pending)
+    )
     .toBe(true);
   await editor.evaluate((element) =>
     element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
@@ -130,7 +159,11 @@ test('an insertion cancels the old prediction and composition cannot select', as
   await expect(
     page.getByRole('button', { name: 'Remove Session reference Alpha session' })
   ).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__referenceHarness.aborted)).toBe(1);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.aborted
+    )
+  ).toBe(1);
 });
 
 test('mixed reference tags serialize as XML and support click and Backspace removal', async ({
@@ -149,7 +182,7 @@ test('mixed reference tags serialize as XML and support click and Backspace remo
   await expect(fileTag).toBeVisible();
   await editor.press('Enter');
   const messages = await page.evaluate(
-    () => (window as any).__referenceHarness.messages as string[]
+    () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.messages as string[]
   );
   expect(messages).toHaveLength(1);
   expect(messages[0]).toContain('<mar_references>');

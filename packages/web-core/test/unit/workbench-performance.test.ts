@@ -3,7 +3,6 @@ import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkbenchPerformanceService } from '../../src/service/workbench-performance-service.js';
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
-import type { Session } from '../../src/model/workbench.js';
 
 function fixture() {
   const view = ref('nodes');

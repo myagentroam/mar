@@ -424,6 +424,7 @@ describe('Server hosted conversation routes', () => {
       outputCapabilities: model.outputCapabilities,
       reasoningEfforts: model.reasoningEfforts,
       defaultReasoningEffort: 'high',
+      gcEnabled: true,
       titleGeneration: false,
       codeMode: false,
       conversationModel: true,

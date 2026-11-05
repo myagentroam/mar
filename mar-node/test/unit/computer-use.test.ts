@@ -374,7 +374,7 @@ describe('Computer Use core', () => {
           callId: 'invalid-lines',
           name: 'mcp__mar_computer__exec',
           arguments: {
-            code: 'import sys; sys.__stdout__.write("null\\n0\\n\\\"text\\\"\\n[]\\n"); sys.__stdout__.flush(); log("ok")'
+            code: 'import sys; sys.__stdout__.write("null\\n0\\n\\"text\\"\\n[]\\n"); sys.__stdout__.flush(); log("ok")'
           }
         },
         new AbortController().signal

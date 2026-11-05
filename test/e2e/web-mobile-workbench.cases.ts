@@ -383,8 +383,9 @@ test('Mobile file upload confirmation remains fully visible with accessible acti
   await nodesButton.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '打开辅助工作面' }).click();
-  await expect(page.locator('.workspace-inspector')).toBeVisible();
-  await page.locator('.explorer-toolbar .workspace-upload-input').setInputFiles({
+  await expect(page.locator('.workbench-aside')).toBeVisible();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
+  await page.locator('.file-explorer .workspace-upload-input').setInputFiles({
     name: 'mobile-upload-confirmation.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{}')

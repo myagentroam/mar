@@ -5,10 +5,7 @@ import type {
   RunnerDefaultConfiguration,
   RunnerCommandDescriptor,
   NodeEnvelope,
-  RunnerName,
-  RunnerProfile,
-  RunnerCommandState,
-  SessionActivityState
+  RunnerProfile
 } from '@myagentroam/protocol';
 import type {
   ExternalSessionActivationState,
@@ -36,7 +33,6 @@ import type {
   RunnerContextUsage,
   RunnerProjectionTitleInput,
   RunnerConversationPage,
-  RunnerConversationHistorySource,
   RunnerConversationHistoryReaders,
   RunnerConversationHistoryPage,
   RunnerConversationRewindInput,

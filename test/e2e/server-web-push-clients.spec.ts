@@ -528,7 +528,7 @@ test('Core v32 clears legacy Push bindings once while preserving notifications a
 
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 32);
     expect(migration).toMatchObject({ name: 'mobile_only_web_push_clients' });
-    await pool.execute('DELETE FROM schema_migrations WHERE namespace=? AND version=?', [
+    await pool.execute('DELETE FROM schema_migrations WHERE namespace=? AND version>=?', [
       'core',
       32
     ]);

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../src/util/api-error.js';
 import {
   createWorkspaceFileTreeService,
   workspaceFileTreeWindow,
@@ -8,6 +9,50 @@ import {
 } from '../../src/service/workspace-file-tree-service.js';
 
 describe('Workspace file tree state', () => {
+  it('reports a current permission failure during reveal without reporting stale failures', async () => {
+    const failure = new ApiError('PERMISSION_DENIED', 'Access denied');
+    let rejectRead: (reason: unknown) => void = () => {};
+    const tree = createWorkspaceFileTreeService({
+      workspaceName: () => 'project',
+      list: () => new Promise((_resolve, reject) => (rejectRead = reject))
+    });
+    const current = tree.reveal('file.txt');
+    rejectRead(failure);
+    await expect(current).rejects.toBe(failure);
+
+    tree.reset();
+    const stale = tree.reveal('file.txt');
+    tree.reset();
+    rejectRead(failure);
+    await expect(stale).resolves.toBeUndefined();
+  });
+
+  it.each(['reset', 'restore'] as const)(
+    'does not report an old nested permission failure after %s during retry',
+    async (replacement) => {
+      const failure = new ApiError('PERMISSION_DENIED', 'Access denied');
+      let rejectRead: (reason: unknown) => void = () => {};
+      let attempts = 0;
+      const tree = createWorkspaceFileTreeService({
+        workspaceName: () => 'project',
+        list: async (path) => {
+          if (path === '.') return { entries: [directory('src')], nextCursor: null };
+          attempts += 1;
+          if (attempts === 1) throw failure;
+          return new Promise((_resolve, reject) => (rejectRead = reject));
+        }
+      });
+      await expect(tree.reveal('src/file.txt')).rejects.toBe(failure);
+      const saved = tree.snapshot();
+      const retry = tree.reveal('src/file.txt');
+      await vi.waitFor(() => expect(attempts).toBe(2));
+      if (replacement === 'reset') tree.reset();
+      else tree.restore(saved);
+      rejectRead(failure);
+      await expect(retry).resolves.toBeUndefined();
+    }
+  );
+
   it('clears the previous refresh failure when restoring a cached tree', async () => {
     const tree = createWorkspaceFileTreeService({
       workspaceName: () => 'project',

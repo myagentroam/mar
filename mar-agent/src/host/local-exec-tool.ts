@@ -1,4 +1,3 @@
-import type { ClientToolDefinition } from '../tools/contracts.js';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { RuntimeResourceHandles } from '../tools/runtime-resource-handles.js';
 import { StringDecoder } from 'node:string_decoder';
@@ -10,7 +9,7 @@ import {
   type LocalProcessSpawnRequest
 } from './local-process-executor.js';
 
-import type { ExecOutputSnapshot, ExecResult, ToolExecutionResult } from '../tools/contracts.js';
+import type { ExecOutputSnapshot, ExecResult } from '../tools/contracts.js';
 import { TOOL_EXECUTION_LIMITS } from '../tools/execution-limits.js';
 import { waitForToolCondition, waitMetadata, type ToolWaitInterrupt } from '../tools/wait.js';
 import { WorkspacePathResolver } from '../tools/shared/path-resolver.js';

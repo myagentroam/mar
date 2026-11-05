@@ -50,7 +50,7 @@ describe('management pagination query helpers', () => {
       beginTransaction: vi.fn(async () => {
         events.push('begin');
       }),
-      query: vi.fn(async (sql: string, params: unknown[]) => {
+      query: vi.fn(async (sql: string, _params: unknown[]) => {
         if (sql === 'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ') {
           events.push('isolation');
           return [[], []];

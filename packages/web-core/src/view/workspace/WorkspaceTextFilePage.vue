@@ -42,6 +42,7 @@ import {
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import type { EditorSymbol, FileNavigationRequest } from './CodeFileEditor.vue';
 import type { WorkspaceNavigationNotice } from '../../model/workspace-navigation.js';
+import type { DirtyTextDraft } from '../../model/workspace-file-workbench.js';
 import InlineFindBar from './InlineFindBar.vue';
 import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
 import WorkspacePreviewContextMenu from './WorkspacePreviewContextMenu.vue';
@@ -73,13 +74,6 @@ interface EditorTabState {
   readonly revision: string | undefined;
   readonly editing: boolean;
 }
-export interface DirtyTextDraft {
-  readonly tabIdentity: string;
-  readonly path: string;
-  readonly content: string;
-  readonly expectedRevision: string;
-}
-
 const props = withDefaults(
   defineProps<{
     readonly file: FileContent;

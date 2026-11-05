@@ -1,5 +1,5 @@
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { nextTick, type Ref } from 'vue';
+import type { Ref } from 'vue';
 import type {
   AgentRun,
   CachedSessionDetail,
@@ -14,8 +14,10 @@ import type {
   WorkspaceCacheView
 } from './workspace-view-cache-service.js';
 import type { SessionContextUsage } from './conversation-state-service.js';
-import type { WorkspaceInspectorHandle } from './workbench-surface-state-service.js';
-export type { WorkspaceInspectorHandle } from './workbench-surface-state-service.js';
+import type { WorkspaceContentSearchSnapshot } from './workspace-content-search-service.js';
+import type { WorkspaceFileTreeSnapshot } from './workspace-file-tree-service.js';
+import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
+import type { WorkspaceFileWorkbenchSnapshot } from '../model/workspace-file-workbench.js';
 
 interface WorkbenchWorkspaceCacheControllerOptions {
   readonly cacheService: ReturnType<typeof createWorkspaceViewCacheService>;
@@ -32,7 +34,22 @@ interface WorkbenchWorkspaceCacheControllerOptions {
   readonly access: Readonly<Ref<RunnerDefaultConfiguration['access']>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
-  readonly inspector: Ref<WorkspaceInspectorHandle | null | undefined>;
+  readonly fileWorkbench: {
+    snapshot(): WorkspaceFileWorkbenchSnapshot;
+    restore(snapshot: WorkspaceFileWorkbenchSnapshot): void;
+  };
+  readonly search?: {
+    snapshot(previous: WorkspaceContentSearchSnapshot | undefined): WorkspaceContentSearchSnapshot;
+    restore(snapshot: WorkspaceContentSearchSnapshot | undefined): void;
+  };
+  readonly files?: {
+    snapshot(): WorkspaceFileTreeSnapshot;
+    restore(snapshot: WorkspaceFileTreeSnapshot | undefined): void;
+  };
+  readonly git?: {
+    snapshot(): WorkspaceGitSnapshot;
+    restore(snapshot: WorkspaceGitSnapshot | undefined): void;
+  };
   readonly restoreDraftConfiguration: (configuration: RunnerDefaultConfiguration) => void;
   readonly persistDraft: () => void;
   readonly flushConversation: () => void;
@@ -65,9 +82,21 @@ export function createWorkbenchWorkspaceCacheController(
     options.cacheService.captureActive(
       {
         sessions: options.sessions.value,
-        ...(options.inspector.value == null
+        fileWorkbench: options.fileWorkbench.snapshot(),
+        ...(options.search === undefined
           ? {}
-          : { inspector: options.inspector.value.snapshot() }),
+          : {
+              search: options.search.snapshot(
+                options.workspaceTarget.value === undefined
+                  ? undefined
+                  : workspaceViewCache(
+                      options.workspaceTarget.value.nodeId,
+                      options.workspaceTarget.value.workspaceId
+                    ).search
+              )
+            }),
+        ...(options.files === undefined ? {} : { files: options.files.snapshot() }),
+        ...(options.git === undefined ? {} : { git: options.git.snapshot() }),
         draft: {
           runner: options.runner.value,
           modelId: options.modelId.value,
@@ -97,21 +126,18 @@ export function createWorkbenchWorkspaceCacheController(
     );
   }
 
-  function restoreWorkspaceInspector(nodeId: string, workspaceId: string): void {
-    const snapshot = workspaceViewCache(nodeId, workspaceId).inspector;
-    if (snapshot === undefined) return;
-    const inspector = options.inspector.value;
-    if (inspector != null) {
-      inspector.restoreWorkspace(nodeId, workspaceId, snapshot);
+  function restoreWorkspaceView(nodeId: string, workspaceId: string): void {
+    if (
+      options.workspaceTarget.value?.nodeId !== nodeId ||
+      options.workspaceTarget.value.workspaceId !== workspaceId
+    )
       return;
-    }
-    void nextTick(() => {
-      if (
-        options.workspaceTarget.value?.nodeId === nodeId &&
-        options.workspaceTarget.value?.workspaceId === workspaceId
-      )
-        options.inspector.value?.restore(snapshot);
-    });
+    const cached = workspaceViewCache(nodeId, workspaceId);
+    options.files?.restore(cached.files);
+    options.git?.restore(cached.git);
+    options.search?.restore(cached.search);
+    const snapshot = cached.fileWorkbench;
+    if (snapshot !== undefined) options.fileWorkbench.restore(snapshot);
   }
 
   function restoreWorkspaceDraft(cache: WorkspaceCacheView | undefined): void {
@@ -196,7 +222,7 @@ export function createWorkbenchWorkspaceCacheController(
     discardWorkspaceViewCache,
     discardNodeViewCaches,
     saveCurrentWorkspaceView,
-    restoreWorkspaceInspector,
+    restoreWorkspaceView,
     restoreWorkspaceDraft,
     restoreCachedSessionDetail,
     updateCachedContext,

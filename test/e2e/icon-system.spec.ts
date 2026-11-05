@@ -253,7 +253,10 @@ for (const theme of ['dark', 'light']) {
         await page.getByRole('button', { name: 'Toggle mobile', exact: true }).click();
       }
       if (name === 'session rows') await page.locator('.session-link').focus();
-      if (name === 'notifications') await page.locator('.workbench-notification-trigger').click();
+      if (name === 'notifications') {
+        await page.locator('.activity-center-trigger').click();
+        await page.getByRole('tab', { name: /Notifications/ }).click();
+      }
       const controls = page.locator(selector);
       await expect(controls.first()).toBeVisible();
       await page.locator('html').evaluate((element, selectedTheme) => {
@@ -471,7 +474,7 @@ for (const theme of ['dark', 'light']) {
         await expect(badge).toHaveText(locale === 'en-US' ? 'Unread' : '未读');
         for (const tab of [tabs.first(), tabs.nth(1)]) {
           await tab.getByRole('tab').click();
-          await expect(badge).toHaveCSS('border-top-width', '0px');
+          await expect(badge).toHaveCSS('border-top-width', '1px');
           const visible = await badge.evaluate((element) => {
             const style = getComputedStyle(element);
             const parent = element.closest('.workspace-tab')!;
@@ -864,45 +867,39 @@ for (const mobile of [false, true]) {
       await page.goto(
         `${fixture.url}icon-system.html?navigation=1&count=${count}${mobile ? '&mobile=1' : ''}`
       );
-      const trigger = page.locator('.recent-sessions-trigger');
+      const trigger = page.locator('.activity-center-trigger');
       const icon = trigger.locator('[data-mar-icon="recent-sessions"]');
       await expect(icon).toBeVisible();
       const bounds = await trigger.boundingBox();
-      const entry = await page.locator('.recent-sessions-entry').boundingBox();
+      const entry = await page.locator('.activity-reference').boundingBox();
       const graphic = await icon.boundingBox();
       expect(graphic!.width).toBe(22);
       await expect(page.locator('.nav-menu-button [data-mar-icon="workspace"]')).toHaveCSS(
         'width',
         '22px'
       );
-      if (mobile) {
-        await expect(page.locator('.workbench-notification-trigger .mar-icon')).toHaveCSS(
-          'width',
-          '22px'
-        );
-      }
       expect(bounds!.width).toBeGreaterThanOrEqual(entry!.width - 4);
       expect(
         Math.abs(graphic!.x + graphic!.width / 2 - entry!.x - entry!.width / 2)
       ).toBeLessThanOrEqual(1);
       if (count) {
-        const badge = trigger.locator('.recent-sessions-badge');
-        await expect(badge).toHaveText(count > 99 ? '99+' : String(count));
+        const badge = trigger.locator('.activity-entry-running');
+        await expect(badge).toBeVisible();
         const badgeBounds = await badge.boundingBox();
         expect(badgeBounds!.x + badgeBounds!.width).toBeLessThanOrEqual(
           bounds!.x + bounds!.width + (mobile ? 9 : 0)
         );
-        if (!mobile && count === 6) {
-          expect(badgeBounds!.x).toBeLessThan(graphic!.x + graphic!.width);
-          expect(badgeBounds!.x + badgeBounds!.width).toBeGreaterThan(graphic!.x + graphic!.width);
-          expect(badgeBounds!.y).toBeLessThan(graphic!.y + graphic!.height / 2);
-        }
-      } else await expect(trigger.locator('.recent-sessions-badge')).toHaveCount(0);
+      } else await expect(trigger.locator('.activity-entry-running')).toHaveCount(0);
+      await expect(trigger).toHaveAttribute(
+        'aria-description',
+        `Running ${count}, 0 unread notifications`
+      );
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-      await trigger.press('Escape');
+      if (mobile) await trigger.click();
+      else await trigger.press('Escape');
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-      const focusableTags = await page.locator('.recent-sessions-entry').evaluate((el) =>
+      const focusableTags = await page.locator('.activity-reference').evaluate((el) =>
         Array.from(el.querySelectorAll<HTMLElement>('*'))
           .filter((child) => child.tabIndex >= 0)
           .map((child) => child.tagName)
@@ -911,7 +908,8 @@ for (const mobile of [false, true]) {
       for (const key of ['Enter', 'Space']) {
         await trigger.press(key);
         await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-        await trigger.press('Escape');
+        if (mobile) await trigger.press(key);
+        else await trigger.press('Escape');
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       }
     }
@@ -923,7 +921,7 @@ for (const { theme, locale } of [
   { theme: 'light', locale: 'en-US' }
 ]) {
   for (const width of [320, 390, 430, 1024, 1280]) {
-    test(`Recent-session unread badges do not move or cover navigation icons: ${theme} ${locale} ${width}`, async ({
+    test(`Activity badges do not move or cover navigation icons: ${theme} ${locale} ${width}`, async ({
       page
     }, testInfo) => {
       const mobile = width < 768;
@@ -931,31 +929,18 @@ for (const { theme, locale } of [
       const url = `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=${locale}${mobile ? '&mobile=1' : ''}`;
       await page.goto(`${url}&count=0`);
       const buttons = page.locator('.activity-rail nav button');
-      const trigger = page.locator('.recent-sessions-trigger');
+      const trigger = page.locator('.activity-center-trigger');
       await expect(trigger).toBeVisible();
       const baseline = await buttons.evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().toJSON())
       );
-      await page.goto(`${url}&count=99&unread=1`);
-      const badge = trigger.locator('.recent-sessions-badge');
-      await expect(badge.locator('.session-state-count')).toHaveText('99');
-      const unread = badge.locator(
-        mobile ? '.recent-sessions-mobile-unread' : '.session-state-unread'
-      );
-      await expect(unread).toBeVisible();
-      await expect(badge).toHaveCSS('border-top-width', '0px');
-      if (!mobile) {
-        await expect(unread).toHaveText(locale === 'zh-CN' ? '未读' : 'Unread');
-        await expect(unread).toHaveCSS('border-left-width', '0px');
-      }
-      const notificationBadge = page.locator('.workbench-notification-badge');
-      await expect(notificationBadge).toHaveCSS('border-top-width', '0px');
-      const countColors = await badge.locator('.session-state-count').evaluate((element) => ({
-        background: getComputedStyle(element).backgroundColor,
-        color: getComputedStyle(element).color
-      }));
-      await expect(notificationBadge).toHaveCSS('background-color', countColors.background);
-      await expect(notificationBadge).toHaveCSS('color', countColors.color);
+      await page.goto(`${url}&count=99&unread=1&unreadCount=120`);
+      const badge = trigger.locator('.activity-entry-count');
+      const running = trigger.locator('.activity-entry-running');
+      await expect(badge).toHaveText('99+');
+      await expect(running).toBeVisible();
+      await expect(trigger).toHaveAttribute('aria-description', /99|120/);
+      await expect(badge).toHaveCSS('pointer-events', 'none');
       const positions = await buttons.evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().toJSON())
       );
@@ -977,75 +962,54 @@ for (const { theme, locale } of [
           bounds.y + bounds.height > icon.top;
         expect(overlaps).toBe(false);
       }
-      if (mobile) {
-        await expect(trigger).toHaveCSS('width', '36px');
-        const icon = (await trigger.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
-        const marker = (await unread.boundingBox())!;
-        expect(marker.width).toBe(6);
-        expect(Math.abs(bounds.x + bounds.width - (icon.x + icon.width + 3))).toBeLessThan(1);
-        expect(bounds.y).toBeLessThan(icon.y + icon.height / 2);
-        expect(Math.abs(marker.x + marker.width / 2 - (bounds.x + bounds.width))).toBeLessThan(4);
-        await trigger.click();
-        const selectedBackground = await trigger.evaluate(
-          (element) => getComputedStyle(element).backgroundColor
-        );
-        expect(await unread.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
-          selectedBackground
-        );
-        await trigger.click();
+      if (mobile) await expect(trigger).toHaveCSS('width', '36px');
+      await trigger.click();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await expect(running).toBeVisible();
+      await expect(badge).toBeVisible();
+      const selectedBackground = await trigger.evaluate(
+        (element) => getComputedStyle(element).backgroundColor
+      );
+      expect(await badge.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
+        selectedBackground
+      );
+      if (mobile) await trigger.click();
+      else await trigger.press('Escape');
+      if (mobile)
         await page.screenshot({
-          path: testInfo.outputPath(`recent-sessions-${width}.png`),
+          path: testInfo.outputPath(`activity-${width}.png`),
           clip: { x: 0, y: 0, width, height: 84 }
         });
-      } else {
-        await trigger.hover();
-        await expect(page.locator('.mar-tooltip:visible')).toContainText(
-          locale === 'zh-CN' ? '未读' : 'Unread'
-        );
-      }
     });
   }
-  test(`Mobile recent-session unread-only and single-count badges: ${theme} ${locale}`, async ({
+  test(`Mobile activity unread-only and running indicators: ${theme} ${locale}`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 900 });
-    await page.goto(
-      `${fixture.url}icon-system.html?navigation=1&mobile=1&count=1&unread=1&theme=${theme}&locale=${locale}`
-    );
-    await expect(page.locator('.recent-sessions-badge .session-state-count')).toHaveText('1');
-    await expect(page.locator('.recent-sessions-mobile-unread')).toBeVisible();
+    const url = `${fixture.url}icon-system.html?navigation=1&mobile=1&theme=${theme}&locale=${locale}`;
+    await page.goto(`${url}&count=1&unread=1`);
+    const trigger = page.locator('.activity-center-trigger');
+    await expect(trigger.locator('.activity-entry-count')).toHaveText('1');
+    await expect(trigger.locator('.activity-entry-running')).toBeVisible();
     await page.screenshot({
-      path: testInfo.outputPath('recent-sessions-one-unread.png'),
+      path: testInfo.outputPath('activity-one-unread.png'),
       clip: { x: 0, y: 0, width: 390, height: 84 }
     });
-    await page.goto(
-      `${fixture.url}icon-system.html?navigation=1&mobile=1&count=0&unread=1&theme=${theme}&locale=${locale}`
-    );
-    const badge = page.locator('.recent-sessions-badge');
-    await expect(badge.locator('.session-state-count')).toHaveCount(0);
-    await expect(badge).toHaveCSS('overflow', 'visible');
-    const marker = badge.locator('.recent-sessions-mobile-unread');
-    await expect(marker).toBeVisible();
-    const icon = (await page.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
-    const markerBounds = (await marker.boundingBox())!;
-    expect(markerBounds.width).toBe(8);
-    expect(markerBounds.x).toBeLessThan(icon.x + icon.width);
-    expect(markerBounds.x + markerBounds.width).toBeGreaterThan(icon.x + icon.width);
-    expect(markerBounds.y + markerBounds.height).toBeGreaterThan(icon.y + 4);
-    expect(markerBounds.y).toBeLessThan(icon.y + icon.height / 2);
+    await page.goto(`${url}&count=0&unread=1`);
+    const badge = trigger.locator('.activity-entry-count');
+    await expect(badge).toHaveText('1');
+    await expect(trigger.locator('.activity-entry-running')).toHaveCount(0);
+    const icon = (await trigger.locator('[data-mar-icon="recent-sessions"]').boundingBox())!;
+    const marker = (await badge.boundingBox())!;
+    expect(marker.x).toBeLessThan(icon.x + icon.width);
+    expect(marker.x + marker.width).toBeGreaterThan(icon.x + icon.width);
+    expect(marker.y).toBeLessThan(icon.y + icon.height / 2);
     await page.screenshot({
-      path: testInfo.outputPath('recent-sessions-unread-only.png'),
+      path: testInfo.outputPath('activity-unread-only.png'),
       clip: { x: 0, y: 0, width: 390, height: 84 }
     });
-    const trigger = page.locator('.recent-sessions-trigger');
     await trigger.click();
-    const selectedBackground = await trigger.evaluate(
-      (element) => getComputedStyle(element).backgroundColor
-    );
-    expect(await marker.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
-      selectedBackground
-    );
-    await page.locator('.workbench-notification-trigger').click();
+    await page.getByRole('tab', { name: locale === 'zh-CN' ? /^通知/ : /^Notifications/ }).click();
     await page.locator('.workbench-notification-mark-all').click();
     await expect(badge).toHaveCount(0);
   });
@@ -1053,52 +1017,42 @@ for (const { theme, locale } of [
 
 for (const theme of ['dark', 'light']) {
   for (const count of [0, 1, 99, 120]) {
-    test(`Desktop recent-session badge shows full English unread: ${theme}, ${count}`, async ({
+    test(`Desktop activity badge preserves unread count and centered rail: ${theme}, ${count}`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width: 1024, height: 900 });
       await page.goto(
-        `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=en-US&count=${count}&unread=1`
+        `${fixture.url}icon-system.html?navigation=1&theme=${theme}&locale=en-US&count=${count}&unread=1&unreadCount=${count || 1}`
       );
-      const badge = page.locator('.recent-sessions-trigger .recent-sessions-badge');
-      const unread = badge.locator('.session-state-unread');
-      await expect(unread).toHaveText('Unread');
-      const geometry = await unread.evaluate((element) => {
-        const navElement = element.closest('nav')!;
-        const nav = navElement.getBoundingClientRect();
+      const trigger = page.locator('.activity-center-trigger');
+      const badge = trigger.locator('.activity-entry-count');
+      await expect(badge).toHaveText(count > 99 ? '99+' : String(count || 1));
+      await expect(trigger).toHaveAttribute('aria-description', new RegExp(`${count || 1} unread`));
+      const geometry = await badge.evaluate((element) => {
+        const nav = element.closest('nav')!;
         const rect = element.getBoundingClientRect();
+        const navRect = nav.getBoundingClientRect();
         return {
-          clientWidth: element.clientWidth,
-          scrollWidth: element.scrollWidth,
+          scrollWidth: nav.scrollWidth,
+          clientWidth: nav.clientWidth,
           left: rect.left,
           right: rect.right,
-          navLeft: nav.left,
-          navRight: nav.right,
-          navScrollWidth: navElement.scrollWidth,
-          navClientWidth: navElement.clientWidth
+          navLeft: navRect.left,
+          navRight: navRect.right
         };
       });
       expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
-      expect(geometry.navScrollWidth).toBeLessThanOrEqual(geometry.navClientWidth);
       expect(geometry.left).toBeGreaterThanOrEqual(geometry.navLeft);
       expect(geometry.right).toBeLessThanOrEqual(geometry.navRight);
       const rail = (await page.locator('.activity-rail').boundingBox())!;
-      const icon = (await page
-        .locator('.recent-sessions-trigger [data-mar-icon="recent-sessions"]')
-        .boundingBox())!;
-      expect(Math.abs(icon.x + icon.width / 2 - rail.x - rail.width / 2)).toBeLessThanOrEqual(1);
-      const workspaceIcon = (await page
-        .locator('.nav-menu-button [data-mar-icon="workspace"]')
-        .boundingBox())!;
-      expect(
-        Math.abs(workspaceIcon.x + workspaceIcon.width / 2 - rail.x - rail.width / 2)
-      ).toBeLessThanOrEqual(1);
-      if (count) {
-        const number = badge.locator('.session-state-count');
-        await expect(number).toHaveText(count > 99 ? '99+' : String(count));
-        const numberBounds = (await number.boundingBox())!;
-        const unreadBounds = (await unread.boundingBox())!;
-        expect(Math.abs(numberBounds.y - unreadBounds.y)).toBeLessThan(1);
+      for (const icon of [
+        trigger.locator('[data-mar-icon="recent-sessions"]'),
+        page.locator('.nav-menu-button [data-mar-icon="workspace"]')
+      ]) {
+        const bounds = (await icon.boundingBox())!;
+        expect(Math.abs(bounds.x + bounds.width / 2 - rail.x - rail.width / 2)).toBeLessThanOrEqual(
+          1
+        );
       }
       if (count === 1)
         await page.locator('.activity-rail').screenshot({ path: testInfo.outputPath('rail.png') });
@@ -1109,9 +1063,9 @@ for (const theme of ['dark', 'light']) {
 test('Narrow desktop sidebar width includes the activity rail', async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 900 });
   await page.goto(`${fixture.url}icon-system.html?navigation=1&locale=en-US&count=99&unread=1`);
-  const unread = page.locator('.recent-sessions-trigger .session-state-unread');
-  await expect(unread).toHaveText('Unread');
-  const widths = await unread.evaluate((element) => {
+  const badge = page.locator('.activity-center-trigger .activity-entry-count');
+  await expect(badge).toHaveText('1');
+  const widths = await badge.evaluate((element) => {
     const root = document.documentElement;
     const style = getComputedStyle(root);
     const probe = document.createElement('div');
@@ -1123,13 +1077,13 @@ test('Narrow desktop sidebar width includes the activity rail', async ({ page })
       total,
       rail: Number.parseFloat(style.getPropertyValue('--mar-activity-rail-width')),
       sidebar: Number.parseFloat(style.getPropertyValue('--mar-workbench-sidebar-width')),
-      unreadWidth: element.clientWidth,
-      unreadContentWidth: element.scrollWidth
+      width: element.clientWidth,
+      contentWidth: element.scrollWidth
     };
   });
   expect(widths.total).toBe(widths.rail + widths.sidebar);
   expect(widths.rail).toBe(52);
-  expect(widths.unreadContentWidth).toBeLessThanOrEqual(widths.unreadWidth);
+  expect(widths.contentWidth).toBeLessThanOrEqual(widths.width);
 });
 
 test('Desktop badge overflow does not intercept adjacent content and navigation can scroll', async ({
@@ -1138,7 +1092,7 @@ test('Desktop badge overflow does not intercept adjacent content and navigation 
   await page.setViewportSize({ width: 800, height: 320 });
   await page.goto(`${fixture.url}icon-system.html?navigation=1&locale=en-US&count=99&unread=1`);
   const nav = page.locator('.activity-rail nav');
-  const badge = page.locator('.recent-sessions-trigger .recent-sessions-badge');
+  const badge = page.locator('.activity-center-trigger .activity-entry-count');
   await expect(badge).toBeVisible();
   const railBounds = (await page.locator('.activity-rail').boundingBox())!;
   const workspaceIcon = (await page

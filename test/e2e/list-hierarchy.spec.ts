@@ -50,7 +50,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(
         `${fixture.url}visual-alignment.html?long-notification=1&theme=${theme}${width < 768 ? '&mobile=1' : ''}`
       );
-      await page.locator('.workbench-notification-center button').first().click();
+      await page.locator('.activity-center-trigger').click();
+      await page.getByRole('tab', { name: /^Notifications/ }).click();
       const title = page.locator('.workbench-notification-title strong').first();
       await expect(title).toBeVisible();
       await expect(title).toHaveCSS('font-size', typography.fontSize);
@@ -120,13 +121,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(title).toHaveCSS('color', (await colors(page)).primary);
       }
       await expect(page.locator('.recent-sessions-list .el-tag--success')).toHaveCount(1);
-      await expect(page.locator('.recent-sessions-list .el-tag--primary')).toHaveCount(1);
+      await expect(page.locator('.recent-sessions-list .el-tag--info')).toHaveCount(1);
       const statuses = page.locator('.recent-sessions-list .el-tag');
       const recentPalette = await colors(page);
-      await expect(statuses.first()).toHaveClass(/el-tag--primary/);
-      await expect(statuses.first()).toHaveCSS('color', recentPalette.link);
-      await expect(statuses.last()).toHaveClass(/el-tag--success/);
-      await expect(statuses.last()).toHaveCSS('color', recentPalette.success);
+      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      await expect(statuses.first()).toHaveCSS('color', recentPalette.success);
+      await expect(statuses.last()).toHaveClass(/el-tag--info/);
       await page.locator('.recent-sessions-list button').last().click();
       await expect(page.getByTestId('opened')).toHaveText('Review second');
     }

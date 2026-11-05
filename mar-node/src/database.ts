@@ -52,11 +52,7 @@ const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
 
 import type { NodeWorkspace, WorkspaceSettings } from './workspace/contracts.js';
-import type {
-  NativeSessionControl,
-  NodeAgentSession,
-  NativeSessionMetadata
-} from './session/contracts.js';
+import type { NativeSessionMetadata } from './session/contracts.js';
 export type { NodeWorkspace, WorkspaceSettings } from './workspace/contracts.js';
 export type {
   NativeSessionControl,

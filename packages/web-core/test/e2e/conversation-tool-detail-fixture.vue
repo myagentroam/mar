@@ -4,6 +4,7 @@ import type { ConversationItem, ConversationTurn } from '../../src/model/workben
 import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import ConversationDetailPreview from '../../src/view/conversation/ConversationDetailPreview.vue';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { goalMessage } from './support/localized-fixture-data.js';
 
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
@@ -385,7 +386,7 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
     [
       'SEND',
       params.has('agent-goal')
-        ? { message: 'Review the Goal.\n继续验证', messageIsGoal: true }
+        ? { message: goalMessage, messageIsGoal: true }
         : { message: 'Please check the patch.', delivery: 'QUEUE' },
       [task],
       'send receipt'

@@ -262,7 +262,14 @@ describe('MAR Agent managed run projection', () => {
       expect(completed).toMatchObject({
         itemId: item?.itemId,
         status: 'COMPLETED',
-        payload: { toolName, title: toolName, outputSummary: summary }
+        payload: {
+          toolName,
+          title: toolName,
+          outputSummary: toolName === 'read' ? null : summary,
+          ...(toolName === 'read'
+            ? { output: { blocks: [{ channel: 'TEXT', text: summary }] } }
+            : {})
+        }
       });
     }
   );

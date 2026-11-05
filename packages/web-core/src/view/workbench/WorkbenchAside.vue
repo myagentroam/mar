@@ -88,19 +88,6 @@ const activeId = computed(() => {
         ? `session:${target.sessionId}`
         : undefined;
 });
-// The Inspector owns file windows and drafts, so moving between tools must not remount it.
-const inspectorEntry = computed(() => {
-  const tools = entries.value.filter(
-    (entry) => entry.target.kind === 'tool' && entry.target.id !== 'terminal'
-  );
-  return (
-    tools.find((entry) => entry.id === activeId.value) ??
-    tools.find(
-      (entry) => entry.target.kind === 'tool' && entry.target.id === props.state.recentTool
-    ) ??
-    tools[0]
-  );
-});
 function activate(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
   if (target?.kind === 'tool') emit('selectTool', { ...props.workspace, id: target.id });
@@ -163,35 +150,19 @@ function close(id: string | number): void {
     <div class="workbench-aside-content">
       <div
         v-for="entry in entries.filter(
-          (item) =>
-            item.target.kind === 'tool' &&
-            item.target.id !== 'terminal' &&
-            item.id !== inspectorEntry?.id
+          (item) => item.target.kind === 'tool' && item.target.id !== 'terminal'
         )"
+        v-show="entry.id === activeId"
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
         :key="entry.id"
-        hidden
+        class="workbench-aside-panel"
         role="tabpanel"
         :aria-labelledby="tabStripIdentity(tabPrefix, entry.id).tab"
-      />
-      <div
-        v-show="inspectorEntry !== undefined && inspectorEntry.id === activeId"
-        :id="
-          inspectorEntry === undefined
-            ? undefined
-            : tabStripIdentity(tabPrefix, inspectorEntry.id).panel
-        "
-        class="workbench-aside-panel"
-        :role="inspectorEntry === undefined ? undefined : 'tabpanel'"
-        :aria-labelledby="
-          inspectorEntry === undefined
-            ? undefined
-            : tabStripIdentity(tabPrefix, inspectorEntry.id).tab
-        "
       >
         <slot
           name="tool"
-          :tool="inspectorEntry?.target.kind === 'tool' ? inspectorEntry.target.id : undefined"
+          :tool="entry.target.kind === 'tool' ? entry.target.id : undefined"
+          :visible="entry.id === activeId"
         />
       </div>
       <div

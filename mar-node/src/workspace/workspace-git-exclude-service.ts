@@ -92,7 +92,7 @@ async function gitExcludeTarget(workspace: string, includeParentRepository: bool
     .relative(root, await realpath(workspace))
     .split(path.sep)
     .join('/');
-  const escaped = relative.replace(/[\\*?\[\]#! ]/g, '\\$&');
+  const escaped = relative.replace(/[\\*?[\]#! ]/g, '\\$&');
   return { exclude: await resolveGitExclude(root), prefix: relative === '' ? '/' : `/${escaped}/` };
 }
 

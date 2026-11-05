@@ -91,6 +91,7 @@ export function renderComponent(
     'ElInputNumber',
     'ElSelect',
     'ElOption',
+    'ElOptionGroup',
     'ElFormItem',
     'ElTag',
     'ElCheckTag',

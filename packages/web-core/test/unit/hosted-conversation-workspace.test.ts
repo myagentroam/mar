@@ -359,14 +359,16 @@ describe('Web Hosted Conversation Workspace Service', () => {
   });
   it('exposes a read-only hosted conversation window', () => {
     const workspace = service(async () => undefined as never);
-    if (false) {
+    // Keep these ownership checks type-only; executing them would mutate the fixture.
+    const assertReadonly = () => {
       // @ts-expect-error Hosted consumers cannot replace the projection window.
       workspace.turns.value = [];
       // @ts-expect-error Hosted consumers cannot mutate the projected turn list.
       workspace.turns.value.push(workspace.turns.value[0]!);
       // @ts-expect-error Hosted consumers cannot replace the projection cursor.
       workspace.historyNextCursor.value = null;
-    }
+    };
+    expect(assertReadonly).toBeTypeOf('function');
     expect(workspace.turns.value).toEqual([]);
   });
   it.each([

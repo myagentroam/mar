@@ -590,7 +590,7 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     const text = await read.locator('.conversation-detail-text').textContent();
     expect(text?.match(/\[Truncated\]/gu)).toHaveLength(1);
     if (truncation === 'HEAD') expect(text).toMatch(/^\[Truncated\][\s\S]+second line\s*$/u);
-    else expect(text).toMatch(/^  first file[\s\S]+\[Truncated\]$/u);
+    else expect(text).toMatch(/^ {2}first file[\s\S]+\[Truncated\]$/u);
   });
 }
 

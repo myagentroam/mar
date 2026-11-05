@@ -982,17 +982,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(subtitle).toHaveCount(0);
       await thinking.locator('summary').click();
       await page.getByTestId('publish-reasoning-summary').click();
-      await expect(preview).toHaveText('Public summary: inspect files');
+      await expect(preview).toHaveText('Public summary');
       await expect(subtitle).toHaveText(thinkingPreview);
       const summary = process.locator('.reasoning-group').last();
-      await expect(summary.locator('.reasoning-subtitle')).toHaveText(
-        'Public summary: inspect files'
-      );
+      await expect(summary.locator('.reasoning-subtitle')).toHaveText('Public summary');
       await summary.locator('summary').click();
       await expect(summary.locator('p')).toContainText('Full summary detail');
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
-      await expect(preview).toHaveText('Public summary: inspect files');
+      await expect(preview).toHaveText('Public summary');
       await expect(process.locator('.reasoning-group')).toHaveCount(0);
       await heading.click();
       await page.getByTestId('finish-reasoning-process').click();

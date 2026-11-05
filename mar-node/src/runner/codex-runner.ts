@@ -563,7 +563,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     const threads: ReturnType<typeof extractCodexThreads>[number][] = [];
     const cursors = new Set<string>();
     let cursor: string | undefined;
-    do {
+    for (;;) {
       const result = await this.client.listThreads({
         limit: 200,
         ...(cursor === undefined ? {} : { cursor })
@@ -588,7 +588,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
         throw new Error('CODEX_THREAD_LIST_INVALID');
       cursors.add(next);
       cursor = next;
-    } while (true);
+    }
   }
 
   async discoverSessions(

@@ -7,14 +7,8 @@ export interface ExtensionResourceRegistration {
   readonly ready: Promise<void>;
   dispose(): Promise<void>;
 }
-export interface ExtensionResourceScope {
-  effect(
-    acquire: () => ExtensionDisposer | Promise<ExtensionDisposer>
-  ): ExtensionResourceRegistration;
-}
-
 /** An instance's managed resources, not an OS sandbox or a process-wide resource owner. */
-export class ExtensionResourceScope implements ExtensionResourceScope {
+export class ExtensionResourceScope {
   readonly instanceId = randomUUID();
   static readonly #initialization = new AsyncLocalStorage<{ active: boolean }>();
 

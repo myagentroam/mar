@@ -79,7 +79,7 @@ describe('Node MAR Agent model transport test', () => {
       message: null,
       httpStatus: null
     });
-    expect(create).toHaveBeenCalledWith([runtimeModel()], {
+    expect(create).toHaveBeenCalledWith([{ ...runtimeModel(), gcEnabled: true }], {
       runtimeScopeId: 'scope-1',
       executionId: 'test-1'
     });

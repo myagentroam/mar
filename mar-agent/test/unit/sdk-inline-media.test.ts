@@ -624,6 +624,7 @@ describe('SDK inline media lifecycle', () => {
 
         if (mode === 'reopen-no-usage') {
           vi.spyOn(adapter, 'start').mockImplementationOnce(async function* () {
+            yield* [];
             throw new Error('Simulated provider failure before usage.');
           });
           expect(await session.run({ prompt: 'Continue without usage.' }).result()).toMatchObject({

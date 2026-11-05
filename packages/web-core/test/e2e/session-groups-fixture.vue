@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type { Session } from '../../src/model/workbench.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import WorkspaceSessionTreePopover from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 
 const mobile = matchMedia('(max-width: 767px)').matches;
@@ -15,6 +17,16 @@ const mobileTarget = document.getElementById('recent-mobile')!;
 const group = ref<SessionGroup>('MAIN');
 const selected = ref('main');
 const treeSession = ref('');
+const treePopup = ref<{ sessionId: string; anchor: HTMLElement; title: string }>();
+function closeTree(restoreFocus: boolean): void {
+  const anchor = treePopup.value?.anchor;
+  treePopup.value = undefined;
+  if (restoreFocus) void nextTick(() => anchor?.focus());
+}
+onMounted(() => document.addEventListener('keydown', consoleKeyboardShortcutService.handle, true));
+onBeforeUnmount(() =>
+  document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, true)
+);
 const sessions = ref<Session[]>([
   {
     id: 'main',
@@ -99,6 +111,7 @@ const props = {
   active: true,
   watchStatus: 'ready' as const,
   nodeReady: true,
+  asideSupported: true,
   loading: false,
   workspaceKind: 'DIRECTORY' as const,
   workspaceKindLabel: 'Directory',
@@ -123,20 +136,6 @@ const props = {
   searching: false,
   refreshing: false,
   workspaceManageable: false,
-  request: async <T,>() =>
-    ({
-      rootSessionId: 'child',
-      truncated: false,
-      nodes: [
-        {
-          id: 'child',
-          parentSessionId: null,
-          title: 'Child collaboration',
-          runner: 'mar-agent',
-          status: 'IDLE'
-        }
-      ]
-    }) as T,
   hasUnread: () => true
 };
 </script>
@@ -151,9 +150,40 @@ const props = {
         :session-group="group"
         @select-group="group = $event"
         @open="selected = $event"
-        @open-tree="treeSession = $event"
+        @open-tree="(sessionId, anchor, title) => (treePopup = { sessionId, anchor, title })"
       />
     </aside>
+    <WorkspaceSessionTreePopover
+      v-if="treePopup"
+      :anchor="treePopup.anchor"
+      :session-id="treePopup.sessionId"
+      title="View session tree"
+      :tree="{
+        anchorSessionId: treePopup.sessionId,
+        parent: null,
+        nodes: [
+          {
+            id: 'child-detail',
+            parentSessionId: treePopup.sessionId,
+            title: 'Child detail',
+            runner: 'mar-agent',
+            status: 'IDLE',
+            activity: 'IDLE',
+            lastActivityAt: now
+          }
+        ],
+        truncated: false
+      }"
+      status="ready"
+      :aside-session-ids="[]"
+      @close="closeTree"
+      @open="
+        (sessionId) => {
+          treeSession = sessionId;
+          treePopup = undefined;
+        }
+      "
+    />
     <section class="conversation">
       <WorkspaceTabs
         :placement="mobile ? 'body' : 'header'"
