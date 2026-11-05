@@ -1,9 +1,51 @@
 import { describe, expect, it } from 'vitest';
+import { createSSRApp } from 'vue';
+import { renderToString } from 'vue/server-renderer';
+import { i18n, localePreferenceService } from '../../src/service/locale-preference-service';
+import AgentOperationDetail from '../../src/view/conversation/tool-detail/AgentOperationDetail.vue';
 import { agentOperationDetail } from '../../src/util/agent-operation-presentation';
 import { mergeConversationPayload } from '../../src/util/conversation-history';
 import { conversationItemText } from '../../src/util/conversation-presentation';
 
 describe('Agent operation card projection', () => {
+  it.each(['en-US', 'zh-CN'] as const)(
+    'formats WAIT durations with the shared duration units in %s',
+    async (locale) => {
+      const previousLocale = i18n.global.locale.value;
+      const preference = localePreferenceService();
+      preference.setLocale(locale);
+      try {
+        for (const [waitMs, english, chinese] of [
+          [0, '0 sec', '0 秒'],
+          [250, '250 ms', '250 毫秒'],
+          [1000, '1 sec', '1 秒'],
+          [61000, '1 min 1 sec', '1 分钟 1 秒'],
+          [300000, '5 min', '5 分钟']
+        ] as const) {
+          const expected = locale === 'zh-CN' ? chinese : english;
+          for (const targetCount of [1, 2]) {
+            const html = await renderToString(
+              createSSRApp(AgentOperationDetail, {
+                agentDetail: {
+                  action: 'WAIT',
+                  targets: Array.from({ length: targetCount }, (_, index) => ({
+                    title: `Task ${index + 1}`
+                  })),
+                  wait: { waitFor: 'message', mode: 'all', waitMs }
+                }
+              })
+            );
+            expect(html).toContain(`message · all · ${expected}`);
+            expect(html.split(expected)).toHaveLength(2);
+            expect(html).not.toContain(`${waitMs}ms`);
+          }
+        }
+      } finally {
+        preference.setLocale(previousLocale);
+      }
+    }
+  );
+
   it('consumes the public Goal message marker without interpreting raw inputs', () => {
     const payload = {
       agentOperation: {
