@@ -6,6 +6,7 @@ import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/dis
 import { directLocalProcessExecutor } from '../../../mar-agent/dist/host/local-process-executor.js';
 import type { ModelEvent } from '../../../mar-agent/dist/model/contracts.js';
 import { marAgentRuntimeModelConfigurationSchema } from '@myagentroam/protocol';
+import type { NodeConversationTurn } from '../../src/runtime-model.js';
 import { MarAgentHostedConversationRuntime } from '../../src/runner/mar-agent/hosted-conversation-runtime.js';
 import { executeCodexImageGen } from '../../src/runner/mar-agent/image-generation.js';
 import { SecretValue } from '@myagentroam/agent';
@@ -297,7 +298,21 @@ it.each(
       });
       expect(JSON.stringify(history)).toContain('IMAGE_GENERATION');
       expect(JSON.stringify(history)).not.toContain(image);
-      if (animated) expect(JSON.stringify(history)).toContain('image/gif');
+      if (animated) {
+        const attachments = (history.turns as readonly NodeConversationTurn[]).flatMap((turn) =>
+          turn.items.flatMap(({ payload }): readonly unknown[] =>
+            payload !== null &&
+            typeof payload === 'object' &&
+            'attachments' in payload &&
+            Array.isArray(payload.attachments)
+              ? payload.attachments
+              : []
+          )
+        );
+        expect(attachments).toHaveLength(files.length);
+        for (const attachment of attachments)
+          expect(attachment).toMatchObject({ mime: 'image/gif' });
+      }
       expect(JSON.stringify(history)).not.toContain(home);
       for (const file of files) expect(JSON.stringify(history)).toContain(file);
     } finally {

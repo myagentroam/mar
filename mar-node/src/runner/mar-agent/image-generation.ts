@@ -515,10 +515,11 @@ function generatedFileName(callId: string, format: 'png' | 'gif'): string {
 }
 
 function imageGenerationResponseError(status: number, value: unknown): AgentError {
-  const error =
+  const payload =
     value !== null && typeof value === 'object' && !Array.isArray(value)
-      ? (value as { error?: unknown }).error
+      ? (value as { error?: unknown; detail?: unknown })
       : undefined;
+  const error = payload?.error;
   const record =
     error !== null && typeof error === 'object' && !Array.isArray(error)
       ? (error as { code?: unknown; message?: unknown })
@@ -528,7 +529,12 @@ function imageGenerationResponseError(status: number, value: unknown): AgentErro
   const code = /^[a-zA-Z0-9._-]{1,80}$/u.test(rawCode)
     ? rawCode
     : 'MAR_AGENT_IMAGE_GENERATION_FAILED';
-  const rawMessage = typeof record?.message === 'string' ? record.message.trim() : '';
+  const rawMessage =
+    typeof record?.message === 'string'
+      ? record.message.trim()
+      : typeof payload?.detail === 'string'
+        ? payload.detail.trim()
+        : '';
   const message =
     rawMessage.length > 0 &&
     rawMessage.length <= 1_000 &&

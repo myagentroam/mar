@@ -163,6 +163,25 @@ afterEach(async () => {
 });
 
 describe('Codex image animation and transparent background', () => {
+  it('preserves the Codex detail string when GIF output is disabled upstream', async () => {
+    const api = await startApi({ detail: 'GIF output is not enabled for this request.' }, 400);
+    await expect(execute(api, { prompt: 'Make a simple GIF.', gif: {} })).rejects.toMatchObject({
+      code: 'MAR_AGENT_IMAGE_GENERATION_FAILED',
+      publicMessage: 'GIF output is not enabled for this request.',
+      details: { status: 400 }
+    });
+    expect(api.requests).toHaveLength(1);
+  });
+
+  it('does not expose credentials in a Codex detail error', async () => {
+    const api = await startApi({ detail: 'Bearer fake-token must not be exposed.' }, 400);
+    await expect(execute(api, { prompt: 'Make a simple GIF.', gif: {} })).rejects.toMatchObject({
+      code: 'MAR_AGENT_IMAGE_GENERATION_FAILED',
+      publicMessage: 'Image generation failed with HTTP 400.',
+      details: { status: 400 }
+    });
+  });
+
   it('keeps the strict Codex schema limited to selectors, transparency, and GIF options', () => {
     const schema = codexImageGenToolDefinition.inputSchema as {
       readonly additionalProperties?: boolean;
